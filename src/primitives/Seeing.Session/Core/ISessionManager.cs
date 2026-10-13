@@ -52,6 +52,24 @@ namespace Seeing.Session.Core
         /// <summary>添加消息到会话</summary>
         Task AddMessageAsync(string sessionId, SessionMessage message, CancellationToken ct = default);
 
+        /// <summary>列出会话摘要（轻量，不含消息体）。</summary>
+        IAsyncEnumerable<SessionSummary> ListSummariesAsync(CancellationToken ct = default);
+
+        /// <summary>列出已归档会话摘要。</summary>
+        IAsyncEnumerable<SessionSummary> ListArchivedAsync(CancellationToken ct = default);
+
+        /// <summary>从归档恢复单个会话到活跃集；返回是否成功。</summary>
+        Task<bool> RestoreAsync(string sessionId, CancellationToken ct = default);
+
+        /// <summary>
+        /// 从内存缓存释放指定会话（不删除磁盘数据）。
+        /// <para>会话正在执行（有在途消费循环）时应由调用方避免；本方法仅做缓存移除。</para>
+        /// </summary>
+        Task EvictAsync(string sessionId, CancellationToken ct = default);
+
+        /// <summary>释放全部内存缓存（不删除磁盘数据）。</summary>
+        void EvictAll();
+
         /// <summary>Archive Session - 归档</summary>
         Task<bool> ArchiveAsync(string sessionId, CancellationToken ct = default);
 

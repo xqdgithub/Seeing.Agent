@@ -52,17 +52,22 @@ public sealed class TuiSessionController
 
     public async Task<TuiViewState> ContinueLatestAsync(CancellationToken ct = default)
     {
-        var sessions = await ListAsync(ct);
+        var sessions = await _directory.ListSummariesAsync(ct);
         if (sessions.Count == 0)
             return await NewAsync(null, ct);
 
         var latest = sessions.OrderByDescending(s => s.UpdatedAt).First();
-        await ActivateAsync(latest, ct);
+        var session = await _directory.GetAsync(latest.Id, ct)
+            ?? throw new InvalidOperationException($"Session not found: {latest.Id}");
+        await ActivateAsync(session, ct);
         return Current!;
     }
 
     public async Task<IReadOnlyList<SessionData>> ListAsync(CancellationToken ct = default)
         => await _directory.ListAsync(ct) ?? [];
+
+    public async Task<IReadOnlyList<SessionSummary>> ListSummariesAsync(CancellationToken ct = default)
+        => await _directory.ListSummariesAsync(ct) ?? [];
 
     public async Task RenameAsync(string title, CancellationToken ct = default)
     {

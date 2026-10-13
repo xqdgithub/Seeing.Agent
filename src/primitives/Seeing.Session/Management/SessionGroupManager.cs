@@ -488,6 +488,109 @@ namespace Seeing.Session.Management
             return result;
         }
 
+        /// <inheritdoc/>
+        public async Task<IReadOnlyList<SessionSummary>> ListAnchorSummariesAsync(
+            string? partitionId = null, CancellationToken ct = default)
+        {
+            // 收集全部组锚点（组对象不含消息体、数量远小于会话数），不物化组、不写盘
+            var anchorIds = new HashSet<string>(StringComparer.Ordinal);
+            await foreach (var group in _store.ListAsync(ct).ConfigureAwait(false))
+            {
+                if (!string.IsNullOrEmpty(group.AnchorSessionId))
+                    anchorIds.Add(group.AnchorSessionId);
+            }
+
+            var result = new List<SessionSummary>();
+            await foreach (var summary in _sessions.ListSummariesAsync(ct).ConfigureAwait(false))
+            {
+                if (summary.IsArchived)
+                    continue;
+                if (partitionId != null && summary.PartitionId != partitionId)
+                    continue;
+
+                // 未入组会话即自身锚点；已入组会话仅当为组锚点时展示
+                if (string.IsNullOrEmpty(summary.GroupId) || anchorIds.Contains(summary.Id))
+                    result.Add(summary);
+            }
+
+            return result
+                .OrderByDescending(s => s.LastActiveAt)
+                .ToList();
+        }
+
+        /// <inheritdoc/>
+        public async Task<bool> ArchiveGroupAsync(string groupId, CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(groupId))
+                return false;
+
+            var group = await GetGroupLiveAsync(groupId, ct).ConfigureAwait(false);
+            if (group == null)
+                return false;
+
+            var memberIds = group.Members.Select(m => m.SessionId).ToList();
+            var archived = 0;
+            foreach (var id in memberIds)
+            {
+                try
+                {
+                    if (await _sessions.ArchiveAsync(id, ct).ConfigureAwait(false))
+                        archived++;
+                }
+                catch (NotSupportedException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "归档组成员失败: GroupId={GroupId}, SessionId={SessionId}", groupId, id);
+                }
+            }
+
+            // 组关系保留在组存储中，供 RestoreGroupAsync 恢复；列表经归档过滤自然隐藏
+            _logger.LogInformation("归档会话组: GroupId={GroupId}, Members={Count}, Archived={Archived}",
+                groupId, memberIds.Count, archived);
+            return archived > 0;
+        }
+
+        /// <inheritdoc/>
+        public async Task<bool> RestoreGroupAsync(string groupId, CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(groupId))
+                return false;
+
+            var group = await GetGroupLiveAsync(groupId, ct).ConfigureAwait(false);
+            if (group == null)
+                return false;
+
+            var restored = 0;
+            foreach (var member in group.Members)
+            {
+                try
+                {
+                    if (await _sessions.RestoreAsync(member.SessionId, ct).ConfigureAwait(false))
+                        restored++;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "恢复组成员失败: GroupId={GroupId}, SessionId={SessionId}",
+                        groupId, member.SessionId);
+                }
+            }
+
+            if (restored > 0)
+            {
+                _logger.LogInformation("恢复会话组: GroupId={GroupId}, Restored={Restored}", groupId, restored);
+                RaiseChanged(group.Clone());
+            }
+
+            return restored > 0;
+        }
+
+        /// <inheritdoc/>
+        public IAsyncEnumerable<SessionGroup> ListGroupsAsync(CancellationToken ct = default) =>
+            _store.ListAsync(ct);
+
         // ============================ 关系编排 ============================
 
         /// <inheritdoc/>

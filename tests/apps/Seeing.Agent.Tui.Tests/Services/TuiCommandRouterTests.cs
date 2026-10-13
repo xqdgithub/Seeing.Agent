@@ -246,8 +246,8 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_SessionsNoArg_ShouldPromptAndSwitch()
     {
         var (controller, directory, _, _) = NewController();
-        directory.Setup(o => o.ListAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<SessionData>
+        directory.Setup(o => o.ListSummariesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SessionSummary>
             {
                 new() { Id = "ses_a", Title = "A", UpdatedAt = DateTime.Now.AddMinutes(-5) },
                 new() { Id = "ses_b", Title = "[B]", UpdatedAt = DateTime.Now },
@@ -266,8 +266,8 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_SessionsNoArgEmpty_ShouldNotPrompt()
     {
         var (controller, directory, _, _) = NewController();
-        directory.Setup(o => o.ListAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<SessionData>());
+        directory.Setup(o => o.ListSummariesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SessionSummary>());
         var surface = new ScriptedSurface();
 
         var result = await new TuiCommandRouter().ExecuteAsync("/sessions", Context(controller, surface: surface), TestContext.Current.CancellationToken);
@@ -280,8 +280,8 @@ public sealed class TuiCommandRouterTests
     public async Task ExecuteAsync_ResumeNoArg_ShouldPromptAndSwitch()
     {
         var (controller, directory, _, _) = NewController();
-        directory.Setup(o => o.ListAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<SessionData>
+        directory.Setup(o => o.ListSummariesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SessionSummary>
             {
                 new() { Id = "ses_a", Title = "A", UpdatedAt = DateTime.Now },
             });
@@ -592,6 +592,9 @@ public sealed class TuiCommandRouterTests
         directory
             .Setup(o => o.ListAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<SessionData>());
+        directory
+            .Setup(o => o.ListSummariesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SessionSummary>());
 
         var runtime = new Mock<ISessionRuntime>();
         runtime

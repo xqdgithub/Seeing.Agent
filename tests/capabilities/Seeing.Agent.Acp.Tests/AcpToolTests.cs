@@ -397,4 +397,27 @@ public sealed class FakeSessionManager : ISessionManager
 
     public Task<IReadOnlyList<SessionData>> LoadAllFromStorageAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<SessionData>>(List());
+
+    public async IAsyncEnumerable<SessionSummary> ListSummariesAsync(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await Task.CompletedTask;
+        foreach (var session in _sessions.Values)
+            yield return SessionSummary.FromSession(session);
+    }
+
+    public async IAsyncEnumerable<SessionSummary> ListArchivedAsync(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
+
+    public Task<bool> RestoreAsync(string sessionId, CancellationToken ct = default) =>
+        Task.FromResult(false);
+
+    public Task EvictAsync(string sessionId, CancellationToken ct = default) =>
+        Task.CompletedTask;
+
+    public void EvictAll() { }
 }

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Session.Core;
+using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -10,7 +11,7 @@ namespace Seeing.Session.Storage
     /// 基于文件系统的会话存储实现
     /// 使用 JSON 文件存储会话数据，兼容 WebUI 的 ~/.seeing/sessions/*.json 格式
     /// </summary>
-    public class FileSessionStore : ISessionStore, IRelocatableSessionStore, IDisposable
+    public class FileSessionStore : ISessionStore, IRelocatableSessionStore, ISessionSummaryProvider, ISessionArchiveStore, IDisposable
     {
         private volatile string _baseDirectory;
         private readonly ILogger<FileSessionStore>? _logger;
@@ -18,6 +19,9 @@ namespace Seeing.Session.Storage
 
         /// <summary>会话引用资源目录后缀（工具输出落盘目录约定）</summary>
         private const string RefDirectorySuffix = ".ref";
+
+        /// <summary>归档目录名（位于基础目录下）</summary>
+        private const string ArchiveDirectoryName = "_archive";
 
         // 文件锁字典（实例级别，随实例生命周期释放）
         private readonly Dictionary<string, SemaphoreSlim> _fileLocks = new();
@@ -519,6 +523,395 @@ namespace Seeing.Session.Storage
         /// </summary>
         public IAsyncEnumerable<SessionData> LoadAllAsync(CancellationToken ct = default) =>
             ListAsync(ct);
+
+        // ============================ 摘要端口 ============================
+
+        /// <inheritdoc/>
+        public IAsyncEnumerable<SessionSummary> ListSummariesAsync(CancellationToken ct = default) =>
+            EnumerateSummaries(ct);
+
+        /// <summary>
+        /// 枚举活跃会话摘要：流式只读顶层字段，跳过 messages 数组，不构造消息对象。
+        /// </summary>
+        private async IAsyncEnumerable<SessionSummary> EnumerateSummaries(
+            [EnumeratorCancellation] CancellationToken ct = default)
+        {
+            if (!Directory.Exists(_baseDirectory))
+                yield break;
+
+            foreach (var filePath in Directory.GetFiles(_baseDirectory, "*.json"))
+            {
+                if (ct.IsCancellationRequested)
+                    yield break;
+
+                var fileName = Path.GetFileNameWithoutExtension(filePath);
+                SessionSummary? summary = null;
+
+                try
+                {
+                    var fileLock = GetFileLock(filePath);
+                    await fileLock.WaitAsync(ct).ConfigureAwait(false);
+                    try
+                    {
+                        summary = await ReadSummaryAsync(filePath, fileName, ct).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        fileLock.Release();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "读取会话摘要失败: {FilePath}", filePath);
+                    continue;
+                }
+
+                if (summary != null)
+                    yield return summary;
+            }
+        }
+
+        /// <summary>流式读取会话文件顶层字段生成摘要；损坏文件返回 null。</summary>
+        private async Task<SessionSummary?> ReadSummaryAsync(string filePath, string sessionId, CancellationToken ct)
+        {
+            try
+            {
+                var bytes = await File.ReadAllBytesAsync(filePath, ct).ConfigureAwait(false);
+                return ParseSummary(bytes, sessionId, archived: false);
+            }
+            catch (JsonException ex)
+            {
+                _logger?.LogWarning(ex, "会话摘要 JSON 格式错误: {FilePath}", filePath);
+                return null;
+            }
+            catch (IOException ex)
+            {
+                _logger?.LogWarning(ex, "读取会话摘要 IO 失败: {FilePath}", filePath);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 用 <see cref="Utf8JsonReader"/> 流式解析顶层字段生成摘要：
+        /// 跳过 <c>messages</c> 数组体（不构建 DOM、不构造 <see cref="SessionMessage"/>），仅统计其元素个数。
+        /// </summary>
+        private static SessionSummary? ParseSummary(ReadOnlySpan<byte> utf8, string fallbackId, bool archived)
+        {
+            // 跳过 UTF-8 BOM（Encoding.UTF8 写入时可能带 BOM；Utf8JsonReader 不自动跳过）
+            if (utf8.Length >= 3 && utf8[0] == 0xEF && utf8[1] == 0xBB && utf8[2] == 0xBF)
+                utf8 = utf8.Slice(3);
+
+            var reader = new Utf8JsonReader(utf8, isFinalBlock: true, state: default);
+
+            if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+                return null;
+
+            string? id = null, title = null, partitionId = null, selectedAgent = null, selectedModel = null;
+            string? groupId = null, channelId = null, userId = null, workingDirectory = null, scenario = null;
+            var status = SessionStatus.Created;
+            var kind = SessionKind.Root;
+            var autoApprove = SessionAutoApprove.FollowGlobal;
+            var isArchived = false;
+            var messageCount = 0;
+            DateTime createdAt = default, updatedAt = default, lastActiveAt = default;
+
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+            {
+                if (reader.TokenType != JsonTokenType.PropertyName)
+                    continue;
+
+                var name = reader.GetString();
+                if (!reader.Read())
+                    break;
+
+                switch (name)
+                {
+                    case "id": id = ReadString(ref reader); break;
+                    case "title": title = ReadString(ref reader); break;
+                    case "partitionId": partitionId = ReadString(ref reader); break;
+                    case "selectedAgent": selectedAgent = ReadString(ref reader); break;
+                    case "selectedModel": selectedModel = ReadString(ref reader); break;
+                    case "groupId": groupId = ReadString(ref reader); break;
+                    case "channelId": channelId = ReadString(ref reader); break;
+                    case "userId": userId = ReadString(ref reader); break;
+                    case "workingDirectory": workingDirectory = ReadString(ref reader); break;
+                    case "scenario": scenario = ReadString(ref reader); break;
+                    case "status": status = ReadEnum(ref reader, SessionStatus.Created); break;
+                    case "kind": kind = ReadEnum(ref reader, SessionKind.Root); break;
+                    case "autoApprove": autoApprove = ReadEnum(ref reader, SessionAutoApprove.FollowGlobal); break;
+                    case "isArchived": isArchived = reader.TokenType == JsonTokenType.True; break;
+                    case "createdAt": createdAt = ReadDateTime(ref reader); break;
+                    case "updatedAt": updatedAt = ReadDateTime(ref reader); break;
+                    case "lastActiveAt": lastActiveAt = ReadDateTime(ref reader); break;
+                    case "messages": messageCount = CountArrayElements(ref reader); break;
+                    default: reader.Skip(); break;
+                }
+            }
+
+            return new SessionSummary
+            {
+                Id = id ?? fallbackId,
+                Title = title ?? string.Empty,
+                PartitionId = partitionId,
+                SelectedAgent = selectedAgent,
+                SelectedModel = selectedModel,
+                Status = archived ? SessionStatus.Archived : status,
+                Kind = kind,
+                GroupId = groupId,
+                IsArchived = archived || isArchived,
+                MessageCount = messageCount,
+                CreatedAt = createdAt,
+                UpdatedAt = updatedAt,
+                LastActiveAt = lastActiveAt,
+                ChannelId = channelId,
+                UserId = userId,
+                WorkingDirectory = workingDirectory,
+                Scenario = scenario,
+                AutoApprove = autoApprove
+            };
+        }
+
+        private static string? ReadString(ref Utf8JsonReader reader) =>
+            reader.TokenType == JsonTokenType.String ? reader.GetString() : null;
+
+        private static DateTime ReadDateTime(ref Utf8JsonReader reader) =>
+            reader.TokenType == JsonTokenType.String
+            && DateTime.TryParse(reader.GetString(), out var dt)
+                ? dt
+                : default;
+
+        private static TEnum ReadEnum<TEnum>(ref Utf8JsonReader reader, TEnum fallback) where TEnum : struct, Enum
+        {
+            var underlying = Enum.GetUnderlyingType(typeof(TEnum));
+
+            if (reader.TokenType == JsonTokenType.Number)
+            {
+                object? numeric = underlying == typeof(long)
+                    ? reader.TryGetInt64(out var l) ? l : null
+                    : reader.TryGetInt32(out var i) ? i : null;
+
+                if (numeric != null)
+                {
+                    var boxed = Enum.ToObject(typeof(TEnum), numeric);
+                    return (TEnum)boxed;
+                }
+            }
+
+            if (reader.TokenType == JsonTokenType.String
+                && Enum.TryParse<TEnum>(reader.GetString(), ignoreCase: true, out var parsed))
+                return parsed;
+
+            return fallback;
+        }
+
+        /// <summary>当前 reader 位于数组起始处；遍历统计顶层元素个数（不分配）。</summary>
+        private static int CountArrayElements(ref Utf8JsonReader reader)
+        {
+            if (reader.TokenType != JsonTokenType.StartArray)
+                return 0;
+
+            var depth = 1;
+            var count = 0;
+            while (reader.Read())
+            {
+                switch (reader.TokenType)
+                {
+                    case JsonTokenType.StartObject:
+                    case JsonTokenType.StartArray:
+                        if (depth == 1) count++;
+                        depth++;
+                        break;
+                    case JsonTokenType.EndObject:
+                    case JsonTokenType.EndArray:
+                        depth--;
+                        if (depth == 0) return count;
+                        break;
+                    default:
+                        if (depth == 1) count++;
+                        break;
+                }
+            }
+
+            return count;
+        }
+
+        // ============================ 归档端口 ============================
+
+        /// <summary>归档目录路径（基础目录下 _archive）。</summary>
+        private string GetArchiveDirectory() => Path.Combine(_baseDirectory, ArchiveDirectoryName);
+
+        /// <inheritdoc/>
+        public async Task<bool> ArchiveAsync(string sessionId, CancellationToken ct = default)
+        {
+            ValidateSessionId(sessionId);
+
+            var filePath = GetSessionFilePath(sessionId);
+            if (!File.Exists(filePath))
+            {
+                _logger?.LogDebug("会话文件不存在，无需归档: {SessionId}", sessionId);
+                return false;
+            }
+
+            var fileLock = GetFileLock(filePath);
+            await fileLock.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                // 读取全量并标记归档
+                var data = await ReadSessionFileAsync(filePath, sessionId, ct).ConfigureAwait(false)
+                    ?? throw new SessionLoadException(sessionId, filePath, "归档前读取会话失败");
+
+                data.Metadata[SessionMetadataKeys.PreArchiveStatus] = ((int)data.Status).ToString();
+                data.IsArchived = true;
+                data.ArchivedAt = DateTimeOffset.Now;
+                data.Status = SessionStatus.Archived;
+
+                var json = JsonSerializer.Serialize(data, _jsonOptions);
+
+                var archiveDir = GetArchiveDirectory();
+                Directory.CreateDirectory(archiveDir);
+                var archivePath = Path.Combine(archiveDir, $"{sessionId}.json.gz");
+
+                // 临时文件 + 原子替换，避免并发列表读到半写的 .gz
+                var archiveTemp = archivePath + ".tmp";
+                await using (var fileStream = File.Create(archiveTemp))
+                await using (var gzipStream = new GZipStream(fileStream, CompressionLevel.Optimal))
+                await using (var writer = new StreamWriter(gzipStream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)))
+                {
+                    await writer.WriteAsync(json.AsMemory(), ct).ConfigureAwait(false);
+                }
+                File.Move(archiveTemp, archivePath, overwrite: true);
+
+                // 从活跃目录移除（含 ref 附属目录）
+                File.Delete(filePath);
+                DeleteRefDirectory(sessionId);
+
+                _logger?.LogInformation("归档会话: {SessionId} -> {ArchivePath}", sessionId, archivePath);
+                return true;
+            }
+            finally
+            {
+                fileLock.Release();
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task<bool> RestoreAsync(string sessionId, CancellationToken ct = default)
+        {
+            ValidateSessionId(sessionId);
+
+            var archivePath = Path.Combine(GetArchiveDirectory(), $"{sessionId}.json.gz");
+            if (!File.Exists(archivePath))
+            {
+                _logger?.LogDebug("归档文件不存在: {SessionId}", sessionId);
+                return false;
+            }
+
+            var filePath = GetSessionFilePath(sessionId);
+            var fileLock = GetFileLock(filePath);
+            await fileLock.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                SessionData? data;
+                await using (var fileStream = File.OpenRead(archivePath))
+                await using (var gzipStream = new GZipStream(fileStream, CompressionMode.Decompress))
+                using (var reader = new StreamReader(gzipStream, Encoding.UTF8))
+                {
+                    var json = await reader.ReadToEndAsync(ct).ConfigureAwait(false);
+                    data = JsonSerializer.Deserialize<SessionData>(json, _jsonOptions);
+                }
+
+                if (data == null)
+                {
+                    _logger?.LogWarning("归档文件反序列化失败: {SessionId}", sessionId);
+                    return false;
+                }
+
+                data.IsArchived = false;
+                data.ArchivedAt = null;
+                // 还原归档前原始状态（缺失时回退 Active），并刷新活跃时间避免立即再次被扫描归档
+                data.Status = data.Metadata.TryGetValue(SessionMetadataKeys.PreArchiveStatus, out var preStatus)
+                    && int.TryParse(preStatus, out var preStatusValue)
+                    && Enum.IsDefined(typeof(SessionStatus), preStatusValue)
+                        ? (SessionStatus)preStatusValue
+                        : SessionStatus.Active;
+                data.Metadata.Remove(SessionMetadataKeys.PreArchiveStatus);
+                data.UpdatedAt = DateTime.Now;
+                data.LastActiveAt = DateTime.Now;
+
+                // 复用原子写路径（临时文件 + 原子替换），避免半写文件
+                var json2 = JsonSerializer.Serialize(data, _jsonOptions);
+                var tempPath = filePath + ".tmp";
+                var moved = false;
+                try
+                {
+                    await File.WriteAllTextAsync(tempPath, json2, Encoding.UTF8, ct).ConfigureAwait(false);
+                    await AtomicMoveWithRetryAsync(tempPath, filePath, sessionId, ct).ConfigureAwait(false);
+                    moved = true;
+                }
+                finally
+                {
+                    if (moved)
+                        TryDeleteFile(tempPath);
+                }
+
+                File.Delete(archivePath);
+
+                _logger?.LogInformation("恢复归档会话: {SessionId}", sessionId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "恢复归档会话失败: {SessionId}", sessionId);
+                return false;
+            }
+            finally
+            {
+                fileLock.Release();
+            }
+        }
+
+        /// <inheritdoc/>
+        public IAsyncEnumerable<SessionSummary> ListArchivedAsync(CancellationToken ct = default) =>
+            EnumerateArchivedSummaries(ct);
+
+        /// <summary>枚举归档目录下的会话摘要。</summary>
+        private async IAsyncEnumerable<SessionSummary> EnumerateArchivedSummaries(
+            [EnumeratorCancellation] CancellationToken ct = default)
+        {
+            var archiveDir = GetArchiveDirectory();
+            if (!Directory.Exists(archiveDir))
+                yield break;
+
+            foreach (var archivePath in Directory.GetFiles(archiveDir, "*.json.gz"))
+            {
+                if (ct.IsCancellationRequested)
+                    yield break;
+
+                var fileName = Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(archivePath));
+                SessionSummary? summary = null;
+                try
+                {
+                    summary = await ReadArchivedSummaryAsync(archivePath, fileName, ct).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "读取归档摘要失败: {FilePath}", archivePath);
+                    continue;
+                }
+
+                if (summary != null)
+                    yield return summary;
+            }
+        }
+
+        private async Task<SessionSummary?> ReadArchivedSummaryAsync(string archivePath, string sessionId, CancellationToken ct)
+        {
+            await using var fileStream = File.OpenRead(archivePath);
+            await using var gzipStream = new GZipStream(fileStream, CompressionMode.Decompress);
+            using var ms = new MemoryStream();
+            await gzipStream.CopyToAsync(ms, ct).ConfigureAwait(false);
+            return ParseSummary(ms.GetBuffer().AsSpan(0, (int)ms.Length), sessionId, archived: true);
+        }
 
         /// <summary>
         /// 释放文件锁字典中的所有信号量

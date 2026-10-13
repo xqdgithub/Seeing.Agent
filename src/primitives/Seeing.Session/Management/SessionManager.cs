@@ -397,33 +397,103 @@ namespace Seeing.Session.Management
         /// </summary>
         public async Task<bool> ArchiveAsync(string sessionId, CancellationToken ct = default)
         {
-            var session = Get(sessionId);
-            if (session == null)
+            if (_store == null)
             {
-                _logger?.LogWarning("会话不存在，无法归档: {SessionId}", sessionId);
+                throw new InvalidOperationException("未配置 SessionStore，无法归档。");
+            }
+
+            if (!_store.SupportsArchive())
+            {
+                throw new NotSupportedException(
+                    $"存储后端 {_store.GetType().Name} 未实现 {nameof(ISessionArchiveStore)}，不支持归档能力。");
+            }
+
+            // 归档前快照活会话（可能为空；仅用于归档后 Hook 载荷）
+            var live = Get(sessionId);
+
+            // 写回装饰器在归档前会先 flush 最新快照再丢弃待写（设墓碑），无需额外 Flush
+            var archived = await _store.ArchiveAsync(sessionId, ct).ConfigureAwait(false);
+            if (!archived)
+            {
+                _logger?.LogDebug("会话不存在或无需归档: {SessionId}", sessionId);
                 return false;
             }
 
-            if (_archiver == null)
+            // 归档后从内存移除
+            await EvictAsync(sessionId, ct).ConfigureAwait(false);
+
+            _hookManager?.TriggerFireAndForget(
+                HookPoints.SessionArchived,
+                sessionId,
+                result: new Dictionary<string, object?> { ["session"] = live });
+
+            _logger?.LogInformation("归档会话: {SessionId}", sessionId);
+            return true;
+        }
+
+        /// <summary>
+        /// 从归档恢复单个会话到活跃集；返回是否成功。
+        /// </summary>
+        public async Task<bool> RestoreAsync(string sessionId, CancellationToken ct = default)
+        {
+            if (_store == null)
             {
-                throw new InvalidOperationException("SessionArchiver not configured. Inject SessionArchiver via constructor.");
+                throw new InvalidOperationException("未配置 SessionStore，无法恢复。");
             }
 
-            var result = await _archiver.ArchiveAsync(session, ct);
-
-            if (result)
+            if (!_store.SupportsArchive())
             {
-                // 从缓存中移除
-                _sessionDataCache.TryRemove(sessionId, out _);
-
-                // 触发 Hook
-                _hookManager?.TriggerFireAndForget(
-                    HookPoints.SessionArchived,
-                    sessionId,
-                    result: new Dictionary<string, object?> { ["session"] = session });
+                throw new NotSupportedException(
+                    $"存储后端 {_store.GetType().Name} 未实现 {nameof(ISessionArchiveStore)}，不支持归档能力。");
             }
 
-            return result;
+            var restored = await _store.RestoreAsync(sessionId, ct).ConfigureAwait(false);
+            if (restored)
+            {
+                _logger?.LogInformation("恢复归档会话: {SessionId}", sessionId);
+            }
+
+            return restored;
+        }
+
+        /// <summary>列出会话摘要（轻量，不含消息体）；不填充内存缓存。</summary>
+        public async IAsyncEnumerable<SessionSummary> ListSummariesAsync(
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            if (_store == null)
+                yield break;
+
+            await foreach (var summary in _store.ListSummariesAsync(ct).WithCancellation(ct).ConfigureAwait(false))
+                yield return summary;
+        }
+
+        /// <summary>列出已归档会话摘要。</summary>
+        public async IAsyncEnumerable<SessionSummary> ListArchivedAsync(
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            if (_store == null)
+                yield break;
+
+            await foreach (var summary in _store.ListArchivedAsync(ct).WithCancellation(ct).ConfigureAwait(false))
+                yield return summary;
+        }
+
+        /// <summary>从内存缓存释放指定会话（不删除磁盘数据）。</summary>
+        public Task EvictAsync(string sessionId, CancellationToken ct = default)
+        {
+            if (!string.IsNullOrEmpty(sessionId) && _sessionDataCache.TryRemove(sessionId, out _))
+            {
+                _logger?.LogDebug("释放会话内存缓存: {SessionId}", sessionId);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        /// <summary>释放全部内存缓存（不删除磁盘数据）。</summary>
+        public void EvictAll()
+        {
+            _sessionDataCache.Clear();
+            _logger?.LogDebug("会话内存缓存已全部释放");
         }
 
         /// <summary>

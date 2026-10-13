@@ -2,6 +2,7 @@ using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Hosting.Commands;
 using Seeing.Agent.Hosting.Commands.BuiltIn;
@@ -90,6 +91,13 @@ public static class HostingServiceCollectionExtensions
         services.AddSingleton<ISessionRuntime>(sp => sp.GetRequiredService<SessionRuntime>());
         services.AddSingleton<IExecutionInFlightBoundary>(sp => sp.GetRequiredService<SessionRuntime>());
         services.AddSingleton<ISessionDirectory, SessionDirectory>();
+
+        // 会话启动扫描归档（默认启用；宿主可预先注册 SessionArchivalOptions 实例覆盖）
+        services.TryAddSingleton(new Seeing.Session.Persistence.SessionArchivalOptions());
+        services.AddHostedService(sp => new SessionArchivalScanService(
+            sp,
+            sp.GetRequiredService<Seeing.Session.Persistence.SessionArchivalOptions>(),
+            sp.GetRequiredService<ILogger<SessionArchivalScanService>>()));
 
         return services;
     }

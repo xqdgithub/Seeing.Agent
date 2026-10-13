@@ -20,6 +20,8 @@ public sealed class WriteBehindSessionStore :
     IRelocatableSessionStore,
     IWriteBehindSessionStore,
     IPersistenceFlusher,
+    ISessionSummaryProvider,
+    ISessionArchiveStore,
     IDisposable,
     IAsyncDisposable
 {
@@ -51,6 +53,9 @@ public sealed class WriteBehindSessionStore :
 
     /// <summary>当前会话存储基础目录；内层不支持重定位时为 null。</summary>
     public string? BaseDirectory => (_inner as IRelocatableSessionStore)?.BaseDirectory;
+
+    /// <inheritdoc />
+    public bool InnerSupportsArchive => _inner.SupportsArchive();
 
     /// <summary>切换基础目录；内层不支持重定位时为 no-op。</summary>
     public void SetBaseDirectory(string baseDirectory)
@@ -134,6 +139,52 @@ public sealed class WriteBehindSessionStore :
         await TryFlushAllForReadAsync("LoadAllAsync", ct).ConfigureAwait(false);
 
         await foreach (var item in _inner.LoadAllAsync(ct).ConfigureAwait(false))
+            yield return item;
+    }
+
+    // ============================ 摘要端口转发 ============================
+
+    /// <inheritdoc />
+    /// <remarks>读前有界 flush 保证"读己所写"；内层无摘要能力时经扩展方法降级为流式投影。</remarks>
+    public async IAsyncEnumerable<SessionSummary> ListSummariesAsync(
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await TryFlushAllForReadAsync("ListSummariesAsync", ct).ConfigureAwait(false);
+
+        await foreach (var item in _inner.ListSummariesAsync(ct).ConfigureAwait(false))
+            yield return item;
+    }
+
+    // ============================ 归档端口转发 ============================
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// 归档前先 <c>FlushAsync</c> 确保内存缓冲的最新快照落盘，再 <c>DiscardAsync</c>（等待在途写、
+    /// 丢弃待写、设删除墓碑）消除"归档后被缓冲写复活"竞态。能力检查前置，避免丢弃待写后才抛异常。
+    /// 内层无归档能力时经扩展方法抛 <see cref="NotSupportedException"/>。
+    /// </remarks>
+    public async Task<bool> ArchiveAsync(string sessionId, CancellationToken ct = default)
+    {
+        if (!_inner.SupportsArchive())
+        {
+            throw new NotSupportedException(
+                $"存储后端 {_inner.GetType().Name} 未实现 {nameof(ISessionArchiveStore)}，不支持归档能力。");
+        }
+
+        await _scheduler.FlushAsync(sessionId, ct).ConfigureAwait(false);
+        await _scheduler.DiscardAsync(sessionId, ct).ConfigureAwait(false);
+        return await _inner.ArchiveAsync(sessionId, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public Task<bool> RestoreAsync(string sessionId, CancellationToken ct = default)
+        => _inner.RestoreAsync(sessionId, ct);
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<SessionSummary> ListArchivedAsync(
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await foreach (var item in _inner.ListArchivedAsync(ct).ConfigureAwait(false))
             yield return item;
     }
 

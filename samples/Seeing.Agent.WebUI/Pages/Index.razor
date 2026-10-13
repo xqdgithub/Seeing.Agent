@@ -248,7 +248,7 @@
     
     protected override async Task OnInitializedAsync()
     {
-        var sessions = await SessionDirectory.ListAsync();
+        var sessions = await SessionDirectory.ListSummariesAsync();
         _sessionCount = sessions.Count;
         
         var agents = await AgentRegistry.GetPrimaryAgentsAsync();

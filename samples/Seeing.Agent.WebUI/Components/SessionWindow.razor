@@ -512,7 +512,7 @@
             return current.Id;
         }
 
-        var sessions = await SessionDirectory.ListAsync();
+        var sessions = await SessionDirectory.ListSummariesAsync();
         if (sessions.Count > 0)
         {
             var id = sessions.First().Id;

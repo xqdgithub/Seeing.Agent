@@ -2,6 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Hosting;
+using Seeing.Agent.Hosting.Execution;
+using Seeing.Session.Persistence;
 using Xunit;
 
 namespace Seeing.Agent.Hosting.Tests;
@@ -19,6 +21,18 @@ public class SessionHostingServiceExtensionsTests
 
         var directory = services.First(d => d.ServiceType == typeof(ISessionDirectory));
         directory.Lifetime.Should().Be(ServiceLifetime.Singleton);
+    }
+
+    [Fact]
+    public void AddExecutionEngine_ShouldRegisterArchivalOptionsAndScanService()
+    {
+        var services = new ServiceCollection();
+        services.AddExecutionEngine();
+
+        services.Should().Contain(d => d.ServiceType == typeof(SessionArchivalOptions));
+        services.Should().Contain(d =>
+            d.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService)
+            && d.ImplementationFactory != null);
     }
 
     [Fact]

@@ -7,9 +7,10 @@ namespace Seeing.Session.Storage
     /// 基于内存的会话存储实现
     /// 使用 ConcurrentDictionary 实现线程安全的内存存储，适用于测试和临时场景
     /// </summary>
-    public class InMemorySessionStore : ISessionStore
+    public class InMemorySessionStore : ISessionStore, ISessionSummaryProvider, ISessionArchiveStore
     {
         private readonly ConcurrentDictionary<string, SessionData> _sessions = new();
+        private readonly ConcurrentDictionary<string, SessionData> _archived = new();
 
         /// <summary>
         /// 保存单个会话（<paramref name="data"/> 为调用方移交的私有快照，直接存引用，不克隆）。
@@ -141,12 +142,85 @@ namespace Seeing.Session.Storage
         public IAsyncEnumerable<SessionData> LoadAllAsync(CancellationToken ct = default) =>
             ListAsync(ct);
 
+        // ============================ 摘要端口 ============================
+
+        /// <inheritdoc/>
+        public async IAsyncEnumerable<SessionSummary> ListSummariesAsync(
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.CompletedTask;
+            foreach (var session in _sessions.Values)
+            {
+                ct.ThrowIfCancellationRequested();
+                yield return SessionSummary.FromSession(session);
+            }
+        }
+
+        // ============================ 归档端口 ============================
+
+        /// <inheritdoc/>
+        public Task<bool> ArchiveAsync(string sessionId, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId))
+                throw new ArgumentException("会话ID不能为空", nameof(sessionId));
+
+            ct.ThrowIfCancellationRequested();
+
+            if (!_sessions.TryRemove(sessionId, out var data))
+                return Task.FromResult(false);
+
+            data.Metadata[SessionMetadataKeys.PreArchiveStatus] = ((int)data.Status).ToString();
+            data.IsArchived = true;
+            data.ArchivedAt = DateTimeOffset.Now;
+            data.Status = SessionStatus.Archived;
+            _archived[sessionId] = data;
+            return Task.FromResult(true);
+        }
+
+        /// <inheritdoc/>
+        public Task<bool> RestoreAsync(string sessionId, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId))
+                throw new ArgumentException("会话ID不能为空", nameof(sessionId));
+
+            ct.ThrowIfCancellationRequested();
+
+            if (!_archived.TryRemove(sessionId, out var data))
+                return Task.FromResult(false);
+
+            data.IsArchived = false;
+            data.ArchivedAt = null;
+            data.Status = data.Metadata.TryGetValue(SessionMetadataKeys.PreArchiveStatus, out var preStatus)
+                && int.TryParse(preStatus, out var preStatusValue)
+                && Enum.IsDefined(typeof(SessionStatus), preStatusValue)
+                    ? (SessionStatus)preStatusValue
+                    : SessionStatus.Active;
+            data.Metadata.Remove(SessionMetadataKeys.PreArchiveStatus);
+            data.UpdatedAt = DateTime.Now;
+            data.LastActiveAt = DateTime.Now;
+            _sessions[sessionId] = data;
+            return Task.FromResult(true);
+        }
+
+        /// <inheritdoc/>
+        public async IAsyncEnumerable<SessionSummary> ListArchivedAsync(
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.CompletedTask;
+            foreach (var session in _archived.Values)
+            {
+                ct.ThrowIfCancellationRequested();
+                yield return SessionSummary.FromSession(session);
+            }
+        }
+
         /// <summary>
         /// 清空所有会话（用于测试）
         /// </summary>
         public void Clear()
         {
             _sessions.Clear();
+            _archived.Clear();
         }
 
         /// <summary>

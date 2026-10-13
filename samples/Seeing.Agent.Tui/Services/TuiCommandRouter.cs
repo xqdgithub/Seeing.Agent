@@ -110,9 +110,9 @@ public sealed class TuiCommandRouter
             {
                 var sessionId = NullIfEmpty(args);
                 if (sessionId is not null)
-                    return Local(BuildSessionTable(await ctx.Sessions.ListAsync(ct)));
+                    return Local(BuildSessionTable(await ctx.Sessions.ListSummariesAsync(ct)));
 
-                var sessions = await ctx.Sessions.ListAsync(ct);
+                var sessions = await ctx.Sessions.ListSummariesAsync(ct);
                 if (sessions.Count == 0)
                     return Local(new Text("(无会话)"));
 
@@ -134,7 +134,7 @@ public sealed class TuiCommandRouter
                 var sessionId = NullIfEmpty(args);
                 if (sessionId is null)
                 {
-                    var sessions = await ctx.Sessions.ListAsync(ct);
+                    var sessions = await ctx.Sessions.ListSummariesAsync(ct);
                     if (sessions.Count == 0)
                         return Local(new Text("(无会话)"));
 
@@ -407,7 +407,7 @@ public sealed class TuiCommandRouter
         return table;
     }
 
-    private static IRenderable BuildSessionTable(IReadOnlyList<SessionData> sessions)
+    private static IRenderable BuildSessionTable(IReadOnlyList<SessionSummary> sessions)
     {
         if (sessions.Count == 0)
             return new Text("(无会话)");
@@ -417,7 +417,7 @@ public sealed class TuiCommandRouter
             table.AddRow(
                 new Text(session.Id),
                 new Text(session.Title),
-                new Text(session.SelectedAgent),
+                new Text(session.SelectedAgent ?? string.Empty),
                 new Text(session.UpdatedAt.ToString("yyyy-MM-dd HH:mm")));
 
         return table;

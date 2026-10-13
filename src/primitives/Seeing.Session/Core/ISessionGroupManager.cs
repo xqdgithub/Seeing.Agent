@@ -75,8 +75,22 @@ namespace Seeing.Session.Core
         /// <summary>列出组内成员（返回快照副本）。</summary>
         Task<IReadOnlyList<SessionGroupMember>> ListMembersAsync(string groupId, CancellationToken ct = default);
 
+        /// <summary>枚举全部会话组（轻量关系元数据，不含消息体）。</summary>
+        IAsyncEnumerable<SessionGroup> ListGroupsAsync(CancellationToken ct = default);
+
         /// <summary>列出锚点会话（对未入组会话物化单成员组）。</summary>
         Task<IReadOnlyList<SessionData>> ListAnchorsAsync(string? partitionId = null, CancellationToken ct = default);
+
+        /// <summary>
+        /// 列出锚点会话摘要（轻量，不含消息体；不物化组、不写盘）。
+        /// </summary>
+        Task<IReadOnlyList<SessionSummary>> ListAnchorSummariesAsync(string? partitionId = null, CancellationToken ct = default);
+
+        /// <summary>按组整体归档：归档组内全部会话（含子 / 分支 / 交接）。</summary>
+        Task<bool> ArchiveGroupAsync(string groupId, CancellationToken ct = default);
+
+        /// <summary>恢复归档组：恢复组内全部会话。返回是否至少恢复一个。</summary>
+        Task<bool> RestoreGroupAsync(string groupId, CancellationToken ct = default);
 
         /// <summary>组发生变更时触发（携带组锁内快照，在锁外触发）。</summary>
         event EventHandler<SessionGroupChangedEventArgs>? Changed;

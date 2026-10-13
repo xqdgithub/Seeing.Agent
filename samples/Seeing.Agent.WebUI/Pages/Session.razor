@@ -244,7 +244,7 @@
         // 解析主会话：路由参数优先，否则最近 Root 会话（ListSessionsAsync 仅返回 Root，避免子会话被误选为主会话）
         var mainId = !string.IsNullOrEmpty(SessionId)
             ? SessionId
-            : (await SessionDirectory.ListAsync()).FirstOrDefault()?.Id;
+            : (await SessionDirectory.ListSummariesAsync()).FirstOrDefault()?.Id;
         if (string.IsNullOrEmpty(mainId))
         {
             // 无任何会话：主窗由 SessionWindow 空态兜底（_activeSessionId 保持空）

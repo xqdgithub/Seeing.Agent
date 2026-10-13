@@ -144,4 +144,62 @@ public sealed class SessionDirectory : ISessionDirectory
         _logger.LogInformation("Branched session: {SourceId} -> {NewId}", sessionId, newSession.Id);
         return newSession;
     }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<SessionSummary>> ListSummariesAsync(CancellationToken ct = default)
+    {
+        return await _groupManager.ListAnchorSummariesAsync(ct: ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<SessionSummary>> ListArchivedAsync(CancellationToken ct = default)
+    {
+        var list = new List<SessionSummary>();
+        await foreach (var summary in _sessionManager.ListArchivedAsync(ct).WithCancellation(ct).ConfigureAwait(false))
+            list.Add(summary);
+
+        return list.OrderByDescending(s => s.LastActiveAt).ToList();
+    }
+
+    /// <inheritdoc/>
+    public async Task ArchiveAsync(string sessionId, CancellationToken ct = default)
+    {
+        // 归档前中断在途消费循环，避免归档后仍照常写回
+        await _runtime.StopAsync(sessionId, ct).ConfigureAwait(false);
+
+        var group = await _groupManager.GetGroupForSessionAsync(sessionId, ct).ConfigureAwait(false);
+        if (group != null)
+        {
+            await _groupManager.ArchiveGroupAsync(group.Id, ct).ConfigureAwait(false);
+        }
+        else
+        {
+            await _sessionManager.ArchiveAsync(sessionId, ct).ConfigureAwait(false);
+        }
+
+        _logger.LogInformation("Archived session: {SessionId}", sessionId);
+    }
+
+    /// <inheritdoc/>
+    public async Task RestoreAsync(string sessionId, CancellationToken ct = default)
+    {
+        var group = await _groupManager.GetGroupForSessionAsync(sessionId, ct).ConfigureAwait(false);
+        if (group != null)
+        {
+            await _groupManager.RestoreGroupAsync(group.Id, ct).ConfigureAwait(false);
+        }
+        else
+        {
+            await _sessionManager.RestoreAsync(sessionId, ct).ConfigureAwait(false);
+        }
+
+        _logger.LogInformation("Restored session: {SessionId}", sessionId);
+    }
+
+    /// <inheritdoc/>
+    public async Task EvictAsync(string sessionId, CancellationToken ct = default)
+    {
+        await _sessionManager.EvictAsync(sessionId, ct).ConfigureAwait(false);
+        _logger.LogDebug("Evicted session from memory: {SessionId}", sessionId);
+    }
 }

@@ -22,5 +22,11 @@ namespace Seeing.Session.Storage
 
         /// <summary>有界等待所有待写会话落盘；超时或失败返回 false，不抛出。</summary>
         Task<bool> TryFlushAllAsync(TimeSpan timeout, CancellationToken ct = default);
+
+        /// <summary>
+        /// 内层存储是否支持归档能力。装饰器恒实现 <see cref="ISessionArchiveStore"/>，
+        /// 但仅当内层真正支持时该能力才可用；供能力探测（<c>SupportsArchive</c>）如实判定。
+        /// </summary>
+        bool InnerSupportsArchive { get; }
     }
 }

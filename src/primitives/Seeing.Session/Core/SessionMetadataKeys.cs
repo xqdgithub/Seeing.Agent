@@ -21,4 +21,9 @@ public static class SessionMetadataKeys
     /// 仅作运行时错误真相源，不进入 Messages/LLM 历史）。成功续跑时清除。
     /// </summary>
     public const string LastError = "last_error";
+
+    /// <summary>
+    /// 归档前原始会话状态（数字字符串）。恢复时还原，避免丢失 Completed/Idle/Error 语义。
+    /// </summary>
+    public const string PreArchiveStatus = "archive.pre_status";
 }

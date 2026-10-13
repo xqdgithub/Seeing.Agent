@@ -28,6 +28,11 @@
             <Button Icon="@IconType.Outline.Reload" OnClick="@RefreshSessionsAsync">
                 刷新
             </Button>
+            <Button Type="@(_showArchived ? ButtonType.Primary : ButtonType.Default)"
+                    Icon="@IconType.Outline.Inbox"
+                    OnClick="@(() => ToggleArchivedAsync(!_showArchived))">
+                @(_showArchived ? "返回会话" : "已归档")
+            </Button>
         </div>
     </div>
     
@@ -102,7 +107,49 @@
     
     <!-- Session List -->
     <div class="page-content">
-        @if (_filteredSessions == null || _filteredSessions.Count == 0)
+        @if (_showArchived)
+        {
+            @if (_archivedSessions.Count == 0)
+            {
+                <Empty Description="@("暂无已归档会话")" />
+            }
+            else
+            {
+                <div class="session-list">
+                    @foreach (var session in _archivedSessions)
+                    {
+                        <div Class="session-card-wrapper">
+                            <Card Size="@CardSize.Small" Class="session-card">
+                                <div Class="session-card-content">
+                                    <div Class="session-card-header">
+                                        <Tooltip Title="@session.Title">
+                                            <span Class="session-title">@session.Title</span>
+                                        </Tooltip>
+                                        <Tag Color="@TagColor.Default">已归档</Tag>
+                                    </div>
+                                    <div Class="session-card-meta">
+                                        <span Class="meta-item">
+                                            <Icon Type="@IconType.Outline.ClockCircle" /> @GetRelativeTime(session.LastActiveAt)
+                                        </span>
+                                        <span class="meta-item">
+                                            <Icon Type="@IconType.Outline.Message" /> @session.MessageCount 条消息
+                                        </span>
+                                    </div>
+                                    <div class="session-card-actions">
+                                        <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small"
+                                                Icon="@IconType.Outline.Rollback"
+                                                OnClick="@(() => RestoreSession(session.Id))">
+                                            恢复
+                                        </Button>
+                                    </div>
+                                </div>
+                            </Card>
+                        </div>
+                    }
+                </div>
+            }
+        }
+        else if (_filteredSessions == null || _filteredSessions.Count == 0)
         {
             <Empty />
         }
@@ -158,6 +205,12 @@
                                                 OnClick="@(() => BranchSession(session.Id))">
                                             分支
                                         </Button>
+                                        <Popconfirm Title="确定归档此会话？将同步归档其所在组。" OnConfirm="@(() => ArchiveSession(session.Id))">
+                                            <Button Type="@ButtonType.Text" Size="@ButtonSize.Small"
+                                                    Icon="@IconType.Outline.Inbox">
+                                                归档
+                                            </Button>
+                                        </Popconfirm>
                                         <Popconfirm Title="确定删除此会话？将同步删除其子会话。" OnConfirm="@(() => DeleteSession(session.Id))">
                                             <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" 
                                                     Danger Icon="@IconType.Outline.Delete">
@@ -286,11 +339,14 @@
 </style>
 
 @code {
-    private List<SessionData> _filteredSessions = new();
+    private List<SessionSummary> _filteredSessions = new();
     private string _searchText = "";
     private int _totalCount;
     private int _todayCount;
     private int _activeCount;
+
+    private bool _showArchived;
+    private List<SessionSummary> _archivedSessions = new();
 
     private readonly HashSet<string> _selectedIds = new(StringComparer.Ordinal);
 
@@ -306,7 +362,7 @@
     static string FormatOutbound(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "未绑定" : value;
 
-    void OpenOutboundEditor(SessionData session)
+    void OpenOutboundEditor(SessionSummary session)
     {
         _editingSessionId = session.Id;
         _outboundForm = new OutboundEditForm
@@ -370,27 +426,66 @@
     {
         try
         {
-            var sessions = await SessionDirectory.ListAsync();
-            
+            var sessions = await SessionDirectory.ListSummariesAsync();
+
             _filteredSessions = sessions
                 .Where(s => string.IsNullOrEmpty(_searchText) || 
                             (s.Title?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
                             (s.SelectedAgent?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false))
                 .OrderByDescending(s => s.UpdatedAt)
                 .ToList();
-            
+
             _totalCount = sessions.Count;
             var today = DateTime.Today;
             _todayCount = sessions.Count(s => s.CreatedAt.Date == today);
             var yesterday = DateTime.Now.AddHours(-24);
             _activeCount = sessions.Count(s => s.UpdatedAt >= yesterday);
 
+            if (_showArchived)
+                _archivedSessions = (await SessionDirectory.ListArchivedAsync()).ToList();
+
             // 刷新后清空勾选，避免残留对已不存在会话的选择
             ClearSelection();
         }
         catch
         {
-            _filteredSessions = new List<SessionData>();
+            _filteredSessions = new List<SessionSummary>();
+        }
+    }
+
+    async Task ToggleArchivedAsync(bool value)
+    {
+        _showArchived = value;
+        await RefreshSessionsAsync();
+    }
+
+    async Task ArchiveSession(string id)
+    {
+        try
+        {
+            await SessionDirectory.ArchiveAsync(id);
+            MessageService.Success("会话已归档");
+            await RefreshSessionsAsync();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error(string.Format("归档失败: {0}", ex.Message));
+        }
+    }
+
+    async Task RestoreSession(string id)
+    {
+        try
+        {
+            await SessionDirectory.RestoreAsync(id);
+            MessageService.Success("会话已恢复");
+            await RefreshSessionsAsync();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error(string.Format("恢复失败: {0}", ex.Message));
         }
     }
 
@@ -532,9 +627,9 @@
         return time.ToString("MM-dd");
     }
     
-    static string TruncatePath(string path)
+    static string TruncatePath(string? path)
     {
-        if (string.IsNullOrEmpty(path)) return path;
+        if (string.IsNullOrEmpty(path)) return path ?? string.Empty;
         if (path.Length <= 30) return path;
         
         var parts = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
