@@ -174,7 +174,7 @@ public sealed class TuiRenderer
                 return BuildAssistant(block, width, committedOffsets);
 
             case TuiBlockKind.Tool:
-                return block.Tool is null ? new Text(block.Text ?? string.Empty) : BuildToolCard(block.Tool);
+                return block.Tool is null ? new Text(block.Text ?? string.Empty) : BuildToolCard(block.Tool, width);
 
             case TuiBlockKind.Error:
                 return new Panel(new Text(block.Text ?? string.Empty)).Border(BoxBorder.Rounded);
@@ -424,7 +424,7 @@ public sealed class TuiRenderer
         rows.Add(new Markup($"[grey]{Markup.Escape(string.Join('\n', lines))}[/]"));
     }
 
-    private IRenderable BuildToolCard(TuiToolState tool)
+    private IRenderable BuildToolCard(TuiToolState tool, int width)
     {
         var rows = new List<IRenderable>
         {
@@ -446,12 +446,12 @@ public sealed class TuiRenderer
         // Running 也渲染 body：bash 等工具以 Running + 累积 Output 流式上报，
         // 若只在终态渲染，流式输出永不进入画面（表现为执行期间界面卡住）。
         if (tool.Status is TuiToolStatus.Running or TuiToolStatus.Success or TuiToolStatus.Failed or TuiToolStatus.Rejected or TuiToolStatus.Cancelled)
-            AddToolBody(rows, tool);
+            AddToolBody(rows, tool, width);
 
         return new Rows(rows);
     }
 
-    private void AddToolBody(List<IRenderable> rows, TuiToolState tool)
+    private void AddToolBody(List<IRenderable> rows, TuiToolState tool, int width)
     {
         if (string.Equals(tool.Name, "bash", StringComparison.OrdinalIgnoreCase) &&
             !string.IsNullOrEmpty(tool.Arguments))
@@ -461,6 +461,15 @@ public sealed class TuiRenderer
 
         if (!string.IsNullOrEmpty(tool.Error))
             rows.Add(new Markup($"[red]{Markup.Escape(FirstLine(tool.Error)!)}[/]"));
+
+        // todowrite 的 output/arguments 是给模型的结构化 JSON（\uXXXX 转义 + 数字枚举），直显不可读；
+        // 解析为任务列表卡片，解析失败再退回原样展示。
+        if (string.Equals(tool.Name, "todowrite", StringComparison.OrdinalIgnoreCase)
+            && TodoCardView.TryBuild(tool.Output, tool.Arguments, width, out var todoCard))
+        {
+            rows.Add(todoCard);
+            return;
+        }
 
         if (string.IsNullOrEmpty(tool.Output))
             return;

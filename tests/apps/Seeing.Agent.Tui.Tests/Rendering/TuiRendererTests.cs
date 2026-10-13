@@ -294,6 +294,62 @@ public sealed class TuiRendererTests
     }
 
     [Fact]
+    public void BuildCommitted_TodoWrite_ShouldRenderReadableListFromNumericOutput()
+    {
+        // Output 是给模型的结构化 JSON：数字枚举 + \uXXXX 转义；直显不可读，应解析为任务列表。
+        var tool = new TuiToolState
+        {
+            CallId = "call_todo",
+            Name = "todowrite",
+            Status = TuiToolStatus.Success,
+            Title = "2 个待处理任务",
+            Output = """[{"content":"修复合并","status":2,"priority":0},{"content":"补充测试","status":0,"priority":2}]""",
+        };
+        var block = new TuiBlock { Key = "tool:call_todo", Kind = TuiBlockKind.Tool, Tool = tool, IsTerminal = true };
+
+        var text = Render(new TuiRenderer(new TuiRenderOptions()).BuildCommitted(block, 90));
+
+        text.Should().Contain("修复合并");
+        text.Should().Contain("补充测试");
+        text.Should().Contain("(high)");
+        text.Should().NotContain("\"status\"");
+    }
+
+    [Fact]
+    public void BuildCommitted_TodoWrite_ShouldFallBackToArgumentsWhileRunning()
+    {
+        var tool = new TuiToolState
+        {
+            CallId = "call_todo",
+            Name = "todowrite",
+            Status = TuiToolStatus.Running,
+            Arguments = """{"todos":[{"content":"进行中的事","status":"in_progress"}]}""",
+        };
+        var block = new TuiBlock { Key = "tool:call_todo", Kind = TuiBlockKind.Tool, Tool = tool, IsTerminal = false };
+
+        var text = Render(new TuiRenderer(new TuiRenderOptions()).BuildCommitted(block, 90));
+
+        text.Should().Contain("进行中的事");
+    }
+
+    [Fact]
+    public void BuildCommitted_TodoWrite_ShouldFallBackToRawOnInvalidJson()
+    {
+        var tool = new TuiToolState
+        {
+            CallId = "call_todo",
+            Name = "todowrite",
+            Status = TuiToolStatus.Success,
+            Output = "not-json-at-all",
+        };
+        var block = new TuiBlock { Key = "tool:call_todo", Kind = TuiBlockKind.Tool, Tool = tool, IsTerminal = true };
+
+        var text = Render(new TuiRenderer(new TuiRenderOptions()).BuildCommitted(block, 90));
+
+        text.Should().Contain("not-json-at-all");
+    }
+
+    [Fact]
     public void BuildCommitted_Reasoning_ShouldCollapseByDefault_AndExpandWhenEnabled()
     {
         var reasoning = string.Join('\n', Enumerable.Range(1, 6).Select(i => $"r{i}"));
