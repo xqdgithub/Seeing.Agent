@@ -1,0 +1,86 @@
+tests/capabilities/Seeing.Agent.Llm.ModelCapabilities.Tests/ModelCapabilityFillEmptyTests.cs
+  s_7d80c8efc57551::t_17116fd05aa93c 16
+  s_7d80c8efc57551::t_9f79368e483808 109,115
+  s_7d80c8efc57551::t_26b17948851930 57
+tests/capabilities/Seeing.Agent.Llm.ModelCapabilities.Tests/ModelCapabilityManagerTests.cs
+  s_7d80c8efc57551::t_9023ce7885f9db 52,205
+src/spine/Seeing.Agent.Core/Llm/LlmService.cs
+  s_7d80c8efc57551::t_3858106bd3ffe6 346,475
+tests/plugs/Seeing.Provider.DeepSeek.Tests/DeepSeekModelCapabilitiesTests.cs
+  s_7d80c8efc57551::t_0809151339a7ac 60-61
+src/spine/Seeing.Agent.Core/Llm/ModelManager.cs
+  s_7d80c8efc57551::t_c1ceb401bb50f5 243-250
+  s_7d80c8efc57551::t_7e4f03aa57bdb8 266
+  s_7d80c8efc57551::t_79250a1c62fa82 130,135-140,150,155-165
+tests/spine/Seeing.Agent.Tests/Invariants/ConfigPromptTaskTests.cs
+  s_7d80c8efc57551::t_4e79013b09fb6d 54
+samples/Seeing.Agent.WebUI/Components/SessionWindow.razor
+  s_7d80c8efc57551::t_5781853c32773e 1364-1365,1368-1372
+tests/plugs/Seeing.Provider.DeepSeek.Tests/DeepSeekModelsClientTests.cs
+  s_7d80c8efc57551::t_64c84e1fcde126 32
+  s_7d80c8efc57551::t_ef6336ed1449cc 5
+tests/spine/Seeing.Agent.Tests/Llm/ModelCatalogAggregationTests.cs
+  s_7d80c8efc57551::t_b428b0ea447eb7 34,70,96,185,188,212,229,234,254,263,290,311,330,336,365,397,425,432
+src/spine/Seeing.Agent.Core/Llm/ModelConfigManager.cs
+  s_7d80c8efc57551::t_2cdf24c5024782 32-33,37
+  s_7d80c8efc57551::t_b70fa3e6dda2fa 83-87
+  s_7d80c8efc57551::t_c1914d9b377d15 786,789-846
+  s_7d80c8efc57551::t_ebca972d87f5fd 344-385
+  s_7d80c8efc57551::t_b146d4cb4801ed 140,152-174
+src/abstractions/Seeing.Agent.Abstractions/Llm/ModelLimitDefaults.cs
+  s_7d80c8efc57551::t_71fdbd7a336dee 1-13
+samples/Seeing.Agent.WebUI/Pages/ModelsPage.razor
+  s_7d80c8efc57551::t_41e453178e8556 804,807-808,826-841
+  s_7d80c8efc57551::t_0a265b95f2af31 810,814,816-818
+  s_7d80c8efc57551::t_525aa74b8bcdb7 251-263,265-267,269-271,273-274
+  s_7d80c8efc57551::t_6f11a139202322 364
+  s_7d80c8efc57551::t_0d565df39795d2 511-530,545-546,550,552-594
+  s_7d80c8efc57551::t_deb8975de491b1 264,268
+  s_7d80c8efc57551::t_1acca9058ecebb 815,819-825
+  s_7d80c8efc57551::t_7d678ac8c77548 746-747
+  s_7d80c8efc57551::t_63f9f936b8434f 170-176,180-183
+  s_7d80c8efc57551::t_f4f0d32fd5d1a1 863-866,868-882
+  s_7d80c8efc57551::t_eb13a827098df1 902-903,908-916
+  s_7d80c8efc57551::t_3e8189624f41a6 1004,1008-1013,1020-1021,1027-1028
+  s_7d80c8efc57551::t_83222e44083502 347-349
+src/abstractions/Seeing.Agent.Abstractions/Llm/ModelCapabilities/ModelCapabilityFillEmpty.cs
+  s_7d80c8efc57551::t_51f44e87bfb8f6 32,34
+  s_7d80c8efc57551::t_eeb5387e2038c8 9,11-16
+samples/Seeing.Agent.WebUI/Components/Models/ModelSelectDropdown.razor
+  s_7d80c8efc57551::t_912aec2ea908f3 76-77
+  s_7d80c8efc57551::t_0a8fec90baacd5 48-50
+tests/spine/Seeing.Agent.Tests/Llm/ModelConfigManagerCharacterizationTests.cs
+  s_7d80c8efc57551::t_ba96e969e14310 57,178,208,235,271,278-279,283-285
+  s_7d80c8efc57551::t_f07afa55bdfc6c 337-465
+src/abstractions/Seeing.Agent.Abstractions/Llm/IModelConfigManager.cs
+  s_7d80c8efc57551::t_6727c189afe0b6 35-36,39-42,52,55-60,65
+  s_7d80c8efc57551::t_03dd05e4ee5267 125-136
+src/spine/Seeing.Agent.Core/Llm/ModelReloadHandler.cs
+  s_7d80c8efc57551::t_afa2735ae83042 27-33
+src/spine/Seeing.Agent.Core/Configuration/ConfigSectionRegistry.cs
+  s_7d80c8efc57551::t_20b1f80c945b90 56
+src/abstractions/Seeing.Agent.Abstractions/Llm/ModelConfig.cs
+  s_7d80c8efc57551::t_1da9d0bb5b6d4d 141,144
+tests/spine/Seeing.Agent.Tests/Llm/ModelManagerTests.cs
+  s_7d80c8efc57551::t_15b2211faf4026 262-264
+tests/spine/Seeing.Agent.Tests/Configuration/ConfigSectionRegistryConsumptionTests.cs
+  s_7d80c8efc57551::t_8a6936c826beff 28
+src/abstractions/Seeing.Agent.Abstractions/Llm/ModelSelectionConfig.cs
+  s_7d80c8efc57551::t_af17b4f00b4a6a 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "70fc8ca4b11de52296bd870e73d2e7ae81af9736",
+  "prompts": {},
+  "sessions": {
+    "s_7d80c8efc57551": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ecd0672b1ffefxNsKHB1wEoKHF",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
