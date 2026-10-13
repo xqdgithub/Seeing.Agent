@@ -21,6 +21,9 @@ public class SessionWindowTimelineSyncTests
         public SessionData Session { get; } = SessionData.Create("p1", "general");
         public string? LoopId { get; set; }
         public SessionMessage? StreamingMessage { get; set; }
+        public int PendingInputCount { get; set; }
+        public int? AppliedPendingInputCount { get; private set; }
+        public int ApplyPendingInputCountCalls { get; private set; }
 
         public SessionWindowTimelineSync Create()
         {
@@ -31,7 +34,13 @@ public class SessionWindowTimelineSyncTests
                 t => AppliedTitle = t,
                 () => Session.Messages,
                 () => StreamingMessage,
-                () => LoopId);
+                () => LoopId,
+                () => PendingInputCount,
+                count =>
+                {
+                    AppliedPendingInputCount = count;
+                    ApplyPendingInputCountCalls++;
+                });
         }
     }
 
@@ -53,6 +62,21 @@ public class SessionWindowTimelineSyncTests
         h.Timeline.Items.Should().Contain(i =>
             i.Turn != null && i.Turn.Messages.Any(m => m.Id == "m1"));
         h.Renders.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public void ProcessEvent_ExecutionStarted_ShouldRefreshPendingInputCountFromRuntime()
+    {
+        var h = new Harness();
+        var sync = h.Create();
+        // 模拟提交后残留的旧计数：单条消息在 DeliverAsync 返回时为 1，
+        // 但消费循环取走后真实未读为 0。
+        h.PendingInputCount = 0;
+
+        sync.ProcessEvent(new ExecutionStartedEvent { SessionId = "s1", ExecutionId = "e1" });
+
+        h.ApplyPendingInputCountCalls.Should().Be(1);
+        h.AppliedPendingInputCount.Should().Be(0);
     }
 
     [Fact]

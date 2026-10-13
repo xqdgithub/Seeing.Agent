@@ -640,7 +640,13 @@
             t => ApplyTitleToUi(t),
             () => SessionState.CurrentSession?.Messages,
             () => ResolveCurrentStreamingAssistantMessage(),
-            () => _handler?.GetCurrentLoopId());
+            () => _handler?.GetCurrentLoopId(),
+            () => SessionRuntime.GetOverview(sessionId).PendingInputCount,
+            count =>
+            {
+                SessionState.PendingInputCount = count;
+                SyncContextState();
+            });
     }
 
     private void ResetTimelineFromSession() => _sync.ResetFromSession();

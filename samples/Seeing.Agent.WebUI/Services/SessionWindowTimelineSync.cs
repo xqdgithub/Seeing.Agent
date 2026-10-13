@@ -20,6 +20,8 @@ public sealed class SessionWindowTimelineSync
     private readonly Func<IReadOnlyList<SessionMessage>?> _getMessages;
     private readonly Func<SessionMessage?> _getStreamingMessage;
     private readonly Func<string?> _getLoopId;
+    private readonly Func<int>? _getPendingInputCount;
+    private readonly Action<int>? _applyPendingInputCount;
 
     private int _streamCharCount;
     private int _currentCodeBlockDepth;
@@ -41,7 +43,9 @@ public sealed class SessionWindowTimelineSync
         Action<string> applyTitle,
         Func<IReadOnlyList<SessionMessage>?> getMessages,
         Func<SessionMessage?> getStreamingMessage,
-        Func<string?> getLoopId)
+        Func<string?> getLoopId,
+        Func<int>? getPendingInputCount = null,
+        Action<int>? applyPendingInputCount = null)
     {
         _timeline = timeline ?? throw new ArgumentNullException(nameof(timeline));
         _sessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
@@ -50,6 +54,8 @@ public sealed class SessionWindowTimelineSync
         _getMessages = getMessages ?? throw new ArgumentNullException(nameof(getMessages));
         _getStreamingMessage = getStreamingMessage ?? throw new ArgumentNullException(nameof(getStreamingMessage));
         _getLoopId = getLoopId ?? throw new ArgumentNullException(nameof(getLoopId));
+        _getPendingInputCount = getPendingInputCount;
+        _applyPendingInputCount = applyPendingInputCount;
     }
 
     // ---- 时间线基础操作（窗口加载/切换/清空时调用）----
@@ -85,6 +91,15 @@ public sealed class SessionWindowTimelineSync
 
         switch (evt)
         {
+            case ExecutionStartedEvent:
+                // 本轮开始执行 = 消费循环已取走整批未读：实时刷新排队数并重建时间线，
+                // 使本批排队消息从排队区提升到主时间线（对齐 TUI PromoteAllPending）。
+                // DeliverAsync 返回的计数早于「标记 consumed」，单条消息会残留 1 直到本轮结束，
+                // 导致「中断并执行」黄条在本无排队时也展示；此处刷新即与真实未读对齐。
+                RefreshPendingInputCount();
+                SyncAssistant(isComplete: false);
+                ReconcileAppendFromSession();
+                break;
             case ExecutionCompleteEvent completeEvt:
                 SyncAssistant(isComplete: true);
                 CompleteTurn();
@@ -163,6 +178,17 @@ public sealed class SessionWindowTimelineSync
         }
 
         _requestRender();
+    }
+
+    /// <summary>
+    /// 从会话运行时实时读取未读输入数并回写 UI（无回调时跳过）。
+    /// </summary>
+    private void RefreshPendingInputCount()
+    {
+        if (_getPendingInputCount is null || _applyPendingInputCount is null)
+            return;
+
+        _applyPendingInputCount(_getPendingInputCount());
     }
 
     private void HandleStreamDelta(StreamDeltaEvent deltaEvt)
