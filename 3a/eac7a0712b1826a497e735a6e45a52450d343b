@@ -1,0 +1,134 @@
+src/primitives/Seeing.Session/Management/SessionManager.cs
+  s_a22283f19f4c40::t_a10d90bdff3234 400-405,407-408,412-413,422-439,441,444-448,450-451,453-454,456-486,489-496
+  s_a22283f19f4c40::t_3cf71cd19bb1d6 411,414
+  s_a22283f19f4c40::t_9bbb35dff5d57f 415-418
+samples/Seeing.Agent.Tui/Services/TuiSessionController.cs
+  s_a22283f19f4c40::t_97266b58db9ffd 69-71
+  s_a22283f19f4c40::t_1208f2e936902e 55,60-62
+src/hosting/Seeing.Agent.Hosting/Execution/SessionArchivalScanService.cs
+  s_a22283f19f4c40::t_a513b8fe934944 49,51,56,70,76,90-97,121-124
+  s_a22283f19f4c40::t_147ee7508a43fb 44,48,50,52-55,57-60,65,69,71-75,77-85,87,116,118,120,126,131,136
+  s_a22283f19f4c40::t_f23d23b64ce65f 1-43,45-47,61-64,66-68,86,88-89,98-115,117,119,125,127-130,132-135,137-167
+tests/primitives/Seeing.Session.Tests/Management/SessionGroupArchiveTests.cs
+  s_a22283f19f4c40::t_ac0de9ac391065 18
+  s_a22283f19f4c40::t_64801b6713d428 1-17,19-83
+samples/Seeing.Agent.WebUI/Pages/SessionsPage.razor
+  s_a22283f19f4c40::t_b6051778488579 31-35
+  s_a22283f19f4c40::t_2392042579f85f 342,348-350,365
+  s_a22283f19f4c40::t_a53ed4c6a1bc28 110-113,115-152
+  s_a22283f19f4c40::t_4033e0ccd76fcd 114
+  s_a22283f19f4c40::t_5ee548a6c5097a 208-213
+  s_a22283f19f4c40::t_16d3890b9c12d0 429-430,437,444-446,452-488
+  s_a22283f19f4c40::t_baf742bb779df2 630,632
+src/primitives/Seeing.Session/Persistence/SessionArchivalOptions.cs
+  s_a22283f19f4c40::t_ab2e38f8fca012 1-22
+src/primitives/Seeing.Session/Storage/ISessionSummaryProvider.cs
+  s_a22283f19f4c40::t_8a197605e31dd1 1-18
+src/primitives/Seeing.Session/Storage/FileSessionStore.cs
+  s_a22283f19f4c40::t_34b27cf6234c18 579-580,593-599,604-607,609-649,651-672,674-675,677-679,683,700-701,705-735
+  s_a22283f19f4c40::t_33bc7f7bec4b59 3,14,23-24
+  s_a22283f19f4c40::t_6d201ddc81576b 600-603
+  s_a22283f19f4c40::t_feb4ec5b670130 763,774-776,778,782
+  s_a22283f19f4c40::t_687d954b02b5e1 744,752,789
+  s_a22283f19f4c40::t_8401ab2c6b9310 685-698
+  s_a22283f19f4c40::t_d7fbf63543e113 831-837,839,841,843-856
+  s_a22283f19f4c40::t_c7e6b035dc7796 911-913
+  s_a22283f19f4c40::t_3e426af5a1a2fc 527-578,581-592,608,650,673,676,680-682,684,699,702-704,736-743,745-751,753-762,764-773,777,779-781,783-788,790-830,838,840,842,857-910,914
+src/primitives/Seeing.Session/Core/ISessionGroupManager.cs
+  s_a22283f19f4c40::t_110332d6ef208e 78-80
+  s_a22283f19f4c40::t_edcb3a2f066e89 84-94
+samples/Seeing.Agent.WebUI/Pages/Session.razor
+  s_a22283f19f4c40::t_4391c310772b51 247
+tests/hosting/Seeing.Agent.Hosting.Tests/Session/SessionDirectoryTests.cs
+  s_a22283f19f4c40::t_c969144c6ae4fb 49-114
+src/primitives/Seeing.Session/Storage/ISessionArchiveStore.cs
+  s_a22283f19f4c40::t_2a328197868aba 16-17
+  s_a22283f19f4c40::t_a2f9bb97f50d8c 1-15,18-25
+tests/apps/Seeing.Agent.Tui.Tests/Services/TuiCommandRouterTests.cs
+  s_a22283f19f4c40::t_d55850e33ca22f 283-284
+  s_a22283f19f4c40::t_c8ad9fd66bf6aa 249-250
+  s_a22283f19f4c40::t_a34df135f314b5 269-270
+  s_a22283f19f4c40::t_d8092a2188073a 595-597
+docs/architecture/15-session-archival-lazy-loading-release-notes.md
+  s_a22283f19f4c40::t_eac7ccb316c54e 80-82
+  s_a22283f19f4c40::t_b7637d170cb279 93
+  s_a22283f19f4c40::t_d1cd0a5724d93d 33,38-39
+  s_a22283f19f4c40::t_723cdbdae1a2be 35
+  s_a22283f19f4c40::t_da040fd47ee2f1 1-32,34,36-37,40-79,83-92
+tests/hosting/Seeing.Agent.Hosting.Tests/SessionHostingServiceExtensionsTests.cs
+  s_a22283f19f4c40::t_0f46553757f282 5-6,26-32
+  s_a22283f19f4c40::t_c3d27edd375970 33-35
+tests/hosting/Seeing.Agent.Hosting.Tests/Session/SessionArchivalScanServiceTests.cs
+  s_a22283f19f4c40::t_a98ab0e3f468e9 1-158
+src/primitives/Seeing.Session/Storage/SessionStoreExtensions.cs
+  s_a22283f19f4c40::t_f1e1540292ea09 1-31,36-38,43-49,51-90
+  s_a22283f19f4c40::t_47cc251faeef31 32-35,39-42
+  s_a22283f19f4c40::t_dfe6d9a01aef2e 50
+samples/Seeing.Agent.Tui/Services/TuiCommandRouter.cs
+  s_a22283f19f4c40::t_5e30b7485eaa8e 113,115
+  s_a22283f19f4c40::t_27f0028169d289 410,420
+  s_a22283f19f4c40::t_1cf634a0607b6a 137
+docs/architecture/README.md
+  s_a22283f19f4c40::t_d275fd713a27a6 34
+src/primitives/Seeing.Session/Persistence/WriteBehindSessionStore.cs
+  s_a22283f19f4c40::t_09ab95673b1a9f 23-24
+  s_a22283f19f4c40::t_3f2e61ef66bade 166,176
+  s_a22283f19f4c40::t_c61421091d4978 145-160,167,177-190
+  s_a22283f19f4c40::t_b2de46d33b8415 175
+  s_a22283f19f4c40::t_c4287fb85dbc7b 161-165,168-174
+  s_a22283f19f4c40::t_8fbfb2010883dd 57-59
+src/primitives/Seeing.Session/Core/SessionSummary.cs
+  s_a22283f19f4c40::t_0f0f6ec4fee0fb 1-54
+src/abstractions/Seeing.Agent.Abstractions/Runtime/ISessionDirectory.cs
+  s_a22283f19f4c40::t_768fe7e717b410 14-28
+tests/capabilities/Seeing.Agent.Acp.Tests/AcpToolTests.cs
+  s_a22283f19f4c40::t_32274b9fba4967 400-422
+src/primitives/Seeing.Session/Storage/InMemorySessionStore.cs
+  s_a22283f19f4c40::t_572298639b0a87 10,13
+  s_a22283f19f4c40::t_955cf51a7d46e7 162,169-170,172-177
+  s_a22283f19f4c40::t_3c28fd7203988d 145-161,163-168,171,178-192,199,201-216,223
+  s_a22283f19f4c40::t_c91a596fe38d74 193-198,200
+src/hosting/Seeing.Agent.Hosting/HostingServiceCollectionExtensions.cs
+  s_a22283f19f4c40::t_dfe50c762c0d2b 95-101
+  s_a22283f19f4c40::t_edf1dc156f8f66 5
+samples/Seeing.Agent.WebUI/Pages/Index.razor
+  s_a22283f19f4c40::t_863697c2ef7a0a 251
+src/primitives/Seeing.Session/Management/SessionGroupManager.cs
+  s_a22283f19f4c40::t_5c301268dbf0a8 537-538
+  s_a22283f19f4c40::t_b1486e7ecbec23 491-536,539-588
+  s_a22283f19f4c40::t_22eb245a62177c 590-593
+tests/primitives/Seeing.Session.Tests/Storage/SessionSummaryAndArchiveTests.cs
+  s_a22283f19f4c40::t_e7269bd82662db 1-112,153-241
+  s_a22283f19f4c40::t_ad9279701457a0 113-152
+src/hosting/Seeing.Agent.Hosting/SessionDirectory.cs
+  s_a22283f19f4c40::t_800e8a517b1b59 147-204
+samples/Seeing.Agent.WebUI/Components/SessionWindow.razor
+  s_a22283f19f4c40::t_4c110c01be8759 515
+src/primitives/Seeing.Session/Core/SessionMetadataKeys.cs
+  s_a22283f19f4c40::t_bab7d5bc070384 24-28
+src/primitives/Seeing.Session/Core/ISessionManager.cs
+  s_a22283f19f4c40::t_68675bbe91d743 55-72
+tests/primitives/Seeing.Session.Tests/Persistence/WriteBehindSessionArchiveTests.cs
+  s_a22283f19f4c40::t_2297c0936c8820 81-99,101-109,111-185
+  s_a22283f19f4c40::t_e6e5dc0566baf0 100,110
+  s_a22283f19f4c40::t_ab6f2e60a1dc48 188-200
+  s_a22283f19f4c40::t_2b634ba2e96f0a 1-80,186-187,201-218
+src/primitives/Seeing.Session/Storage/IWriteBehindSessionStore.cs
+  s_a22283f19f4c40::t_af0a35906adc68 25-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "3aeac7a0712b1826a497e735a6e45a52450d343b",
+  "prompts": {},
+  "sessions": {
+    "s_a22283f19f4c40": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ecb22c136ffehV3XZBD2n7CMH3",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
