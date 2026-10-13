@@ -1,0 +1,29 @@
+samples/Seeing.Agent.Tui/Rendering/TodoCardView.cs
+  s_c50c6a6757b112::t_42361ac8b4ad8d 1-31,33,35,55-56,62-147,150,153,166,179-190
+  s_c50c6a6757b112::t_96a6c3182c3a9e 42,45,51
+  s_c50c6a6757b112::t_3a8e2917486851 44,46-47,50,52-53
+  s_c50c6a6757b112::t_750627551f45b5 32,34,36-41,43,48-49,54,57-61
+  s_c50c6a6757b112::t_41427e27a0561e 148-149,151-152,154-161,164
+  s_c50c6a6757b112::t_13b2376b0f0542 162-163,165,167-178
+samples/Seeing.Agent.Tui/Rendering/TuiRenderer.cs
+  s_c50c6a6757b112::t_f02e6ba41dda63 427,449,454,465-472
+  s_c50c6a6757b112::t_1ed127c38ec8ec 177
+tests/apps/Seeing.Agent.Tui.Tests/Rendering/TuiRendererTests.cs
+  s_c50c6a6757b112::t_1b90e0c9cd55b5 297-351
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "e3ba5b8e71cb8d3f78b229060b10297a4f0a7327",
+  "prompts": {},
+  "sessions": {
+    "s_c50c6a6757b112": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ecc733b3cffeGyKrMRuu2JMO6F",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
