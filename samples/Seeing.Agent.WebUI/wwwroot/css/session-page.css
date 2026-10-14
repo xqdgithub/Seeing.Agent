@@ -717,9 +717,10 @@
 }
 
 /* ========== 文件侧边面板（SlotHost 渲染的宿主包装组件） ========== */
-/* 空插槽不占位：SlotHost 始终输出 .slot-host，但仅在面板打开（内部渲染 .session-file-panel）时才有尺寸 */
-.slot-host[data-slot="session_file_panel"]:empty {
-    display: none;
+/* 插槽外壳不参与 flex 尺寸（display:contents），尺寸/显隐由内部 .session-file-panel 决定；
+   未打开时 SessionFilePanel 渲染空内容，插槽自然不占位 */
+.slot-host[data-slot="session_file_panel"] {
+    display: contents;
 }
 
 .session-file-panel {
