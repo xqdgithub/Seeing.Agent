@@ -86,6 +86,7 @@ Seeing.Agent/
 | 子 Agent / Task | `src/hosting/Seeing.Agent.Hosting/` Task 工具 | Session-first |
 | 多流 / Task 卡片 UI | `samples/Seeing.Agent.WebUI/Services/` | SessionEventStreamRouter、TaskCardAggregator |
 | WebUI 模型选择 | `samples/Seeing.Agent.WebUI/Components/Models/` | Badge+Modal（Session）/ Dropdown（配置页）；见 `docs/architecture/07-webui-model-picker.md` |
+| 会话文件浏览器 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Files/`；能力包 `src/capabilities/Seeing.Agent.Files/`；组件库 `samples/Seeing.Agent.WebUI.Files/`；宿主桥接 `samples/Seeing.Agent.WebUI/Services/AgentFileChangeBridge.cs` | 文件能力只描述磁盘事实，不订阅会话事件；agent 桥接在宿主层；见 `docs/architecture/16` |
 | Hook | `HookManager` 在 `src/spine/Seeing.Agent.Core/Core/Hooks/`；`HookPoints.*` 常量在 `src/primitives/Seeing.Session/Hooks/HookPoints.cs`（原语层） | 用 `HookPoints.*`，禁止魔法字符串 |
 | 权限（授权/审批） | 引擎/Manager/Store 在 `src/spine/Seeing.Agent.Core/Core/Permission/`；契约在 `src/abstractions/Seeing.Agent.Abstractions/Permissions/`；宿主通道 `Hosting.Web`/`Gateway` | `IPermissionAuthorizer` 决策链；在途真相源 `IPermissionRequestManager`；呈现判定 `IPermissionPresentationStore.CanSurface` + 宿主呈现端 `IPermissionPresenter`；见 `docs/architecture/08` |
 | MCP | `src/capabilities/Seeing.Agent.Mcp/` | 能力模块，非 Core |
@@ -230,6 +231,9 @@ public static async Task<string> GetWeather(
 | **P3** | 权限：Conference 页同 circuit 多窗口共用 `PermissionCardAggregator`（单 `_sessionId`） | **已完成**（2026-09-19：删除 `PermissionCardAggregator`，改由 `PermissionInboxView` 按 `registry.Windows` 会话集合投影分组） |
 | **P3** | 权限：多通道 `TryAutoApprove` 为进程级语义 | 已知边界（同进程 Gateway `auto_approve` 影响 WebUI 会话；按来源隔离属后续演进） |
 | **P1** | 三套「放消息并激活」机制并行（执行队列 / synthetic+idle resume / 直写） | **已完成**（2026-10-11 会话入站运行时：统一 `ISessionRuntime.DeliverAsync` + 消费循环；删除 `ExecutionJobService`/`ChatOrchestrator`/`SessionExecutionQueue`/`AgentLoopScheduler` 三件套；见 `docs/architecture/14`） |
+| **P2** | 文件能力无统一入口 / 会话页无法查看工作区文件 / agent 改文件 UI 无感知 | **已完成**（2026-10-14 会话文件浏览器：三层分离（契约 `Abstractions.Files` → 能力包 `Seeing.Agent.Files` → 组件库 `Seeing.Agent.WebUI.Files`）；会话根经 `ISessionWorkspaceResolver` 端口纳入门闸；`IPathWriteLock` 统一进程内写锁；见 `docs/architecture/16`） |
+| **P3** | 文件工具与 facade 读写逻辑并存（未收敛单一真相源） | 已知边界（P4 仅统一写锁；工具改 facade 适配器会回退 agent 能力，留作后续可选项） |
+| **P3** | 文件浏览器：`.git`/`bin` 等忽略目录下 agent 改动不触发刷新；Markdown 预览仅只读文件；同 circuit 多 Full 窗口共享单一面板状态 | 已知边界（见 `docs/architecture/16` §7） |
 
 ## 命令
 

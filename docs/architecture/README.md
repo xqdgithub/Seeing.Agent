@@ -32,6 +32,7 @@
 | [13 单一权威写入者 Release Notes](13-single-writer-release-notes.md) | EventStreamHandler 去写、Task* Metadata 权威来源、边界写入上收 |
 | [14 会话入站运行时 Release Notes](14-session-inbox-runtime-release-notes.md) | DeliverAsync 唯一驱动、消费循环、Ownership 接管、中断/停止、破坏性变更 |
 | [15 会话归档与延迟加载 Release Notes](15-session-archival-lazy-loading-release-notes.md) | 摘要列表、启动扫描按组归档、存储端口扩展、Evict、破坏性变更 |
+| [16 会话文件浏览器 Release Notes](16-session-file-explorer-release-notes.md) | 文件树/多标签查看编辑、三层分离、会话根门闸、共享写锁、watcher 稳定性、冲突裁决 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 
