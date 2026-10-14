@@ -23,3 +23,4 @@
 .file-content, .file-diff { white-space: pre-wrap; font-family: monospace; font-size: 12px; margin: 0; }
 .file-diff { background: rgba(250, 173, 20, 0.08); }
 .file-panel-toggle { cursor: pointer; }
+.file-panel-toggle.active { background: rgba(22, 119, 255, 0.12); border-radius: 4px; }

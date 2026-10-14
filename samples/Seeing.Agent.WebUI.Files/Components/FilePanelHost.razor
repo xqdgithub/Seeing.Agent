@@ -1,7 +1,6 @@
 @using Seeing.Agent.Abstractions.Files
 @using Seeing.Agent.WebUI.Files.Services
 @inject IFileWorkspaceFactory WorkspaceFactory
-@inject FilePanelState PanelState
 @implements IDisposable
 
 <div class="file-panel-host">
@@ -46,7 +45,6 @@
             StateHasChanged();
         }));
         _tabs.Changed += OnTabsChanged;
-        PanelState.Open(SessionId);
     }
 
     private void OnTabsChanged() => _ = InvokeAsync(StateHasChanged);
@@ -73,6 +71,5 @@
         _tabs.Changed -= OnTabsChanged;
         _coordinator?.Dispose();
         if (!string.IsNullOrEmpty(SessionId)) WorkspaceFactory.Release(SessionId);
-        PanelState.Close();
     }
 }
