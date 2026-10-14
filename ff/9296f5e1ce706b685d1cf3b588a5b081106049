@@ -1,0 +1,111 @@
+src/capabilities/Seeing.Agent.Files/PathWriteLocks.cs
+  s_6d63351b320d5f::t_4410384f9b61c6 1-47
+src/capabilities/Seeing.Agent.Files/Seeing.Agent.Files.csproj
+  s_6d63351b320d5f::t_dc3b9d7b3111a2 1-23
+samples/Seeing.Agent.WebUI.Files/Components/FileEditor.razor
+  s_db2b3c01a45244::t_7cc24684d16810 1-68
+src/capabilities/Seeing.Agent.Files/Watching/FileWatcherPool.cs
+  s_6d63351b320d5f::t_ad35d7b1f0709c 17-19
+  s_6d63351b320d5f::t_d739fe828a2643 1-16,20-49
+tests/apps/Seeing.Agent.WebUI.Files.Tests/FileViewerCoordinatorTests.cs
+  s_db2b3c01a45244::t_144b77a702268b 1-68,70-76,78-91
+  s_db2b3c01a45244::t_98ac8d18e81f7c 69,77
+src/capabilities/Seeing.Agent.Files/FileWorkspace.cs
+  s_6d63351b320d5f::t_2f6d376563922a 1-234
+src/capabilities/Seeing.Agent.Files/RevisionCalculator.cs
+  s_6d63351b320d5f::t_a70720551c18c9 1-15
+samples/Seeing.Agent.WebUI.Files/Components/FilePanelHost.razor
+  s_db2b3c01a45244::t_673315b2441713 1-21,23-78
+  s_db2b3c01a45244::t_7d580d9f0aa662 22
+samples/Seeing.Agent.WebUI.Files/Components/FileTreeNode.razor
+  s_db2b3c01a45244::t_888e9635f2ff97 1-71
+Seeing.Agent.slnx
+  s_536fff28e4f17f::t_d0e9d0592cf7b1 7
+  s_536fff28e4f17f::t_8fc11f683aa1cd 43
+  s_536fff28e4f17f::t_8236852bfb78c4 87
+  s_536fff28e4f17f::t_d22936a7bd84ee 118
+tests/apps/Seeing.Agent.WebUI.Files.Tests/Seeing.Agent.WebUI.Files.Tests.csproj
+  s_db2b3c01a45244::t_10c44ab7be189f 1-37
+src/capabilities/Seeing.Agent.Files/Hosting/FileWatcherHostedService.cs
+  s_6d63351b320d5f::t_3bceb6d33ab7ae 1-53
+tests/capabilities/Seeing.Agent.Files.Tests/FileWatcherPoolTests.cs
+  s_6d63351b320d5f::t_ef28c9b447b95f 1-63
+samples/Seeing.Agent.WebUI.Files/Components/FileTree.razor
+  s_db2b3c01a45244::t_f90298643414a6 1-48
+src/capabilities/Seeing.Agent.Files/Watching/RootWatcher.cs
+  s_6d63351b320d5f::t_9049884952b7d1 1-101
+samples/Seeing.Agent.WebUI.Files/Seeing.Agent.WebUI.Files.csproj
+  s_db2b3c01a45244::t_e77e7c4779a2b7 1-21
+samples/Seeing.Agent.WebUI.Files/Services/FilePanelState.cs
+  s_db2b3c01a45244::t_357ffb4e6824b2 1-23
+src/capabilities/Seeing.Agent.Files/FileWorkspaceModule.cs
+  s_6d63351b320d5f::t_2262604afb507f 1-38
+tests/capabilities/Seeing.Agent.Files.Tests/FileWorkspaceModuleTests.cs
+  s_6d63351b320d5f::t_32f4dbbe29b94a 1-23,25-27
+  s_6d63351b320d5f::t_b34491243d3353 24
+tests/capabilities/Seeing.Agent.Files.Tests/Seeing.Agent.Files.Tests.csproj
+  s_6d63351b320d5f::t_b13136432df662 1-33
+samples/Seeing.Agent.WebUI.Files/Components/FileTabs.razor
+  s_db2b3c01a45244::t_905816b0444d22 1-21
+samples/Seeing.Agent.WebUI.Files/wwwroot/files-panel.css
+  s_db2b3c01a45244::t_1a5baae514320b 1-25
+samples/Seeing.Agent.WebUI.Files/Services/FileTabsState.cs
+  s_db2b3c01a45244::t_98955270b63b29 1-129
+samples/Seeing.Agent.WebUI.Files/Components/FilePanelToggle.razor
+  s_db2b3c01a45244::t_bfa7a5fe1dc038 1-12
+tests/capabilities/Seeing.Agent.Files.Tests/RevisionCalculatorTests.cs
+  s_db2b3c01a45244::t_7aa62c64c193db 1-41
+samples/Seeing.Agent.WebUI.Files/Components/FileViewer.razor
+  s_db2b3c01a45244::t_cda744785e8f5b 1-26
+samples/Seeing.Agent.WebUI.Files/Services/FileViewerCoordinator.cs
+  s_db2b3c01a45244::t_d1866b4481cc8b 1-57
+tests/capabilities/Seeing.Agent.Files.Tests/AllowAllGate.cs
+  s_6d63351b320d5f::t_b046056be06af4 1-10
+src/capabilities/Seeing.Agent.Files/FileWorkspaceFactory.cs
+  s_6d63351b320d5f::t_38dd6ee085e192 1-77
+src/capabilities/Seeing.Agent.Files/FileContentClassifier.cs
+  s_6d63351b320d5f::t_2a4a0386bb58bb 1-49
+tests/capabilities/Seeing.Agent.Files.Tests/FileWorkspaceTests.cs
+  s_6d63351b320d5f::t_c069345cf13ff4 61-62,64,73-74,76
+  s_6d63351b320d5f::t_db0282d3583ae3 1-23,26-27,29-35,38-39,41-42,44-48,51,53-54,56-60,63,65-72,75,77-84,87,89-117
+  s_6d63351b320d5f::t_83b464e4eb1b93 85-86,88
+  s_6d63351b320d5f::t_db6ac27d1c59c2 24-25,28,36-37,40,43,49-50,52,55
+tests/apps/Seeing.Agent.WebUI.Files.Tests/FileTabsStateTests.cs
+  s_db2b3c01a45244::t_8a8bc287e57d07 1-102
+samples/Seeing.Agent.WebUI.Files/_Imports.razor
+  s_db2b3c01a45244::t_7cc905abbc6649 1-5
+src/capabilities/Seeing.Agent.Files/FileExceptions.cs
+  s_6d63351b320d5f::t_a116ba9ff107a2 1-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "ff9296f5e1ce706b685d1cf3b588a5b081106049",
+  "prompts": {},
+  "sessions": {
+    "s_536fff28e4f17f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec7c49ff5ffetmlEfQs6bcMbMs",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_6d63351b320d5f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec6f3cb48ffe6H35VXbw0Unozf",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_db2b3c01a45244": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec6f3ae6bffe4YjdqRhPWUGsDB",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
