@@ -80,10 +80,24 @@ public class FileWorkspaceFactoryTests
             var factory = Create(root, root, out var pool);
             await factory.ResolveAsync("a");
             await factory.ResolveAsync("b");
+
+            // 模拟两个会话各自的变更订阅（各自 Acquire 一次池引用）
+            var subA = pool.Subscribe(root);
+            var subB = pool.Subscribe(root);
+            pool.RootCount.Should().Be(1);
+
+            // 释放 a（factory 引用 + 订阅）不应 dispose 共享 watcher
             factory.Release("a");
-            // 释放 a 不应影响 b：b 仍可再次解析出同一实例
-            var b = await factory.ResolveAsync("b");
-            b.SessionId.Should().Be("b");
+            subA.Dispose();
+            pool.RootCount.Should().Be(1);
+
+            // b 仍可再次解析出同一实例且订阅可用
+            var b2 = await factory.ResolveAsync("b");
+            b2.SessionId.Should().Be("b");
+
+            subB.Dispose();
+            factory.Release("b");
+            pool.RootCount.Should().Be(0);
         }
         finally { Directory.Delete(root, true); }
     }
