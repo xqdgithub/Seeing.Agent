@@ -109,10 +109,18 @@ internal sealed class FileWorkspace : IFileWorkspace
         var kind = FileContentClassifier.Classify(full, mime);
 
         var sampled = info.Length > MaxReadBytes;
-        var bytes = await _fs.ReadAllBytesAsync(full, ct).ConfigureAwait(false);
-
+        byte[] bytes;
+        if (sampled)
+        {
+            // 超大文件：只读前 MaxReadBytes 字节，避免整文件入内存（revision 置 null）
+            bytes = await ReadPrefixAsync(full, MaxReadBytes, ct).ConfigureAwait(false);
+        }
+        else
+        {
+            bytes = await _fs.ReadAllBytesAsync(full, ct).ConfigureAwait(false);
+        }
         var (encoding, editable) = FileContentClassifier.DetectEditable(bytes);
-        FileRevision? revision = info.Length <= MaxHashableSize
+        FileRevision? revision = (!sampled && info.Length <= MaxHashableSize)
             ? RevisionCalculator.FromBytes(bytes, info.LastWriteTimeUtc)
             : null;
 
@@ -128,11 +136,11 @@ internal sealed class FileWorkspace : IFileWorkspace
 
         var total = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n').Length;
 
-        if (mode == FileReadMode.Full && info.Length > MaxEditableSize)
+        if (mode == FileReadMode.Full && (info.Length > MaxEditableSize || sampled))
             throw new FileTooLargeException(full, info.Length, MaxEditableSize);
 
         var content = text;
-        var truncated = false;
+        var truncated = sampled;
         if (mode == FileReadMode.Display && text.Length > FileContentSupport.MaxBytes)
         {
             content = text[..FileContentSupport.MaxBytes];
@@ -141,6 +149,24 @@ internal sealed class FileWorkspace : IFileWorkspace
 
         return new FileReadResult(GetResourceId(full), revision, content, kind, mime, encoding,
             editable && !truncated && info.Length <= MaxEditableSize, info.Length, total, truncated, sampled, mode);
+    }
+
+    private async Task<byte[]> ReadPrefixAsync(string full, long maxBytes, CancellationToken ct)
+    {
+        using var stream = _fs.OpenRead(full);
+        long available;
+        try { available = stream.Length; }
+        catch (NotSupportedException) { available = maxBytes; }
+        var length = (int)Math.Min(maxBytes, available);
+        var buffer = new byte[length];
+        var offset = 0;
+        while (offset < length)
+        {
+            var read = await stream.ReadAsync(buffer.AsMemory(offset, length - offset), ct).ConfigureAwait(false);
+            if (read == 0) break;
+            offset += read;
+        }
+        return offset == length ? buffer : buffer[..offset];
     }
 
     /// <inheritdoc />
