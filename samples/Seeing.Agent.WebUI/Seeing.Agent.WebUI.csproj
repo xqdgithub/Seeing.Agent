@@ -41,6 +41,8 @@
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Question\Seeing.Agent.Tools.Question.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.SystemOne\Seeing.Agent.SystemOne.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.SystemOne\Seeing.Agent.Tools.SystemOne.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Files\Seeing.Agent.Files.csproj" />
+    <ProjectReference Include="..\Seeing.Agent.WebUI.Files\Seeing.Agent.WebUI.Files.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="AntDesign" Version="1.6.2" />

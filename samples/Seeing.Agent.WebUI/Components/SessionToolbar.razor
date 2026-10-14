@@ -8,6 +8,7 @@
 @using Seeing.Agent.Core.Configuration
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Core.Scenarios
+@using Seeing.Agent.WebUI.Shared
 @inject IAgentRegistry AgentRegistry
 @inject ILlmService LlmService
 @inject IMessageService MessageService
@@ -139,6 +140,7 @@
             }
         </div>
         <div class="session-toolbar-right">
+            <SlotHost SlotName="session_toolbar_actions" />
             @if (Context.ShowReturnToParent)
             {
                 <Button Type="@ButtonType.Text"

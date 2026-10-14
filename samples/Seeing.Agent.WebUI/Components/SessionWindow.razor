@@ -57,6 +57,7 @@
         }
         <!-- 内置工具栏：Agent/模型切换、重命名、分支、清空、出站绑定（仅 Full 模式）；左右插槽由外层注入页级导航 -->
         <CascadingValue Name="SessionScenario" Value="@SessionState.CurrentSession?.Scenario">
+        <CascadingValue Name="SessionId" Value="@SessionId">
         <SessionToolbar Context="Context"
                         Mode="ViewMode"
                         LeftActions="ToolbarLeftActions"
@@ -217,6 +218,9 @@
                     <TodoPanel TodoList="@SessionState.CurrentTodoList" />
                 </div>
             }
+
+            @* 文件面板插槽（模块启用时由 SlotHost 渲染） *@
+            <SlotHost SlotName="session_file_panel" />
         </div>
 
         <!-- 错误提示 -->
@@ -225,6 +229,7 @@
             <Alert Type="@AlertType.Error" Message="@ErrorMessage" ShowIcon="true" Closable="true"
                    OnClose="@OnClearError" Class="session-error-alert" />
         }
+        </CascadingValue>
         </CascadingValue>
     }
     else

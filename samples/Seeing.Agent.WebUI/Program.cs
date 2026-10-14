@@ -60,6 +60,7 @@ var registry = new ConfigSectionRegistry();
 builder.Services.AddSingleton<IConfigSectionRegistry>(registry);
 builder.Services.AddSeeingModule<LocalExecutionWorldModule>(registry);
 builder.Services.AddSeeingModule<FileSystemModule>(registry);
+builder.Services.AddSeeingModule<Seeing.Agent.Files.FileWorkspaceModule>(registry);
 builder.Services.AddSeeingModule<WebModule>(registry);
 builder.Services.AddSeeingModule<ShellModule>(registry);
 builder.Services.AddSeeingModule<BasicModule>(registry);
@@ -125,6 +126,9 @@ builder.Services.AddScoped<QuestionInteractionService>();
 builder.Services.AddScoped<IToolCallSlotProvider, QuestionToolCallSlotProvider>();
 builder.Services.AddScoped<TaskSessionResolver>();
 builder.Services.AddScoped<SessionWindowRegistry>();
+// 文件面板：桥接（Scoped，circuit 维度 IStreamConsumer）+ 开合状态（Scoped，circuit 维度）
+builder.Services.AddScoped<Seeing.Agent.WebUI.Services.AgentFileChangeBridge>();
+builder.Services.AddScoped<Seeing.Agent.WebUI.Files.Services.FilePanelState>();
 
 // EventStreamHandler：页面渲染实例经 SessionEventStreamRouter.GetOrCreateConsumer 按会话创建（Session.razor）。
 // 此处保留的 Scoped 注册作为全局事件处理占位实例（sessionId 为空串）。
@@ -218,6 +222,7 @@ using (var scope = app.Services.CreateScope())
     if (sp.GetService<IUiContributionRegistry>() is { } uiRegistry)
     {
         uiRegistry.Register(new CoreShellUiContribution());
+        uiRegistry.Register(new Seeing.Agent.WebUI.Services.FilePanelUiContribution());
         ModulePageRouteBinder.BindExistingPages(uiRegistry);
     }
 

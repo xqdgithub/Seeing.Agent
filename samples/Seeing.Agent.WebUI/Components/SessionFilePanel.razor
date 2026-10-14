@@ -1,0 +1,40 @@
+@using Seeing.Agent.Abstractions.Files
+@using Seeing.Agent.WebUI.Files.Components
+@using Seeing.Agent.WebUI.Services
+@inject SessionEventStreamRouter Router
+@inject CircuitContext CircuitContext
+@implements IDisposable
+
+<div class="session-file-panel">
+    <FilePanelHost @ref="_host" />
+</div>
+
+@code {
+    [CascadingParameter(Name = "SessionId")] private string? SessionId { get; set; }
+
+    private FilePanelHost? _host;
+    private AgentFileChangeBridge? _bridge;
+
+    protected override void OnInitialized()
+    {
+        if (string.IsNullOrEmpty(SessionId)) return;
+
+        _bridge = Router.GetOrCreateCircuitConsumer<AgentFileChangeBridge>(CircuitContext.Id ?? "");
+        _bridge.Rebind(SessionId);
+        _bridge.AgentChanged += OnAgentChanged;
+        Router.AttachConsumer(SessionId, _bridge);
+    }
+
+    private Task OnAgentChanged(FileResourceId id, string? diff) => InvokeAsync(() =>
+        _host is null ? Task.CompletedTask : _host.NotifyAgentChangeAsync(id, diff));
+
+    public void Dispose()
+    {
+        if (_bridge is not null)
+        {
+            _bridge.AgentChanged -= OnAgentChanged;
+            if (!string.IsNullOrEmpty(SessionId))
+                Router.DetachConsumer(SessionId, _bridge);
+        }
+    }
+}
