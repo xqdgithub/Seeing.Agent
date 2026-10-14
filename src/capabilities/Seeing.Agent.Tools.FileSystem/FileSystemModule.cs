@@ -18,6 +18,7 @@ public sealed class FileSystemModule : ISeeingModule
         "grep",
         "delete",
         "add_workspace_path",
+        "open_file",
     ];
 
     private static readonly IReadOnlyList<string> s_dependsOn = ["io.local"];
@@ -44,6 +45,7 @@ public sealed class FileSystemModule : ISeeingModule
         services.AddSingleton<GrepTool>();
         services.AddSingleton<AddWorkspacePathTool>();
         services.AddSingleton<DeleteTool>();
+        services.AddSingleton<OpenFileTool>();
     }
 
     /// <inheritdoc />
@@ -58,6 +60,7 @@ public sealed class FileSystemModule : ISeeingModule
         await tm.RegisterToolAsync(services.GetRequiredService<GrepTool>(), cancellationToken).ConfigureAwait(false);
         await tm.RegisterToolAsync(services.GetRequiredService<AddWorkspacePathTool>(), cancellationToken).ConfigureAwait(false);
         await tm.RegisterToolAsync(services.GetRequiredService<DeleteTool>(), cancellationToken).ConfigureAwait(false);
+        await tm.RegisterToolAsync(services.GetRequiredService<OpenFileTool>(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />

@@ -1,10 +1,16 @@
 @using Seeing.Agent.Abstractions.Files
+@using Seeing.Agent.WebUI.Files.Services
+@inject FileTreeState TreeState
+@implements IDisposable
 
 <li class="file-tree-node">
     @if (Entry.IsDirectory)
     {
         <div class="file-tree-dir" style="@($"padding-left:{Depth * 12}px")" @onclick="ToggleAsync">
             <span class="file-tree-arrow">@(_expanded ? "▾" : "▸")</span>
+            <svg class="file-tree-icon file-tree-icon--dir" viewBox="0 0 1024 1024" width="14" height="14" aria-hidden="true">
+                <path fill="currentColor" d="M880 298.4H521L403.7 186.2a8.15 8.15 0 0 0-5.5-2.2H144c-17.7 0-32 14.3-32 32v592c0 17.7 14.3 32 32 32h736c17.7 0 32-14.3 32-32V330.4c0-17.7-14.3-32-32-32zM840 768H184V256h188.5l119.6 114.4H840V768z" />
+            </svg>
             <span class="file-tree-name">@Entry.Name</span>
         </div>
         @if (_expanded)
@@ -27,6 +33,9 @@
     else
     {
         <div class="file-tree-file" style="@($"padding-left:{Depth * 12 + 12}px")" @onclick="() => OnOpen.InvokeAsync(Entry.Id)">
+            <svg class="file-tree-icon file-tree-icon--file @FileIconClass(Entry.Name)" viewBox="0 0 1024 1024" width="14" height="14" aria-hidden="true">
+                <path fill="currentColor" d="M854.6 288.6L639.4 73.4c-6-6-14.1-9.4-22.6-9.4H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V311.3c0-8.5-3.4-16.7-9.4-22.7zM790.2 326H602V137.8L790.2 326zm1.8 562H232V136h302v216a42 42 0 0 0 42 42h216v494z" />
+            </svg>
             <span class="file-tree-name">@Entry.Name</span>
         </div>
     }
@@ -48,6 +57,64 @@
     private bool _expanded;
     private bool _loading;
     private List<FileEntry> _children = [];
+
+    /// <summary>本目录的相对路径（正斜杠；根为 ""）。</summary>
+    private string DirRelative => Entry.Id.RelativePath.Replace('\\', '/');
+
+    protected override void OnInitialized() => TreeState.Changed += OnTreeChanged;
+
+    private void OnTreeChanged(FileChangeEvent evt)
+    {
+        if (!_expanded) return;
+
+        // 变更项是本目录直接子级 → 重列；或改名涉及本目录下条目
+        var affected = FileTreeState.IsDirectChildOf(evt.Id, DirRelative);
+        if (!affected && evt.Kind == FileChangeKind.Renamed && evt.OldPath is { } old)
+            affected = FileTreeState.IsDirectChildOf(Workspace.GetResourceId(old), DirRelative);
+
+        if (affected)
+            _ = InvokeAsync(ReloadAndRenderAsync);
+    }
+
+    private async Task ReloadAndRenderAsync()
+    {
+        await ReloadChildrenAsync();
+        StateHasChanged();
+    }
+
+    private async Task ReloadChildrenAsync()
+    {
+        try
+        {
+            var entries = await Workspace.ListAsync(Workspace.GetAbsolutePath(Entry.Id));
+            _children = entries
+                .OrderByDescending(e => e.IsDirectory)
+                .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch
+        {
+            // 目录被删除等竞态：保留现有子项，等待父级刷新
+        }
+    }
+
+    public void Dispose() => TreeState.Changed -= OnTreeChanged;
+
+    /// <summary>按扩展名返回图标着色类（仅视觉区分，未知扩展名返回空）。</summary>
+    private static string FileIconClass(string name)
+    {
+        var ext = Path.GetExtension(name).TrimStart('.').ToLowerInvariant();
+        return ext switch
+        {
+            "cs" or "js" or "ts" or "jsx" or "tsx" or "py" or "go" or "rs" or "java" or "c" or "cpp" or "h" => "file-tree-icon--code",
+            "md" or "markdown" or "txt" or "rst" => "file-tree-icon--doc",
+            "json" or "xml" or "yml" or "yaml" or "toml" or "ini" or "config" or "csproj" or "props" or "targets" or "slnx" => "file-tree-icon--config",
+            "png" or "jpg" or "jpeg" or "gif" or "svg" or "webp" or "bmp" or "ico" => "file-tree-icon--image",
+            "html" or "htm" or "css" or "scss" or "razor" => "file-tree-icon--web",
+            "sh" or "bash" or "ps1" or "bat" or "cmd" => "file-tree-icon--script",
+            _ => "",
+        };
+    }
 
     private async Task ToggleAsync()
     {

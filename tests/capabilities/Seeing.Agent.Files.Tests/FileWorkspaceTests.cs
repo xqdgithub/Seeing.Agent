@@ -103,6 +103,21 @@ public class FileWorkspaceTests : IDisposable
     }
 
     [Fact]
+    public async Task List_EntryWithUnreadableMetadata_ShouldSkipNotThrow()
+    {
+        // 模拟枚举到但读取元数据会抛错的条目（如枚举后被删除、或 Windows 设备名 nul）
+        var ghost = Path.Combine(_root, "ghost.txt");
+        await File.WriteAllTextAsync(Path.Combine(_root, "real.txt"), "hi");
+        var ws = new FileWorkspace("s1", _root, new GhostEntryFileSystem(ghost),
+            new AllowAllGate(), new Watching.FileWatcherPool(), new ProcessPathWriteLock());
+
+        var list = await ws.ListAsync(_root);
+
+        list.Select(e => e.Name).Should().Contain("real.txt");
+        list.Select(e => e.Name).Should().NotContain("ghost.txt");
+    }
+
+    [Fact]
     public void RootId_ShouldBeStableAndLowercaseHex()
     {
         var again = new FileWorkspace("s2", _root, new LocalFileSystem(), new AllowAllGate(), new Watching.FileWatcherPool(), new ProcessPathWriteLock());

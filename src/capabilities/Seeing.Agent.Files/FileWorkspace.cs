@@ -94,7 +94,16 @@ internal sealed class FileWorkspace : IFileWorkspace
         foreach (var d in _fs.EnumerateDirectories(full, "*", false))
             list.Add(new FileEntry(GetResourceId(d), Path.GetFileName(d), true, null, null));
         foreach (var f in _fs.EnumerateFiles(full, "*", false))
-            list.Add(new FileEntry(GetResourceId(f), Path.GetFileName(f), false, new FileInfo(f).Length, _fs.GetLastWriteTimeUtc(f)));
+        {
+            // 枚举与取元数据之间存在竞态（文件被删除/替换），或路径落入 Windows 设备名
+            // （如 "nul" → \\.\nul）时 FileInfo.Length 会抛错；列举应为尽力而为，跳过不可读条目。
+            try
+            {
+                list.Add(new FileEntry(GetResourceId(f), Path.GetFileName(f), false, new FileInfo(f).Length, _fs.GetLastWriteTimeUtc(f)));
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
         return Task.FromResult<IReadOnlyList<FileEntry>>(list);
     }
 

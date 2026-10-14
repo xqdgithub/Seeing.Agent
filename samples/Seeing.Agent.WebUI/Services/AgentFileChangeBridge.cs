@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Files;
+using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.WebUI.Files.Services;
 
 namespace Seeing.Agent.WebUI.Services;
 
@@ -13,13 +15,18 @@ public sealed class AgentFileChangeBridge : IStreamConsumer, IDisposable
         "write", "edit", "delete"
     };
 
+    private const string OpenFileToolName = "open_file";
+
     private readonly IFileWorkspaceFactory _factory;
     private readonly ConcurrentDictionary<string, IFileWorkspace> _workspaces = new(StringComparer.Ordinal);
     private readonly object _resolveLock = new();
     private string? _bound;
 
     /// <summary>agent 改动文件事件（id + 可选 diff）。</summary>
-    public event Func<FileResourceId, string?, Task>? AgentChanged;
+    public event Func<FileResourceId, FileDiffData?, Task>? AgentChanged;
+
+    /// <summary>agent 请求打开文件事件（open_file 工具）；参数含可选跳转位置（1-based）。</summary>
+    public event Func<FileResourceId, int?, int?, Task>? OpenRequested;
 
     /// <summary>注入工厂。</summary>
     public AgentFileChangeBridge(IFileWorkspaceFactory factory) => _factory = factory;
@@ -35,13 +42,35 @@ public sealed class AgentFileChangeBridge : IStreamConsumer, IDisposable
     {
         if (evt is not ToolCallEvent tc) return;
         if (tc.Status != ToolCallStatus.Success) return;
+
+        if (string.Equals(tc.ToolName, OpenFileToolName, StringComparison.Ordinal))
+        {
+            var openPath = ExtractPath(tc);
+            if (!string.IsNullOrEmpty(openPath))
+                _ = DispatchOpenAsync(tc.SessionId, openPath, ExtractInt(tc, "line"), ExtractInt(tc, "column"));
+            return;
+        }
+
         if (!FileTools.Contains(tc.ToolName)) return;
 
         var path = ExtractPath(tc);
         if (string.IsNullOrEmpty(path)) return;
 
-        var diff = tc.Metadata is not null && tc.Metadata.TryGetValue("diff", out var d) ? d?.ToString() : null;
-        _ = DispatchAsync(tc.SessionId, path, diff);
+        _ = DispatchAsync(tc.SessionId, path, ExtractDiff(tc));
+    }
+
+    private static FileDiffData? ExtractDiff(ToolCallEvent tc)
+    {
+        if (tc.Metadata is null) return null;
+
+        var unified = tc.Metadata.TryGetValue(FileMetadataKeys.Diff, out var d) ? d?.ToString() : null;
+        var oldContent = tc.Metadata.TryGetValue(FileMetadataKeys.OldContent, out var o) ? o?.ToString() : null;
+        var newContent = tc.Metadata.TryGetValue(FileMetadataKeys.NewContent, out var n) ? n?.ToString() : null;
+
+        if (string.IsNullOrEmpty(unified) && oldContent is null && newContent is null)
+            return null;
+
+        return new FileDiffData(oldContent, newContent, Language: null, Unified: unified);
     }
 
     private static string? ExtractPath(ToolCallEvent tc)
@@ -55,7 +84,19 @@ public sealed class AgentFileChangeBridge : IStreamConsumer, IDisposable
         return null;
     }
 
-    private async Task DispatchAsync(string sessionId, string path, string? diff)
+    private static int? ExtractInt(ToolCallEvent tc, string name)
+    {
+        if (tc.Metadata is not null && tc.Metadata.TryGetValue(name, out var v) && v is not null
+            && int.TryParse(v.ToString(), out var mv))
+            return mv;
+        if (tc.Arguments is JsonElement je && je.ValueKind == JsonValueKind.Object
+            && je.TryGetProperty(name, out var arg) && arg.ValueKind == JsonValueKind.Number
+            && arg.TryGetInt32(out var iv))
+            return iv;
+        return null;
+    }
+
+    private async Task DispatchAsync(string sessionId, string path, FileDiffData? diff)
     {
         var handler = AgentChanged;
         if (handler is null) return;
@@ -64,6 +105,22 @@ public sealed class AgentFileChangeBridge : IStreamConsumer, IDisposable
             var ws = await GetWorkspaceAsync(sessionId).ConfigureAwait(false);
             var id = ws.GetResourceId(path);
             await handler(id, diff).ConfigureAwait(false);
+        }
+        catch
+        {
+            // 桥接失败不致命：不中断事件广播
+        }
+    }
+
+    private async Task DispatchOpenAsync(string sessionId, string path, int? line, int? column)
+    {
+        var handler = OpenRequested;
+        if (handler is null) return;
+        try
+        {
+            var ws = await GetWorkspaceAsync(sessionId).ConfigureAwait(false);
+            var id = ws.GetResourceId(path);
+            await handler(id, line, column).ConfigureAwait(false);
         }
         catch
         {

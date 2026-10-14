@@ -2,6 +2,27 @@ using Seeing.Agent.Abstractions.Files;
 
 namespace Seeing.Agent.WebUI.Files.Services;
 
+/// <summary>
+/// 文件变更 diff（agent 改动某文件时由宿主桥接投递）。
+/// <para>
+/// 优先携带全文内容对（<see cref="Old"/>/<see cref="New"/>，供 diff 编辑器精确展示）；
+/// 超大文件仅携带 unified diff 文本 <see cref="Unified"/>（前端回退纯文本展示）。
+/// </para>
+/// </summary>
+/// <param name="Old">变更前全文（可空）。</param>
+/// <param name="New">变更后全文（可空）。</param>
+/// <param name="Language">语言标识（供着色，可空）。</param>
+/// <param name="Unified">unified diff 文本（回退展示用，可空）。</param>
+public sealed record FileDiffData(
+    string? Old,
+    string? New,
+    string? Language = null,
+    string? Unified = null)
+{
+    /// <summary>是否具备全文内容对（可用 diff 编辑器展示）。</summary>
+    public bool HasFullContent => Old is not null && New is not null;
+}
+
 /// <summary>单个打开文件标签。</summary>
 public sealed class OpenFile
 {
@@ -23,8 +44,8 @@ public sealed class OpenFile
     public bool IsReadOnly { get; set; }
     /// <summary>是否已从磁盘删除。</summary>
     public bool IsDeleted { get; set; }
-    /// <summary>最近一次 agent/磁盘 diff（可选）。</summary>
-    public string? PendingDiff { get; set; }
+    /// <summary>最近一次 agent/磁盘 diff（可选；展示后可由用户关闭）。</summary>
+    public FileDiffData? PendingDiff { get; set; }
     /// <summary>磁盘已被外部修改且本地有未保存改动（待用户裁决）。</summary>
     public bool HasExternalConflict { get; set; }
     /// <summary>磁盘内容版本号：仅在磁盘内容被应用时自增（用于编辑器重建判定，用户编辑不变）。</summary>
@@ -117,7 +138,8 @@ public sealed class FileTabsState
         of.Content = newContent; of.OpenedRevision = file.Revision;
         of.Kind = file.Kind; of.MimeType = file.MimeType; of.BinaryContent = binaryContent;
         of.IsReadOnly = !file.IsEditable; of.IsDeleted = false;
-        of.HasExternalConflict = false; of.PendingDiff = null;
+        of.HasExternalConflict = false;
+        // 不清理 PendingDiff：磁盘更新正是该 diff 描述的内容，应由用户关闭或下一次变更替换
         of.DiskVersion++;
         Changed?.Invoke();
         return true;
@@ -174,8 +196,18 @@ public sealed class FileTabsState
     }
 
     /// <summary>设置 agent diff（供视图渲染）。</summary>
-    public void SetPendingDiff(FileResourceId id, string? diff)
+    public void SetPendingDiff(FileResourceId id, FileDiffData? diff)
     {
         if (_byKey.TryGetValue(Key(id), out var of)) { of.PendingDiff = diff; Changed?.Invoke(); }
+    }
+
+    /// <summary>清除指定文件的 diff 展示（用户关闭 diff）。</summary>
+    public void ClearPendingDiff(FileResourceId id)
+    {
+        if (_byKey.TryGetValue(Key(id), out var of) && of.PendingDiff is not null)
+        {
+            of.PendingDiff = null;
+            Changed?.Invoke();
+        }
     }
 }

@@ -22,7 +22,7 @@
 | Abstractions | `Permissions/ISessionWorkspaceResolver` | 会话有效工作目录解析端口 |
 | Abstractions | `Execution/IPathWriteLock` | 进程内按路径写序列化端口 |
 | 能力包 | `Seeing.Agent.Files`（模块 id `files.workspace`，`DependsOn: io.local`） | 读写/编辑/删除/`GetDiffAsync` + OS watcher（`FileWatcherPool` / `RootWatcher`）+ `FileWatcherHostedService` |
-| 组件库 | `Seeing.Agent.WebUI.Files` | `FilePanelHost`/`FileTree`/`FileTabs`/`FileViewer`/`FileEditor`/`FilePanelToggle` + `FileTabsState`/`FilePanelState`/`FileViewerCoordinator` |
+| 组件库 | `Seeing.Agent.WebUI.Files` | `FilePanelHost`/`FileTree`/`FileTabs`/`FileViewer`/`FileEditor`/`ResizeHandle` + `FileTabsState`/`FilePanelState`/`FileViewerCoordinator` + `files-panel.js`（拖拽/快捷键） |
 | Core | `SessionWorkspaceResolver`；`WorkspacePathGate` 增加会话有效根校验 | 见 §4 |
 | Tools.Support | `LineDiff`（LCS + hunk header）、`FileContentSupport`（MIME/二进制/限制上提） | 供能力包复用，现有 `FileSystemHelper` 行为不变 |
 | IO.Local | `ProcessPathWriteLock` | 进程内共享写锁实现（Singleton） |
@@ -31,9 +31,9 @@
 
 ## 3. UI 接入
 
-- 面板与切换按钮经 `IUiContribution` 贡献（`FilePanelUiContribution`，`ModuleId="files.workspace"`），由 `SlotHost` 按 `Requires` + `IModuleCatalog.IsEnabled` 过滤：模块禁用即无面板、无按钮。
+- 面板经 `IUiContribution` 贡献（`FilePanelUiContribution`，`ModuleId="files.workspace"`），由 `SlotHost` 按 `Requires` + `IModuleCatalog.IsEnabled` 过滤：模块禁用即无面板。
 - `SessionWindow` 级联 `SessionId`（`CascadingValue`）送达插槽组件（`SlotHost` 用无参 `<DynamicComponent>`，级联值可穿透）。
-- 面板可见性由 `FilePanelState.IsOpen` 驱动（默认关闭，工具栏「文件」按钮切换）。
+- 面板可见性由 `FilePanelState.IsOpen` 驱动（默认关闭）；**开关入口为会话工具栏的工作目录徽标**（点击开合，激活态高亮）。
 
 ## 4. 安全与路径边界
 
@@ -61,7 +61,28 @@
 - **P4 修订（偏离原规格字面）**：**不**将 `read/write/edit/glob/grep/delete` 改为 facade 适配器（会回退 agent 能力：非 UTF-8 写拒绝、5MB 上限、结构化读取与行式输出不兼容、丢失 `EditTool` 多策略匹配）。P4 实际收敛为**统一进程内路径写锁真相源**（`IPathWriteLock`）。**读写逻辑单一真相源**未收敛，记为后续可选项。
 - **diff**：`GetDiffAsync` 按需生成（LCS + hunk header），不主动推送；agent 语义 diff 仅来自工具事件 `Metadata["diff"]`。
 
-## 7. 已知边界 / 后续
+## 7. 交互增强与 agent 驱动打开（2026-10-14 增补）
+
+设计规格：[`2026-10-14-file-panel-interaction-and-agent-open-design.md`](../superpowers/specs/2026-10-14-file-panel-interaction-and-agent-open-design.md)
+
+| # | 变更 | 说明 |
+|---|------|------|
+| 1 | 面板开关并入工作目录徽标 | 移除工具栏「文件」按钮（`FilePanelToggle` 删除）；`SessionToolbar` 徽标改按钮，点击 `FilePanelState.Toggle`，激活高亮 |
+| 2 | 保存改小图标 + `Ctrl+S` | 移除编辑器整行工具栏；`FileTabs` 右侧保存图标（脏时高亮+脏点，干净禁用）；`files-panel.js` 在 Monaco 容器聚焦时拦截 `Ctrl+S` |
+| 3 | 两处可拖动分隔线 | 文件树↔编辑器（`--file-tree-width`）、面板↔聊天区（`--file-panel-width`）；`ResizeHandle` 组件 + Pointer Events；宽度持久化 `localStorage` |
+| 4 | 目录树可隐藏 | 面板内折叠按钮，切换 `FilePanelState.TreeVisible`（不持久化，会话级偏好） |
+| 5 | `open_file` 工具 | `Seeing.Agent.Tools.FileSystem` 新增；只读无磁盘副作用，回写 `ToolResult.Metadata["path"]`（可含 `line`/`column`） |
+| 6 | agent 驱动打开 | `AgentFileChangeBridge.OpenRequested(id, line, column)` → `SessionFilePanel` → `FilePanelState.RequestOpen`（未开则自动开、默认隐藏树）→ `FilePanelHost` 消费 `PendingOpen` 分派 |
+| 7 | 行/列跳转 | `FileEditor.NavigateToAsync(line, column)`（1-based）经 `RevealLineInCenter` + `SetPosition` + `Focus`；`FilePanelHost.NavigateToAsync` 供宿主调用；agent 经 `open_file` 的 `line`/`column` 参数驱动 |
+| 8 | 面板关闭 | 面板头 `×` 按钮；无打开文件且目录树收起时自动关闭 |
+
+**`open_file` 语义（分派）**：面板关闭→自动打开；新文件→新标签（不展开树）；已是其他标签→切换；就是当前文件→从磁盘刷新（`ApplyDiskUpdate`）。带 `line`/`column` 时在打开/切换后定位（1-based）。
+
+**权限**：`open_file` 视作只读工具（`tool.execute` 非资源类），在 `plan`/`explore` 白名单加 `Allow(Tool,"open_file")` 即放行，无需特殊分支。
+
+**UI 贡献**：`session_file_panel` 槽（`SessionFilePanel`）保留；`session_toolbar_actions` 的 `FilePanelToggle` 贡献移除。
+
+## 8. 已知边界 / 后续
 
 | 项 | 状态 |
 |----|------|
@@ -72,12 +93,15 @@
 | `ProcessPathWriteLock` 的 GetOrAdd/TryRemove 极窄竞态 | best-effort（契约明示） |
 | 工具与 facade 读写逻辑并存 | 后续可选项（P4 未收敛） |
 
-## 8. 测试
+> 已修复：watcher 事件与磁盘状态竞态（文件在事件到达前被删除）曾导致 `ReadAsync` 抛 `FileNotFoundException` 冒泡到渲染器；现 `FileViewerCoordinator.ApplyAsync` 将 `FileNotFoundException`/`DirectoryNotFoundException` 视为已删除、`IOException` 跳过本次刷新。
+
+## 9. 测试
 
 | 套件 | 覆盖 |
 |------|------|
-| `Seeing.Agent.Files.Tests`（29） | 工厂缓存/引用计数/回落、RootId 稳定性、截断/编码/revision、乐观并发、共享写锁序列化、watcher 稳定性、`LineDiff`、门闸 |
-| `Seeing.Agent.WebUI.Files.Tests`（16） | `FileTabsState` 开/关/脏/磁盘更新/重命名/删除、冲突裁决、`FileViewerCoordinator` 刷新与冲突跳过、`DiskVersion` 回归 |
-| `Seeing.Agent.Tools.FileSystem.Tests`（48） | 既有工具行为不回归（写锁注入后） |
+| `Seeing.Agent.Files.Tests`（30） | 工厂缓存/引用计数/回落、RootId 稳定性、截断/编码/revision、乐观并发、共享写锁序列化、watcher 稳定性、`LineDiff`、门闸、列举跳过不可读条目 |
+| `Seeing.Agent.WebUI.Files.Tests`（22） | `FileTabsState` 开/关/脏/磁盘更新/重命名/删除、冲突裁决、`FileViewerCoordinator` 刷新与冲突跳过、`DiskVersion` 回归、`FilePanelState` 开合/树可见/待处理打开 |
+| `Seeing.Agent.WebUI.Tests`（+3） | `AgentFileChangeBridge` 的 `open_file` → `OpenRequested` 与 `write` → `AgentChanged` 分流 |
+| `Seeing.Agent.Tools.FileSystem.Tests`（52） | 既有工具行为不回归（写锁注入后）、`OpenFileTool` 门闸/元数据/无副作用、`FileSystemModule` 含 `open_file` |
 | `Seeing.Agent.Tools.Support.Tests`（8） | `LineDiff` + `FileContentSupport` |
 | `Seeing.Agent.Tests` 守门 | `files.workspace` 登记进 `BuiltInCapabilitySets.Full` |

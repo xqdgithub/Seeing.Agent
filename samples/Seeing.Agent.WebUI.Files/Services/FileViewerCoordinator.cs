@@ -54,7 +54,30 @@ public sealed class FileViewerCoordinator : IDisposable
             _tabs.MarkDeleted(evt.Id);
             return ApplyOutcome.Deleted;
         }
-        var file = await _workspace.ReadAsync(_workspace.GetAbsolutePath(evt.Id), FileReadMode.Display).ConfigureAwait(false);
+
+        // watcher 事件与实际磁盘状态存在竞态（文件在事件到达前被删除/重命名）；
+        // 读取失败视为已删除，避免异常冒泡到渲染器。
+        FileReadResult file;
+        try
+        {
+            file = await _workspace.ReadAsync(_workspace.GetAbsolutePath(evt.Id), FileReadMode.Display).ConfigureAwait(false);
+        }
+        catch (FileNotFoundException)
+        {
+            _tabs.MarkDeleted(evt.Id);
+            return ApplyOutcome.Deleted;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            _tabs.MarkDeleted(evt.Id);
+            return ApplyOutcome.Deleted;
+        }
+        catch (IOException)
+        {
+            // 半写/占用等瞬时错误：跳过本次刷新，保留现有标签内容
+            return ApplyOutcome.ConflictSkipped;
+        }
+
         var binary = await ReadBinaryIfNeededAsync(file).ConfigureAwait(false);
         var applied = _tabs.ApplyDiskUpdate(file, binary);
         if (!applied)

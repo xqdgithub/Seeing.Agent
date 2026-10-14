@@ -1,0 +1,43 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+@* 分隔线：拖动改变目标 CSS 变量（--target），松手持久化到 localStorage。 *@
+<div class="resize-handle @(Vertical ? "resize-handle--vertical" : "resize-handle--horizontal")"
+     data-var="@CssVariable"
+     data-min="@Min"
+     data-max="@Max"
+     data-default="@Default"
+     data-key="@StorageKey"
+     data-invert="@(Invert.ToString().ToLowerInvariant())"
+     @ref="_el"></div>
+
+@code {
+    /// <summary>要修改的 CSS 变量名（如 --file-tree-width）。</summary>
+    [Parameter, EditorRequired] public string CssVariable { get; set; } = default!;
+
+    /// <summary>true = 纵向分隔线（水平拖动调宽）。</summary>
+    [Parameter] public bool Vertical { get; set; } = true;
+
+    /// <summary>最小像素。</summary>
+    [Parameter] public int Min { get; set; } = 120;
+
+    /// <summary>最大像素。</summary>
+    [Parameter] public int Max { get; set; } = 1200;
+
+    /// <summary>缺省像素（无持久化值时的初值）。</summary>
+    [Parameter] public int Default { get; set; } = 220;
+
+    /// <summary>localStorage 键（为空则不持久化）。</summary>
+    [Parameter] public string? StorageKey { get; set; }
+
+    /// <summary>true = 拖动方向反向（用于右侧面板：向左拖动增大）。</summary>
+    [Parameter] public bool Invert { get; set; }
+
+    private ElementReference _el;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await JS.InvokeVoidAsync("seeingFilesPanel.initResize", _el);
+    }
+}

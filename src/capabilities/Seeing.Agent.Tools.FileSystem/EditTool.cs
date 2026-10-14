@@ -174,11 +174,7 @@ namespace Seeing.Agent.Tools.FileSystem
             return Success(
                 Path.GetFileName(filePath) ?? filePath,
                 "编辑应用成功。",
-                new Dictionary<string, object>
-                {
-                    ["path"] = filePath,
-                    ["diff"] = diff
-                }
+                FileDiffMetadata.Build(filePath, oldContent, newContent, diff)
             );
         }
 

@@ -14,9 +14,22 @@
     }
     else
     {
-        @if (!string.IsNullOrEmpty(f.PendingDiff))
+        @if (f.PendingDiff is { } diff)
         {
-            <pre class="file-diff">@f.PendingDiff</pre>
+            if (diff.HasFullContent)
+            {
+                <FileDiffEditor Diff="diff" OnCloseRequested="() => Tabs.ClearPendingDiff(f.Id)" />
+            }
+            else if (!string.IsNullOrEmpty(diff.Unified))
+            {
+                <div class="file-diff-fallback">
+                    <div class="file-diff-editor-toolbar">
+                        <span class="file-diff-editor-label">变更预览</span>
+                        <button type="button" class="file-diff-editor-close" title="关闭预览" @onclick="() => Tabs.ClearPendingDiff(f.Id)">×</button>
+                    </div>
+                    <pre class="file-diff">@diff.Unified</pre>
+                </div>
+            }
         }
         @switch (f.Kind)
         {

@@ -66,8 +66,20 @@ public class FileTabsStateTests
     {
         var s = new FileTabsState();
         s.Open(File("a.txt", "A"));
-        s.SetPendingDiff(new FileResourceId("root", "a.txt"), "@@ -1 +1 @@");
-        s.OpenFiles[0].PendingDiff.Should().Be("@@ -1 +1 @@");
+        s.SetPendingDiff(new FileResourceId("root", "a.txt"), new FileDiffData("old", "new"));
+        s.OpenFiles[0].PendingDiff.Should().Be(new FileDiffData("old", "new"));
+    }
+
+    [Fact]
+    public void ClearPendingDiff_ShouldReset()
+    {
+        var s = new FileTabsState();
+        s.Open(File("a.txt", "A"));
+        s.SetPendingDiff(new FileResourceId("root", "a.txt"), new FileDiffData("old", "new"));
+
+        s.ClearPendingDiff(new FileResourceId("root", "a.txt"));
+
+        s.OpenFiles[0].PendingDiff.Should().BeNull();
     }
 
     [Fact]

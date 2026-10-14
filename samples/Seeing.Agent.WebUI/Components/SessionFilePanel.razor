@@ -12,6 +12,8 @@
      && PanelState.IsOpen
      && string.Equals(PanelState.SessionId, SessionId, StringComparison.Ordinal))
 {
+    <ResizeHandle CssVariable="--file-panel-width" Vertical="true" Min="320" Max="1200"
+                  Default="480" StorageKey="seeing-files-panel-width" Invert="true" />
     <div class="session-file-panel">
         <FilePanelHost @ref="_host" />
     </div>
@@ -31,13 +33,21 @@
         _bridge = Router.GetOrCreateCircuitConsumer<AgentFileChangeBridge>(CircuitContext.Id ?? "");
         _bridge.Rebind(SessionId);
         _bridge.AgentChanged += OnAgentChanged;
+        _bridge.OpenRequested += OnAgentOpen;
         Router.AttachConsumer(SessionId, _bridge);
     }
 
     private void OnPanelChanged() => _ = InvokeAsync(StateHasChanged);
 
-    private Task OnAgentChanged(FileResourceId id, string? diff) => InvokeAsync(() =>
+    private Task OnAgentChanged(FileResourceId id, FileDiffData? diff) => InvokeAsync(() =>
         _host is null ? Task.CompletedTask : _host.NotifyAgentChangeAsync(id, diff));
+
+    private Task OnAgentOpen(FileResourceId id, int? line, int? column) => InvokeAsync(() =>
+    {
+        // agent 请求打开：面板未开时自动打开（默认隐藏目录树），宿主经 PendingOpen 消费
+        PanelState.RequestOpen(SessionId ?? "", new FileOpenRequest(id, line, column));
+        return Task.CompletedTask;
+    });
 
     public void Dispose()
     {
@@ -45,6 +55,7 @@
         if (_bridge is not null)
         {
             _bridge.AgentChanged -= OnAgentChanged;
+            _bridge.OpenRequested -= OnAgentOpen;
             if (!string.IsNullOrEmpty(SessionId))
                 Router.DetachConsumer(SessionId, _bridge);
         }

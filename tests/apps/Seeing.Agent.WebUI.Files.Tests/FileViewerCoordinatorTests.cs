@@ -84,6 +84,27 @@ public class FileViewerCoordinatorTests
     }
 
     [Fact]
+    public async Task ApplyAsync_FileVanishedBeforeRead_ShouldMarkDeletedNotThrow()
+    {
+        // watcher 事件与磁盘状态竞态：文件在事件到达前已被删除
+        var id = new FileResourceId("root", "a.txt");
+        var tabs = new FileTabsState();
+        tabs.Open(File(id, "A", FileReadMode.Full));
+
+        var ws = new Mock<IFileWorkspace>();
+        ws.Setup(w => w.GetAbsolutePath(It.IsAny<FileResourceId>())).Returns("x");
+        ws.Setup(w => w.ReadAsync(It.IsAny<string>(), It.IsAny<FileReadMode>(), It.IsAny<CancellationToken>()))
+          .ThrowsAsync(new FileNotFoundException("文件不存在"));
+
+        var coord = new FileViewerCoordinator(ws.Object, tabs);
+        var act = async () => await coord.ApplyAsync(
+            new FileChangeEvent(id, FileChangeKind.Modified, null, null, DateTime.UtcNow));
+
+        await act.Should().NotThrowAsync();
+        tabs.OpenFiles[0].IsDeleted.Should().BeTrue();
+    }
+
+    [Fact]
     public void Dispose_ShouldBeIdempotentSafe()
     {
         var tabs = new FileTabsState();

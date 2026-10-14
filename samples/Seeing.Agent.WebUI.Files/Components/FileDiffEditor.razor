@@ -1,0 +1,59 @@
+@using Seeing.Agent.WebUI.Files.Services
+@using BlazorMonaco
+@using BlazorMonaco.Editor
+@inject IJSRuntime JS
+@implements IDisposable
+
+@* agent 改动文件的 diff 预览：单栏内联（RenderSideBySide=false），只读，可关闭。 *@
+<div class="file-diff-editor">
+    <div class="file-diff-editor-toolbar">
+        <span class="file-diff-editor-label">变更预览</span>
+        <button type="button" class="file-diff-editor-close" title="关闭预览" @onclick="() => OnCloseRequested.InvokeAsync()">×</button>
+    </div>
+    <div class="file-diff-editor-monaco">
+        <StandaloneDiffEditor @key="_key"
+                              @ref="_editor"
+                              Id="@($"file-diff-{_key}")"
+                              ConstructionOptions="(editor => EditorOptions())" />
+    </div>
+</div>
+
+@code {
+    /// <summary>diff 数据（原/新全文 + 语言）。</summary>
+    [Parameter, EditorRequired] public FileDiffData Diff { get; set; } = default!;
+
+    /// <summary>关闭回调（宿主清除 PendingDiff）。</summary>
+    [Parameter] public EventCallback OnCloseRequested { get; set; }
+
+    private StandaloneDiffEditor? _editor;
+    private string _key = Guid.NewGuid().ToString("N");
+
+    private StandaloneDiffEditorConstructionOptions EditorOptions() => new()
+    {
+        ReadOnly = true,
+        OriginalEditable = false,
+        RenderSideBySide = false,
+        AutomaticLayout = true,
+        Minimap = new EditorMinimapOptions { Enabled = false },
+        ScrollBeyondLastLine = false,
+        FontSize = 12,
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _editor is null) return;
+
+        var language = Diff.Language ?? "plaintext";
+        var uriBase = $"seeing-diff-{_key}";
+        var original = await Global.CreateModel(JS, Diff.Old ?? "", language, uriBase + "-original");
+        var modified = await Global.CreateModel(JS, Diff.New ?? "", language, uriBase + "-modified");
+        await _editor.SetModel(new DiffEditorModel { Original = original, Modified = modified });
+    }
+
+    private Task OnClose() => OnCloseRequested.InvokeAsync();
+
+    public void Dispose()
+    {
+        // 编辑器/模型随组件销毁由 JS 侧释放（Monaco 内建模型需显式 dispose 的场景本组件不涉及）
+    }
+}

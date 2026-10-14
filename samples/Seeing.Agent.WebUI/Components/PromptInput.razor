@@ -113,6 +113,23 @@
                                 Disabled="@IsProcessing" />
                     </Tooltip>
                 </SpaceItem>
+                @if (IsProcessing)
+                {
+                    <SpaceItem>
+                        <Tooltip Title="停止执行">
+                            <Button Type="@ButtonType.Text"
+                                    Size="@ButtonSize.Small"
+                                    Danger
+                                    Class="prompt-stop-btn"
+                                    OnClick="@OnCancelClick">
+                                <svg viewBox="0 0 1024 1024" width="14" height="14" aria-hidden="true">
+                                    <circle cx="512" cy="512" r="400" fill="none" stroke="currentColor" stroke-width="80" />
+                                    <rect x="352" y="352" width="320" height="320" rx="24" fill="currentColor" />
+                                </svg>
+                            </Button>
+                        </Tooltip>
+                    </SpaceItem>
+                }
                 <SpaceItem>
                     <Tooltip Title="@(IsProcessing ? "发送消息（当前轮结束后处理）" : "发送消息 (Enter)")">
                         <Button Type="@ButtonType.Primary"
@@ -123,20 +140,6 @@
                         </Button>
                     </Tooltip>
                 </SpaceItem>
-                @if (IsProcessing)
-                {
-                    <SpaceItem>
-                        <Tooltip Title="停止执行">
-                            <Button Type="@ButtonType.Default"
-                                    Size="@ButtonSize.Default"
-                                    Icon="@IconType.Outline.CloseCircle"
-                                    Danger
-                                    OnClick="@OnCancelClick">
-                                停止
-                            </Button>
-                        </Tooltip>
-                    </SpaceItem>
-                }
             </Space>
         </div>
     </div>

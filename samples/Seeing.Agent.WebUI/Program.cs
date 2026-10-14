@@ -129,6 +129,7 @@ builder.Services.AddScoped<SessionWindowRegistry>();
 // 文件面板：桥接（Scoped，circuit 维度 IStreamConsumer）+ 开合状态（Scoped，circuit 维度）
 builder.Services.AddScoped<Seeing.Agent.WebUI.Services.AgentFileChangeBridge>();
 builder.Services.AddScoped<Seeing.Agent.WebUI.Files.Services.FilePanelState>();
+builder.Services.AddScoped<Seeing.Agent.WebUI.Files.Services.FileTreeState>();
 
 // EventStreamHandler：页面渲染实例经 SessionEventStreamRouter.GetOrCreateConsumer 按会话创建（Session.razor）。
 // 此处保留的 Scoped 注册作为全局事件处理占位实例（sessionId 为空串）。

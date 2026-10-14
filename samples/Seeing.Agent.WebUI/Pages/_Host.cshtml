@@ -39,6 +39,9 @@
     <link href="css/mcp-page.css" rel="stylesheet" />
     <link href="css/todo.css" rel="stylesheet" />
     <link href="css/token-budget.css" rel="stylesheet" />
+
+    <!-- 文件浏览器组件库样式（Seeing.Agent.WebUI.Files 的 wwwroot 静态资源） -->
+    <link href="_content/Seeing.Agent.WebUI.Files/files-panel.css" rel="stylesheet" />
 </head>
 <body>
     <app>
@@ -48,17 +51,22 @@
     <!-- AntDesign 弹窗容器 -->
     <component type="typeof(AntDesign.AntContainer)" render-mode="Server" />
     
+    <!-- BlazorMonaco (Monaco Editor)：须在 blazor.server.js 之前加载；
+         editor.main.js 定义全局 monaco，缺失会导致 create 静默失败 → setEventListener 报 editors.length: 0 -->
+    <script src="_content/BlazorMonaco/jsInterop.js"></script>
+    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js"></script>
+    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js"></script>
+
     <!-- Blazor Server JS -->
     <script src="_framework/blazor.server.js"></script>
     
     <!-- AntDesign JS -->
     <script src="_content/AntDesign/js/ant-design-blazor.js"></script>
     
-    <!-- BlazorMonaco JS (Monaco Editor) -->
-    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js"></script>
-    <script src="_content/BlazorMonaco/jsInterop.js"></script>
-    
     <!-- App utilities JS -->
     <script src="js/app.js" asp-append-version="true"></script>
+
+    <!-- 文件面板交互 JS（分隔线拖拽 + Ctrl+S） -->
+    <script src="_content/Seeing.Agent.WebUI.Files/files-panel.js" asp-append-version="true"></script>
 </body>
 </html>

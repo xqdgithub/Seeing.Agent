@@ -1,6 +1,8 @@
 @using Seeing.Agent.Abstractions.Files
 @using Seeing.Agent.WebUI.Files.Services
 @inject IFileWorkspaceFactory WorkspaceFactory
+@inject FilePanelState PanelState
+@inject FileTreeState TreeState
 @implements IDisposable
 
 <div class="file-panel-host">
@@ -14,11 +16,31 @@
     }
     else
     {
-        <div class="file-panel-body">
-            <FileTree Workspace="_workspace" OnOpen="OnOpenFileAsync" />
+        <div class="file-panel-header">
+            <span class="file-panel-title">文件</span>
+            <button type="button" class="file-panel-close" title="关闭文件面板" @onclick="ClosePanel">×</button>
+        </div>
+        <div class="file-panel-body @(PanelState.TreeVisible ? "" : "file-panel-body--no-tree")">
+            @if (PanelState.TreeVisible)
+            {
+                <div class="file-tree-wrap">
+                    <button type="button" class="file-tree-collapse" title="隐藏目录树" @onclick="HideTree">
+                        <span>◀</span>
+                    </button>
+                    <FileTree Workspace="_workspace" OnOpen="OnOpenFileAsync" />
+                </div>
+                <ResizeHandle CssVariable="--file-tree-width" Vertical="true" Min="140" Max="600"
+                              Default="220" StorageKey="seeing-files-tree-width" />
+            }
+            else
+            {
+                <button type="button" class="file-tree-expand" title="显示目录树" @onclick="ShowTree">
+                    <span>▶</span>
+                </button>
+            }
             <div class="file-panel-main">
-                <FileTabs Tabs="_tabs" />
-                <FileEditor Tabs="_tabs" Workspace="_workspace" />
+                <FileTabs Tabs="_tabs" OnSave="SaveActiveAsync" />
+                <FileEditor Tabs="_tabs" Workspace="_workspace" @ref="_editor" />
             </div>
         </div>
     }
@@ -28,37 +50,83 @@
     [CascadingParameter(Name = "SessionId")] private string? SessionId { get; set; }
 
     private IFileWorkspace? _workspace;
-    private readonly FileTabsState _tabs = new();
+    private FileTabsState _tabs = null!;
     private FileViewerCoordinator? _coordinator;
-
-    /// <summary>标签状态（供宿主只读访问）。</summary>
-    public FileTabsState Tabs => _tabs;
+    private FileEditor? _editor;
 
     protected override async Task OnInitializedAsync()
     {
         if (string.IsNullOrEmpty(SessionId)) return;
+        // 标签状态按会话缓存在 Scoped 的 PanelState 上，页面导航往返不丢失
+        _tabs = PanelState.GetTabs(SessionId);
         _workspace = await WorkspaceFactory.ResolveAsync(SessionId);
         _coordinator = new FileViewerCoordinator(_workspace, _tabs);
         _coordinator.Start(async evt => await InvokeAsync(async () =>
         {
             await _coordinator!.ApplyAsync(evt);
+            // 通知文件树刷新受影响的目录
+            TreeState.Notify(evt);
             StateHasChanged();
         }));
         _tabs.Changed += OnTabsChanged;
+        PanelState.Changed += OnPanelChanged;
     }
 
-    private void OnTabsChanged() => _ = InvokeAsync(StateHasChanged);
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // 消费 agent 待处理打开请求（面板刚打开时宿主尚未就绪，故在渲染后处理）
+        await ConsumePendingOpenAsync();
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    private void OnPanelChanged() => _ = InvokeAsync(async () =>
+    {
+        await ConsumePendingOpenAsync();
+        StateHasChanged();
+    });
+
+    private async Task ConsumePendingOpenAsync()
+    {
+        if (_workspace is null || PanelState.PendingOpen is not { } pending) return;
+        PanelState.ConsumePendingOpen();
+        await OpenOrActivateAsync(pending.Id, refreshIfActive: true, pending.Line, pending.Column);
+    }
+
+    private void OnTabsChanged() => _ = InvokeAsync(() =>
+    {
+        // 无打开文件且目录树收起时，连同文件面板一起关闭；否则保持「无打开文件」状态
+        ClosePanelIfEmpty();
+        StateHasChanged();
+    });
+
+    private void HideTree()
+    {
+        PanelState.SetTreeVisible(false);
+        ClosePanelIfEmpty();
+    }
+
+    private void ShowTree() => PanelState.SetTreeVisible(true);
+
+    private void ClosePanel() => PanelState.Close();
+
+    /// <summary>无打开文件且目录树不可见时关闭面板。</summary>
+    private void ClosePanelIfEmpty()
+    {
+        if (_tabs.OpenFiles.Count == 0 && !PanelState.TreeVisible)
+            PanelState.Close();
+    }
+
+    private Task SaveActiveAsync() =>
+        _editor is null ? Task.CompletedTask : _editor.SaveActiveAsync();
 
     private async Task OnOpenFileAsync(FileResourceId id)
     {
         if (_workspace is null) return;
-        var file = await _workspace.ReadAsync(_workspace.GetAbsolutePath(id), FileReadMode.Display);
-        var binary = await ReadBinaryIfNeededAsync(file);
-        _tabs.Open(file, binary);
+        await OpenOrActivateAsync(id, refreshIfActive: false);
     }
 
     /// <summary>宿主桥接入口：agent 改动某文件。</summary>
-    public async Task NotifyAgentChangeAsync(FileResourceId id, string? diff)
+    public async Task NotifyAgentChangeAsync(FileResourceId id, FileDiffData? diff)
     {
         if (_workspace is null) return;
         var file = await _workspace.ReadAsync(_workspace.GetAbsolutePath(id), FileReadMode.Display);
@@ -66,6 +134,56 @@
         _tabs.Open(file, binary);
         _tabs.SetPendingDiff(id, diff);
         await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 打开/切换/刷新：已是当前标签则按需从磁盘刷新；已在其他标签则切换；否则新开标签。
+    /// 若指定 line/column，则定位到该位置（1-based）。
+    /// </summary>
+    private async Task OpenOrActivateAsync(FileResourceId id, bool refreshIfActive, int? line = null, int? column = null)
+    {
+        if (_workspace is null) return;
+
+        var key = id.ToString();
+        var existing = _tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == key);
+        if (existing is not null)
+        {
+            if (string.Equals(_tabs.ActiveKey, key, StringComparison.Ordinal))
+            {
+                if (refreshIfActive)
+                    await RefreshAsync(id);
+            }
+            else
+            {
+                _tabs.Activate(id);
+            }
+        }
+        else
+        {
+            var file = await _workspace.ReadAsync(_workspace.GetAbsolutePath(id), FileReadMode.Display);
+            var binary = await ReadBinaryIfNeededAsync(file);
+            _tabs.Open(file, binary);
+        }
+
+        if (line is not null)
+            await NavigateToAsync(line.Value, column);
+    }
+
+    /// <summary>导航到当前激活文件的行/列（1-based）；委托给已渲染的编辑器。</summary>
+    public async Task NavigateToAsync(int line, int? column = null)
+    {
+        // 编辑器随标签激活重建，需在渲染完成后调用
+        await InvokeAsync(StateHasChanged);
+        if (_editor is not null)
+            await _editor.NavigateToAsync(line, column);
+    }
+
+    private async Task RefreshAsync(FileResourceId id)
+    {
+        if (_workspace is null) return;
+        var file = await _workspace.ReadAsync(_workspace.GetAbsolutePath(id), FileReadMode.Display);
+        var binary = await ReadBinaryIfNeededAsync(file);
+        _tabs.ApplyDiskUpdate(file, binary);
     }
 
     private async Task<byte[]?> ReadBinaryIfNeededAsync(FileReadResult file)
@@ -79,6 +197,7 @@
     public void Dispose()
     {
         _tabs.Changed -= OnTabsChanged;
+        PanelState.Changed -= OnPanelChanged;
         _coordinator?.Dispose();
         if (!string.IsNullOrEmpty(SessionId)) WorkspaceFactory.Release(SessionId);
     }

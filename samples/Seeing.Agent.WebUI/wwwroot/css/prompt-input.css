@@ -49,6 +49,14 @@
     gap: var(--space-2);
 }
 
+/* 停止按钮：圆+实心方块图标，与左侧其它小图标对齐 */
+.prompt-stop-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-error, #ff4d4f);
+}
+
 /* ========== 底部提示栏 ========== */
 .prompt-footer {
     display: flex;

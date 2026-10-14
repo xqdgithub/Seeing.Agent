@@ -14,6 +14,7 @@
 @inject IMessageService MessageService
 @inject IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
 @inject IScenarioCatalog ScenarioCatalog
+@inject Seeing.Agent.WebUI.Files.Services.FilePanelState FilePanelState
 @implements IDisposable
 
 @if (Mode == Services.SessionWindowMode.Full)
@@ -34,11 +35,13 @@
             }
             @if (Context.GetWorkspace != null)
             {
-                <Tooltip Title="@Context.GetWorkspace()">
-                    <span Class="session-workspace-badge">
+                <Tooltip Title="@($"工作目录：{Context.GetWorkspace()}（点击打开/关闭文件面板）")">
+                    <button type="button"
+                            class="session-workspace-badge @(PanelActive ? "active" : "")"
+                            @onclick="ToggleFilePanel">
                         <Icon Type="@IconType.Outline.Folder" />
                         @TruncateWorkspacePath(Context.GetWorkspace())
-                    </span>
+                    </button>
                 </Tooltip>
             }
             @if (Context.ShowScenarioBadge && Context.CurrentSession != null)
@@ -275,6 +278,13 @@
 
     private string? ProcessScenario => SeeingAgentOptions.CurrentValue.Scenario;
 
+    /// <summary>文件面板是否对当前会话激活（用于徽标高亮）。</summary>
+    private bool PanelActive =>
+        FilePanelState.IsOpen
+        && string.Equals(FilePanelState.SessionId, Context.SessionId, StringComparison.Ordinal);
+
+    private void ToggleFilePanel() => FilePanelState.Toggle(Context.SessionId ?? "");
+
     private string? EffectiveScenario =>
         Services.SessionShellVisibility.ResolveEffectiveScenario(Context.SessionScenario, ProcessScenario);
 
@@ -289,8 +299,11 @@
     protected override async Task OnInitializedAsync()
     {
         Context.StateChanged += OnContextStateChanged;
+        FilePanelState.Changed += OnPanelStateChanged;
         await LoadOptionsAsync();
     }
+
+    private void OnPanelStateChanged() => _ = InvokeAsync(StateHasChanged);
 
     /// <summary>
     /// 订阅窗口状态变更：Context 的只读状态（SelectedAgent/SelectedModel/能力标记等）
@@ -521,6 +534,7 @@
     public void Dispose()
     {
         Context.StateChanged -= OnContextStateChanged;
+        FilePanelState.Changed -= OnPanelStateChanged;
     }
 
     /// <summary>重命名表单模型</summary>

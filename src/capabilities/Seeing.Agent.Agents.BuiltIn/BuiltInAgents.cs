@@ -181,6 +181,7 @@ public static class BuiltInAgents
                 "skill",
                 "todowrite",
                 "task",
+                "open_file",
             ],
             PermissionRules =
             [
@@ -192,6 +193,8 @@ public static class BuiltInAgents
                 PermissionRuleEntry.Allow(PermissionKind.Tool, "websearch", 0),
                 PermissionRuleEntry.Allow(PermissionKind.Tool, "codesearch", 0),
                 PermissionRuleEntry.Allow(PermissionKind.Tool, "question", 0),
+                // 打开文件编辑器（只读、无磁盘副作用）
+                PermissionRuleEntry.Allow(PermissionKind.Tool, "open_file", 0),
 
                 // ===== 允许规划相关工具 =====
                 PermissionRuleEntry.Allow(PermissionKind.Tool, "skill", 0),
@@ -256,6 +259,8 @@ public static class BuiltInAgents
                 PermissionRuleEntry.Allow(PermissionKind.Tool, "read", 0),
                 PermissionRuleEntry.Allow(PermissionKind.Tool, "grep", 0),
                 PermissionRuleEntry.Allow(PermissionKind.Tool, "glob", 0),
+                // 允许打开文件编辑器（只读、无磁盘副作用）
+                PermissionRuleEntry.Allow(PermissionKind.Tool, "open_file", 0),
                 // 允许网络搜索
                 PermissionRuleEntry.Allow(PermissionKind.Tool, "webfetch", 0),
                 PermissionRuleEntry.Allow(PermissionKind.Tool, "websearch", 0),

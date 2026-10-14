@@ -122,16 +122,14 @@ namespace Seeing.Agent.Tools.FileSystem
 
             var output = exists ? "文件写入成功。" : "新文件已创建。";
 
+            var metadata = FileDiffMetadata.Build(filePath, oldContent, content, diff);
+            metadata["exists"] = exists;
+            metadata["size"] = content.Length;
+
             return Success(
                 Path.GetFileName(filePath) ?? filePath,
                 output,
-                new Dictionary<string, object>
-                {
-                    ["path"] = filePath,
-                    ["exists"] = exists,
-                    ["size"] = content.Length,
-                    ["diff"] = diff
-                }
+                metadata
             );
         }
 

@@ -20,6 +20,13 @@ public class FileSystemModuleTests
     }
 
     [Fact]
+    public void ProvidedTools_ContainsOpenFile()
+    {
+        var module = new FileSystemModule();
+        module.ProvidedTools.Should().Contain("open_file");
+    }
+
+    [Fact]
     public void DependsOn_IncludesIoLocal()
     {
         var module = new FileSystemModule();

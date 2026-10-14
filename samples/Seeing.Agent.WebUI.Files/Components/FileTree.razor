@@ -1,4 +1,7 @@
 @using Seeing.Agent.Abstractions.Files
+@using Seeing.Agent.WebUI.Files.Services
+@inject FileTreeState TreeState
+@implements IDisposable
 
 <div class="file-tree">
     @if (_loading)
@@ -32,6 +35,32 @@
 
     protected override async Task OnInitializedAsync()
     {
+        TreeState.Changed += OnTreeChanged;
+        await ReloadAsync();
+    }
+
+    private void OnTreeChanged(FileChangeEvent evt)
+    {
+        // 仅根目录直接子级的增删/改名需要重列
+        if (evt.Kind is FileChangeKind.Renamed && evt.OldPath is { } old)
+        {
+            var oldId = Workspace.GetResourceId(old);
+            if (FileTreeState.IsDirectChildOf(oldId, "") || FileTreeState.IsDirectChildOf(evt.Id, ""))
+                _ = InvokeAsync(ReloadAndRenderAsync);
+            return;
+        }
+        if (FileTreeState.IsDirectChildOf(evt.Id, ""))
+            _ = InvokeAsync(ReloadAndRenderAsync);
+    }
+
+    private async Task ReloadAndRenderAsync()
+    {
+        await ReloadAsync();
+        StateHasChanged();
+    }
+
+    private async Task ReloadAsync()
+    {
         try
         {
             var entries = await Workspace.ListAsync(Workspace.RootPath);
@@ -45,4 +74,6 @@
             _loading = false;
         }
     }
+
+    public void Dispose() => TreeState.Changed -= OnTreeChanged;
 }

@@ -1,7 +1,9 @@
 @using Seeing.Agent.Abstractions.Files
 @using Seeing.Agent.WebUI.Files.Services
+@using BlazorMonaco
 @using BlazorMonaco.Editor
 @inject IJSRuntime JS
+@implements IDisposable
 
 <div class="file-editor">
     @{ var f = Tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == Tabs.ActiveKey); }
@@ -26,17 +28,23 @@
     }
     else
     {
-        @if (!string.IsNullOrEmpty(f.PendingDiff))
+        @if (f.PendingDiff is { } diff)
         {
-            <pre class="file-diff">@f.PendingDiff</pre>
-        }
-        <div class="file-editor-toolbar">
-            <button type="button" class="file-editor-save" disabled="@(!f.HasUnsavedChanges)" @onclick="SaveAsync">保存</button>
-            @if (f.HasUnsavedChanges)
+            if (diff.HasFullContent)
             {
-                <span class="file-editor-dirty">未保存</span>
+                <FileDiffEditor Diff="diff" OnCloseRequested="() => CloseDiff(f.Id)" />
             }
-        </div>
+            else if (!string.IsNullOrEmpty(diff.Unified))
+            {
+                <div class="file-diff-fallback">
+                    <div class="file-diff-editor-toolbar">
+                        <span class="file-diff-editor-label">变更预览</span>
+                        <button type="button" class="file-diff-editor-close" title="关闭预览" @onclick="() => CloseDiff(f.Id)">×</button>
+                    </div>
+                    <pre class="file-diff">@diff.Unified</pre>
+                </div>
+            }
+        }
         <div class="file-editor-monaco">
             @* @key 含 DiskVersion：磁盘/agent 更新（ApplyDiskUpdate/Reload 使 DiskVersion 前进）时重建编辑器
                以刷新内容，避免 JS 编辑器残留旧文本导致保存覆盖外部改动；用户本地编辑不改 DiskVersion，不会重建 *@
@@ -80,6 +88,8 @@
     private OpenFile? _active;
     private bool _conflictOpen;
     private string? _conflictDiff;
+    private long _saveToken;
+    private DotNetObjectReference<FileEditor>? _selfRef;
 
     private OpenFile? ActiveFile => Tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == Tabs.ActiveKey);
 
@@ -138,35 +148,42 @@
             Tabs.MarkDirty(f.Id, value);
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        // 外部（agent/磁盘）冲突标记出现时弹出对话框
-        var f = ActiveFile;
-        if (f is not null && f.HasExternalConflict && !_conflictOpen)
-        {
-            _active = f;
-            _conflictOpen = true;
-            _conflictDiff = await TryGetConflictDiffAsync(f);
-            StateHasChanged();
-        }
-        await base.OnAfterRenderAsync(firstRender);
-    }
+    /// <summary>Ctrl+S 保存（宿主标签栏保存按钮亦调用此入口）。</summary>
+    [JSInvokable]
+    public Task OnSaveShortcut() => SaveActiveAsync();
 
-    private async Task<string?> TryGetConflictDiffAsync(OpenFile f)
+    /// <summary>关闭当前文件的 diff 预览。</summary>
+    private void CloseDiff(FileResourceId id) => Tabs.ClearPendingDiff(id);
+
+    /// <summary>
+    /// 导航到指定行/列（1-based）。仅对当前激活的文本编辑器生效；非文本/只读/未打开时静默忽略。
+    /// 需在目标文件已激活并完成渲染后调用。
+    /// </summary>
+    public async Task NavigateToAsync(int line, int? column = null)
     {
+        var f = ActiveFile;
+        if (f is null || _editor is null) return;
+        if (f.Kind is FileContentKind.Image or FileContentKind.Binary) return;
+
+        var ln = Math.Max(1, line);
+        var col = Math.Max(1, column ?? 1);
         try
         {
-            var disk = await Workspace.ReadAsync(Workspace.GetAbsolutePath(f.Id), FileReadMode.Display);
-            if (disk.Content is null) return null;
-            return await Workspace.GetDiffAsync(Workspace.GetAbsolutePath(f.Id), f.Content);
+            await _editor.RevealLineInCenter(ln);
+            await _editor.SetPosition(new Position { LineNumber = ln, Column = col }, "seeing-navigate");
+            await _editor.Focus();
         }
-        catch { return null; }
+        catch
+        {
+            // 编辑器尚未就绪（JS 未挂载）时忽略
+        }
     }
 
-    private async Task SaveAsync()
+    /// <summary>保存当前标签（供宿主标签栏按钮调用）。</summary>
+    public async Task SaveActiveAsync()
     {
         var f = ActiveFile;
-        if (f is null || f.IsReadOnly) return;
+        if (f is null || f.IsReadOnly || f.IsDeleted) return;
         if (_editor is not null)
             f.Content = await _editor.GetValue();
 
@@ -186,6 +203,47 @@
         f.PendingDiff = null;
         Tabs.Open(await Workspace.ReadAsync(Workspace.GetAbsolutePath(f.Id), FileReadMode.Display));
         StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            _saveToken = await JS.InvokeAsync<long>("seeingFilesPanel.attachSaveShortcut", _selfRef);
+        }
+
+        // 外部（agent/磁盘）冲突标记出现时弹出对话框
+        var f = ActiveFile;
+        if (f is not null && f.HasExternalConflict && !_conflictOpen)
+        {
+            _active = f;
+            _conflictOpen = true;
+            _conflictDiff = await TryGetConflictDiffAsync(f);
+            StateHasChanged();
+        }
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    public void Dispose()
+    {
+        if (_saveToken != 0)
+        {
+            try { _ = JS.InvokeVoidAsync("seeingFilesPanel.detachSaveShortcut", _saveToken); }
+            catch { /* circuit 已断开 */ }
+        }
+        _selfRef?.Dispose();
+    }
+
+    private async Task<string?> TryGetConflictDiffAsync(OpenFile f)
+    {
+        try
+        {
+            var disk = await Workspace.ReadAsync(Workspace.GetAbsolutePath(f.Id), FileReadMode.Display);
+            if (disk.Content is null) return null;
+            return await Workspace.GetDiffAsync(Workspace.GetAbsolutePath(f.Id), f.Content);
+        }
+        catch { return null; }
     }
 
     private async Task ReloadFromDiskAsync()
