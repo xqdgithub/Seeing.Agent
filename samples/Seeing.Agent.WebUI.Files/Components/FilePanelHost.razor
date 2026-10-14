@@ -18,7 +18,7 @@
             <FileTree Workspace="_workspace" OnOpen="OnOpenFileAsync" />
             <div class="file-panel-main">
                 <FileTabs Tabs="_tabs" />
-                <FileViewer Tabs="_tabs" />
+                <FileEditor Tabs="_tabs" Workspace="_workspace" />
             </div>
         </div>
     }
@@ -53,7 +53,8 @@
     {
         if (_workspace is null) return;
         var file = await _workspace.ReadAsync(_workspace.GetAbsolutePath(id), FileReadMode.Display);
-        _tabs.Open(file);
+        var binary = await ReadBinaryIfNeededAsync(file);
+        _tabs.Open(file, binary);
     }
 
     /// <summary>宿主桥接入口：agent 改动某文件。</summary>
@@ -61,9 +62,18 @@
     {
         if (_workspace is null) return;
         var file = await _workspace.ReadAsync(_workspace.GetAbsolutePath(id), FileReadMode.Display);
-        _tabs.Open(file);
+        var binary = await ReadBinaryIfNeededAsync(file);
+        _tabs.Open(file, binary);
         _tabs.SetPendingDiff(id, diff);
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task<byte[]?> ReadBinaryIfNeededAsync(FileReadResult file)
+    {
+        if (_workspace is null) return null;
+        if (file.Kind is not (FileContentKind.Image or FileContentKind.Binary)) return null;
+        try { return await _workspace.ReadBytesAsync(_workspace.GetAbsolutePath(file.Id)); }
+        catch { return null; }
     }
 
     public void Dispose()

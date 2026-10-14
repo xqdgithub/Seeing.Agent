@@ -24,3 +24,17 @@
 .file-diff { background: rgba(250, 173, 20, 0.08); }
 .file-panel-toggle { cursor: pointer; }
 .file-panel-toggle.active { background: rgba(22, 119, 255, 0.12); border-radius: 4px; }
+.file-markdown { overflow: auto; padding: 4px; line-height: 1.55; }
+.file-markdown pre { background: rgba(0,0,0,0.04); padding: 8px; overflow-x: auto; }
+.file-markdown code { font-family: monospace; }
+.file-image { max-width: 100%; max-height: 100%; object-fit: contain; }
+.file-viewer-binary { padding: 12px; color: #666; }
+.file-viewer-hint { color: #999; font-size: 12px; margin-top: 4px; }
+.file-editor-monaco { flex: 1; min-height: 300px; }
+.file-editor-dirty { color: #faad14; font-size: 12px; }
+.file-conflict-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.file-conflict-dialog { background: #fff; border-radius: 6px; padding: 16px; max-width: 560px; max-height: 80%; overflow: auto; box-shadow: 0 6px 24px rgba(0,0,0,0.25); }
+.file-conflict-title { font-weight: 600; margin-bottom: 8px; }
+.file-conflict-body { margin-bottom: 8px; }
+.file-conflict-diff { max-height: 200px; overflow: auto; margin-bottom: 8px; }
+.file-conflict-actions { display: flex; gap: 8px; justify-content: flex-end; }

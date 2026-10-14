@@ -27,6 +27,9 @@ public interface IFileWorkspace
     /// <summary>结构化读取；Display 截断展示、Full 完整用于编辑。</summary>
     Task<FileReadResult> ReadAsync(string path, FileReadMode mode = FileReadMode.Display, CancellationToken ct = default);
 
+    /// <summary>读取原始字节（供图片/二进制渲染；有大小上限保护）。</summary>
+    Task<byte[]> ReadBytesAsync(string path, CancellationToken ct = default);
+
     /// <summary>全量写入；expectedRevision 非空时做乐观并发检查。</summary>
     Task<FileWriteResult> WriteAsync(string path, string content, FileRevision? expectedRevision = null, CancellationToken ct = default);
 

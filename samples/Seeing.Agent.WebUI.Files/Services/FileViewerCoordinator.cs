@@ -45,8 +45,29 @@ public sealed class FileViewerCoordinator : IDisposable
             return ApplyOutcome.Deleted;
         }
         var file = await _workspace.ReadAsync(_workspace.GetAbsolutePath(evt.Id), FileReadMode.Display).ConfigureAwait(false);
-        var applied = _tabs.ApplyDiskUpdate(file);
-        return applied ? ApplyOutcome.Refreshed : ApplyOutcome.ConflictSkipped;
+        var binary = await ReadBinaryIfNeededAsync(file).ConfigureAwait(false);
+        var applied = _tabs.ApplyDiskUpdate(file, binary);
+        if (!applied)
+        {
+            // 本地有未保存改动：不覆盖，标记冲突等待用户裁决
+            _tabs.MarkExternalConflict(evt.Id);
+            return ApplyOutcome.ConflictSkipped;
+        }
+        return ApplyOutcome.Refreshed;
+    }
+
+    private async Task<byte[]?> ReadBinaryIfNeededAsync(FileReadResult file)
+    {
+        if (file.Kind is not (FileContentKind.Image or FileContentKind.Binary))
+            return null;
+        try
+        {
+            return await _workspace.ReadBytesAsync(_workspace.GetAbsolutePath(file.Id)).ConfigureAwait(false);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <inheritdoc />

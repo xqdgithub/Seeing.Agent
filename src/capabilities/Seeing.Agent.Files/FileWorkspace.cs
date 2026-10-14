@@ -170,6 +170,19 @@ internal sealed class FileWorkspace : IFileWorkspace
     }
 
     /// <inheritdoc />
+    public async Task<byte[]> ReadBytesAsync(string path, CancellationToken ct = default)
+    {
+        var full = Path.GetFullPath(path);
+        EnsureAllowed(full);
+        if (!File.Exists(full)) throw new FileNotFoundException("文件不存在", full);
+        var info = new FileInfo(full);
+        // 渲染用二进制有上限保护，避免大文件撑爆 circuit
+        if (info.Length > MaxReadBytes)
+            return await ReadPrefixAsync(full, MaxReadBytes, ct).ConfigureAwait(false);
+        return await _fs.ReadAllBytesAsync(full, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
     public async Task<FileWriteResult> WriteAsync(string path, string content, FileRevision? expectedRevision = null, CancellationToken ct = default)
     {
         var full = Path.GetFullPath(path);

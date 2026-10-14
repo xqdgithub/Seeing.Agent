@@ -28,6 +28,7 @@ public class FileViewerCoordinatorTests
         var outcome = await coord.ApplyAsync(new FileChangeEvent(id, FileChangeKind.Modified, null, null, DateTime.UtcNow));
         outcome.Should().Be(ApplyOutcome.ConflictSkipped);
         tabs.OpenFiles[0].Content.Should().Be("edited");
+        tabs.OpenFiles[0].HasExternalConflict.Should().BeTrue();
     }
 
     [Fact]
@@ -87,5 +88,37 @@ public class FileViewerCoordinatorTests
         var coord = new FileViewerCoordinator(ws.Object, tabs);
         var act = () => coord.Dispose();
         act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void ResolveConflictReload_ShouldDiscardLocalChanges()
+    {
+        var id = new FileResourceId("root", "a.txt");
+        var tabs = new FileTabsState();
+        tabs.Open(File(id, "A", FileReadMode.Full));
+        tabs.MarkDirty(id, "local");
+        tabs.MarkExternalConflict(id);
+
+        tabs.ResolveConflictReload(id, File(id, "disk", FileReadMode.Full));
+
+        tabs.OpenFiles[0].Content.Should().Be("disk");
+        tabs.OpenFiles[0].HasUnsavedChanges.Should().BeFalse();
+        tabs.OpenFiles[0].HasExternalConflict.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ResolveConflictKeepLocal_ShouldClearConflictFlagOnly()
+    {
+        var id = new FileResourceId("root", "a.txt");
+        var tabs = new FileTabsState();
+        tabs.Open(File(id, "A", FileReadMode.Full));
+        tabs.MarkDirty(id, "local");
+        tabs.MarkExternalConflict(id);
+
+        tabs.ResolveConflictKeepLocal(id, null);
+
+        tabs.OpenFiles[0].Content.Should().Be("local");
+        tabs.OpenFiles[0].HasUnsavedChanges.Should().BeTrue();
+        tabs.OpenFiles[0].HasExternalConflict.Should().BeFalse();
     }
 }

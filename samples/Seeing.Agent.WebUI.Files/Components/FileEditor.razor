@@ -1,5 +1,7 @@
 @using Seeing.Agent.Abstractions.Files
 @using Seeing.Agent.WebUI.Files.Services
+@using BlazorMonaco.Editor
+@inject IJSRuntime JS
 
 <div class="file-editor">
     @{ var f = Tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == Tabs.ActiveKey); }
@@ -11,6 +13,17 @@
     {
         <div class="file-viewer-deleted">文件已删除</div>
     }
+    else if (f.Kind is FileContentKind.Image or FileContentKind.Binary)
+    {
+        <FileViewer Tabs="Tabs" />
+    }
+    else if (f.IsReadOnly)
+    {
+        <div class="file-editor-toolbar">
+            <span class="file-editor-readonly">只读（截断 / 非 UTF-8 / 超大文件）</span>
+        </div>
+        <FileViewer Tabs="Tabs" />
+    }
     else
     {
         @if (!string.IsNullOrEmpty(f.PendingDiff))
@@ -18,20 +31,41 @@
             <pre class="file-diff">@f.PendingDiff</pre>
         }
         <div class="file-editor-toolbar">
-            <button type="button" class="file-editor-save" disabled="@(f.IsReadOnly || !f.HasUnsavedChanges)" @onclick="SaveAsync">保存</button>
-            @if (f.IsReadOnly)
+            <button type="button" class="file-editor-save" disabled="@(!f.HasUnsavedChanges)" @onclick="SaveAsync">保存</button>
+            @if (f.HasUnsavedChanges)
             {
-                <span class="file-editor-readonly">只读</span>
+                <span class="file-editor-dirty">未保存</span>
             }
         </div>
-        <textarea class="file-editor-input" readonly="@f.IsReadOnly"
-                  value="@f.Content" @onchange="OnEdit"></textarea>
-        @if (_conflict)
-        {
-            <div class="file-editor-conflict">磁盘内容已变更，保存冲突。请重新打开文件后再编辑。</div>
-        }
+        <div class="file-editor-monaco">
+            <StandaloneCodeEditor @key="f.Id.ToString()"
+                                  @ref="_editor"
+                                  Id="@($"file-editor-{Sanitize(f.Id.RelativePath)}")"
+                                  ConstructionOptions="(editor => EditorOptions(f))"
+                                  OnDidChangeModelContent="OnContentChanged" />
+        </div>
     }
 </div>
+
+@if (_conflictOpen && _active is not null)
+{
+    <div class="file-conflict-overlay">
+        <div class="file-conflict-dialog">
+            <div class="file-conflict-title">文件已被外部修改</div>
+            <div class="file-conflict-body">
+                磁盘上的 <code>@_active.Id.RelativePath</code> 已被 agent 或外部程序修改，而你有未保存的编辑。
+            </div>
+            @if (!string.IsNullOrEmpty(_conflictDiff))
+            {
+                <pre class="file-diff file-conflict-diff">@_conflictDiff</pre>
+            }
+            <div class="file-conflict-actions">
+                <button type="button" class="file-conflict-reload" @onclick="ReloadFromDiskAsync">重新加载（丢弃我的修改）</button>
+                <button type="button" class="file-conflict-keep" @onclick="KeepLocal">保留我的修改</button>
+            </div>
+        </div>
+    </div>
+}
 
 @code {
     /// <summary>标签状态。</summary>
@@ -40,29 +74,132 @@
     /// <summary>目标文件工作区。</summary>
     [Parameter, EditorRequired] public IFileWorkspace Workspace { get; set; } = default!;
 
-    private bool _conflict;
+    private StandaloneCodeEditor? _editor;
+    private OpenFile? _active;
+    private bool _conflictOpen;
+    private string? _conflictDiff;
 
-    private void OnEdit(ChangeEventArgs e)
+    private OpenFile? ActiveFile => Tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == Tabs.ActiveKey);
+
+    private static string Sanitize(string rel) =>
+        string.Concat(rel.Select(c => char.IsLetterOrDigit(c) ? c : '_'));
+
+    private static StandaloneEditorConstructionOptions EditorOptions(OpenFile f) => new()
     {
-        _conflict = false;
-        var f = Tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == Tabs.ActiveKey);
-        if (f is not null) Tabs.MarkDirty(f.Id, e.Value?.ToString() ?? "");
+        Language = LanguageFor(f),
+        Value = f.Content,
+        AutomaticLayout = true,
+        ReadOnly = f.IsReadOnly,
+        Minimap = new EditorMinimapOptions { Enabled = false },
+        ScrollBeyondLastLine = false,
+        FontSize = 13,
+    };
+
+    private static string LanguageFor(OpenFile f)
+    {
+        var ext = Path.GetExtension(f.Id.RelativePath).TrimStart('.').ToLowerInvariant();
+        return ext switch
+        {
+            "cs" => "csharp",
+            "js" => "javascript",
+            "ts" => "typescript",
+            "json" => "json",
+            "md" => "markdown",
+            "xml" or "csproj" or "props" or "targets" or "slnx" => "xml",
+            "html" => "html",
+            "css" => "css",
+            "py" => "python",
+            "yml" or "yaml" => "yaml",
+            "sh" or "bash" => "shell",
+            "ps1" => "powershell",
+            "sql" => "sql",
+            _ => "plaintext",
+        };
+    }
+
+    private void OnContentChanged(ModelContentChangedEvent e)
+    {
+        var f = ActiveFile;
+        if (f is null || f.IsReadOnly) return;
+        _ = SyncFromEditorAsync(f);
+    }
+
+    private async Task SyncFromEditorAsync(OpenFile f)
+    {
+        if (_editor is null) return;
+        var value = await _editor.GetValue();
+        if (value != f.Content)
+            Tabs.MarkDirty(f.Id, value);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // 外部（agent/磁盘）冲突标记出现时弹出对话框
+        var f = ActiveFile;
+        if (f is not null && f.HasExternalConflict && !_conflictOpen)
+        {
+            _active = f;
+            _conflictOpen = true;
+            _conflictDiff = await TryGetConflictDiffAsync(f);
+            StateHasChanged();
+        }
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    private async Task<string?> TryGetConflictDiffAsync(OpenFile f)
+    {
+        try
+        {
+            var disk = await Workspace.ReadAsync(Workspace.GetAbsolutePath(f.Id), FileReadMode.Display);
+            if (disk.Content is null) return null;
+            return await Workspace.GetDiffAsync(Workspace.GetAbsolutePath(f.Id), f.Content);
+        }
+        catch { return null; }
     }
 
     private async Task SaveAsync()
     {
-        var f = Tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == Tabs.ActiveKey);
+        var f = ActiveFile;
         if (f is null || f.IsReadOnly) return;
+        if (_editor is not null)
+            f.Content = await _editor.GetValue();
 
         var result = await Workspace.WriteAsync(Workspace.GetAbsolutePath(f.Id), f.Content, f.OpenedRevision);
         if (result.Conflict)
         {
-            _conflict = true;
+            Tabs.MarkExternalConflict(f.Id);
+            _active = f;
+            _conflictOpen = true;
+            _conflictDiff = await TryGetConflictDiffAsync(f);
+            StateHasChanged();
             return;
         }
 
-        _conflict = false;
         f.HasUnsavedChanges = false;
         f.OpenedRevision = result.Revision;
+        f.PendingDiff = null;
+        Tabs.Open(await Workspace.ReadAsync(Workspace.GetAbsolutePath(f.Id), FileReadMode.Display));
+        StateHasChanged();
+    }
+
+    private async Task ReloadFromDiskAsync()
+    {
+        var f = _active;
+        if (f is null) return;
+        var disk = await Workspace.ReadAsync(Workspace.GetAbsolutePath(f.Id), FileReadMode.Display);
+        Tabs.ResolveConflictReload(f.Id, disk);
+        _conflictOpen = false; _conflictDiff = null; _active = null;
+        if (_editor is not null)
+            await _editor.SetValue(disk.Content ?? "");
+        StateHasChanged();
+    }
+
+    private void KeepLocal()
+    {
+        var f = _active;
+        if (f is null) return;
+        Tabs.ResolveConflictKeepLocal(f.Id, null);
+        _conflictOpen = false; _conflictDiff = null; _active = null;
+        StateHasChanged();
     }
 }

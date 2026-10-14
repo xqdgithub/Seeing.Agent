@@ -1,4 +1,6 @@
+@using Seeing.Agent.Abstractions.Files
 @using Seeing.Agent.WebUI.Files.Services
+@using Markdig
 
 <div class="file-viewer">
     @{ var f = Tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == Tabs.ActiveKey); }
@@ -16,11 +18,39 @@
         {
             <pre class="file-diff">@f.PendingDiff</pre>
         }
-        <pre class="file-content">@f.Content</pre>
+        @switch (f.Kind)
+        {
+            case FileContentKind.Markdown:
+                <div class="file-markdown">@((MarkupString)RenderMarkdown(f.Content))</div>
+                break;
+            case FileContentKind.Image:
+                @if (f.BinaryContent is { Length: > 0 })
+                {
+                    <img class="file-image" src="@($"data:{f.MimeType};base64,{Convert.ToBase64String(f.BinaryContent)}")" alt="@f.Id.RelativePath" />
+                }
+                else
+                {
+                    <div class="file-viewer-empty">图片无法预览</div>
+                }
+                break;
+            case FileContentKind.Binary:
+                <div class="file-viewer-binary">
+                    <div>二进制文件（@f.MimeType，@(f.BinaryContent?.Length ?? 0) 字节）</div>
+                    <div class="file-viewer-hint">无法预览</div>
+                </div>
+                break;
+            default:
+                <pre class="file-content">@f.Content</pre>
+                break;
+        }
     }
 </div>
 
 @code {
     /// <summary>标签状态。</summary>
     [Parameter, EditorRequired] public FileTabsState Tabs { get; set; } = default!;
+
+    private static readonly MarkdownPipeline s_pipeline = new MarkdownPipelineBuilder().Build();
+
+    private static string RenderMarkdown(string content) => Markdown.ToHtml(content ?? "", s_pipeline);
 }

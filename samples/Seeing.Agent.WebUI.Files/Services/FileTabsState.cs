@@ -9,6 +9,12 @@ public sealed class OpenFile
     public required FileResourceId Id { get; set; }
     /// <summary>当前编辑器内容（未保存时与磁盘不同）。</summary>
     public required string Content { get; set; }
+    /// <summary>内容类型（决定查看器渲染方式）。</summary>
+    public FileContentKind Kind { get; set; } = FileContentKind.Text;
+    /// <summary>MIME 类型。</summary>
+    public string MimeType { get; set; } = "application/octet-stream";
+    /// <summary>二进制/图片的原始字节（Content 为空时用于渲染）。</summary>
+    public byte[]? BinaryContent { get; set; }
     /// <summary>打开时的磁盘修订号。</summary>
     public FileRevision? OpenedRevision { get; set; }
     /// <summary>是否有未保存修改。</summary>
@@ -19,6 +25,8 @@ public sealed class OpenFile
     public bool IsDeleted { get; set; }
     /// <summary>最近一次 agent/磁盘 diff（可选）。</summary>
     public string? PendingDiff { get; set; }
+    /// <summary>磁盘已被外部修改且本地有未保存改动（待用户裁决）。</summary>
+    public bool HasExternalConflict { get; set; }
 }
 
 /// <summary>多标签状态（纯 C#，UI 无关）。</summary>
@@ -39,11 +47,14 @@ public sealed class FileTabsState
     private static string Key(FileResourceId id) => id.ToString();
 
     /// <summary>打开或激活文件。</summary>
-    public void Open(FileReadResult file)
+    public void Open(FileReadResult file, byte[]? binaryContent = null)
     {
         var key = Key(file.Id);
         if (_byKey.TryGetValue(key, out var existing))
         {
+            existing.Kind = file.Kind;
+            existing.MimeType = file.MimeType;
+            existing.BinaryContent = binaryContent;
             ActiveKey = key;
         }
         else
@@ -52,6 +63,9 @@ public sealed class FileTabsState
             {
                 Id = file.Id,
                 Content = file.Content ?? "",
+                Kind = file.Kind,
+                MimeType = file.MimeType,
+                BinaryContent = binaryContent,
                 OpenedRevision = file.Revision,
                 IsReadOnly = !file.IsEditable,
             };
@@ -87,14 +101,41 @@ public sealed class FileTabsState
     }
 
     /// <summary>应用磁盘更新（仅当无未保存修改时覆盖内容）。</summary>
-    public bool ApplyDiskUpdate(FileReadResult file)
+    public bool ApplyDiskUpdate(FileReadResult file, byte[]? binaryContent = null)
     {
         if (!_byKey.TryGetValue(Key(file.Id), out var of)) return false;
         if (of.HasUnsavedChanges) return false;
         of.Content = file.Content ?? ""; of.OpenedRevision = file.Revision;
+        of.Kind = file.Kind; of.MimeType = file.MimeType; of.BinaryContent = binaryContent;
         of.IsReadOnly = !file.IsEditable; of.IsDeleted = false;
+        of.HasExternalConflict = false; of.PendingDiff = null;
         Changed?.Invoke();
         return true;
+    }
+
+    /// <summary>标记外部冲突（磁盘变更但本地有未保存改动，等待用户裁决）。</summary>
+    public void MarkExternalConflict(FileResourceId id)
+    {
+        if (_byKey.TryGetValue(Key(id), out var of)) { of.HasExternalConflict = true; Changed?.Invoke(); }
+    }
+
+    /// <summary>冲突裁决：重新加载（丢弃本地改动，采用磁盘内容）。</summary>
+    public void ResolveConflictReload(FileResourceId id, FileReadResult file, byte[]? binaryContent = null)
+    {
+        if (!_byKey.TryGetValue(Key(id), out var of)) return;
+        of.Content = file.Content ?? ""; of.OpenedRevision = file.Revision;
+        of.Kind = file.Kind; of.MimeType = file.MimeType; of.BinaryContent = binaryContent;
+        of.IsReadOnly = !file.IsEditable; of.IsDeleted = false;
+        of.HasUnsavedChanges = false; of.HasExternalConflict = false; of.PendingDiff = null;
+        Changed?.Invoke();
+    }
+
+    /// <summary>冲突裁决：保留本地改动（刷新基准 revision 以便下次保存）。</summary>
+    public void ResolveConflictKeepLocal(FileResourceId id, FileRevision? currentDiskRevision)
+    {
+        if (!_byKey.TryGetValue(Key(id), out var of)) return;
+        of.OpenedRevision = currentDiskRevision; of.HasExternalConflict = false;
+        Changed?.Invoke();
     }
 
     /// <summary>应用重命名（含目录前缀重写）。</summary>
