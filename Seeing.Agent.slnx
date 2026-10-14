@@ -96,6 +96,7 @@
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Question.Tests/Seeing.Agent.Tools.Question.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Session.Tests/Seeing.Agent.Tools.Session.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Shell.Tests/Seeing.Agent.Tools.Shell.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Tools.Support.Tests/Seeing.Agent.Tools.Support.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.SystemOne.Tests/Seeing.Agent.Tools.SystemOne.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Web.Tests/Seeing.Agent.Tools.Web.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.IO.Local.Tests/Seeing.IO.Local.Tests.csproj" />
