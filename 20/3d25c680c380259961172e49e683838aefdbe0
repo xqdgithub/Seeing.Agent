@@ -1,0 +1,24 @@
+docs/architecture/16-session-file-explorer-release-notes.md
+  s_536fff28e4f17f::t_f566cddb6c4e1e 1-83
+AGENTS.md
+  s_536fff28e4f17f::t_05ac1ab0ac9f5d 234-236
+  s_536fff28e4f17f::t_6fd2f5b98fd334 89
+docs/architecture/README.md
+  s_536fff28e4f17f::t_371911f20be8b4 35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "203d25c680c380259961172e49e683838aefdbe0",
+  "prompts": {},
+  "sessions": {
+    "s_536fff28e4f17f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec7c49ff5ffetmlEfQs6bcMbMs",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
