@@ -1,0 +1,54 @@
+tests/capabilities/Seeing.Agent.Files.Tests/SharedWriteLockTests.cs
+  s_536fff28e4f17f::t_d7af925806a642 1-18,20-50
+  s_536fff28e4f17f::t_ec9b24f947f897 19
+tests/capabilities/Seeing.Agent.Files.Tests/FileWorkspaceTests.cs
+  s_536fff28e4f17f::t_12fbf5fdb27512 18
+  s_536fff28e4f17f::t_5671b1d8aa28f4 96
+src/capabilities/Seeing.IO.Local/ProcessPathWriteLock.cs
+  s_536fff28e4f17f::t_96cb797ab78ca2 2,4,6-9,19-20,22-23,25-35,38,40-54,56,59,67
+src/capabilities/Seeing.Agent.Files/FileWorkspace.cs
+  s_536fff28e4f17f::t_e6313775d3a684 21,24,32
+src/abstractions/Seeing.Agent.Abstractions/Execution/IPathWriteLock.cs
+  s_536fff28e4f17f::t_872cd7874f0ff7 1-14
+tests/capabilities/Seeing.Agent.Files.Tests/FileWorkspaceFactoryTests.cs
+  s_536fff28e4f17f::t_fcb91795e72b1e 25
+src/capabilities/Seeing.Agent.Tools.FileSystem/EditTool.cs
+  s_536fff28e4f17f::t_eda91c24d27f05 21,29-30,34
+  s_536fff28e4f17f::t_11032995f7d18b 127-129
+src/capabilities/Seeing.IO.Local/LocalExecutionWorldModule.cs
+  s_536fff28e4f17f::t_06a02ae2cfe602 33
+tests/capabilities/Seeing.Agent.Tools.FileSystem.Tests/DeleteToolTests.cs
+  s_536fff28e4f17f::t_0b88128fa2b3ae 15
+tests/capabilities/Seeing.Agent.Files.Tests/PathWriteLocksTests.cs
+  s_536fff28e4f17f::t_e51ecef9d5d157 2,7,12,33,46,53-67
+src/capabilities/Seeing.Agent.Tools.FileSystem/DeleteTool.cs
+  s_536fff28e4f17f::t_419095eedca92c 17,22-23,27
+  s_536fff28e4f17f::t_908e7feb15fc53 58,62
+  s_536fff28e4f17f::t_d66b216a36ee20 71
+  s_536fff28e4f17f::t_01cae9297a7017 77,79,83,85,89
+src/capabilities/Seeing.Agent.Files/FileWorkspaceFactory.cs
+  s_536fff28e4f17f::t_d9437462b591e5 57
+  s_536fff28e4f17f::t_0a8bcec6a9b823 18,30-31,38
+src/capabilities/Seeing.Agent.Tools.FileSystem/WriteTool.cs
+  s_536fff28e4f17f::t_504915d6ed4604 21,29-30,34
+  s_536fff28e4f17f::t_72baf3bcb72b9c 98-100
+tests/capabilities/Seeing.Agent.Tools.FileSystem.Tests/ReadToolFileSystemTests.cs
+  s_536fff28e4f17f::t_3f005ce6e15cce 168
+  s_536fff28e4f17f::t_848596a7d54cf3 184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "c290428994435791ef797e00dd2801cd53c9ecb3",
+  "prompts": {},
+  "sessions": {
+    "s_536fff28e4f17f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec7c49ff5ffetmlEfQs6bcMbMs",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
