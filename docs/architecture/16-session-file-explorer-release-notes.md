@@ -75,6 +75,9 @@
 | 6 | agent 驱动打开 | `AgentFileChangeBridge.OpenRequested(id, line, column)` → `SessionFilePanel` → `FilePanelState.RequestOpen`（未开则自动开、默认隐藏树）→ `FilePanelHost` 消费 `PendingOpen` 分派 |
 | 7 | 行/列跳转 | `FileEditor.NavigateToAsync(line, column)`（1-based）经 `RevealLineInCenter` + `SetPosition` + `Focus`；`FilePanelHost.NavigateToAsync` 供宿主调用；agent 经 `open_file` 的 `line`/`column` 参数驱动 |
 | 8 | 面板关闭 | 面板头 `×` 按钮；无打开文件且目录树收起时自动关闭 |
+| 9 | diff 预览升级 | `write`/`edit` 工具经 `FileDiffMetadata.Build` 回写 `oldContent`/`newContent`（>256KB 仅回写 unified diff）；新增 `FileDiffEditor`（`StandaloneDiffEditor` 单栏内联、只读）+ 关闭按钮；超大文件回退纯文本 diff |
+| 10 | 文件树实时刷新 | 新增 `FileTreeState`（Scoped 事件总线）；`FilePanelHost` 将 watcher 事件转发给树，`FileTree`/`FileTreeNode` 按 `IsDirectChildOf` 精确重列受影响目录 |
+| 11 | 会话内标签持久 | `FilePanelState.GetTabs(sessionId)` 按会话缓存 `FileTabsState`（导航往返不丢失） |
 
 **`open_file` 语义（分派）**：面板关闭→自动打开；新文件→新标签（不展开树）；已是其他标签→切换；就是当前文件→从磁盘刷新（`ApplyDiskUpdate`）。带 `line`/`column` 时在打开/切换后定位（1-based）。
 
