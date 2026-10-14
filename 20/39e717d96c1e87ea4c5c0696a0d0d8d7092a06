@@ -1,0 +1,19 @@
+samples/Seeing.Agent.WebUI/wwwroot/css/session-page.css
+  s_536fff28e4f17f::t_69af605f6ea852 720-723
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "2039e717d96c1e87ea4c5c0696a0d0d8d7092a06",
+  "prompts": {},
+  "sessions": {
+    "s_536fff28e4f17f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec7c49ff5ffetmlEfQs6bcMbMs",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
