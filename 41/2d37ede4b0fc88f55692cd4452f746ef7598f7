@@ -1,0 +1,26 @@
+samples/Seeing.Agent.WebUI.Files/Components/FilePanelToggle.razor
+  s_536fff28e4f17f::t_cd26e66d9f6d0c 3,5,12-18,20-21
+samples/Seeing.Agent.WebUI/Components/SessionFilePanel.razor
+  s_536fff28e4f17f::t_a4d42622bae0bc 3,7,10,14-18,28,37-38,44
+  s_536fff28e4f17f::t_51e1dfa0240410 11-13
+samples/Seeing.Agent.WebUI.Files/wwwroot/files-panel.css
+  s_536fff28e4f17f::t_315c0ce149cf62 26
+samples/Seeing.Agent.WebUI/wwwroot/css/session-page.css
+  s_536fff28e4f17f::t_7b6408b551648e 720-725,732-733,736-737,745
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "412d37ede4b0fc88f55692cd4452f746ef7598f7",
+  "prompts": {},
+  "sessions": {
+    "s_536fff28e4f17f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec7c49ff5ffetmlEfQs6bcMbMs",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
