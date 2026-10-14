@@ -1,0 +1,35 @@
+src/abstractions/Seeing.Agent.Abstractions/Files/FileResourceId.cs
+  s_a569add09f6c9f::t_12ffa83b185408 1-10
+src/abstractions/Seeing.Agent.Abstractions/Files/FileEntry.cs
+  s_a569add09f6c9f::t_c1f85aafebe066 1-14
+src/abstractions/Seeing.Agent.Abstractions/Files/FileWriteResult.cs
+  s_a569add09f6c9f::t_f517a1ca8b1018 1-9
+src/abstractions/Seeing.Agent.Abstractions/Permissions/ISessionWorkspaceResolver.cs
+  s_a569add09f6c9f::t_4125454d7eb62c 1-8
+src/abstractions/Seeing.Agent.Abstractions/Files/FileReadResult.cs
+  s_a569add09f6c9f::t_71b89a00230dc5 1-16
+src/abstractions/Seeing.Agent.Abstractions/Files/IFileWorkspace.cs
+  s_a569add09f6c9f::t_404cfb9c24e115 1-44
+src/abstractions/Seeing.Agent.Abstractions/Files/IFileWorkspaceFactory.cs
+  s_a569add09f6c9f::t_2dcf3f4eb6b867 1-15
+src/abstractions/Seeing.Agent.Abstractions/Files/FileRevision.cs
+  s_a569add09f6c9f::t_daf8ec55639859 1-13
+src/abstractions/Seeing.Agent.Abstractions/Files/FileEnums.cs
+  s_a569add09f6c9f::t_2592f43f96d68a 1-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "9e7b3a7e859e8c53e9495e31c1536d42ec3162db",
+  "prompts": {},
+  "sessions": {
+    "s_a569add09f6c9f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec7102ce0ffeJBQemRNvWBXrgX",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
