@@ -1,0 +1,37 @@
+src/capabilities/Seeing.Agent.Tools.Support/LineDiff.cs
+  s_a3e18c4d5dc94d::t_dacde47e3a74e0 1-91
+src/capabilities/Seeing.Agent.Tools.Support/FileContentSupport.cs
+  s_a3e18c4d5dc94d::t_7531096203490a 1-80
+tests/capabilities/Seeing.Agent.Tools.Support.Tests/Seeing.Agent.Tools.Support.Tests.csproj
+  s_a3e18c4d5dc94d::t_8145cd79af0fce 1-32
+Seeing.Agent.slnx
+  s_536fff28e4f17f::t_4282e56856d0a0 99
+tests/capabilities/Seeing.Agent.Tools.Support.Tests/FileContentSupportTests.cs
+  s_a3e18c4d5dc94d::t_2213079b75cdf9 1-21
+tests/capabilities/Seeing.Agent.Tools.Support.Tests/LineDiffTests.cs
+  s_a3e18c4d5dc94d::t_710b0c7a150c20 1-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "943a217a0ebaf38e038ae249b8249fccae5c7fa3",
+  "prompts": {},
+  "sessions": {
+    "s_536fff28e4f17f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec7c49ff5ffetmlEfQs6bcMbMs",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_a3e18c4d5dc94d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec70ffbacffehM5GAS2IdWpgD1",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
