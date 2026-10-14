@@ -1,0 +1,23 @@
+src/spine/Seeing.Agent.Core/CapabilitySets/BuiltInCapabilitySets.cs
+  s_536fff28e4f17f::t_2b2a07a19c9ebd 159
+  s_536fff28e4f17f::t_4ec1b8f152d703 88
+  s_536fff28e4f17f::t_f82577a119967c 36,53
+docs/architecture/02-modules.md
+  s_536fff28e4f17f::t_00e53ae918cc69 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "e62ada478a594798c5ef0a1d496916dc0cbce647",
+  "prompts": {},
+  "sessions": {
+    "s_536fff28e4f17f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec7c49ff5ffetmlEfQs6bcMbMs",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
