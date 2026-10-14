@@ -1,0 +1,38 @@
+samples/Seeing.Agent.WebUI/Services/AgentFileChangeBridge.cs
+  s_9ebb30dccacbfb::t_eb5f1c364347e1 2-8,10-63,65-104
+samples/Seeing.Agent.WebUI/Components/SessionFilePanel.razor
+  s_9ebb30dccacbfb::t_4cb7731275a065 1-40
+samples/Seeing.Agent.WebUI/Services/FilePanelUiContribution.cs
+  s_9ebb30dccacbfb::t_4d6343c0e161b6 1-19
+samples/Seeing.Agent.WebUI/Components/SessionWindow.razor
+  s_9ebb30dccacbfb::t_708ed3ab4d7c7f 60
+  s_9ebb30dccacbfb::t_1add5160997331 221-223
+samples/Seeing.Agent.WebUI/Program.cs
+  s_9ebb30dccacbfb::t_900bcc56dbe573 63
+  s_9ebb30dccacbfb::t_690460f961968c 129-131
+  s_9ebb30dccacbfb::t_46cc9d9bded7fe 225
+samples/Seeing.Agent.WebUI/Components/SessionToolbar.razor
+  s_9ebb30dccacbfb::t_d997c1411279c5 143
+  s_9ebb30dccacbfb::t_6b5c0a21772aef 11
+samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj
+  s_9ebb30dccacbfb::t_9dfe7c3d961fa1 44-45
+samples/Seeing.Agent.WebUI/wwwroot/css/session-page.css
+  s_9ebb30dccacbfb::t_2cf22036e6885b 465-466
+  s_9ebb30dccacbfb::t_063244b8acde3f 718-747
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "ed11a80a251a895ea8fdc36375cd8d64ff8a8f13",
+  "prompts": {},
+  "sessions": {
+    "s_9ebb30dccacbfb": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec6c8ce13ffevCa3342kLflygb",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
