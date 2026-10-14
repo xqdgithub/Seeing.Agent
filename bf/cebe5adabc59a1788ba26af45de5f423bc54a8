@@ -1,0 +1,55 @@
+src/abstractions/Seeing.Agent.Abstractions/Files/FileEnums.cs
+  s_a569add09f6c9f::t_2592f43f96d68a 1-10
+tests/capabilities/Seeing.Agent.Tools.Support.Tests/Seeing.Agent.Tools.Support.Tests.csproj
+  s_a3e18c4d5dc94d::t_8145cd79af0fce 1-32
+src/abstractions/Seeing.Agent.Abstractions/Files/FileEntry.cs
+  s_a569add09f6c9f::t_c1f85aafebe066 1-14
+tests/capabilities/Seeing.Agent.Tools.Support.Tests/LineDiffTests.cs
+  s_a3e18c4d5dc94d::t_710b0c7a150c20 1-31
+src/abstractions/Seeing.Agent.Abstractions/Files/FileResourceId.cs
+  s_a569add09f6c9f::t_12ffa83b185408 1-10
+src/capabilities/Seeing.Agent.Tools.Support/FileContentSupport.cs
+  s_a3e18c4d5dc94d::t_7531096203490a 1-80
+src/abstractions/Seeing.Agent.Abstractions/Permissions/ISessionWorkspaceResolver.cs
+  s_a569add09f6c9f::t_4125454d7eb62c 1-8
+src/abstractions/Seeing.Agent.Abstractions/Files/FileWriteResult.cs
+  s_a569add09f6c9f::t_f517a1ca8b1018 1-9
+tests/capabilities/Seeing.Agent.Tools.Support.Tests/FileContentSupportTests.cs
+  s_a3e18c4d5dc94d::t_2213079b75cdf9 1-21
+src/capabilities/Seeing.Agent.Tools.Support/LineDiff.cs
+  s_a3e18c4d5dc94d::t_dacde47e3a74e0 1-91
+Seeing.Agent.slnx
+  s_a3e18c4d5dc94d::t_a6073c40b9d5da 99
+src/abstractions/Seeing.Agent.Abstractions/Files/FileReadResult.cs
+  s_a569add09f6c9f::t_71b89a00230dc5 1-16
+src/abstractions/Seeing.Agent.Abstractions/Files/IFileWorkspace.cs
+  s_a569add09f6c9f::t_404cfb9c24e115 1-44
+src/abstractions/Seeing.Agent.Abstractions/Files/FileRevision.cs
+  s_a569add09f6c9f::t_daf8ec55639859 1-13
+src/abstractions/Seeing.Agent.Abstractions/Files/IFileWorkspaceFactory.cs
+  s_a569add09f6c9f::t_2dcf3f4eb6b867 1-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "bfcebe5adabc59a1788ba26af45de5f423bc54a8",
+  "prompts": {},
+  "sessions": {
+    "s_a3e18c4d5dc94d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec70ffbacffehM5GAS2IdWpgD1",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_a569add09f6c9f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec7102ce0ffeJBQemRNvWBXrgX",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
