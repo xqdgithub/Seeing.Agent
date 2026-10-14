@@ -6,25 +6,29 @@ using Seeing.Agent.Core.Configuration;
 namespace Seeing.Agent.Core.Permission;
 
 /// <summary>
-/// 工作区路径硬边界门闸：Restrict=false 时一律放行；否则校验 WorkspaceRoot ∪ 会话白名单。
+/// 工作区路径硬边界门闸：Restrict=false 时一律放行；否则校验
+/// 全局根 ∪ 会话有效根 ∪ 会话白名单。
 /// </summary>
 public sealed class WorkspacePathGate : IWorkspacePathGate
 {
     private readonly IWorkspaceProvider _workspace;
     private readonly IPermissionGrantStore _grantStore;
     private readonly IOptionsMonitor<SeeingAgentOptions> _options;
+    private readonly ISessionWorkspaceResolver? _sessionWorkspace;
 
     /// <summary>
-    /// 构造路径门闸，注入工作区提供者、授权存储与配置监听。
+    /// 构造路径门闸，注入工作区提供者、授权存储、配置监听与会话工作目录解析器。
     /// </summary>
     public WorkspacePathGate(
         IWorkspaceProvider workspace,
         IPermissionGrantStore grantStore,
-        IOptionsMonitor<SeeingAgentOptions> options)
+        IOptionsMonitor<SeeingAgentOptions> options,
+        ISessionWorkspaceResolver? sessionWorkspace = null)
     {
         _workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
         _grantStore = grantStore ?? throw new ArgumentNullException(nameof(grantStore));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _sessionWorkspace = sessionWorkspace;
     }
 
     /// <inheritdoc />
@@ -44,6 +48,12 @@ public sealed class WorkspacePathGate : IWorkspacePathGate
             var full = Path.GetFullPath(path);
             var root = _workspace.GetProjectRoot();
             if (!string.IsNullOrEmpty(root) && PathSafety.IsPathWithinDirectory(full, root))
+                return null;
+
+            // 会话自身有效根（绝对化后）视为边界内；非扩权，不写白名单
+            var sessionCwd = _sessionWorkspace?.ResolveWorkingDirectory(sessionId);
+            if (!string.IsNullOrEmpty(sessionCwd)
+                && PathSafety.IsPathWithinDirectory(full, sessionCwd))
                 return null;
 
             if (_grantStore.ContainsSessionPath(sessionId, full))

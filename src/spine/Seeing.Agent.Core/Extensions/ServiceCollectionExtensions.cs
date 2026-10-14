@@ -666,6 +666,8 @@ namespace Seeing.Agent.Core.Extensions
             services.AddSingleton<IMetadataStore, ConcurrentMetadataStore>();
 
             // 工作区路径硬边界门闸（白名单/记忆经 IPermissionGrantStore 单一存储）
+            // 会话有效工作目录解析端口（供 WorkspacePathGate 认会话根；非扩权）
+            services.AddSingleton<ISessionWorkspaceResolver, SessionWorkspaceResolver>();
             services.AddSingleton<IWorkspacePathGate, WorkspacePathGate>();
             services.AddSingleton<WorkspaceBoundaryLifecycle>();
 
