@@ -1,0 +1,23 @@
+src/capabilities/Seeing.Agent.Tools.FileSystem/DeleteTool.cs
+  s_536fff28e4f17f::t_8b809d4530e90c 75
+src/capabilities/Seeing.Agent.Files/FileWorkspace.cs
+  s_536fff28e4f17f::t_7275fcbb45abf1 193-194,196-198,226-228,241
+tests/capabilities/Seeing.Agent.Files.Tests/FileWorkspaceTests.cs
+  s_536fff28e4f17f::t_55b39ce676bb33 94-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "f4464ce3d894f80446dea3d877afcd4051b38dca",
+  "prompts": {},
+  "sessions": {
+    "s_536fff28e4f17f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec7c49ff5ffetmlEfQs6bcMbMs",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
