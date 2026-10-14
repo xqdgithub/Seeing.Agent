@@ -26,6 +26,7 @@
 | 包 | 模块 id | 典型工具 / 能力 |
 |----|---------|-----------------|
 | `Seeing.Agent.Tools.FileSystem` | `filesystem` | read/write/edit/glob/grep/delete… |
+| `Seeing.Agent.Files` | `files.workspace` | 文件工作区（读写/变更订阅，供 UI/宿主复用；无工具） |
 | `Seeing.Agent.Tools.Shell` | `shell` | bash |
 | `Seeing.Agent.Tools.Web` | `web` | fetch/search |
 | `Seeing.Agent.Tools.Git` | `git` | git_* |

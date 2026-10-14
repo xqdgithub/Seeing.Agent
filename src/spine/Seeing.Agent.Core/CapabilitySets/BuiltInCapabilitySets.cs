@@ -33,6 +33,7 @@ public static class BuiltInCapabilitySets
         "llm.openai",
         "basic",
         "filesystem",
+        "files.workspace",
         "shell",
         "git",
         "subagent",
@@ -49,6 +50,7 @@ public static class BuiltInCapabilitySets
         "llm.openai",
         "basic",
         "filesystem",
+        "files.workspace",
         "web",
         "memory",
         "scheduler",
@@ -83,6 +85,7 @@ public static class BuiltInCapabilitySets
         "llm.modelcatalog.builtin",
         "basic",
         "filesystem",
+        "files.workspace",
         "shell",
         "git",
         "subagent",
@@ -153,6 +156,7 @@ public static class BuiltInCapabilitySets
         "mcp",
         "acp",
         "gateway",
+        "files.workspace",
     ];
 
     /// <summary>开发档模块列表（与 <see cref="Full"/> 同一引用）。</summary>
