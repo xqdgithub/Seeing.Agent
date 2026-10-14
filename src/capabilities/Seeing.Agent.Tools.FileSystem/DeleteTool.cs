@@ -72,9 +72,9 @@ public class DeleteTool : BuiltInToolBase
 
         _logger.LogInformation("删除路径: {Path}", path);
 
+        using var _ = await _writeLock.AcquireAsync(path, context.CancellationToken);
         try
         {
-            using var _ = await _writeLock.AcquireAsync(path, context.CancellationToken);
             if (!_fileSystem.Exists(path))
                 return Failure($"路径不存在: {path}");
 

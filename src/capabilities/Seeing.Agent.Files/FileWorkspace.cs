@@ -190,7 +190,12 @@ internal sealed class FileWorkspace : IFileWorkspace
         EnsureAllowed(full);
 
         using var _ = await _locks.AcquireAsync(full, ct).ConfigureAwait(false);
+        return await WriteCoreAsync(full, content, expectedRevision, ct).ConfigureAwait(false);
+    }
 
+    /// <summary>持锁前提下的写入核心（调用方已持有该路径写锁）。</summary>
+    private async Task<FileWriteResult> WriteCoreAsync(string full, string content, FileRevision? expectedRevision, CancellationToken ct)
+    {
         var exists = File.Exists(full);
         var oldBytes = exists ? await _fs.ReadAllBytesAsync(full, ct).ConfigureAwait(false) : null;
         var oldRev = exists ? RevisionCalculator.FromBytes(oldBytes!, _fs.GetLastWriteTimeUtc(full)) : (FileRevision?)null;
@@ -218,6 +223,9 @@ internal sealed class FileWorkspace : IFileWorkspace
     {
         var full = Path.GetFullPath(path);
         EnsureAllowed(full);
+
+        // 读-改-写全程持锁（消除与工具/UI 并发写的 lost-update）
+        using var _ = await _locks.AcquireAsync(full, ct).ConfigureAwait(false);
         if (!File.Exists(full)) throw new FileNotFoundException("文件不存在", full);
         var bytes = await _fs.ReadAllBytesAsync(full, ct).ConfigureAwait(false);
         var text = new UTF8Encoding(false).GetString(bytes);
@@ -230,7 +238,7 @@ internal sealed class FileWorkspace : IFileWorkspace
             throw new InvalidOperationException("存在多个匹配，请提供更多上下文或 replaceAll=true");
         else updated = text[..index] + newString + text[(index + oldString.Length)..];
 
-        return await WriteAsync(full, updated, expectedRevision, ct).ConfigureAwait(false);
+        return await WriteCoreAsync(full, updated, expectedRevision, ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc />

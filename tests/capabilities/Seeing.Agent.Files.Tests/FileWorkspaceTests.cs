@@ -91,6 +91,18 @@ public class FileWorkspaceTests : IDisposable
     }
 
     [Fact]
+    public async Task Edit_ShouldApply_AndAdvanceRevision()
+    {
+        var file = Path.Combine(_root, "edit.txt");
+        var w = await _ws.WriteAsync(file, "hello world");
+
+        var r = await _ws.EditAsync(file, "world", "there", expectedRevision: w.Revision);
+
+        r.Conflict.Should().BeFalse();
+        (await _ws.ReadAsync(file, FileReadMode.Full)).Content.Should().Be("hello there");
+    }
+
+    [Fact]
     public void RootId_ShouldBeStableAndLowercaseHex()
     {
         var again = new FileWorkspace("s2", _root, new LocalFileSystem(), new AllowAllGate(), new Watching.FileWatcherPool(), new ProcessPathWriteLock());
