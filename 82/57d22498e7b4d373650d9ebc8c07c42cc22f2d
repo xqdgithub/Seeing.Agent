@@ -1,0 +1,27 @@
+tests/spine/Seeing.Agent.Tests/Permissions/WorkspacePathGateSessionRootTests.cs
+  s_713dc80d1c9aa9::t_e25250ac55f1a3 1-64
+src/spine/Seeing.Agent.Core/Core/Permission/SessionWorkspaceResolver.cs
+  s_713dc80d1c9aa9::t_52ca4edfd7c837 1-36
+src/spine/Seeing.Agent.Core/Core/Permission/WorkspacePathGate.cs
+  s_713dc80d1c9aa9::t_a12b79d72f7658 9-10,17,20,25-26,31,53-56
+tests/spine/Seeing.Agent.Tests/Permissions/SessionWorkspaceResolverTests.cs
+  s_713dc80d1c9aa9::t_a42cc7b3d65d37 1-52
+src/spine/Seeing.Agent.Core/Extensions/ServiceCollectionExtensions.cs
+  s_713dc80d1c9aa9::t_05b6bc092d94d4 669-670
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "8257d22498e7b4d373650d9ebc8c07c42cc22f2d",
+  "prompts": {},
+  "sessions": {
+    "s_713dc80d1c9aa9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec7087c0affekwm7ryMMv8ShaM",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
