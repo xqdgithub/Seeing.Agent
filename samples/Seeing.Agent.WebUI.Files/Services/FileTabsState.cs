@@ -106,7 +106,15 @@ public sealed class FileTabsState
     {
         if (!_byKey.TryGetValue(Key(file.Id), out var of)) return false;
         if (of.HasUnsavedChanges) return false;
-        of.Content = file.Content ?? ""; of.OpenedRevision = file.Revision;
+
+        var newContent = file.Content ?? "";
+        var sameRevision = (of.OpenedRevision is null && file.Revision is null)
+            || of.OpenedRevision?.Matches(file.Revision) == true;
+        // 内容与修订号均未变：无需重建编辑器（避免重置光标/滚动/撤销栈）
+        if (of.Content == newContent && sameRevision && of.Kind == file.Kind && !of.IsDeleted)
+            return true;
+
+        of.Content = newContent; of.OpenedRevision = file.Revision;
         of.Kind = file.Kind; of.MimeType = file.MimeType; of.BinaryContent = binaryContent;
         of.IsReadOnly = !file.IsEditable; of.IsDeleted = false;
         of.HasExternalConflict = false; of.PendingDiff = null;
