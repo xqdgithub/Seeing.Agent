@@ -30,6 +30,7 @@ public sealed class LocalExecutionWorldModule : ISeeingModule
         services.TryAddSingleton<IExecutionWorld, LocalExecutionWorld>();
         services.TryAddSingleton<IFileSystem>(sp => sp.GetRequiredService<IExecutionWorld>().FileSystem);
         services.TryAddSingleton<ISubprocessFactory>(sp => sp.GetRequiredService<IExecutionWorld>().Subprocess);
+        services.TryAddSingleton<IPathWriteLock, ProcessPathWriteLock>();
     }
 
     /// <inheritdoc />

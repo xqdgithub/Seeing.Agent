@@ -18,6 +18,7 @@ namespace Seeing.Agent.Tools.FileSystem
     {
         private readonly IFileSystem _fileSystem;
         private readonly IWorkspacePathGate _pathGate;
+        private readonly IPathWriteLock _writeLock;
 
         /// <summary>
         /// 创建 EditTool 实例
@@ -25,10 +26,12 @@ namespace Seeing.Agent.Tools.FileSystem
         public EditTool(
             ILogger<EditTool> logger,
             IFileSystem fileSystem,
-            IWorkspacePathGate pathGate) : base(logger)
+            IWorkspacePathGate pathGate,
+            IPathWriteLock writeLock) : base(logger)
         {
             _fileSystem = fileSystem;
             _pathGate = pathGate;
+            _writeLock = writeLock;
         }
 
         public override string Id => "edit";
@@ -120,6 +123,9 @@ namespace Seeing.Agent.Tools.FileSystem
                 return denied;
 
             _logger.LogInformation("编辑文件: {FilePath}", filePath);
+
+            // 与文件工作区（UI）共享同一进程内路径写锁：读-改-写全程持锁，消除 TOCTOU
+            using var _ = await _writeLock.AcquireAsync(filePath, context.CancellationToken);
 
             // 检查文件是否存在
             if (!_fileSystem.Exists(filePath))

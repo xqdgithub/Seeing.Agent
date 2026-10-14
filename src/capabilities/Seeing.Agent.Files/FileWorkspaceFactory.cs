@@ -15,6 +15,7 @@ public sealed class FileWorkspaceFactory : IFileWorkspaceFactory, IDisposable
     private readonly IFileSystem _fileSystem;
     private readonly IWorkspacePathGate _gate;
     private readonly FileWatcherPool _watchers;
+    private readonly IPathWriteLock _writeLock;
     private readonly ConcurrentDictionary<string, Entry> _cache = new();
     private readonly object _sync = new();
 
@@ -26,13 +27,15 @@ public sealed class FileWorkspaceFactory : IFileWorkspaceFactory, IDisposable
         IWorkspaceProvider workspace,
         IFileSystem fileSystem,
         IWorkspacePathGate gate,
-        FileWatcherPool watchers)
+        FileWatcherPool watchers,
+        IPathWriteLock writeLock)
     {
         _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
         _workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _gate = gate ?? throw new ArgumentNullException(nameof(gate));
         _watchers = watchers ?? throw new ArgumentNullException(nameof(watchers));
+        _writeLock = writeLock ?? throw new ArgumentNullException(nameof(writeLock));
     }
 
     /// <inheritdoc />
@@ -51,7 +54,7 @@ public sealed class FileWorkspaceFactory : IFileWorkspaceFactory, IDisposable
             }
 
             // 有效根变化：直接以新根替换（旧 facade 无 OS 资源，watcher 由订阅自身引用计数托管）
-            var workspace = new FileWorkspace(sessionId, root, _fileSystem, _gate, _watchers);
+            var workspace = new FileWorkspace(sessionId, root, _fileSystem, _gate, _watchers, _writeLock);
             _cache[sessionId] = new Entry(workspace, root, 1);
             return Task.FromResult<IFileWorkspace>(workspace);
         }

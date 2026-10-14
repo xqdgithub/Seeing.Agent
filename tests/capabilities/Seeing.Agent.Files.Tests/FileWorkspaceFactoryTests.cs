@@ -22,7 +22,7 @@ public class FileWorkspaceFactoryTests
         var gate = new Mock<IWorkspacePathGate>();
         gate.Setup(g => g.EnsureAllowed(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)null);
         pool = new FileWatcherPool();
-        return new FileWorkspaceFactory(sessions.Object, ws.Object, new LocalFileSystem(), gate.Object, pool);
+        return new FileWorkspaceFactory(sessions.Object, ws.Object, new LocalFileSystem(), gate.Object, pool, new ProcessPathWriteLock());
     }
 
     [Fact]

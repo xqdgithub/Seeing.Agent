@@ -14,14 +14,17 @@ public class DeleteTool : BuiltInToolBase
 {
     private readonly IFileSystem _fileSystem;
     private readonly IWorkspacePathGate _pathGate;
+    private readonly IPathWriteLock _writeLock;
 
     public DeleteTool(
         ILogger<DeleteTool> logger,
         IFileSystem fileSystem,
-        IWorkspacePathGate pathGate) : base(logger)
+        IWorkspacePathGate pathGate,
+        IPathWriteLock writeLock) : base(logger)
     {
         _fileSystem = fileSystem;
         _pathGate = pathGate;
+        _writeLock = writeLock;
     }
 
     public override string Id => "delete";
@@ -52,11 +55,11 @@ public class DeleteTool : BuiltInToolBase
         return JsonSerializer.SerializeToElement(schema);
     }
 
-    public override Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
+    public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
     {
         var path = GetStringArgument(arguments, "path");
         if (string.IsNullOrEmpty(path))
-            return Task.FromResult(Failure("缺少必需参数: path"));
+            return Failure("缺少必需参数: path");
 
         if (!Path.IsPathRooted(path))
             path = _fileSystem.GetFullPath(path);
@@ -65,24 +68,25 @@ public class DeleteTool : BuiltInToolBase
 
         var denied = PathGateHelper.RejectIfDenied(_pathGate, context, path, Failure);
         if (denied != null)
-            return Task.FromResult(denied);
+            return denied;
 
         _logger.LogInformation("删除路径: {Path}", path);
 
         try
         {
+            using var _ = await _writeLock.AcquireAsync(path, context.CancellationToken);
             if (!_fileSystem.Exists(path))
-                return Task.FromResult(Failure($"路径不存在: {path}"));
+                return Failure($"路径不存在: {path}");
 
             var isDirectory = FileSystemHelper.IsDirectory(_fileSystem, path);
             _fileSystem.Delete(path);
-            return Task.FromResult(Success(isDirectory
+            return Success(isDirectory
                 ? $"目录已删除: {path}"
-                : $"文件已删除: {path}"));
+                : $"文件已删除: {path}");
         }
         catch (Exception ex)
         {
-            return Task.FromResult(Failure(ex, "删除失败"));
+            return Failure(ex, "删除失败");
         }
     }
 }

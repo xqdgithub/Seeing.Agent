@@ -165,7 +165,7 @@ public class ReadToolFileSystemTests
         var fileSystem = new InMemoryFileSystem();
         fileSystem.AddDirectory("/workspace");
 
-        var tool = new WriteTool(NullLogger<WriteTool>.Instance, fileSystem, AllowAllPathGate.Instance);
+            var tool = new WriteTool(NullLogger<WriteTool>.Instance, fileSystem, AllowAllPathGate.Instance, new Seeing.IO.Local.ProcessPathWriteLock());
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { path = virtualPath, content = "hello seam" }),
             new ToolContext());
@@ -181,7 +181,7 @@ public class ReadToolFileSystemTests
         var fileSystem = new InMemoryFileSystem();
         fileSystem.AddFile(virtualPath, "x");
 
-        var tool = new DeleteTool(NullLogger<DeleteTool>.Instance, fileSystem, AllowAllPathGate.Instance);
+            var tool = new DeleteTool(NullLogger<DeleteTool>.Instance, fileSystem, AllowAllPathGate.Instance, new Seeing.IO.Local.ProcessPathWriteLock());
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { path = virtualPath }),
             new ToolContext());

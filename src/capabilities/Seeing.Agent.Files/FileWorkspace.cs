@@ -18,10 +18,10 @@ internal sealed class FileWorkspace : IFileWorkspace
     private readonly IFileSystem _fs;
     private readonly IWorkspacePathGate _gate;
     private readonly FileWatcherPool _watchers;
-    private readonly PathWriteLocks _locks = new();
+    private readonly IPathWriteLock _locks;
 
     /// <summary>构造会话工作区。</summary>
-    public FileWorkspace(string sessionId, string rootPath, IFileSystem fs, IWorkspacePathGate gate, FileWatcherPool watchers)
+    public FileWorkspace(string sessionId, string rootPath, IFileSystem fs, IWorkspacePathGate gate, FileWatcherPool watchers, IPathWriteLock locks)
     {
         SessionId = sessionId;
         RootPath = Path.GetFullPath(rootPath);
@@ -29,6 +29,7 @@ internal sealed class FileWorkspace : IFileWorkspace
         _fs = fs;
         _gate = gate;
         _watchers = watchers;
+        _locks = locks;
     }
 
     /// <inheritdoc />

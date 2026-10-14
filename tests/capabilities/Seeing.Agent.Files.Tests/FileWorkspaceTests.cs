@@ -15,7 +15,7 @@ public class FileWorkspaceTests : IDisposable
     {
         Directory.CreateDirectory(_root);
         var fs = new LocalFileSystem();
-        _ws = new FileWorkspace("s1", _root, fs, new AllowAllGate(), new Watching.FileWatcherPool());
+        _ws = new FileWorkspace("s1", _root, fs, new AllowAllGate(), new Watching.FileWatcherPool(), new ProcessPathWriteLock());
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public class FileWorkspaceTests : IDisposable
     [Fact]
     public void RootId_ShouldBeStableAndLowercaseHex()
     {
-        var again = new FileWorkspace("s2", _root, new LocalFileSystem(), new AllowAllGate(), new Watching.FileWatcherPool());
+        var again = new FileWorkspace("s2", _root, new LocalFileSystem(), new AllowAllGate(), new Watching.FileWatcherPool(), new ProcessPathWriteLock());
 
         again.RootId.Should().Be(_ws.RootId);
         again.RootId.Should().MatchRegex("^[0-9a-f]{16}$");

@@ -18,6 +18,7 @@ namespace Seeing.Agent.Tools.FileSystem
     {
         private readonly IFileSystem _fileSystem;
         private readonly IWorkspacePathGate _pathGate;
+        private readonly IPathWriteLock _writeLock;
 
         /// <summary>
         /// 创建 WriteTool 实例
@@ -25,10 +26,12 @@ namespace Seeing.Agent.Tools.FileSystem
         public WriteTool(
             ILogger<WriteTool> logger,
             IFileSystem fileSystem,
-            IWorkspacePathGate pathGate) : base(logger)
+            IWorkspacePathGate pathGate,
+            IPathWriteLock writeLock) : base(logger)
         {
             _fileSystem = fileSystem;
             _pathGate = pathGate;
+            _writeLock = writeLock;
         }
 
         public override string Id => "write";
@@ -91,6 +94,9 @@ namespace Seeing.Agent.Tools.FileSystem
                 return denied;
 
             _logger.LogInformation("写入文件: {FilePath}", filePath);
+
+            // 与文件工作区（UI）共享同一进程内路径写锁，避免同进程并发写竞态
+            using var _ = await _writeLock.AcquireAsync(filePath, context.CancellationToken);
 
             var exists = _fileSystem.Exists(filePath) && !FileSystemHelper.IsDirectory(_fileSystem, filePath);
             var oldContent = exists

@@ -1,15 +1,15 @@
 using FluentAssertions;
-using Seeing.Agent.Files;
+using Seeing.IO.Local;
 using Xunit;
 
 namespace Seeing.Agent.Files.Tests;
 
-public class PathWriteLocksTests
+public class ProcessPathWriteLockTests
 {
     [Fact]
     public async Task SamePath_ShouldSerialize()
     {
-        var locks = new PathWriteLocks();
+        var locks = new ProcessPathWriteLock();
         var order = new List<string>();
 
         var first = await locks.AcquireAsync("a.txt", CancellationToken.None);
@@ -30,7 +30,7 @@ public class PathWriteLocksTests
     [Fact]
     public async Task DifferentPaths_ShouldNotBlock()
     {
-        var locks = new PathWriteLocks();
+        var locks = new ProcessPathWriteLock();
 
         using var a = await locks.AcquireAsync("a.txt", CancellationToken.None);
         var bTask = locks.AcquireAsync("b.txt", CancellationToken.None);
@@ -43,11 +43,28 @@ public class PathWriteLocksTests
     [Fact]
     public async Task Release_ShouldAllowReacquire()
     {
-        var locks = new PathWriteLocks();
+        var locks = new ProcessPathWriteLock();
 
         using (await locks.AcquireAsync("a.txt", CancellationToken.None)) { }
         using var again = await locks.AcquireAsync("a.txt", CancellationToken.None);
 
+        again.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task CancelledAcquire_ShouldNotLeakLock()
+    {
+        var locks = new ProcessPathWriteLock();
+        using var held = await locks.AcquireAsync("a.txt", CancellationToken.None);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var act = async () => await locks.AcquireAsync("a.txt", cts.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+
+        // 释放后应能重新获取（引用计数未泄漏导致无法移除/获取）
+        held.Dispose();
+        using var again = await locks.AcquireAsync("a.txt", CancellationToken.None);
         again.Should().NotBeNull();
     }
 }
