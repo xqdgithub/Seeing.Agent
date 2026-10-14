@@ -27,6 +27,8 @@ public sealed class OpenFile
     public string? PendingDiff { get; set; }
     /// <summary>磁盘已被外部修改且本地有未保存改动（待用户裁决）。</summary>
     public bool HasExternalConflict { get; set; }
+    /// <summary>磁盘内容版本号：仅在磁盘内容被应用时自增（用于编辑器重建判定，用户编辑不变）。</summary>
+    public int DiskVersion { get; set; }
 }
 
 /// <summary>多标签状态（纯 C#，UI 无关）。</summary>
@@ -56,8 +58,7 @@ public sealed class FileTabsState
             existing.MimeType = file.MimeType;
             existing.BinaryContent = binaryContent;
             ActiveKey = key;
-        }
-        else
+        }        else
         {
             var of = new OpenFile
             {
@@ -109,6 +110,7 @@ public sealed class FileTabsState
         of.Kind = file.Kind; of.MimeType = file.MimeType; of.BinaryContent = binaryContent;
         of.IsReadOnly = !file.IsEditable; of.IsDeleted = false;
         of.HasExternalConflict = false; of.PendingDiff = null;
+        of.DiskVersion++;
         Changed?.Invoke();
         return true;
     }
@@ -127,6 +129,7 @@ public sealed class FileTabsState
         of.Kind = file.Kind; of.MimeType = file.MimeType; of.BinaryContent = binaryContent;
         of.IsReadOnly = !file.IsEditable; of.IsDeleted = false;
         of.HasUnsavedChanges = false; of.HasExternalConflict = false; of.PendingDiff = null;
+        of.DiskVersion++;
         Changed?.Invoke();
     }
 

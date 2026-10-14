@@ -38,7 +38,9 @@
             }
         </div>
         <div class="file-editor-monaco">
-            <StandaloneCodeEditor @key="f.Id.ToString()"
+            @* @key 含 revision：磁盘/agent 更新（OpenedRevision 前进）时重建编辑器以刷新内容，
+               避免 JS 编辑器残留旧文本导致保存覆盖外部改动；用户本地编辑不改 revision，不会重建 *@
+            <StandaloneCodeEditor @key="EditorKey(f)"
                                   @ref="_editor"
                                   Id="@($"file-editor-{Sanitize(f.Id.RelativePath)}")"
                                   ConstructionOptions="(editor => EditorOptions(f))"
@@ -83,6 +85,10 @@
 
     private static string Sanitize(string rel) =>
         string.Concat(rel.Select(c => char.IsLetterOrDigit(c) ? c : '_'));
+
+    // key 含磁盘版本号：仅当磁盘内容被应用时重建编辑器，用户编辑（MarkDirty）不重建
+    private static string EditorKey(OpenFile f) =>
+        $"{f.Id}|{f.DiskVersion}";
 
     private static StandaloneEditorConstructionOptions EditorOptions(OpenFile f) => new()
     {
@@ -198,7 +204,21 @@
     {
         var f = _active;
         if (f is null) return;
-        Tabs.ResolveConflictKeepLocal(f.Id, null);
+        _ = KeepLocalAsync(f);
+    }
+
+    private async Task KeepLocalAsync(OpenFile f)
+    {
+        // 保留本地修改，但把基准 revision 前进到当前磁盘版本，避免后续保存无条件覆盖
+        FileRevision? diskRev = null;
+        try
+        {
+            var disk = await Workspace.ReadAsync(Workspace.GetAbsolutePath(f.Id), FileReadMode.Display);
+            diskRev = disk.Revision;
+        }
+        catch { /* 读取失败则保持原基准 */ }
+
+        Tabs.ResolveConflictKeepLocal(f.Id, diskRev);
         _conflictOpen = false; _conflictDiff = null; _active = null;
         StateHasChanged();
     }

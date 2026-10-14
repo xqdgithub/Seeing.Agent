@@ -23,7 +23,17 @@ public sealed class FileViewerCoordinator : IDisposable
             try
             {
                 await foreach (var evt in _workspace.SubscribeChangesAsync(_cts.Token).ConfigureAwait(false))
-                    await onEvent(evt).ConfigureAwait(false);
+                {
+                    try
+                    {
+                        await onEvent(evt).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch
+                    {
+                        // 单个事件处理失败（如删除竞态）不应终止整条订阅循环
+                    }
+                }
             }
             catch (OperationCanceledException) { }
         });

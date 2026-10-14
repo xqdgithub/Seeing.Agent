@@ -37,6 +37,7 @@ public class FileViewerCoordinatorTests
         var id = new FileResourceId("root", "a.txt");
         var tabs = new FileTabsState();
         tabs.Open(File(id, "A", FileReadMode.Full));
+        var versionBefore = tabs.OpenFiles[0].DiskVersion;
 
         var ws = new Mock<IFileWorkspace>();
         ws.Setup(w => w.GetAbsolutePath(It.IsAny<FileResourceId>())).Returns("x");
@@ -47,6 +48,8 @@ public class FileViewerCoordinatorTests
         var outcome = await coord.ApplyAsync(new FileChangeEvent(id, FileChangeKind.Modified, null, null, DateTime.UtcNow));
         outcome.Should().Be(ApplyOutcome.Refreshed);
         tabs.OpenFiles[0].Content.Should().Be("disk");
+        // 磁盘更新必须推进 DiskVersion（编辑器 @key 据此重建，避免残留旧文本覆盖外部改动）
+        tabs.OpenFiles[0].DiskVersion.Should().BeGreaterThan(versionBefore);
     }
 
     [Fact]
