@@ -4,6 +4,7 @@
     <Project Path="samples/Seeing.Agent.Embed.Demo/Seeing.Agent.Embed.Demo.csproj" />
     <Project Path="samples/Seeing.Agent.Tui/Seeing.Agent.Tui.csproj" />
     <Project Path="samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj" />
+    <Project Path="samples/Seeing.Agent.WebUI.Files/Seeing.Agent.WebUI.Files.csproj" />
     <Project Path="samples/Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj" />
     <Project Path="samples/Seeing.Gateway.Console.Demo/Seeing.Gateway.Console.Demo.csproj" />
     <Project Path="samples/Seeing.Gateway.Server/Seeing.Gateway.Server.csproj" />
@@ -39,6 +40,7 @@
   <Folder Name="/src/capabilities/">
     <Project Path="src/capabilities/Seeing.Agent.Acp/Seeing.Agent.Acp.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Agents.BuiltIn/Seeing.Agent.Agents.BuiltIn.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Files/Seeing.Agent.Files.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Llm.Anthropic/Seeing.Agent.Llm.Anthropic.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Llm.ModelCapabilities/Seeing.Agent.Llm.ModelCapabilities.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Llm.ModelCatalog.Builtin/Seeing.Agent.Llm.ModelCatalog.Builtin.csproj" />
@@ -82,6 +84,7 @@
   <Folder Name="/tests/capabilities/">
     <Project Path="tests/capabilities/Seeing.Agent.Acp.Tests/Seeing.Agent.Acp.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Agents.BuiltIn.Tests/Seeing.Agent.Agents.BuiltIn.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Files.Tests/Seeing.Agent.Files.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Llm.Anthropic.Tests/Seeing.Agent.Llm.Anthropic.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Llm.ModelCapabilities.Tests/Seeing.Agent.Llm.ModelCapabilities.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Llm.OpenAI.Tests/Seeing.Agent.Llm.OpenAI.Tests.csproj" />
@@ -112,6 +115,7 @@
     <Project Path="tests/apps/Seeing.Agent.Cli.Tests/Seeing.Agent.Cli.Tests.csproj" />
     <Project Path="tests/apps/Seeing.Agent.Tui.Tests/Seeing.Agent.Tui.Tests.csproj" />
     <Project Path="tests/apps/Seeing.Agent.WebUI.Tests/Seeing.Agent.WebUI.Tests.csproj" />
+    <Project Path="tests/apps/Seeing.Agent.WebUI.Files.Tests/Seeing.Agent.WebUI.Files.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/plugs/">
     <Project Path="tests/plugs/Seeing.Provider.DeepSeek.Tests/Seeing.Provider.DeepSeek.Tests.csproj" />

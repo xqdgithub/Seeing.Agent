@@ -1,0 +1,21 @@
+@using Seeing.Agent.WebUI.Files.Services
+
+<div class="file-tabs">
+    @foreach (var f in Tabs.OpenFiles)
+    {
+        var active = Tabs.ActiveKey == f.Id.ToString();
+        <div class="file-tab @(active ? "active" : "")" @onclick="() => Tabs.Activate(f.Id)">
+            <span class="file-tab-name">@f.Id.RelativePath</span>
+            @if (f.HasUnsavedChanges)
+            {
+                <span class="dirty">●</span>
+            }
+            <button type="button" class="file-tab-close" @onclick:stopPropagation="true" @onclick="() => Tabs.Close(f.Id)">×</button>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>标签状态。</summary>
+    [Parameter, EditorRequired] public FileTabsState Tabs { get; set; } = default!;
+}

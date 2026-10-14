@@ -1,0 +1,78 @@
+@using Seeing.Agent.Abstractions.Files
+@using Seeing.Agent.WebUI.Files.Services
+@inject IFileWorkspaceFactory WorkspaceFactory
+@inject FilePanelState PanelState
+@implements IDisposable
+
+<div class="file-panel-host">
+    @if (string.IsNullOrEmpty(SessionId))
+    {
+        <div class="file-panel-empty">无会话</div>
+    }
+    else if (_workspace is null)
+    {
+        <div class="file-panel-loading">加载中…</div>
+    }
+    else
+    {
+        <div class="file-panel-body">
+            <FileTree Workspace="_workspace" OnOpen="OnOpenFileAsync" />
+            <div class="file-panel-main">
+                <FileTabs Tabs="_tabs" />
+                <FileViewer Tabs="_tabs" />
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter(Name = "SessionId")] private string? SessionId { get; set; }
+
+    private IFileWorkspace? _workspace;
+    private readonly FileTabsState _tabs = new();
+    private FileViewerCoordinator? _coordinator;
+
+    /// <summary>标签状态（供宿主只读访问）。</summary>
+    public FileTabsState Tabs => _tabs;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrEmpty(SessionId)) return;
+        _workspace = await WorkspaceFactory.ResolveAsync(SessionId);
+        _coordinator = new FileViewerCoordinator(_workspace, _tabs);
+        _coordinator.Start(async evt => await InvokeAsync(async () =>
+        {
+            await _coordinator!.ApplyAsync(evt);
+            StateHasChanged();
+        }));
+        _tabs.Changed += OnTabsChanged;
+        PanelState.Open(SessionId);
+    }
+
+    private void OnTabsChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task OnOpenFileAsync(FileResourceId id)
+    {
+        if (_workspace is null) return;
+        var file = await _workspace.ReadAsync(_workspace.GetAbsolutePath(id), FileReadMode.Display);
+        _tabs.Open(file);
+    }
+
+    /// <summary>宿主桥接入口：agent 改动某文件。</summary>
+    public async Task NotifyAgentChangeAsync(FileResourceId id, string? diff)
+    {
+        if (_workspace is null) return;
+        var file = await _workspace.ReadAsync(_workspace.GetAbsolutePath(id), FileReadMode.Display);
+        _tabs.Open(file);
+        _tabs.SetPendingDiff(id, diff);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        _tabs.Changed -= OnTabsChanged;
+        _coordinator?.Dispose();
+        if (!string.IsNullOrEmpty(SessionId)) WorkspaceFactory.Release(SessionId);
+        PanelState.Close();
+    }
+}

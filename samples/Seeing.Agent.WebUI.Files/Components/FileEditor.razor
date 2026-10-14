@@ -1,0 +1,68 @@
+@using Seeing.Agent.Abstractions.Files
+@using Seeing.Agent.WebUI.Files.Services
+
+<div class="file-editor">
+    @{ var f = Tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == Tabs.ActiveKey); }
+    @if (f is null)
+    {
+        <div class="file-viewer-empty">选择文件</div>
+    }
+    else if (f.IsDeleted)
+    {
+        <div class="file-viewer-deleted">文件已删除</div>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(f.PendingDiff))
+        {
+            <pre class="file-diff">@f.PendingDiff</pre>
+        }
+        <div class="file-editor-toolbar">
+            <button type="button" class="file-editor-save" disabled="@(f.IsReadOnly || !f.HasUnsavedChanges)" @onclick="SaveAsync">保存</button>
+            @if (f.IsReadOnly)
+            {
+                <span class="file-editor-readonly">只读</span>
+            }
+        </div>
+        <textarea class="file-editor-input" readonly="@f.IsReadOnly"
+                  value="@f.Content" @onchange="OnEdit"></textarea>
+        @if (_conflict)
+        {
+            <div class="file-editor-conflict">磁盘内容已变更，保存冲突。请重新打开文件后再编辑。</div>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>标签状态。</summary>
+    [Parameter, EditorRequired] public FileTabsState Tabs { get; set; } = default!;
+
+    /// <summary>目标文件工作区。</summary>
+    [Parameter, EditorRequired] public IFileWorkspace Workspace { get; set; } = default!;
+
+    private bool _conflict;
+
+    private void OnEdit(ChangeEventArgs e)
+    {
+        _conflict = false;
+        var f = Tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == Tabs.ActiveKey);
+        if (f is not null) Tabs.MarkDirty(f.Id, e.Value?.ToString() ?? "");
+    }
+
+    private async Task SaveAsync()
+    {
+        var f = Tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == Tabs.ActiveKey);
+        if (f is null || f.IsReadOnly) return;
+
+        var result = await Workspace.WriteAsync(Workspace.GetAbsolutePath(f.Id), f.Content, f.OpenedRevision);
+        if (result.Conflict)
+        {
+            _conflict = true;
+            return;
+        }
+
+        _conflict = false;
+        f.HasUnsavedChanges = false;
+        f.OpenedRevision = result.Revision;
+    }
+}

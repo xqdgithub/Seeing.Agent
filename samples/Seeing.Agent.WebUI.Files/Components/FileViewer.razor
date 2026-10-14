@@ -1,0 +1,26 @@
+@using Seeing.Agent.WebUI.Files.Services
+
+<div class="file-viewer">
+    @{ var f = Tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == Tabs.ActiveKey); }
+    @if (f is null)
+    {
+        <div class="file-viewer-empty">选择文件</div>
+    }
+    else if (f.IsDeleted)
+    {
+        <div class="file-viewer-deleted">文件已删除</div>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(f.PendingDiff))
+        {
+            <pre class="file-diff">@f.PendingDiff</pre>
+        }
+        <pre class="file-content">@f.Content</pre>
+    }
+</div>
+
+@code {
+    /// <summary>标签状态。</summary>
+    [Parameter, EditorRequired] public FileTabsState Tabs { get; set; } = default!;
+}

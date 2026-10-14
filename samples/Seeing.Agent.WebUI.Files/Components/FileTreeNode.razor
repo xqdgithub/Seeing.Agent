@@ -1,0 +1,71 @@
+@using Seeing.Agent.Abstractions.Files
+
+<li class="file-tree-node">
+    @if (Entry.IsDirectory)
+    {
+        <div class="file-tree-dir" style="@($"padding-left:{Depth * 12}px")" @onclick="ToggleAsync">
+            <span class="file-tree-arrow">@(_expanded ? "▾" : "▸")</span>
+            <span class="file-tree-name">@Entry.Name</span>
+        </div>
+        @if (_expanded)
+        {
+            <ul class="file-tree-list">
+                @if (_loading)
+                {
+                    <li class="file-tree-loading">加载中…</li>
+                }
+                else
+                {
+                    @foreach (var child in _children)
+                    {
+                        <FileTreeNode Entry="child" Workspace="Workspace" OnOpen="OnOpen" Depth="Depth + 1" />
+                    }
+                }
+            </ul>
+        }
+    }
+    else
+    {
+        <div class="file-tree-file" style="@($"padding-left:{Depth * 12 + 12}px")" @onclick="() => OnOpen.InvokeAsync(Entry.Id)">
+            <span class="file-tree-name">@Entry.Name</span>
+        </div>
+    }
+</li>
+
+@code {
+    /// <summary>当前目录项。</summary>
+    [Parameter, EditorRequired] public FileEntry Entry { get; set; } = default!;
+
+    /// <summary>目标文件工作区。</summary>
+    [Parameter, EditorRequired] public IFileWorkspace Workspace { get; set; } = default!;
+
+    /// <summary>点击文件回调。</summary>
+    [Parameter] public EventCallback<FileResourceId> OnOpen { get; set; }
+
+    /// <summary>缩进层级。</summary>
+    [Parameter] public int Depth { get; set; }
+
+    private bool _expanded;
+    private bool _loading;
+    private List<FileEntry> _children = [];
+
+    private async Task ToggleAsync()
+    {
+        _expanded = !_expanded;
+        if (!_expanded || _children.Count > 0) return;
+
+        _loading = true;
+        try
+        {
+            var entries = await Workspace.ListAsync(Workspace.GetAbsolutePath(Entry.Id));
+            _children = entries
+                .OrderByDescending(e => e.IsDirectory)
+                .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

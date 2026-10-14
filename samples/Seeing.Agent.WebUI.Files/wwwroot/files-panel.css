@@ -1,0 +1,25 @@
+.file-panel-host { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.file-panel-empty, .file-panel-loading { padding: 12px; color: #999; }
+.file-panel-body { display: flex; flex: 1; overflow: hidden; }
+.file-tree { width: 220px; flex-shrink: 0; overflow-y: auto; border-right: 1px solid var(--color-border, #eee); }
+.file-tree-list { list-style: none; margin: 0; padding: 0; }
+.file-tree-dir, .file-tree-file { display: flex; align-items: center; gap: 4px; padding: 2px 6px; cursor: pointer; white-space: nowrap; user-select: none; }
+.file-tree-dir:hover, .file-tree-file:hover { background: rgba(0, 0, 0, 0.04); }
+.file-tree-arrow { width: 12px; display: inline-block; color: #999; }
+.file-tree-loading, .file-tree-empty { padding: 4px 12px; color: #999; font-size: 12px; }
+.file-panel-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.file-tabs { display: flex; gap: 4px; padding: 4px; border-bottom: 1px solid var(--color-border, #eee); overflow-x: auto; }
+.file-tab { display: flex; align-items: center; gap: 4px; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
+.file-tab.active { background: rgba(0, 0, 0, 0.05); border-radius: 4px; }
+.file-tab .dirty { color: #faad14; }
+.file-tab-close { border: none; background: transparent; cursor: pointer; line-height: 1; }
+.file-viewer, .file-editor { flex: 1; overflow: auto; padding: 8px; display: flex; flex-direction: column; }
+.file-viewer-empty, .file-viewer-deleted { color: #999; padding: 12px; }
+.file-viewer-deleted { color: #ff4d4f; }
+.file-editor-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.file-editor-readonly { color: #999; font-size: 12px; }
+.file-editor-conflict { color: #ff4d4f; font-size: 12px; margin-top: 6px; }
+.file-editor-input { flex: 1; width: 100%; min-height: 300px; font-family: monospace; font-size: 12px; resize: none; }
+.file-content, .file-diff { white-space: pre-wrap; font-family: monospace; font-size: 12px; margin: 0; }
+.file-diff { background: rgba(250, 173, 20, 0.08); }
+.file-panel-toggle { cursor: pointer; }

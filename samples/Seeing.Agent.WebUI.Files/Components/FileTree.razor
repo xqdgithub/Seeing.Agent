@@ -1,0 +1,48 @@
+@using Seeing.Agent.Abstractions.Files
+
+<div class="file-tree">
+    @if (_loading)
+    {
+        <div class="file-tree-loading">加载中…</div>
+    }
+    else if (_roots.Count == 0)
+    {
+        <div class="file-tree-empty">空目录</div>
+    }
+    else
+    {
+        <ul class="file-tree-list">
+            @foreach (var e in _roots)
+            {
+                <FileTreeNode Entry="e" Workspace="Workspace" OnOpen="OnOpen" Depth="0" />
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    /// <summary>目标文件工作区。</summary>
+    [Parameter, EditorRequired] public IFileWorkspace Workspace { get; set; } = default!;
+
+    /// <summary>点击文件回调。</summary>
+    [Parameter] public EventCallback<FileResourceId> OnOpen { get; set; }
+
+    private List<FileEntry> _roots = [];
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var entries = await Workspace.ListAsync(Workspace.RootPath);
+            _roots = entries
+                .OrderByDescending(e => e.IsDirectory)
+                .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}
