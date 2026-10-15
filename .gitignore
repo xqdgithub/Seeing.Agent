@@ -407,7 +407,6 @@ samples/*/plugins/*.dll
 /tests/test_results_detail.json
 /tests/ux_evaluation.json
 /tests/screenshot*.png
-/docs/superpowers/plans
 /chat-page.yml
 /test-screenshots
 /deploy
