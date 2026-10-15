@@ -1,0 +1,32 @@
+src/spine/Seeing.Agent.Core/Core/Host/HostRequestManager.cs
+  s_e270a9e07ca3bb::t_f66d6ae78b944f 1-60
+src/spine/Seeing.Agent.Core/Extensions/ServiceCollectionExtensions.cs
+  s_e270a9e07ca3bb::t_eff94f36f77862 25
+  s_e270a9e07ca3bb::t_a9054a748ad0e9 397-399
+src/spine/Seeing.Agent.Core/Tools/BuiltIn/DefaultToolPermissionPolicy.cs
+  s_e270a9e07ca3bb::t_ca6750be254ac3 41
+tests/spine/Seeing.Agent.Tests/Host/HostRequestManagerTests.cs
+  s_e270a9e07ca3bb::t_69f9aea4b8df6d 1-129
+src/spine/Seeing.Agent.Core/Core/Host/HostServiceExtensions.cs
+  s_e270a9e07ca3bb::t_d987e287141d29 1-20
+src/spine/Seeing.Agent.Core/Core/Interactions/SurfaceRegistry.cs
+  s_e270a9e07ca3bb::t_dccbf6eb961c45 14
+src/spine/Seeing.Agent.Core/Core/Permission/PermissionKindMapper.cs
+  s_e270a9e07ca3bb::t_98aad9616cc950 32-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "1da720b3ec021afa0ff2a3b4c8955c92018692dd",
+  "prompts": {},
+  "sessions": {
+    "s_e270a9e07ca3bb": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec13cd159ffe6JY6K83vwdZeWm",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
