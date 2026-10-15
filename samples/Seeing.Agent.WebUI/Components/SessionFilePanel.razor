@@ -1,4 +1,5 @@
 @using Seeing.Agent.Abstractions.Files
+@using Seeing.Agent.Abstractions.Interactions
 @using Seeing.Agent.WebUI.Files.Components
 @using Seeing.Agent.WebUI.Files.Services
 @using Seeing.Agent.WebUI.Services
@@ -6,6 +7,7 @@
 @inject SessionEventStreamRouter Router
 @inject CircuitContext CircuitContext
 @inject FilePanelState PanelState
+@inject HostRequestActivePanelRegistry PanelRegistry
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -69,12 +71,16 @@
             }
             catch { /* JS 未就绪：忽略 */ }
         }
+
+        // 面板渲染后就绪状态变化：同步活跃面板登记（宿主请求定位）
+        SyncPanelRegistration();
     }
 
     private void OnPanelChanged()
     {
         // 侧别变更即持久化
         _ = PersistSideAsync();
+        SyncPanelRegistration();
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -98,9 +104,88 @@
         return Task.CompletedTask;
     });
 
+    /// <summary>是否本组件应作为该会话的活跃面板（session 匹配 + 面板开 + 宿主已渲染）。</summary>
+    private bool ShouldServe =>
+        !string.IsNullOrEmpty(SessionId)
+        && PanelState.IsOpen
+        && string.Equals(PanelState.SessionId, SessionId, StringComparison.Ordinal)
+        && _host is not null;
+
+    /// <summary>同步活跃面板登记（幂等：Register 覆盖 / Unregister 幂等）。</summary>
+    private void SyncPanelRegistration()
+    {
+        var circuitId = CircuitContext.Id ?? "";
+        if (string.IsNullOrEmpty(SessionId) || string.IsNullOrEmpty(circuitId)) return;
+
+        if (ShouldServe)
+            PanelRegistry.Register(SessionId, circuitId, HandleHostRequestAsync);
+        else
+            PanelRegistry.Unregister(SessionId, circuitId);
+    }
+
+    /// <summary>宿主请求处理入口（编组到 Blazor 同步上下文执行）。</summary>
+    private Task<HostResponse> HandleHostRequestAsync(HostRequest req, CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource<HostResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = InvokeAsync(async () =>
+        {
+            try { tcs.TrySetResult(await ComputeHostResponseAsync(req)); }
+            catch (Exception ex) { tcs.TrySetException(ex); }
+        });
+        return tcs.Task;
+    }
+
+    private async Task<HostResponse> ComputeHostResponseAsync(HostRequest req)
+    {
+        var host = _host;
+        if (host is null)
+            return new HostResponse { RequestId = req.RequestId, SessionId = req.SessionId, Status = HostResponseStatus.Unavailable };
+        try
+        {
+            HostResponsePayload payload;
+            switch (req.Kind)
+            {
+                case "editor.command":
+                    var commandId = req.Payload!.Value.GetProperty("commandId").GetString()!;
+                    System.Text.Json.JsonElement? args =
+                        req.Payload!.Value.TryGetProperty("args", out var a) && a.ValueKind != System.Text.Json.JsonValueKind.Null ? a : null;
+                    var path = req.Payload!.Value.TryGetProperty("path", out var p) && p.ValueKind == System.Text.Json.JsonValueKind.String ? p.GetString() : null;
+                    payload = await host.ExecuteEditorCommandAsync(commandId, args, path);
+                    break;
+                case "editor.query":
+                    var qkind = req.Payload!.Value.GetProperty("kind").GetString()!;
+                    var qpath = req.Payload!.Value.TryGetProperty("path", out var p2) && p2.ValueKind == System.Text.Json.JsonValueKind.String ? p2.GetString() : null;
+                    payload = await host.QueryEditorAsync(qkind, qpath);
+                    break;
+                case "editor.list_commands":
+                    payload = await host.ListEditorCommandsAsync();
+                    break;
+                default:
+                    payload = HostResponsePayload.Unavailable;
+                    break;
+            }
+
+            return payload.Available
+                ? new HostResponse
+                {
+                    RequestId = req.RequestId,
+                    SessionId = req.SessionId,
+                    Status = HostResponseStatus.Completed,
+                    Payload = payload.Json is null ? null : System.Text.Json.JsonSerializer.SerializeToElement(payload.Json)
+                }
+                : new HostResponse { RequestId = req.RequestId, SessionId = req.SessionId, Status = HostResponseStatus.Unavailable };
+        }
+        catch (Exception ex)
+        {
+            return new HostResponse { RequestId = req.RequestId, SessionId = req.SessionId, Status = HostResponseStatus.Failed, Reason = ex.Message };
+        }
+    }
+
     public void Dispose()
     {
         PanelState.Changed -= OnPanelChanged;
+        if (!string.IsNullOrEmpty(SessionId))
+            PanelRegistry.Unregister(SessionId, CircuitContext.Id ?? "");
         if (_bridge is not null)
         {
             _bridge.AgentChanged -= OnAgentChanged;

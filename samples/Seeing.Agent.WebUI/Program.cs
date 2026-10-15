@@ -80,6 +80,7 @@ builder.Services.AddSeeingModule<AgentsBuiltInModule>(registry);
 builder.Services.AddSeeingAcp(registry);
 builder.Services.AddSeeingScheduler(registry);
 builder.Services.AddSeeingModule<QuestionToolsModule>(registry);
+builder.Services.AddSeeingModule<Seeing.Agent.Tools.Editor.EditorToolsModule>(registry);
 builder.Services.AddTokenBudgetIntegration(registry, builder.Configuration);
 builder.Services.AddSeeingGatewayServer(registry, builder.Configuration);
 builder.Services.AddGatewayChannelRegistry();
@@ -130,6 +131,11 @@ builder.Services.AddScoped<SessionWindowRegistry>();
 builder.Services.AddScoped<Seeing.Agent.WebUI.Services.AgentFileChangeBridge>();
 builder.Services.AddScoped<Seeing.Agent.WebUI.Files.Services.FilePanelState>();
 builder.Services.AddScoped<Seeing.Agent.WebUI.Files.Services.FileTreeState>();
+
+// 宿主请求（Host Request）：全局收件箱（Singleton 投影）+ 活跃面板登记（Singleton）+ 派发器（Scoped，circuit 维度）
+builder.Services.AddSingleton<Seeing.Agent.WebUI.Services.HostRequestInbox>();
+builder.Services.AddSingleton<Seeing.Agent.WebUI.Services.HostRequestActivePanelRegistry>();
+builder.Services.AddScoped<Seeing.Agent.WebUI.Services.HostRequestDispatcher>();
 
 // EventStreamHandler：页面渲染实例经 SessionEventStreamRouter.GetOrCreateConsumer 按会话创建（Session.razor）。
 // 此处保留的 Scoped 注册作为全局事件处理占位实例（sessionId 为空串）。

@@ -18,6 +18,7 @@
 @inject IModelConfigManager ModelManager
 @inject IJSRuntime JSRuntime
 @inject PermissionInboxView PermissionView
+@inject Seeing.Agent.WebUI.Services.HostRequestDispatcher HostDispatcher
 @implements IDisposable
 
 <Layout Class="app-layout" Style="min-height: 100vh;">
@@ -64,6 +65,13 @@
 @code {
     private bool _hasRendered;
     private AppSidebar? _sidebarRef;
+
+    protected override void OnInitialized()
+    {
+        // 急切解析 HostRequestDispatcher（Scoped，circuit 维度）：触发构造与 Inbox.Changed 订阅，
+        // 否则宿主请求派发器直到首次注入才建立，早期请求可能落空。
+        _ = HostDispatcher;
+    }
 
     protected override async Task OnInitializedAsync()
     {
