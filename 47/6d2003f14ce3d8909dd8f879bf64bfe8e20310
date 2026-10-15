@@ -1,0 +1,28 @@
+src/spine/Seeing.Agent.Core/Core/Interactions/PendingRequestManager.cs
+  s_a821ecf3cbac2a::t_55cd1d545b9ab2 18-23,26-34,37-45
+  s_a821ecf3cbac2a::t_50a9287335e069 217-295
+src/spine/Seeing.Agent.Core/Core/Questions/QuestionRequestManager.cs
+  s_a821ecf3cbac2a::t_e8822a6344dcce 33,44
+src/spine/Seeing.Agent.Core/Core/Permission/PermissionRequestManager.cs
+  s_a821ecf3cbac2a::t_85f74712da9dc1 123-124
+  s_a821ecf3cbac2a::t_924a133a102f7c 58
+  s_a821ecf3cbac2a::t_07952c32c4f7ca 55
+tests/spine/Seeing.Agent.Tests/Interactions/PendingRequestManagerConvergenceTests.cs
+  s_a821ecf3cbac2a::t_a7464866533498 1-137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "476d2003f14ce3d8909dd8f879bf64bfe8e20310",
+  "prompts": {},
+  "sessions": {
+    "s_a821ecf3cbac2a": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec14b019affegFEOsmuXvzhbK6",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
