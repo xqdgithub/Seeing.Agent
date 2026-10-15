@@ -14,18 +14,10 @@ public sealed class QuestionRequestManager
     : PendingRequestManager<QuestionRequest, QuestionResult>, IQuestionRequestManager
 {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(10);
-    private static readonly TimeSpan DefaultConvergenceGrace = TimeSpan.FromSeconds(1);
 
     private readonly IExecutionEventPublisher? _eventPublisher;
-    private readonly IQuestionSurfaceRegistry? _surfaceRegistry;
     private readonly ILogger<QuestionRequestManager>? _logger;
     private readonly TimeSpan _timeout;
-    private readonly TimeSpan _convergenceGrace;
-    private readonly Timer _convergenceTimer;
-    private readonly object _convergenceGate = new();
-    private HashSet<string>? _convergenceCandidates;
-    private bool _convergenceArmed;
-    private volatile bool _disposed;
 
     /// <summary>创建问答在途管理器（等待超时 10 分钟；收敛宽限 1 秒）。</summary>
     public QuestionRequestManager(
@@ -38,7 +30,7 @@ public sealed class QuestionRequestManager
             surfaceRegistry ?? serviceProvider?.GetService(typeof(IQuestionSurfaceRegistry)) as IQuestionSurfaceRegistry,
             logger,
             DefaultTimeout,
-            DefaultConvergenceGrace)
+            null)
     {
     }
 
@@ -49,19 +41,11 @@ public sealed class QuestionRequestManager
         ILogger<QuestionRequestManager>? logger,
         TimeSpan timeout,
         TimeSpan? convergenceGrace = null)
-        : base(logger)
+        : base(logger, surfaceRegistry, convergenceGrace)
     {
         _eventPublisher = eventPublisher;
-        _surfaceRegistry = surfaceRegistry;
         _logger = logger;
         _timeout = timeout;
-        _convergenceGrace = convergenceGrace ?? DefaultConvergenceGrace;
-
-        if (_surfaceRegistry is not null)
-            _surfaceRegistry.ProviderUnregistered += OnProviderUnregistered;
-
-        _convergenceTimer = new Timer(
-            OnConvergenceTimer, null, System.Threading.Timeout.InfiniteTimeSpan, System.Threading.Timeout.InfiniteTimeSpan);
     }
 
     /// <inheritdoc />
@@ -123,84 +107,6 @@ public sealed class QuestionRequestManager
             Status = response.Status,
             Answers = response.Answers
         });
-
-    /// <inheritdoc />
-    protected override void OnDisposing()
-    {
-        _disposed = true;
-
-        if (_surfaceRegistry is not null)
-            _surfaceRegistry.ProviderUnregistered -= OnProviderUnregistered;
-
-        _convergenceTimer.Dispose();
-    }
-
-    private void OnProviderUnregistered()
-    {
-        if (_disposed)
-            return;
-
-        lock (_convergenceGate)
-        {
-            _convergenceCandidates ??= new HashSet<string>(StringComparer.Ordinal);
-            foreach (var request in GetAllPending())
-                _convergenceCandidates.Add(GetRequestId(request));
-
-            if (_convergenceArmed)
-                return;
-
-            _convergenceArmed = true;
-        }
-
-        try
-        {
-            _convergenceTimer.Change(_convergenceGrace, System.Threading.Timeout.InfiniteTimeSpan);
-        }
-        catch (ObjectDisposedException)
-        {
-        }
-    }
-
-    private void OnConvergenceTimer(object? state)
-    {
-        if (_disposed)
-            return;
-
-        HashSet<string>? candidates;
-        lock (_convergenceGate)
-        {
-            candidates = _convergenceCandidates;
-            _convergenceCandidates = null;
-            _convergenceArmed = false;
-        }
-
-        if (candidates is null)
-            return;
-
-        try
-        {
-            foreach (var request in GetAllPending())
-            {
-                var requestId = GetRequestId(request);
-                if (!candidates.Contains(requestId))
-                    continue;
-
-                var sessionId = GetSessionId(request);
-                if (!string.IsNullOrEmpty(sessionId) &&
-                    _surfaceRegistry is not null &&
-                    _surfaceRegistry.CanSurface(sessionId))
-                {
-                    continue;
-                }
-
-                TryResolve(requestId, CreateFallback(request, PendingFallbackReason.Unavailable), sessionId);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "在途问答收敛复核失败");
-        }
-    }
 
     private void PublishSafe(string sessionId, IMessageEvent evt)
     {

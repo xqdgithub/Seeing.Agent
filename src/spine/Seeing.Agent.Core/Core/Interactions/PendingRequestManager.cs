@@ -15,12 +15,34 @@ public abstract class PendingRequestManager<TRequest, TResponse>
 {
     private readonly ConcurrentDictionary<string, PendingEntry> _pending = new(StringComparer.Ordinal);
     private readonly ILogger? _logger;
+    private readonly ISurfaceRegistry? _surfaceRegistry;
+    private readonly TimeSpan _convergenceGrace;
+    private readonly Timer? _convergenceTimer;
+    private readonly object _convergenceGate = new();
+    private HashSet<string>? _convergenceCandidates;
+    private bool _convergenceArmed;
     private volatile bool _disposed;
 
-    /// <summary>创建在途管理器；可选注入日志用于订阅者异常隔离记录。</summary>
-    protected PendingRequestManager(ILogger? logger = null)
+    /// <summary>
+    /// 创建在途管理器；可选注入日志用于订阅者异常隔离记录。
+    /// 注入 <paramref name="surfaceRegistry"/> 后监听呈现端注销信号，宽限 <paramref name="convergenceGrace"/>（默认 1 秒）
+    /// 后对不可呈现会话的在途请求以 <see cref="PendingFallbackReason.Unavailable"/> 收敛。
+    /// </summary>
+    protected PendingRequestManager(
+        ILogger? logger = null,
+        ISurfaceRegistry? surfaceRegistry = null,
+        TimeSpan? convergenceGrace = null)
     {
         _logger = logger;
+        _surfaceRegistry = surfaceRegistry;
+        _convergenceGrace = convergenceGrace ?? TimeSpan.FromSeconds(1);
+
+        if (_surfaceRegistry is not null)
+        {
+            _surfaceRegistry.ProviderUnregistered += OnProviderUnregistered;
+            _convergenceTimer = new Timer(
+                OnConvergenceTimer, null, System.Threading.Timeout.InfiniteTimeSpan, System.Threading.Timeout.InfiniteTimeSpan);
+        }
     }
 
     /// <summary>等待超时；默认 5 分钟，子类可覆盖（如测试注入短值）。</summary>
@@ -192,8 +214,85 @@ public abstract class PendingRequestManager<TRequest, TResponse>
         }
     }
 
-    /// <summary>释放前子类清理钩子（退订事件、释放 Timer 等）。</summary>
-    protected virtual void OnDisposing() { }
+    /// <summary>释放前子类清理钩子（退订事件、释放 Timer 等）；子类覆写须链式调用 <c>base.OnDisposing()</c>。</summary>
+    protected virtual void OnDisposing()
+    {
+        if (_surfaceRegistry is not null)
+            _surfaceRegistry.ProviderUnregistered -= OnProviderUnregistered;
+
+        _convergenceTimer?.Dispose();
+    }
+
+    private void OnProviderUnregistered()
+    {
+        if (_disposed)
+            return;
+
+        lock (_convergenceGate)
+        {
+            _convergenceCandidates ??= new HashSet<string>(StringComparer.Ordinal);
+            foreach (var request in GetAllPending())
+            {
+                var requestId = GetRequestId(request);
+                if (!string.IsNullOrEmpty(requestId))
+                    _convergenceCandidates.Add(requestId);
+            }
+
+            if (_convergenceArmed)
+                return;
+
+            _convergenceArmed = true;
+        }
+
+        try
+        {
+            _convergenceTimer?.Change(_convergenceGrace, System.Threading.Timeout.InfiniteTimeSpan);
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private void OnConvergenceTimer(object? state)
+    {
+        if (_disposed)
+            return;
+
+        HashSet<string>? candidates;
+        lock (_convergenceGate)
+        {
+            candidates = _convergenceCandidates;
+            _convergenceCandidates = null;
+            _convergenceArmed = false;
+        }
+
+        if (candidates is null)
+            return;
+
+        try
+        {
+            foreach (var request in GetAllPending())
+            {
+                var requestId = GetRequestId(request);
+                if (!candidates.Contains(requestId))
+                    continue;
+
+                var sessionId = GetSessionId(request);
+                if (!string.IsNullOrEmpty(sessionId) &&
+                    _surfaceRegistry is not null &&
+                    _surfaceRegistry.CanSurface(sessionId))
+                {
+                    continue;
+                }
+
+                TryResolve(requestId, CreateFallback(request, PendingFallbackReason.Unavailable), sessionId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "在途请求收敛复核失败");
+        }
+    }
 
     private static bool IsImmediate(TResponse? value) => value is not null;
 

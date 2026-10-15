@@ -20,17 +20,11 @@ public sealed class PermissionRequestManager : PendingRequestManager<PermissionR
 
     private readonly IReadOnlyList<IPermissionChannel> _channels;
     private readonly IExecutionEventPublisher _eventPublisher;
-    private readonly IPermissionSurfaceRegistry _presentation;
     private readonly EffectivePermissionPolicy _policy;
     private readonly ILogger<PermissionRequestManager> _logger;
     private readonly TimeSpan _timeout;
-    private readonly TimeSpan _convergenceGrace;
-    private readonly Timer _convergenceTimer;
     private readonly IDisposable? _sessionSubscription;
     private readonly IDisposable? _optionsSubscription;
-    private readonly object _convergenceGate = new();
-    private HashSet<string>? _convergenceCandidates;
-    private bool _convergenceArmed;
     private bool _lastAutoApproveAll;
     private bool _disposed;
 
@@ -58,22 +52,18 @@ public sealed class PermissionRequestManager : PendingRequestManager<PermissionR
         ILogger<PermissionRequestManager> logger,
         TimeSpan timeout,
         TimeSpan? convergenceGrace = null)
-        : base(logger)
+        : base(logger, presentation, convergenceGrace)
     {
         _eventPublisher = eventPublisher ?? throw new ArgumentNullException(nameof(eventPublisher));
-        _presentation = presentation ?? throw new ArgumentNullException(nameof(presentation));
+        ArgumentNullException.ThrowIfNull(presentation);
         _policy = policy ?? throw new ArgumentNullException(nameof(policy));
         _channels = (channels ?? Array.Empty<IPermissionChannel>()).ToList();
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _timeout = timeout;
-        _convergenceGrace = convergenceGrace ?? TimeSpan.FromSeconds(1);
 
         _lastAutoApproveAll = options?.CurrentValue.Permission?.AutoApproveAll == true;
         _sessionSubscription = sessionEvents?.Events.Subscribe(OnSessionEvent);
         _optionsSubscription = options?.OnChange(OnOptionsChanged);
-
-        _presentation.ProviderUnregistered += OnProviderUnregistered;
-        _convergenceTimer = new Timer(OnConvergenceTimer, null, System.Threading.Timeout.InfiniteTimeSpan, System.Threading.Timeout.InfiniteTimeSpan);
     }
 
     /// <inheritdoc />
@@ -130,8 +120,8 @@ public sealed class PermissionRequestManager : PendingRequestManager<PermissionR
     {
         _disposed = true;
 
-        _presentation.ProviderUnregistered -= OnProviderUnregistered;
-        _convergenceTimer.Dispose();
+        base.OnDisposing();
+
         _sessionSubscription?.Dispose();
         _optionsSubscription?.Dispose();
     }
@@ -177,70 +167,6 @@ public sealed class PermissionRequestManager : PendingRequestManager<PermissionR
         };
 
     // 仅在呈现端注销（身份移除）时收敛：注册与 SurfaceSessionIds 内容收缩都不收敛（spec §4.4）。
-    private void OnProviderUnregistered()
-    {
-        if (_disposed)
-            return;
-
-        lock (_convergenceGate)
-        {
-            // 合并注销时刻及此前已登记的在途请求；已在计时中的变化不重置计时器（防高频注销饿死）。
-            _convergenceCandidates ??= new HashSet<string>(StringComparer.Ordinal);
-            _convergenceCandidates.UnionWith(GetAllPending().Select(entry => entry.RequestId!).Where(id => !string.IsNullOrEmpty(id)));
-
-            if (_convergenceArmed)
-                return;
-
-            _convergenceArmed = true;
-        }
-
-        try
-        {
-            _convergenceTimer.Change(_convergenceGrace, System.Threading.Timeout.InfiniteTimeSpan);
-        }
-        catch (ObjectDisposedException)
-        {
-        }
-    }
-
-    private void OnConvergenceTimer(object? state)
-    {
-        if (_disposed)
-            return;
-
-        HashSet<string>? candidates;
-        lock (_convergenceGate)
-        {
-            candidates = _convergenceCandidates;
-            _convergenceCandidates = null;
-            _convergenceArmed = false;
-        }
-
-        if (candidates is null)
-            return;
-
-        try
-        {
-            foreach (var requestId in candidates)
-            {
-                var pending = GetAllPending().FirstOrDefault(entry => string.Equals(entry.RequestId, requestId, StringComparison.Ordinal));
-                if (pending is null)
-                    continue;
-
-                var sessionId = pending.SessionId;
-                if (!string.IsNullOrEmpty(sessionId) && _presentation.CanSurface(sessionId))
-                    continue;
-
-                TryResolve(requestId, PermissionEffect.Deny, PermissionGrantScope.Once,
-                    PermissionResolvedBy.NoChannel, "呈现端已移除", sessionId);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "在途权限收敛复核失败");
-        }
-    }
-
     private void OnSessionEvent(SessionEvent sessionEvent)
     {
         try
