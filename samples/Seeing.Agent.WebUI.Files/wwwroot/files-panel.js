@@ -16,24 +16,40 @@
         var max = parseInt(el.getAttribute('data-max') || '1200', 10);
         var key = el.getAttribute('data-key');
         var invert = el.getAttribute('data-invert') === 'true';
+        var percent = el.getAttribute('data-percent') === 'true';
         var fallback = parseInt(el.getAttribute('data-default') || String(min), 10);
 
         function clamp(v) {
             return Math.max(min, Math.min(max, v));
         }
 
+        // 百分比模式：以内容包装器宽度为基准（.session-content-wrapper）；否则为像素
+        function containerWidth() {
+            var wrapper = el.closest ? el.closest('.session-content-wrapper') : null;
+            var w = wrapper ? wrapper.clientWidth : 0;
+            if (w > 0) return w;
+            var parent = el.parentElement;
+            w = parent ? parent.clientWidth : 0;
+            return w > 0 ? w : document.documentElement.clientWidth;
+        }
+
         function apply(v) {
-            document.documentElement.style.setProperty(cssVar, v + 'px');
+            document.documentElement.style.setProperty(cssVar, percent ? v + '%' : v + 'px');
         }
 
         function current() {
-            var v = parseInt(
-                getComputedStyle(document.documentElement).getPropertyValue(cssVar), 10);
-            return isNaN(v) ? fallback : v;
+            var raw = getComputedStyle(document.documentElement).getPropertyValue(cssVar);
+            var v = parseFloat(raw);
+            if (isNaN(v)) return fallback;
+            if (!percent) return v;
+            // 百分比模式的初值可能来自 CSS 默认（如 50%），直接采用；否则由像素换算
+            return raw.indexOf('%') >= 0 ? v : (v / containerWidth()) * 100;
         }
 
         // 初始化：从 localStorage 恢复；缺省写入 data-default 作为变量初值
-        var restored = key ? parseInt(localStorage.getItem(key) || '', 10) : NaN;
+        // 校验恢复值落在 [min,max]，否则视为脏数据（如旧版像素值）回退默认
+        var restored = key ? parseFloat(localStorage.getItem(key) || '') : NaN;
+        if (isNaN(restored) || restored < min || restored > max) restored = NaN;
         apply(clamp(isNaN(restored) ? fallback : restored));
 
         el.addEventListener('pointerdown', function (e) {
@@ -45,7 +61,8 @@
             document.body.classList.add('file-panel-resizing');
 
             function onMove(ev) {
-                var delta = ev.clientX - startX;
+                var deltaPx = ev.clientX - startX;
+                var delta = percent ? (deltaPx / containerWidth()) * 100 : deltaPx;
                 var next = clamp(startVal + (invert ? -delta : delta));
                 apply(next);
             }
@@ -63,6 +80,17 @@
             window.addEventListener('pointermove', onMove);
             window.addEventListener('pointerup', onUp);
         });
+    };
+
+    // ===== 文件面板左右位置持久化 =====
+    var SIDE_KEY = 'seeing-files-panel-side';
+
+    window.seeingFilesPanel.getPanelSide = function () {
+        try { return localStorage.getItem(SIDE_KEY) || ''; } catch (_) { return ''; }
+    };
+
+    window.seeingFilesPanel.setPanelSide = function (side) {
+        try { localStorage.setItem(SIDE_KEY, side === 'right' ? 'right' : 'left'); } catch (_) { /* noop */ }
     };
 
     // ===== Ctrl+S 保存快捷键 =====

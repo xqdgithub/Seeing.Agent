@@ -410,6 +410,5 @@ samples/*/plugins/*.dll
 /docs/superpowers/plans
 /chat-page.yml
 /test-screenshots
-/docs/superpowers/specs
 /deploy
 /.github

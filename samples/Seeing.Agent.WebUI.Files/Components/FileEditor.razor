@@ -54,6 +54,13 @@
                                   ConstructionOptions="(editor => EditorOptions(f))"
                                   OnDidChangeModelContent="OnContentChanged" />
         </div>
+        @if (_saveError is not null)
+        {
+            <div class="file-editor-error" role="alert">
+                <span class="file-editor-error-text">@_saveError</span>
+                <button type="button" class="file-editor-error-dismiss" title="关闭提示" @onclick="DismissSaveError">×</button>
+            </div>
+        }
     }
 </div>
 
@@ -88,6 +95,7 @@
     private OpenFile? _active;
     private bool _conflictOpen;
     private string? _conflictDiff;
+    private string? _saveError;
     private long _saveToken;
     private DotNetObjectReference<FileEditor>? _selfRef;
 
@@ -155,6 +163,12 @@
     /// <summary>关闭当前文件的 diff 预览。</summary>
     private void CloseDiff(FileResourceId id) => Tabs.ClearPendingDiff(id);
 
+    private void DismissSaveError()
+    {
+        _saveError = null;
+        StateHasChanged();
+    }
+
     /// <summary>
     /// 导航到指定行/列（1-based）。仅对当前激活的文本编辑器生效；非文本/只读/未打开时静默忽略。
     /// 需在目标文件已激活并完成渲染后调用。
@@ -187,7 +201,18 @@
         if (_editor is not null)
             f.Content = await _editor.GetValue();
 
-        var result = await Workspace.WriteAsync(Workspace.GetAbsolutePath(f.Id), f.Content, f.OpenedRevision);
+        FileWriteResult result;
+        try
+        {
+            result = await Workspace.WriteAsync(Workspace.GetAbsolutePath(f.Id), f.Content, f.OpenedRevision);
+        }
+        catch (Exception ex)
+        {
+            _saveError = FileErrorPresenter.Describe(ex);
+            StateHasChanged();
+            return;
+        }
+
         if (result.Conflict)
         {
             Tabs.MarkExternalConflict(f.Id);
@@ -201,7 +226,16 @@
         f.HasUnsavedChanges = false;
         f.OpenedRevision = result.Revision;
         f.PendingDiff = null;
-        Tabs.Open(await Workspace.ReadAsync(Workspace.GetAbsolutePath(f.Id), FileReadMode.Display));
+        _saveError = null;
+        try
+        {
+            Tabs.Open(await Workspace.ReadAsync(Workspace.GetAbsolutePath(f.Id), FileReadMode.Display));
+        }
+        catch (Exception ex)
+        {
+            // 保存已成功；回读失败不应冒泡，仅提示
+            _saveError = FileErrorPresenter.Describe(ex);
+        }
         StateHasChanged();
     }
 
@@ -250,7 +284,18 @@
     {
         var f = _active;
         if (f is null) return;
-        var disk = await Workspace.ReadAsync(Workspace.GetAbsolutePath(f.Id), FileReadMode.Display);
+        FileReadResult disk;
+        try
+        {
+            disk = await Workspace.ReadAsync(Workspace.GetAbsolutePath(f.Id), FileReadMode.Display);
+        }
+        catch (Exception ex)
+        {
+            _saveError = FileErrorPresenter.Describe(ex);
+            _conflictOpen = false; _conflictDiff = null; _active = null;
+            StateHasChanged();
+            return;
+        }
         Tabs.ResolveConflictReload(f.Id, disk);
         _conflictOpen = false; _conflictDiff = null; _active = null;
         if (_editor is not null)

@@ -2,20 +2,26 @@
 @using Seeing.Agent.WebUI.Files.Components
 @using Seeing.Agent.WebUI.Files.Services
 @using Seeing.Agent.WebUI.Services
+@using Microsoft.JSInterop
 @inject SessionEventStreamRouter Router
 @inject CircuitContext CircuitContext
 @inject FilePanelState PanelState
+@inject IJSRuntime JS
 @implements IDisposable
 
-@* 面板可见性由 FilePanelState.IsOpen 驱动；默认关闭，经工具栏「文件」按钮切换 *@
+@* 面板可见性由 FilePanelState.IsOpen 驱动；默认关闭，经工具栏工作目录徽标切换。
+   左右位置由 FilePanelState.Side 驱动（默认 Left）：左侧面板在前（order 负值），右侧聊天在前。 *@
 @if (!string.IsNullOrEmpty(SessionId)
      && PanelState.IsOpen
      && string.Equals(PanelState.SessionId, SessionId, StringComparison.Ordinal))
 {
-    <ResizeHandle CssVariable="--file-panel-width" Vertical="true" Min="320" Max="1200"
-                  Default="480" StorageKey="seeing-files-panel-width" Invert="true" />
-    <div class="session-file-panel">
-        <FilePanelHost @ref="_host" />
+    <div class="@DockClass" style="@DockStyle">
+        <ResizeHandle CssVariable="--file-panel-width" Vertical="true" Min="20" Max="80"
+                      Default="50" StorageKey="seeing-files-panel-width-pct" Percent="true"
+                      Invert="@(!IsLeft)" />
+        <div class="session-file-panel">
+            <FilePanelHost @ref="_host" />
+        </div>
     </div>
 }
 
@@ -24,6 +30,15 @@
 
     private FilePanelHost? _host;
     private AgentFileChangeBridge? _bridge;
+    private bool _sideRestored;
+
+    private bool IsLeft => PanelState.Side == FilePanelSide.Left;
+
+    private string DockClass => IsLeft
+        ? "session-file-panel-dock session-file-panel-dock--left"
+        : "session-file-panel-dock session-file-panel-dock--right";
+
+    private string DockStyle => IsLeft ? "order:-2" : "order:1";
 
     protected override void OnInitialized()
     {
@@ -37,7 +52,41 @@
         Router.AttachConsumer(SessionId, _bridge);
     }
 
-    private void OnPanelChanged() => _ = InvokeAsync(StateHasChanged);
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // 首渲染从 localStorage 恢复面板左右偏好（持久化跨刷新）
+        if (!_sideRestored)
+        {
+            _sideRestored = true;
+            try
+            {
+                // 默认侧别由 FilePanelState（C#）单点决定；仅当存在持久化偏好时覆盖
+                var stored = await JS.InvokeAsync<string?>("seeingFilesPanel.getPanelSide");
+                if (string.Equals(stored, "right", StringComparison.OrdinalIgnoreCase))
+                    PanelState.SetSide(FilePanelSide.Right);
+                else if (string.Equals(stored, "left", StringComparison.OrdinalIgnoreCase))
+                    PanelState.SetSide(FilePanelSide.Left);
+            }
+            catch { /* JS 未就绪：忽略 */ }
+        }
+    }
+
+    private void OnPanelChanged()
+    {
+        // 侧别变更即持久化
+        _ = PersistSideAsync();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task PersistSideAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("seeingFilesPanel.setPanelSide",
+                PanelState.Side == FilePanelSide.Left ? "left" : "right");
+        }
+        catch { /* JS 未就绪：忽略 */ }
+    }
 
     private Task OnAgentChanged(FileResourceId id, FileDiffData? diff) => InvokeAsync(() =>
         _host is null ? Task.CompletedTask : _host.NotifyAgentChangeAsync(id, diff));

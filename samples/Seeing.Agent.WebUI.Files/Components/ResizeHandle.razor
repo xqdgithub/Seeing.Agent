@@ -1,7 +1,8 @@
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
 
-@* 分隔线：拖动改变目标 CSS 变量（--target），松手持久化到 localStorage。 *@
+@* 分隔线：拖动改变目标 CSS 变量（--target），松手持久化到 localStorage。
+   Percent=true 时以父容器宽度为基准按百分比拖动（Min/Max/Default 均视为百分比）。 *@
 <div class="resize-handle @(Vertical ? "resize-handle--vertical" : "resize-handle--horizontal")"
      data-var="@CssVariable"
      data-min="@Min"
@@ -9,6 +10,7 @@
      data-default="@Default"
      data-key="@StorageKey"
      data-invert="@(Invert.ToString().ToLowerInvariant())"
+     data-percent="@(Percent.ToString().ToLowerInvariant())"
      @ref="_el"></div>
 
 @code {
@@ -18,13 +20,13 @@
     /// <summary>true = 纵向分隔线（水平拖动调宽）。</summary>
     [Parameter] public bool Vertical { get; set; } = true;
 
-    /// <summary>最小像素。</summary>
+    /// <summary>最小像素（Percent=true 时为最小百分比）。</summary>
     [Parameter] public int Min { get; set; } = 120;
 
-    /// <summary>最大像素。</summary>
+    /// <summary>最大像素（Percent=true 时为最大百分比）。</summary>
     [Parameter] public int Max { get; set; } = 1200;
 
-    /// <summary>缺省像素（无持久化值时的初值）。</summary>
+    /// <summary>缺省像素（无持久化值时的初值；Percent=true 时为缺省百分比）。</summary>
     [Parameter] public int Default { get; set; } = 220;
 
     /// <summary>localStorage 键（为空则不持久化）。</summary>
@@ -32,6 +34,9 @@
 
     /// <summary>true = 拖动方向反向（用于右侧面板：向左拖动增大）。</summary>
     [Parameter] public bool Invert { get; set; }
+
+    /// <summary>true = 以父容器宽度为基准按百分比调节（Min/Max/Default 视为百分比）。</summary>
+    [Parameter] public bool Percent { get; set; }
 
     private ElementReference _el;
 

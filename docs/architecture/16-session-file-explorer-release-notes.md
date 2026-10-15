@@ -98,6 +98,27 @@
 
 > 已修复：watcher 事件与磁盘状态竞态（文件在事件到达前被删除）曾导致 `ReadAsync` 抛 `FileNotFoundException` 冒泡到渲染器；现 `FileViewerCoordinator.ApplyAsync` 将 `FileNotFoundException`/`DirectoryNotFoundException` 视为已删除、`IOException` 跳过本次刷新。
 
+## 8.1 错误处理与异常归属（2026-10-15 增补）
+
+**问题**：打开被其他进程占用的文件（如 SQLite `memory.db`）时，`FilePanelHost` 打开路径无异常捕获，`IOException` 冒泡进 Blazor 渲染器 → circuit 崩溃白屏。同时 `FileTooLargeException` / `FileNotEditableException` 原定义在能力包 `Seeing.Agent.Files`，UI 组件库（只依赖 Abstractions）无法强类型捕获，只能用 `GetType().Name` 字符串匹配——重命名即静默失效，违反依赖方向。
+
+| 变更 | 说明 |
+|------|------|
+| **异常上提契约层** | `FileTooLargeException` / `FileNotEditableException` 移至 `Abstractions/Files/FileExceptions.cs`；删除能力包同名文件。二者是 `IFileWorkspace.ReadAsync/WriteAsync` 的契约承诺（spec §178/§226），归契约层。 |
+| **错误契约映射** | 新增 `Seeing.Agent.WebUI.Files/Services/FileErrorPresenter`，按规格「错误契约 UI 映射」把异常 → 文案（强类型匹配）：`UnauthorizedAccessException`→路径不在工作区、`FileNotFound`/`DirectoryNotFound`→文件不存在、`FileTooLarge`→文件过大仅预览、`FileNotEditable`→编码不支持编辑、`IOException`→读取失败请重试、`OperationCanceled`→操作已取消、未知→无法打开该文件。 |
+| **打开路径防崩溃** | `FilePanelHost`：`ResolveAsync` 失败显示可重试错误条；`ReadAsync` 经 `TryReadAsync` 收敛为 `(File, Error)`，失败仅展示错误条（不冒泡）。`FileEditor` 保存/回读/冲突重载同样捕获并展示错误条。 |
+| **引用计数修正** | `FilePanelHost.Dispose` 仅在实际解析成功（持有引用计数）时 `Release`，解析失败从未获取引用。 |
+| **目录列举防崩溃** | `FileTree.ReloadAsync` / `FileTreeNode.ToggleAsync` 补 `catch`，目录被删除/占用等竞态不再冒泡。 |
+
+## 8.2 布局与交互（2026-10-15 增补）
+
+| 变更 | 说明 |
+|------|------|
+| **默认半屏** | 面板宽度改百分比 `var(--file-panel-width, 50%)`，clamp `[280px, 80%]`；`ResizeHandle` 新增 `Percent` 模式（相对 `.session-content-wrapper` 换算）。 |
+| **可拖至 80%** | 移除 `@media (max-width:1200px)` 中硬编码 `max-width:480px` 的覆盖层（拖动卡在半屏的根因）。 |
+| **左右互换** | 面板头 ⇄ 按钮 → `FilePanelState.ToggleSide()`；`SessionFilePanel` 以 flex `order` 重排（左：`[面板][聊天]`，右：`[聊天][面板]`），分隔线随侧别换位。默认 **Left**。 |
+| **持久化** | 宽度存 `seeing-files-panel-width-pct`（百分比，越界视为脏数据回退默认）；侧别存 `seeing-files-panel-side`。默认侧别由 `FilePanelState`（C#）单点决定，JS 仅回传存储值。 |
+
 ## 9. 测试
 
 | 套件 | 覆盖 |

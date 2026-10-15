@@ -8,6 +8,16 @@ namespace Seeing.Agent.WebUI.Files.Services;
 /// <param name="Column">目标列（1-based）。</param>
 public sealed record FileOpenRequest(FileResourceId Id, int? Line = null, int? Column = null);
 
+/// <summary>文件面板相对聊天区的位置。</summary>
+public enum FilePanelSide
+{
+    /// <summary>左侧（默认）。</summary>
+    Left,
+
+    /// <summary>右侧。</summary>
+    Right,
+}
+
 /// <summary>文件面板开合状态（Scoped，circuit 维度）。</summary>
 public sealed class FilePanelState
 {
@@ -19,6 +29,9 @@ public sealed class FilePanelState
 
     /// <summary>当前会话 id。</summary>
     public string? SessionId { get; private set; }
+
+    /// <summary>面板相对聊天区的位置（左/右）。</summary>
+    public FilePanelSide Side { get; private set; } = FilePanelSide.Left;
 
     /// <summary>目录树是否可见（用户偏好；agent 新开面板时默认隐藏）。</summary>
     public bool TreeVisible { get; private set; } = true;
@@ -96,6 +109,18 @@ public sealed class FilePanelState
         if (TreeVisible == visible)
             return;
         TreeVisible = visible;
+        Changed?.Invoke();
+    }
+
+    /// <summary>切换面板左/右位置。</summary>
+    public void ToggleSide() => SetSide(Side == FilePanelSide.Right ? FilePanelSide.Left : FilePanelSide.Right);
+
+    /// <summary>设置面板左/右位置（相同值不触发事件）。</summary>
+    public void SetSide(FilePanelSide side)
+    {
+        if (Side == side)
+            return;
+        Side = side;
         Changed?.Invoke();
     }
 }

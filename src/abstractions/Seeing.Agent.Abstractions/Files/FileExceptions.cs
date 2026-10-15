@@ -1,6 +1,6 @@
-namespace Seeing.Agent.Files;
+namespace Seeing.Agent.Abstractions.Files;
 
-/// <summary>文件过大，无法作为可编辑全文加载。</summary>
+/// <summary>文件过大，无法作为可编辑全文加载（契约层异常，供 UI/宿主强类型映射）。</summary>
 public sealed class FileTooLargeException : Exception
 {
     /// <summary>构造。</summary>
@@ -8,7 +8,7 @@ public sealed class FileTooLargeException : Exception
         : base($"文件过大（{size} 字节，上限 {limit}）：{path}") { }
 }
 
-/// <summary>文件编码不支持编辑写入。</summary>
+/// <summary>文件编码不支持编辑写入（契约层异常，供 UI/宿主强类型映射）。</summary>
 public sealed class FileNotEditableException : Exception
 {
     /// <summary>构造。</summary>

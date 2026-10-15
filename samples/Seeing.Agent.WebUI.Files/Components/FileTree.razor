@@ -69,6 +69,10 @@
                 .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
+        catch
+        {
+            // 根目录被删除/占用等竞态：保留现有子项，避免异常冒泡到渲染器
+        }
         finally
         {
             _loading = false;

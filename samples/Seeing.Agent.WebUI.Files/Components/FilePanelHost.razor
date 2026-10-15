@@ -12,14 +12,40 @@
     }
     else if (_workspace is null)
     {
-        <div class="file-panel-loading">加载中…</div>
+        @if (_error is not null)
+        {
+            <div class="file-panel-header">
+                <span class="file-panel-title">文件</span>
+                <button type="button" class="file-panel-close" title="关闭文件面板" @onclick="ClosePanel">×</button>
+            </div>
+            <div class="file-panel-error" role="alert">
+                <div class="file-panel-error-text">@_error</div>
+                <button type="button" class="file-panel-error-retry" @onclick="RetryAsync">重试</button>
+            </div>
+        }
+        else
+        {
+            <div class="file-panel-loading">加载中…</div>
+        }
     }
     else
     {
         <div class="file-panel-header">
             <span class="file-panel-title">文件</span>
-            <button type="button" class="file-panel-close" title="关闭文件面板" @onclick="ClosePanel">×</button>
+            <span class="file-panel-header-actions">
+                <button type="button" class="file-panel-side" title="切换文件面板左/右位置" @onclick="ToggleSide">
+                    <span aria-hidden="true">⇄</span>
+                </button>
+                <button type="button" class="file-panel-close" title="关闭文件面板" @onclick="ClosePanel">×</button>
+            </span>
         </div>
+        @if (_error is not null)
+        {
+            <div class="file-panel-error file-panel-error--banner" role="alert">
+                <div class="file-panel-error-text">@_error</div>
+                <button type="button" class="file-panel-error-dismiss" title="关闭提示" @onclick="DismissError">×</button>
+            </div>
+        }
         <div class="file-panel-body @(PanelState.TreeVisible ? "" : "file-panel-body--no-tree")">
             @if (PanelState.TreeVisible)
             {
@@ -53,13 +79,34 @@
     private FileTabsState _tabs = null!;
     private FileViewerCoordinator? _coordinator;
     private FileEditor? _editor;
+    private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
         if (string.IsNullOrEmpty(SessionId)) return;
         // 标签状态按会话缓存在 Scoped 的 PanelState 上，页面导航往返不丢失
         _tabs = PanelState.GetTabs(SessionId);
-        _workspace = await WorkspaceFactory.ResolveAsync(SessionId);
+        _tabs.Changed += OnTabsChanged;
+        PanelState.Changed += OnPanelChanged;
+        await TryInitWorkspaceAsync();
+    }
+
+    /// <summary>解析会话工作区并接线变更订阅；失败时展示错误条而非冒泡崩溃。</summary>
+    private async Task TryInitWorkspaceAsync()
+    {
+        if (string.IsNullOrEmpty(SessionId) || _workspace is not null) return;
+        try
+        {
+            _workspace = await WorkspaceFactory.ResolveAsync(SessionId);
+        }
+        catch (Exception ex)
+        {
+            _workspace = null;
+            _error = FileErrorPresenter.Describe(ex);
+            return;
+        }
+
+        _coordinator?.Dispose();
         _coordinator = new FileViewerCoordinator(_workspace, _tabs);
         _coordinator.Start(async evt => await InvokeAsync(async () =>
         {
@@ -68,8 +115,42 @@
             TreeState.Notify(evt);
             StateHasChanged();
         }));
-        _tabs.Changed += OnTabsChanged;
-        PanelState.Changed += OnPanelChanged;
+    }
+
+    /// <summary>重试初始化（工作区解析失败后的恢复入口）。</summary>
+    private async Task RetryAsync()
+    {
+        _error = null;
+        await TryInitWorkspaceAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void DismissError()
+    {
+        _error = null;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void SetError(string? message)
+    {
+        if (_error == message) return;
+        _error = message;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>读取文件；失败时返回错误文案（不抛出，避免冒泡到渲染器）。</summary>
+    private async Task<(FileReadResult? File, string? Error)> TryReadAsync(FileResourceId id)
+    {
+        if (_workspace is null) return (null, null);
+        try
+        {
+            var file = await _workspace.ReadAsync(_workspace.GetAbsolutePath(id), FileReadMode.Display);
+            return (file, null);
+        }
+        catch (Exception ex)
+        {
+            return (null, FileErrorPresenter.Describe(ex));
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -107,6 +188,8 @@
 
     private void ShowTree() => PanelState.SetTreeVisible(true);
 
+    private void ToggleSide() => PanelState.ToggleSide();
+
     private void ClosePanel() => PanelState.Close();
 
     /// <summary>无打开文件且目录树不可见时关闭面板。</summary>
@@ -129,7 +212,12 @@
     public async Task NotifyAgentChangeAsync(FileResourceId id, FileDiffData? diff)
     {
         if (_workspace is null) return;
-        var file = await _workspace.ReadAsync(_workspace.GetAbsolutePath(id), FileReadMode.Display);
+        var (file, error) = await TryReadAsync(id);
+        if (file is null)
+        {
+            SetError(error);
+            return;
+        }
         var binary = await ReadBinaryIfNeededAsync(file);
         _tabs.Open(file, binary);
         _tabs.SetPendingDiff(id, diff);
@@ -160,11 +248,17 @@
         }
         else
         {
-            var file = await _workspace.ReadAsync(_workspace.GetAbsolutePath(id), FileReadMode.Display);
+            var (file, error) = await TryReadAsync(id);
+            if (file is null)
+            {
+                SetError(error);
+                return;
+            }
             var binary = await ReadBinaryIfNeededAsync(file);
             _tabs.Open(file, binary);
         }
 
+        SetError(null);
         if (line is not null)
             await NavigateToAsync(line.Value, column);
     }
@@ -181,9 +275,15 @@
     private async Task RefreshAsync(FileResourceId id)
     {
         if (_workspace is null) return;
-        var file = await _workspace.ReadAsync(_workspace.GetAbsolutePath(id), FileReadMode.Display);
+        var (file, error) = await TryReadAsync(id);
+        if (file is null)
+        {
+            SetError(error);
+            return;
+        }
         var binary = await ReadBinaryIfNeededAsync(file);
         _tabs.ApplyDiskUpdate(file, binary);
+        SetError(null);
     }
 
     private async Task<byte[]?> ReadBinaryIfNeededAsync(FileReadResult file)
@@ -199,6 +299,8 @@
         _tabs.Changed -= OnTabsChanged;
         PanelState.Changed -= OnPanelChanged;
         _coordinator?.Dispose();
-        if (!string.IsNullOrEmpty(SessionId)) WorkspaceFactory.Release(SessionId);
+        // 仅在实际解析成功（持有引用计数）时释放；解析失败从未获取引用
+        if (_workspace is not null && !string.IsNullOrEmpty(SessionId))
+            WorkspaceFactory.Release(SessionId);
     }
 }

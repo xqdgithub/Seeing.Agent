@@ -1,9 +1,18 @@
 .file-panel-host { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 .file-panel-empty, .file-panel-loading { padding: 12px; color: #999; }
+.file-panel-error { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; color: #cf1322; }
+.file-panel-error--banner { flex-shrink: 0; padding: 6px 8px; font-size: 12px; background: #fff1f0; border-bottom: 1px solid #ffccc7; }
+.file-panel-error-text { overflow-wrap: anywhere; }
+.file-panel-error-retry { flex-shrink: 0; border: 1px solid #cf1322; background: transparent; color: #cf1322; cursor: pointer; padding: 2px 10px; border-radius: 4px; font-size: 12px; }
+.file-panel-error-retry:hover { background: #cf1322; color: #fff; }
+.file-panel-error-dismiss { flex-shrink: 0; border: none; background: transparent; color: #cf1322; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 4px; }
 .file-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; border-bottom: 1px solid var(--color-border, #eee); flex-shrink: 0; }
 .file-panel-title { font-size: 12px; font-weight: 600; color: var(--color-text-secondary, #666); }
 .file-panel-close { border: none; background: transparent; color: #999; cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; border-radius: 4px; }
 .file-panel-close:hover { background: rgba(0, 0, 0, 0.06); color: #333; }
+.file-panel-header-actions { display: inline-flex; align-items: center; gap: 2px; }
+.file-panel-side { border: none; background: transparent; color: #999; cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 4px; }
+.file-panel-side:hover { background: rgba(0, 0, 0, 0.06); color: #1677ff; }
 .file-panel-body { display: flex; flex: 1; overflow: hidden; min-height: 0; }
 .file-tree-wrap { width: var(--file-tree-width, 220px); flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; position: relative; }
 .file-tree { flex: 1; overflow-y: auto; }
@@ -86,6 +95,9 @@
 /* Monaco 编辑器容器无默认高度会塌陷为 0；由 flex 撑满包裹层 */
 .file-editor-monaco .monaco-editor-container { flex: 1; min-height: 0; }
 .file-editor-dirty { color: #faad14; font-size: 12px; }
+.file-editor-error { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-shrink: 0; margin-top: 6px; padding: 6px 8px; font-size: 12px; color: #cf1322; background: #fff1f0; border: 1px solid #ffccc7; border-radius: 4px; }
+.file-editor-error-text { overflow-wrap: anywhere; }
+.file-editor-error-dismiss { flex-shrink: 0; border: none; background: transparent; color: #cf1322; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 4px; }
 .file-conflict-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .file-conflict-dialog { background: #fff; border-radius: 6px; padding: 16px; max-width: 560px; max-height: 80%; overflow: auto; box-shadow: 0 6px 24px rgba(0,0,0,0.25); }
 .file-conflict-title { font-weight: 600; margin-bottom: 8px; }
