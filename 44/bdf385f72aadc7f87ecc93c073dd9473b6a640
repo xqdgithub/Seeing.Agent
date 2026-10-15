@@ -1,0 +1,32 @@
+tests/spine/Seeing.Agent.Tests/Permission/PermissionGrantStoreTests.cs
+  s_76e5e24ffda2dc::t_42a4fdcd50c5bf 170-171
+tests/spine/Seeing.Agent.Tests/Tools/DefaultToolPermissionPolicyTests.cs
+  s_76e5e24ffda2dc::t_900f3286fabc6c 98-121
+samples/Seeing.Agent.WebUI.Files/Components/FilePanelHost.razor
+  s_76e5e24ffda2dc::t_473fe8d0eea3d2 279-280,293-294,304-316
+samples/Seeing.Agent.WebUI.Files/Components/FileEditor.razor
+  s_76e5e24ffda2dc::t_5aeb758f579c20 254-255,264,268,271-278,280,283,291
+  s_76e5e24ffda2dc::t_40b3d934164987 293-304
+samples/Seeing.Agent.WebUI.Files/Services/EditorHostResult.cs
+  s_76e5e24ffda2dc::t_fa6baf12b98eab 1-2,8-9,14-31
+samples/Seeing.Agent.WebUI/Components/SessionFilePanel.razor
+  s_76e5e24ffda2dc::t_7217362ed0df7a 181
+  s_76e5e24ffda2dc::t_9f662efe9fb8bb 130,140
+  s_76e5e24ffda2dc::t_f099450175652b 131-135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "44bdf385f72aadc7f87ecc93c073dd9473b6a640",
+  "prompts": {},
+  "sessions": {
+    "s_76e5e24ffda2dc": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec24ee335ffeF3SUwA3WHAwg2D",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
