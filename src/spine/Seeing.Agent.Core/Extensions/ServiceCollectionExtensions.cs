@@ -22,6 +22,7 @@ using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Core.Host;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Permission;
@@ -392,6 +393,9 @@ namespace Seeing.Agent.Core.Extensions
 
             // 问答交互（在途管理器 + 可呈现性注册表）
             services.AddSeeingQuestions();
+
+            // 宿主请求交互（在途管理器 + 独立可呈现性注册表）
+            services.AddSeeingHostRequests();
 
             // Hook 管理器
             services.AddSingleton<HookManager>();

@@ -11,7 +11,7 @@ namespace Seeing.Agent.Core.Interactions;
 /// <see cref="ProviderUnregistered"/> 为收敛信号：仅在成功 Unregister 后触发（先于 <see cref="Changed"/>）。
 /// </para>
 /// </summary>
-public sealed class SurfaceRegistry : IPermissionSurfaceRegistry, IQuestionSurfaceRegistry
+public sealed class SurfaceRegistry : IPermissionSurfaceRegistry, IQuestionSurfaceRegistry, IHostSurfaceRegistry
 {
     private readonly ConcurrentDictionary<ISurfaceProvider, byte> _providers = new();
     private readonly ILogger<SurfaceRegistry>? _logger;

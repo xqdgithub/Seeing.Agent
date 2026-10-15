@@ -38,6 +38,7 @@ public sealed class DefaultToolPermissionPolicy : IToolPermissionPolicy
                                    TrailingDirSeparator: true,
                                    PatternsArgKey: "path",
                                    StaticMetadata: new() { ["reason"] = "Agent 请求扩展工作区路径" }),
+        ["editor_command"]      = new("editor.execute",              "commandId"),
     };
 
     /// <summary>根据工具 ID 与参数解析出权限资源检查项；无映射时返回 null。</summary>

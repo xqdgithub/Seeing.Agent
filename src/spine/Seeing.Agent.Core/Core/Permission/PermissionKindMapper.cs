@@ -29,6 +29,9 @@ public static class PermissionKindMapper
         if (permissionKind.StartsWith("mcp.", StringComparison.OrdinalIgnoreCase))
             return PermissionKind.McpTool;
 
+        if (permissionKind.StartsWith("editor.", StringComparison.OrdinalIgnoreCase))
+            return PermissionKind.Editor;
+
         return PermissionKind.Tool;
     }
 }
