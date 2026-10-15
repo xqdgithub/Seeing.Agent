@@ -120,4 +120,15 @@
             delete saveHandlers[token];
         }
     };
+
+    // ===== 编辑器命令枚举（BlazorMonaco 未暴露 getSupportedActions 的 C# API）=====
+    window.seeingEditor = window.seeingEditor || {};
+    window.seeingEditor.getActions = function (editorId) {
+        var holder = (window.blazorMonaco && window.blazorMonaco.editors || [])
+            .find(function (h) { return h.id === editorId; });
+        if (!holder || !holder.editor || typeof holder.editor.getSupportedActions !== 'function') return '[]';
+        return JSON.stringify(holder.editor.getSupportedActions().map(function (a) {
+            return { id: a.id, label: a.label };
+        }));
+    };
 })();

@@ -228,7 +228,7 @@
     /// 打开/切换/刷新：已是当前标签则按需从磁盘刷新；已在其他标签则切换；否则新开标签。
     /// 若指定 line/column，则定位到该位置（1-based）。
     /// </summary>
-    private async Task OpenOrActivateAsync(FileResourceId id, bool refreshIfActive, int? line = null, int? column = null)
+    public async Task OpenOrActivateAsync(FileResourceId id, bool refreshIfActive, int? line = null, int? column = null)
     {
         if (_workspace is null) return;
 
@@ -270,6 +270,38 @@
         await InvokeAsync(StateHasChanged);
         if (_editor is not null)
             await _editor.NavigateToAsync(line, column);
+    }
+
+    /// <summary>宿主请求入口：执行编辑器命令。</summary>
+    public async Task<HostResponsePayload> ExecuteEditorCommandAsync(string commandId, System.Text.Json.JsonElement? args, string? path)
+    {
+        if (_workspace is null) return HostResponsePayload.Unavailable;
+        if (!string.IsNullOrEmpty(path))
+            await OpenOrActivateAsync(_workspace.GetResourceId(path), refreshIfActive: false);
+        var f = _tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == _tabs.ActiveKey);
+        if (f is null || f.IsReadOnly || f.IsDeleted || f.Kind is FileContentKind.Image or FileContentKind.Binary)
+            return HostResponsePayload.Unavailable;
+        if (_editor is null) return HostResponsePayload.Unavailable;
+        var outcome = await _editor.ExecuteCommandAsync(commandId, args);
+        return outcome == CommandOutcome.Ok ? HostResponsePayload.Ok() : HostResponsePayload.Unavailable;
+    }
+
+    /// <summary>宿主请求入口：查询编辑器状态。</summary>
+    public async Task<HostResponsePayload> QueryEditorAsync(string kind, string? path)
+    {
+        if (_workspace is null) return HostResponsePayload.Unavailable;
+        if (!string.IsNullOrEmpty(path))
+            await OpenOrActivateAsync(_workspace.GetResourceId(path), refreshIfActive: false);
+        if (_editor is null) return HostResponsePayload.Unavailable;
+        var json = await _editor.QueryAsync(kind);
+        return json is null ? HostResponsePayload.Unavailable : HostResponsePayload.Ok(json);
+    }
+
+    /// <summary>宿主请求入口：列举命令。</summary>
+    public async Task<HostResponsePayload> ListEditorCommandsAsync()
+    {
+        if (_editor is null) return HostResponsePayload.Unavailable;
+        return HostResponsePayload.Ok(await _editor.ListCommandsAsync());
     }
 
     private async Task RefreshAsync(FileResourceId id)
