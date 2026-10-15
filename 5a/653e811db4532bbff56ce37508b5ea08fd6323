@@ -1,0 +1,160 @@
+docs/superpowers/specs/2026-10-09-single-writer-eventstream-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-116
+docs/superpowers/specs/2026-07-30-gateway-client-connection-status-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-121
+docs/superpowers/plans/2026-10-15-host-request-and-editor-tools.md
+  s_76e5e24ffda2dc::t_3a0ca60b937dec 1-1198
+docs/superpowers/plans/2026-08-27-tool-output-limiter.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-1205
+docs/superpowers/plans/2026-10-08-session-message-immutable-concurrency.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-403
+docs/superpowers/specs/2026-10-10-session-talk-and-ownership-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-393
+docs/superpowers/specs/2026-10-13-session-archival-lazy-loading-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-376
+docs/superpowers/plans/2026-08-05-openai-reasoning-support.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-375
+docs/superpowers/plans/2026-08-06-cli-multi-instance.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-1035
+docs/superpowers/plans/2026-08-03-tool-permission-unification-plan.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-1005
+docs/superpowers/plans/2026-09-24-webui-question-result-card.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-967
+docs/superpowers/specs/2026-09-23-systemone-module-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-825
+docs/superpowers/specs/2026-10-10-session-inbox-runtime-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-719
+docs/superpowers/plans/2026-10-14-session-file-explorer.md
+  s_536fff28e4f17f::t_8f0602dbce00ed 1-2790
+docs/superpowers/specs/2026-10-15-host-request-and-editor-tools-design.md
+  s_76e5e24ffda2dc::t_ead1a561884bc5 373
+  s_76e5e24ffda2dc::t_ea6a95fdf7fb02 12,31,152,177,180,225,252,259,261,349,364-366,368,385
+  s_76e5e24ffda2dc::t_5cc7aa39dae0be 253
+  s_76e5e24ffda2dc::t_de8ee7bba0b8d1 198
+  s_76e5e24ffda2dc::t_09bb13b684fb40 350
+  s_76e5e24ffda2dc::t_e975526f00e784 20,54,56,87,163,188,201,212,231,243,296,377-378,395
+  s_76e5e24ffda2dc::t_d497b83d222739 1-4,7-8,11,13-19,21,23-30,32-35,37,39-40,42,44-48,50,53,58-61,66-74,78-83,89-90,105-111,113,119,121-131,135-139,141-142,144-148,150-151,153,157-158,160-162,164,169-170,172,185-186,202-211,214-217,220-224,228,232,234,236-238,242,245,247,249-251,262-268,271,273-275,279-283,285-288,290,299-303,309-313,318,321-327,339-347,352,354-362,386-389,401
+  s_76e5e24ffda2dc::t_9908d6e262f6c8 391-392
+  s_76e5e24ffda2dc::t_bf1a942d998730 178
+  s_76e5e24ffda2dc::t_b10b55ee2f9e17 6
+  s_76e5e24ffda2dc::t_c7d47dc7bfbf32 9-10,22,36,38,41,43,49,51-52,55,65,77,84-86,112,114-116,120,132,134,140,143,149,159,166,171,173-175,187,213,218,227,229-230,233,235,239-241,244,246,257-258,272,276-278,284,289,298,304-308,314-317,319,328-333,337-338,348,363,379-380,382-384,390,393,396-400,402-406
+  s_76e5e24ffda2dc::t_30e7df58374e89 226
+  s_76e5e24ffda2dc::t_86924f55fcbf46 334
+  s_76e5e24ffda2dc::t_b77ae65bf2c214 168,199
+  s_76e5e24ffda2dc::t_6cc68d96787b68 5,57,62-64,75-76,88,91-104,117-118,133,154-156,165,167,176,179,181-184,189-197,200,219,248,254-255,260,269-270,291-295,297,320,335-336,351,353,367,369-372,374-376,381,394
+  s_76e5e24ffda2dc::t_60c221610fec53 256
+docs/superpowers/specs/2026-08-03-tool-permission-unification-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-249
+docs/superpowers/specs/2026-08-27-tool-output-limiter-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-191
+docs/superpowers/specs/2026-09-24-webui-question-result-card-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-394
+docs/superpowers/plans/2026-09-22-cli-tui-default-entry.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-1132
+docs/superpowers/plans/2026-07-30-seeing-cli-plan.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-1517
+docs/superpowers/plans/2026-09-21-tui-entry.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-584
+docs/superpowers/plans/2026-10-09-single-writer-eventstream.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-42
+docs/superpowers/plans/2025-01-15-agent-config-system.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-1538
+docs/superpowers/plans/2026-09-20-question-tool-and-interaction-infrastructure.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-374
+docs/superpowers/specs/2026-09-23-systemone-tools-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-266
+docs/superpowers/specs/2026-10-13-model-selection-enablelist-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-235
+docs/superpowers/specs/2026-08-06-cli-multi-instance-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-99
+docs/superpowers/specs/2026-09-17-permission-approval-architecture-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-610
+docs/superpowers/plans/2026-10-10-session-inbox-runtime.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-1279
+docs/superpowers/specs/2026-10-12-cli-one-shot-prompt-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-225
+docs/superpowers/specs/2026-08-04-message-timeline-rendering-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-279
+docs/superpowers/plans/2026-07-30-gateway-client-connection-status.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-383
+docs/superpowers/plans/2026-08-03-agent-todo-enforcement-plan.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-889
+docs/superpowers/plans/2026-09-17-permission-authorization-subsystem.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-356
+docs/superpowers/plans/2026-09-23-systemone-module.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-3719
+docs/superpowers/specs/2026-07-30-seeing-cli-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-262
+docs/superpowers/specs/2026-09-17-permission-authorization-subsystem-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-610
+docs/superpowers/specs/2026-09-21-tui-entry-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-860
+docs/superpowers/plans/2026-08-04-message-timeline-rendering.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-815
+docs/superpowers/specs/2026-10-14-session-file-explorer-design.md
+  s_536fff28e4f17f::t_3f5f4277d6bddf 493-494
+  s_536fff28e4f17f::t_32761bb2865a14 336,338,348,422
+  s_536fff28e4f17f::t_9a3cc7598dd793 288
+  s_536fff28e4f17f::t_90217e1693e5a7 428
+  s_536fff28e4f17f::t_381a37123fc9a0 342-344
+  s_536fff28e4f17f::t_c7b43d856223c9 368,370,372,374,377-381,383-384,386-392,394,396-397,410-412,414-416
+  s_536fff28e4f17f::t_0ee192cab9d23c 87-88,94,98,100
+  s_536fff28e4f17f::t_4f40d30db85c3b 478-479
+  s_536fff28e4f17f::t_4ca727631b635c 507
+  s_536fff28e4f17f::t_d5654c19f73b77 9
+  s_536fff28e4f17f::t_4b77aab2be8141 146,151,154
+  s_536fff28e4f17f::t_a4e5d2dd0df55c 24
+  s_536fff28e4f17f::t_ac9ff5d6043e04 121
+  s_536fff28e4f17f::t_3a452bb5b83094 234
+  s_536fff28e4f17f::t_d314f6cee5cf3d 249,251
+  s_536fff28e4f17f::t_f011e2260335ed 275,281-283,286-287,292,304-305
+  s_536fff28e4f17f::t_b1d87741f42b4b 1-2,4,7-8,11-16,29-36,40,46-49,56-61,75,104-105,107-109,112-113,123,125-126,128,131,145,153,165-167,170-175,183-184,189-192,194-196,203-204,206-209,211-215,219-220,232,236,238,242,244,248,250,258,260,264-265,268-269,272-274,276-278,284-285,291,303,306,308,313,315,322,324,332,334,424,445,447-449,453,455-457,482-486,492,495-498,508-514,519
+  s_536fff28e4f17f::t_9d60e8b00a8dc8 82,85
+  s_536fff28e4f17f::t_67aa9ca4845c90 186-187
+  s_536fff28e4f17f::t_bc9ecc1b49aff0 329-330
+  s_536fff28e4f17f::t_7c3f01ead74f1a 373,375-376,382,385,393,395,398-409,413
+  s_536fff28e4f17f::t_afbda4ab6cf5ba 10,42,53,63-65,67-70,73-74,83-84,86,99,106,115,122,124,127,130,132-135,137-144,147,152,155-156,160-164,169,176,179-182,185,193,205,218,221,230-231,237,241,243,255-257,261-262,266,279,289,307,314,316,325-327,331,333,339-341,345-347,423,439-441,470,472-474,477,480,506,527,531-532
+  s_536fff28e4f17f::t_3f7b073f141d18 114,116
+  s_536fff28e4f17f::t_0a19c80fb896f9 270
+  s_536fff28e4f17f::t_a39a0eba8d3b53 3,5-6,17-23,25-28,37-39,41,43-45,50-52,54-55,62,66,71-72,76-81,89-93,95-97,101-103,110-111,117-120,129,136,148-150,157-159,168,177-178,188,197-202,210,216-217,222-229,233,235,239-240,245-247,252-254,259,263,267,271,280,290,293-302,309-312,317-321,323,328,335,337,349-367,369,371,417-421,425-427,429-438,442-444,446,450-452,454,458-469,471,475-476,481,487-491,499-505,515-518,520-526,528-530,533-534
+docs/superpowers/specs/2026-09-21-llm-stream-turn-retry-and-error-persistence-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-370
+docs/superpowers/plans/2025-01-16-webui-agent-md-config.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-1452
+docs/superpowers/plans/2026-09-21-llm-stream-turn-retry-and-error-persistence.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-1524
+docs/superpowers/plans/2026-09-23-systemone-tools.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-1391
+docs/superpowers/plans/2026-08-05-openai-client-refactor-http.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-1174
+docs/superpowers/specs/2026-09-20-question-tool-and-interaction-infrastructure-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-504
+docs/superpowers/specs/2026-09-23-tui-mouse-candidate-selection-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-315
+docs/superpowers/specs/2026-10-08-session-message-immutable-concurrency-design.md
+  s_76e5e24ffda2dc::t_47b8d62cc3c476 1-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "5a653e811db4532bbff56ce37508b5ea08fd6323",
+  "prompts": {},
+  "sessions": {
+    "s_536fff28e4f17f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec7c49ff5ffetmlEfQs6bcMbMs",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_76e5e24ffda2dc": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec24ee335ffeF3SUwA3WHAwg2D",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
