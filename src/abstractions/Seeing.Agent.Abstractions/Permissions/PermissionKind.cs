@@ -27,7 +27,10 @@ public enum PermissionKind
     Shell = 6,
 
     /// <summary>环境变量访问权限 - 读取/设置环境变量</summary>
-    Environment = 7
+    Environment = 7,
+
+    /// <summary>编辑器操作权限 - 编辑器命令执行</summary>
+    Editor = 8
 }
 
 /// <summary>
