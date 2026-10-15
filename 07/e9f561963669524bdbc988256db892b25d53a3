@@ -1,0 +1,33 @@
+samples/Seeing.Agent.WebUI/Components/SessionFilePanel.razor
+  s_76e5e24ffda2dc::t_0856376ade57d8 2,10
+  s_76e5e24ffda2dc::t_526c3cc64ae723 128-130,132-136,138-146,148-165,167-182
+  s_76e5e24ffda2dc::t_1338aac92887b9 74-76,83
+  s_76e5e24ffda2dc::t_1b9c0ab5d0b002 107-127,131,137,147,166,183,187-188
+samples/Seeing.Agent.WebUI/Program.cs
+  s_76e5e24ffda2dc::t_798a990e8f0f82 135-139
+  s_76e5e24ffda2dc::t_0513b00fca6cfd 83
+samples/Seeing.Agent.WebUI/Shared/MainLayout.razor
+  s_76e5e24ffda2dc::t_a8da499d26c6ff 21
+  s_76e5e24ffda2dc::t_c2468847bdf91b 69-75
+Seeing.Agent.slnx
+  s_76e5e24ffda2dc::t_664f7218005937 58
+  s_76e5e24ffda2dc::t_fdba0748e8bdde 101
+samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj
+  s_76e5e24ffda2dc::t_219a1132991798 42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "07e9f561963669524bdbc988256db892b25d53a3",
+  "prompts": {},
+  "sessions": {
+    "s_76e5e24ffda2dc": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec24ee335ffeF3SUwA3WHAwg2D",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
