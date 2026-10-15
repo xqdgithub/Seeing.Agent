@@ -127,10 +127,17 @@
     private Task<HostResponse> HandleHostRequestAsync(HostRequest req, CancellationToken ct)
     {
         var tcs = new TaskCompletionSource<HostResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reg = ct.Register(() => tcs.TrySetResult(new HostResponse
+        {
+            RequestId = req.RequestId,
+            SessionId = req.SessionId,
+            Status = HostResponseStatus.Cancelled
+        }));
         _ = InvokeAsync(async () =>
         {
             try { tcs.TrySetResult(await ComputeHostResponseAsync(req)); }
             catch (Exception ex) { tcs.TrySetException(ex); }
+            finally { reg.Dispose(); }
         });
         return tcs.Task;
     }
@@ -171,7 +178,7 @@
                     RequestId = req.RequestId,
                     SessionId = req.SessionId,
                     Status = HostResponseStatus.Completed,
-                    Payload = payload.Json is null ? null : System.Text.Json.JsonSerializer.SerializeToElement(payload.Json)
+                    Payload = payload.Payload
                 }
                 : new HostResponse { RequestId = req.RequestId, SessionId = req.SessionId, Status = HostResponseStatus.Unavailable };
         }

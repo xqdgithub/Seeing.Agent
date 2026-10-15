@@ -95,6 +95,31 @@ public class DefaultToolPermissionPolicyTests
     }
 
     [Fact]
+    public void Evaluate_EditorCommand_ReturnsEditorExecuteWithCommandId()
+    {
+        var args = JsonSerializer.SerializeToElement(new { commandId = "editor.action.formatDocument" });
+        var check = _policy.Evaluate("editor_command", args);
+        check.Should().NotBeNull();
+        check!.PermissionKind.Should().Be("editor.execute");
+        check.Resource.Should().Be("editor.action.formatDocument");
+        check.Metadata.Should().ContainKey("commandId");
+        check.Metadata!["commandId"].Should().Be("editor.action.formatDocument");
+    }
+
+    [Fact]
+    public void Evaluate_EditorQuery_ReturnsNull_NoResourceCheck()
+    {
+        var args = JsonSerializer.SerializeToElement(new { kind = "selection" });
+        _policy.Evaluate("editor_query", args).Should().BeNull();
+    }
+
+    [Fact]
+    public void Evaluate_EditorListCommands_ReturnsNull_NoResourceCheck()
+    {
+        _policy.Evaluate("editor_list_commands", JsonSerializer.SerializeToElement(new { })).Should().BeNull();
+    }
+
+    [Fact]
     public void Evaluate_WebFetch_ReturnsNetworkFetchWithUrl()
     {
         var args = JsonSerializer.SerializeToElement(new { url = "https://example.com" });

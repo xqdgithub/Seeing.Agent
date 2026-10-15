@@ -251,8 +251,8 @@
         catch { return CommandOutcome.Failed; }
     }
 
-    /// <summary>查询编辑器状态；返回 JSON 字符串，无法查询时返回 null。</summary>
-    public async Task<string?> QueryAsync(string kind)
+    /// <summary>查询编辑器状态；返回结构化 JSON 载荷，无法查询时返回 null。</summary>
+    public async Task<System.Text.Json.JsonElement?> QueryAsync(string kind)
     {
         if (_editor is null) return null;
         try
@@ -261,19 +261,26 @@
             {
                 case "selection":
                     var sel = await _editor.GetSelection();
-                    return sel is null ? null : System.Text.Json.JsonSerializer.Serialize(
+                    return sel is null ? null : System.Text.Json.JsonSerializer.SerializeToElement(
                         new { sel.StartLineNumber, sel.StartColumn, sel.EndLineNumber, sel.EndColumn });
                 case "cursor":
                     var pos = await _editor.GetPosition();
-                    return pos is null ? null : System.Text.Json.JsonSerializer.Serialize(
+                    return pos is null ? null : System.Text.Json.JsonSerializer.SerializeToElement(
                         new { pos.LineNumber, pos.Column });
                 case "value":
-                    return await _editor.GetValue();
+                    var text = await _editor.GetValue();
+                    var truncated = text.Length > MaxQueryValueLength;
+                    return System.Text.Json.JsonSerializer.SerializeToElement(new
+                    {
+                        value = truncated ? text[..MaxQueryValueLength] : text,
+                        length = text.Length,
+                        truncated
+                    });
                 case "visibleRanges":
-                    return System.Text.Json.JsonSerializer.Serialize(await _editor.GetVisibleRanges());
+                    return System.Text.Json.JsonSerializer.SerializeToElement(await _editor.GetVisibleRanges());
                 case "diagnostics":
                     var markers = await BlazorMonaco.Editor.Global.GetModelMarkers(JS, null);
-                    return System.Text.Json.JsonSerializer.Serialize(markers);
+                    return System.Text.Json.JsonSerializer.SerializeToElement(markers);
                 default:
                     return null;
             }
@@ -281,9 +288,20 @@
         catch { return null; }
     }
 
-    /// <summary>列举当前编辑器支持的命令（JSON 数组字符串）。</summary>
-    public async Task<string> ListCommandsAsync() =>
-        await JS.InvokeAsync<string>("seeingEditor.getActions", CurrentEditorId);
+    private const int MaxQueryValueLength = 50_000;
+
+    /// <summary>列举当前编辑器支持的命令（JSON 数组载荷）。</summary>
+    public async Task<System.Text.Json.JsonElement?> ListCommandsAsync()
+    {
+        var json = await JS.InvokeAsync<string>("seeingEditor.getActions", CurrentEditorId);
+        if (string.IsNullOrEmpty(json)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            return doc.RootElement.Clone();
+        }
+        catch { return null; }
+    }
 
     private string CurrentEditorId =>
         $"file-editor-{Sanitize(ActiveFile?.Id.RelativePath ?? "")}";

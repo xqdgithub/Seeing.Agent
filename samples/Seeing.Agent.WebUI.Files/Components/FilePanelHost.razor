@@ -276,8 +276,8 @@
     public async Task<HostResponsePayload> ExecuteEditorCommandAsync(string commandId, System.Text.Json.JsonElement? args, string? path)
     {
         if (_workspace is null) return HostResponsePayload.Unavailable;
-        if (!string.IsNullOrEmpty(path))
-            await OpenOrActivateAsync(_workspace.GetResourceId(path), refreshIfActive: false);
+        if (!string.IsNullOrEmpty(path) && !await EnsureActiveAsync(path))
+            return HostResponsePayload.Unavailable;
         var f = _tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == _tabs.ActiveKey);
         if (f is null || f.IsReadOnly || f.IsDeleted || f.Kind is FileContentKind.Image or FileContentKind.Binary)
             return HostResponsePayload.Unavailable;
@@ -290,8 +290,8 @@
     public async Task<HostResponsePayload> QueryEditorAsync(string kind, string? path)
     {
         if (_workspace is null) return HostResponsePayload.Unavailable;
-        if (!string.IsNullOrEmpty(path))
-            await OpenOrActivateAsync(_workspace.GetResourceId(path), refreshIfActive: false);
+        if (!string.IsNullOrEmpty(path) && !await EnsureActiveAsync(path))
+            return HostResponsePayload.Unavailable;
         if (_editor is null) return HostResponsePayload.Unavailable;
         var json = await _editor.QueryAsync(kind);
         return json is null ? HostResponsePayload.Unavailable : HostResponsePayload.Ok(json);
@@ -301,7 +301,19 @@
     public async Task<HostResponsePayload> ListEditorCommandsAsync()
     {
         if (_editor is null) return HostResponsePayload.Unavailable;
-        return HostResponsePayload.Ok(await _editor.ListCommandsAsync());
+        var json = await _editor.ListCommandsAsync();
+        return json is null ? HostResponsePayload.Unavailable : HostResponsePayload.Ok(json);
+    }
+
+    /// <summary>
+    /// 确保指定文件成为当前激活标签；打开/切换失败返回 false（不落到旧文件上执行）。
+    /// </summary>
+    private async Task<bool> EnsureActiveAsync(string path)
+    {
+        if (_workspace is null) return false;
+        var id = _workspace.GetResourceId(path);
+        await OpenOrActivateAsync(id, refreshIfActive: false);
+        return string.Equals(_tabs.ActiveKey, id.ToString(), StringComparison.Ordinal);
     }
 
     private async Task RefreshAsync(FileResourceId id)
