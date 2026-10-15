@@ -1,0 +1,27 @@
+src/abstractions/Seeing.Agent.Abstractions/Interactions/HostResponseStatus.cs
+  s_a46b19d366b2e1::t_a03b56cf1cabf1 1-20
+src/abstractions/Seeing.Agent.Abstractions/Interactions/HostResponse.cs
+  s_a46b19d366b2e1::t_def6ba353ca0cf 1-22
+src/abstractions/Seeing.Agent.Abstractions/Interactions/HostRequest.cs
+  s_a46b19d366b2e1::t_e01f738980af52 1-22
+src/abstractions/Seeing.Agent.Abstractions/Interactions/IHostRequestManager.cs
+  s_a46b19d366b2e1::t_2a2816da300e56 1-6
+src/abstractions/Seeing.Agent.Abstractions/Interactions/IHostSurfaceRegistry.cs
+  s_a46b19d366b2e1::t_2100cca2bd9b10 1-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "c0fada246c3764b0b2094f299a86eff327c58315",
+  "prompts": {},
+  "sessions": {
+    "s_a46b19d366b2e1": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec14ae741ffeX015WgIyt29HLx",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
