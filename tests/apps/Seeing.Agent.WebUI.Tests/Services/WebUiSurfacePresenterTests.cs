@@ -50,17 +50,20 @@ public class WebUiSurfacePresenterTests
         var registry = await ReadyRegistryAsync();
         var store = new FakePermissionSurfaceRegistry();
         var questionStore = new FakePermissionSurfaceRegistry();
+        var hostStore = new FakePermissionSurfaceRegistry();
 
         using var presenter = new WebUiSurfacePresenter(
-            store, questionStore, () => registry,
+            store, questionStore, hostStore, () => registry,
             TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(200),
             NullLogger<WebUiSurfacePresenter>.Instance);
 
         presenter.SurfaceSessionIds.Should().BeEquivalentTo(new[] { "anchor", "child" });
         store.RegisterCount.Should().Be(1);
         questionStore.RegisterCount.Should().Be(1);
+        hostStore.RegisterCount.Should().Be(1);
         store.CanSurface("child").Should().BeTrue();
         questionStore.CanSurface("child").Should().BeTrue();
+        hostStore.CanSurface("child").Should().BeTrue();
     }
 
     [Fact]
@@ -69,8 +72,9 @@ public class WebUiSurfacePresenterTests
         var registry = await ReadyRegistryAsync();
         var store = new FakePermissionSurfaceRegistry();
         var questionStore = new FakePermissionSurfaceRegistry();
+        var hostStore = new FakePermissionSurfaceRegistry();
         using var presenter = new WebUiSurfacePresenter(
-            store, questionStore, () => registry,
+            store, questionStore, hostStore, () => registry,
             TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(400),
             NullLogger<WebUiSurfacePresenter>.Instance);
         var reports = new List<IReadOnlyCollection<string>>();
@@ -92,8 +96,9 @@ public class WebUiSurfacePresenterTests
         var registry = await ReadyRegistryAsync();
         var store = new FakePermissionSurfaceRegistry();
         var questionStore = new FakePermissionSurfaceRegistry();
+        var hostStore = new FakePermissionSurfaceRegistry();
         var presenter = new WebUiSurfacePresenter(
-            store, questionStore, () => registry,
+            store, questionStore, hostStore, () => registry,
             TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(100),
             NullLogger<WebUiSurfacePresenter>.Instance);
         var reports = 0;
@@ -103,6 +108,7 @@ public class WebUiSurfacePresenterTests
 
         store.UnregisterCount.Should().Be(1);
         questionStore.UnregisterCount.Should().Be(1);
+        hostStore.UnregisterCount.Should().Be(1);
         registry.Rebind("other");
         await Task.Delay(120, TestContext.Current.CancellationToken);
 
@@ -115,19 +121,21 @@ public class WebUiSurfacePresenterTests
     {
         var store = new FakePermissionSurfaceRegistry();
         var questionStore = new FakePermissionSurfaceRegistry();
+        var hostStore = new FakePermissionSurfaceRegistry();
         using var presenter = new WebUiSurfacePresenter(
-            store, questionStore, () => null,
+            store, questionStore, hostStore, () => null,
             TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(10),
             NullLogger<WebUiSurfacePresenter>.Instance);
 
         store.RegisterCount.Should().Be(0);
         questionStore.RegisterCount.Should().Be(0);
+        hostStore.RegisterCount.Should().Be(0);
         presenter.SurfaceSessionIds.Should().BeEmpty();
     }
 }
 
-/// <summary>测试替身：可呈现性注册表（同时满足权限与 Question 两个 marker 接口）。</summary>
-internal sealed class FakePermissionSurfaceRegistry : IPermissionSurfaceRegistry, IQuestionSurfaceRegistry
+/// <summary>测试替身：可呈现性注册表（同时满足权限、Question 与 Host 三个 marker 接口）。</summary>
+internal sealed class FakePermissionSurfaceRegistry : IPermissionSurfaceRegistry, IQuestionSurfaceRegistry, IHostSurfaceRegistry
 {
     private readonly HashSet<ISurfaceProvider> _providers = new();
 

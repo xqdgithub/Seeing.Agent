@@ -21,6 +21,7 @@ public sealed class WebUiSurfacePresenter : ISurfaceProvider, IDisposable
 
     private readonly IPermissionSurfaceRegistry _permissionStore;
     private readonly IQuestionSurfaceRegistry _questionStore;
+    private readonly IHostSurfaceRegistry _hostStore;
     private readonly Func<SessionWindowRegistry?> _registryAccessor;
     private readonly TimeSpan _debounce;
     private readonly TimeSpan _emptyConfirm;
@@ -37,16 +38,18 @@ public sealed class WebUiSurfacePresenter : ISurfaceProvider, IDisposable
     public WebUiSurfacePresenter(
         IPermissionSurfaceRegistry permissionStore,
         IQuestionSurfaceRegistry questionStore,
+        IHostSurfaceRegistry hostStore,
         SessionEventStreamRouter router,
         CircuitContext circuitContext,
         ILogger<WebUiSurfacePresenter>? logger = null)
-        : this(permissionStore, questionStore, CreateAccessor(router, circuitContext), DefaultDebounce, DefaultEmptyConfirm, logger)
+        : this(permissionStore, questionStore, hostStore, CreateAccessor(router, circuitContext), DefaultDebounce, DefaultEmptyConfirm, logger)
     {
     }
 
     internal WebUiSurfacePresenter(
         IPermissionSurfaceRegistry permissionStore,
         IQuestionSurfaceRegistry questionStore,
+        IHostSurfaceRegistry hostStore,
         Func<SessionWindowRegistry?> registryAccessor,
         TimeSpan debounce,
         TimeSpan emptyConfirm,
@@ -54,6 +57,7 @@ public sealed class WebUiSurfacePresenter : ISurfaceProvider, IDisposable
     {
         _permissionStore = permissionStore ?? throw new ArgumentNullException(nameof(permissionStore));
         _questionStore = questionStore ?? throw new ArgumentNullException(nameof(questionStore));
+        _hostStore = hostStore ?? throw new ArgumentNullException(nameof(hostStore));
         _registryAccessor = registryAccessor ?? throw new ArgumentNullException(nameof(registryAccessor));
         _debounce = debounce;
         _emptyConfirm = emptyConfirm;
@@ -81,6 +85,7 @@ public sealed class WebUiSurfacePresenter : ISurfaceProvider, IDisposable
 
         _permissionStore.Register(this);
         _questionStore.Register(this);
+        _hostStore.Register(this);
         _registered = true;
     }
 
@@ -233,6 +238,7 @@ public sealed class WebUiSurfacePresenter : ISurfaceProvider, IDisposable
             _registered = false;
             Unregister(_permissionStore);
             Unregister(_questionStore);
+            Unregister(_hostStore);
         }
 
         SurfacedChanged = null;
