@@ -1,0 +1,36 @@
+samples/Seeing.Agent.WebUI/Services/HostRequestInbox.cs
+  s_42610a24e0cfc1::t_819f5908de3ac8 1-117
+samples/Seeing.Agent.WebUI/Services/HostRequestDispatcher.cs
+  s_42610a24e0cfc1::t_a5978a148b1d6b 1-131
+tests/apps/Seeing.Agent.WebUI.Tests/Services/WebUiSurfacePresenterTests.cs
+  s_42610a24e0cfc1::t_cbd52fc7b14af3 53,56,63,66
+  s_42610a24e0cfc1::t_3c322757440fa7 75,77
+  s_42610a24e0cfc1::t_1f5fccb05ffc28 99,101,111
+  s_42610a24e0cfc1::t_b329cf3c34a179 124,126,132
+  s_42610a24e0cfc1::t_9bb2222b519f96 137-138
+samples/Seeing.Agent.WebUI/Services/WebUiSurfacePresenter.cs
+  s_42610a24e0cfc1::t_303f0a0bd0ebde 88
+  s_42610a24e0cfc1::t_f2000b28bf3820 24
+  s_42610a24e0cfc1::t_56df7543861b6f 41,45,52,60
+  s_42610a24e0cfc1::t_32964b9a1e0273 241
+tests/apps/Seeing.Agent.WebUI.Tests/Services/HostRequestDispatcherTests.cs
+  s_42610a24e0cfc1::t_1aace9c3e2c6aa 1-189
+samples/Seeing.Agent.WebUI/Services/HostRequestActivePanelRegistry.cs
+  s_42610a24e0cfc1::t_1986d118e5a295 1-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "95431fbe27ad184424faf1c9606814cc607a1500",
+  "prompts": {},
+  "sessions": {
+    "s_42610a24e0cfc1": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec11a85a8ffeQ5Aoi1wSeEUFbh",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
