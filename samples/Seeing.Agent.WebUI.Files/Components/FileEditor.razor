@@ -28,6 +28,13 @@
     }
     else
     {
+        @if (_saveError is not null)
+        {
+            <div class="file-editor-error" role="alert">
+                <span class="file-editor-error-text">@_saveError</span>
+                <button type="button" class="file-editor-error-dismiss" title="关闭提示" @onclick="DismissSaveError">×</button>
+            </div>
+        }
         @if (f.PendingDiff is { } diff)
         {
             if (diff.HasFullContent)
@@ -51,16 +58,8 @@
             <StandaloneCodeEditor @key="EditorKey(f)"
                                   @ref="_editor"
                                   Id="@CurrentEditorId"
-                                  ConstructionOptions="(editor => EditorOptions(f))"
-                                  OnDidChangeModelContent="OnContentChanged" />
+                                  ConstructionOptions="(editor => EditorOptions(f))" />
         </div>
-        @if (_saveError is not null)
-        {
-            <div class="file-editor-error" role="alert">
-                <span class="file-editor-error-text">@_saveError</span>
-                <button type="button" class="file-editor-error-dismiss" title="关闭提示" @onclick="DismissSaveError">×</button>
-            </div>
-        }
     }
 </div>
 
@@ -97,7 +96,13 @@
     private string? _conflictDiff;
     private string? _saveError;
     private long _saveToken;
+    private int _saveGate;
+    private string? _boundSaveEditorKey;
+    private int _noticeVersion;
     private DotNetObjectReference<FileEditor>? _selfRef;
+
+    // Monaco KeyMod.CtrlCmd (2048) | KeyCode.KeyS (49)
+    private const int SaveKeybinding = 2048 | 49;
 
     private OpenFile? ActiveFile => Tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == Tabs.ActiveKey);
 
@@ -141,19 +146,14 @@
         };
     }
 
-    private void OnContentChanged(ModelContentChangedEvent e)
+    /// <summary>编辑器缓冲变化。由 JS 直接传入全文，不经过 Monaco 事件的 JSON 序列化。</summary>
+    [JSInvokable]
+    public void OnBufferChanged(string? value)
     {
         var f = ActiveFile;
-        if (f is null || f.IsReadOnly) return;
-        _ = SyncFromEditorAsync(f);
-    }
-
-    private async Task SyncFromEditorAsync(OpenFile f)
-    {
-        if (_editor is null) return;
-        var value = await _editor.GetValue();
-        if (value != f.Content)
-            Tabs.MarkDirty(f.Id, value);
+        if (f is null || f.IsReadOnly || f.IsDeleted) return;
+        if (value is null || value == f.Content) return;
+        Tabs.MarkDirty(f.Id, value);
     }
 
     /// <summary>Ctrl+S 保存（宿主标签栏保存按钮亦调用此入口）。</summary>
@@ -166,6 +166,7 @@
     private void DismissSaveError()
     {
         _saveError = null;
+        Tabs.SetNotice(null);
         StateHasChanged();
     }
 
@@ -193,13 +194,61 @@
         }
     }
 
-    /// <summary>保存当前标签（供宿主标签栏按钮调用）。</summary>
+    /// <summary>保存当前标签（供宿主标签栏按钮与 Ctrl+S 调用）。</summary>
     public async Task SaveActiveAsync()
     {
+        if (Interlocked.Exchange(ref _saveGate, 1) == 1) return;
+        try
+        {
+            await SaveActiveCoreAsync();
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _saveGate, 0);
+        }
+    }
+
+    private async Task SaveActiveCoreAsync()
+    {
+        ReportSave("正在保存…", error: false);
         var f = ActiveFile;
-        if (f is null || f.IsReadOnly || f.IsDeleted) return;
-        if (_editor is not null)
-            f.Content = await _editor.GetValue();
+        if (f is null)
+        {
+            ReportSave("没有打开的文件", error: true);
+            return;
+        }
+        if (f.IsReadOnly)
+        {
+            ReportSave("只读文件不能保存", error: true);
+            return;
+        }
+        if (f.IsDeleted)
+        {
+            ReportSave("文件已删除，不能保存", error: true);
+            return;
+        }
+
+        string? value;
+        try
+        {
+            value = await ReadEditorValueAsync();
+        }
+        catch (Exception ex)
+        {
+            ReportSave("保存失败：" + FileErrorPresenter.Describe(ex), error: true);
+            return;
+        }
+        if (value is null)
+        {
+            ReportSave("保存失败：读不到编辑器里的内容", error: true);
+            return;
+        }
+        if (value == f.Content && !f.HasUnsavedChanges)
+        {
+            ReportSave("没有未保存的修改", error: false);
+            return;
+        }
+        f.Content = value;
 
         FileWriteResult result;
         try
@@ -208,8 +257,7 @@
         }
         catch (Exception ex)
         {
-            _saveError = FileErrorPresenter.Describe(ex);
-            StateHasChanged();
+            ReportSave("保存失败：" + FileErrorPresenter.Describe(ex), error: true);
             return;
         }
 
@@ -219,24 +267,58 @@
             _active = f;
             _conflictOpen = true;
             _conflictDiff = await TryGetConflictDiffAsync(f);
-            StateHasChanged();
+            ReportSave("保存失败：文件已被外部修改", error: true);
             return;
         }
 
         f.HasUnsavedChanges = false;
+        f.HasExternalConflict = false;
         f.OpenedRevision = result.Revision;
         f.PendingDiff = null;
-        _saveError = null;
+        _conflictOpen = false;
+        _conflictDiff = null;
+        _active = null;
         try
         {
             Tabs.Open(await Workspace.ReadAsync(Workspace.GetAbsolutePath(f.Id), FileReadMode.Display));
         }
         catch (Exception ex)
         {
-            // 保存已成功；回读失败不应冒泡，仅提示
-            _saveError = FileErrorPresenter.Describe(ex);
+            ReportSave("已写入磁盘，但重新读取失败：" + FileErrorPresenter.Describe(ex), error: true);
+            return;
         }
+        ReportSave("已保存 " + f.Id.RelativePath, error: false);
+    }
+
+    private void ReportSave(string message, bool error)
+    {
+        _saveError = error ? message : null;
+        Tabs.SetNotice(message, error);
         StateHasChanged();
+        var version = ++_noticeVersion;
+        if (!error)
+            _ = ClearNoticeAsync(version, message);
+    }
+
+    private async Task ClearNoticeAsync(int version, string message)
+    {
+        await Task.Delay(8000);
+        if (version != _noticeVersion || Tabs.Notice != message) return;
+        Tabs.SetNotice(null);
+    }
+
+    /// <summary>读取 Monaco 当前缓冲。优先按编辑器 id，对不上时退回面板内可见实例。</summary>
+    private async Task<string?> ReadEditorValueAsync()
+    {
+        try
+        {
+            return await JS.InvokeAsync<string?>("seeingEditor.readValue", CurrentEditorId);
+        }
+        catch (JSException)
+        {
+            if (_editor is null) return null;
+            return await _editor.GetValue();
+        }
     }
 
     /// <summary>执行 Monaco 命令（透传 commandId/payload）。</summary>
@@ -308,22 +390,54 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        try
         {
-            _selfRef = DotNetObjectReference.Create(this);
-            _saveToken = await JS.InvokeAsync<long>("seeingFilesPanel.attachSaveShortcut", _selfRef);
-        }
+            if (firstRender)
+            {
+                _selfRef = DotNetObjectReference.Create(this);
+                _saveToken = await JS.InvokeAsync<long>("seeingFilesPanel.attachSaveShortcut", _selfRef);
+            }
 
-        // 外部（agent/磁盘）冲突标记出现时弹出对话框
-        var f = ActiveFile;
-        if (f is not null && f.HasExternalConflict && !_conflictOpen)
-        {
-            _active = f;
-            _conflictOpen = true;
-            _conflictDiff = await TryGetConflictDiffAsync(f);
-            StateHasChanged();
+            await EnsureEditorSaveCommandAsync();
+            if (_selfRef is not null && ActiveFile is { IsReadOnly: false, IsDeleted: false })
+            {
+                try { await JS.InvokeAsync<bool>("seeingEditor.watchDirty", CurrentEditorId, _selfRef); }
+                catch (JSException) { /* 脚本尚未加载，下次渲染再试 */ }
+            }
+
+            // 外部（agent/磁盘）冲突标记出现时弹出对话框
+            var f = ActiveFile;
+            if (f is not null && f.HasExternalConflict && !_conflictOpen)
+            {
+                _active = f;
+                _conflictOpen = true;
+                _conflictDiff = await TryGetConflictDiffAsync(f);
+                StateHasChanged();
+            }
+            await base.OnAfterRenderAsync(firstRender);
         }
-        await base.OnAfterRenderAsync(firstRender);
+        catch (Exception ex) when (ex is OperationCanceledException or JSDisconnectedException)
+        {
+            // 关闭面板、切换会话或本次渲染被取消时，进行中的 JS 调用会以 TaskCanceledException 结束
+        }
+    }
+
+    /// <summary>把 Ctrl+S 绑到 Monaco 自己的快捷键上，不依赖 document.activeElement。</summary>
+    private async Task EnsureEditorSaveCommandAsync()
+    {
+        var f = ActiveFile;
+        if (f is null || _editor is null || f.IsReadOnly || f.IsDeleted) return;
+        var key = EditorKey(f);
+        if (_boundSaveEditorKey == key) return;
+        try
+        {
+            await _editor.AddCommand(SaveKeybinding, _args => { _ = SaveActiveAsync(); });
+            _boundSaveEditorKey = key;
+        }
+        catch
+        {
+            // JS 编辑器尚未 create 完成，下次渲染再试
+        }
     }
 
     public void Dispose()

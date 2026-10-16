@@ -34,6 +34,23 @@ public class FileTabsStateTests
     }
 
     [Fact]
+    public void ApplyDiskUpdate_DirtyButSameContent_ShouldClearDirtyWithoutConflict()
+    {
+        var s = new FileTabsState();
+        var id = new FileResourceId("root", "a.txt");
+        s.Open(File("a.txt", "A"));
+        s.MarkDirty(id, "A");
+        s.MarkExternalConflict(id);
+
+        var applied = s.ApplyDiskUpdate(File("a.txt", "A"));
+
+        applied.Should().BeTrue();
+        s.OpenFiles[0].Content.Should().Be("A");
+        s.OpenFiles[0].HasUnsavedChanges.Should().BeFalse();
+        s.OpenFiles[0].HasExternalConflict.Should().BeFalse();
+    }
+
+    [Fact]
     public void ApplyRename_Directory_ShouldRewritePrefix()
     {
         var s = new FileTabsState();
@@ -98,6 +115,36 @@ public class FileTabsStateTests
         var s = new FileTabsState();
         s.Open(File("a.txt", "A", editable: false));
         s.OpenFiles[0].IsReadOnly.Should().BeTrue();
+    }
+
+    [Fact]
+    public void SetNotice_ShouldRaiseChangedOncePerDistinctMessage()
+    {
+        var s = new FileTabsState();
+        var count = 0;
+        s.Changed += () => count++;
+        s.SetNotice("已保存");
+        s.SetNotice("已保存");
+        s.Notice.Should().Be("已保存");
+        s.NoticeIsError.Should().BeFalse();
+        s.SetNotice("保存失败", isError: true);
+        s.NoticeIsError.Should().BeTrue();
+        count.Should().Be(2);
+    }
+
+    [Fact]
+    public void MarkDirty_SecondEdit_ShouldUpdateContentWithoutExtraNotification()
+    {
+        var s = new FileTabsState();
+        s.Open(File("a.txt", "A"));
+        var count = 0;
+        s.Changed += () => count++;
+        var id = new FileResourceId("root", "a.txt");
+        s.MarkDirty(id, "AB");
+        s.MarkDirty(id, "ABC");
+        s.OpenFiles[0].Content.Should().Be("ABC");
+        s.OpenFiles[0].HasUnsavedChanges.Should().BeTrue();
+        count.Should().Be(1);
     }
 
     [Fact]

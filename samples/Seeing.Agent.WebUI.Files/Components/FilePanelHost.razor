@@ -199,8 +199,22 @@
             PanelState.Close();
     }
 
-    private Task SaveActiveAsync() =>
-        _editor is null ? Task.CompletedTask : _editor.SaveActiveAsync();
+    private async Task SaveActiveAsync()
+    {
+        if (_editor is null)
+        {
+            _tabs.SetNotice("保存失败：编辑器还没准备好", isError: true);
+            return;
+        }
+        try
+        {
+            await _editor.SaveActiveAsync();
+        }
+        catch (Exception ex)
+        {
+            _tabs.SetNotice("保存失败：" + ex.Message, isError: true);
+        }
+    }
 
     private async Task OnOpenFileAsync(FileResourceId id)
     {

@@ -1,4 +1,5 @@
 @using Seeing.Agent.WebUI.Files.Services
+@implements IDisposable
 
 <div class="file-tabs">
     <div class="file-tabs-scroll">
@@ -9,7 +10,7 @@
                 <span class="file-tab-name">@f.Id.RelativePath</span>
                 @if (f.HasUnsavedChanges)
                 {
-                    <span class="dirty">●</span>
+                    <span class="file-tab-dirty">未保存</span>
                 }
                 <button type="button" class="file-tab-close" @onclick:stopPropagation="true" @onclick="() => Tabs.Close(f.Id)">×</button>
             </div>
@@ -19,9 +20,8 @@
     {
         <button type="button"
                 class="file-tab-save @(IsDirty ? "dirty" : "")"
-                disabled="@(!IsDirty)"
                 title="保存 (Ctrl+S)"
-                @onclick="() => OnSave.InvokeAsync()">
+                @onclick="SaveClicked">
             <svg class="file-tab-save-icon" viewBox="0 0 1024 1024" width="13" height="13" aria-hidden="true">
                 <path fill="currentColor" d="M853.3 298.7L725.3 170.7c-8-8-18.6-12.4-29.9-12.4H213.3c-23.5 0-42.7 19.1-42.7 42.7v597.3c0 23.5 19.1 42.7 42.7 42.7h597.3c23.5 0 42.7-19.1 42.7-42.7V328.5c0-11.3-4.4-21.9-12.4-29.8zM512 810.7c-47.1 0-85.3-38.2-85.3-85.3s38.2-85.3 85.3-85.3 85.3 38.2 85.3 85.3-38.2 85.3-85.3 85.3zM682.7 384H256V213.3h426.7V384z" />
             </svg>
@@ -32,6 +32,10 @@
         </button>
     }
 </div>
+@if (!string.IsNullOrEmpty(Tabs.Notice))
+{
+    <div class="file-tab-notice @(Tabs.NoticeIsError ? "is-error" : "is-ok")" role="status">@Tabs.Notice</div>
+}
 
 @code {
     /// <summary>标签状态。</summary>
@@ -46,4 +50,27 @@
     private bool HasActiveEditable => Active is { IsReadOnly: false, IsDeleted: false };
 
     private bool IsDirty => Active?.HasUnsavedChanges == true;
+
+    private FileTabsState? _subscribed;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_subscribed, Tabs)) return;
+        if (_subscribed is not null) _subscribed.Changed -= OnChanged;
+        _subscribed = Tabs;
+        Tabs.Changed += OnChanged;
+    }
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task SaveClicked()
+    {
+        Tabs.SetNotice("正在保存…");
+        await OnSave.InvokeAsync();
+    }
+
+    public void Dispose()
+    {
+        if (_subscribed is not null) _subscribed.Changed -= OnChanged;
+    }
 }

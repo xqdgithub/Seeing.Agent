@@ -67,6 +67,21 @@ public sealed class FileTabsState
     /// <summary>当前激活标签键。</summary>
     public string? ActiveKey { get; private set; }
 
+    /// <summary>最近一次保存结果，显示在标签栏。</summary>
+    public string? Notice { get; private set; }
+
+    /// <summary>保存结果是否为失败。</summary>
+    public bool NoticeIsError { get; private set; }
+
+    /// <summary>更新标签栏上的保存提示。</summary>
+    public void SetNotice(string? message, bool isError = false)
+    {
+        if (Notice == message && NoticeIsError == isError) return;
+        Notice = message;
+        NoticeIsError = isError;
+        Changed?.Invoke();
+    }
+
     private static string Key(FileResourceId id) => id.ToString();
 
     /// <summary>打开或激活文件。</summary>
@@ -118,17 +133,30 @@ public sealed class FileTabsState
     public void MarkDirty(FileResourceId id, string content)
     {
         if (!_byKey.TryGetValue(Key(id), out var of)) return;
-        of.Content = content; of.HasUnsavedChanges = true;
-        Changed?.Invoke();
+        var becameDirty = !of.HasUnsavedChanges;
+        of.Content = content;
+        of.HasUnsavedChanges = true;
+        // 只在第一次变脏时刷新。「未保存」亮起后，后续按键只更新缓冲，避免每次击键重绘编辑器。
+        if (becameDirty) Changed?.Invoke();
     }
 
-    /// <summary>应用磁盘更新（仅当无未保存修改时覆盖内容）。</summary>
+    /// <summary>应用磁盘更新。本地有未保存修改且与磁盘不同则拒绝覆盖；内容已一致时只刷新修订号。</summary>
     public bool ApplyDiskUpdate(FileReadResult file, byte[]? binaryContent = null)
     {
         if (!_byKey.TryGetValue(Key(file.Id), out var of)) return false;
+        var newContent = file.Content ?? "";
+        // 磁盘内容与编辑器缓冲一致（典型是刚刚自己保存触发的 watcher）：
+        // 不是外部冲突，只前进基准修订号并清掉脏标记。
+        if (of.HasUnsavedChanges && of.Content == newContent)
+        {
+            of.OpenedRevision = file.Revision;
+            of.HasExternalConflict = false;
+            of.HasUnsavedChanges = false;
+            Changed?.Invoke();
+            return true;
+        }
         if (of.HasUnsavedChanges) return false;
 
-        var newContent = file.Content ?? "";
         var sameRevision = (of.OpenedRevision is null && file.Revision is null)
             || of.OpenedRevision?.Matches(file.Revision) == true;
         // 内容与修订号均未变：无需重建编辑器（避免重置光标/滚动/撤销栈）

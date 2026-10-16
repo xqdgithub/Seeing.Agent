@@ -764,8 +764,9 @@
     border-right: 1px solid var(--color-border);
 }
 
-/* 左侧停靠：分隔线置于面板右缘（面板与聊天之间） */
-.session-file-panel-dock--left .resize-handle { order: 2; }
+/* 左侧停靠：只把面板与聊天之间的那条分隔线移到右缘。
+   不能用后代选择器，否则文件树和编辑器之间的分隔线也会被排到最右侧。 */
+.session-file-panel-dock--left > .resize-handle { order: 2; }
 
 .session-file-panel .file-panel-host,
 .session-file-panel > div {
