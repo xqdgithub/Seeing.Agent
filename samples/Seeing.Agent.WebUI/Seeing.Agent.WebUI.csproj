@@ -15,6 +15,7 @@
     <ProjectReference Include="..\..\src\primitives\Seeing.ConfigSchema\Seeing.ConfigSchema.csproj" />
     <ProjectReference Include="..\..\src\spine\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Basic\Seeing.Agent.Tools.Basic.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.ChannelMessaging\Seeing.Agent.Tools.ChannelMessaging.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.FileSystem\Seeing.Agent.Tools.FileSystem.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Shell\Seeing.Agent.Tools.Shell.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Web\Seeing.Agent.Tools.Web.csproj" />

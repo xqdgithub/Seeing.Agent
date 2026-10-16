@@ -141,8 +141,8 @@ public sealed class SessionWindowContext
     public Func<Task>? ClearAsync { get; internal set; }
     public Action? ReturnToParent { get; internal set; }
     public Func<string>? GetWorkspace { get; internal set; }
-    /// <summary>保存出站绑定（ChannelId/UserId 已由 UI 规范化，窗口实现负责持久化）</summary>
-    public Func<string?, string?, Task>? SaveOutboundAsync { get; internal set; }
+    /// <summary>保存出站绑定（null 表示清除；窗口实现负责持久化）</summary>
+    public Func<SessionChannelRoute?, Task>? SaveOutboundAsync { get; internal set; }
     /// <summary>中断当前轮并立即消费排队未读（"中断并执行"）。</summary>
     public Func<Task>? InterruptAndRunAsync { get; internal set; }
     /// <summary>推送子会话当前产出给父会话（默认谱系父会话）。</summary>

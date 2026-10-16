@@ -187,9 +187,6 @@
                                     <span Class="meta-item">
                                         Channel: @FormatOutbound(session.ChannelId)
                                     </span>
-                                    <span Class="meta-item">
-                                        User: @FormatOutbound(session.UserId)
-                                    </span>
                                 </div>
                                 <div Class="session-card-actions" @onclick:stopPropagation>
                                     <Checkbox Checked="@IsSelected(session.Id)"
@@ -239,11 +236,26 @@
         <Form Model="@_outboundForm" Layout="@FormLayout.Horizontal">
             <FormItem Label="ChannelId">
                 <Input @bind-Value="@_outboundForm.ChannelId"
-                       Placeholder="如 qq / wecom，留空表示未绑定" />
+                       Placeholder="如 qq / wecom，全部留空则清除绑定" />
             </FormItem>
-            <FormItem Label="UserId">
-                <Input @bind-Value="@_outboundForm.UserId"
-                       Placeholder="出站用户/对端 ID，可留空" />
+            <FormItem Label="Kind">
+                <Select TItemValue="string"
+                        TItem="KindOption"
+                        @bind-Value="@_outboundForm.Kind"
+                        DataSource="@_kindOptions"
+                        ValueName="@nameof(KindOption.Value)"
+                        LabelName="@nameof(KindOption.Label)"
+                        Placeholder="direct / group / guild"
+                        AllowClear="true"
+                        Style="width: 100%;" />
+            </FormItem>
+            <FormItem Label="ExternalId">
+                <Input @bind-Value="@_outboundForm.ExternalId"
+                       Placeholder="对话 ExternalId" />
+            </FormItem>
+            <FormItem Label="Title">
+                <Input @bind-Value="@_outboundForm.Title"
+                       Placeholder="可选标题" />
             </FormItem>
         </Form>
     </Modal>
@@ -362,13 +374,23 @@
     static string FormatOutbound(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "未绑定" : value;
 
-    void OpenOutboundEditor(SessionSummary session)
+    async Task OpenOutboundEditor(SessionSummary session)
     {
+        var loaded = await SessionDirectory.GetAsync(session.Id);
+        if (loaded == null)
+        {
+            MessageService.Error("会话不存在");
+            return;
+        }
+
+        var route = loaded.ChannelRoute;
         _editingSessionId = session.Id;
         _outboundForm = new OutboundEditForm
         {
-            ChannelId = session.ChannelId ?? "",
-            UserId = session.UserId ?? ""
+            ChannelId = route?.ChannelId ?? "",
+            Kind = route?.Kind ?? "",
+            ExternalId = route?.ExternalId ?? "",
+            Title = route?.Title ?? ""
         };
         _outboundModalVisible = true;
     }
@@ -397,8 +419,13 @@
                 return;
             }
 
-            session.ChannelId = NormalizeOutbound(_outboundForm.ChannelId);
-            session.UserId = NormalizeOutbound(_outboundForm.UserId);
+            if (!TryBuildRoute(_outboundForm, out var route, out var error))
+            {
+                MessageService.Warning(error!);
+                return;
+            }
+
+            session.ChannelRoute = route;
             session.UpdatedAt = DateTime.Now;
             await SessionManager.SaveAsync(session.Id);
 
@@ -413,14 +440,53 @@
         }
     }
 
+    static readonly KindOption[] _kindOptions =
+    [
+        new("direct", "direct"),
+        new("group", "group"),
+        new("guild", "guild"),
+    ];
+
     static string? NormalizeOutbound(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    static bool TryBuildRoute(OutboundEditForm form, out SessionChannelRoute? route, out string? error)
+    {
+        var channelId = NormalizeOutbound(form.ChannelId);
+        var kind = NormalizeOutbound(form.Kind)?.ToLowerInvariant();
+        var externalId = NormalizeOutbound(form.ExternalId);
+        var title = NormalizeOutbound(form.Title);
+        route = null;
+        error = null;
+
+        if (channelId == null && kind == null && externalId == null && title == null)
+            return true;
+
+        if (channelId == null || externalId == null || kind is not ("direct" or "group" or "guild"))
+        {
+            error = "出站绑定需要 ChannelId、Kind（direct/group/guild）和 ExternalId；全部留空则清除绑定";
+            return false;
+        }
+
+        route = new SessionChannelRoute
+        {
+            ChannelId = channelId,
+            Kind = kind,
+            ExternalId = externalId,
+            Title = title
+        };
+        return true;
+    }
 
     private sealed class OutboundEditForm
     {
         public string ChannelId { get; set; } = "";
-        public string UserId { get; set; } = "";
+        public string Kind { get; set; } = "";
+        public string ExternalId { get; set; } = "";
+        public string Title { get; set; } = "";
     }
+
+    private sealed record KindOption(string Value, string Label);
 
     async Task RefreshSessionsAsync()
     {

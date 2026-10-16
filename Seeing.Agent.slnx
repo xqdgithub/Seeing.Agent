@@ -53,6 +53,7 @@
     <Project Path="src/capabilities/Seeing.Agent.SystemOne/Seeing.Agent.SystemOne.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.TokenBudget/Seeing.Agent.TokenBudget.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Basic/Seeing.Agent.Tools.Basic.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Tools.ChannelMessaging/Seeing.Agent.Tools.ChannelMessaging.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.FileSystem/Seeing.Agent.Tools.FileSystem.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Git/Seeing.Agent.Tools.Git.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Question/Seeing.Agent.Tools.Question.csproj" />
@@ -104,6 +105,7 @@
     <Project Path="tests/capabilities/Seeing.Agent.Skills.Tests/Seeing.Agent.Skills.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.SystemOne.Tests/Seeing.Agent.SystemOne.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Basic.Tests/Seeing.Agent.Tools.Basic.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Tools.ChannelMessaging.Tests/Seeing.Agent.Tools.ChannelMessaging.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.FileSystem.Tests/Seeing.Agent.Tools.FileSystem.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Git.Tests/Seeing.Agent.Tools.Git.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Question.Tests/Seeing.Agent.Tools.Question.Tests.csproj" />

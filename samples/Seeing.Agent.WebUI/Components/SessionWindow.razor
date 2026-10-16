@@ -1767,15 +1767,14 @@
     }
 
     /// <summary>
-    /// 保存出站绑定（ChannelId/UserId 已由工具栏规范化）
+    /// 保存出站绑定（null 表示清除）
     /// </summary>
-    private async Task SaveOutboundAsync(string? channelId, string? userId)
+    private async Task SaveOutboundAsync(SessionChannelRoute? route)
     {
         var session = SessionState.CurrentSession;
         if (session == null) return;
 
-        session.ChannelId = channelId;
-        session.UserId = userId;
+        session.ChannelRoute = route;
         session.UpdatedAt = DateTime.Now;
         await SessionManager.SaveAsync(session.Id);
         MessageService.Success("出站绑定已保存");
