@@ -61,6 +61,7 @@
     <Project Path="src/capabilities/Seeing.Agent.Tools.Support/Seeing.Agent.Tools.Support.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.SystemOne/Seeing.Agent.Tools.SystemOne.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Web/Seeing.Agent.Tools.Web.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Workspace/Seeing.Agent.Workspace.csproj" />
     <Project Path="src/capabilities/Seeing.IO.Local/Seeing.IO.Local.csproj" />
   </Folder>
   <Folder Name="/src/gateway/">
@@ -104,6 +105,7 @@
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Support.Tests/Seeing.Agent.Tools.Support.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.SystemOne.Tests/Seeing.Agent.Tools.SystemOne.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Web.Tests/Seeing.Agent.Tools.Web.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Workspace.Tests/Seeing.Agent.Workspace.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.IO.Local.Tests/Seeing.IO.Local.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/gateway/">

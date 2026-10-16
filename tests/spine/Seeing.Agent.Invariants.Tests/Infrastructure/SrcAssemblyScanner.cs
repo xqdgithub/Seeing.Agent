@@ -31,6 +31,11 @@ internal static class SrcAssemblyScanner
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var binDir in Directory.EnumerateDirectories(srcRoot, "bin", SearchOption.AllDirectories))
         {
+            // 仅纳入仍有 .csproj 的项目产物：忽略已删除项目的残留 bin/obj（否则会误报未登记模块）
+            var projectDir = Directory.GetParent(binDir)?.FullName;
+            if (projectDir is null || !Directory.EnumerateFiles(projectDir, "*.csproj").Any())
+                continue;
+
             var netDir = Path.Combine(binDir, config, "net10.0");
             if (!Directory.Exists(netDir))
                 continue;

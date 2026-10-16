@@ -73,6 +73,7 @@ builder.Services.AddSeeingModule<OpenCodeZenLlmModule>(registry);
 builder.Services.AddSeeingModule<SiliconFlowLlmModule>(registry);
 builder.Services.AddSeeingModule<AgentsBuiltInModule>(registry);
 builder.Services.AddSeeingModule<QuestionToolsModule>(registry);
+builder.Services.AddSeeingModule<Seeing.Agent.Workspace.WorkspaceGitExcludeModule>(registry);
 builder.Services.AddSeeingAcp(registry);
 builder.Services.AddSeeingScheduler(registry);
 builder.Services.AddTokenBudgetIntegration(registry, builder.Configuration);

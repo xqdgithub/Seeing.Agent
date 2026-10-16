@@ -81,6 +81,7 @@ builder.Services.AddSeeingAcp(registry);
 builder.Services.AddSeeingScheduler(registry);
 builder.Services.AddSeeingModule<QuestionToolsModule>(registry);
 builder.Services.AddSeeingModule<Seeing.Agent.Tools.Editor.EditorToolsModule>(registry);
+builder.Services.AddSeeingModule<Seeing.Agent.Workspace.WorkspaceGitExcludeModule>(registry);
 builder.Services.AddTokenBudgetIntegration(registry, builder.Configuration);
 builder.Services.AddSeeingGatewayServer(registry, builder.Configuration);
 builder.Services.AddGatewayChannelRegistry();

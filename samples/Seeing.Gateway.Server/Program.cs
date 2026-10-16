@@ -36,6 +36,7 @@ builder.Services.AddSeeingModule<WebModule>(registry);
 builder.Services.AddSeeingModule<ShellModule>(registry);
 builder.Services.AddSeeingModule<BasicModule>(registry);
 builder.Services.AddSeeingModule<GitModule>(registry);
+builder.Services.AddSeeingModule<Seeing.Agent.Workspace.WorkspaceGitExcludeModule>(registry);
 builder.Services.AddSeeingModule<QuestionToolsModule>(registry);
 builder.Services.AddSeeingModule<SkillsModule>(registry);
 builder.Services.AddSeeingModule<McpModule>(registry);

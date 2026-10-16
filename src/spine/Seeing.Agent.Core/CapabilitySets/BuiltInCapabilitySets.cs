@@ -24,6 +24,7 @@ public static class BuiltInCapabilitySets
         "agents.builtin",
         "llm.openai",
         "basic",
+        "workspace.git-exclude",
         ..s_providerModules,
     ];
 
@@ -41,6 +42,7 @@ public static class BuiltInCapabilitySets
         "subagent",
         "session.tools",
         "question.tools",
+        "workspace.git-exclude",
         ..s_providerModules,
     ];
 
@@ -57,6 +59,7 @@ public static class BuiltInCapabilitySets
         "memory",
         "scheduler",
         "question.tools",
+        "workspace.git-exclude",
         ..s_providerModules,
     ];
 
@@ -70,6 +73,7 @@ public static class BuiltInCapabilitySets
         "web",
         "memory",
         "question.tools",
+        "workspace.git-exclude",
         ..s_providerModules,
     ];
 
@@ -103,6 +107,7 @@ public static class BuiltInCapabilitySets
         "gateway",
         "systemone",
         "systemone.tools",
+        "workspace.git-exclude",
         ..s_providerModules,
     ];
 
