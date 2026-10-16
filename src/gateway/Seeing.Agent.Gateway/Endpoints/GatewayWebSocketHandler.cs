@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Core;
@@ -19,6 +20,7 @@ public sealed class GatewayWebSocketHandler
     private readonly GatewayOrchestratorV2 _orchestrator;
     private readonly IPermissionRequestManager _permissionManager;
     private readonly GatewayConnectionManager _connectionManager;
+    private readonly IChannelDirectory _channelDirectory;
     private readonly GatewayOptions _options;
     private readonly ILogger<GatewayWebSocketHandler> _logger;
 
@@ -26,12 +28,14 @@ public sealed class GatewayWebSocketHandler
         GatewayOrchestratorV2 orchestrator,
         IPermissionRequestManager permissionManager,
         GatewayConnectionManager connectionManager,
+        IChannelDirectory channelDirectory,
         GatewayOptions options,
         ILogger<GatewayWebSocketHandler> logger)
     {
         _orchestrator = orchestrator;
         _permissionManager = permissionManager;
         _connectionManager = connectionManager;
+        _channelDirectory = channelDirectory;
         _options = options;
         _logger = logger;
     }
@@ -170,7 +174,7 @@ public sealed class GatewayWebSocketHandler
         if (payload == null || string.IsNullOrWhiteSpace(payload.Channel))
             return SendErrorAsync(connection, "channel is required", "invalid_payload");
 
-        _connectionManager.RegisterChannel(connection.ConnectionId, payload.Channel);
+        _connectionManager.RegisterChannel(connection.ConnectionId, payload.Channel, payload.Capabilities);
         _logger.LogInformation(
             "Channel registered: {Channel} connection={ConnectionId}",
             payload.Channel,
@@ -210,6 +214,7 @@ public sealed class GatewayWebSocketHandler
             if (!submit.Success)
                 return;
 
+            RegisterInbound(request);
             _connectionManager.SubscribeSession(connection.ConnectionId, request.SessionId);
 
             string? loopId = null;
@@ -266,7 +271,8 @@ public sealed class GatewayWebSocketHandler
             return;
         }
 
-        var cancelled = await _orchestrator.CancelAsync(payload.SessionId, cancellationToken).ConfigureAwait(false);
+        var mode = string.IsNullOrWhiteSpace(payload.Mode) ? "interrupt" : payload.Mode;
+        var cancelled = await _orchestrator.CancelAsync(payload.SessionId, mode, cancellationToken).ConfigureAwait(false);
         await connection.SendFrameAsync(
             GatewayWsFrameSerializer.Create(
                 GatewayWsFrameType.CancelAck,
@@ -308,6 +314,26 @@ public sealed class GatewayWebSocketHandler
         await connection.SendFrameAsync(
             GatewayWsFrameSerializer.Create(GatewayWsFrameType.PermissionAck, frame.Id, result),
             cancellationToken);
+    }
+
+    private void RegisterInbound(GatewayRequest request)
+    {
+        if (request.Sender is null || request.Conversation is null)
+            return;
+
+        var text = request.Input is null
+            ? string.Empty
+            : string.Join("\n", request.Input.OfType<GatewayTextContentPart>().Select(part => part.Text));
+
+        _channelDirectory.RegisterInbound(new ChannelInboundMessage
+        {
+            Sender = request.Sender,
+            Conversation = request.Conversation,
+            ReplyToMsgId = request.ReplyToMsgId,
+            SessionId = request.SessionId,
+            Text = text,
+            CommandToken = null
+        });
     }
 
     private Task SendErrorAsync(GatewayWsConnection connection, string message, string code) =>

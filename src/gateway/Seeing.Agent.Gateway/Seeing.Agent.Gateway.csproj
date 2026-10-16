@@ -13,6 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\capabilities\Seeing.Agent.Comms\Seeing.Agent.Comms.csproj" />
     <ProjectReference Include="..\Seeing.Gateway.WeCom\Seeing.Gateway.WeCom.csproj" />
     <ProjectReference Include="..\Seeing.Gateway.QQ\Seeing.Gateway.QQ.csproj" />
     <ProjectReference Include="..\..\abstractions\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />

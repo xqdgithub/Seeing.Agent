@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Llm;
 using Seeing.Gateway.Models;
 using Seeing.Session.Core;
@@ -13,6 +14,7 @@ public sealed class GatewaySessionService
     private readonly IAgentRegistry _agentRegistry;
     private readonly IAgentRuntimeManager _runtimeManager;
     private readonly IModelManager _modelManager;
+    private readonly ISessionRuntime? _runtime;
     private readonly ILogger<GatewaySessionService>? _logger;
 
     public GatewaySessionService(
@@ -20,13 +22,15 @@ public sealed class GatewaySessionService
         IAgentRegistry agentRegistry,
         IAgentRuntimeManager runtimeManager,
         IModelManager modelManager,
-        ILogger<GatewaySessionService>? logger = null)
+        ILogger<GatewaySessionService>? logger = null,
+        ISessionRuntime? runtime = null)
     {
         _sessionManager = sessionManager;
         _agentRegistry = agentRegistry;
         _runtimeManager = runtimeManager;
         _modelManager = modelManager;
         _logger = logger;
+        _runtime = runtime;
     }
 
     /// <summary>清空指定会话的消息历史并重置默认 Agent / Model 选择</summary>
@@ -42,6 +46,12 @@ public sealed class GatewaySessionService
             return null;
 
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (_runtime is not null)
+        {
+            await _runtime.InterruptAsync(sessionId, cancellationToken).ConfigureAwait(false);
+            await _runtime.DiscardPendingAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        }
 
         session.ClearMessages();
         session.Context.Clear();

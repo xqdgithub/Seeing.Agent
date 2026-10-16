@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Gateway.Core;
@@ -56,6 +57,50 @@ public class GatewaySessionServiceTests
         loaded.Metadata.Should().NotContainKey(SessionMetadataKeys.InstructionFingerprints);
         loaded.SelectedAgent.Should().Be("build");
         loaded.SelectedModel.Should().Be("openai/gpt-4o");
+    }
+
+    [Fact]
+    public async Task ResetAsync_ShouldInterruptThenDiscardBeforeClear()
+    {
+        var registryMock = new Mock<IAgentRegistry>();
+        var runtimeMock = new Mock<IAgentRuntimeManager>();
+        runtimeMock.Setup(r => r.GetDefaultAgentNameAsync()).ReturnsAsync("build");
+        var buildAgent = new AgentDefinition { Name = "build", Runtime = AgentRuntime.Native };
+        registryMock.Setup(r => r.GetAgentAsync("build")).ReturnsAsync(buildAgent);
+        var modelManager = CreateModelManager(new SeeingAgentOptions(), buildAgent);
+
+        var manager = CreateSessionManager();
+        var session = await manager.EnsureSessionAsync("reset-order");
+        session.AddMessage(SessionMessage.UserMessage("keep-me-until-clear"));
+        await manager.SaveAsync(session.Id);
+
+        var order = new List<string>();
+        var sessionRuntime = new Mock<ISessionRuntime>();
+        sessionRuntime
+            .Setup(r => r.InterruptAsync(session.Id, It.IsAny<CancellationToken>()))
+            .Callback(() => order.Add("interrupt"))
+            .ReturnsAsync(true);
+        sessionRuntime
+            .Setup(r => r.DiscardPendingAsync(session.Id, It.IsAny<CancellationToken>()))
+            .Callback(() =>
+            {
+                order.Add("discard");
+                session.Messages.Should().NotBeEmpty();
+            })
+            .ReturnsAsync(1);
+
+        var service = new GatewaySessionService(
+            manager,
+            registryMock.Object,
+            runtimeMock.Object,
+            modelManager,
+            runtime: sessionRuntime.Object);
+
+        var result = await service.ResetAsync(session.Id, TestContext.Current.CancellationToken);
+
+        order.Should().Equal("interrupt", "discard");
+        result!.Cleared.Should().BeTrue();
+        manager.Get(session.Id)!.Messages.Should().BeEmpty();
     }
 
     [Fact]

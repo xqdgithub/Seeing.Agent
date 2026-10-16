@@ -620,6 +620,42 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         return Task.FromResult(true);
     }
 
+    /// <inheritdoc />
+    public async Task<int> DiscardPendingAsync(string sessionId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return 0;
+
+        var gate = _sessionGates.GetOrAdd(sessionId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            using var scope = _services.CreateScope();
+            var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
+            var session = sessionManager.Get(sessionId)
+                ?? await sessionManager.LoadAsync(sessionId).ConfigureAwait(false);
+            if (session is null)
+                return 0;
+
+            var pending = session.Messages.Where(IsPendingInboxMessage).ToList();
+            if (pending.Count == 0)
+                return 0;
+
+            foreach (var message in pending)
+            {
+                var metadata = message.Metadata ?? ImmutableDictionary<string, object>.Empty;
+                message.Metadata = metadata.SetItem(InboxMetadataKeys.Consumed, true);
+            }
+
+            await sessionManager.SaveAsync(sessionId).ConfigureAwait(false);
+            return pending.Count;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     public async Task<int> StopAsync(string sessionId, CancellationToken ct = default)
     {
         // 级联范围：自身 + 整棵子树（父停止即放弃所有后代，不论子是否被人接管）。

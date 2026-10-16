@@ -87,14 +87,7 @@ public static class SchedulerServiceCollectionExtensions
         services.AddSingleton<IScheduleStatusQuery>(sp =>
             new ScheduleStatusQueryAdapter(sp.GetRequiredService<IScheduleManager>()));
 
-        // 投递器
-        services.AddSingleton<LogScheduleDispatcher>();
-        services.AddSingleton<SessionScheduleDispatcher>();
-        services.AddSingleton<IScheduledJobDispatcher>(sp => new CompositeScheduleDispatcher(new IScheduledJobDispatcher[]
-        {
-            sp.GetRequiredService<SessionScheduleDispatcher>(),
-            sp.GetRequiredService<LogScheduleDispatcher>()
-        }));
+        RegisterScheduleDispatchers(services);
 
         services.AddSeeingSchedulerTools();
 
@@ -201,14 +194,7 @@ public static class SchedulerServiceCollectionExtensions
         services.AddSingleton<IScheduleStatusQuery>(sp =>
             new ScheduleStatusQueryAdapter(sp.GetRequiredService<IScheduleManager>()));
 
-        // 投递器
-        services.AddSingleton<LogScheduleDispatcher>();
-        services.AddSingleton<SessionScheduleDispatcher>();
-        services.AddSingleton<IScheduledJobDispatcher>(sp => new CompositeScheduleDispatcher(new IScheduledJobDispatcher[]
-        {
-            sp.GetRequiredService<SessionScheduleDispatcher>(),
-            sp.GetRequiredService<LogScheduleDispatcher>()
-        }));
+        RegisterScheduleDispatchers(services);
 
         services.AddSeeingSchedulerTools();
 
@@ -222,5 +208,19 @@ public static class SchedulerServiceCollectionExtensions
         services.AddModuleHostedService<ScheduleHostedService>();
 
         return services;
+    }
+
+    /// <summary>
+    /// 具体分发器均注册为 <see cref="IScheduledJobDispatcher"/>，组合器最后登记并在分发时枚举其余实现。
+    /// 后注册的分发器（如 Comms）会进入同一组合；调用方需把组合器描述符留在最后，<c>GetRequiredService</c> 才解析到组合器。
+    /// </summary>
+    private static void RegisterScheduleDispatchers(IServiceCollection services)
+    {
+        services.AddSingleton<SessionScheduleDispatcher>();
+        services.AddSingleton<LogScheduleDispatcher>();
+        services.AddSingleton<IScheduledJobDispatcher>(sp => sp.GetRequiredService<SessionScheduleDispatcher>());
+        services.AddSingleton<IScheduledJobDispatcher>(sp => sp.GetRequiredService<LogScheduleDispatcher>());
+        services.AddSingleton<CompositeScheduleDispatcher>();
+        services.AddSingleton<IScheduledJobDispatcher, CompositeScheduleDispatcher>();
     }
 }

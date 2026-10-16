@@ -281,6 +281,46 @@ public class SessionRuntimeDeliverTests
         session.Messages.Should().Contain(m => m.Content == "hello");
     }
 
+    [Fact]
+    public async Task DiscardPending_ShouldMarkUnreadConsumedWithoutRunning()
+    {
+        var runtime = CreateRuntime(out var sessionManager, out var runner, out _);
+        await sessionManager.EnsureSessionAsync("s1");
+        await runtime.DeliverAsync(Msg("s1", InboxDelivery.Inject, body: "pending"));
+
+        var discarded = await runtime.DiscardPendingAsync("s1");
+
+        discarded.Should().Be(1);
+        runner.RunCount.Should().Be(0);
+        var message = sessionManager.Get("s1")!.Messages.Should().ContainSingle().Subject;
+        message.Metadata![InboxMetadataKeys.Consumed].Should().Be(true);
+    }
+
+    [Fact]
+    public async Task DiscardPending_DuringRun_ShouldNotConsumeLaterUnread()
+    {
+        var runtime = CreateRuntime(out var sessionManager, out var runner, out _);
+        await sessionManager.EnsureSessionAsync("s1");
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        runner.OnRunAsync = () => release.Task;
+
+        await runtime.DeliverAsync(Msg("s1", InboxDelivery.Wake, body: "first"));
+        await WaitUntilAsync(() => runner.RunCount == 1);
+        await runtime.DeliverAsync(Msg("s1", InboxDelivery.Inject, body: "unread"));
+
+        var discarded = await runtime.DiscardPendingAsync("s1");
+        discarded.Should().Be(1);
+
+        release.SetResult();
+        await Task.Delay(300);
+
+        runner.RunCount.Should().Be(1);
+        lock (runner.Batches)
+            runner.Batches.Should().ContainSingle();
+        sessionManager.Get("s1")!.Messages
+            .Should().Contain(m => m.Content == "unread" && Equals(m.Metadata![InboxMetadataKeys.Consumed], true));
+    }
+
     private sealed class RecordingPublisher : IExecutionEventPublisher
     {
         public readonly List<IMessageEvent> Events = new();

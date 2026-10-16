@@ -2,15 +2,15 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Abstractions.Scheduling;
+using Seeing.Agent.Comms.Extensions;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Hosting;
 using Seeing.Agent.Gateway.Permission;
-using Seeing.Agent.Gateway.Scheduling;
 
 namespace Seeing.Agent.Gateway.Extensions;
 
@@ -39,9 +39,7 @@ public static class GatewayServiceCollectionExtensions
         services.AddSingleton<IOptions<GatewayOptions>, GatewayOptionsMonitor>();
         services.AddSingleton<IValidateOptions<GatewayOptions>, GatewayOptionsValidator>();
 
-        services.AddSingleton<GatewayConnectionManager>();
-        services.AddSingleton<GatewayScheduleDispatcher>();
-        services.AddSingleton<IScheduledJobDispatcher>(sp => sp.GetRequiredService<GatewayScheduleDispatcher>());
+        AddGatewayRuntime(services, registry);
         services.AddSingleton<IGatewayServer, GatewayServer>();
         services.AddHostedService<GatewayHostedService>();
         services.AddSingleton<ISeeingModule>(sp =>
@@ -79,9 +77,7 @@ public static class GatewayServiceCollectionExtensions
             GatewayClientsOptions.SectionName, "seeing.json", ConfigScope.ProjectOnly, typeof(GatewayClientsOptions)));
 
         services.Configure(configure);
-        services.AddSingleton<GatewayConnectionManager>();
-        services.AddSingleton<GatewayScheduleDispatcher>();
-        services.AddSingleton<IScheduledJobDispatcher>(sp => sp.GetRequiredService<GatewayScheduleDispatcher>());
+        AddGatewayRuntime(services, registry);
         services.AddSingleton<IGatewayServer, GatewayServer>();
         services.AddHostedService<GatewayHostedService>();
         services.AddSingleton<ISeeingModule>(sp =>
@@ -95,6 +91,16 @@ public static class GatewayServiceCollectionExtensions
     /// 必须显式映射到 <see cref="IPermissionChannel"/>，否则具体类型不进
     /// <c>IEnumerable&lt;IPermissionChannel&gt;</c>，TryAutoApprove 会被 Core 兜底 DenyAll 遮蔽。
     /// </summary>
+    private static void AddGatewayRuntime(IServiceCollection services, IConfigSectionRegistry registry)
+    {
+        if (!services.Any(d => d.ServiceType == typeof(Seeing.Agent.Comms.Delivery.OutboundDeliveryService)))
+            services.AddSeeingComms(registry);
+
+        services.AddSingleton<GatewayDeliveryNotifier>();
+        services.AddSingleton<IChannelDeliveryNotifier>(sp => sp.GetRequiredService<GatewayDeliveryNotifier>());
+        services.AddSingleton<GatewayConnectionManager>();
+    }
+
     private static IServiceCollection AddGatewayPermissionChannel(this IServiceCollection services)
     {
         services.AddSingleton<GatewayPermissionChannel>();

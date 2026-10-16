@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Gateway.Models;
 using Seeing.Gateway.Protocol;
@@ -13,14 +16,22 @@ namespace Seeing.Agent.Gateway.Core;
 public sealed class GatewayConnectionManager
 {
     private readonly IPermissionRequestManager? _permissionManager;
+    private readonly IChannelAdapterRegistry? _adapterRegistry;
+    private readonly ILogger<GatewayConnectionManager> _logger;
     private readonly ConcurrentDictionary<string, GatewayWsConnection> _connections = new();
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _sessionSubscriptions = new();
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _channelRegistrations =
+    private readonly ConcurrentDictionary<string, string> _channelOwners =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _connectionChannels = new();
 
-    public GatewayConnectionManager(IPermissionRequestManager? permissionManager = null)
+    public GatewayConnectionManager(
+        IPermissionRequestManager? permissionManager = null,
+        IChannelAdapterRegistry? adapterRegistry = null,
+        ILogger<GatewayConnectionManager>? logger = null)
     {
         _permissionManager = permissionManager;
+        _adapterRegistry = adapterRegistry;
+        _logger = logger ?? NullLogger<GatewayConnectionManager>.Instance;
     }
 
     /// <summary>注册新连接</summary>
@@ -47,12 +58,7 @@ public sealed class GatewayConnectionManager
                 _sessionSubscriptions.TryRemove(sessionId, out _);
         }
 
-        foreach (var (channelId, registrants) in _channelRegistrations)
-        {
-            registrants.TryRemove(connectionId, out _);
-            if (registrants.IsEmpty)
-                _channelRegistrations.TryRemove(channelId, out _);
-        }
+        ReleaseChannelOwnership(connectionId);
 
         if (subscribedSessions is null || _permissionManager is null)
             return;
@@ -78,9 +84,9 @@ public sealed class GatewayConnectionManager
         }
     }
 
-    /// <summary>获取当前已注册的所有 channel ID</summary>
+    /// <summary>获取当前仍有注册连接的 channel ID</summary>
     public IReadOnlyCollection<string> GetRegisteredChannels()
-        => _channelRegistrations.Keys.ToArray();
+        => _channelOwners.Keys.ToArray();
 
     /// <summary>订阅 session 事件推送</summary>
     public void SubscribeSession(string connectionId, string sessionId)
@@ -89,15 +95,47 @@ public sealed class GatewayConnectionManager
         subscribers[connectionId] = 0;
     }
 
-    /// <summary>Channel Host 声明负责的 channelId</summary>
-    public void RegisterChannel(string connectionId, string channelId)
+    /// <summary>
+    /// Channel Host 声明负责的 channelId。同 channel 后注册者生效，出站只发给当前连接。
+    /// <paramref name="capabilities"/> 可空；未知字段在帧反序列化时已忽略。
+    /// </summary>
+    public void RegisterChannel(
+        string connectionId,
+        string channelId,
+        ChannelRegisterCapabilities? capabilities = null)
     {
-        if (string.IsNullOrWhiteSpace(channelId))
+        _ = capabilities;
+        if (string.IsNullOrWhiteSpace(channelId) || string.IsNullOrWhiteSpace(connectionId))
             return;
 
         var key = channelId.Trim();
-        var registrants = _channelRegistrations.GetOrAdd(key, _ => new ConcurrentDictionary<string, byte>());
-        registrants[connectionId] = 0;
+        _channelOwners[key] = connectionId;
+        var channels = _connectionChannels.GetOrAdd(
+            connectionId,
+            _ => new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase));
+        channels[key] = 0;
+
+        if (_adapterRegistry is null)
+            return;
+
+        _adapterRegistry.Register(new RemoteChannelAdapterProxy(key, PushChannelOutbound));
+        _logger.LogDebug("Channel adapter registered: {Channel} connection={ConnectionId}", key, connectionId);
+    }
+
+    private void ReleaseChannelOwnership(string connectionId)
+    {
+        if (!_connectionChannels.TryRemove(connectionId, out var channels))
+            return;
+
+        foreach (var channelId in channels.Keys)
+        {
+            if (!_channelOwners.TryGetValue(channelId, out var owner) ||
+                !string.Equals(owner, connectionId, StringComparison.Ordinal))
+                continue;
+
+            _channelOwners.TryRemove(channelId, out _);
+            _adapterRegistry?.Unregister(channelId);
+        }
     }
 
     /// <summary>向订阅了 session 的所有连接推送 GatewayEvent</summary>
@@ -118,33 +156,25 @@ public sealed class GatewayConnectionManager
     }
 
     /// <summary>
-    /// 向已 RegisterChannel 的连接推送出站请求。
+    /// 向该 channel 当前注册连接推送出站请求（不广播历史连接）。
     /// </summary>
-    /// <returns>是否至少投递给一个连接</returns>
+    /// <returns>是否已把帧交给当前连接</returns>
     public bool PushChannelOutbound(GatewayChannelOutboundPayload payload)
     {
         if (string.IsNullOrWhiteSpace(payload.Channel))
             return false;
 
-        if (!_channelRegistrations.TryGetValue(payload.Channel.Trim(), out var registrants)
-            || registrants.IsEmpty)
+        if (!_channelOwners.TryGetValue(payload.Channel.Trim(), out var connectionId))
+            return false;
+
+        if (!_connections.TryGetValue(connectionId, out var connection))
             return false;
 
         var frame = GatewayWsFrameSerializer.Create(
             GatewayWsFrameType.ChannelOutbound,
             payload: payload);
-
-        var delivered = false;
-        foreach (var connectionId in registrants.Keys)
-        {
-            if (_connections.TryGetValue(connectionId, out var connection))
-            {
-                _ = connection.SendFrameAsync(frame);
-                delivered = true;
-            }
-        }
-
-        return delivered;
+        _ = connection.SendFrameAsync(frame);
+        return true;
     }
 
     /// <summary>向指定连接发送 execution.complete</summary>

@@ -3,8 +3,10 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Agent.Comms.Delivery;
 using Seeing.Agent.Comms.Directories;
+using Seeing.Agent.Comms.Scheduling;
 
 namespace Seeing.Agent.Comms.Extensions;
 
@@ -44,7 +46,33 @@ public static class CommsServiceCollectionExtensions
         services.AddSingleton<IChannelMessageSink>(sp => sp.GetRequiredService<ChannelMessageSink>());
         services.AddSingleton<NoopDeliveryNotifier>();
         services.AddSingleton<IChannelDeliveryNotifier>(sp => sp.GetRequiredService<NoopDeliveryNotifier>());
+        services.AddSingleton<ChannelDeliveryScheduleDispatcher>();
+        services.AddSingleton<IScheduledJobDispatcher>(sp => sp.GetRequiredService<ChannelDeliveryScheduleDispatcher>());
+        MoveCompositeScheduleDispatcherLast(services);
         services.AddSingleton<ISeeingModule, CommsModule>();
         return services;
+    }
+
+    /// <summary>
+    /// <c>GetRequiredService&lt;IScheduledJobDispatcher&gt;</c> 取最后一条登记。
+    /// 调度器若已登记组合器，把它挪到末尾，使后加入的 Comms 分发器仍被组合器枚举到。
+    /// </summary>
+    internal static void MoveCompositeScheduleDispatcherLast(IServiceCollection services)
+    {
+        var index = -1;
+        for (var i = 0; i < services.Count; i++)
+        {
+            var descriptor = services[i];
+            if (descriptor.ServiceType == typeof(IScheduledJobDispatcher)
+                && descriptor.ImplementationType?.Name == "CompositeScheduleDispatcher")
+                index = i;
+        }
+
+        if (index < 0 || index == services.Count - 1)
+            return;
+
+        var composite = services[index];
+        services.RemoveAt(index);
+        services.Add(composite);
     }
 }

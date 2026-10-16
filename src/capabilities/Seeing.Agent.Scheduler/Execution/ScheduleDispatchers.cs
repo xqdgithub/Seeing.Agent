@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Reminders;
 using Seeing.Agent.Abstractions.Runtime;
@@ -110,20 +111,21 @@ public sealed class SessionScheduleDispatcher : IScheduledJobDispatcher
     }
 }
 
-/// <summary>组合多个投递器</summary>
+/// <summary>组合多个投递器。容器构造时在分发当下枚举全部 <see cref="IScheduledJobDispatcher"/>，排除自身。</summary>
 public sealed class CompositeScheduleDispatcher : IScheduledJobDispatcher
 {
-    private readonly IReadOnlyList<IScheduledJobDispatcher> _dispatchers;
+    private readonly IServiceProvider _services;
 
-    public CompositeScheduleDispatcher(IEnumerable<IScheduledJobDispatcher> dispatchers)
+    /// <summary>分发时再枚举容器内的分发器，避免构造期解析 <c>IEnumerable</c> 自身造成循环依赖。</summary>
+    public CompositeScheduleDispatcher(IServiceProvider services)
     {
-        _dispatchers = dispatchers.ToList();
+        _services = services ?? throw new ArgumentNullException(nameof(services));
     }
 
     public async Task<DispatchResult> DispatchAsync(DispatchRequest request, CancellationToken ct = default)
     {
         DispatchResult? last = null;
-        foreach (var dispatcher in _dispatchers)
+        foreach (var dispatcher in Resolve())
         {
             last = await dispatcher.DispatchAsync(request, ct).ConfigureAwait(false);
             if (!last.Success)
@@ -131,5 +133,17 @@ public sealed class CompositeScheduleDispatcher : IScheduledJobDispatcher
         }
 
         return last ?? DispatchResult.Ok();
+    }
+
+    private IEnumerable<IScheduledJobDispatcher> Resolve()
+    {
+        var source = _services.GetServices<IScheduledJobDispatcher>();
+
+        foreach (var dispatcher in source)
+        {
+            if (dispatcher is null || dispatcher is CompositeScheduleDispatcher)
+                continue;
+            yield return dispatcher;
+        }
     }
 }

@@ -7,7 +7,7 @@ namespace Seeing.Agent.Comms.Delivery;
 /// <summary>
 /// 出站投递管道：目标解析 → 准入 → 适配器 → 成功后记频控并通知。
 /// </summary>
-public sealed class OutboundDeliveryService
+public class OutboundDeliveryService
 {
     private readonly IChannelDirectory _directory;
     private readonly IChannelAdapterRegistry _registry;
@@ -26,7 +26,7 @@ public sealed class OutboundDeliveryService
         _logger = logger ?? NullLogger<OutboundDeliveryService>.Instance;
     }
 
-    public async Task<OutboundDeliveryResult> DeliverAsync(OutboundMessage message, CancellationToken ct = default)
+    public virtual async Task<OutboundDeliveryResult> DeliverAsync(OutboundMessage message, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(message);
         var conversation = message.Target.Conversation;

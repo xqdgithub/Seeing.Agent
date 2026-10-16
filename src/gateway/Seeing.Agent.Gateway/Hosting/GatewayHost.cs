@@ -7,8 +7,10 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Core;
@@ -80,7 +82,10 @@ public sealed class GatewayHost : IAsyncDisposable
         var defaultWorkMode = _rootServices.GetService<IDefaultWorkModeProvider>();
         var sessionResolver = new GatewaySessionResolver(
             sessionManager, selectionResolver, modelManager, defaultWorkMode);
-        var sessionService = new GatewaySessionService(sessionManager, agentRegistry, runtimeManager, modelManager);
+        var sessionRuntime = _rootServices.GetRequiredService<ISessionRuntime>();
+        var channelDirectory = _rootServices.GetRequiredService<IChannelDirectory>();
+        var sessionService = new GatewaySessionService(
+            sessionManager, agentRegistry, runtimeManager, modelManager, runtime: sessionRuntime);
         var loggerFactory = _rootServices.GetRequiredService<ILoggerFactory>();
         var orchestratorLogger = loggerFactory.CreateLogger<GatewayOrchestratorV2>();
 
@@ -107,6 +112,7 @@ public sealed class GatewayHost : IAsyncDisposable
             orchestrator,
             permissionManager,
             connectionManager,
+            channelDirectory,
             Options,
             loggerFactory.CreateLogger<GatewayWebSocketHandler>()));
 
