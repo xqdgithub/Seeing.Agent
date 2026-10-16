@@ -12,8 +12,8 @@ public static class InboxMetadataKeys
     public const string Kind = "inbox.kind";
     public const string AgentId = "inbox.agent_id";
     public const string ModelId = "inbox.model_id";
-    public const string ChannelId = "inbox.channel_id";
-    public const string UserId = "inbox.user_id";
+    /// <summary>ConversationInfo 的 camelCase JSON。</summary>
+    public const string Conversation = "inbox.conversation";
     public const string ThinkingEffort = "inbox.thinking_effort";
     public const string ModeId = "inbox.mode_id";
     public const string WorkingDirectory = "inbox.working_dir";

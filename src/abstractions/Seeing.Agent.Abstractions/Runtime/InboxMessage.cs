@@ -1,3 +1,4 @@
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Abstractions.Models;
 
 namespace Seeing.Agent.Abstractions.Runtime;
@@ -22,11 +23,14 @@ public sealed record InboxMessage
     public string? AgentId { get; init; }
     public string? ModelId { get; init; }
 
-    /// <summary>并发通道 ID（Gateway 用于队列隔离/出站回填）。</summary>
-    public string? ChannelId { get; init; }
+    /// <summary>入站对话（出站回填的结构化来源）。</summary>
+    public ConversationInfo? Conversation { get; init; }
 
-    /// <summary>用户 ID（Gateway 用于审计/出站回填）。</summary>
-    public string? UserId { get; init; }
+    /// <summary>被动回复所针对的平台消息 ID。</summary>
+    public string? ReplyToMsgId { get; init; }
+
+    /// <summary>平台侧发送者身份（与 <see cref="Sender"/> 的运行时身份并列）。</summary>
+    public ChannelUserIdentity? SenderIdentity { get; init; }
 
     /// <summary>思考强度档位 key（可选，覆盖会话 SelectedThinkingEffort）。</summary>
     public string? ThinkingEffort { get; init; }

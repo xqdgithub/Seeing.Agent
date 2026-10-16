@@ -111,7 +111,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
                 // === 执行前职责（原 SubmitAsync）：出站回填、模型/模式/思考强度落盘、cwd、指令注入 ===
                 // 新模型：入站消息已由 Deliver 落盘，本轮不再落盘 user 消息（SkipUserMessagePersist 语义恒真），
                 // 故这些副作用失败一律容忍（与旧 SkipUserMessagePersist==true 分支一致，仅告警不中断本轮）。
-                TryBackfillSessionOutbound(session, record.Options?.ChannelId, record.Options?.UserId);
+                TryBackfillChannelRoute(session, record.Options?.ChannelRoute);
 
                 // ⭐ Persist model/mode selection to session (ensures they're saved even if execution fails)
                 ApplyInboundModelAndMode(session, record.Options?.ModelId, record.Options?.ModeId, modelManager);
@@ -453,8 +453,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
             WorkingDirectory = cwd,
             WorkspaceRoot = projectRoot,
             PermissionAuthorizer = permissionAuthorizer,
-            ChannelId = record.Options?.ChannelId,
-            UserId = record.Options?.UserId,
+            ChannelRoute = record.Options?.ChannelRoute,
             AcpModeId = acpModeId,
             RequestModelId = requestModelId,
             RequestThinkingEffort = requestThinkingEffort,
@@ -596,29 +595,31 @@ internal sealed class ExecutionRunner : IExecutionRunner
     };
 
     /// <summary>
-    /// Fills session ChannelId/UserId from inbound values only when session fields are empty.
-    /// Never overwrites existing non-whitespace values.
+    /// Writes <see cref="SessionData.ChannelRoute"/> only when the session route is empty (first-write-wins).
     /// </summary>
-    /// <returns>True if either field was updated.</returns>
-    internal static bool TryBackfillSessionOutbound(SessionData session, string? channelId, string? userId)
+    /// <returns>True when the route was written.</returns>
+    internal static bool TryBackfillChannelRoute(SessionData session, SessionChannelRoute? inbound)
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        var changed = false;
-        if (string.IsNullOrWhiteSpace(session.ChannelId) && !string.IsNullOrWhiteSpace(channelId))
-        {
-            session.ChannelId = channelId.Trim();
-            changed = true;
-        }
+        if (!IsEmptyChannelRoute(session.ChannelRoute))
+            return false;
 
-        if (string.IsNullOrWhiteSpace(session.UserId) && !string.IsNullOrWhiteSpace(userId))
-        {
-            session.UserId = userId.Trim();
-            changed = true;
-        }
+        if (inbound is null || string.IsNullOrWhiteSpace(inbound.ChannelId))
+            return false;
 
-        return changed;
+        session.ChannelRoute = new SessionChannelRoute
+        {
+            ChannelId = inbound.ChannelId.Trim(),
+            Kind = inbound.Kind.Trim(),
+            ExternalId = inbound.ExternalId.Trim(),
+            Title = string.IsNullOrWhiteSpace(inbound.Title) ? null : inbound.Title.Trim()
+        };
+        return true;
     }
+
+    private static bool IsEmptyChannelRoute(SessionChannelRoute? route) =>
+        route is null || string.IsNullOrWhiteSpace(route.ChannelId);
 
     /// <summary>
     /// Persists inbound model/mode from <see cref="ChatOptions"/> onto the session before execution.

@@ -1,7 +1,16 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Seeing.Agent.Abstractions.Channels;
 
 namespace Seeing.Gateway.Protocol;
+
+/// <summary>channel.register v2 能力声明。T1 的适配器能力类型未落地时使用本协议记录。</summary>
+public sealed record ChannelRegisterCapabilities
+{
+    public IReadOnlyList<string>? ConversationKinds { get; init; }
+
+    public bool SupportsStreaming { get; init; }
+}
 
 /// <summary>
 /// Gateway WebSocket JSON Text Frame 信封
@@ -93,6 +102,8 @@ public record GatewayConnectedPayload
 public record GatewayChannelRegisterPayload
 {
     public required string Channel { get; init; }
+
+    public ChannelRegisterCapabilities? Capabilities { get; init; }
 }
 
 /// <summary>
@@ -102,7 +113,15 @@ public record GatewayChannelOutboundPayload
 {
     public required string Channel { get; init; }
 
-    public required string SessionId { get; init; }
+    public ConversationInfo? Conversation { get; init; }
+
+    public string? RecipientUserId { get; init; }
+
+    public OutboundDeliveryKind? DeliveryKind { get; init; }
+
+    public string? ReplyToMsgId { get; init; }
+
+    public required string CorrelationSessionId { get; init; }
 
     public required string Text { get; init; }
 
@@ -129,6 +148,9 @@ public record GatewayWsErrorPayload
 public record GatewayCancelPayload
 {
     public required string SessionId { get; init; }
+
+    /// <summary>取消模式。null 视为 interrupt。</summary>
+    public string? Mode { get; init; }
 }
 
 /// <summary>

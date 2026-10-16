@@ -44,8 +44,7 @@ namespace Seeing.Session.Core
             CreatedAt = s.CreatedAt,
             UpdatedAt = s.UpdatedAt,
             LastActiveAt = s.LastActiveAt,
-            ChannelId = s.ChannelId,
-            UserId = s.UserId,
+            ChannelId = s.ChannelRoute?.ChannelId,
             WorkingDirectory = s.WorkingDirectory,
             Scenario = s.Scenario,
             AutoApprove = s.AutoApprove

@@ -1,3 +1,5 @@
+using Seeing.Agent.Abstractions.Channels;
+
 namespace Seeing.Gateway.Models;
 
 /// <summary>
@@ -7,9 +9,13 @@ public record GatewayRequest
 {
     public required string SessionId { get; init; }
 
-    public string? UserId { get; init; }
-
     public string? ChannelId { get; init; }
+
+    public ChannelUserIdentity? Sender { get; init; }
+
+    public ConversationInfo? Conversation { get; init; }
+
+    public string? ReplyToMsgId { get; init; }
 
     public string? AgentId { get; init; }
 

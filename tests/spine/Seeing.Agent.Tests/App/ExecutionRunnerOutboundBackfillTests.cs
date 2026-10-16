@@ -13,74 +13,72 @@ namespace Seeing.Agent.Tests.App;
 public class ExecutionRunnerOutboundBackfillTests
 {
     [Fact]
-    public void TryBackfillSessionOutbound_EmptyFields_ShouldFillFromInbound()
+    public void TryBackfillChannelRoute_Empty_ShouldFillFromInbound()
     {
         var session = SessionData.Create();
-        session.ChannelId = null;
-        session.UserId = null;
+        session.ChannelRoute = null;
 
-        var changed = ExecutionRunner.TryBackfillSessionOutbound(session, "  qq  ", "  u1  ");
+        var changed = ExecutionRunner.TryBackfillChannelRoute(
+            session, Route("  qq  ", " group ", "  gid  ", "  room  "));
 
         changed.Should().BeTrue();
-        session.ChannelId.Should().Be("qq");
-        session.UserId.Should().Be("u1");
+        session.ChannelRoute!.ChannelId.Should().Be("qq");
+        session.ChannelRoute.Kind.Should().Be("group");
+        session.ChannelRoute.ExternalId.Should().Be("gid");
+        session.ChannelRoute.Title.Should().Be("room");
     }
 
     [Fact]
-    public void TryBackfillSessionOutbound_ExistingFields_ShouldNotOverwrite()
+    public void TryBackfillChannelRoute_Existing_ShouldNotOverwrite()
     {
         var session = SessionData.Create();
-        session.ChannelId = "wecom";
-        session.UserId = "existing";
+        session.ChannelRoute = Route("wecom", "direct", "existing");
 
-        var changed = ExecutionRunner.TryBackfillSessionOutbound(session, "qq", "u1");
+        var changed = ExecutionRunner.TryBackfillChannelRoute(session, Route("qq", "group", "u1"));
 
         changed.Should().BeFalse();
-        session.ChannelId.Should().Be("wecom");
-        session.UserId.Should().Be("existing");
+        session.ChannelRoute!.ChannelId.Should().Be("wecom");
+        session.ChannelRoute.Kind.Should().Be("direct");
+        session.ChannelRoute.ExternalId.Should().Be("existing");
     }
 
     [Fact]
-    public void TryBackfillSessionOutbound_WhitespaceSessionFields_ShouldFill()
+    public void TryBackfillChannelRoute_WhitespaceSessionRoute_ShouldFill()
     {
         var session = SessionData.Create();
-        session.ChannelId = "   ";
-        session.UserId = "";
+        session.ChannelRoute = Route("   ", "direct", "");
 
-        var changed = ExecutionRunner.TryBackfillSessionOutbound(session, "qq", "u1");
+        var changed = ExecutionRunner.TryBackfillChannelRoute(session, Route("qq", "group", "u1"));
 
         changed.Should().BeTrue();
-        session.ChannelId.Should().Be("qq");
-        session.UserId.Should().Be("u1");
+        session.ChannelRoute!.ChannelId.Should().Be("qq");
+        session.ChannelRoute.ExternalId.Should().Be("u1");
     }
 
     [Fact]
-    public void TryBackfillSessionOutbound_BlankInbound_ShouldNotChange()
+    public void TryBackfillChannelRoute_BlankInbound_ShouldNotChange()
     {
         var session = SessionData.Create();
-        session.ChannelId = null;
-        session.UserId = null;
+        session.ChannelRoute = null;
 
-        var changed = ExecutionRunner.TryBackfillSessionOutbound(session, "  ", null);
+        var changed = ExecutionRunner.TryBackfillChannelRoute(session, Route("  ", "group", "u1"));
 
         changed.Should().BeFalse();
-        session.ChannelId.Should().BeNull();
-        session.UserId.Should().BeNull();
+        session.ChannelRoute.Should().BeNull();
+
+        changed = ExecutionRunner.TryBackfillChannelRoute(session, null);
+        changed.Should().BeFalse();
+        session.ChannelRoute.Should().BeNull();
     }
 
-    [Fact]
-    public void TryBackfillSessionOutbound_OnlyChannelEmpty_ShouldFillChannelOnly()
-    {
-        var session = SessionData.Create();
-        session.ChannelId = null;
-        session.UserId = "keep";
-
-        var changed = ExecutionRunner.TryBackfillSessionOutbound(session, "qq", "ignored");
-
-        changed.Should().BeTrue();
-        session.ChannelId.Should().Be("qq");
-        session.UserId.Should().Be("keep");
-    }
+    private static SessionChannelRoute Route(string channelId, string kind, string externalId, string? title = null)
+        => new()
+        {
+            ChannelId = channelId,
+            Kind = kind,
+            ExternalId = externalId,
+            Title = title
+        };
 }
 
 public class ExecutionRunnerModelSelectionTests

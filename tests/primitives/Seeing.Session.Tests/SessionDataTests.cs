@@ -87,14 +87,18 @@ namespace Seeing.Session.Tests
         }
 
         [Fact]
-        public void Clone_CopiesChannelIdAndUserId()
+        public void Clone_CopiesChannelRoute()
         {
             var s = SessionData.Create();
-            s.ChannelId = "qq";
-            s.UserId = "u1";
+            s.ChannelRoute = new SessionChannelRoute
+            {
+                ChannelId = "qq",
+                Kind = "group",
+                ExternalId = "g1",
+                Title = "room"
+            };
             var c = s.Clone();
-            c.ChannelId.Should().Be("qq");
-            c.UserId.Should().Be("u1");
+            c.ChannelRoute.Should().BeEquivalentTo(s.ChannelRoute);
         }
 
         [Fact]

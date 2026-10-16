@@ -189,7 +189,6 @@ public static class WeComMessageParser
         return new GatewayRequest
         {
             SessionId = sessionId,
-            UserId = parsed.UserId,
             ChannelId = "wecom",
             AgentId = agentId,
             ModeId = modeId,

@@ -20,8 +20,12 @@ public class GatewayScheduleDispatcherOutboundTests
     {
         var session = SessionData.Create();
         session.Id = "sess-1";
-        session.ChannelId = "qq";
-        session.UserId = "u1";
+        session.ChannelRoute = new SessionChannelRoute
+        {
+            ChannelId = "qq",
+            Kind = "group",
+            ExternalId = "u1"
+        };
 
         var sessionManager = CreateSessionManager(session);
         GatewayChannelOutboundPayload? captured = null;
@@ -52,7 +56,7 @@ public class GatewayScheduleDispatcherOutboundTests
         captured.Should().NotBeNull();
         captured!.Channel.Should().Be("qq");
         captured.UserId.Should().Be("u1");
-        captured.SessionId.Should().Be("sess-1");
+        captured.CorrelationSessionId.Should().Be("sess-1");
         captured.Text.Should().Be("hello");
     }
 
@@ -61,8 +65,7 @@ public class GatewayScheduleDispatcherOutboundTests
     {
         var session = SessionData.Create();
         session.Id = "sess-2";
-        session.ChannelId = null;
-        session.UserId = null;
+        session.ChannelRoute = null;
 
         var sessionManager = CreateSessionManager(session);
         var outboundCalls = 0;

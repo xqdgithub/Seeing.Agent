@@ -607,7 +607,7 @@ namespace Seeing.Session.Storage
                 return null;
 
             string? id = null, title = null, partitionId = null, selectedAgent = null, selectedModel = null;
-            string? groupId = null, channelId = null, userId = null, workingDirectory = null, scenario = null;
+            string? groupId = null, legacyChannelId = null, routeChannelId = null, workingDirectory = null, scenario = null;
             var status = SessionStatus.Created;
             var kind = SessionKind.Root;
             var autoApprove = SessionAutoApprove.FollowGlobal;
@@ -632,8 +632,8 @@ namespace Seeing.Session.Storage
                     case "selectedAgent": selectedAgent = ReadString(ref reader); break;
                     case "selectedModel": selectedModel = ReadString(ref reader); break;
                     case "groupId": groupId = ReadString(ref reader); break;
-                    case "channelId": channelId = ReadString(ref reader); break;
-                    case "userId": userId = ReadString(ref reader); break;
+                    case "channelId": legacyChannelId = ReadString(ref reader); break;
+                    case "channelRoute": routeChannelId = ReadChannelRouteChannelId(ref reader); break;
                     case "workingDirectory": workingDirectory = ReadString(ref reader); break;
                     case "scenario": scenario = ReadString(ref reader); break;
                     case "status": status = ReadEnum(ref reader, SessionStatus.Created); break;
@@ -663,12 +663,38 @@ namespace Seeing.Session.Storage
                 CreatedAt = createdAt,
                 UpdatedAt = updatedAt,
                 LastActiveAt = lastActiveAt,
-                ChannelId = channelId,
-                UserId = userId,
+                ChannelId = routeChannelId ?? legacyChannelId,
                 WorkingDirectory = workingDirectory,
                 Scenario = scenario,
                 AutoApprove = autoApprove
             };
+        }
+
+        private static string? ReadChannelRouteChannelId(ref Utf8JsonReader reader)
+        {
+            if (reader.TokenType != JsonTokenType.StartObject)
+            {
+                reader.Skip();
+                return null;
+            }
+
+            string? channelId = null;
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+            {
+                if (reader.TokenType != JsonTokenType.PropertyName)
+                    continue;
+
+                var name = reader.GetString();
+                if (!reader.Read())
+                    break;
+
+                if (string.Equals(name, "channelId", StringComparison.Ordinal))
+                    channelId = ReadString(ref reader);
+                else
+                    reader.Skip();
+            }
+
+            return channelId;
         }
 
         private static string? ReadString(ref Utf8JsonReader reader) =>

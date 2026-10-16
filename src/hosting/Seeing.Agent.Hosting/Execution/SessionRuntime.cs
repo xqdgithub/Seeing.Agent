@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
@@ -12,6 +13,7 @@ using Seeing.Session.Core;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Seeing.Agent.Hosting.Execution;
 
@@ -288,8 +290,8 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                         {
                             AgentId = LastNonEmptyMeta(pending, InboxMetadataKeys.AgentId),
                             ModelId = LastNonEmptyMeta(pending, InboxMetadataKeys.ModelId),
-                            ChannelId = LastNonEmptyMeta(pending, InboxMetadataKeys.ChannelId),
-                            UserId = LastNonEmptyMeta(pending, InboxMetadataKeys.UserId),
+                            ChannelRoute = ParseConversationRoute(
+                                LastNonEmptyMeta(pending, InboxMetadataKeys.Conversation)),
                             ThinkingEffort = LastNonEmptyMeta(pending, InboxMetadataKeys.ThinkingEffort),
                             ModeId = LastNonEmptyMeta(pending, InboxMetadataKeys.ModeId),
                             WorkingDirectory = LastNonEmptyMeta(pending, InboxMetadataKeys.WorkingDirectory)
@@ -432,10 +434,11 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
             metadata[InboxMetadataKeys.AgentId] = message.AgentId!;
         if (!string.IsNullOrEmpty(message.ModelId))
             metadata[InboxMetadataKeys.ModelId] = message.ModelId!;
-        if (!string.IsNullOrEmpty(message.ChannelId))
-            metadata[InboxMetadataKeys.ChannelId] = message.ChannelId!;
-        if (!string.IsNullOrEmpty(message.UserId))
-            metadata[InboxMetadataKeys.UserId] = message.UserId!;
+        if (message.Conversation is not null)
+        {
+            metadata[InboxMetadataKeys.Conversation] =
+                JsonSerializer.Serialize(message.Conversation, ConversationJsonOptions);
+        }
         if (!string.IsNullOrEmpty(message.ThinkingEffort))
             metadata[InboxMetadataKeys.ThinkingEffort] = message.ThinkingEffort!;
         if (!string.IsNullOrEmpty(message.ModeId))
@@ -526,6 +529,36 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
             JsonElement je when je.ValueKind == JsonValueKind.String => je.GetString(),
             _ => raw.ToString()
         };
+    }
+
+    private static readonly JsonSerializerOptions ConversationJsonOptions = CreateConversationJsonOptions();
+
+    private static JsonSerializerOptions CreateConversationJsonOptions()
+    {
+        var options = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            PropertyNameCaseInsensitive = true
+        };
+        options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+        return options;
+    }
+
+    /// <summary>将 inbox.conversation 的 ConversationInfo JSON 还原为会话路由。</summary>
+    private static SessionChannelRoute? ParseConversationRoute(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        try
+        {
+            var info = JsonSerializer.Deserialize<ConversationInfo>(json, ConversationJsonOptions);
+            return info?.ToSessionRoute();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>取本批消息中指定元数据的最后一个非空值（后到者覆盖，与「最新选择」语义一致）。</summary>

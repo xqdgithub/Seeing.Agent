@@ -107,8 +107,8 @@ public sealed class GatewayScheduleDispatcher : IScheduledJobDispatcher
                 });
             }
 
-            var channel = session.ChannelId;
-            var userId = session.UserId;
+            var channel = session.ChannelRoute?.ChannelId;
+            var userId = session.ChannelRoute?.ExternalId;
             if (string.IsNullOrWhiteSpace(channel))
             {
                 _logger.LogDebug(
@@ -120,7 +120,7 @@ public sealed class GatewayScheduleDispatcher : IScheduledJobDispatcher
                 var delivered = _pushChannelOutbound(new GatewayChannelOutboundPayload
                 {
                     Channel = channel.Trim(),
-                    SessionId = request.SessionId,
+                    CorrelationSessionId = request.SessionId,
                     Text = request.Content,
                     Source = $"scheduler.{request.Source}",
                     UserId = userId

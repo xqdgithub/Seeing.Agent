@@ -157,7 +157,6 @@ public static class QQMessageParser
         {
             SessionId = sessionId,
             ChannelId = "qq",
-            UserId = message.SenderOpenId,
             AgentId = agentId,
             ModeId = modeId,
             ModelId = modelId,

@@ -51,7 +51,7 @@ public class GatewayInboundParserTests
             new GatewayChannelOutboundPayload
             {
                 Channel = "qq",
-                SessionId = "qq_group_ABC",
+                CorrelationSessionId = "qq_group_ABC",
                 Text = "hello",
                 Source = "scheduler.cron"
             });
@@ -60,7 +60,7 @@ public class GatewayInboundParserTests
 
         inbound.Type.Should().Be(GatewayWsFrameType.ChannelOutbound);
         inbound.ChannelOutbound!.Channel.Should().Be("qq");
-        inbound.ChannelOutbound.SessionId.Should().Be("qq_group_ABC");
+        inbound.ChannelOutbound.CorrelationSessionId.Should().Be("qq_group_ABC");
         inbound.ChannelOutbound.Text.Should().Be("hello");
     }
 }

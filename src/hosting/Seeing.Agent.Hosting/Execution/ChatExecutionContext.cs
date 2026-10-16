@@ -1,6 +1,7 @@
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Session.Core;
 
 namespace Seeing.Agent.Hosting.Execution;
 
@@ -55,11 +56,8 @@ internal class ChatExecutionContext
 
     // ========== Gateway 相关 ==========
 
-    /// <summary>并发通道 ID</summary>
-    public string? ChannelId { get; init; }
-
-    /// <summary>用户 ID</summary>
-    public string? UserId { get; init; }
+    /// <summary>入站对话路由（与 ChatOptions.ChannelRoute 同源）。</summary>
+    public SessionChannelRoute? ChannelRoute { get; init; }
 
     // ========== 请求级参数 ==========
 

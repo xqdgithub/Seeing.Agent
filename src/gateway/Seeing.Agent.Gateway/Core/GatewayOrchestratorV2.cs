@@ -61,7 +61,7 @@ public sealed class GatewayOrchestratorV2
                 new InboxMessage
                 {
                     TargetSessionId = sessionId,
-                    Sender = new InboxSender { Kind = InboxSenderKind.Human, Id = request.UserId },
+                    Sender = new InboxSender { Kind = InboxSenderKind.Human, Id = request.Sender?.ExternalId },
                     Body = input.Text,
                     Delivery = InboxDelivery.Wake,
                     Presentation = InboxPresentation.User,
@@ -69,8 +69,8 @@ public sealed class GatewayOrchestratorV2
                     SourceTag = request.ChannelId,
                     AgentId = request.AgentId,
                     ModelId = request.ModelId,
-                    ChannelId = request.ChannelId,
-                    UserId = request.UserId,
+                    Conversation = request.Conversation,
+                    ReplyToMsgId = request.ReplyToMsgId,
                     ThinkingEffort = request.ThinkingEffort,
                     ModeId = request.ModeId
                 },

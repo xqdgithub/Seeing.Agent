@@ -113,15 +113,15 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
 
         if (string.IsNullOrWhiteSpace(payload.Text))
         {
-            _logger.LogWarning("QQ channel outbound ignored: empty text session={SessionId}", payload.SessionId);
+            _logger.LogWarning("QQ channel outbound ignored: empty text session={SessionId}", payload.CorrelationSessionId);
             return;
         }
 
-        if (!QQSessionTargetParser.TryParse(payload.SessionId, out var target) || target == null)
+        if (!QQSessionTargetParser.TryParse(payload.CorrelationSessionId, out var target) || target == null)
         {
             _logger.LogError(
                 "QQ channel outbound: cannot parse sessionId={SessionId}",
-                payload.SessionId);
+                payload.CorrelationSessionId);
             return;
         }
 
@@ -130,7 +130,7 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
             _logger.LogInformation(
                 "QQ channel outbound → {MessageType} session={SessionId} len={Length} source={Source}",
                 target.MessageType,
-                payload.SessionId,
+                payload.CorrelationSessionId,
                 payload.Text.Length,
                 payload.Source);
             await _qqHttp.SendTextAsync(target, payload.Text, cancellationToken: cancellationToken)
@@ -138,7 +138,7 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "QQ channel outbound send failed session={SessionId}", payload.SessionId);
+            _logger.LogError(ex, "QQ channel outbound send failed session={SessionId}", payload.CorrelationSessionId);
         }
     }
 
