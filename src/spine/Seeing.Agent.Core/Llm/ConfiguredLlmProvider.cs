@@ -1,11 +1,8 @@
-using Seeing.Agent.Abstractions.Llm;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
-using Seeing.ConfigSchema;
-
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Llm;
+using Seeing.ConfigSchema;
+using System.Text.Json;
 namespace Seeing.Agent.Core.Llm;
 
 /// <summary>

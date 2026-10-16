@@ -131,7 +131,7 @@ public class ScheduledJobSpec
 {
     public string Id { get; set; } = string.Empty;
     public string? Name { get; set; }
-    
+
     /// <summary>调度意图（用户配置）</summary>
     [JsonPropertyName("intent")]
     public ScheduleIntent Intent { get; set; } = ScheduleIntent.Active;
@@ -139,15 +139,15 @@ public class ScheduledJobSpec
     /// <summary>向后兼容：旧版 Enabled 字段</summary>
     [JsonPropertyName("enabled"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWriting)]
     [Obsolete("Use Intent instead")]
-    public bool? LegacyEnabled 
-    { 
+    public bool? LegacyEnabled
+    {
         get => null;
         set => _legacyEnabled = value;
     }
-    
+
     [JsonIgnore]
     private bool? _legacyEnabled;
-    
+
     /// <summary>迁移意图（从旧版 Enabled 字段）</summary>
     internal void MigrateIntent()
     {
@@ -183,9 +183,9 @@ public class JobsFile
 {
     /// <summary>版本号（用于迁移，默认 0 表示需要迁移）</summary>
     public int Version { get; set; } = 0;
-    
+
     public List<ScheduledJobSpec> Jobs { get; set; } = new();
-    
+
     /// <summary>迁移旧版本数据</summary>
     internal void MigrateIfNeeded()
     {
@@ -210,24 +210,24 @@ public class JobExecutionRecord
     public string? Error { get; set; }
     public string? Output { get; set; }
     public string Source { get; set; } = ScheduleSources.Cron;
-    
+
     // === 执行快照参数 ===
-    
+
     /// <summary>任务类型 (agent/text)</summary>
     public string? TaskType { get; set; }
-    
+
     /// <summary>执行时的 Agent ID</summary>
     public string? Agent { get; set; }
-    
+
     /// <summary>执行时的 Prompt 内容</summary>
     public string? Prompt { get; set; }
-    
+
     /// <summary>执行时的 Text 内容</summary>
     public string? Text { get; set; }
-    
+
     /// <summary>执行时的 Session ID</summary>
     public string? SessionId { get; set; }
-    
+
     /// <summary>投递会话 ID</summary>
     public string? DispatchSessionId { get; set; }
 }
@@ -243,13 +243,13 @@ public class JobExecutionResult
     public string Source { get; init; } = ScheduleSources.Cron;
     public string? Agent { get; init; }
     public string? SessionId { get; init; }
-    
+
     /// <summary>执行时的 Prompt 内容</summary>
     public string? Prompt { get; init; }
-    
+
     /// <summary>执行时的 Text 内容</summary>
     public string? Text { get; init; }
-    
+
     /// <summary>投递会话 ID</summary>
     public string? DispatchSessionId { get; init; }
 }

@@ -1,9 +1,9 @@
-using System.Text;
 using FluentAssertions;
 using Seeing.Agent.Tui.Rendering;
 using Seeing.Agent.Tui.Services;
 using Spectre.Console;
 using Spectre.Console.Rendering;
+using System.Text;
 
 namespace Seeing.Agent.Tui.Tests.Rendering;
 

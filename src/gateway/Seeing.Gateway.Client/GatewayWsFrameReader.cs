@@ -1,9 +1,9 @@
+using Seeing.Gateway.Models;
+using Seeing.Gateway.Protocol;
 using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-using Seeing.Gateway.Models;
-using Seeing.Gateway.Protocol;
 
 namespace Seeing.Gateway.Client;
 

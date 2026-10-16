@@ -1,16 +1,15 @@
-using System.Runtime.CompilerServices;
-using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Models;
-using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Permission;
 using Seeing.Gateway.Models;
 using Seeing.Session.Core;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Gateway.Core;
 

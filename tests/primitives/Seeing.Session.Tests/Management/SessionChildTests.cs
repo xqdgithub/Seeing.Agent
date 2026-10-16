@@ -1,12 +1,9 @@
-using System;
-using System.Linq;
-using System.Reflection;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Seeing.Session.Storage;
+using System.Reflection;
 using Xunit;
 
 namespace Seeing.Session.Tests.Management

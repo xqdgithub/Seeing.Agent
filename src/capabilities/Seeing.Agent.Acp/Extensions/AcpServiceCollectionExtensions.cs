@@ -1,9 +1,8 @@
-﻿using Seeing.Agent.Abstractions.Agents;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Abstractions.Tools;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Acp.Client;
 using Seeing.Agent.Acp.Commands;
@@ -15,8 +14,8 @@ using Seeing.Agent.Acp.Mapping;
 using Seeing.Agent.Acp.Permission;
 using Seeing.Agent.Acp.Session;
 using Seeing.Agent.Acp.Terminal;
-using Seeing.Agent.Acp.Transport;
 using Seeing.Agent.Acp.Tools;
+using Seeing.Agent.Acp.Transport;
 
 namespace Seeing.Agent.Acp.Extensions;
 

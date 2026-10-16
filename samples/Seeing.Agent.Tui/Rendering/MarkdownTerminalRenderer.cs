@@ -1,10 +1,9 @@
-using System.Text;
 using Markdig;
-using Markdig.Extensions.Tables;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using Spectre.Console;
 using Spectre.Console.Rendering;
+using System.Text;
 using MarkdownTable = Markdig.Extensions.Tables.Table;
 using MarkdownTableCell = Markdig.Extensions.Tables.TableCell;
 using MarkdownTableRow = Markdig.Extensions.Tables.TableRow;

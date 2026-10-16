@@ -1,8 +1,8 @@
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
+using System.Text.Json;
 
 namespace Seeing.Agent.Tools.Session;
 

@@ -1,11 +1,11 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Acp.Backends;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Filesystem;
 using Seeing.Agent.Acp.Permission;
 using Seeing.Agent.Acp.Terminal;
-using Seeing.Agent.Acp.Configuration;
 
 namespace Seeing.Agent.Acp.Client;
 

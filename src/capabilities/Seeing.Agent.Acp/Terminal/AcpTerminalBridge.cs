@@ -1,9 +1,9 @@
-using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Text;
 using Acp.Messages;
 using Acp.Types;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Text;
 
 namespace Seeing.Agent.Acp.Terminal;
 
@@ -138,7 +138,8 @@ public sealed class AcpTerminalBridge : IAsyncDisposable
         {
             Exited = entry.Exited || SafeHasExited(entry),
             Stdout = entry.Output.ToString()
-        });    }
+        });
+    }
 
     public Task<WaitForTerminalExitResponse> WaitForTerminalExitAsync(
         string sessionId,

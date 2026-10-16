@@ -1,13 +1,12 @@
 using FluentAssertions;
-using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Llm;
-using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Core.Llm;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Llm;

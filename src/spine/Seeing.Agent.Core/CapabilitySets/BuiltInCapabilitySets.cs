@@ -1,5 +1,3 @@
-using System.ComponentModel;
-
 namespace Seeing.Agent.Core.CapabilitySets;
 
 /// <summary>

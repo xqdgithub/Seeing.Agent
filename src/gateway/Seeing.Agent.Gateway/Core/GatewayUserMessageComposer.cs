@@ -1,8 +1,8 @@
+using Seeing.Gateway.Models;
+using Seeing.Session.Core;
 using System.Collections.Immutable;
 using System.Net;
 using System.Text;
-using Seeing.Gateway.Models;
-using Seeing.Session.Core;
 
 namespace Seeing.Agent.Gateway.Core;
 

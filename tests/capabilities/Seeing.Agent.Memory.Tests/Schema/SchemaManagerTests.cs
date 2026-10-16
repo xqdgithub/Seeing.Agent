@@ -17,7 +17,7 @@ public class SchemaManagerTests : IDisposable
             DataSource = ":memory:",
             Mode = SqliteOpenMode.Memory
         };
-        
+
         _connection = new SqliteConnection(connectionBuilder.ConnectionString);
         _connection.Open();
         _schemaManager = new SchemaManager(_connection);
@@ -144,7 +144,7 @@ public class SchemaManagerTests : IDisposable
 
         // Assert - Verify all tables exist
         var tables = await GetTableNamesAsync();
-        
+
         Assert.Contains("schema_version", tables);
         Assert.Contains("vectors", tables);
         Assert.Contains("keywords", tables);
@@ -162,7 +162,7 @@ public class SchemaManagerTests : IDisposable
 
         // Assert - Verify vectors table columns
         var columns = await GetTableColumnsAsync("vectors");
-        
+
         Assert.Contains(("id", "TEXT"), columns);
         Assert.Contains(("content", "TEXT"), columns);
         Assert.Contains(("embedding", "BLOB"), columns);
@@ -179,7 +179,7 @@ public class SchemaManagerTests : IDisposable
 
         // Assert - Verify links table columns
         var columns = await GetTableColumnsAsync("links");
-        
+
         Assert.Contains(("id", "INTEGER"), columns);
         Assert.Contains(("source_id", "TEXT"), columns);
         Assert.Contains(("target_id", "TEXT"), columns);
@@ -200,15 +200,15 @@ public class SchemaManagerTests : IDisposable
         command.CommandText = @"
             SELECT type FROM sqlite_master 
             WHERE type='table' AND name='keywords'";
-        
+
         var tableType = await command.ExecuteScalarAsync(TestContext.Current.CancellationToken);
         Assert.Equal("table", tableType);
-        
+
         // Verify it's a virtual table by checking sql contains "VIRTUAL TABLE"
         command.CommandText = @"
             SELECT sql FROM sqlite_master 
             WHERE type='table' AND name='keywords'";
-        
+
         var sql = await command.ExecuteScalarAsync(TestContext.Current.CancellationToken) as string;
         Assert.Contains("VIRTUAL TABLE", sql);
     }
@@ -222,7 +222,7 @@ public class SchemaManagerTests : IDisposable
         // Assert
         using var command = _connection.CreateCommand();
         command.CommandText = "SELECT version, description FROM schema_version WHERE version = 1";
-        
+
         using var reader = await command.ExecuteReaderAsync(TestContext.Current.CancellationToken);
         Assert.True(await reader.ReadAsync(TestContext.Current.CancellationToken));
         Assert.Equal(1, reader.GetInt32(0));
@@ -233,7 +233,7 @@ public class SchemaManagerTests : IDisposable
     {
         using var command = _connection.CreateCommand();
         command.CommandText = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name";
-        
+
         var tables = new List<string>();
         using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -247,7 +247,7 @@ public class SchemaManagerTests : IDisposable
     {
         using var command = _connection.CreateCommand();
         command.CommandText = $"PRAGMA table_info({tableName})";
-        
+
         var columns = new List<(string, string)>();
         using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())

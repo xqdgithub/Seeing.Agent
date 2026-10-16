@@ -1,6 +1,6 @@
+using Seeing.Agent.Abstractions.Execution;
 using System.Text;
 using System.Text.RegularExpressions;
-using Seeing.Agent.Abstractions.Execution;
 
 namespace Seeing.Agent.Tools.FileSystem
 {

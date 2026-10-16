@@ -1,7 +1,5 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Workspace;
 using Xunit;
 
 namespace Seeing.Agent.Workspace.Tests;

@@ -1,6 +1,6 @@
+using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Llm;
 using System.Collections.Immutable;
-using Microsoft.Extensions.Logging;
 
 namespace Seeing.Agent.Core.Llm;
 

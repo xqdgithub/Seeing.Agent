@@ -1,8 +1,8 @@
-using System.Net.WebSockets;
 using FluentAssertions;
 using Moq;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Gateway.Core;
+using System.Net.WebSockets;
 using Xunit;
 
 namespace Seeing.Gateway.Tests.Core;

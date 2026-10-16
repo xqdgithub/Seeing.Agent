@@ -1,7 +1,7 @@
-using System.Collections.Concurrent;
 using FluentAssertions;
 using Seeing.Agent.Tui.Services;
 using Seeing.Session.Core;
+using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Tui.Tests.Services;
 

@@ -1,7 +1,6 @@
+using Seeing.Agent.Abstractions.Configuration;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-
-using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.Core.Configuration
 {
     /// <summary>
@@ -22,19 +21,19 @@ namespace Seeing.Agent.Core.Configuration
             {
                 using var doc = JsonDocument.ParseValue(ref reader);
                 var root = doc.RootElement;
-                
+
                 var pluginSpec = new PluginSpec();
-                
+
                 if (root.TryGetProperty("spec", out var specProp))
                 {
                     pluginSpec.Spec = specProp.GetString() ?? "";
                 }
-                
+
                 if (root.TryGetProperty("options", out var optionsProp))
                 {
                     pluginSpec.Options = JsonSerializer.Deserialize<Dictionary<string, object>>(optionsProp.GetRawText(), options);
                 }
-                
+
                 return pluginSpec;
             }
 

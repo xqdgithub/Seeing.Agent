@@ -1,4 +1,3 @@
-using System.Reflection;
 using FluentAssertions;
 using Seeing.Agent.Core.CapabilitySets;
 using Seeing.Agent.Core.Scenarios;

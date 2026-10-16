@@ -1,11 +1,11 @@
+using FluentAssertions;
+using Seeing.Agent.Abstractions.SystemOne;
+using Seeing.Agent.SystemOne.Clients;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using FluentAssertions;
-using Seeing.Agent.Abstractions.SystemOne;
-using Seeing.Agent.SystemOne.Clients;
 using Xunit;
 
 namespace Seeing.Agent.SystemOne.Tests.Clients;

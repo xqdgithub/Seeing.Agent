@@ -1,6 +1,6 @@
-using System.Text.Json;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Session.Core;
+using System.Text.Json;
 
 namespace Seeing.Agent.Tui.Services;
 

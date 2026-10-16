@@ -1,14 +1,12 @@
+using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Agents.BuiltIn;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Llm.Anthropic;
 using Seeing.Agent.Llm.OpenAI;
 using Seeing.Agent.Mcp;
 using Seeing.Agent.Skills;
 using Seeing.IO.Local;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Seeing.Agent.Tests;
 

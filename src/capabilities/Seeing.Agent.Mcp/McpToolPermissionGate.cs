@@ -1,7 +1,7 @@
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
+using System.Text.Json;
 
 namespace Seeing.Agent.Mcp;
 

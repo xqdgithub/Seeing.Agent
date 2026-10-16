@@ -1,8 +1,7 @@
-using System.Collections.Immutable;
 using FluentAssertions;
-using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Session.Core;
+using System.Collections.Immutable;
 using Xunit;
 
 namespace Seeing.Agent.Tests.App.Execution;

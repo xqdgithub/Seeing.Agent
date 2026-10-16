@@ -1,10 +1,10 @@
 using FluentAssertions;
+using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Core.Models;
 using Seeing.Agent.Memory.Core.Recall;
-using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Seeing.Agent.Memory.Tests.Recall;

@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Seeing.Gateway.Client;
 using Seeing.Gateway.Protocol;
 using Xunit;
 

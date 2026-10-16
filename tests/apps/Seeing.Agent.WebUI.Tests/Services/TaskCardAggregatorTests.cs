@@ -1,14 +1,13 @@
-using System.Collections.Immutable;
-using System.Threading.Channels;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Runtime;
-using Seeing.Agent.Core.Execution;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Session.Core;
+using System.Collections.Immutable;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.WebUI.Tests.Services;
 
@@ -100,16 +99,23 @@ public class TaskCardAggregatorTests
         // 父流 task 工具调用 → 挂载子流
         await parentChannel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = parentId, Type = MessageEventType.ToolCallRunning,
-            ToolCallId = "call-1", ToolName = "task", Status = ToolCallStatus.Running
+            SessionId = parentId,
+            Type = MessageEventType.ToolCallRunning,
+            ToolCallId = "call-1",
+            ToolName = "task",
+            Status = ToolCallStatus.Running
         }, TestContext.Current.CancellationToken);
 
         await Task.Delay(200, TestContext.Current.CancellationToken);
         // 子流工具事件 → 聚合 TaskSteps
         await childChannel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = childId, Type = MessageEventType.ToolCallComplete,
-            ToolCallId = "ct1", ToolName = "read", Status = ToolCallStatus.Success, Output = "ok"
+            SessionId = childId,
+            Type = MessageEventType.ToolCallComplete,
+            ToolCallId = "ct1",
+            ToolName = "read",
+            Status = ToolCallStatus.Success,
+            Output = "ok"
         }, TestContext.Current.CancellationToken);
         await Task.Delay(300, TestContext.Current.CancellationToken);
 
@@ -146,16 +152,23 @@ public class TaskCardAggregatorTests
         // 父流 task 工具调用 → 挂载子流
         await parentChannel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = parentId, Type = MessageEventType.ToolCallRunning,
-            ToolCallId = "call-1", ToolName = "task", Status = ToolCallStatus.Running
+            SessionId = parentId,
+            Type = MessageEventType.ToolCallRunning,
+            ToolCallId = "call-1",
+            ToolName = "task",
+            Status = ToolCallStatus.Running
         }, TestContext.Current.CancellationToken);
         await Task.Delay(200, TestContext.Current.CancellationToken);
 
         // 子流事件 → 一条步骤
         await childChannel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = childId, Type = MessageEventType.ToolCallComplete,
-            ToolCallId = "ct1", ToolName = "read", Status = ToolCallStatus.Success, Output = "ok"
+            SessionId = childId,
+            Type = MessageEventType.ToolCallComplete,
+            ToolCallId = "ct1",
+            ToolName = "read",
+            Status = ToolCallStatus.Success,
+            Output = "ok"
         }, TestContext.Current.CancellationToken);
         await Task.Delay(200, TestContext.Current.CancellationToken);
 
@@ -169,8 +182,12 @@ public class TaskCardAggregatorTests
         // 后续子流事件不再聚合
         await childChannel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = childId, Type = MessageEventType.ToolCallComplete,
-            ToolCallId = "ct2", ToolName = "write", Status = ToolCallStatus.Success, Output = "x"
+            SessionId = childId,
+            Type = MessageEventType.ToolCallComplete,
+            ToolCallId = "ct2",
+            ToolName = "write",
+            Status = ToolCallStatus.Success,
+            Output = "x"
         }, TestContext.Current.CancellationToken);
         await Task.Delay(200, TestContext.Current.CancellationToken);
 
@@ -205,15 +222,20 @@ public class TaskCardAggregatorTests
 
         await parentChannel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = parentId, Type = MessageEventType.ToolCallRunning,
-            ToolCallId = "call-1", ToolName = "task", Status = ToolCallStatus.Running
+            SessionId = parentId,
+            Type = MessageEventType.ToolCallRunning,
+            ToolCallId = "call-1",
+            ToolName = "task",
+            Status = ToolCallStatus.Running
         }, TestContext.Current.CancellationToken);
         await Task.Delay(200, TestContext.Current.CancellationToken);
         var before = Interlocked.CompareExchange(ref assistantChanged, 0, 0);
 
         await childChannel.Writer.WriteAsync(new PermissionRequestEvent
         {
-            SessionId = childId, RequestId = "req-1", CallId = "ct-x",
+            SessionId = childId,
+            RequestId = "req-1",
+            CallId = "ct-x",
             PermissionKind = "tool.execute"
         }, TestContext.Current.CancellationToken);
         await Task.Delay(200, TestContext.Current.CancellationToken);
@@ -265,26 +287,40 @@ public class TaskCardAggregatorTests
         // 父流挂载两个子流
         await parentChannel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = parentId, Type = MessageEventType.ToolCallRunning,
-            ToolCallId = "call-1", ToolName = "task", Status = ToolCallStatus.Running
+            SessionId = parentId,
+            Type = MessageEventType.ToolCallRunning,
+            ToolCallId = "call-1",
+            ToolName = "task",
+            Status = ToolCallStatus.Running
         }, TestContext.Current.CancellationToken);
         await parentChannel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = parentId, Type = MessageEventType.ToolCallRunning,
-            ToolCallId = "call-2", ToolName = "task", Status = ToolCallStatus.Running
+            SessionId = parentId,
+            Type = MessageEventType.ToolCallRunning,
+            ToolCallId = "call-2",
+            ToolName = "task",
+            Status = ToolCallStatus.Running
         }, TestContext.Current.CancellationToken);
         await Task.Delay(300, TestContext.Current.CancellationToken);
 
         // 两个子流并行工具事件
         await child1Channel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = child1.Id, Type = MessageEventType.ToolCallComplete,
-            ToolCallId = "ct1", ToolName = "read", Status = ToolCallStatus.Success, Output = "ok"
+            SessionId = child1.Id,
+            Type = MessageEventType.ToolCallComplete,
+            ToolCallId = "ct1",
+            ToolName = "read",
+            Status = ToolCallStatus.Success,
+            Output = "ok"
         }, TestContext.Current.CancellationToken);
         await child2Channel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = child2.Id, Type = MessageEventType.ToolCallComplete,
-            ToolCallId = "ct2", ToolName = "write", Status = ToolCallStatus.Success, Output = "ok"
+            SessionId = child2.Id,
+            Type = MessageEventType.ToolCallComplete,
+            ToolCallId = "ct2",
+            ToolName = "write",
+            Status = ToolCallStatus.Success,
+            Output = "ok"
         }, TestContext.Current.CancellationToken);
         await Task.Delay(300, TestContext.Current.CancellationToken);
 
@@ -322,8 +358,11 @@ public class TaskCardAggregatorTests
 
         await parentChannel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = parentId, Type = MessageEventType.ToolCallRunning,
-            ToolCallId = "call-1", ToolName = "task", Status = ToolCallStatus.Running
+            SessionId = parentId,
+            Type = MessageEventType.ToolCallRunning,
+            ToolCallId = "call-1",
+            ToolName = "task",
+            Status = ToolCallStatus.Running
         }, TestContext.Current.CancellationToken);
         await Task.Delay(200, TestContext.Current.CancellationToken);
 
@@ -331,8 +370,12 @@ public class TaskCardAggregatorTests
         var events = Enumerable.Range(0, count)
             .Select(i => new ToolCallEvent
             {
-                SessionId = childId, Type = MessageEventType.ToolCallComplete,
-                ToolCallId = $"ct{i}", ToolName = "read", Status = ToolCallStatus.Success, Output = "ok"
+                SessionId = childId,
+                Type = MessageEventType.ToolCallComplete,
+                ToolCallId = $"ct{i}",
+                ToolName = "read",
+                Status = ToolCallStatus.Success,
+                Output = "ok"
             })
             .ToArray();
 
@@ -395,8 +438,11 @@ public class TaskCardAggregatorTests
         // 先挂载 child1（验证父1 订阅有效）
         await parent1Channel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = parent1, Type = MessageEventType.ToolCallRunning,
-            ToolCallId = "call-1", ToolName = "task", Status = ToolCallStatus.Running
+            SessionId = parent1,
+            Type = MessageEventType.ToolCallRunning,
+            ToolCallId = "call-1",
+            ToolName = "task",
+            Status = ToolCallStatus.Running
         }, TestContext.Current.CancellationToken);
         await Task.Delay(200, TestContext.Current.CancellationToken);
         tc1.TaskId.Should().Be(child1.Id);
@@ -407,16 +453,23 @@ public class TaskCardAggregatorTests
         // 父1 流再发 task 事件（call-3）→ 若父1 订阅未摘除会重新挂载 child3
         await parent1Channel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = parent1, Type = MessageEventType.ToolCallRunning,
-            ToolCallId = "call-3", ToolName = "task", Status = ToolCallStatus.Running
+            SessionId = parent1,
+            Type = MessageEventType.ToolCallRunning,
+            ToolCallId = "call-3",
+            ToolName = "task",
+            Status = ToolCallStatus.Running
         }, TestContext.Current.CancellationToken);
         await Task.Delay(200, TestContext.Current.CancellationToken);
 
         // child3 事件 → 未被聚合（父1 订阅已摘除，child3 未挂载）
         await child3Channel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = child3.Id, Type = MessageEventType.ToolCallComplete,
-            ToolCallId = "ct3", ToolName = "read", Status = ToolCallStatus.Success, Output = "ok"
+            SessionId = child3.Id,
+            Type = MessageEventType.ToolCallComplete,
+            ToolCallId = "ct3",
+            ToolName = "read",
+            Status = ToolCallStatus.Success,
+            Output = "ok"
         }, TestContext.Current.CancellationToken);
         await Task.Delay(200, TestContext.Current.CancellationToken);
 
@@ -453,14 +506,19 @@ public class TaskCardAggregatorTests
 
         await parentChannel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = parentId, Type = MessageEventType.ToolCallRunning,
-            ToolCallId = "call-1", ToolName = "task", Status = ToolCallStatus.Running
+            SessionId = parentId,
+            Type = MessageEventType.ToolCallRunning,
+            ToolCallId = "call-1",
+            ToolName = "task",
+            Status = ToolCallStatus.Running
         }, TestContext.Current.CancellationToken);
         await Task.Delay(200, TestContext.Current.CancellationToken);
 
         await childChannel.Writer.WriteAsync(new LoopCancelledEvent
         {
-            SessionId = childId, LoopId = "loop-1", Reason = "user"
+            SessionId = childId,
+            LoopId = "loop-1",
+            Reason = "user"
         }, TestContext.Current.CancellationToken);
         await Task.Delay(200, TestContext.Current.CancellationToken);
 
@@ -493,14 +551,18 @@ public class TaskCardAggregatorTests
 
         await parentChannel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = parentId, Type = MessageEventType.ToolCallRunning,
-            ToolCallId = "call-1", ToolName = "task", Status = ToolCallStatus.Running
+            SessionId = parentId,
+            Type = MessageEventType.ToolCallRunning,
+            ToolCallId = "call-1",
+            ToolName = "task",
+            Status = ToolCallStatus.Running
         }, TestContext.Current.CancellationToken);
         await Task.Delay(200, TestContext.Current.CancellationToken);
 
         await childChannel.Writer.WriteAsync(new ErrorEvent
         {
-            SessionId = childId, Message = "boom"
+            SessionId = childId,
+            Message = "boom"
         }, TestContext.Current.CancellationToken);
         await Task.Delay(200, TestContext.Current.CancellationToken);
 
@@ -576,16 +638,23 @@ public class TaskCardAggregatorTests
         // 父流 task 工具调用 → 挂载子流
         await parentChannel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = parentId, Type = MessageEventType.ToolCallRunning,
-            ToolCallId = "call-1", ToolName = "task", Status = ToolCallStatus.Running
+            SessionId = parentId,
+            Type = MessageEventType.ToolCallRunning,
+            ToolCallId = "call-1",
+            ToolName = "task",
+            Status = ToolCallStatus.Running
         }, TestContext.Current.CancellationToken);
         await Task.Delay(200, TestContext.Current.CancellationToken);
 
         // 子流事件 → 聚合 TaskSteps 并标记 dirty（防抖 1s 窗口内未落盘）
         await childChannel.Writer.WriteAsync(new ToolCallEvent
         {
-            SessionId = childId, Type = MessageEventType.ToolCallComplete,
-            ToolCallId = "ct1", ToolName = "read", Status = ToolCallStatus.Success, Output = "ok"
+            SessionId = childId,
+            Type = MessageEventType.ToolCallComplete,
+            ToolCallId = "ct1",
+            ToolName = "read",
+            Status = ToolCallStatus.Success,
+            Output = "ok"
         }, TestContext.Current.CancellationToken);
         await Task.Delay(100, TestContext.Current.CancellationToken);
         parent.Messages[0].ToolCalls![0].TaskSteps.Should().ContainSingle();

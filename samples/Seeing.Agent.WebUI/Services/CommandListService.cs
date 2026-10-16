@@ -1,8 +1,6 @@
-using Seeing.Agent.Abstractions.Commands;
-using Seeing.Agent.Abstractions.Agents;
 using AntDesign;
-using Seeing.Agent.Core.Commands;
-using Seeing.Agent.Core.Models;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.State;
 
@@ -29,7 +27,7 @@ public class CommandListService
     {
         // 获取当前 Agent 的 Runtime
         var currentRuntime = GetCurrentRuntime(session);
-        
+
         // 按 Runtime 过滤命令
         var metadata = _commandRegistry.GetCommandsByRuntime(currentRuntime)
             .Select(c => c.Metadata)
@@ -80,7 +78,7 @@ public class CommandListService
     public bool CanExecute(string commandName, SessionState? session)
     {
         var requiresSession = new[] { "clear", "fork", "compact" };
-        return !requiresSession.Contains(commandName, StringComparer.OrdinalIgnoreCase) 
+        return !requiresSession.Contains(commandName, StringComparer.OrdinalIgnoreCase)
                || session?.CurrentSession != null;
     }
 

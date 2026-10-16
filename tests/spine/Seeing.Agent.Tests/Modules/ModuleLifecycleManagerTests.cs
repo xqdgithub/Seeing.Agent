@@ -3,8 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Prompts;
-using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Core.Modules;
+using Seeing.Agent.Core.Prompts;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Modules;

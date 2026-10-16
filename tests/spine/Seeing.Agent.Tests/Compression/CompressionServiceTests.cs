@@ -1,9 +1,8 @@
 using FluentAssertions;
+using Moq;
 using Seeing.Agent.Abstractions.Summarization;
 using Seeing.Agent.Core.Compression;
 using Seeing.Session.Core;
-using Seeing.Session.Management;
-using Moq;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Compression;

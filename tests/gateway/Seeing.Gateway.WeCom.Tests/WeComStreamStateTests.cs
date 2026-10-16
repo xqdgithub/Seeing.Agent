@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Seeing.Gateway.WeCom.Connection;
 using Xunit;
 
 namespace Seeing.Gateway.WeCom.Tests;

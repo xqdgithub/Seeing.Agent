@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -11,6 +10,7 @@ using Seeing.Agent.Hosting.Execution;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Seeing.Session.Storage;
+using System.Collections.Immutable;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Execution;
@@ -122,13 +122,13 @@ public class SessionRuntimeControlTests
         InboxDelivery delivery,
         InboxPresentation presentation = InboxPresentation.User,
         string body = "hello") => new()
-    {
-        TargetSessionId = sessionId,
-        Sender = new InboxSender { Kind = InboxSenderKind.System, Id = "test" },
-        Body = body,
-        Delivery = delivery,
-        Presentation = presentation
-    };
+        {
+            TargetSessionId = sessionId,
+            Sender = new InboxSender { Kind = InboxSenderKind.System, Id = "test" },
+            Body = body,
+            Delivery = delivery,
+            Presentation = presentation
+        };
 
     private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 8000)
     {

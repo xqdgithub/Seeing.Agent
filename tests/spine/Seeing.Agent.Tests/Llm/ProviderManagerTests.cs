@@ -1,15 +1,15 @@
-using Seeing.Agent.Abstractions.Configuration;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Llm;
-using Seeing.Agent.Abstractions.Llm;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Llm;
@@ -80,7 +80,7 @@ public class ProviderManagerTests : IDisposable
             .Returns(secondClient);
         using var sut = new ProviderManager(
             configManager,
-            [ factory.Object ],
+            [factory.Object],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -117,7 +117,7 @@ public class ProviderManagerTests : IDisposable
         factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
         using var sut = new ProviderManager(
             configManager,
-            [ factory.Object ],
+            [factory.Object],
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -159,7 +159,7 @@ public class ProviderManagerTests : IDisposable
         factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
         using var sut = new ProviderManager(
             configManager,
-            [ factory.Object ],
+            [factory.Object],
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -189,7 +189,7 @@ public class ProviderManagerTests : IDisposable
         registry.Register(provider.Object, ownerExtensionId: "test-extension");
         using var sut = new ProviderManager(
             configManager,
-            [ Mock.Of<ILlmClientFactory>() ],
+            [Mock.Of<ILlmClientFactory>()],
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -221,7 +221,7 @@ public class ProviderManagerTests : IDisposable
             .Returns(Mock.Of<ILlmClient>());
         using var sut = new ProviderManager(
             configManager,
-            [ factory.Object ],
+            [factory.Object],
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -254,7 +254,7 @@ public class ProviderManagerTests : IDisposable
             .Returns(Mock.Of<ILlmClient>());
         using var sut = new ProviderManager(
             configManager,
-            [ factory.Object ],
+            [factory.Object],
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -274,7 +274,7 @@ public class ProviderManagerTests : IDisposable
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         using var sut = new ProviderManager(
             configManager,
-            [ Mock.Of<ILlmClientFactory>() ],
+            [Mock.Of<ILlmClientFactory>()],
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -294,7 +294,7 @@ public class ProviderManagerTests : IDisposable
         registry.Register(new TestProvider("ext"), ownerExtensionId: "test-extension");
         using var sut = new ProviderManager(
             configManager,
-            [ Mock.Of<ILlmClientFactory>() ],
+            [Mock.Of<ILlmClientFactory>()],
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -316,7 +316,7 @@ public class ProviderManagerTests : IDisposable
         var logger = new ListLogger<ProviderManager>();
         using var sut = new ProviderManager(
             configManager,
-            [ factory.Object ],
+            [factory.Object],
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -351,7 +351,7 @@ public class ProviderManagerTests : IDisposable
             });
         using var sut = new ProviderManager(
             configManager,
-            [ factory.Object ],
+            [factory.Object],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -379,7 +379,7 @@ public class ProviderManagerTests : IDisposable
             .Returns(disposableClient);
         using var sut = new ProviderManager(
             configManager,
-            [ factory.Object ],
+            [factory.Object],
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -414,7 +414,7 @@ public class ProviderManagerTests : IDisposable
             .Returns(Mock.Of<ILlmClient>());
         using var sut = new ProviderManager(
             configManager,
-            [ factory.Object ],
+            [factory.Object],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),

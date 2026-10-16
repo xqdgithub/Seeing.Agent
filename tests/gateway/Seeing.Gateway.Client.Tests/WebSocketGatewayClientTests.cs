@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.Extensions.Options;
-using Seeing.Gateway.Client;
 using Xunit;
 
 namespace Seeing.Gateway.Client.Tests;

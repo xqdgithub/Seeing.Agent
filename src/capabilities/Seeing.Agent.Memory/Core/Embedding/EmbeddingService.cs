@@ -59,7 +59,7 @@ public class EmbeddingService : IEmbeddingService
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<EmbeddingResult>> EmbedBatchAsync(
-        IReadOnlyList<string> texts, 
+        IReadOnlyList<string> texts,
         CancellationToken ct = default)
     {
         if (_cache == null)

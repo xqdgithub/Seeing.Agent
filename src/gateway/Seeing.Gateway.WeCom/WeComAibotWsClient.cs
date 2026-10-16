@@ -1,5 +1,5 @@
-using System.Text.Json.Serialization;
 using Seeing.Gateway.WeCom.Connection;
+using System.Text.Json.Serialization;
 
 namespace Seeing.Gateway.WeCom;
 

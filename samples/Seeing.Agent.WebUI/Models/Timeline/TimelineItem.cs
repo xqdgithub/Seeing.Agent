@@ -1,5 +1,3 @@
-using Seeing.Agent.WebUI.Models;
-
 namespace Seeing.Agent.WebUI.Models.Timeline;
 
 public sealed class TimelineItem

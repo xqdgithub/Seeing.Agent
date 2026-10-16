@@ -1,9 +1,9 @@
-using System.Collections.Concurrent;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Files;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Files.Watching;
+using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Files;
 

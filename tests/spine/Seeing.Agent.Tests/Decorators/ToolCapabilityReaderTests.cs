@@ -1,9 +1,8 @@
+using FluentAssertions;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Tools.Support;
-using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Decorators;
 using Seeing.Agent.Core.Helpers;
-using FluentAssertions;
+using Seeing.Agent.Tools.Support;
 using System.Text.Json;
 using Xunit;
 

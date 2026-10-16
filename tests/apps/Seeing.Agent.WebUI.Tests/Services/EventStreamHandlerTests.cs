@@ -1,14 +1,11 @@
 using FluentAssertions;
 using Moq;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Todo;
-using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Core.Execution;
-using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Session.Core;
-using Xunit;
 
 namespace Seeing.Agent.WebUI.Tests.Services;
 

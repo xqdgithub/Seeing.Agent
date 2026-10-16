@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Core.Llm;
-using Seeing.Agent.Llm;
 using Seeing.Session.Core;
 using Xunit;
 

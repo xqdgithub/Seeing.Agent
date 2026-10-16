@@ -82,12 +82,27 @@ public sealed class QQMediaFetcher
 {
     private static readonly Dictionary<string, string> s_extTypeMap = new(StringComparer.OrdinalIgnoreCase)
     {
-        [".jpg"] = "image", [".jpeg"] = "image", [".png"] = "image", [".gif"] = "image",
-        [".webp"] = "image", [".bmp"] = "image",
-        [".mp4"] = "video", [".avi"] = "video", [".mov"] = "video", [".mkv"] = "video",
-        [".webm"] = "video", [".mpeg"] = "video",
-        [".mp3"] = "audio", [".wav"] = "audio", [".ogg"] = "audio", [".m4a"] = "audio",
-        [".aac"] = "audio", [".wma"] = "audio", [".amr"] = "audio", [".silk"] = "audio", [".slk"] = "audio"
+        [".jpg"] = "image",
+        [".jpeg"] = "image",
+        [".png"] = "image",
+        [".gif"] = "image",
+        [".webp"] = "image",
+        [".bmp"] = "image",
+        [".mp4"] = "video",
+        [".avi"] = "video",
+        [".mov"] = "video",
+        [".mkv"] = "video",
+        [".webm"] = "video",
+        [".mpeg"] = "video",
+        [".mp3"] = "audio",
+        [".wav"] = "audio",
+        [".ogg"] = "audio",
+        [".m4a"] = "audio",
+        [".aac"] = "audio",
+        [".wma"] = "audio",
+        [".amr"] = "audio",
+        [".silk"] = "audio",
+        [".slk"] = "audio"
     };
 
     private readonly QQOptions _options;

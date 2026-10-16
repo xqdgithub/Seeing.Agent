@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using Seeing.Agent.Abstractions.Interactions;
+using System.Collections.Concurrent;
 
 namespace Seeing.Agent.WebUI.Services;
 

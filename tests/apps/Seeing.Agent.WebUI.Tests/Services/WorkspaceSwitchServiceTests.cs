@@ -1,10 +1,8 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.WebUI.Services;
-using Xunit;
 
 namespace Seeing.Agent.WebUI.Tests.Services;
 
@@ -24,7 +22,7 @@ public class WorkspaceSwitchServiceTests : IDisposable
         _workspaceMock = new Mock<IWorkspaceProvider>();
         _configServiceMock = new Mock<ISeeingConfigService>();
         _loggerMock = new Mock<ILogger<WorkspaceSwitchService>>();
-        
+
         _testDirectory = Path.Combine(Path.GetTempPath(), $"workspace_test_{Guid.NewGuid():N}");
         _oldDirectory = Path.Combine(Path.GetTempPath(), $"workspace_old_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_testDirectory);
@@ -43,7 +41,7 @@ public class WorkspaceSwitchServiceTests : IDisposable
     {
         _workspaceMock.Setup(x => x.ProjectSeeingDirectory)
             .Returns(Path.Combine(_oldDirectory, ".seeing"));
-        
+
         return new WorkspaceSwitchService(
             _workspaceMock.Object,
             _configServiceMock.Object,
@@ -135,7 +133,7 @@ public class WorkspaceSwitchServiceTests : IDisposable
         // Arrange
         var service = CreateService();
         var newPath = _testDirectory;
-        
+
         _configServiceMock
             .Setup(x => x.ReloadAsync(It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Config error"));

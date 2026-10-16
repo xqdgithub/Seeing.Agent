@@ -12,7 +12,6 @@ using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Core.Tools;
 using Seeing.Agent.Llm;
-using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Core;

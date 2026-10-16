@@ -1,9 +1,9 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Tests.Scenarios;
-using Seeing.Agent.Core.Modules;
 using Seeing.Session.Core;
 using Xunit;
 

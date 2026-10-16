@@ -1,6 +1,6 @@
-using System.Net;
 using FluentAssertions;
 using Seeing.Agent.Cli.Services;
+using System.Net;
 using Xunit;
 
 namespace Seeing.Agent.Cli.Tests;

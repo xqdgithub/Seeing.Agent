@@ -5,7 +5,7 @@ public class TokenBudgetException : Exception
     public string SessionId { get; }
     public int CurrentTokens { get; }
     public int MaxTokens { get; }
-    
+
     public TokenBudgetException(string sessionId, int current, int max, string message)
         : base(message)
     {

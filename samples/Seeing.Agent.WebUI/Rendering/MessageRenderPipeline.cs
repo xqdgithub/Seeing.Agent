@@ -129,7 +129,7 @@ public class MessageRenderPipeline : IMessageRenderPipeline
 
         var firstMessage = loop.Messages.First();
         var context = BuildContext(firstMessage, options, serviceProvider, onToolClick);
-        
+
         var blocks = ContentBlockBuilder.BuildFromLoopMessages(loop.Messages.ToList());
 
         return builder =>

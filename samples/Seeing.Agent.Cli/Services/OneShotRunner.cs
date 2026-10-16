@@ -1,9 +1,9 @@
-using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Session.Core;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Cli.Services;
 

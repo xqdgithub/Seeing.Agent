@@ -1,17 +1,16 @@
-﻿using Seeing.Agent.Abstractions.Permissions;
-using Acp.Types;
+﻿using Acp.Types;
 using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Acp.Client;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Filesystem;
 using Seeing.Agent.Acp.Permission;
 using Seeing.Agent.Acp.Terminal;
-using Seeing.Agent.Acp.Configuration;
 using Xunit;
 
 namespace Seeing.Agent.Acp.Tests;

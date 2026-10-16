@@ -1,17 +1,16 @@
-using System.Collections.Concurrent;
-using System.Runtime.CompilerServices;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Interactions;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Gateway.Models;
 using Seeing.Session.Core;
+using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace Seeing.Gateway.Tests.Core;

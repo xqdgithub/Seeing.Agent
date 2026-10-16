@@ -1,7 +1,7 @@
-using Seeing.Agent.Abstractions.Mcp;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Mcp.Configuration;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Mcp;
+using Seeing.Agent.Mcp.Configuration;
 
 namespace Seeing.Agent.Mcp;
 

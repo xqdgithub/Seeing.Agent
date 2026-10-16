@@ -1,11 +1,7 @@
-using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Core.Commands;
+using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Commands.Attributes;
-using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Llm;
-using Seeing.Agent.Llm;
-using Seeing.Agent.Abstractions.Llm;
 
 namespace Seeing.Agent.Hosting.Commands;
 
@@ -70,7 +66,7 @@ public class AgentCommands
         // 执行切换（持久化）
         await _runtimeManager.SetDefaultAgentAsync(targetAgent.Name);
 
-        return CommandResult.WithData($"Switched to agent: {targetAgent.Name}", 
+        return CommandResult.WithData($"Switched to agent: {targetAgent.Name}",
             new Dictionary<string, object> { ["agentSwitch"] = targetAgent.Name });
     }
 
@@ -108,7 +104,7 @@ public class AgentCommands
             return CommandResult.Fail($"Model not found: {targetName}");
         }
 
-        return CommandResult.WithData($"Switched to model: {targetName}", 
+        return CommandResult.WithData($"Switched to model: {targetName}",
             new Dictionary<string, object> { ["modelSwitch"] = targetName });
     }
 }

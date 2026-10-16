@@ -1,8 +1,7 @@
-﻿using Seeing.Agent.Abstractions.Configuration;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Memory.Abstractions;
-using Seeing.Agent.Memory.Configuration;
 
 namespace Seeing.Agent.Memory.Configuration;
 

@@ -1,9 +1,9 @@
-using System.CommandLine;
 using Microsoft.Extensions.DependencyInjection;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Cli.Infrastructure;
 using Seeing.Agent.Cli.Services;
-using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Session.Core;
+using System.CommandLine;
 
 namespace Seeing.Agent.Cli.Commands;
 

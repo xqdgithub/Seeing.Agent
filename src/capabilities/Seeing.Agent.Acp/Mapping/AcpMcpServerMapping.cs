@@ -1,8 +1,7 @@
-﻿using Seeing.Agent.Abstractions.Mcp;
-using Acp.Types;
-using AcpMcpServerConfig = Acp.Types.McpServerConfig;
+﻿using Acp.Types;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Acp.Backends;
+using AcpMcpServerConfig = Acp.Types.McpServerConfig;
 using SeeingMcpConfig = Seeing.Agent.Abstractions.Mcp.McpServerConfig;
 using SeeingMcpTransportType = Seeing.Agent.Abstractions.Mcp.McpTransportType;
 

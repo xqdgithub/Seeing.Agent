@@ -1,9 +1,8 @@
+using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Compression;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Compression;
-using Microsoft.Extensions.Logging;
 using Seeing.Session.Core;
-using Seeing.Session.Management;
 
 namespace Seeing.Agent.Core.Execution;
 

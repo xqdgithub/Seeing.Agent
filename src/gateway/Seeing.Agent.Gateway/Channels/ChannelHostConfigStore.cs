@@ -1,8 +1,8 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Configuration; // IWorkspaceProvider (Abstractions assembly)
+using Seeing.Agent.Gateway.Configuration;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Seeing.Agent.Gateway.Channels;
 

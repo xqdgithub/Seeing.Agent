@@ -1,5 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Permissions;
-using FluentAssertions;
+﻿using FluentAssertions;
 using Seeing.Gateway.Channels;
 using Seeing.Gateway.Models;
 using Xunit;

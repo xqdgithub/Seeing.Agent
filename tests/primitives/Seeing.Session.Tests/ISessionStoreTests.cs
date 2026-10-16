@@ -1,7 +1,5 @@
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
 using Seeing.Session.Core;
+using System.Reflection;
 using Xunit;
 
 namespace Seeing.Session.Tests

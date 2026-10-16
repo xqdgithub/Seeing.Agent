@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using FluentAssertions;
 using Moq;
 using Seeing.Agent.Abstractions.Events;
@@ -7,6 +6,7 @@ using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Cli.Services;
 using Seeing.Session.Core;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace Seeing.Agent.Cli.Tests;

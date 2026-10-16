@@ -1,11 +1,9 @@
-using System.Diagnostics;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Core.Middlewares;
 using Seeing.Agent.Core.Models;
+using System.Diagnostics;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Middlewares;

@@ -32,7 +32,7 @@ public class ModelScopeParser : IOnlineSkillParser
 
         // 调用 API
         var apiUrl = $"https://modelscope.cn/api/v1/skills/{owner}/{skillName}";
-        
+
         try
         {
             var response = await httpClient.GetAsync(apiUrl, cancellationToken);

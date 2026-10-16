@@ -1,12 +1,10 @@
-using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Seeing.Agent.Abstractions.Hooks;
-using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Tools;
+using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Core.Tools;
 using System.Reflection;
 using Xunit;
 

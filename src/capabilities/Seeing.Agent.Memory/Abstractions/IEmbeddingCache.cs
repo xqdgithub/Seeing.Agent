@@ -15,7 +15,7 @@ public interface IEmbeddingCache
 
     /// <summary>批量获取缓存</summary>
     Task<IReadOnlyList<EmbeddingResult?>> GetBatchAsync(
-        IReadOnlyList<string> textHashes, 
+        IReadOnlyList<string> textHashes,
         CancellationToken ct = default);
 
     /// <summary>清除过期缓存</summary>

@@ -1,6 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Permissions;
-using FluentAssertions;
-using Seeing.Gateway.WeCom;
+﻿using FluentAssertions;
 using Xunit;
 
 namespace Seeing.Gateway.WeCom.Tests;

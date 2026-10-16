@@ -4,7 +4,6 @@ using Moq;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Core;
-using Seeing.Agent.Hosting;
 using Seeing.Agent.Llm;
 using Seeing.Session.Core;
 using Xunit;

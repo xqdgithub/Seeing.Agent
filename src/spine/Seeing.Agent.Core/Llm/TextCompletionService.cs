@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using System.Runtime.CompilerServices;
 
 namespace Seeing.Agent.Core.Llm;

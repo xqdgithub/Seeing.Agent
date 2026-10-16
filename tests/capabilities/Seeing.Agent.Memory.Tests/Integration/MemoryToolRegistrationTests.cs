@@ -1,11 +1,11 @@
-﻿using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Abstractions.Configuration;
-using System.Text.Json;
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Memory.Extensions;
 using Seeing.Agent.Memory.Integration.Tools;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Memory.Tests.Integration;

@@ -1,6 +1,5 @@
-using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Gateway.Permission;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Gateway.Models;
 
 namespace Seeing.Agent.Gateway.Core;

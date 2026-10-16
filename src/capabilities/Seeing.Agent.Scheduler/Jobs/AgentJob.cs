@@ -1,17 +1,16 @@
-using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Abstractions.Reminders;
-using System.Text;
 using Microsoft.Extensions.Logging;
 using Quartz;
-using Seeing.Agent.Configuration;
+using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Hooks;
+using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Reminders;
 using Seeing.Agent.Abstractions.Scheduling;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Models;
-using Seeing.Session.Core;
+using System.Text;
 
 namespace Seeing.Agent.Scheduler.Jobs;
 
@@ -62,12 +61,12 @@ public class AgentJob : IJob
         var data = context.MergedJobDataMap;
         var jobId = data.GetStringValue(JobDataKeys.JobId) ?? context.JobDetail.Key.Name;
         var runId = data.GetStringValue(JobDataKeys.RunId) ?? Guid.NewGuid().ToString("N");
-        
+
         // 通知监听器任务开始
         _listener?.OnJobStart(jobId, runId);
-        
+
         _logger.LogInformation("===== AgentJob.Execute started for {JobId} =====", jobId);
-        _logger.LogInformation("AgentJob: FireTime = {Time}, ScheduledFireTime = {Scheduled}", 
+        _logger.LogInformation("AgentJob: FireTime = {Time}, ScheduledFireTime = {Scheduled}",
             context.FireTimeUtc.LocalDateTime, context.ScheduledFireTimeUtc?.LocalDateTime);
         var taskType = data.GetStringValue(JobDataKeys.TaskType) ?? ScheduleTaskTypes.Agent;
         var sessionId = data.GetStringValue(JobDataKeys.SessionId) ?? "main";
@@ -75,7 +74,7 @@ public class AgentJob : IJob
         var prompt = data.GetStringValue(JobDataKeys.Prompt);
         var text = data.GetStringValue(JobDataKeys.Text);
         var dispatchSessionId = data.GetStringValue(JobDataKeys.DispatchSessionId);
-        
+
         // 使用类型安全的扩展方法读取（自动从字符串转换）
         var timeoutSeconds = data.GetIntValue(JobDataKeys.TimeoutSeconds, SchedulerConstants.DefaultTimeoutSeconds);
 
@@ -234,7 +233,7 @@ public class AgentJob : IJob
     {
         var text = data.GetStringValue(JobDataKeys.Text) ?? string.Empty;
         var dispatchSessionId = data.GetStringValue(JobDataKeys.DispatchSessionId);
-        
+
         if (string.IsNullOrWhiteSpace(text))
         {
             return new JobExecutionResult

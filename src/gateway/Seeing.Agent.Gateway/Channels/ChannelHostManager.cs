@@ -1,8 +1,8 @@
+using Microsoft.Extensions.Logging;
+using Seeing.Agent.Configuration; // IWorkspaceProvider (Abstractions assembly)
+using Seeing.Agent.Gateway.Configuration;
 using System.Diagnostics;
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
-using Seeing.Agent.Gateway.Configuration;
-using Seeing.Agent.Configuration; // IWorkspaceProvider (Abstractions assembly)
 
 namespace Seeing.Agent.Gateway.Channels;
 

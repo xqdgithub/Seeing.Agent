@@ -1,7 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Moq;
 using Seeing.Agent.Memory.Abstractions;
-using Seeing.Agent.Memory.Core.Graph;
 using Seeing.Agent.Memory.Core.Index;
 using Seeing.Agent.Memory.Core.Models;
 using Xunit;

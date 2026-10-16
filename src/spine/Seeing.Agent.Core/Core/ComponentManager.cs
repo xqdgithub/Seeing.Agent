@@ -3,10 +3,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Core.Commands;
-using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Abstractions.Commands;
 using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Core;

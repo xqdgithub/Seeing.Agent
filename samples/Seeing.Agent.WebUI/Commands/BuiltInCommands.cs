@@ -25,7 +25,7 @@ namespace Seeing.Agent.WebUI.Commands
             // Basic commands
             yield return Create("help", "显示可用命令列表", IconType.Outline.QuestionCircle, "Basic");
             yield return Create("clear", "清空当前上下文", IconType.Outline.Clear, "Basic");
-            
+
             // Session commands
             yield return Create("new", "新建会话", IconType.Outline.PlusCircle, "Session", "Ctrl+Shift+N");
             yield return Create("compact", "压缩上下文", IconType.Outline.Compress, "Session");
@@ -33,18 +33,18 @@ namespace Seeing.Agent.WebUI.Commands
             yield return Create("redo", "重做", IconType.Outline.Redo, "Session", "Ctrl+Y");
             yield return Create("share", "分享会话", IconType.Outline.ShareAlt, "Session");
             yield return Create("fork", "分叉会话", IconType.Outline.Fork, "Session");
-            
+
             // Agent commands
             yield return Create("model", "切换模型", IconType.Outline.Setting, "Agent", "Ctrl+'");
             yield return Create("agent", "切换 Agent", IconType.Outline.Robot, "Agent", "Ctrl+.");
-            
+
             // Tools commands
             yield return Create("mcp", "管理 MCP 服务器", IconType.Outline.Api, "Tools", "Ctrl+;");
             yield return Create("skill", "技能列表", IconType.Outline.Book, "Tools");
-            
+
             // System commands
             yield return Create("init", "初始化项目", IconType.Outline.Rocket, "System");
-            
+
             // View commands
             yield return Create("terminal", "切换终端", IconType.Outline.Code, "View", "Ctrl+`");
         }

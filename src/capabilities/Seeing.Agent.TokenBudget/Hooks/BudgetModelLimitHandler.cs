@@ -2,7 +2,6 @@
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Session.Core;
 using Seeing.Session.Hooks;
-using Seeing.Session.Management;
 
 namespace Seeing.Agent.TokenBudget;
 
@@ -62,7 +61,7 @@ public class BudgetModelLimitHandler : IMultiHookHandler
     {
         var input = payload.Input;
         var result = payload.Result;
-        
+
         // 获取会话对象（根据不同 Hook 点，session 可能在 input 或 result 中）
         SessionData? session = null;
         string? modelId = null;
@@ -99,7 +98,7 @@ public class BudgetModelLimitHandler : IMultiHookHandler
         try
         {
             var status = _budgetManager.GetBudgetStatus(session, modelId);
-            
+
             // 构建响应
             var response = new Api.Responses.BudgetStatusResponse
             {

@@ -107,7 +107,7 @@ public class VectorIndexTests : IDisposable
         var topPaths = results.Take(2).Select(r => r.Path).ToList();
         topPaths.Should().Contain("daily/ml-basics.md");
         topPaths.Should().Contain("daily/deep-learning.md");
-        
+
         // Cooking should not appear in top results (or have lower score)
         var cookingResult = results.FirstOrDefault(r => r.Path == "daily/cooking.md");
         if (cookingResult != null)
@@ -339,7 +339,7 @@ public class MockEmbeddingService : IEmbeddingService
     private float[] GenerateMockVector(string text)
     {
         var vector = new float[_dimensions];
-        
+
         // 使用文本哈希作为种子，确保相同文本产生相同向量
         var hash = ComputeStableHash(text);
         var seed = (int)(hash % int.MaxValue);

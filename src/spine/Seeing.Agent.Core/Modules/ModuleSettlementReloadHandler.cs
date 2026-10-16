@@ -6,7 +6,6 @@ using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Core.CapabilitySets;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 
 namespace Seeing.Agent.Core.Modules;
 

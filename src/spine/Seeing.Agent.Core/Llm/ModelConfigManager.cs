@@ -1,11 +1,9 @@
-using Seeing.Agent.Abstractions.Llm;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
-using System.Threading.Channels;
-using Seeing.Agent.Llm;
-
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Llm;
+using System.Threading.Channels;
 namespace Seeing.Agent.Core.Llm;
 
 /// <summary>

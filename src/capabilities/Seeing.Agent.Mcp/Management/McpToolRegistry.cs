@@ -2,9 +2,9 @@ namespace Seeing.Agent.Mcp.Management;
 
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Hooks;
-using Seeing.Agent.Mcp;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Mcp;
 using System.Collections.Concurrent;
 
 internal sealed class McpToolRegistry : IMcpToolRegistry

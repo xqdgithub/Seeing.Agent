@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Seeing.Agent.Abstractions.Reminders;
 using Seeing.Agent.Core.Reminders;
 using Xunit;

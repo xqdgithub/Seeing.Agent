@@ -1,7 +1,7 @@
-using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Abstractions.Agents;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Acp.Configuration;
 

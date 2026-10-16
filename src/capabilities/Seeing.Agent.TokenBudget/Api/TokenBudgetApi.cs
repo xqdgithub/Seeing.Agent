@@ -1,7 +1,6 @@
-using Seeing.Session.Core;
-using Seeing.Session.Management;
 using Seeing.Agent.Abstractions.Compression;
 using Seeing.Agent.TokenBudget.Api.Responses;
+using Seeing.Session.Core;
 using Seeing.TokenEstimation;
 
 namespace Seeing.Agent.TokenBudget.Api;
@@ -55,9 +54,9 @@ public class TokenBudgetApi : ITokenBudgetApi
         var session = await GetSessionOrThrowAsync(sessionId);
         var config = await GetEffectiveConfigInternalAsync(session);
         var breakdown = _budgetManager.CalculateBreakdown(session);
-        
+
         var status = _budgetManager.CheckBudget(session, config, breakdown.Total);
-        
+
         return MapToStatusResponse(sessionId, status);
     }
 
@@ -121,14 +120,14 @@ public class TokenBudgetApi : ITokenBudgetApi
             session.BudgetConfig,
             agentConfig: null,
             globalConfig: null);
-        
+
         return Task.FromResult(config);
     }
 
     private static TokenBreakdownResponse MapToResponse(string sessionId, TokenBreakdown breakdown, DateTime updatedAt)
     {
         var total = breakdown.Total;
-        
+
         return new TokenBreakdownResponse
         {
             SessionId = sessionId,
@@ -155,7 +154,7 @@ public class TokenBudgetApi : ITokenBudgetApi
     private static BudgetStatusResponse MapToStatusResponse(string sessionId, BudgetStatus status)
     {
         TokenBreakdownResponse? breakdownResponse = null;
-        
+
         if (status.Breakdown != null)
         {
             breakdownResponse = MapToResponse(sessionId, status.Breakdown, DateTime.Now);

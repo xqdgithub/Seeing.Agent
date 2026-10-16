@@ -1,6 +1,3 @@
-using System.Net.WebSockets;
-using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Permissions;
@@ -8,6 +5,9 @@ using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Gateway.Models;
 using Seeing.Gateway.Protocol;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
 
 namespace Seeing.Agent.Gateway.Endpoints;
 

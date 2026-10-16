@@ -1,6 +1,6 @@
-using System.Text.Json;
 using FluentAssertions;
 using Seeing.Gateway.QQ.Cards;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Gateway.QQ.Tests;

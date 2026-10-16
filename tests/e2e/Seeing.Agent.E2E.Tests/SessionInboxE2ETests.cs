@@ -145,13 +145,13 @@ public class SessionInboxE2ETests
         InboxSenderKind senderKind = InboxSenderKind.System,
         string? senderId = "test",
         string body = "hello") => new()
-    {
-        TargetSessionId = sessionId,
-        Sender = new InboxSender { Kind = senderKind, Id = senderId },
-        Body = body,
-        Delivery = delivery,
-        Presentation = presentation
-    };
+        {
+            TargetSessionId = sessionId,
+            Sender = new InboxSender { Kind = senderKind, Id = senderId },
+            Body = body,
+            Delivery = delivery,
+            Presentation = presentation
+        };
 
     /// <summary>复刻 TaskTool 后台完成上报：按子会话 Owner 决定 Wake/Notify。</summary>
     private static Task<InboxResult> ReportCompletionAsync(

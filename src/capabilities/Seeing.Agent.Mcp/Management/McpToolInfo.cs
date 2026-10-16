@@ -1,4 +1,3 @@
-using Seeing.Agent.Abstractions.Mcp;
 namespace Seeing.Agent.Mcp.Management;
 
 using System.Text.Json;

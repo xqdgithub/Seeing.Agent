@@ -1,8 +1,8 @@
-using System.Collections.Immutable;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Tui.Services;
 using Seeing.Session.Core;
+using System.Collections.Immutable;
 
 namespace Seeing.Agent.Tui.Tests.Services;
 

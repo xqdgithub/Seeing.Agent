@@ -99,7 +99,7 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
 
             var jobKey = new JobKey(jobId, SchedulerConstants.DefaultJobGroup);
             var jobDetail = await _scheduler.GetJobDetail(jobKey, ct);
-            
+
             if (jobDetail == null)
             {
                 _logger.LogDebug("GetJobStatus({JobId}): jobDetail is null, returning Disabled", jobId);
@@ -107,20 +107,20 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
             }
 
             var triggers = await _scheduler.GetTriggersOfJob(jobKey, ct);
-            
+
             // 只看主 trigger，忽略临时 trigger（MT_xxx, fire_xxx）
             var primaryTrigger = GetPrimaryTrigger(triggers, jobId);
-            var triggerState = primaryTrigger != null 
-                ? await _scheduler.GetTriggerState(primaryTrigger.Key, ct) 
+            var triggerState = primaryTrigger != null
+                ? await _scheduler.GetTriggerState(primaryTrigger.Key, ct)
                 : TriggerState.None;
 
             // 检查是否正在执行
             var executingJobs = await _scheduler.GetCurrentlyExecutingJobs(ct);
             var isExecuting = executingJobs.Any(j => j.JobDetail.Key.Equals(jobKey));
-            
+
             var state = isExecuting ? JobState.Running : DetermineJobState(primaryTrigger, triggerState);
 
-            _logger.LogDebug("GetJobStatus({JobId}): trigger={T}, triggerState={S}, state={State}", 
+            _logger.LogDebug("GetJobStatus({JobId}): trigger={T}, triggerState={S}, state={State}",
                 jobId, primaryTrigger?.Key?.Name ?? "null", triggerState, state);
 
             var tz = ResolveJobTimezone(jobDetail);
@@ -152,11 +152,11 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
                 return Array.Empty<JobStatus>();
 
             var jobKeys = await _scheduler.GetJobKeys(GroupMatcher<JobKey>.AnyGroup(), ct);
-            
+
             // 批量获取正在执行的任务，避免每个 job 单独查询
             var executingJobs = await _scheduler.GetCurrentlyExecutingJobs(ct);
             var executingJobKeys = new HashSet<JobKey>(executingJobs.Select(j => j.JobDetail.Key));
-            
+
             var statuses = new List<JobStatus>();
 
             foreach (var jobKey in jobKeys)
@@ -183,21 +183,21 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
         if (jobDetail == null) return null;
 
         // 使用传入的执行中任务集合，或重新查询
-        var isExecuting = executingJobKeys?.Contains(jobKey) ?? 
+        var isExecuting = executingJobKeys?.Contains(jobKey) ??
             (await _scheduler.GetCurrentlyExecutingJobs(ct)).Any(j => j.JobDetail.Key.Equals(jobKey));
 
         var triggers = await _scheduler.GetTriggersOfJob(jobKey, ct);
-        
+
         // 使用统一的 GetPrimaryTrigger 方法
         var primaryTrigger = GetPrimaryTrigger(triggers, jobKey.Name);
-        
-        var triggerState = primaryTrigger != null 
-            ? await _scheduler.GetTriggerState(primaryTrigger.Key, ct) 
+
+        var triggerState = primaryTrigger != null
+            ? await _scheduler.GetTriggerState(primaryTrigger.Key, ct)
             : TriggerState.None;
 
         // 如果正在执行，状态为 Running
-        var state = isExecuting 
-            ? JobState.Running 
+        var state = isExecuting
+            ? JobState.Running
             : DetermineJobState(primaryTrigger, triggerState);
 
         var tz = ResolveJobTimezone(jobDetail);
@@ -224,7 +224,7 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
             _ => JobState.Scheduled
         };
     }
-    
+
     /// <summary>获取主 trigger（忽略临时 trigger）</summary>
     private static ITrigger? GetPrimaryTrigger(IReadOnlyCollection<ITrigger> triggers, string jobId)
     {
@@ -238,10 +238,10 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
             .OrderBy(t => t.GetNextFireTimeUtc() ?? DateTimeOffset.MaxValue)
             .FirstOrDefault();
         if (windowTrigger != null) return windowTrigger;
-        
+
         // 否则返回第一个非临时 trigger
-        return triggers.FirstOrDefault(t => 
-            !t.Key.Name.StartsWith("MT_") && 
+        return triggers.FirstOrDefault(t =>
+            !t.Key.Name.StartsWith("MT_") &&
             !t.Key.Name.StartsWith("fire_"));
     }
 
@@ -389,8 +389,8 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
             }
 
             // 创建 JobDetail
-            var jobType = jobId == SchedulerConstants.HeartbeatJobId 
-                ? typeof(Jobs.HeartbeatJob) 
+            var jobType = jobId == SchedulerConstants.HeartbeatJobId
+                ? typeof(Jobs.HeartbeatJob)
                 : typeof(Jobs.AgentJob);
 
             var mergedData = jobData ?? new JobDataMap();
@@ -481,7 +481,7 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
             if (_scheduler == null) return;
 
             var jobKey = new JobKey(jobId, SchedulerConstants.DefaultJobGroup);
-            
+
             // 使用原生 TriggerJob，不创建新的 trigger
             var jobDataMap = new JobDataMap { [JobDataKeys.RunId] = runId };
             if (additionalData != null)
@@ -491,7 +491,7 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
                     jobDataMap[key] = additionalData[key];
                 }
             }
-            
+
             await _scheduler.TriggerJob(jobKey, jobDataMap, ct);
             _logger.LogDebug("Job {JobId} triggered directly with RunId={RunId}", jobId, runId);
         }
@@ -511,7 +511,7 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
             if (_scheduler == null) return false;
 
             var jobKey = new JobKey(jobId, SchedulerConstants.DefaultJobGroup);
-            
+
             // 使用 Quartz 的 Interrupt 方法，会触发 CancellationToken
             var result = await _scheduler.Interrupt(jobKey, ct);
             if (result)
@@ -522,7 +522,7 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
             {
                 _logger.LogDebug("Job {JobId} was not running or could not be interrupted", jobId);
             }
-            
+
             return result;
         }
         finally

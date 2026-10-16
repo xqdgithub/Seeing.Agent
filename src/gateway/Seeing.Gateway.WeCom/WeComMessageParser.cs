@@ -65,96 +65,96 @@ public static class WeComMessageParser
         switch (msgType)
         {
             case "text":
-            {
-                var text = message.Text?.Content;
-                if (string.IsNullOrWhiteSpace(text))
-                    return (false, null);
-                var normalized = WeComGroupMentionNormalizer.NormalizeUserText(text, chatType);
-                parts.Add(new GatewayTextContentPart(normalized));
-                break;
-            }
+                {
+                    var text = message.Text?.Content;
+                    if (string.IsNullOrWhiteSpace(text))
+                        return (false, null);
+                    var normalized = WeComGroupMentionNormalizer.NormalizeUserText(text, chatType);
+                    parts.Add(new GatewayTextContentPart(normalized));
+                    break;
+                }
 
             case "voice":
-            {
-                if (!string.IsNullOrWhiteSpace(message.Voice?.Content))
                 {
-                    parts.Add(new GatewayTextContentPart(message.Voice.Content.Trim()));
-                    break;
+                    if (!string.IsNullOrWhiteSpace(message.Voice?.Content))
+                    {
+                        parts.Add(new GatewayTextContentPart(message.Voice.Content.Trim()));
+                        break;
+                    }
+
+                    var voiceMedia = await TryFetchMediaAsync(
+                        mediaFetcher,
+                        message.Voice?.Url,
+                        message.Voice?.AesKey,
+                        "voice.amr",
+                        cancellationToken).ConfigureAwait(false);
+
+                    if (voiceMedia != null)
+                    {
+                        parts.Add(new GatewayAudioContentPart(
+                            mediaFetcher.ToDataUrl(voiceMedia),
+                            voiceMedia.MimeType));
+                        break;
+                    }
+
+                    return (true, CreateParsed(context, parts, "暂不支持纯语音消息，请发送文字。"));
                 }
-
-                var voiceMedia = await TryFetchMediaAsync(
-                    mediaFetcher,
-                    message.Voice?.Url,
-                    message.Voice?.AesKey,
-                    "voice.amr",
-                    cancellationToken).ConfigureAwait(false);
-
-                if (voiceMedia != null)
-                {
-                    parts.Add(new GatewayAudioContentPart(
-                        mediaFetcher.ToDataUrl(voiceMedia),
-                        voiceMedia.MimeType));
-                    break;
-                }
-
-                return (true, CreateParsed(context, parts, "暂不支持纯语音消息，请发送文字。"));
-            }
 
             case "image":
-            {
-                var imageMedia = await TryFetchMediaAsync(
-                    mediaFetcher,
-                    message.Image?.Url,
-                    message.Image?.AesKey,
-                    message.Image?.FileName ?? "image.jpg",
-                    cancellationToken).ConfigureAwait(false);
+                {
+                    var imageMedia = await TryFetchMediaAsync(
+                        mediaFetcher,
+                        message.Image?.Url,
+                        message.Image?.AesKey,
+                        message.Image?.FileName ?? "image.jpg",
+                        cancellationToken).ConfigureAwait(false);
 
-                if (imageMedia == null)
-                    return (true, CreateParsed(context, parts, "图片下载或解密失败，请重试。"));
+                    if (imageMedia == null)
+                        return (true, CreateParsed(context, parts, "图片下载或解密失败，请重试。"));
 
-                parts.Add(new GatewayImageContentPart(
-                    mediaFetcher.ToDataUrl(imageMedia),
-                    imageMedia.MimeType));
-                break;
-            }
+                    parts.Add(new GatewayImageContentPart(
+                        mediaFetcher.ToDataUrl(imageMedia),
+                        imageMedia.MimeType));
+                    break;
+                }
 
             case "file":
-            {
-                var fileMedia = await TryFetchMediaAsync(
-                    mediaFetcher,
-                    message.File?.Url,
-                    message.File?.AesKey,
-                    message.File?.FileName ?? "file.bin",
-                    cancellationToken).ConfigureAwait(false);
+                {
+                    var fileMedia = await TryFetchMediaAsync(
+                        mediaFetcher,
+                        message.File?.Url,
+                        message.File?.AesKey,
+                        message.File?.FileName ?? "file.bin",
+                        cancellationToken).ConfigureAwait(false);
 
-                if (fileMedia == null)
-                    return (true, CreateParsed(context, parts, "文件下载或解密失败，请重试。"));
+                    if (fileMedia == null)
+                        return (true, CreateParsed(context, parts, "文件下载或解密失败，请重试。"));
 
-                parts.Add(new GatewayFileContentPart(
-                    mediaFetcher.ToDataUrl(fileMedia),
-                    fileMedia.MimeType,
-                    message.File?.FileName));
-                break;
-            }
+                    parts.Add(new GatewayFileContentPart(
+                        mediaFetcher.ToDataUrl(fileMedia),
+                        fileMedia.MimeType,
+                        message.File?.FileName));
+                    break;
+                }
 
             case "video":
-            {
-                var videoMedia = await TryFetchMediaAsync(
-                    mediaFetcher,
-                    message.Video?.Url,
-                    message.Video?.AesKey,
-                    message.Video?.FileName ?? "video.mp4",
-                    cancellationToken).ConfigureAwait(false);
+                {
+                    var videoMedia = await TryFetchMediaAsync(
+                        mediaFetcher,
+                        message.Video?.Url,
+                        message.Video?.AesKey,
+                        message.Video?.FileName ?? "video.mp4",
+                        cancellationToken).ConfigureAwait(false);
 
-                if (videoMedia == null)
-                    return (true, CreateParsed(context, parts, "视频下载或解密失败，请重试。"));
+                    if (videoMedia == null)
+                        return (true, CreateParsed(context, parts, "视频下载或解密失败，请重试。"));
 
-                parts.Add(new GatewayFileContentPart(
-                    mediaFetcher.ToDataUrl(videoMedia),
-                    videoMedia.MimeType,
-                    message.Video?.FileName ?? "video.mp4"));
-                break;
-            }
+                    parts.Add(new GatewayFileContentPart(
+                        mediaFetcher.ToDataUrl(videoMedia),
+                        videoMedia.MimeType,
+                        message.Video?.FileName ?? "video.mp4"));
+                    break;
+                }
 
             default:
                 return (true, CreateParsed(context, parts, $"暂不支持「{message.MsgType}」类型消息。"));

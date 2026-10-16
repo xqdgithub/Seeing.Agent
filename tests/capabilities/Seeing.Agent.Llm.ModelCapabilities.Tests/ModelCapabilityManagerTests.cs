@@ -1,9 +1,8 @@
-using System.Collections.Concurrent;
 using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Core.Llm;
+using System.Collections.Concurrent;
 using Xunit;
 
 namespace Seeing.Agent.Llm.ModelCapabilities.Tests;

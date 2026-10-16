@@ -1,7 +1,6 @@
-using System.Collections.Generic;
-using System.Text.Json;
 using FluentAssertions;
 using Seeing.Session.Core;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Session.Tests

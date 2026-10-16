@@ -1,4 +1,3 @@
-using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
 
 namespace Seeing.Agent.WebUI.Services;
@@ -95,7 +94,7 @@ public class WorkspaceSwitchService
     public async Task SetWorkspaceOptionsAsync(WorkspaceOptions options, CancellationToken cancellationToken = default)
     {
         await _workspace.SetWorkspaceOptionsAsync(options, cancellationToken);
-        
+
         // 重新加载配置（编排器对全量变更去抖合并，此处仅刷新配置快照）
         await _configService.ReloadAsync(cancellationToken);
     }

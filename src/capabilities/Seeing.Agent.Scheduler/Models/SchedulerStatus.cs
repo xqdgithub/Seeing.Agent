@@ -29,31 +29,31 @@ public sealed class SchedulerStatus
 {
     /// <summary>调度器是否正在运行</summary>
     public bool IsRunning { get; init; }
-    
+
     /// <summary>调度器是否已启动（已初始化但可能暂停）</summary>
     public bool IsStarted { get; init; }
-    
+
     /// <summary>调度器是否处于待机模式</summary>
     public bool IsStandby { get; init; }
-    
+
     /// <summary>任务总数</summary>
     public int TotalJobs { get; init; }
-    
+
     /// <summary>正在执行的任务数</summary>
     public int RunningJobs { get; init; }
-    
+
     /// <summary>已暂停的任务数</summary>
     public int PausedJobs { get; init; }
-    
+
     /// <summary>上次执行时间</summary>
     public DateTime? LastExecutionTime { get; init; }
-    
+
     /// <summary>下次执行时间</summary>
     public DateTime? NextExecutionTime { get; init; }
-    
+
     /// <summary>调度器启动时间</summary>
     public DateTime? StartTime { get; init; }
-    
+
     /// <summary>线程池大小</summary>
     public int ThreadPoolSize { get; init; }
 }
@@ -92,10 +92,10 @@ public sealed class JobStatus
 
     /// <summary>最后执行 ID</summary>
     public string? LastRunId { get; init; }
-    
+
     /// <summary>最后执行时间</summary>
     public DateTime? LastExecutionTime { get; init; }
-    
+
     /// <summary>最后执行是否成功</summary>
     public bool? LastExecutionSuccess { get; init; }
 
@@ -108,16 +108,16 @@ public sealed class JobStatusChangedEventArgs : EventArgs
 {
     /// <summary>任务 ID</summary>
     public string JobId { get; init; } = string.Empty;
-    
+
     /// <summary>旧状态</summary>
     public JobState OldState { get; init; }
-    
+
     /// <summary>新状态</summary>
     public JobState NewState { get; init; }
-    
+
     /// <summary>变更时间</summary>
     public DateTime Timestamp { get; init; } = DateTime.Now;
-    
+
     /// <summary>错误信息（如果有）</summary>
     public string? Error { get; init; }
 }
@@ -127,13 +127,13 @@ public abstract record TriggerResult
 {
     /// <summary>已接受，返回执行 ID</summary>
     public sealed record Accepted(string RunId) : TriggerResult;
-    
+
     /// <summary>任务不存在</summary>
     public sealed record NotFound : TriggerResult;
-    
+
     /// <summary>任务已禁用</summary>
     public sealed record Disabled : TriggerResult;
-    
+
     /// <summary>冲突（如正在执行）</summary>
     public sealed record Conflict(string Reason) : TriggerResult;
 }
@@ -143,10 +143,10 @@ public sealed class RunInfo
 {
     /// <summary>执行 ID</summary>
     public string RunId { get; }
-    
+
     /// <summary>开始时间（本地时间）</summary>
     public DateTime StartTime { get; }
-    
+
     public RunInfo(string runId, DateTime startTime)
     {
         RunId = runId;
@@ -172,16 +172,16 @@ public sealed class JobProgressEventArgs : EventArgs
 {
     /// <summary>任务 ID</summary>
     public string JobId { get; init; } = string.Empty;
-    
+
     /// <summary>执行 ID</summary>
     public string? RunId { get; init; }
-    
+
     /// <summary>进度阶段</summary>
     public JobProgressStage Stage { get; init; }
-    
+
     /// <summary>执行结果（Completed/Failed 时）</summary>
     public JobExecutionResult? Result { get; init; }
-    
+
     /// <summary>时间戳</summary>
     public DateTime Timestamp { get; init; } = DateTime.Now;
 }

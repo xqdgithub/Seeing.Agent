@@ -1,5 +1,5 @@
-using System.Text.RegularExpressions;
 using FluentAssertions;
+using System.Text.RegularExpressions;
 
 namespace Seeing.Agent.WebUI.Tests.Infrastructure;
 

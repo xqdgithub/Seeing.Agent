@@ -1,8 +1,6 @@
-using Acp.Helpers;
 using Acp.Messages;
 using Acp.Types;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Abstractions.Permissions;
 
 namespace Seeing.Agent.Acp.Permission;

@@ -1,11 +1,9 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Session.Core;
-using Seeing.Session.Management;
 using Seeing.Agent.TokenBudget.Api.Responses;
+using Seeing.Session.Core;
 using Seeing.TokenEstimation;
 
 namespace Seeing.Agent.TokenBudget;
@@ -46,7 +44,7 @@ public class BudgetUpdateHook : IHookHandler
     {
         // 统一通过 ISessionManager 获取 Session（确保缓存一致性）
         SessionData? session = null;
-        
+
         if (!string.IsNullOrEmpty(payload.SessionId))
         {
             try

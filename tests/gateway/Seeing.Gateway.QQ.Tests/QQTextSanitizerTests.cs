@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Seeing.Gateway.QQ;
 using Xunit;
 
 namespace Seeing.Gateway.QQ.Tests;

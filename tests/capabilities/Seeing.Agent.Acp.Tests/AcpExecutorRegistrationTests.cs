@@ -1,14 +1,13 @@
-using System.Reflection;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Extensions;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
+using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Extensions;
+using System.Reflection;
 using Xunit;
 
 namespace Seeing.Agent.Acp.Tests;

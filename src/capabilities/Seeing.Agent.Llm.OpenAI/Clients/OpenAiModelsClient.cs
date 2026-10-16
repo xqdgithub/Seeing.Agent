@@ -1,5 +1,5 @@
-using Seeing.Agent.Abstractions.Llm;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Llm;
 
 namespace Seeing.Agent.Llm.OpenAI.Clients;
 

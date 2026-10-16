@@ -1,5 +1,5 @@
-﻿using Seeing.Agent.Abstractions.Hooks;
-using FluentAssertions;
+﻿using FluentAssertions;
+using Seeing.Agent.Abstractions.Hooks;
 using Xunit;
 
 namespace Seeing.Agent.Memory.Tests;

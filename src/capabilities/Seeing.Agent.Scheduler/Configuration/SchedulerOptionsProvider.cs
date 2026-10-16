@@ -9,7 +9,7 @@ public interface ISchedulerOptionsProvider
 {
     /// <summary>当前配置</summary>
     SchedulerOptions Current { get; }
-    
+
     /// <summary>重载配置</summary>
     void Reload();
 }

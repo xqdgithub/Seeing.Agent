@@ -1,8 +1,8 @@
 ﻿using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Acp.Session;
 using Seeing.Agent.Acp.Terminal;
 using Seeing.Agent.Acp.Transport;
-using Seeing.Agent.Abstractions.Hooks;
 
 namespace Seeing.Agent.Acp.Hosting;
 
@@ -75,7 +75,7 @@ public sealed class AcpSessionLifecycleHook : IMultiHookHandler
         if (mapping != null)
         {
             var leaseKey = AcpConnectionManager.BuildPassthroughKey(mapping.BackendId, sessionId);
-            
+
             // 调度宽限期释放（而非立即释放）
             // 宽限期内同一 session 返回可复用进程和 ACP Session
             if (_connectionOwner.HasManager)

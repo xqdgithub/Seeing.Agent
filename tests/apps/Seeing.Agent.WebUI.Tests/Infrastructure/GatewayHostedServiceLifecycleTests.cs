@@ -3,10 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Gateway.Configuration;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Gateway.Hosting;
-using Xunit;
 
 namespace Seeing.Agent.WebUI.Tests.Infrastructure;
 

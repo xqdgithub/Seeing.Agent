@@ -1,12 +1,9 @@
-﻿using Seeing.Agent.Abstractions.Agents;
-using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Permission;
+﻿using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Permissions;
 using System.Text.RegularExpressions;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
-
-using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Core
 {
     /// <summary>

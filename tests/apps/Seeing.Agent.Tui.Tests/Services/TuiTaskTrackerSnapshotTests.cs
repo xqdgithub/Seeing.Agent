@@ -1,10 +1,10 @@
-using System.Diagnostics;
-using System.Threading.Channels;
 using FluentAssertions;
 using Moq;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Tui.Services;
 using Seeing.Session.Core;
+using System.Diagnostics;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Tui.Tests.Services;
 

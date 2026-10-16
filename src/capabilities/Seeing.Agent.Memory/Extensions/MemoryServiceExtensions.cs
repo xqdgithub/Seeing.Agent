@@ -1,11 +1,9 @@
-﻿using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Modules;
-using System.IO;
-using Microsoft.Data.Sqlite;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Background;
 using Seeing.Agent.Memory.Configuration;

@@ -1,8 +1,7 @@
+using Seeing.Agent.Abstractions.Permissions;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-
-using Seeing.Agent.Abstractions.Permissions;
 
 namespace Seeing.Agent.Core.Permission;
 

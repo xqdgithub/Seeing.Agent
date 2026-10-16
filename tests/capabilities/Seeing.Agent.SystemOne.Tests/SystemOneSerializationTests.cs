@@ -1,7 +1,7 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.SystemOne;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Xunit;
 
 namespace Seeing.Agent.SystemOne.Tests;

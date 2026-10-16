@@ -6,7 +6,6 @@ using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.Shell;
-using System.Text;
 using System.Text.Json;
 using Xunit;
 

@@ -1,6 +1,3 @@
-using System.Collections.Concurrent;
-using System.Collections.Immutable;
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
@@ -12,6 +9,9 @@ using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Sessions;
 using Seeing.Agent.Core.Execution;
 using Seeing.Session.Core;
+using System.Collections.Concurrent;
+using System.Collections.Immutable;
+using System.Text.Json;
 
 namespace Seeing.Agent.Hosting.Execution;
 

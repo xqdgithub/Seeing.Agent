@@ -1,12 +1,10 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Core.Models;
-using System.Security.Cryptography;
-
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Core.Configuration;
+using System.Security.Cryptography;
 namespace Seeing.Agent.Core.Permission;
 
 /// <summary>

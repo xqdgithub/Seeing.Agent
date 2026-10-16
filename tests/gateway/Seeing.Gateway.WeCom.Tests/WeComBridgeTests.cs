@@ -1,11 +1,9 @@
-﻿using Seeing.Agent.Abstractions.Permissions;
-using System.Security.Cryptography;
-using System.Text;
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Seeing.Gateway.Models;
-using Seeing.Gateway.WeCom;
+using System.Security.Cryptography;
+using System.Text;
 using Xunit;
 
 namespace Seeing.Gateway.WeCom.Tests;

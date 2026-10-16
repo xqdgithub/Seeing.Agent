@@ -1,7 +1,7 @@
-using System.Text;
 using Seeing.Agent.Tui.Input;
 using Spectre.Console;
 using Spectre.Console.Rendering;
+using System.Text;
 
 namespace Seeing.Agent.Tui.Rendering.Prompts;
 

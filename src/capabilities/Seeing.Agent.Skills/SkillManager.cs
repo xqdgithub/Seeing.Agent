@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Abstractions.Skills;
 using System.Collections.Concurrent;
 using System.Text;
@@ -6,8 +8,6 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
-using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Prompts;
 
 namespace Seeing.Agent.Skills
 {
@@ -684,7 +684,7 @@ namespace Seeing.Agent.Skills
                 _logger.LogWarning("Invalid skill info, cannot register");
                 return;
             }
-            skillInfo.Location= "embedded://" + skillInfo.Name?.TrimStart('/');
+            skillInfo.Location = "embedded://" + skillInfo.Name?.TrimStart('/');
             _skillInfos[skillInfo.Name!] = skillInfo;
             _logger.LogInformation("Registered skill: {Name}", skillInfo.Name);
         }

@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 
 namespace Seeing.Agent.Core.Scenarios;
 

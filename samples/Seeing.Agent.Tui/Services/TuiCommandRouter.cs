@@ -1,5 +1,3 @@
-using Spectre.Console;
-using Spectre.Console.Rendering;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Llm;
@@ -8,6 +6,8 @@ using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Tui.Rendering;
 using Seeing.Session.Core;
+using Spectre.Console;
+using Spectre.Console.Rendering;
 
 namespace Seeing.Agent.Tui.Services;
 
@@ -101,39 +101,17 @@ public sealed class TuiCommandRouter
                 return new TuiCommandResult(true, true, null, null);
 
             case "new":
-            {
-                var state = await ctx.Sessions.NewAsync(NullIfEmpty(args), ct);
-                return Local(new Text($"已新建并切换到会话 {state.SessionId}"));
-            }
+                {
+                    var state = await ctx.Sessions.NewAsync(NullIfEmpty(args), ct);
+                    return Local(new Text($"已新建并切换到会话 {state.SessionId}"));
+                }
 
             case "sessions":
-            {
-                var sessionId = NullIfEmpty(args);
-                if (sessionId is not null)
-                    return Local(BuildSessionTable(await ctx.Sessions.ListSummariesAsync(ct)));
-
-                var sessions = await ctx.Sessions.ListSummariesAsync(ct);
-                if (sessions.Count == 0)
-                    return Local(new Text("(无会话)"));
-
-                var options = sessions
-                    .OrderByDescending(s => s.UpdatedAt)
-                    .Select(s => (Display: $"{s.Title ?? "(无标题)"} · {s.UpdatedAt:yyyy-MM-dd HH:mm} · {s.Id}", Value: s.Id))
-                    .ToList();
-
-                var chosen = await PromptSelectionAsync(ctx, "选择会话", options, ct);
-                if (chosen is null)
-                    return Local(new Text("(未选择会话)"));
-
-                var switched = await ctx.Sessions.SwitchAsync(chosen, ct);
-                return Local(new Text(switched ? $"已切换到会话 {chosen}" : $"会话不存在：{chosen}"));
-            }
-
-            case "resume":
-            {
-                var sessionId = NullIfEmpty(args);
-                if (sessionId is null)
                 {
+                    var sessionId = NullIfEmpty(args);
+                    if (sessionId is not null)
+                        return Local(BuildSessionTable(await ctx.Sessions.ListSummariesAsync(ct)));
+
                     var sessions = await ctx.Sessions.ListSummariesAsync(ct);
                     if (sessions.Count == 0)
                         return Local(new Text("(无会话)"));
@@ -143,239 +121,261 @@ public sealed class TuiCommandRouter
                         .Select(s => (Display: $"{s.Title ?? "(无标题)"} · {s.UpdatedAt:yyyy-MM-dd HH:mm} · {s.Id}", Value: s.Id))
                         .ToList();
 
-                    sessionId = await PromptSelectionAsync(ctx, "选择会话", options, ct);
-                    if (sessionId is null)
+                    var chosen = await PromptSelectionAsync(ctx, "选择会话", options, ct);
+                    if (chosen is null)
                         return Local(new Text("(未选择会话)"));
+
+                    var switched = await ctx.Sessions.SwitchAsync(chosen, ct);
+                    return Local(new Text(switched ? $"已切换到会话 {chosen}" : $"会话不存在：{chosen}"));
                 }
 
-                var switched = await ctx.Sessions.SwitchAsync(sessionId, ct);
-                return Local(new Text(switched ? $"已切换到会话 {sessionId}" : $"会话不存在：{sessionId}"));
-            }
+            case "resume":
+                {
+                    var sessionId = NullIfEmpty(args);
+                    if (sessionId is null)
+                    {
+                        var sessions = await ctx.Sessions.ListSummariesAsync(ct);
+                        if (sessions.Count == 0)
+                            return Local(new Text("(无会话)"));
+
+                        var options = sessions
+                            .OrderByDescending(s => s.UpdatedAt)
+                            .Select(s => (Display: $"{s.Title ?? "(无标题)"} · {s.UpdatedAt:yyyy-MM-dd HH:mm} · {s.Id}", Value: s.Id))
+                            .ToList();
+
+                        sessionId = await PromptSelectionAsync(ctx, "选择会话", options, ct);
+                        if (sessionId is null)
+                            return Local(new Text("(未选择会话)"));
+                    }
+
+                    var switched = await ctx.Sessions.SwitchAsync(sessionId, ct);
+                    return Local(new Text(switched ? $"已切换到会话 {sessionId}" : $"会话不存在：{sessionId}"));
+                }
 
             case "open":
-            {
-                var id = NullIfEmpty(args);
-                if (id is null)
-                    return Local(new Text("用法：/open <sessionId>"));
+                {
+                    var id = NullIfEmpty(args);
+                    if (id is null)
+                        return Local(new Text("用法：/open <sessionId>"));
 
-                var switched = await ctx.Sessions.SwitchAsync(id, ct);
-                return Local(new Text(switched ? $"已切换到会话 {id}" : $"会话不存在：{id}"));
-            }
+                    var switched = await ctx.Sessions.SwitchAsync(id, ct);
+                    return Local(new Text(switched ? $"已切换到会话 {id}" : $"会话不存在：{id}"));
+                }
 
             case "rename":
-            {
-                var title = NullIfEmpty(args);
-                if (title is null)
-                    return Local(new Text("用法：/rename <title>"));
-                await ctx.Sessions.RenameAsync(title, ct);
-                return Local(new Text($"已重命名为 {title}"));
-            }
+                {
+                    var title = NullIfEmpty(args);
+                    if (title is null)
+                        return Local(new Text("用法：/rename <title>"));
+                    await ctx.Sessions.RenameAsync(title, ct);
+                    return Local(new Text($"已重命名为 {title}"));
+                }
 
             case "delete":
                 await ctx.Sessions.DeleteAsync(ct);
                 return Local(new Text("已删除活跃会话"));
 
             case "fork":
-            {
-                var state = await ctx.Sessions.ForkAsync(ct);
-                return Local(new Text($"已分支并切换到会话 {state.SessionId}"));
-            }
+                {
+                    var state = await ctx.Sessions.ForkAsync(ct);
+                    return Local(new Text($"已分支并切换到会话 {state.SessionId}"));
+                }
 
             case "agent":
-            {
-                var agent = NullIfEmpty(args);
-                if (agent is null)
                 {
-                    var agents = await ctx.Agents.GetPrimaryAgentsAsync();
-                    if (agents.Count == 0)
-                        return Local(new Text("(无可用 Agent)"));
-
-                    var options = agents
-                        .Select(a => (Display: string.IsNullOrWhiteSpace(a.Description) ? a.Name : $"{a.Name} · {a.Description}", Value: a.Name))
-                        .ToList();
-
-                    agent = await PromptSelectionAsync(ctx, "选择 Agent", options, ct);
+                    var agent = NullIfEmpty(args);
                     if (agent is null)
-                        return Local(new Text("(未选择 Agent)"));
-                }
+                    {
+                        var agents = await ctx.Agents.GetPrimaryAgentsAsync();
+                        if (agents.Count == 0)
+                            return Local(new Text("(无可用 Agent)"));
 
-                await ctx.Sessions.SetAgentAsync(agent, ct);
-                return Local(new Text($"已切换 Agent：{agent}"));
-            }
+                        var options = agents
+                            .Select(a => (Display: string.IsNullOrWhiteSpace(a.Description) ? a.Name : $"{a.Name} · {a.Description}", Value: a.Name))
+                            .ToList();
+
+                        agent = await PromptSelectionAsync(ctx, "选择 Agent", options, ct);
+                        if (agent is null)
+                            return Local(new Text("(未选择 Agent)"));
+                    }
+
+                    await ctx.Sessions.SetAgentAsync(agent, ct);
+                    return Local(new Text($"已切换 Agent：{agent}"));
+                }
 
             case "model":
-            {
-                var model = NullIfEmpty(args);
-                if (model is null)
                 {
-                    var models = ctx.Models.GetModelsByType(ModelType.Text);
-                    if (models.Count == 0)
-                        return Local(new Text("(无可用模型)"));
-
-                    var options = models
-                        .OrderBy(m => m.Key, StringComparer.OrdinalIgnoreCase)
-                        .Select(m =>
-                        {
-                            var display = string.IsNullOrWhiteSpace(m.Value.Name) ? m.Key : m.Value.Name!;
-                            return (Display: $"{display} · {m.Key}", Value: m.Key);
-                        })
-                        .ToList();
-
-                    model = await PromptSelectionAsync(ctx, "选择模型", options, ct);
+                    var model = NullIfEmpty(args);
                     if (model is null)
-                        return Local(new Text("(未选择模型)"));
-                }
+                    {
+                        var models = ctx.Models.GetModelsByType(ModelType.Text);
+                        if (models.Count == 0)
+                            return Local(new Text("(无可用模型)"));
 
-                await ctx.Sessions.SetModelAsync(model, ct);
-                return Local(new Text($"已切换模型：{model}"));
-            }
+                        var options = models
+                            .OrderBy(m => m.Key, StringComparer.OrdinalIgnoreCase)
+                            .Select(m =>
+                            {
+                                var display = string.IsNullOrWhiteSpace(m.Value.Name) ? m.Key : m.Value.Name!;
+                                return (Display: $"{display} · {m.Key}", Value: m.Key);
+                            })
+                            .ToList();
+
+                        model = await PromptSelectionAsync(ctx, "选择模型", options, ct);
+                        if (model is null)
+                            return Local(new Text("(未选择模型)"));
+                    }
+
+                    await ctx.Sessions.SetModelAsync(model, ct);
+                    return Local(new Text($"已切换模型：{model}"));
+                }
 
             case "thinking":
-            {
-                var level = NullIfEmpty(args);
-                if (level is not null)
                 {
-                    if (string.Equals(level, "clear", StringComparison.OrdinalIgnoreCase))
+                    var level = NullIfEmpty(args);
+                    if (level is not null)
                     {
-                        await ctx.Sessions.SetThinkingAsync(null, ct);
-                        return Local(new Text("思考档已清除（跟随模型默认）"));
+                        if (string.Equals(level, "clear", StringComparison.OrdinalIgnoreCase))
+                        {
+                            await ctx.Sessions.SetThinkingAsync(null, ct);
+                            return Local(new Text("思考档已清除（跟随模型默认）"));
+                        }
+
+                        await ctx.Sessions.SetThinkingAsync(level, ct);
+                        return Local(new Text($"思考档：{level}"));
                     }
 
-                    await ctx.Sessions.SetThinkingAsync(level, ct);
-                    return Local(new Text($"思考档：{level}"));
+                    var thinking = ctx.Llm?.GetModelConfig(ctx.State?.ModelId ?? string.Empty)?.Options?.Thinking;
+                    if (!ThinkingEffortKeys.IsSupported(thinking) || thinking!.Levels is null)
+                        return Local(new Text("当前模型未提供思考档，用法：/thinking <level>"));
+
+                    var options = new List<(string Display, string Value)> { ("（清除，跟随默认）", ClearOption) };
+                    options.AddRange(thinking.Levels!.Select(l =>
+                        (Display: string.IsNullOrWhiteSpace(l.Label) ? l.Key : $"{l.Label} · {l.Key}", Value: l.Key)));
+
+                    var chosen = await PromptSelectionAsync(ctx, "选择思考档", options, ct);
+                    if (chosen is null)
+                        return Local(new Text("(未选择思考档)"));
+
+                    var selectedLevel = string.Equals(chosen, ClearOption, StringComparison.Ordinal) ? null : chosen;
+                    await ctx.Sessions.SetThinkingAsync(selectedLevel, ct);
+                    return Local(new Text(selectedLevel is null ? "思考档已清除（跟随模型默认）" : $"思考档：{selectedLevel}"));
                 }
-
-                var thinking = ctx.Llm?.GetModelConfig(ctx.State?.ModelId ?? string.Empty)?.Options?.Thinking;
-                if (!ThinkingEffortKeys.IsSupported(thinking) || thinking!.Levels is null)
-                    return Local(new Text("当前模型未提供思考档，用法：/thinking <level>"));
-
-                var options = new List<(string Display, string Value)> { ("（清除，跟随默认）", ClearOption) };
-                options.AddRange(thinking.Levels!.Select(l =>
-                    (Display: string.IsNullOrWhiteSpace(l.Label) ? l.Key : $"{l.Label} · {l.Key}", Value: l.Key)));
-
-                var chosen = await PromptSelectionAsync(ctx, "选择思考档", options, ct);
-                if (chosen is null)
-                    return Local(new Text("(未选择思考档)"));
-
-                var selectedLevel = string.Equals(chosen, ClearOption, StringComparison.Ordinal) ? null : chosen;
-                await ctx.Sessions.SetThinkingAsync(selectedLevel, ct);
-                return Local(new Text(selectedLevel is null ? "思考档已清除（跟随模型默认）" : $"思考档：{selectedLevel}"));
-            }
 
             case "scenario":
-            {
-                var scenario = NullIfEmpty(args);
-                if (scenario is not null)
                 {
-                    if (string.Equals(scenario, "clear", StringComparison.OrdinalIgnoreCase))
+                    var scenario = NullIfEmpty(args);
+                    if (scenario is not null)
                     {
-                        await ctx.Sessions.SetScenarioAsync(null, ct);
-                        return Local(new Text("场景已清除（跟随进程默认）"));
+                        if (string.Equals(scenario, "clear", StringComparison.OrdinalIgnoreCase))
+                        {
+                            await ctx.Sessions.SetScenarioAsync(null, ct);
+                            return Local(new Text("场景已清除（跟随进程默认）"));
+                        }
+
+                        await ctx.Sessions.SetScenarioAsync(scenario, ct);
+                        return Local(new Text($"场景：{scenario}"));
                     }
 
-                    await ctx.Sessions.SetScenarioAsync(scenario, ct);
-                    return Local(new Text($"场景：{scenario}"));
+                    var scenarios = ctx.Scenarios.ListAll();
+                    if (scenarios.Count == 0)
+                        return Local(new Text("(无可用场景)"));
+
+                    var options = new List<(string Display, string Value)> { ("（清除，跟随默认）", ClearOption) };
+                    options.AddRange(scenarios.Select(s => (Display: s.Name, Value: s.Name)));
+
+                    var chosen = await PromptSelectionAsync(ctx, "选择场景", options, ct);
+                    if (chosen is null)
+                        return Local(new Text("(未选择场景)"));
+
+                    var selectedScenario = string.Equals(chosen, ClearOption, StringComparison.Ordinal) ? null : chosen;
+                    await ctx.Sessions.SetScenarioAsync(selectedScenario, ct);
+                    return Local(new Text(selectedScenario is null ? "场景已清除（跟随进程默认）" : $"场景：{selectedScenario}"));
                 }
-
-                var scenarios = ctx.Scenarios.ListAll();
-                if (scenarios.Count == 0)
-                    return Local(new Text("(无可用场景)"));
-
-                var options = new List<(string Display, string Value)> { ("（清除，跟随默认）", ClearOption) };
-                options.AddRange(scenarios.Select(s => (Display: s.Name, Value: s.Name)));
-
-                var chosen = await PromptSelectionAsync(ctx, "选择场景", options, ct);
-                if (chosen is null)
-                    return Local(new Text("(未选择场景)"));
-
-                var selectedScenario = string.Equals(chosen, ClearOption, StringComparison.Ordinal) ? null : chosen;
-                await ctx.Sessions.SetScenarioAsync(selectedScenario, ct);
-                return Local(new Text(selectedScenario is null ? "场景已清除（跟随进程默认）" : $"场景：{selectedScenario}"));
-            }
 
             case "auto-approve":
-            {
-                var globalAuto = ctx.State?.GlobalAutoApprove ?? false;
-
-                SessionAutoApprove mode;
-                if (string.IsNullOrWhiteSpace(args))
                 {
-                    // 无参数：三态循环（对齐 WebUI 分段控件的点击切换）。
-                    var current = ctx.State?.AutoApprove
-                        ?? ctx.Sessions.Current?.AutoApprove
-                        ?? SessionAutoApprove.FollowGlobal;
-                    mode = AutoApproveText.Next(current);
-                }
-                else if (!TryParseAutoApprove(args, out mode))
-                {
-                    return Local(new Text("用法：/auto-approve [follow|on|off]（无参数＝在三态间循环）"));
-                }
+                    var globalAuto = ctx.State?.GlobalAutoApprove ?? false;
 
-                await ctx.Sessions.SetAutoApproveAsync(mode, ct);
-                return Local(new Text($"审批模式：{AutoApproveText.Label(mode, globalAuto)}（三态：{AutoApproveText.Mode(mode)}）"));
-            }
+                    SessionAutoApprove mode;
+                    if (string.IsNullOrWhiteSpace(args))
+                    {
+                        // 无参数：三态循环（对齐 WebUI 分段控件的点击切换）。
+                        var current = ctx.State?.AutoApprove
+                            ?? ctx.Sessions.Current?.AutoApprove
+                            ?? SessionAutoApprove.FollowGlobal;
+                        mode = AutoApproveText.Next(current);
+                    }
+                    else if (!TryParseAutoApprove(args, out mode))
+                    {
+                        return Local(new Text("用法：/auto-approve [follow|on|off]（无参数＝在三态间循环）"));
+                    }
+
+                    await ctx.Sessions.SetAutoApproveAsync(mode, ct);
+                    return Local(new Text($"审批模式：{AutoApproveText.Label(mode, globalAuto)}（三态：{AutoApproveText.Mode(mode)}）"));
+                }
 
             case "reasoning":
-            {
-                if (string.IsNullOrWhiteSpace(args))
                 {
-                    ReasoningEnabled = !ReasoningEnabled;
-                }
-                else if (TryParseBool(args, out var enabled))
-                {
-                    ReasoningEnabled = enabled;
-                }
-                else
-                {
-                    return Local(new Text("用法：/reasoning [on|off]"));
-                }
+                    if (string.IsNullOrWhiteSpace(args))
+                    {
+                        ReasoningEnabled = !ReasoningEnabled;
+                    }
+                    else if (TryParseBool(args, out var enabled))
+                    {
+                        ReasoningEnabled = enabled;
+                    }
+                    else
+                    {
+                        return Local(new Text("用法：/reasoning [on|off]"));
+                    }
 
-                // ToggleReasoning=true：引擎据 ReasoningEnabled 应用渲染选项。
-                return new TuiCommandResult(
-                    true,
-                    false,
-                    new Text($"推理显示：{(ReasoningEnabled ? "开" : "关")}"),
-                    null,
-                    ToggleReasoning: true);
-            }
+                    // ToggleReasoning=true：引擎据 ReasoningEnabled 应用渲染选项。
+                    return new TuiCommandResult(
+                        true,
+                        false,
+                        new Text($"推理显示：{(ReasoningEnabled ? "开" : "关")}"),
+                        null,
+                        ToggleReasoning: true);
+                }
 
             case "cancel":
-            {
-                if (string.Equals(args.Trim(), "all", StringComparison.OrdinalIgnoreCase))
                 {
-                    var count = await ctx.Sessions.CancelAllAsync(ct);
-                    return Local(new Text($"已级联取消 {count} 个执行"));
+                    if (string.Equals(args.Trim(), "all", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var count = await ctx.Sessions.CancelAllAsync(ct);
+                        return Local(new Text($"已级联取消 {count} 个执行"));
+                    }
+
+                    await ctx.Sessions.CancelAsync(ct);
+                    return Local(new Text("已请求取消当前执行"));
                 }
 
-                await ctx.Sessions.CancelAsync(ct);
-                return Local(new Text("已请求取消当前执行"));
-            }
-
             case "expand":
-            {
-                var callId = NullIfEmpty(args);
-                if (callId is null)
-                    return Local(new Text("用法：/expand <callId>"));
+                {
+                    var callId = NullIfEmpty(args);
+                    if (callId is null)
+                        return Local(new Text("用法：/expand <callId>"));
 
-                var block = FindToolBlock(ctx.State, callId);
-                if (block?.Tool is null)
-                    return Local(new Text($"未找到工具调用：{callId}"));
+                    var block = FindToolBlock(ctx.State, callId);
+                    if (block?.Tool is null)
+                        return Local(new Text($"未找到工具调用：{callId}"));
 
-                block.Tool.IsExpanded = true;
-                return Local(BuildExpandedTool(block.Tool));
-            }
+                    block.Tool.IsExpanded = true;
+                    return Local(BuildExpandedTool(block.Tool));
+                }
 
             case "todo":
-            {
-                var todos = ctx.State?.Todos ?? [];
-                if (todos.Count == 0)
-                    return Local(new Text("(无待办)"));
+                {
+                    var todos = ctx.State?.Todos ?? [];
+                    if (todos.Count == 0)
+                        return Local(new Text("(无待办)"));
 
-                var table = new Table().AddColumn("状态").AddColumn("内容");
-                foreach (var todo in todos)
-                    table.AddRow(new Text(todo.Status), new Text(todo.Content));
-                return Local(table);
-            }
+                    var table = new Table().AddColumn("状态").AddColumn("内容");
+                    foreach (var todo in todos)
+                        table.AddRow(new Text(todo.Status), new Text(todo.Content));
+                    return Local(table);
+                }
 
             default:
                 return Forward(input);

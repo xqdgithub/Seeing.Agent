@@ -1,4 +1,3 @@
-using System.Linq;
 using Microsoft.Extensions.Hosting;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Session.Core;

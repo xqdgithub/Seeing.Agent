@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Questions;
 using Seeing.Agent.WebUI.Models;
-using Xunit;
 
 namespace Seeing.Agent.WebUI.Tests.Questions;
 

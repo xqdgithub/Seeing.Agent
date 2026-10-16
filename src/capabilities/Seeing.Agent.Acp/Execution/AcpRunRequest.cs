@@ -1,5 +1,5 @@
-using Seeing.Agent.Abstractions.Agents;
 using Acp.Types;
+using Seeing.Agent.Abstractions.Agents;
 
 namespace Seeing.Agent.Acp.Execution;
 

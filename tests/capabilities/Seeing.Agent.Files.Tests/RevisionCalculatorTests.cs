@@ -1,7 +1,6 @@
+using FluentAssertions;
 using System.Security.Cryptography;
 using System.Text;
-using FluentAssertions;
-using Seeing.Agent.Files;
 using Xunit;
 
 namespace Seeing.Agent.Files.Tests;

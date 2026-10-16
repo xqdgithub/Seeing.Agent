@@ -1,10 +1,10 @@
-using System.Runtime.CompilerServices;
-using System.Text;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Files;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Files.Watching;
 using Seeing.Agent.Tools.Support;
+using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace Seeing.Agent.Files;
 

@@ -1,9 +1,5 @@
 using Seeing.Agent.Abstractions.Llm;
-using Microsoft.Extensions.Options;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
-
-using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.Core.Llm;
 
 /// <summary>

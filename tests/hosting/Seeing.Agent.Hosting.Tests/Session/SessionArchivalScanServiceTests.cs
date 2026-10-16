@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Session.Core;
 using Seeing.Session.Management;

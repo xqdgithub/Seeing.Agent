@@ -87,8 +87,8 @@ public class SqliteTokenTracker : ITokenTracker
 
     /// <inheritdoc />
     public Task<TokenUsage> GetUsageAsync(
-        DateTimeOffset startTime, 
-        DateTimeOffset endTime, 
+        DateTimeOffset startTime,
+        DateTimeOffset endTime,
         CancellationToken ct = default) =>
         _gate.RunAsync(async token =>
         {

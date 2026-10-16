@@ -1,8 +1,6 @@
-using System.Collections.Immutable;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Runtime;
@@ -10,6 +8,7 @@ using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
+using System.Collections.Immutable;
 using Xunit;
 
 namespace Seeing.Agent.Tests.App;

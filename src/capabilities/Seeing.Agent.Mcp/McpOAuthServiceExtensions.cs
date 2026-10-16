@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Mcp;
-using Seeing.Agent.Abstractions.Mcp.OAuth;
 using Seeing.Agent.Mcp.OAuth;
 
 namespace Seeing.Agent.Mcp;

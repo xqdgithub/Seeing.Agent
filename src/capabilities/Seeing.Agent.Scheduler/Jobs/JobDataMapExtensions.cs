@@ -43,8 +43,8 @@ public static class JobDataMapExtensions
     /// <summary>设置对象为 JSON 字符串</summary>
     public static void SetJsonValue<T>(this JobDataMap map, string key, T? value)
     {
-        map[key] = value != null 
-            ? System.Text.Json.JsonSerializer.Serialize(value) 
+        map[key] = value != null
+            ? System.Text.Json.JsonSerializer.Serialize(value)
             : string.Empty;
     }
 
@@ -55,7 +55,7 @@ public static class JobDataMapExtensions
     {
         if (!map.ContainsKey(key))
             return null;
-        
+
         var value = map.GetString(key);
         return string.IsNullOrEmpty(value) ? null : value;
     }

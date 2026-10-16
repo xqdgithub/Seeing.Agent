@@ -1,10 +1,9 @@
-using System.Text.Json;
-using Seeing.Agent.Core.Instructions;
-using Seeing.Agent.Abstractions.Reminders;
 using Seeing.Agent.Abstractions.Runtime;
+using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Session.Core;
+using System.Text.Json;
 
 namespace Seeing.Agent.WebUI.Services;
 

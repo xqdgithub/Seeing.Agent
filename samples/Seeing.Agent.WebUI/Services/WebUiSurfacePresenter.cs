@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Hosting.Web.Circuits;
 

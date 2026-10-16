@@ -1,9 +1,8 @@
 ﻿using FluentAssertions;
 using Moq;
+using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Core;
 using Xunit;
-
-using Seeing.Agent.Abstractions.Agents;
 namespace Seeing.Agent.Tests.Core;
 
 public class AgentSelectionResolverTests

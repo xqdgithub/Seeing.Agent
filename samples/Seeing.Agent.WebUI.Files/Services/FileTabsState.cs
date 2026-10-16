@@ -94,7 +94,8 @@ public sealed class FileTabsState
             existing.MimeType = file.MimeType;
             existing.BinaryContent = binaryContent;
             ActiveKey = key;
-        }        else
+        }
+        else
         {
             var of = new OpenFile
             {

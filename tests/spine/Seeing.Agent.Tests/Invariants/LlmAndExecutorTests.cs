@@ -1,4 +1,3 @@
-using System.Reflection;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -9,12 +8,13 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Extensions;
-using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
+using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Llm;
+using System.Reflection;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Invariants;

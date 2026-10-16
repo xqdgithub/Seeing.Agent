@@ -1,6 +1,6 @@
+using Seeing.Agent.Cli.Services;
 using System.CommandLine;
 using System.Diagnostics;
-using Seeing.Agent.Cli.Services;
 
 namespace Seeing.Agent.Cli.Commands;
 

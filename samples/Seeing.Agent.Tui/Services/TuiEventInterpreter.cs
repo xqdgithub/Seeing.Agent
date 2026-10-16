@@ -1,9 +1,8 @@
-using System.Text.Json;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.TokenBudget;
+using System.Text.Json;
 
 namespace Seeing.Agent.Tui.Services;
 

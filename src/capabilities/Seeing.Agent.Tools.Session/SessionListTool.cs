@@ -1,7 +1,7 @@
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
+using System.Text.Json;
 
 namespace Seeing.Agent.Tools.Session;
 
@@ -74,19 +74,19 @@ public sealed class SessionListTool : SessionToolBase
                 break;
 
             case "all":
-            {
-                var denied = await AuthorizeAsync(
-                    context,
-                    Id,
-                    "列出全部会话需要授权",
-                    new Dictionary<string, object> { ["scope"] = "all" },
-                    ct).ConfigureAwait(false);
-                if (denied is not null)
-                    return denied;
+                {
+                    var denied = await AuthorizeAsync(
+                        context,
+                        Id,
+                        "列出全部会话需要授权",
+                        new Dictionary<string, object> { ["scope"] = "all" },
+                        ct).ConfigureAwait(false);
+                    if (denied is not null)
+                        return denied;
 
-                entries = await CollectAllAsync(context, ct).ConfigureAwait(false);
-                break;
-            }
+                    entries = await CollectAllAsync(context, ct).ConfigureAwait(false);
+                    break;
+                }
 
             default:
                 return Failure($"未知的 scope: {scope}。可选值：related、all");

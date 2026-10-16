@@ -1,10 +1,8 @@
-using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Permissions;
@@ -23,6 +21,7 @@ using Seeing.Session.Persistence;
 using Seeing.Session.Storage;
 using Spectre.Console;
 using Spectre.Console.Rendering;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Tui.Services;
 
@@ -468,14 +467,14 @@ public sealed class TuiChatEngine
                 return false;
 
             case TuiInputAction.Submit:
-            {
-                var text = _editor.Text;
-                _editor.Clear();
-                _completionSelector = null;
-                var exit = await SubmitAsync(text, ct).ConfigureAwait(false);
-                _lastRenderAt = DateTime.MinValue;
-                return exit;
-            }
+                {
+                    var text = _editor.Text;
+                    _editor.Clear();
+                    _completionSelector = null;
+                    var exit = await SubmitAsync(text, ct).ConfigureAwait(false);
+                    _lastRenderAt = DateTime.MinValue;
+                    return exit;
+                }
 
             case TuiInputAction.Complete:
                 HandleCompletion();

@@ -1,9 +1,8 @@
-using Seeing.Agent.Abstractions.Configuration;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Configuration;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.ConfigSchema;
+using System.Text.Json;
 
 namespace Seeing.Provider.DeepSeek;
 

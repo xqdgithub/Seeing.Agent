@@ -1,11 +1,10 @@
 ﻿using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Mcp.OAuth;
 using Seeing.Agent.Abstractions.Mcp.Policy;
 using System.Text.Json.Serialization;
 
 namespace Seeing.Agent.Abstractions.Mcp
 {
-/// <summary>
+    /// <summary>
     /// MCP 传输类型
     /// </summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]

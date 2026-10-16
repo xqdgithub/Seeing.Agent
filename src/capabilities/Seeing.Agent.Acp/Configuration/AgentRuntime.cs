@@ -1,5 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Agents;
-namespace Seeing.Agent.Acp.Configuration;
+﻿namespace Seeing.Agent.Acp.Configuration;
 
 /// <summary>
 /// ACP 运行时辅助（枚举定义见 <see cref="Seeing.Agent.Abstractions.Agents.AgentRuntime"/>）。

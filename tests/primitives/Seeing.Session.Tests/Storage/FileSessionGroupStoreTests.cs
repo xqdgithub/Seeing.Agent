@@ -1,4 +1,3 @@
-using System.Linq;
 using FluentAssertions;
 using Seeing.Session.Core;
 using Seeing.Session.Storage;

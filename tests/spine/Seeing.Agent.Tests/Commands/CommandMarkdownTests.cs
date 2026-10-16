@@ -1,6 +1,5 @@
-using Seeing.Agent.Abstractions.Commands;
 using FluentAssertions;
-using Seeing.Agent.Core.Commands;
+using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Core.Commands.Discovery;
 using System.Reflection;
 using Xunit;

@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Seeing.Provider.OpenCodeZen;
 using Xunit;
 
 namespace Seeing.Provider.OpenCodeZen.Tests;

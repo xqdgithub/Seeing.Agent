@@ -1,12 +1,12 @@
-using System.Threading.Channels;
 using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Session.Core;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.WebUI.Tests.Services;
 

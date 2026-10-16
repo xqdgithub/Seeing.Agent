@@ -1,19 +1,19 @@
-using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Abstractions.Permissions;
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Acp.Backends;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Mapping;
 using Seeing.Agent.Acp.Tools;
-using Seeing.Agent.Acp.Configuration;
 using Seeing.Session.Core;
+using System.Text.Json;
 using Xunit;
 using AcpRunResult = Seeing.Agent.Acp.Execution.AcpRunResult;
 
@@ -279,7 +279,7 @@ public class AcpToolTests
                 ["opencode"] = new() { Command = "opencode" }
             }
         });
-        
+
         var world = Mock.Of<IExecutionWorld>(w => w.Cwd == ".");
 
         return new AcpTool(

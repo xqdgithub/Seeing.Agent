@@ -1,8 +1,7 @@
-using System.Collections.Concurrent;
-using System.Threading.Channels;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Files;
 using Seeing.Agent.Files.Watching;
+using System.Threading.Channels;
 using Xunit;
 
 namespace Seeing.Agent.Files.Tests;

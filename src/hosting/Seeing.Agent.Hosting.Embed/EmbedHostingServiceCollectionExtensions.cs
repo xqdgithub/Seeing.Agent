@@ -1,10 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Execution;
-using Seeing.Agent.Hosting;
 using Seeing.Agent.Core.Modules;
+using Seeing.Agent.Core.Permission;
 
 namespace Seeing.Agent.Hosting.Embed;
 

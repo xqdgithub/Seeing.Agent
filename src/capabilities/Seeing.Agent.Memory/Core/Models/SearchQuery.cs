@@ -19,10 +19,10 @@ public enum SearchMode
 {
     /// <summary>向量语义检索</summary>
     Vector,
-    
+
     /// <summary>关键词检索 (BM25)</summary>
     Keyword,
-    
+
     /// <summary>混合检索 (RRF 融合)</summary>
     Hybrid
 }

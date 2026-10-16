@@ -1,9 +1,9 @@
-using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Integration.Hosting;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Memory.Background;
 

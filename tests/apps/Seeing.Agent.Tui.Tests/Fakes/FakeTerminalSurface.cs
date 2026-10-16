@@ -1,8 +1,8 @@
-using System.Threading.Channels;
 using Seeing.Agent.Tui.Input;
 using Seeing.Agent.Tui.Rendering;
 using Spectre.Console;
 using Spectre.Console.Rendering;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Tui.Tests.Fakes;
 

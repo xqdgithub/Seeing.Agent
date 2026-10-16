@@ -3,11 +3,10 @@ using Moq;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Summarization;
-using Seeing.Agent.Hosting.Commands.BuiltIn;
-using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Compression;
+using Seeing.Agent.Core.Execution;
+using Seeing.Agent.Hosting.Commands.BuiltIn;
 using Seeing.Session.Core;
-using Seeing.Session.Management;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Commands;

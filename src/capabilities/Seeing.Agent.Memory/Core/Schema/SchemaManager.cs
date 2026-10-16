@@ -46,9 +46,9 @@ public class SchemaManager
         // Get the max version
         command.CommandText = "SELECT MAX(version) FROM schema_version";
         var versionResult = await command.ExecuteScalarAsync(cancellationToken);
-        
-        return versionResult == null || Convert.IsDBNull(versionResult) 
-            ? 0 
+
+        return versionResult == null || Convert.IsDBNull(versionResult)
+            ? 0
             : Convert.ToInt32(versionResult);
     }
 
@@ -100,7 +100,7 @@ public class SchemaManager
         CancellationToken cancellationToken = default)
     {
         var currentVersion = await GetCurrentVersionAsync(cancellationToken);
-        
+
         return _migrations
             .Where(m => m.Version > currentVersion)
             .OrderBy(m => m.Version)

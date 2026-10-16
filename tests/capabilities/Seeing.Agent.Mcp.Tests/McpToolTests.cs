@@ -1,8 +1,7 @@
-using System.Text.Json;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Mcp;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Mcp.Tests;

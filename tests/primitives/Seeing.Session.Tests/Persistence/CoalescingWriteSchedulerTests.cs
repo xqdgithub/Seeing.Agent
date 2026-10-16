@@ -1,7 +1,7 @@
-﻿using System.Collections.Concurrent;
-using System.Diagnostics;
-using FluentAssertions;
+﻿using FluentAssertions;
 using Seeing.Session.Persistence;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using Xunit;
 
 namespace Seeing.Session.Tests.Persistence;

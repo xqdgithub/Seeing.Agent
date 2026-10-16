@@ -4,7 +4,6 @@ using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Tools.Basic;

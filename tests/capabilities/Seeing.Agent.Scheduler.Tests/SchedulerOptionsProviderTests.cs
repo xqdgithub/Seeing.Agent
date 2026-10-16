@@ -2,7 +2,6 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Scheduler.Configuration;
 using Seeing.Agent.Scheduler.Models;
 using Seeing.Agent.Scheduler.Tests.Fixtures;

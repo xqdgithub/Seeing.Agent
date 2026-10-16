@@ -1,6 +1,5 @@
 using Acp.Types;
 using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Acp.Backends;
 using Seeing.Agent.Acp.Execution;

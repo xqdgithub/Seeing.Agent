@@ -1,6 +1,4 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
-using System.Text.Json;
-using Seeing.Agent.Abstractions.Llm;
 
 namespace Seeing.Agent.Abstractions.Commands
 {
@@ -11,10 +9,10 @@ namespace Seeing.Agent.Abstractions.Commands
     {
         /// <summary>默认：透传给 Agent 处理</summary>
         Default = 0,
-        
+
         /// <summary>系统命令：立即执行，返回结果，不进入 Agent</summary>
         System = 1,
-        
+
         /// <summary>Skill 命令：展开输入后继续执行 Agent</summary>
         Skill = 2
     }

@@ -4,12 +4,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Prompts;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Prompts;
-using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Core.CapabilitySets;
+using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Core.Modules;
+using Seeing.Agent.Core.Prompts;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Invariants;

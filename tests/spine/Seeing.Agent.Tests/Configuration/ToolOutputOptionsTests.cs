@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Configuration;

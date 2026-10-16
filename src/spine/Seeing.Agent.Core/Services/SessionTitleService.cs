@@ -2,12 +2,10 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Llm;
-using Seeing.Agent.Llm;
 using Seeing.Agent.Core.Instructions;
-using System.Text.RegularExpressions;
+using Seeing.Agent.Core.Llm;
 using Seeing.Session.Core;
+using System.Text.RegularExpressions;
 
 namespace Seeing.Agent.Core.Services
 {

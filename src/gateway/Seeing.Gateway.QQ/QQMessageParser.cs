@@ -1,5 +1,5 @@
-using System.Text.Json;
 using Seeing.Gateway.Models;
+using System.Text.Json;
 
 namespace Seeing.Gateway.QQ;
 
@@ -97,7 +97,7 @@ public static class QQMessageParser
                 textParts.Add("[quoted message]");
 
             if (quotedAtt.Count > 0)
-                attachments = [..quotedAtt, ..attachments];
+                attachments = [.. quotedAtt, .. attachments];
         }
 
         if (!string.IsNullOrWhiteSpace(text))

@@ -70,7 +70,7 @@ public class CircularBuffer<T>
         lock (_lock)
         {
             var result = new List<T>(_count);
-            
+
             if (_count < _buffer.Length)
             {
                 // Buffer not full yet, read from start
@@ -103,9 +103,9 @@ public class CircularBuffer<T>
         lock (_lock)
         {
             var result = new List<T>(Math.Min(count, _count));
-            
-            var start = _count < _buffer.Length 
-                ? Math.Max(0, _count - count) 
+
+            var start = _count < _buffer.Length
+                ? Math.Max(0, _count - count)
                 : Math.Max(0, _buffer.Length - count);
 
             var actualCount = Math.Min(count, _count);

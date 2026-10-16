@@ -1,5 +1,4 @@
-﻿using System.Text.Json;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Memory.Abstractions;
@@ -7,6 +6,7 @@ using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Core.Graph;
 using Seeing.Agent.Memory.Core.Models;
 using Seeing.Agent.Memory.Core.Storage;
+using System.Text.Json;
 
 namespace Seeing.Agent.Memory.Core.Evolution;
 
@@ -147,9 +147,9 @@ public sealed class LlmMemoryEvolution : IMemoryEvolutionService
         var arrStart = trimmed.IndexOf('[');
         var start = (objStart, arrStart) switch
         {
-            (< 0, < 0) => -1,
+            ( < 0, < 0) => -1,
             (var o, < 0) => o,
-            (< 0, var a) => a,
+            ( < 0, var a) => a,
             (var o, var a) => Math.Min(o, a)
         };
         if (start < 0)

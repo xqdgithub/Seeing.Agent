@@ -1,7 +1,4 @@
-﻿using System.Text.Json;
-using System.Text.Json.Serialization;
-
-namespace Seeing.Agent.Abstractions.Configuration
+﻿namespace Seeing.Agent.Abstractions.Configuration
 {
     public class PluginSpec
     {

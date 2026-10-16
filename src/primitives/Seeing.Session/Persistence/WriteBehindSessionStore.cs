@@ -1,7 +1,7 @@
-using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Seeing.Session.Core;
 using Seeing.Session.Storage;
+using System.Runtime.CompilerServices;
 
 namespace Seeing.Session.Persistence;
 

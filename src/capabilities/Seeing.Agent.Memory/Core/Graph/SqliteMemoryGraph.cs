@@ -1,6 +1,5 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Memory.Core.Models;
 
 namespace Seeing.Agent.Memory.Core.Graph;
 

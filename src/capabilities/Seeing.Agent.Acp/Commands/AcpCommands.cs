@@ -1,5 +1,4 @@
 using Seeing.Agent.Abstractions.Commands;
-using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Commands.Attributes;
 
 namespace Seeing.Agent.Acp.Commands;

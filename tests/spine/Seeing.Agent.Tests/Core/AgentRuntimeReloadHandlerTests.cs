@@ -5,10 +5,8 @@ using Moq;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
-using Seeing.Agent.Core.Llm;
+using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Llm;
 using Xunit;
 

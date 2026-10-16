@@ -1,37 +1,33 @@
-using Seeing.Agent.Abstractions.Commands;
-using Seeing.Agent.Core.Llm;
-using Seeing.Agent.Llm;
-using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Abstractions.Prompts;
-using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Core.Permission;
-using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Seeing.Agent.Core.Events;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Models;
+using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Abstractions.Runtime;
-using Seeing.Agent.Core.Commands;
-using Seeing.Agent.Core.Compression;
-using Seeing.Agent.Core.Modules;
-using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
-using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Core.Commands;
+using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Core.Events;
+using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Instructions;
-using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Core.Services;
-using Seeing.Agent.Core.Execution;
+using Seeing.Agent.Llm;
 using Seeing.Session.Core;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
 
 namespace Seeing.Agent.Hosting.Execution;
 
@@ -590,8 +586,11 @@ internal sealed class ExecutionRunner : IExecutionRunner
     {
         SchemaSnapshotEvent => true,
         StreamCompleteEvent => true,
-        ToolCallEvent { Status: ToolCallStatus.Pending or ToolCallStatus.Success
-            or ToolCallStatus.Failed or ToolCallStatus.Rejected or ToolCallStatus.Cancelled } => true,
+        ToolCallEvent
+        {
+            Status: ToolCallStatus.Pending or ToolCallStatus.Success
+            or ToolCallStatus.Failed or ToolCallStatus.Rejected or ToolCallStatus.Cancelled
+        } => true,
         LoopCompleteEvent or LoopCancelledEvent or ErrorEvent => true,
         _ => false
     };

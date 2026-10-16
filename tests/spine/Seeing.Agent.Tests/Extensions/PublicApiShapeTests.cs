@@ -1,11 +1,10 @@
-using System.Reflection;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Extensions;
+using System.Reflection;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Extensions;

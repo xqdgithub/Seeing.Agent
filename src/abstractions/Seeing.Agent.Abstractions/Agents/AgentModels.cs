@@ -1,5 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Llm;
+﻿using Seeing.Agent.Abstractions.Llm;
 namespace Seeing.Agent.Abstractions.Agents
 {
     /// <summary>

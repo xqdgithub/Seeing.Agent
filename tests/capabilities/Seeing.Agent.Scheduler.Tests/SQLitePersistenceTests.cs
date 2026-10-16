@@ -1,10 +1,7 @@
-using Seeing.Agent.Abstractions.Configuration;
-using Microsoft.Extensions.Logging.Abstractions;
 using Quartz;
-using Quartz.Serialization.SystemTextJson;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Scheduler.Configuration;
-using Seeing.Agent.Scheduler.Engine;
 using Seeing.Agent.Scheduler.Models;
 using Xunit;
 
@@ -41,7 +38,7 @@ public class SQLitePersistenceTests
             });
 
             var factory = builder.Build();
-            
+
             // Assert - 程序集加载成功即表示测试通过
             // 原错误：Could not load file or assembly 'System.Data.SQLite'
             // 现修复：成功加载 Microsoft.Data.Sqlite
@@ -105,8 +102,8 @@ public class SQLitePersistenceTests
         public string UserSeeingDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".seeing");
         public WorkspaceResolutionSource ResolutionSource => WorkspaceResolutionSource.StartupDirectory;
         public string? GlobalWorkspaceRoot => null;
-        
-        #pragma warning disable CS0067
+
+#pragma warning disable CS0067
         public event EventHandler<WorkspaceChangedEventArgs>? WorkspaceRootChanged;
 #pragma warning restore CS0067
 

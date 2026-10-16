@@ -1,12 +1,12 @@
-using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Mapping;
-using Seeing.Agent.Acp.Configuration;
-using Seeing.Agent.Abstractions.Llm;
 using Xunit;
 
 namespace Seeing.Agent.Acp.Tests;

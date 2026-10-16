@@ -1,6 +1,6 @@
-using System.Reactive.Subjects;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Session.Core;
+using System.Reactive.Subjects;
 
 namespace Seeing.Agent.Memory.Integration.Adapters;
 

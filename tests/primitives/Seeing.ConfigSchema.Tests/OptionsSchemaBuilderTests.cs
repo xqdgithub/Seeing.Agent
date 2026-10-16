@@ -1,7 +1,6 @@
+using FluentAssertions;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
-using FluentAssertions;
-using Seeing.ConfigSchema;
 using Xunit;
 
 namespace Seeing.ConfigSchema.Tests;

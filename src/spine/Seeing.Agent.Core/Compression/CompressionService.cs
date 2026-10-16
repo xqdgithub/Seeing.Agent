@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Compression;
 using Seeing.Agent.Abstractions.Summarization;
 using Seeing.Session.Core;
-using Seeing.Session.Management;
 
 namespace Seeing.Agent.Core.Compression;
 

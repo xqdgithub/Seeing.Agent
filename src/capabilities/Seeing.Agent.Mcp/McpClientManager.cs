@@ -1,22 +1,20 @@
-using Seeing.Agent.Mcp.Core;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Hooks;
-using Seeing.Agent.Mcp.Configuration;
 using Seeing.Agent.Abstractions.Mcp;
+using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Mcp.Configuration;
+using Seeing.Agent.Mcp.Core;
 using Seeing.Agent.Mcp.Factory;
 using Seeing.Agent.Mcp.Management;
 using Seeing.Agent.Mcp.Policy;
 using Seeing.Agent.Mcp.Validation;
-using Seeing.Agent.Abstractions.Tools;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Text.Json;
-
 using CoreMcpConnectionState = Seeing.Agent.Abstractions.Mcp.McpConnectionState;
-
-using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.Mcp
 {
     public class McpClientManager : IMcpManager

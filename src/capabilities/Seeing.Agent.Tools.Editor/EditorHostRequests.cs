@@ -1,5 +1,5 @@
-using System.Text.Json;
 using Seeing.Agent.Abstractions.Interactions;
+using System.Text.Json;
 
 namespace Seeing.Agent.Tools.Editor;
 

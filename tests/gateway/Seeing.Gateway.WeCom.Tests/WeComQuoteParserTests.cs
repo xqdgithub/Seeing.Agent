@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Seeing.Gateway.Models;
-using Seeing.Gateway.WeCom;
 using Xunit;
 
 namespace Seeing.Gateway.WeCom.Tests;

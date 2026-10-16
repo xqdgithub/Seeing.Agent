@@ -64,13 +64,13 @@ public class TokenBudgetManager : ITokenBudgetManager
         // 使用全局配置的阈值
         var config = new TokenBudgetConfig
         {
-            WarningThreshold = new ThresholdConfig 
-            { 
+            WarningThreshold = new ThresholdConfig
+            {
                 Percentage = Options.WarningThreshold.Percentage,
                 AbsoluteTokens = Options.WarningThreshold.AbsoluteTokens
             },
-            CompactionThreshold = new ThresholdConfig 
-            { 
+            CompactionThreshold = new ThresholdConfig
+            {
                 Percentage = Options.CompactionThreshold.Percentage,
                 AbsoluteTokens = Options.CompactionThreshold.AbsoluteTokens
             },

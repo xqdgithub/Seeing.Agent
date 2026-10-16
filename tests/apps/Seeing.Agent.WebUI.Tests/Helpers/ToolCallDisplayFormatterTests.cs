@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Seeing.Agent.WebUI.Helpers;
-using Xunit;
 
 namespace Seeing.Agent.WebUI.Tests.Helpers;
 

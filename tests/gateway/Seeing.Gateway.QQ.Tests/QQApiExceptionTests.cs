@@ -1,6 +1,6 @@
-using System.Net;
 using FluentAssertions;
 using Seeing.Gateway.QQ.Connection;
+using System.Net;
 using Xunit;
 
 namespace Seeing.Gateway.QQ.Tests;

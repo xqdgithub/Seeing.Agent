@@ -202,7 +202,7 @@ public static class ScheduleExpressionParser
             // Quartz 要求：日(第4个)和周(第6个)字段必须有一个是 `?`
             var dayOfMonth = parts[3];
             var dayOfWeek = parts[5];
-            
+
             if (dayOfMonth != "?" && dayOfWeek != "?")
             {
                 // 将周字段改为 `?`

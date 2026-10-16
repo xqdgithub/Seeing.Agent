@@ -1,8 +1,8 @@
-using System.CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Cli.Infrastructure;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Models;
+using System.CommandLine;
 
 namespace Seeing.Agent.Cli.Commands;
 

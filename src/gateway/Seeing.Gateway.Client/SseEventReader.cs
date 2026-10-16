@@ -1,6 +1,6 @@
+using Seeing.Gateway.Models;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using Seeing.Gateway.Models;
 
 namespace Seeing.Gateway.Client;
 

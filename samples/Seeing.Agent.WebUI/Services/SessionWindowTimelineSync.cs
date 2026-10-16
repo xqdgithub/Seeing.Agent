@@ -1,6 +1,5 @@
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Events;
-using Seeing.Agent.Core.Execution;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.WebUI.Services;

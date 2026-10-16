@@ -1,6 +1,3 @@
-using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Abstractions.Commands;
-using Seeing.Agent.Abstractions.Components;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,46 +5,46 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Components;
+using Seeing.Agent.Abstractions.Compression;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Prompts;
+using Seeing.Agent.Abstractions.Summarization;
+using Seeing.Agent.Abstractions.Todo;
+using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Abstractions.Ui;
+using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.CapabilitySets;
 using Seeing.Agent.Core.Commands;
 using Seeing.Agent.Core.Commands.Discovery;
 using Seeing.Agent.Core.Compression;
-using Seeing.Agent.Abstractions.Compression;
-using Seeing.Agent.Configuration;
-using Seeing.Agent.Core;
-using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Abstractions.Hooks;
-using Seeing.Agent.Abstractions.Ui;
+using Seeing.Agent.Core.Decorators;
+using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Host;
-using Seeing.Agent.Core.Instructions;
-using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Permission;
-using Seeing.Agent.Core.Questions;
-using Seeing.Agent.Abstractions.Prompts;
-using Seeing.Agent.Core.Prompts;
-using Seeing.Agent.Abstractions.Todo;
-using Seeing.Agent.Core.Todo;
-using Seeing.Agent.Core.Decorators;
-using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Hosting;
-using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Core.Scenarios;
-using Seeing.Agent.Core.CapabilitySets;
-using Seeing.Agent.Core.Modules;
+using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Llm;
-using Seeing.Agent.Llm;
-using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Abstractions.Summarization;
-using System.Net.Http;
 using Seeing.Agent.Core.Middlewares;
+using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Modules;
+using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Core.Prompts;
+using Seeing.Agent.Core.Questions;
+using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Core.Shell;
+using Seeing.Agent.Core.Todo;
 using Seeing.Agent.Core.Tools;
 using Seeing.Agent.Core.Tools.BuiltIn;
+using Seeing.Agent.Llm;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Seeing.Session.Storage;
@@ -325,11 +322,11 @@ namespace Seeing.Agent.Core.Extensions
                     return new UnifiedConfigManager(workspace, logger, registry);
                 });
                 services.AddSingleton<IConfigSectionStore>(sp => sp.GetRequiredService<UnifiedConfigManager>());
-                
-            // IOptions 兼容 + IOptionsMonitor 支持热重载
-            services.AddSingleton<SeeingAgentOptionsMonitor>();
-            services.AddSingleton<IOptions<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
-            services.AddSingleton<IOptionsMonitor<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
+
+                // IOptions 兼容 + IOptionsMonitor 支持热重载
+                services.AddSingleton<SeeingAgentOptionsMonitor>();
+                services.AddSingleton<IOptions<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
+                services.AddSingleton<IOptionsMonitor<SeeingAgentOptions>, SeeingAgentOptionsMonitor>();
             }
             else if (!services.Any(d => d.ServiceType == typeof(IConfigSectionStore)))
             {

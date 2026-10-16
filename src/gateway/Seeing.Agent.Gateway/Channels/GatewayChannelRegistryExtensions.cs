@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Configuration; // IWorkspaceProvider (Abstractions assembly)
 
 namespace Seeing.Agent.Gateway.Channels;

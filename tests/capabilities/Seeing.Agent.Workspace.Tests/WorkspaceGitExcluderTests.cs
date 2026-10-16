@@ -1,9 +1,6 @@
 using FluentAssertions;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
 using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Workspace;
 using Seeing.IO.Local;
 using Xunit;
 

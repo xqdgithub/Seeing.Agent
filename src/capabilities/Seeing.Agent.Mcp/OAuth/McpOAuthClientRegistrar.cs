@@ -1,7 +1,6 @@
-using System.Net.Http;
+using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 
 namespace Seeing.Agent.Mcp.OAuth
 {

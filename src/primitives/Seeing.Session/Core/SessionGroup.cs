@@ -1,5 +1,3 @@
-using System.Linq;
-
 namespace Seeing.Session.Core
 {
     /// <summary>会话关系类型（仅由 SessionGroup 承载）。</summary>

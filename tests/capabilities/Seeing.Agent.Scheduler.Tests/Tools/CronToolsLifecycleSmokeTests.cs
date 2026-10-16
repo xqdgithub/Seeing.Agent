@@ -1,11 +1,11 @@
-﻿using Seeing.Agent.Abstractions.Tools;
-using System.Text.Json;
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Models;
 using Seeing.Agent.Scheduler.Tools;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Scheduler.Tests.Tools;

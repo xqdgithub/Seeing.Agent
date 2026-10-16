@@ -1,19 +1,19 @@
-using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Execution;
-using System.Collections.Concurrent;
-using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Acp.Backends;
+using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Acp.Execution;
 using Seeing.Agent.Acp.Mapping;
-using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Tools.Support;
-using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Session.Core;
+using System.Collections.Concurrent;
+using System.Text;
+using System.Text.Json;
 
 namespace Seeing.Agent.Acp.Tools;
 

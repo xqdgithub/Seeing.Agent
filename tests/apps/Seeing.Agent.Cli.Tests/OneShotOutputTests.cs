@@ -1,9 +1,9 @@
-using System.Text.Json;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Cli.Services;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Cli.Tests;

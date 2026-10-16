@@ -1,10 +1,7 @@
 using FluentAssertions;
 using Moq;
-using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Abstractions.Files;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Configuration;
-using Seeing.Agent.Files;
 using Seeing.Agent.Files.Watching;
 using Seeing.IO.Local;
 using Xunit;

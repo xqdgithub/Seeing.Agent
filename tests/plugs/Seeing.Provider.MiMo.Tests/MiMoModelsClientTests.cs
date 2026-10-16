@@ -1,8 +1,7 @@
-using System.Net;
-using System.Text;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Seeing.Provider.MiMo;
+using System.Net;
+using System.Text;
 using Xunit;
 
 namespace Seeing.Provider.MiMo.Tests;

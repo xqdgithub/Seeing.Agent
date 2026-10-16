@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Seeing.ConfigSchema;
 using Seeing.Gateway.Client;
 using Seeing.Gateway.Client.Extensions;
-using Seeing.ConfigSchema;
 using Seeing.Gateway.Plugins;
 using Seeing.Gateway.QQ.Extensions;
 

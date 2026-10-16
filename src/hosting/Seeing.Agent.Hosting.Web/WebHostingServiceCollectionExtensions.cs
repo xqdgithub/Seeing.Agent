@@ -1,11 +1,9 @@
 using Microsoft.AspNetCore.Components.Server.Circuits;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Hosting.Web.Circuits;
 using Seeing.Agent.Hosting.Web.Permissions;
-using Seeing.Agent.Core.Modules;
 
 namespace Seeing.Agent.Hosting.Web;
 

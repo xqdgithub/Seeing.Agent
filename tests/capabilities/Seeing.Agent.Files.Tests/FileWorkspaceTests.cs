@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Files;
-using Seeing.Agent.Files;
 using Seeing.IO.Local;
 using Xunit;
 

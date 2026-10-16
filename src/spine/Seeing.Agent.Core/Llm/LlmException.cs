@@ -1,4 +1,3 @@
-using Seeing.Agent.Abstractions.Llm;
 namespace Seeing.Agent.Core.Llm;
 
 /// <summary>
@@ -21,7 +20,7 @@ public class LlmException : Exception
     /// <summary>
     /// 以消息构造 LLM 异常，Source 标记为 unknown。
     /// </summary>
-public LlmException(string message) : base(message)
+    public LlmException(string message) : base(message)
     {
         Source = "unknown";
     }

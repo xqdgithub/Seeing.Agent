@@ -2,8 +2,6 @@
 
 using Seeing.Agent.Abstractions.Components;
 using System.Text.Json;
-
-using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Core.Tools.BuiltIn;
 
 /// <summary>
@@ -24,21 +22,21 @@ public sealed class DefaultToolPermissionPolicy : IToolPermissionPolicy
 
     private static readonly Dictionary<string, Mapping> Mappings = new()
     {
-        ["read"]                = new("filesystem.read",               "path"),
-        ["write"]               = new("filesystem.write",              "path"),
-        ["edit"]                = new("filesystem.write",              "path"),
-        ["grep"]                = new("filesystem.read",               "path"),
-        ["glob"]                = new("filesystem.read",               "path"),
-        ["delete"]              = new("filesystem.delete",             "path"),
-        ["bash"]                = new("shell.execute",                 "command"),
-        ["webfetch"]            = new("network.fetch",                 "url"),
-        ["websearch"]           = new("network.search",                null, FixedResource: "web_search"),
-        ["codesearch"]          = new("network.search",                null, FixedResource: "code_search"),
-        ["add_workspace_path"]  = new("filesystem.workspace_extend",   "path",
+        ["read"] = new("filesystem.read", "path"),
+        ["write"] = new("filesystem.write", "path"),
+        ["edit"] = new("filesystem.write", "path"),
+        ["grep"] = new("filesystem.read", "path"),
+        ["glob"] = new("filesystem.read", "path"),
+        ["delete"] = new("filesystem.delete", "path"),
+        ["bash"] = new("shell.execute", "command"),
+        ["webfetch"] = new("network.fetch", "url"),
+        ["websearch"] = new("network.search", null, FixedResource: "web_search"),
+        ["codesearch"] = new("network.search", null, FixedResource: "code_search"),
+        ["add_workspace_path"] = new("filesystem.workspace_extend", "path",
                                    TrailingDirSeparator: true,
                                    PatternsArgKey: "path",
                                    StaticMetadata: new() { ["reason"] = "Agent 请求扩展工作区路径" }),
-        ["editor_command"]      = new("editor.execute",              "commandId"),
+        ["editor_command"] = new("editor.execute", "commandId"),
     };
 
     /// <summary>根据工具 ID 与参数解析出权限资源检查项；无映射时返回 null。</summary>

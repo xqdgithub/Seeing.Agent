@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Management;
 using Seeing.Agent.Scheduler.Models;
@@ -10,10 +9,10 @@ public sealed class SchedulerStatusService
 {
     private readonly IScheduleManager _scheduleManager;
     private readonly ILogger<SchedulerStatusService> _logger;
-    
+
     /// <summary>任务状态变更事件</summary>
     public event EventHandler<JobStatusChangedEventArgs>? JobStatusChanged;
-    
+
     /// <summary>任务进度事件</summary>
     public event EventHandler<JobProgressEventArgs>? JobProgress;
 

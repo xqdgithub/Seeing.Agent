@@ -1,10 +1,10 @@
-using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.Support;
+using System.Text;
+using System.Text.Json;
 
 namespace Seeing.Agent.Tools.Editor;
 

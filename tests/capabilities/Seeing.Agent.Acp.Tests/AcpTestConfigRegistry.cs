@@ -1,7 +1,6 @@
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 
 namespace Seeing.Agent.Acp.Tests;
 

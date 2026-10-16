@@ -1,8 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
-using Seeing.Agent.Acp.Session;
 using Seeing.Agent.Acp.Configuration;
+using Seeing.Agent.Acp.Session;
 using Seeing.Session.Core;
 using Xunit;
 
@@ -90,7 +89,7 @@ public class AcpConnectionGracePeriodTests
         // Arrange
         var mockSessionManager = new Mock<ISessionManager>();
         mockSessionManager.Setup(x => x.Get("session-1")).Returns(new SessionData { Id = "session-1", Metadata = new Dictionary<string, string>() });
-        
+
         var store = new AcpSessionStore(mockSessionManager.Object, NullLogger<AcpSessionStore>.Instance);
         var cachedMapping = new AcpSessionMapping { BackendId = "cached", AcpSessionId = "cached-acp" };
         store.CacheMapping("session-1", cachedMapping);

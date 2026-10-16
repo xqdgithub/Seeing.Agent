@@ -41,7 +41,7 @@ public class SkillsShParser : IOnlineSkillParser
             if (pageResponse.IsSuccessStatusCode)
             {
                 var html = await pageResponse.Content.ReadAsStringAsync(cancellationToken);
-                
+
                 // 从页面提取安装命令中的 GitHub URL
                 // 格式: npx skills add https://github.com/owner/repo --skill name
                 // 或: npx skills add https://github.com/owner/repo/tree/branch --skill name
@@ -72,12 +72,12 @@ public class SkillsShParser : IOnlineSkillParser
             var treeUrl = $"https://api.github.com/repos/{repoOwner}/{repoName}/git/trees/{branch}?recursive=1";
             var request = new HttpRequestMessage(HttpMethod.Get, treeUrl);
             request.Headers.UserAgent.TryParseAdd("Seeing.Agent");
-            
+
             var treeResponse = await httpClient.SendAsync(request, cancellationToken);
             if (treeResponse.IsSuccessStatusCode)
             {
                 var treeContent = await treeResponse.Content.ReadAsStringAsync(cancellationToken);
-                
+
                 // 解析 JSON
                 using var doc = JsonDocument.Parse(treeContent);
                 if (doc.RootElement.TryGetProperty("tree", out var tree))
@@ -87,9 +87,9 @@ public class SkillsShParser : IOnlineSkillParser
                     {
                         var type = item.GetProperty("type").GetString();
                         if (type != "blob") continue;
-                        
+
                         var path = item.GetProperty("path").GetString() ?? "";
-                        
+
                         // 检查是否是 SKILL.md 且路径包含技能名
                         if (path.EndsWith("/SKILL.md", StringComparison.OrdinalIgnoreCase) &&
                             path.Contains($"/{skillName}/", StringComparison.OrdinalIgnoreCase))
@@ -98,7 +98,7 @@ public class SkillsShParser : IOnlineSkillParser
                             break;
                         }
                     }
-                    
+
                     // 如果没找到，尝试其他匹配方式
                     if (string.IsNullOrEmpty(skillPath))
                     {
@@ -106,9 +106,9 @@ public class SkillsShParser : IOnlineSkillParser
                         {
                             var type = item.GetProperty("type").GetString();
                             if (type != "blob") continue;
-                            
+
                             var path = item.GetProperty("path").GetString() ?? "";
-                            
+
                             if (path.EndsWith("/SKILL.md", StringComparison.OrdinalIgnoreCase))
                             {
                                 // 检查路径是否以技能名结尾

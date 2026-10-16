@@ -1,17 +1,16 @@
-using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Abstractions.Agents;
-using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Tools.Support;
+using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Core.Permission;
-using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Abstractions.Reminders;
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Reminders;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Sessions;
+using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Tools.Support;
 using Seeing.Session.Core;
+using System.Text;
+using System.Text.Json;
 using SessionStatus = Seeing.Session.Core.SessionStatus;
 
 namespace Seeing.Agent.Hosting.Tools;
@@ -293,7 +292,7 @@ public class TaskTool : ToolBase
                         && !m.IsSummary)
             .Select(m => m.Content?.Trim())
             .Where(content => !string.IsNullOrEmpty(content));
-        
+
         var result = allAssistants is null ? "" : string.Join("\n\n", allAssistants);
         return string.IsNullOrEmpty(result) ? "子任务执行完成，无输出内容。" : result;
     }
@@ -352,7 +351,7 @@ public class TaskTool : ToolBase
 
         var sb = new StringBuilder();
         sb.AppendLine("\n## 所有子代理状态");
-        
+
         var allOthersCompleted = true;
         var runningTasks = new List<(string Id, string Desc)>();
         var completedTasks = new List<(string Id, string Desc)>();
@@ -400,14 +399,14 @@ public class TaskTool : ToolBase
             foreach (var task in runningTasks)
                 sb.AppendLine($"  - {task.Desc} (ID: {task.Id})");
         }
-        
+
         if (completedTasks.Count > 0)
         {
             sb.AppendLine($"已完成: {completedTasks.Count}");
             foreach (var task in completedTasks)
                 sb.AppendLine($"  - {task.Desc} (ID: {task.Id})");
         }
-        
+
         if (failedTasks.Count > 0)
         {
             sb.AppendLine($"失败: {failedTasks.Count}");

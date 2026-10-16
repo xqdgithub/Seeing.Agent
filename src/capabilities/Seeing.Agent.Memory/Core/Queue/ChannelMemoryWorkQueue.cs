@@ -1,6 +1,6 @@
-using System.Threading.Channels;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Core.Models;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Memory.Core.Queue;
 

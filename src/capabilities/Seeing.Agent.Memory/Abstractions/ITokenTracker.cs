@@ -10,8 +10,8 @@ public interface ITokenTracker
 
     /// <summary>获取指定时间段的消耗</summary>
     Task<TokenUsage> GetUsageAsync(
-        DateTimeOffset startTime, 
-        DateTimeOffset endTime, 
+        DateTimeOffset startTime,
+        DateTimeOffset endTime,
         CancellationToken ct = default);
 
     /// <summary>获取今日消耗</summary>

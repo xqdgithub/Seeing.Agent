@@ -1,7 +1,7 @@
-using System.Net;
-using System.Net.Sockets;
 using FluentAssertions;
 using Seeing.Agent.Cli.Services;
+using System.Net;
+using System.Net.Sockets;
 using Xunit;
 
 namespace Seeing.Agent.Cli.Tests;

@@ -1,8 +1,8 @@
+using Microsoft.Extensions.Options;
+using Seeing.Gateway.Models;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
-using Microsoft.Extensions.Options;
-using Seeing.Gateway.Models;
 
 namespace Seeing.Gateway.Client;
 

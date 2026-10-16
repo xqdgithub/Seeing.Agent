@@ -1,12 +1,11 @@
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Seeing.Gateway;
 using Seeing.Gateway.Channels;
-using Seeing.Gateway.Models;
 using Seeing.Gateway.Client;
+using Seeing.Gateway.Models;
 using Seeing.Gateway.WeCom.Connection;
+using System.Collections.Concurrent;
 
 namespace Seeing.Gateway.WeCom;
 

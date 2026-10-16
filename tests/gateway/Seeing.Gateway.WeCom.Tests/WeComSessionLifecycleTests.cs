@@ -18,7 +18,7 @@ public class WeComSessionTrackerTests : IDisposable
     {
         _stateFile = Path.Combine(Path.GetTempPath(), $"wecom-sessions-{Guid.NewGuid():N}.json");
         _cleanupPaths.Add(_stateFile);
-        
+
         _workspaceMock = new Mock<IWorkspaceProvider>();
         _workspaceMock.Setup(x => x.UserSeeingDirectory).Returns(Path.GetTempPath());
     }

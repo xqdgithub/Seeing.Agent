@@ -1,17 +1,13 @@
-using Seeing.Agent.Abstractions.Agents;
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Permission;
-using Seeing.Session.Core;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Configuration;
+using System.Collections.Concurrent;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
-using Seeing.Agent.Configuration;
-
-using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.Core.Configuration
 {
     /// <summary>

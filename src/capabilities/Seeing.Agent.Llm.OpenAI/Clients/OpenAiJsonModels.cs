@@ -1,4 +1,3 @@
-using Seeing.Agent.Abstractions.Llm;
 using System.Text.Json.Serialization;
 
 namespace Seeing.Agent.Llm.OpenAI.Clients;

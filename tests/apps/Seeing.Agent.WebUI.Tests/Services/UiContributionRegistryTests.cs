@@ -1,11 +1,11 @@
-using Microsoft.Extensions.DependencyInjection;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Mcp;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Tools.Basic;
-using Seeing.Agent.WebUI.Services;
 using Seeing.Agent.WebUI.Pages;
+using Seeing.Agent.WebUI.Services;
 
 namespace Seeing.Agent.WebUI.Tests.Services;
 

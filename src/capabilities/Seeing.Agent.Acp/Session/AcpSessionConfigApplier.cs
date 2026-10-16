@@ -1,6 +1,5 @@
 using Acp.Messages;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Acp.Client;
 
 namespace Seeing.Agent.Acp.Session;
 

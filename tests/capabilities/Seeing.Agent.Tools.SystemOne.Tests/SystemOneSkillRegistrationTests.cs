@@ -2,7 +2,6 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Seeing.Agent.Abstractions.Skills;
-using Seeing.Agent.Tools.SystemOne;
 using Xunit;
 
 namespace Seeing.Agent.Tools.SystemOne.Tests;

@@ -7,13 +7,13 @@ public enum EdgeType
 {
     /// <summary>引用 (Wikilink)</summary>
     Reference,
-    
+
     /// <summary>父子关系 (目录层级)</summary>
     ParentChild,
-    
+
     /// <summary>标签关联</summary>
     Tag,
-    
+
     /// <summary>时间关联</summary>
     Temporal
 }
@@ -55,7 +55,7 @@ public interface IMemoryGraph
     Task AddNodeAsync(string path, string title, CancellationToken ct = default);
 
     /// <summary>添加边</summary>
-    Task AddEdgeAsync(string sourcePath, string targetPath, EdgeType type, 
+    Task AddEdgeAsync(string sourcePath, string targetPath, EdgeType type,
         double weight = 1.0, string? context = null, CancellationToken ct = default);
 
     /// <summary>移除节点及其所有边</summary>
@@ -71,14 +71,14 @@ public interface IMemoryGraph
     Task<IReadOnlyList<GraphNode>> GetNeighborsAsync(string path, int depth = 1, CancellationToken ct = default);
 
     /// <summary>获取两个节点间的路径</summary>
-    Task<IReadOnlyList<string>> FindPathAsync(string sourcePath, string targetPath, 
+    Task<IReadOnlyList<string>> FindPathAsync(string sourcePath, string targetPath,
         int maxDepth = 5, CancellationToken ct = default);
 
     /// <summary>获取图统计</summary>
     Task<GraphStats> GetStatsAsync(CancellationToken ct = default);
 
     /// <summary>查询图谱</summary>
-    Task<GraphQueryResult> QueryAsync(string? startPath = null, int depth = 1, 
+    Task<GraphQueryResult> QueryAsync(string? startPath = null, int depth = 1,
         CancellationToken ct = default);
 }
 

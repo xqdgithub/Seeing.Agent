@@ -1,10 +1,10 @@
-using Seeing.Agent.Abstractions.Tools;
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Tools.Support;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Core;
+using Seeing.Agent.Tools.Support;
+using System.Text.Json;
 
 namespace Seeing.Agent.Memory.Integration.Tools;
 

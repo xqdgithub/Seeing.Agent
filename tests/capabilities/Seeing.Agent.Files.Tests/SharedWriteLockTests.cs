@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Seeing.Agent.Files;
 using Seeing.IO.Local;
 using Xunit;
 

@@ -2,8 +2,6 @@ using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.WebUI.Services;
 
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Mcp;
 using System.Collections.Concurrent;
 

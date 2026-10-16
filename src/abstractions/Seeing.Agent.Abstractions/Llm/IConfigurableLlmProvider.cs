@@ -1,6 +1,5 @@
-﻿using Seeing.ConfigSchema;
-
-using Seeing.Agent.Abstractions.Configuration;
+﻿using Seeing.Agent.Abstractions.Configuration;
+using Seeing.ConfigSchema;
 namespace Seeing.Agent.Abstractions.Llm;
 
 /// <summary>

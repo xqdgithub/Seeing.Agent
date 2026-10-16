@@ -1,11 +1,8 @@
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Hosting.Web.Circuits;
 using Seeing.Session.Core;
+using System.Collections.Concurrent;
 
 namespace Seeing.Agent.WebUI.Services;
 

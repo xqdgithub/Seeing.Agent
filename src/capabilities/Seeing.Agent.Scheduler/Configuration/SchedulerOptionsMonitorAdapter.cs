@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Options;
-using Seeing.Agent.Scheduler.Configuration;
 using Seeing.Agent.Scheduler.Models;
 
 namespace Seeing.Agent.Scheduler.Configuration;

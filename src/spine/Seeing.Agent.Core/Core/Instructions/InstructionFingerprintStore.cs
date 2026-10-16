@@ -1,6 +1,6 @@
+using Seeing.Session.Core;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Seeing.Session.Core;
 
 namespace Seeing.Agent.Core.Instructions;
 

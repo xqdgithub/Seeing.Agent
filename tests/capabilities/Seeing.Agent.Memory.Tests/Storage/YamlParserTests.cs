@@ -22,12 +22,12 @@ created_at: 2025-01-15T10:30:00Z
 # Content here";
 
         var result = YamlParser.ParseYamlFrontMatter(content);
-        
+
         Assert.Equal("mem_abc123", result["id"]);
         Assert.Equal("daily", result["type"]);
         Assert.Equal("API 配置最佳实践", result["title"]);
     }
-    
+
     [Fact]
     public void ExtractMarkdownBody_WithFrontMatter_ReturnsBodyOnly()
     {
@@ -41,48 +41,48 @@ type: daily
 Body content here.";
 
         var body = YamlParser.ExtractMarkdownBody(content);
-        
+
         Assert.Contains("# Title", body);
         Assert.Contains("Body content here.", body);
         Assert.DoesNotContain("---", body);
     }
-    
+
     [Fact]
     public void ParseYamlFrontMatter_NoFrontMatter_ReturnsEmpty()
     {
         var content = "# Just markdown\nNo frontmatter here.";
-        
+
         var result = YamlParser.ParseYamlFrontMatter(content);
-        
+
         Assert.Empty(result);
     }
-    
+
     [Fact]
     public void ParseYamlFrontMatter_EmptyContent_ReturnsEmpty()
     {
         var result = YamlParser.ParseYamlFrontMatter("");
-        
+
         Assert.Empty(result);
     }
-    
+
     [Fact]
     public void ExtractMarkdownBody_NoFrontMatter_ReturnsOriginalContent()
     {
         var content = "# Just markdown\nNo frontmatter here.";
-        
+
         var body = YamlParser.ExtractMarkdownBody(content);
-        
+
         Assert.Equal(content, body);
     }
-    
+
     [Fact]
     public void ExtractMarkdownBody_EmptyContent_ReturnsEmptyString()
     {
         var body = YamlParser.ExtractMarkdownBody("");
-        
+
         Assert.Equal(string.Empty, body);
     }
-    
+
     [Fact]
     public void ParseYamlFrontMatter_WithListValues_ParsesListCorrectly()
     {
@@ -97,14 +97,14 @@ tags:
 Content";
 
         var result = YamlParser.ParseYamlFrontMatter(content);
-        
+
         Assert.True(result.ContainsKey("tags"));
         // YamlDotNet 解析列表为 List<object>
         var tags = result["tags"] as List<object>;
         Assert.NotNull(tags);
         Assert.Equal(3, tags.Count);
     }
-    
+
     [Fact]
     public void ParseYamlFrontMatter_WithNumericValue_ParsesCorrectly()
     {
@@ -117,7 +117,7 @@ score: 3.14
 Content";
 
         var result = YamlParser.ParseYamlFrontMatter(content);
-        
+
         // YamlDotNet 解析整数，类型可能是 int 或 long
         Assert.True(result.ContainsKey("count"));
         Assert.NotNull(result["count"]);
@@ -127,7 +127,7 @@ Content";
         // 浮点数可能被解析为 double 或 decimal
         Assert.NotNull(result["score"]);
     }
-    
+
     [Fact]
     public void ExtractMarkdownBody_WithMultipleNewlines_PreservesNewlines()
     {
@@ -141,12 +141,12 @@ id: test
 Body here.";
 
         var body = YamlParser.ExtractMarkdownBody(content);
-        
+
         // 实现保留前导换行符
         Assert.Contains("# Title", body);
         Assert.Contains("Body here.", body);
     }
-    
+
     [Fact]
     public void ParseYamlFrontMatter_WithMultilineValue_ParsesCorrectly()
     {
@@ -160,7 +160,7 @@ description: |
 Content";
 
         var result = YamlParser.ParseYamlFrontMatter(content);
-        
+
         Assert.True(result.ContainsKey("description"));
         var description = result["description"]?.ToString();
         Assert.Contains("multiline", description);

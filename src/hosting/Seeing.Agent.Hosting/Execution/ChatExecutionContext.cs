@@ -1,9 +1,6 @@
-using Seeing.Agent.Core.Llm;
-using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Core.Models;
 
 namespace Seeing.Agent.Hosting.Execution;
 
@@ -16,56 +13,56 @@ namespace Seeing.Agent.Hosting.Execution;
 internal class ChatExecutionContext
 {
     // ========== 会话相关 ==========
-    
+
     /// <summary>会话 ID</summary>
     public required string SessionId { get; init; }
-    
+
     /// <summary>对话历史</summary>
     public required List<ChatMessage> History { get; set; }
-    
+
     // ========== Agent 相关 ==========
-    
+
     /// <summary>Agent 定义</summary>
     public required AgentDefinition Agent { get; init; }
-    
+
     /// <summary>工作目录</summary>
     public string? WorkingDirectory { get; init; }
-    
+
     /// <summary>工作区根目录</summary>
     public string? WorkspaceRoot { get; init; }
-    
+
     // ========== 权限相关 ==========
-    
+
     /// <summary>执行级权限授权器（供能力门 / 资源门）</summary>
     public IPermissionAuthorizer? PermissionAuthorizer { get; init; }
-    
+
     /// <summary>权限上下文</summary>
     public PermissionContext? PermissionContext { get; init; }
-    
+
     // ========== 子代理相关 ==========
-    
+
     /// <summary>父会话 ID（子代理调用时设置）</summary>
     public string? ParentSessionId { get; init; }
-    
+
     /// <summary>父代理名称</summary>
     public string? ParentAgentName { get; init; }
-    
+
     /// <summary>是否为顶层调用（Hook 触发控制）</summary>
     public bool IsTopLevel { get; init; } = true;
-    
+
     /// <summary>是否为后台执行</summary>
     public bool IsBackground { get; init; }
-    
+
     // ========== Gateway 相关 ==========
-    
+
     /// <summary>并发通道 ID</summary>
     public string? ChannelId { get; init; }
-    
+
     /// <summary>用户 ID</summary>
     public string? UserId { get; init; }
-    
+
     // ========== 请求级参数 ==========
-    
+
     /// <summary>
     /// 请求级 Model ID（用户在界面选择的模型）
     /// <para>
@@ -77,7 +74,7 @@ internal class ChatExecutionContext
 
     /// <summary>请求级思考强度 key（可选；空则由 LlmService 用模型 default 或不传）</summary>
     public string? RequestThinkingEffort { get; init; }
-    
+
     /// <summary>ACP 透传 session mode（如 build / ask）</summary>
     public string? AcpModeId { get; init; }
 
@@ -93,12 +90,12 @@ internal class ChatExecutionContext
 
     /// <summary>本轮提示词分节 id（写入 SchemaSnapshotEvent）。</summary>
     public IReadOnlyList<string> SectionIds { get; init; } = Array.Empty<string>();
-    
+
     // ========== 元数据 ==========
-    
+
     /// <summary>附加元数据</summary>
     public Dictionary<string, object> Metadata { get; init; } = new();
-    
+
     /// <summary>
     /// 创建子代理执行上下文
     /// </summary>

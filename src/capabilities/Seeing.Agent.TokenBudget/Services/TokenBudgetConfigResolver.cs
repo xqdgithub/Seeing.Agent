@@ -14,36 +14,36 @@ public class TokenBudgetConfigResolver : ITokenBudgetConfigResolver
     private const bool DefaultAutoCompactionEnabled = true;
     private const int DefaultWarningThresholdPercentage = 80;
     private const int DefaultCompactionThresholdPercentage = 90;
-    
+
     /// <inheritdoc />
     public TokenBudgetConfig Resolve(
-        TokenBudgetConfig? sessionConfig, 
-        TokenBudgetConfig? agentConfig, 
+        TokenBudgetConfig? sessionConfig,
+        TokenBudgetConfig? agentConfig,
         TokenBudgetConfig? globalConfig)
     {
         // Start with global config (lowest priority) or default
         var result = new TokenBudgetConfig();
-        
+
         if (globalConfig is not null)
         {
             result = MergeConfigs(result, globalConfig);
         }
-        
+
         // Merge agent config (medium priority)
         if (agentConfig is not null)
         {
             result = MergeConfigs(result, agentConfig);
         }
-        
+
         // Merge session config (highest priority)
         if (sessionConfig is not null)
         {
             result = MergeConfigs(result, sessionConfig);
         }
-        
+
         return result;
     }
-    
+
     /// <summary>
     /// Merges the override config on top of the base config.
     /// For nullable values (MaxContextTokens): override ?? base
@@ -56,20 +56,20 @@ public class TokenBudgetConfigResolver : ITokenBudgetConfigResolver
         {
             // Nullable values: use override if set, otherwise use base
             MaxContextTokens = overrideConfig.MaxContextTokens ?? baseConfig.MaxContextTokens,
-            
+
             // Thresholds: merge with special handling for Percentage and AbsoluteTokens
             WarningThreshold = MergeThresholds(baseConfig.WarningThreshold, overrideConfig.WarningThreshold, isWarningThreshold: true),
             CompactionThreshold = MergeThresholds(baseConfig.CompactionThreshold, overrideConfig.CompactionThreshold, isWarningThreshold: false),
-            
+
             // Non-nullable value types: use override if different from default, else inherit from base
             SlidingWindowKeepTokens = GetNonNullableValue(baseConfig.SlidingWindowKeepTokens, overrideConfig.SlidingWindowKeepTokens, DefaultSlidingWindowKeepTokens),
             SummaryTargetTokens = GetNonNullableValue(baseConfig.SummaryTargetTokens, overrideConfig.SummaryTargetTokens, DefaultSummaryTargetTokens),
             AutoCompactionEnabled = GetNonNullableValue(baseConfig.AutoCompactionEnabled, overrideConfig.AutoCompactionEnabled, DefaultAutoCompactionEnabled)
         };
-        
+
         return result;
     }
-    
+
     /// <summary>
     /// Gets the merged value for a non-nullable property.
     /// If override differs from default, use override; otherwise use base.
@@ -84,7 +84,7 @@ public class TokenBudgetConfigResolver : ITokenBudgetConfigResolver
         // Otherwise inherit from base
         return baseValue;
     }
-    
+
     /// <summary>
     /// Merges threshold configurations.
     /// For Percentage: if override is null or equals default percentage, use base
@@ -93,7 +93,7 @@ public class TokenBudgetConfigResolver : ITokenBudgetConfigResolver
     private ThresholdConfig MergeThresholds(ThresholdConfig baseThreshold, ThresholdConfig overrideThreshold, bool isWarningThreshold)
     {
         var defaultPercentage = isWarningThreshold ? DefaultWarningThresholdPercentage : DefaultCompactionThresholdPercentage;
-        
+
         return new ThresholdConfig
         {
             // If override has Percentage explicitly set (not null and not default), use it; otherwise inherit from base
@@ -102,7 +102,7 @@ public class TokenBudgetConfigResolver : ITokenBudgetConfigResolver
             AbsoluteTokens = overrideThreshold.AbsoluteTokens ?? baseThreshold.AbsoluteTokens
         };
     }
-    
+
     /// <summary>
     /// Merges threshold percentage values.
     /// Uses override if it's explicitly set (not null and different from default).
@@ -114,13 +114,13 @@ public class TokenBudgetConfigResolver : ITokenBudgetConfigResolver
         {
             return basePercentage;
         }
-        
+
         // If override equals the default, treat as "not set" and use base
         if (overridePercentage.Value == defaultPercentage)
         {
             return basePercentage;
         }
-        
+
         // Otherwise use the explicitly set override value
         return overridePercentage;
     }
@@ -137,7 +137,7 @@ public class TokenBudgetConfigResolver : ITokenBudgetConfigResolver
     {
         // 1. Use existing Resolve logic to get base configuration
         var result = Resolve(sessionConfig, agentConfig, globalConfig);
-        
+
         // 2. Apply model limit as upper bound constraint
         if (modelContextLimit.HasValue)
         {
@@ -153,7 +153,7 @@ public class TokenBudgetConfigResolver : ITokenBudgetConfigResolver
             }
             // Otherwise: user's smaller value wins
         }
-        
+
         return result;
     }
 }

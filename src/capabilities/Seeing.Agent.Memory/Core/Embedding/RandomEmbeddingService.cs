@@ -1,7 +1,7 @@
-using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Core.Models;
+using System.Security.Cryptography;
 
 namespace Seeing.Agent.Memory.Core.Embedding;
 

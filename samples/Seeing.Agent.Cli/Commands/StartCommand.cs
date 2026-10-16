@@ -1,8 +1,7 @@
-using System.CommandLine;
-using System.Diagnostics;
-using System.Linq;
 using Seeing.Agent.Cli.Services;
 using Seeing.Agent.Core.Modules;
+using System.CommandLine;
+using System.Diagnostics;
 
 namespace Seeing.Agent.Cli.Commands;
 

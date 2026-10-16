@@ -1,9 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Permission;
-using Seeing.Session.Core;
-
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Session.Core;
 namespace Seeing.Agent.Core.Permission;
 
 /// <summary>

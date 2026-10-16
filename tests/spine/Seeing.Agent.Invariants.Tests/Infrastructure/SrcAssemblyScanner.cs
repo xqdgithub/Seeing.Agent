@@ -1,6 +1,6 @@
-using System.Reflection;
 using Microsoft.Extensions.Hosting;
 using Seeing.Agent.Abstractions.Modules;
+using System.Reflection;
 
 namespace Seeing.Agent.Invariants.Tests.Infrastructure;
 

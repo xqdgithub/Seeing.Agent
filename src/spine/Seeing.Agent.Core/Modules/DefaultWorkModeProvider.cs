@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
 
 namespace Seeing.Agent.Core.Modules;

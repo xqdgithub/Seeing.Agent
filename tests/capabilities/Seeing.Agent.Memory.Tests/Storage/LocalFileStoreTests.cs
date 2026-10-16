@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Core.Storage;
-using System.IO;
 using Xunit;
 
 namespace Seeing.Agent.Memory.Tests.Storage;
@@ -19,17 +18,17 @@ public class LocalFileStoreTests : IDisposable
             "Seeing.Agent.Memory.Tests",
             Guid.NewGuid().ToString("N")[..8]
         );
-        
+
         // 确保测试目录存在
         Directory.CreateDirectory(_testDirectory);
-        
+
         _store = new LocalFileStore(_testDirectory);
     }
 
     public void Dispose()
     {
         _store.Dispose();
-        
+
         // 清理测试目录
         if (Directory.Exists(_testDirectory))
         {

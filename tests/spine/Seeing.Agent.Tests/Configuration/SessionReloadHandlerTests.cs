@@ -2,7 +2,6 @@ using FluentAssertions;
 using Moq;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Session.Management;
 using Seeing.Session.Storage;
 using Xunit;

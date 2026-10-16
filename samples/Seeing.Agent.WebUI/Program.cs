@@ -1,45 +1,45 @@
-using System.Net;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Acp.Extensions;
+using Seeing.Agent.Agents.BuiltIn;
+using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Core.Extensions;
+using Seeing.Agent.Core.Modules;
+using Seeing.Agent.Gateway.Channels;
+using Seeing.Agent.Gateway.Extensions;
 using Seeing.Agent.Hosting;
 using Seeing.Agent.Hosting.Web;
 using Seeing.Agent.Hosting.Web.Circuits;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Extensions;
-using Seeing.Agent.Gateway.Channels;
-using Seeing.Agent.Gateway.Extensions;
-using Seeing.Agent.Memory.Extensions;
-using Seeing.Agent.Scheduler.Extensions;
-using Seeing.Agent.Agents.BuiltIn;
 using Seeing.Agent.Llm.Anthropic;
 using Seeing.Agent.Llm.ModelCapabilities;
 using Seeing.Agent.Llm.ModelCatalog.Builtin;
 using Seeing.Agent.Llm.OpenAI;
 using Seeing.Agent.Mcp;
+using Seeing.Agent.Memory.Extensions;
+using Seeing.Agent.Scheduler.Extensions;
 using Seeing.Agent.Skills;
-using Seeing.IO.Local;
+using Seeing.Agent.SystemOne.Extensions;
+using Seeing.Agent.TokenBudget.Extensions;
 using Seeing.Agent.Tools.Basic;
 using Seeing.Agent.Tools.FileSystem;
 using Seeing.Agent.Tools.Git;
-using Seeing.Agent.Tools.Shell;
-using Seeing.Agent.Tools.Web;
-using Seeing.Agent.Tools.Session;
 using Seeing.Agent.Tools.Question;
-using Seeing.Agent.Core.Modules;
+using Seeing.Agent.Tools.Session;
+using Seeing.Agent.Tools.Shell;
+using Seeing.Agent.Tools.SystemOne.Extensions;
+using Seeing.Agent.Tools.Web;
 using Seeing.Agent.WebUI.Rendering;
 using Seeing.Agent.WebUI.Rendering.Providers;
-using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Agent.WebUI.State;
-using Seeing.Session.Core;
-using Seeing.Agent.TokenBudget.Extensions;
-using Seeing.Agent.SystemOne.Extensions;
-using Seeing.Agent.Tools.SystemOne.Extensions;
+using Seeing.IO.Local;
 using Seeing.Provider.DeepSeek;
 using Seeing.Provider.MiMo;
 using Seeing.Provider.OpenCodeZen;
 using Seeing.Provider.SiliconFlow;
+using Seeing.Session.Core;
+using System.Net;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -239,7 +239,7 @@ using (var scope = app.Services.CreateScope())
     sp.InitializeAcpCommands();  // 注册 ACP 专属命令
 
     // 注册 Memory Hook / Tools 由 AddMemoryServices 内 Bootstrap + ITool 自注册
-    
+
     // 注册 TokenBudget Hook Handler（自动管理 token 预算）
     sp.UseTokenBudgetHooks();
 

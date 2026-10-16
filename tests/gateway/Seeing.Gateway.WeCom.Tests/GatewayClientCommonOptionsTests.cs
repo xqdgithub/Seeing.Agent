@@ -1,11 +1,11 @@
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Seeing.Gateway.Client;
 using Seeing.Gateway.Client.Extensions;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Xunit;
 
 namespace Seeing.Gateway.WeCom.Tests;

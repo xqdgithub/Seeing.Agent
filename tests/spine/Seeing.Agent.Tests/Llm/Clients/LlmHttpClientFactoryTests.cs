@@ -1,9 +1,9 @@
-using System.Net;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.Anthropic.Clients;
 using Seeing.Agent.Llm.OpenAI.Clients;
+using System.Net;
 using Xunit;
 using OpenAiHttpFactory = Seeing.Agent.Llm.OpenAI.Clients.LlmHttpClientFactory;
 

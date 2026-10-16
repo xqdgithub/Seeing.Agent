@@ -1,7 +1,7 @@
-using System.CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Cli.Infrastructure;
 using Seeing.Session.Core;
+using System.CommandLine;
 
 namespace Seeing.Agent.Cli.Commands;
 

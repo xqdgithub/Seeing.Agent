@@ -1,25 +1,18 @@
-﻿using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Scheduling;
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Quartz;
 using Quartz.Impl;
-using Seeing.Agent.Configuration;
-using Seeing.Agent.Core;
-using Seeing.Agent.Tools.Support;
+using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Scheduler.Abstractions;
-using Seeing.Agent.Scheduler.Configuration;
+using Seeing.Agent.Abstractions.Scheduling;
+using Seeing.Agent.Core;
 using Seeing.Agent.Scheduler.Engine;
 using Seeing.Agent.Scheduler.Management;
 using Seeing.Agent.Scheduler.Models;
 using Seeing.Agent.Scheduler.Persistence;
 using Seeing.Agent.Scheduler.Tests.Fixtures;
-using Seeing.Session.Management;
 using Xunit;
 
 namespace Seeing.Agent.Scheduler.Tests;
@@ -218,7 +211,7 @@ public class SchedulerEngineTests
 
         await engine.StopAsync(TestContext.Current.CancellationToken);
     }
-    
+
     [Fact]
     public async Task ScheduleManager_MigratesOldEnabledField()
     {

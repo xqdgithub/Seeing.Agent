@@ -1,11 +1,11 @@
+using Microsoft.Extensions.Options;
+using Seeing.Gateway.Models;
+using Seeing.Gateway.Protocol;
 using System.Collections.Concurrent;
 using System.Net.Http.Json;
 using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 using System.Text;
-using Microsoft.Extensions.Options;
-using Seeing.Gateway.Models;
-using Seeing.Gateway.Protocol;
 
 namespace Seeing.Gateway.Client;
 

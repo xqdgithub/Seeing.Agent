@@ -1,12 +1,10 @@
-using System.Collections.Immutable;
 using FluentAssertions;
-using Seeing.Agent.Abstractions.Reminders;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Core.Reminders;
-using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.Models.Timeline;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Session.Core;
+using System.Collections.Immutable;
 
 namespace Seeing.Agent.WebUI.Tests.Services;
 

@@ -1,8 +1,6 @@
-using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Models;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Configuration

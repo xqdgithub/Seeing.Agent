@@ -9,11 +9,11 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Endpoints;
 using Seeing.Agent.Gateway.Permission;
-using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Agent.Llm;
 using Seeing.Session.Core;
 

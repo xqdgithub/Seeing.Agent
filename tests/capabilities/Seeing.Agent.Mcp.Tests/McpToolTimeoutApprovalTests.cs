@@ -1,4 +1,3 @@
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -7,7 +6,7 @@ using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Decorators;
-using Seeing.Agent.Mcp;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Mcp.Tests;

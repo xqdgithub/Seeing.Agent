@@ -1,5 +1,5 @@
-using Seeing.Agent.Abstractions.Llm;
 using FluentAssertions;
+using Seeing.Agent.Abstractions.Llm;
 using Xunit;
 
 namespace Seeing.Provider.OpenCodeZen.Tests;

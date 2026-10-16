@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Seeing.Gateway.WeCom;
 
 namespace Seeing.Gateway.WeCom;
 

@@ -1,11 +1,9 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using Quartz;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Scheduling;
-using Seeing.Agent.Abstractions.Tools;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
-using Quartz;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Configuration;
@@ -71,10 +69,10 @@ public static class SchedulerServiceCollectionExtensions
         {
             q.SchedulerId = "SeeingAgentScheduler";
             q.SchedulerName = "Seeing.Agent Scheduler";
-            
+
             // 使用默认线程池
             q.UseDefaultThreadPool(tp => tp.MaxConcurrency = 10);
-            
+
             // 默认使用内存存储
             q.UseInMemoryStore();
         });
@@ -159,15 +157,15 @@ public static class SchedulerServiceCollectionExtensions
             var workspaceProvider = sp.GetRequiredService<IWorkspaceProvider>();
             var loggerFactory = sp.GetService<Microsoft.Extensions.Logging.ILoggerFactory>();
             var logger = loggerFactory?.CreateLogger("QuartzSqliteInitializer");
-            
+
             q.SchedulerId = "SeeingAgentScheduler";
             q.SchedulerName = "Seeing.Agent Scheduler";
-            
+
             // 使用默认线程池
             q.UseDefaultThreadPool(tp => tp.MaxConcurrency = schedulerOptions.MaxConcurrentJobs);
-            
+
             // 根据配置选择存储方式
-            if (schedulerOptions.Persistence.Enabled && 
+            if (schedulerOptions.Persistence.Enabled &&
                 schedulerOptions.Persistence.Provider.Equals("sqlite", StringComparison.OrdinalIgnoreCase))
             {
                 var dbPath = schedulerOptions.Persistence.ConnectionString;

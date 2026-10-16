@@ -21,7 +21,7 @@ public record FileNode(
             Guid.NewGuid().ToString("N")[..8],
             InferType(path)
         );
-        
+
         return new FileNode(
             Path: path,
             Content: content,
@@ -30,13 +30,13 @@ public record FileNode(
             Links: links
         );
     }
-    
+
     /// <summary>解析 Wikilink</summary>
     private static IReadOnlyList<string> ParseWikilinks(string content)
     {
         return WikilinkParser.Parse(content);
     }
-    
+
     private static MemoryType InferType(string path)
     {
         if (path.StartsWith("session/")) return MemoryType.Session;

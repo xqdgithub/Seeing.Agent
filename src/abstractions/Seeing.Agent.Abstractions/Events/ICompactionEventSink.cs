@@ -6,7 +6,7 @@ namespace Seeing.Agent.Abstractions.Events;
 /// </summary>
 public interface ICompactionEventSink
 {
-/// <summary>
+    /// <summary>
     /// 发布压缩进度增量。
     /// </summary>
     /// <param name="sessionId">会话 ID</param>

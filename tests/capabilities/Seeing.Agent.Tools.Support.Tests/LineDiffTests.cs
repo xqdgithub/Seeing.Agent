@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Seeing.Agent.Tools.Support;
 using Xunit;
 
 namespace Seeing.Agent.Tools.Support.Tests;

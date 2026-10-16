@@ -1,4 +1,3 @@
-using System.Linq;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Session.Core;

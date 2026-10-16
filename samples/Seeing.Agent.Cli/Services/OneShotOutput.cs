@@ -1,7 +1,7 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Permissions;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Seeing.Agent.Cli.Services;
 

@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using FluentAssertions;
 using Moq;
 using Seeing.Agent.Abstractions.Events;
@@ -6,6 +5,7 @@ using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Questions;
 using Seeing.Agent.Tui.Services;
 using Seeing.Session.Core;
+using System.Runtime.CompilerServices;
 
 namespace Seeing.Agent.Tui.Tests.Services;
 

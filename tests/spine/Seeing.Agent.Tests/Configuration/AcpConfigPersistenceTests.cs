@@ -1,13 +1,13 @@
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Acp.Configuration;
-using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.Configuration;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Configuration;

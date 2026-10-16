@@ -1,8 +1,8 @@
-using System.Diagnostics;
-using System.Text.Json;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Decorators;
+using System.Diagnostics;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Decorators;

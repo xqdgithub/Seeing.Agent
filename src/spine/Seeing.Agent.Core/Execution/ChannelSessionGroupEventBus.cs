@@ -1,7 +1,7 @@
+using Seeing.Agent.Abstractions.Events;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
-using Seeing.Agent.Abstractions.Events;
 
 namespace Seeing.Agent.Core.Execution;
 

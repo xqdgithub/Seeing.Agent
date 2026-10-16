@@ -1,11 +1,11 @@
-using Seeing.Agent.Abstractions.Tools;
-using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Tools.Support;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Runtime;
+using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Tools.Support;
 using Seeing.Session.Core;
+using System.Text;
+using System.Text.Json;
 
 namespace Seeing.Agent.Hosting.Tools;
 
@@ -143,7 +143,7 @@ public class TaskStatusTool : ToolBase
             .Select(m => m.Content?.Trim())
             .Where(content => !string.IsNullOrEmpty(content));
         var result = string.Join("\n\n", allAssistants);
-        
+
         var lastError = activeMessages
             .LastOrDefault(m => string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase)
                                 && m.Content?.Contains("error", StringComparison.OrdinalIgnoreCase) == true);

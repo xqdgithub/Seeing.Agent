@@ -1,6 +1,6 @@
-﻿using System.Text;
-using Seeing.Agent.Abstractions.Questions;
+﻿using Seeing.Agent.Abstractions.Questions;
 using Spectre.Console;
+using System.Text;
 
 namespace Seeing.Agent.Tui.Rendering.Prompts;
 

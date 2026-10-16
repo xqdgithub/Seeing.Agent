@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Acp.Types;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Acp.Backends;
@@ -6,6 +5,7 @@ using Seeing.Agent.Acp.Client;
 using Seeing.Agent.Acp.Permission;
 using Seeing.Agent.Acp.Session;
 using Seeing.Agent.Acp.Transport;
+using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Acp.Execution;
 

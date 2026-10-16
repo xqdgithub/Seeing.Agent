@@ -17,7 +17,7 @@ public class OnlineSkillParserAggregator
     public OnlineSkillParserAggregator(ILogger<OnlineSkillParserAggregator> logger)
     {
         _logger = logger;
-        
+
         // 注册默认解析器
         RegisterParser(new SkillsShParser());
         RegisterParser(new ModelScopeParser());
@@ -62,7 +62,7 @@ public class OnlineSkillParserAggregator
         }
 
         var parser = snapshot.FirstOrDefault(p => p.CanParse(url));
-        
+
         if (parser == null)
         {
             _logger.LogWarning("未找到支持该 URL 的解析器: {Url}", url);
@@ -70,16 +70,16 @@ public class OnlineSkillParserAggregator
         }
 
         _logger.LogInformation("使用 {ParserName} 解析技能: {Url}", parser.Name, url);
-        
+
         try
         {
             var result = await parser.ParseAsync(url, httpClient, cancellationToken);
-            
+
             if (result == null)
             {
                 _logger.LogWarning("解析器 {ParserName} 无法解析: {Url}", parser.Name, url);
             }
-            
+
             return result;
         }
         catch (Exception ex)
@@ -106,7 +106,7 @@ public class OnlineSkillParserAggregator
         }
 
         var parser = snapshot.FirstOrDefault(p => p.CanParse(url));
-        
+
         if (parser == null)
         {
             _logger.LogWarning("未找到支持该 URL 的解析器: {Url}", url);
@@ -114,7 +114,7 @@ public class OnlineSkillParserAggregator
         }
 
         _logger.LogInformation("使用 {ParserName} 下载技能: {DownloadUrl}", parser.Name, result.DownloadUrl);
-        
+
         try
         {
             return await parser.DownloadZipAsync(result, httpClient, cancellationToken);

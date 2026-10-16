@@ -1,5 +1,5 @@
-using System.Reflection;
 using Seeing.Agent.Abstractions.Modules;
+using System.Reflection;
 
 namespace Seeing.Agent.Tests.Scenarios;
 

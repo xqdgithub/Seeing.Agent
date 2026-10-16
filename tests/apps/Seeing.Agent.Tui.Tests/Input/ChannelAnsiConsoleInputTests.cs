@@ -1,8 +1,8 @@
-using System.Threading.Channels;
 using FluentAssertions;
 using Seeing.Agent.Tui.Input;
 using Seeing.Agent.Tui.Rendering;
 using Spectre.Console;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Tui.Tests.Input;
 

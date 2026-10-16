@@ -1,4 +1,3 @@
-using System;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.WebUI.Services;

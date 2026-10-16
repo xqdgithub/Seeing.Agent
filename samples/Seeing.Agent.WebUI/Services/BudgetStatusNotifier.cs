@@ -48,12 +48,12 @@ public class BudgetStatusNotifier : IBudgetStatusNotifier
     public void Publish(string sessionId, BudgetStatusResponse status)
     {
         List<Action<BudgetStatusResponse>>? subscribersCopy;
-        
+
         lock (_lock)
         {
             _currentStatuses[sessionId] = status;
-            subscribersCopy = _subscribers.TryGetValue(sessionId, out var list) 
-                ? list.ToList() 
+            subscribersCopy = _subscribers.TryGetValue(sessionId, out var list)
+                ? list.ToList()
                 : null;
         }
 

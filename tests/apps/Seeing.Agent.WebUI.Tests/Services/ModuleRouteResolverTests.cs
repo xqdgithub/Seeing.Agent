@@ -1,5 +1,5 @@
-using Microsoft.Extensions.DependencyInjection;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Ui;

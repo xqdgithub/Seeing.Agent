@@ -1,7 +1,7 @@
-using System.Text.Json;
 using Seeing.Agent.Abstractions.Todo;
 using Spectre.Console;
 using Spectre.Console.Rendering;
+using System.Text.Json;
 
 namespace Seeing.Agent.Tui.Rendering;
 

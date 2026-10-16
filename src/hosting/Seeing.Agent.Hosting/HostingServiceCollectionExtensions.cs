@@ -1,22 +1,19 @@
-using Seeing.Agent.Abstractions.Commands;
-using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Runtime;
+using Seeing.Agent.Core.Commands.Discovery;
+using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Hosting.Commands;
 using Seeing.Agent.Hosting.Commands.BuiltIn;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Hosting.Tools;
-using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Abstractions.Runtime;
-using Seeing.Agent.Core.Execution;
-using Seeing.Agent.Core.Commands;
-using Seeing.Agent.Core.Commands.Discovery;
-using Seeing.Agent.Abstractions.Events;
 using Seeing.Session.Core;
-using Seeing.Agent.Core.Events;
-using Seeing.Agent.Abstractions.Agents;
 
 namespace Seeing.Agent.Hosting;
 

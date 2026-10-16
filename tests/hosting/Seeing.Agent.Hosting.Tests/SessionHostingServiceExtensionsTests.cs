@@ -1,8 +1,6 @@
-using Microsoft.Extensions.DependencyInjection;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Runtime;
-using Seeing.Agent.Hosting;
-using Seeing.Agent.Hosting.Execution;
 using Seeing.Session.Persistence;
 using Xunit;
 

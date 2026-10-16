@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using Seeing.Agent.Abstractions.Permissions;
+using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Core.Permission;
 

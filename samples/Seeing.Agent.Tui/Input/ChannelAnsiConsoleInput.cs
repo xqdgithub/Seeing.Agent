@@ -1,5 +1,5 @@
-﻿using System.Threading.Channels;
-using Spectre.Console;
+﻿using Spectre.Console;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Tui.Input;
 

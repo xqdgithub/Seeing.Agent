@@ -1,6 +1,5 @@
-﻿using System.Text;
-
-using Seeing.Agent.Abstractions.Todo;
+﻿using Seeing.Agent.Abstractions.Todo;
+using System.Text;
 namespace Seeing.Agent.Core.Todo;
 
 /// <summary>

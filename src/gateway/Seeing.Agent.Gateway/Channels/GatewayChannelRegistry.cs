@@ -1,12 +1,11 @@
-using System.Reflection;
-using System.Runtime.Loader;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.ConfigSchema;
 using Seeing.Gateway.Plugins;
-using Seeing.Gateway.WeCom;
 using Seeing.Gateway.QQ;
+using Seeing.Gateway.WeCom;
+using System.Runtime.Loader;
 
 namespace Seeing.Agent.Gateway.Channels;
 

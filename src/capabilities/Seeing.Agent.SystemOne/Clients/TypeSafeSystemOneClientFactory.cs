@@ -1,5 +1,5 @@
-using Seeing.Agent.Abstractions.SystemOne;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.SystemOne;
 
 namespace Seeing.Agent.SystemOne.Clients;
 

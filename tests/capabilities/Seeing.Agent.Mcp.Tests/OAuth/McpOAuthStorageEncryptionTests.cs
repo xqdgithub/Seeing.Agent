@@ -1,10 +1,10 @@
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Mcp.OAuth;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Mcp.Tests.OAuth;

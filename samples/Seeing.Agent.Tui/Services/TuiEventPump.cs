@@ -1,6 +1,6 @@
-using System.Threading.Channels;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Runtime;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Tui.Services;
 

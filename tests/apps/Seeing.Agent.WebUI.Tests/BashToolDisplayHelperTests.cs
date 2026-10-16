@@ -1,9 +1,8 @@
-using System.Collections.Immutable;
 using FluentAssertions;
 using Seeing.Agent.WebUI.Helpers;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Session.Core;
-using Xunit;
+using System.Collections.Immutable;
 
 namespace Seeing.Agent.WebUI.Tests;
 

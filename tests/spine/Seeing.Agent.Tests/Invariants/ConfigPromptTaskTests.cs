@@ -1,18 +1,13 @@
-using System.Reflection;
 using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Acp.Configuration;
-using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Prompts;
-using Seeing.Agent.Core.Execution;
-using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Hosting.Tools;
 using Xunit;
 

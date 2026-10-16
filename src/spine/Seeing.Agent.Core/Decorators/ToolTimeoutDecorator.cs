@@ -2,9 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Helpers;
-using Seeing.Agent.Core.Tools;
 using System.Text.Json;
 
 namespace Seeing.Agent.Core.Decorators

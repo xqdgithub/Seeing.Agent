@@ -1,7 +1,6 @@
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Acp.Configuration;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Skills.Configuration;
 using Seeing.Agent.TokenBudget.Configuration;

@@ -1,24 +1,22 @@
 using FluentAssertions;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Skills;
-using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
+using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Core.Tools;
 using Seeing.Agent.Mcp;
 using Seeing.Agent.Mcp.Configuration;
 using Seeing.Agent.Mcp.Factory;
 using Seeing.Agent.Mcp.Policy;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Skills.Configuration;
-using Seeing.Agent.Core.Tools;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Core;

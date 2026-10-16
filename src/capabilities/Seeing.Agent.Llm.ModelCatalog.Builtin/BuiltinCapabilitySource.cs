@@ -1,8 +1,7 @@
-using System.Reflection;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Llm;
+using System.Text.Json;
 
 namespace Seeing.Agent.Llm.ModelCatalog.Builtin;
 

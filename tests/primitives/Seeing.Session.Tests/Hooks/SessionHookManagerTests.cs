@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -32,7 +28,7 @@ namespace Seeing.Session.Tests.Hooks
         public void AddHook_ShouldSortByPriority()
         {
             var manager = new SessionHookManager();
-            
+
             var hook1 = new Mock<ISessionHook>();
             hook1.Setup(h => h.HookPoint).Returns(HookPoints.Created);
             hook1.Setup(h => h.Priority).Returns(20);
@@ -51,7 +47,7 @@ namespace Seeing.Session.Tests.Hooks
         public void AddHook_ShouldIgnoreNullHook()
         {
             var manager = new SessionHookManager();
-            
+
             manager.AddHook(null!);
 
             manager.GetHookCount(HookPoints.Created).Should().Be(0);
@@ -61,7 +57,7 @@ namespace Seeing.Session.Tests.Hooks
         public void AddHook_ShouldSupportMultipleHookPoints()
         {
             var manager = new SessionHookManager();
-            
+
             var createdHook = new Mock<ISessionHook>();
             createdHook.Setup(h => h.HookPoint).Returns(HookPoints.Created);
             createdHook.Setup(h => h.Priority).Returns(10);
@@ -127,7 +123,7 @@ namespace Seeing.Session.Tests.Hooks
         public void ClearHooks_ShouldRemoveAllHooksForPoint()
         {
             var manager = new SessionHookManager();
-            
+
             var hook1 = new Mock<ISessionHook>();
             hook1.Setup(h => h.HookPoint).Returns(HookPoints.Created);
             hook1.Setup(h => h.Priority).Returns(10);
@@ -170,7 +166,7 @@ namespace Seeing.Session.Tests.Hooks
         public void GetHookCount_ShouldReturnCorrectCount()
         {
             var manager = new SessionHookManager();
-            
+
             var hook1 = new Mock<ISessionHook>();
             hook1.Setup(h => h.HookPoint).Returns(HookPoints.Created);
             hook1.Setup(h => h.Priority).Returns(10);

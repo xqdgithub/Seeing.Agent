@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Questions;
 using Seeing.Agent.WebUI.Models;
 

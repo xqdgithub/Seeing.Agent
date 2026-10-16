@@ -1,11 +1,10 @@
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Questions;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Tools.Question;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Tools.Question.Tests;

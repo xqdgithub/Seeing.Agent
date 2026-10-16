@@ -16,7 +16,7 @@ namespace Seeing.Agent.Abstractions.Agents;
 public class AgentDefinition
 {
     // === 基础标识 ===
-    
+
     /// <summary>Agent 名称（唯一标识）</summary>
     public string Name { get; set; } = string.Empty;
 
@@ -28,26 +28,26 @@ public class AgentDefinition
 
     /// <summary>Agent 类别（用于委托分类，如 deep、quick、visual-engineering）</summary>
     public string? Category { get; set; }
-    
+
     /// <summary>Agent 标签</summary>
     public List<string> Tags { get; set; } = new();
 
     // === 运行时标识 ===
-    
+
     /// <summary>是否为内置 Agent</summary>
     public bool IsNative { get; set; }
-    
+
     /// <summary>是否隐藏（不在用户选择列表显示，但仍可作为 SubAgent 使用）</summary>
     public bool IsHidden { get; set; }
-    
+
     /// <summary>是否禁用（完全不可用，任何地方都无法使用）</summary>
     public bool Disabled { get; set; }
-    
+
     /// <summary>是否为后台 Agent（异步执行）</summary>
     public bool IsBackground { get; set; }
-    
+
     // === 核心配置 ===
-    
+
     /// <summary>系统提示词（核心配置）</summary>
     public string? SystemPrompt { get; set; }
 
@@ -58,7 +58,7 @@ public class AgentDefinition
     public int? MaxSteps { get; set; }
 
     // === LLM 参数 ===
-    
+
     /// <summary>温度参数</summary>
     public double? Temperature { get; set; }
 
@@ -71,7 +71,7 @@ public class AgentDefinition
     public int? MaxTokens { get; set; }
 
     // === 权限配置 ===
-    
+
     /// <summary>权限规则</summary>
     public List<PermissionRuleEntry> PermissionRules { get; set; } = new();
 
@@ -79,7 +79,7 @@ public class AgentDefinition
     public PermissionEffect PermissionDefaultEffect { get; set; } = PermissionEffect.Ask;
 
     // === 工具限制 ===
-    
+
     /// <summary>允许的工具（白名单，空表示允许所有）</summary>
     public List<string> AllowedTools { get; set; } = new();
 
@@ -93,7 +93,7 @@ public class AgentDefinition
     public List<string> AllowedAgents { get; set; } = new();
 
     // === 执行配置 ===
-    
+
     /// <summary>执行运行时类型</summary>
     public AgentRuntime Runtime { get; set; } = AgentRuntime.Native;
 

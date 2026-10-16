@@ -1,7 +1,6 @@
-using System.Text.Json;
-using System.Threading.Channels;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Session.Core;
+using System.Text.Json;
 
 namespace Seeing.Agent.Tui.Services;
 

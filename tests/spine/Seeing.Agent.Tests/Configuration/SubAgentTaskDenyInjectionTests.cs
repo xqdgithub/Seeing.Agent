@@ -2,11 +2,8 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
-using Seeing.Agent.Core.Models;
+using Seeing.Agent.Core.Configuration;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Configuration;

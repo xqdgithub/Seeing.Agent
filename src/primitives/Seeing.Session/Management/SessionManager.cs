@@ -3,7 +3,6 @@ using Seeing.Session.Core;
 using Seeing.Session.Hooks;
 using Seeing.Session.Storage;
 using System.Collections.Concurrent;
-using System.Linq;
 
 namespace Seeing.Session.Management
 {

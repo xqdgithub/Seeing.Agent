@@ -311,7 +311,7 @@ public class RrfFusionTests
 
         // Assert
         results.Should().HaveCount(149); // docs 1-149 (1-49 only vector, 50-149 both, 100-149 only keyword)
-        
+
         // Results should be sorted by score
         results.Should().BeInDescendingOrder(r => r.Score);
 

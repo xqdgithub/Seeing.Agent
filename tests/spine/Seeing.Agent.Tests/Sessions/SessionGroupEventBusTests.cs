@@ -4,10 +4,9 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Hosting;
 using Seeing.Session.Core;
-using Xunit;
 using System.Collections.Concurrent;
-using System.Linq;
 using System.Threading.Channels;
+using Xunit;
 
 namespace Seeing.Agent.Tests.Sessions;
 

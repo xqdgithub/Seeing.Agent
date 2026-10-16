@@ -1,6 +1,3 @@
-using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Abstractions.Scheduling;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -9,18 +6,18 @@ using Moq;
 using Quartz;
 using Quartz.Impl;
 using Quartz.Simpl;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Hooks;
+using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Reminders;
+using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
-using Seeing.Agent.Tools.Support;
-using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Abstractions.Hooks;
-using Seeing.Agent.Abstractions.Reminders;
 using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Scheduler.Abstractions;
-using Seeing.Agent.Scheduler.Configuration;
 using Seeing.Agent.Scheduler.Engine;
-using Seeing.Agent.Scheduler.Extensions;
 using Seeing.Agent.Scheduler.Jobs;
 using Seeing.Agent.Scheduler.Management;
 using Seeing.Agent.Scheduler.Models;
@@ -44,7 +41,7 @@ public class SchedulerIntegrationTests
         var (manager, engine) = CreateScheduleManager(ws, executedPrompts);
 
         await manager.StartAsync(TestContext.Current.CancellationToken);
-        
+
         // 验证 scheduler 已启动
         engine.IsStarted.Should().BeTrue("scheduler should be started");
 
@@ -67,10 +64,10 @@ public class SchedulerIntegrationTests
         statusBefore.State.Should().Be(JobState.Scheduled);
 
         var result = await manager.RunJobOnceAsync("test-job", TestContext.Current.CancellationToken);
-        
+
         // RunJobOnceAsync 返回 TriggerResult
         result.Should().BeOfType<TriggerResult.Accepted>();
-        
+
         // 等待任务实际执行完成（Quartz 异步执行）
         for (int i = 0; i < 30; i++)
         {
@@ -78,9 +75,9 @@ public class SchedulerIntegrationTests
             if (executedPrompts.Count > 0)
                 break;
         }
-        
+
         Console.WriteLine($"Executed prompts: {string.Join(", ", executedPrompts)}");
-        
+
         if (executedPrompts.Count == 0)
         {
             var statusAfter = await manager.GetJobStatusAsync("test-job", TestContext.Current.CancellationToken);
@@ -88,7 +85,7 @@ public class SchedulerIntegrationTests
             Console.WriteLine($"Engine started: {engineStatus.IsStarted}, Running jobs: {engineStatus.RunningJobs}");
             Console.WriteLine($"Job state after trigger: {statusAfter.State}");
             Console.WriteLine($"Job previous fire: {statusAfter.PreviousFireTime}");
-            
+
             // 检查历史记录是否有错误
             var debugRepo = new JsonScheduleRepository(ws.Workspace, NullLogger<JsonScheduleRepository>.Instance);
             var debugHistory = await debugRepo.GetHistoryAsync("test-job", 10, ct: TestContext.Current.CancellationToken);
@@ -99,7 +96,7 @@ public class SchedulerIntegrationTests
                 Console.WriteLine($"Last history error: {debugHistory[0].Error}");
             }
         }
-        
+
         executedPrompts.Should().ContainSingle(p => p.Contains("执行定时检查", StringComparison.Ordinal));
 
         var repo = new JsonScheduleRepository(ws.Workspace, NullLogger<JsonScheduleRepository>.Instance);
@@ -137,7 +134,7 @@ public class SchedulerIntegrationTests
 
         var result = await manager.RunJobOnceAsync("text-job", TestContext.Current.CancellationToken);
         result.Should().BeOfType<TriggerResult.Accepted>();
-        
+
         // 等待异步执行完成
         await Task.Delay(2000, TestContext.Current.CancellationToken);
 
@@ -162,14 +159,14 @@ public class SchedulerIntegrationTests
 
         var executedPrompts = new List<string>();
         var (manager, engine, serviceProvider) = CreateScheduleManagerWithServices(ws, executedPrompts, schedulerOptions: schedulerOptions);
-        
+
         await manager.StartAsync(TestContext.Current.CancellationToken);
-        
+
         // 验证 scheduler 状态
         var scheduler = engine.Scheduler;
         scheduler.Should().NotBeNull();
         scheduler!.IsStarted.Should().BeTrue();
-        
+
         // 验证 heartbeat job 已注册
         var jobKey = new Quartz.JobKey(SchedulerConstants.HeartbeatJobId, SchedulerConstants.DefaultJobGroup);
         var jobDetail = await scheduler.GetJobDetail(jobKey, TestContext.Current.CancellationToken);
@@ -179,10 +176,10 @@ public class SchedulerIntegrationTests
         // 触发 job
         var result = await manager.RunJobOnceAsync(SchedulerConstants.HeartbeatJobId, TestContext.Current.CancellationToken);
         result.Should().BeOfType<TriggerResult.Accepted>();
-        
+
         // 等待执行完成（Quartz 异步执行）
         await Task.Delay(3000, TestContext.Current.CancellationToken);
-        
+
         Console.WriteLine($"Executed prompts: {string.Join(", ", executedPrompts)}");
 
         await manager.StopAsync(TestContext.Current.CancellationToken);
@@ -197,7 +194,7 @@ public class SchedulerIntegrationTests
         services.AddSingleton<IScheduleRepository, JsonScheduleRepository>();
         services.AddSingleton<QuartzSchedulerEngine>();
         services.AddSingleton<ScheduleManager>();
-        
+
         // 验证服务可以构建
         services.Should().NotBeNull();
     }
@@ -215,17 +212,17 @@ public class SchedulerIntegrationTests
         var executedPrompts = new List<string>();
         var (manager, engine) = CreateScheduleManager(ws, executedPrompts, schedulerOptions: schedulerOptions);
         await manager.StartAsync(TestContext.Current.CancellationToken);
-        
+
         // 验证 scheduler 状态
         var scheduler = engine.Scheduler;
         scheduler.Should().NotBeNull();
         scheduler!.IsStarted.Should().BeTrue();
 
         var result = await manager.RunJobOnceAsync(SchedulerConstants.HeartbeatJobId, TestContext.Current.CancellationToken);
-        
+
         // 验证触发成功
         result.Should().BeOfType<TriggerResult.Accepted>();
-        
+
         // 等待执行
         await Task.Delay(2000, TestContext.Current.CancellationToken);
 
@@ -288,7 +285,7 @@ public class SchedulerIntegrationTests
             await manager.StopAsync(TestContext.Current.CancellationToken);
         }
     }
-    
+
     [Fact]
     public async Task ScheduleManager_DisableAndEnable()
     {
@@ -342,7 +339,7 @@ public class SchedulerIntegrationTests
 
         // 先创建 ScheduleManager，但需要 engine
         var repo = new JsonScheduleRepository(ws.Workspace, NullLogger<JsonScheduleRepository>.Instance);
-        
+
         // Build Quartz scheduler with proper configuration
         var properties = new System.Collections.Specialized.NameValueCollection
         {
@@ -352,7 +349,7 @@ public class SchedulerIntegrationTests
         };
         var schedulerFactory = new StdSchedulerFactory(properties);
         var scheduler = schedulerFactory.GetScheduler().GetAwaiter().GetResult();
-        
+
         // 使用包装工厂确保返回预配置的 scheduler
         var wrapperFactory = new PreconfiguredSchedulerFactory(scheduler);
         var engine = new QuartzSchedulerEngine(wrapperFactory, NullLogger<QuartzSchedulerEngine>.Instance);

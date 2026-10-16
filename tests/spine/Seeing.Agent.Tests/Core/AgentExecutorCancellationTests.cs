@@ -5,13 +5,13 @@ using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Hooks;
-using Seeing.Agent.Core.Prompts;
-using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Core.Llm;
-using Seeing.Agent.Llm;
+using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Core.Tools;
+using Seeing.Agent.Llm;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Core;

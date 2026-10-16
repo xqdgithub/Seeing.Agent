@@ -1,5 +1,5 @@
-using System.Runtime.CompilerServices;
 using Seeing.Agent.Abstractions.Events;
+using System.Runtime.CompilerServices;
 
 namespace Seeing.Agent.Core.Execution;
 

@@ -2,14 +2,12 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
-using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Decorators;
 using Seeing.Agent.Core.Output;
 using Seeing.Session.Storage;
-using System.IO;
 using System.Text.Json;
 using Xunit;
 

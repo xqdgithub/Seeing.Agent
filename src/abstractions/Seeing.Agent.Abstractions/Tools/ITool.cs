@@ -1,6 +1,4 @@
-﻿using System.Text.Json;
-
-using Seeing.Agent.Abstractions.Agents;
+﻿using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Abstractions.Tools
 {

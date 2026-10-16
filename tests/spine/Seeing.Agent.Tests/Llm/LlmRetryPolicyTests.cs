@@ -1,6 +1,6 @@
-using System.Net;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
+using System.Net;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Llm;

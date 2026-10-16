@@ -1,9 +1,8 @@
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Core.Permission;
-using Seeing.Agent.Core.Scenarios;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.CapabilitySets;
 using Seeing.Agent.Core.Modules;
-using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.Scenarios;
 
 namespace Seeing.Agent.Core.Configuration
 {

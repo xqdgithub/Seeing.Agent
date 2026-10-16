@@ -1,7 +1,7 @@
-using System.Reflection;
-using System.Text;
 using FluentAssertions;
 using Seeing.Agent.Tui.Rendering;
+using System.Reflection;
+using System.Text;
 
 namespace Seeing.Agent.Tui.Tests.Rendering;
 

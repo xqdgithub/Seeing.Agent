@@ -99,7 +99,7 @@ public class KeywordIndexTests : IDisposable
         // Assert
         results.Should().NotBeEmpty();
         results.Should().HaveCount(2); // doc1 and doc2 contain "machine learning"
-        
+
         // 验证排序：doc1 应该排在前面，因为 "machine learning" 出现更直接
         results[0].Path.Should().Be("daily/doc1.md");
     }
@@ -142,7 +142,7 @@ public class KeywordIndexTests : IDisposable
             title: "To Delete"
         );
         await _index.IndexAsync(node, TestContext.Current.CancellationToken);
-        
+
         var countBefore = await _index.GetDocumentCountAsync(TestContext.Current.CancellationToken);
         countBefore.Should().Be(1);
 
@@ -247,7 +247,7 @@ public class KeywordIndexTests : IDisposable
             CreateTestNode("daily/clear2.md", "Content 2"),
         };
         await _index.IndexBatchAsync(nodes, TestContext.Current.CancellationToken);
-        
+
         var countBefore = await _index.GetDocumentCountAsync(TestContext.Current.CancellationToken);
         countBefore.Should().Be(2);
 

@@ -1,9 +1,8 @@
-using System.Collections.Concurrent;
-using System.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Session.Core;
 using Seeing.Session.Storage;
+using System.Collections.Concurrent;
 
 namespace Seeing.Session.Management
 {

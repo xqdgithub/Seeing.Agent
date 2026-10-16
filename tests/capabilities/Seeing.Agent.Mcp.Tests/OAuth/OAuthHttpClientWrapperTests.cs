@@ -1,4 +1,3 @@
-using System.Net;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
@@ -6,6 +5,7 @@ using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Mcp.OAuth;
 using Seeing.Agent.Mcp.Factory;
 using Seeing.Agent.Mcp.OAuth;
+using System.Net;
 using Xunit;
 
 namespace Seeing.Agent.Mcp.Tests.OAuth;

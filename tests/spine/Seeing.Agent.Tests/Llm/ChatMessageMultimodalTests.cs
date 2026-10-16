@@ -1,6 +1,4 @@
 using FluentAssertions;
-using Seeing.Agent.Core.Llm;
-using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
 using Xunit;
 using LlmChatMessage = Seeing.Agent.Abstractions.Llm.ChatMessage;

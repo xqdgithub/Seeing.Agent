@@ -16,8 +16,8 @@ public interface ITokenBudgetConfigResolver
     /// <param name="globalConfig">Global-level config (lowest priority)</param>
     /// <returns>The merged configuration</returns>
     TokenBudgetConfig Resolve(
-        TokenBudgetConfig? sessionConfig, 
-        TokenBudgetConfig? agentConfig, 
+        TokenBudgetConfig? sessionConfig,
+        TokenBudgetConfig? agentConfig,
         TokenBudgetConfig? globalConfig);
 
     /// <summary>

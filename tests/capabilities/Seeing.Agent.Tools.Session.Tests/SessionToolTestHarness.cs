@@ -1,13 +1,12 @@
-using System.Collections.Immutable;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Seeing.Session.Storage;
+using System.Collections.Immutable;
 
 namespace Seeing.Agent.Tools.Session.Tests;
 

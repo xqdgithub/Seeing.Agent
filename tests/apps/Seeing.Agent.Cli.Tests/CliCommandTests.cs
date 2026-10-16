@@ -1,10 +1,8 @@
-using System.Diagnostics;
-using System.Linq;
-
 using FluentAssertions;
 using Seeing.Agent.Cli.Commands;
 using Seeing.Agent.Cli.Services;
 using System.CommandLine;
+using System.Diagnostics;
 using Xunit;
 
 namespace Seeing.Agent.Cli.Tests;

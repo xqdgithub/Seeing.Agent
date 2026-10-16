@@ -1,14 +1,13 @@
-using Seeing.Agent.Abstractions.Configuration;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Llm;
-using Seeing.Agent.Llm;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Core.Llm;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Xunit;
 
 // Characterization classification:

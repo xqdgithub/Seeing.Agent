@@ -1,18 +1,18 @@
-using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Abstractions.Reminders;
-using System.Text;
 using Microsoft.Extensions.Logging;
 using Quartz;
-using Seeing.Agent.Configuration;
+using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Hooks;
+using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Reminders;
 using Seeing.Agent.Abstractions.Scheduling;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Engine;
 using Seeing.Agent.Scheduler.Models;
 using Seeing.Session.Core;
+using System.Text;
 
 namespace Seeing.Agent.Scheduler.Jobs;
 
@@ -66,7 +66,7 @@ public class HeartbeatJob : IJob
         var data = context.MergedJobDataMap;
         var jobId = SchedulerConstants.HeartbeatJobId;
         var sessionId = data.GetStringValue(JobDataKeys.SessionId) ?? "main";
-        
+
         // 使用类型安全的扩展方法读取（自动从字符串转换）
         var timeoutSeconds = data.GetIntValue(JobDataKeys.TimeoutSeconds, SchedulerConstants.DefaultTimeoutSeconds);
 
@@ -133,7 +133,7 @@ public class HeartbeatJob : IJob
         {
             // 获取 Prompt（必填）
             var queryText = data.GetStringValue(JobDataKeys.Prompt)?.Trim();
-            
+
             if (string.IsNullOrEmpty(queryText))
             {
                 _logger.LogWarning("Heartbeat skipped: prompt is empty or not configured");
@@ -152,7 +152,7 @@ public class HeartbeatJob : IJob
                     ["success"] = false,
                     ["error"] = "Prompt not configured"
                 });
-                
+
                 if (_listener != null)
                 {
                     await _listener.OnJobExecutedAsync(jobId, (JobExecutionResult)context.Result, ct);

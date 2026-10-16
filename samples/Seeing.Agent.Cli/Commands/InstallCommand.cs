@@ -1,5 +1,5 @@
-using System.CommandLine;
 using Seeing.Agent.Cli.Services;
+using System.CommandLine;
 
 namespace Seeing.Agent.Cli.Commands;
 

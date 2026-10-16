@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Core.CapabilitySets;
 using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Core.Scenarios;
 using Xunit;

@@ -1,6 +1,5 @@
-﻿using Seeing.Agent.Abstractions.Agents;
-using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Models;
+﻿using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Agents;
 using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Core

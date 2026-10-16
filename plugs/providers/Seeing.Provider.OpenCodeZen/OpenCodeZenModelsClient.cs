@@ -1,7 +1,7 @@
+using Microsoft.Extensions.Logging;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Extensions.Logging;
 
 namespace Seeing.Provider.OpenCodeZen;
 

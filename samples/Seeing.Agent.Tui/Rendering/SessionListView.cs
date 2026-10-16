@@ -1,4 +1,3 @@
-using Seeing.Agent.Tui.Services;
 using Seeing.Session.Core;
 using Spectre.Console;
 using Spectre.Console.Rendering;

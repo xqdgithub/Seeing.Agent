@@ -1,5 +1,3 @@
-using Seeing.Session.Core;
-
 namespace Seeing.Agent.Abstractions.Summarization;
 
 /// <summary>

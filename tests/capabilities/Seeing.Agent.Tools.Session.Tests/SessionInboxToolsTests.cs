@@ -1,5 +1,3 @@
-using System.Runtime.CompilerServices;
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Events;
@@ -9,6 +7,8 @@ using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Sessions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Tools.Session.Tests;

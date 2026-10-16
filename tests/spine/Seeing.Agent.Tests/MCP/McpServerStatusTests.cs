@@ -1,7 +1,6 @@
+using FluentAssertions;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Mcp.Core;
-using FluentAssertions;
-using Seeing.Agent.Mcp;
 using Xunit;
 
 namespace Seeing.Agent.Tests.MCP;

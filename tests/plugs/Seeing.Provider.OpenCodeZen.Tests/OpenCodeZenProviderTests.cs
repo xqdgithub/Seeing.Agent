@@ -1,12 +1,11 @@
-using Seeing.Agent.Abstractions.Configuration;
-using System.Net;
-using System.Text;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.ConfigSchema;
-using Seeing.Provider.OpenCodeZen;
+using System.Net;
+using System.Text;
 using Xunit;
 
 namespace Seeing.Provider.OpenCodeZen.Tests;

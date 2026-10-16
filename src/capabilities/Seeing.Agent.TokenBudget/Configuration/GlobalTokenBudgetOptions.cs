@@ -11,7 +11,7 @@ public class GlobalTokenBudgetOptions
     /// The configuration section name for token budget settings.
     /// </summary>
     public const string SectionName = "TokenBudget";
-    
+
     /// <summary>
     /// Gets or sets the default token budget configuration.
     /// </summary>

@@ -1,10 +1,10 @@
-using System.Text.Encodings.Web;
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.SystemOne;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.Support;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 
 namespace Seeing.Agent.Tools.SystemOne;
 

@@ -1,11 +1,9 @@
-﻿using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using FluentAssertions;
+﻿using FluentAssertions;
 using Seeing.Session.Core;
 using Seeing.Session.Persistence;
 using Seeing.Session.Storage;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace Seeing.Session.Tests.Persistence;

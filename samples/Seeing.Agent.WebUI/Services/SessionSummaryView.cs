@@ -1,4 +1,3 @@
-using System;
 using Seeing.Agent.Abstractions.Execution;
 
 namespace Seeing.Agent.WebUI.Services;

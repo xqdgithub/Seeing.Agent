@@ -1,5 +1,5 @@
-using System.Reflection;
 using FluentAssertions;
+using System.Reflection;
 using Xunit;
 
 namespace Seeing.Agent.SystemOne.Tests;

@@ -1,10 +1,9 @@
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.SystemOne;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Tools.SystemOne;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Tools.SystemOne.Tests;

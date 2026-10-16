@@ -1,17 +1,16 @@
-using System.Collections.Concurrent;
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Sessions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Hosting.Tools;
 using Seeing.Session.Core;
+using System.Collections.Concurrent;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Tools;

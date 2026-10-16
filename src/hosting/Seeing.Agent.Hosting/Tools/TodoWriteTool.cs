@@ -1,8 +1,7 @@
-using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Tools.Support;
-using Seeing.Agent.Core.Models;
 using Seeing.Agent.Abstractions.Todo;
+using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Tools.Support;
 using System.Text.Json;
 
 namespace Seeing.Agent.Hosting.Tools

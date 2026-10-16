@@ -1,6 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Abstractions.Agents;
-namespace Seeing.Agent.Core.Generation
+﻿namespace Seeing.Agent.Core.Generation
 {
     /// <summary>
     /// Agent 模板定义

@@ -1,11 +1,10 @@
 using FluentAssertions;
+using Moq;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Summarization;
-using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Compression;
+using Seeing.Agent.Core.Execution;
 using Seeing.Session.Core;
-using Seeing.Session.Management;
-using Moq;
 using Xunit;
 
 namespace Seeing.Agent.Tests.App.Execution;

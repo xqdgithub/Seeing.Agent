@@ -12,7 +12,7 @@ public static class WikilinkParser
         @"\[\[([^\]\|#]+)(?:[|#][^\]]*)?\]\]",
         RegexOptions.Compiled
     );
-    
+
     /// <summary>
     /// 从内容中解析所有 Wikilink
     /// </summary>
@@ -20,10 +20,10 @@ public static class WikilinkParser
     {
         if (string.IsNullOrEmpty(content))
             return Array.Empty<string>();
-        
+
         var links = new List<string>();
         var matches = WikilinkPattern.Matches(content);
-        
+
         foreach (Match match in matches)
         {
             if (match.Success && match.Groups.Count > 1)
@@ -35,7 +35,7 @@ public static class WikilinkParser
                 }
             }
         }
-        
+
         return links.Distinct().ToList();
     }
 }

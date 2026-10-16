@@ -800,15 +800,15 @@ public class PermissionAuthorizationTests
             string? callId = null,
             bool requireInteraction = false,
             SessionAutoApprove? @override = null) => new()
-        {
-            SessionId = sessionId,
-            CallId = callId,
-            AgentName = agentName,
-            PermissionKind = kind,
-            Resource = resource,
-            RequireInteraction = requireInteraction,
-            Override = @override
-        };
+            {
+                SessionId = sessionId,
+                CallId = callId,
+                AgentName = agentName,
+                PermissionKind = kind,
+                Resource = resource,
+                RequireInteraction = requireInteraction,
+                Override = @override
+            };
 
         public void SetAgentPolicy(string agentName, params PermissionRuleEntry[] rules)
         {

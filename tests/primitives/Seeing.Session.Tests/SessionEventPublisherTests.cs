@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using Seeing.Session.Core;
 using Xunit;
 
@@ -57,7 +55,7 @@ namespace Seeing.Session.Tests
     public class SessionEventPublisherTests
     {
         [Fact]
-        public void Events_Returns_IObservable_SessionEvent() 
+        public void Events_Returns_IObservable_SessionEvent()
         {
             var publisher = new TestSessionEventPublisher();
             Assert.NotNull(publisher.Events);

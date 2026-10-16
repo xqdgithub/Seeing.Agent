@@ -1,6 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Tools;
 namespace Seeing.Agent.Abstractions.Events;
 

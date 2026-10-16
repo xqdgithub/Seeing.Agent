@@ -1,6 +1,5 @@
-using Microsoft.Extensions.DependencyInjection;
-using System.Text.RegularExpressions;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Ui;
@@ -8,6 +7,7 @@ using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Mcp;
 using Seeing.Agent.Skills;
 using Seeing.Agent.WebUI.Services;
+using System.Text.RegularExpressions;
 
 namespace Seeing.Agent.WebUI.Tests.Invariants;
 

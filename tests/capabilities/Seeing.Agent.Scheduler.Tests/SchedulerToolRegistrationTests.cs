@@ -1,10 +1,10 @@
-﻿using Seeing.Agent.Abstractions.Tools;
-using System.Text.Json;
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Scheduler.Extensions;
 using Seeing.Agent.Scheduler.Tools;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Scheduler.Tests;

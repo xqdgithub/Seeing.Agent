@@ -15,7 +15,7 @@ public sealed class SeeingAgentOptionsMonitor : IOptions<SeeingAgentOptions>, IO
     public SeeingAgentOptionsMonitor(UnifiedConfigManager manager)
     {
         _manager = manager;
-        
+
         // 订阅配置变更事件
         _manager.ConfigChanged += OnConfigChanged;
     }

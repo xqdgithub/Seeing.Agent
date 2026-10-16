@@ -1,7 +1,7 @@
 namespace Seeing.Agent.Mcp.Management;
 
-using Seeing.Agent.Mcp;
 using Seeing.Agent.Abstractions.Mcp;
+using Seeing.Agent.Mcp;
 using System.Threading;
 using System.Threading.Tasks;
 

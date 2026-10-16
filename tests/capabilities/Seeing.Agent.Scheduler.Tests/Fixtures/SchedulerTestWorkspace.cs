@@ -1,6 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Scheduler.Configuration;
 using Seeing.Agent.Scheduler.Models;
 

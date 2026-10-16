@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Commands.Attributes;
 using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Commands.Attributes;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using YamlDotNet.Serialization;
@@ -339,8 +339,8 @@ namespace Seeing.Agent.Core.Commands.Discovery
         /// </summary>
         private class MarkdownCommand : ICommand
         {
-        /// <summary>命令元数据。</summary>
-        public CommandMetadata Metadata { get; }
+            /// <summary>命令元数据。</summary>
+            public CommandMetadata Metadata { get; }
             private readonly string? _template;
             private readonly ILogger? _logger;
 

@@ -1,11 +1,14 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.Agents.BuiltIn;
-using Seeing.Agent.Hosting.Headless;
+using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Core.Extensions;
+using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Gateway.Extensions;
+using Seeing.Agent.Hosting.Headless;
 using Seeing.Agent.Llm.Anthropic;
 using Seeing.Agent.Llm.OpenAI;
 using Seeing.Agent.Mcp;
@@ -15,15 +18,11 @@ using Seeing.Agent.Skills;
 using Seeing.Agent.Tools.Basic;
 using Seeing.Agent.Tools.FileSystem;
 using Seeing.Agent.Tools.Git;
+using Seeing.Agent.Tools.Question;
+using Seeing.Agent.Tools.Session;
 using Seeing.Agent.Tools.Shell;
 using Seeing.Agent.Tools.Web;
-using Seeing.Agent.Tools.Session;
-using Seeing.Agent.Tools.Question;
-using Seeing.Agent.Core.Modules;
 using Seeing.IO.Local;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 
 namespace Seeing.Agent.Cli.Infrastructure;
 
@@ -71,7 +70,7 @@ public static class CliServiceBootstrap
         builder.Services.AddSeeingModule<ShellModule>(registry);
         builder.Services.AddSeeingModule<BasicModule>(registry);
         builder.Services.AddSeeingModule<GitModule>(registry);
-builder.Services.AddSeeingModule<Seeing.Agent.Workspace.WorkspaceGitExcludeModule>(registry);
+        builder.Services.AddSeeingModule<Seeing.Agent.Workspace.WorkspaceGitExcludeModule>(registry);
         builder.Services.AddSeeingModule<SessionToolsModule>(registry);
         builder.Services.AddSeeingModule<QuestionToolsModule>(registry);
         builder.Services.AddSeeingModule<SkillsModule>(registry);

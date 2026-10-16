@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Mcp.OAuth;
 using Seeing.Agent.Mcp.OAuth;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Seeing.Agent.Abstractions.Configuration;
 
 namespace Seeing.Agent.Mcp.Configuration;
 

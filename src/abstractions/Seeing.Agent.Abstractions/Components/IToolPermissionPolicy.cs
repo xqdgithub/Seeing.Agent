@@ -1,8 +1,5 @@
 ﻿// src/Seeing.Agent.Abstractions/Components/IToolPermissionPolicy.cs
 
-using System.Text.Json;
-
-using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Abstractions.Components;
 
 /// <summary>

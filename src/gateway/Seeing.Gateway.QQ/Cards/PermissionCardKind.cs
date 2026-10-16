@@ -1,5 +1,5 @@
-using System.Text.Json;
 using Seeing.Gateway.Client;
+using System.Text.Json;
 
 namespace Seeing.Gateway.QQ.Cards;
 

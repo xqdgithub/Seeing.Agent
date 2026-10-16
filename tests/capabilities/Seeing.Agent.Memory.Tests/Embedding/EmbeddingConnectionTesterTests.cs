@@ -1,12 +1,12 @@
-﻿using System.Net;
-using System.Text;
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Moq.Protected;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Core.Embedding;
+using System.Net;
+using System.Text;
 using Xunit;
 
 namespace Seeing.Agent.Memory.Tests.Embedding;

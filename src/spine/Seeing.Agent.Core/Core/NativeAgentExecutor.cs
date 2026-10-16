@@ -1,6 +1,5 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Abstractions.Llm;
 
 namespace Seeing.Agent.Core
 {

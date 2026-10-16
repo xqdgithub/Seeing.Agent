@@ -1,7 +1,5 @@
-using Microsoft.Extensions.Logging;
 using Seeing.Agent.Hosting.Web.Circuits;
 using Seeing.Agent.WebUI.Models;
-using Seeing.Session.Core;
 
 namespace Seeing.Agent.WebUI.Services;
 

@@ -1,8 +1,7 @@
-using Seeing.Agent.Abstractions.Commands;
-using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Core.Commands;
-using Seeing.Agent.Core.Models;
 using FluentAssertions;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Core.Commands;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Commands;

@@ -1,5 +1,5 @@
-using System.Threading.Channels;
 using Seeing.Gateway.Models;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Gateway.Core;
 

@@ -1,20 +1,15 @@
-using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Abstractions.Agents;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Components;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Permission;
+using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Decorators;
-using Seeing.Agent.Abstractions.Components;
 using System.Collections.Concurrent;
 using System.Text.Json;
-
-using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Core;
 namespace Seeing.Agent.Core.Tools
 {
     /// <summary>

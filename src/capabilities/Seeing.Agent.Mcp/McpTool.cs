@@ -1,6 +1,5 @@
-using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Tools;
 using System.Text.Json;
 
 namespace Seeing.Agent.Mcp;

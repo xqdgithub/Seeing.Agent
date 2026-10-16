@@ -1,9 +1,9 @@
-﻿using System.Text.Json;
-using Seeing.Agent.Tui.Input;
+﻿using Seeing.Agent.Tui.Input;
 using Seeing.Agent.Tui.Services;
 using Seeing.Session.Core;
 using Spectre.Console;
 using Spectre.Console.Rendering;
+using System.Text.Json;
 
 namespace Seeing.Agent.Tui.Rendering;
 

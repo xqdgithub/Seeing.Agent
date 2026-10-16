@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Hosting.Tui;
 using Seeing.Agent.Hosting.Tui.Permissions;
 

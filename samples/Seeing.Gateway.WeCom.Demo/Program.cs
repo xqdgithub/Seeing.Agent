@@ -2,9 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Seeing.Gateway;
 using Seeing.Gateway.Client;
-using Seeing.Gateway.WeCom;
 using Seeing.Gateway.WeCom.Extensions;
 
 namespace Seeing.Gateway.WeCom.Demo;

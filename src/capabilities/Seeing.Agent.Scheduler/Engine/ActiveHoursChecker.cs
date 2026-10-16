@@ -14,12 +14,12 @@ public static class ActiveHoursChecker
         try
         {
             var now = DateTime.Now;
-            
+
             // 解析时区
             var tz = string.IsNullOrEmpty(activeHours.Timezone)
                 ? TimeZoneInfo.Local
                 : TimeZoneInfo.FindSystemTimeZoneById(activeHours.Timezone);
-            
+
             var localNow = TimeZoneInfo.ConvertTime(now, tz);
             var localTime = localNow.TimeOfDay;
 

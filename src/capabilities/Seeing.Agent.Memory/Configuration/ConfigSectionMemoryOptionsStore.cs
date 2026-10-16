@@ -1,6 +1,5 @@
 ﻿using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Memory.Abstractions;
-using Seeing.Agent.Memory.Configuration;
 
 namespace Seeing.Agent.Memory.Configuration;
 

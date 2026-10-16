@@ -1,5 +1,4 @@
-﻿using Seeing.Agent.Abstractions.Agents;
-namespace Seeing.Agent.Core.Generation
+﻿namespace Seeing.Agent.Core.Generation
 {
     /// <summary>
     /// Agent 动态生成器接口

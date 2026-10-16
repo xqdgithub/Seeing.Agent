@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Hooks;
-
 using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Hooks;
 namespace Seeing.Agent.Core.Commands
 {
     /// <summary>
@@ -85,7 +84,7 @@ namespace Seeing.Agent.Core.Commands
                 return CommandResult.Fail("命令执行被 Hook 中断");
             }
 
-// 应用 Hook 修改后的参数
+            // 应用 Hook 修改后的参数
             if (output.TryGetValue("arguments", out var modifiedArgs) && modifiedArgs is string args)
             {
                 // 创建新的上下文（因为 Arguments 是 init-only）

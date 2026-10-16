@@ -1,4 +1,3 @@
-using System.Net.Http;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Mcp.OAuth;

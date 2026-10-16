@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Seeing.Agent.Scheduler.Models;
 
 namespace Seeing.Agent.WebUI.Services;
@@ -7,13 +6,13 @@ namespace Seeing.Agent.WebUI.Services;
 public sealed class JobNotificationService
 {
     private readonly ILogger<JobNotificationService> _logger;
-    
+
     /// <summary>任务错误事件</summary>
     public event EventHandler<JobErrorEventArgs>? JobError;
-    
+
     /// <summary>任务成功事件</summary>
     public event EventHandler<JobSuccessEventArgs>? JobSuccess;
-    
+
     /// <summary>任务进度事件</summary>
     public event EventHandler<JobProgressEventArgs>? JobProgress;
 
@@ -22,7 +21,7 @@ public sealed class JobNotificationService
         SchedulerStatusService statusService)
     {
         _logger = logger;
-        
+
         // 订阅 SchedulerStatusService 的进度事件，建立事件链路
         statusService.JobProgress += (_, args) => HandleProgress(args);
     }
@@ -31,7 +30,7 @@ public sealed class JobNotificationService
     public void NotifyError(string jobId, string error, string? output = null)
     {
         _logger.LogWarning("Job {JobId} error: {Error}", jobId, error);
-        
+
         JobError?.Invoke(this, new JobErrorEventArgs
         {
             JobId = jobId,
@@ -45,7 +44,7 @@ public sealed class JobNotificationService
     public void NotifySuccess(string jobId, string? output = null)
     {
         _logger.LogDebug("Job {JobId} completed successfully", jobId);
-        
+
         JobSuccess?.Invoke(this, new JobSuccessEventArgs
         {
             JobId = jobId,
@@ -53,7 +52,7 @@ public sealed class JobNotificationService
             Timestamp = DateTime.Now
         });
     }
-    
+
     /// <summary>通知任务进度</summary>
     public void NotifyProgress(JobProgressEventArgs args)
     {
@@ -74,12 +73,12 @@ public sealed class JobNotificationService
         }
         return Task.CompletedTask;
     }
-    
+
     /// <summary>处理进度事件</summary>
     public void HandleProgress(JobProgressEventArgs args)
     {
         NotifyProgress(args);
-        
+
         // 兼容旧的事件系统
         if (args.Stage == JobProgressStage.Completed && args.Result != null)
         {

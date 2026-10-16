@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +5,8 @@ using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Permission;
 using Seeing.Gateway.Models;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Seeing.Agent.Gateway.Endpoints;
 

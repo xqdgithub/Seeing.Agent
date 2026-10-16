@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Modules;
-using Seeing.Agent.Hosting;
 using Seeing.Agent.Hosting.Tui.Permissions;
 
 namespace Seeing.Agent.Hosting.Tui;

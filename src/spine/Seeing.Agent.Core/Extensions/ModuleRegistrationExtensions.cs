@@ -3,8 +3,6 @@ using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Ui;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 
 namespace Seeing.Agent.Core.Extensions;
 

@@ -1,5 +1,5 @@
-using System.Runtime.CompilerServices;
 using Seeing.Session.Core;
+using System.Runtime.CompilerServices;
 
 namespace Seeing.Session.Storage
 {

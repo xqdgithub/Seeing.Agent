@@ -1,14 +1,12 @@
-using System.Collections.Concurrent;
-using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Seeing.Gateway;
 using Seeing.Gateway.Channels;
 using Seeing.Gateway.Client;
 using Seeing.Gateway.Models;
 using Seeing.Gateway.QQ.Connection;
+using System.Collections.Concurrent;
+using System.Text.Json;
 
 namespace Seeing.Gateway.QQ;
 

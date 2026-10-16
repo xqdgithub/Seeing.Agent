@@ -1,5 +1,5 @@
-using System.Threading.Channels;
 using Seeing.Gateway.WeCom.Connection;
+using System.Threading.Channels;
 
 namespace Seeing.Gateway.WeCom;
 

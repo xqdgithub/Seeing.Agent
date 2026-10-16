@@ -1,10 +1,10 @@
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Mcp.Configuration;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Mcp.Tests.Configuration;

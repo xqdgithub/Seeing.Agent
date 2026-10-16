@@ -1,13 +1,11 @@
-using System.Reflection;
-using System.Runtime.Loader;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
-using Seeing.Gateway;
+using Seeing.Agent.Core.Configuration;
 using Seeing.Gateway.Plugins;
+using System.Runtime.Loader;
 
 namespace Seeing.Gateway.ChannelHost;
 

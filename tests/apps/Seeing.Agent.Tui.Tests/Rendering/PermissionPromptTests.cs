@@ -1,9 +1,9 @@
-using System.Threading.Channels;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Tui.Input;
 using Seeing.Agent.Tui.Rendering.Prompts;
 using Seeing.Agent.Tui.Tests.Fakes;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Tui.Tests.Rendering;
 

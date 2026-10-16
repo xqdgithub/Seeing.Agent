@@ -1,13 +1,13 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Llm;
-using Seeing.Agent.Abstractions.Llm;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Xunit;
 
 // Characterization classification:
@@ -43,7 +43,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
         var factory = CreateFactory((_) => expectedClient);
         using var sut = new ProviderManager(
             configManager,
-            [ factory.Object ],
+            [factory.Object],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -66,7 +66,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
         var factory = CreateFactory((_) => CreateClient(ProviderTypes.OpenAi));
         using var sut = new ProviderManager(
             configManager,
-            [ factory.Object ],
+            [factory.Object],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -92,7 +92,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
         var factory = CreateFactory(config => CreateClient(config.Type));
         using var sut = new ProviderManager(
             configManager,
-            [ factory.Object ],
+            [factory.Object],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -122,7 +122,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
             config.Type == ProviderTypes.OpenAi ? openAiClient : anthropicClient);
         using var sut = new ProviderManager(
             configManager,
-            [ factory.Object ],
+            [factory.Object],
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),

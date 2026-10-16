@@ -1,6 +1,6 @@
+using Seeing.Agent.Abstractions.Llm;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Seeing.Agent.Abstractions.Llm;
 
 namespace Seeing.Agent.Llm.ModelCatalog.Builtin;
 

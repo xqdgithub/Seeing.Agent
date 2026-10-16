@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Seeing.Provider.OpenCodeZen;
 using Xunit;
 
 namespace Seeing.Provider.OpenCodeZen.Tests;

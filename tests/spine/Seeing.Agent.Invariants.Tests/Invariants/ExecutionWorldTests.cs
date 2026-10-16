@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Tools.Basic;
 using Seeing.Agent.Tools.FileSystem;

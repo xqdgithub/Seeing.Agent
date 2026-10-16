@@ -5,9 +5,7 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Summarization;
 using Seeing.Agent.Core.Llm;
-using Seeing.Agent.Llm;
 using Seeing.Session.Core;
-using Seeing.Session.Management;
 using System.Text;
 
 namespace Seeing.Agent.Core.Compression;

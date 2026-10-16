@@ -1,5 +1,5 @@
-using System.Data;
 using Microsoft.Data.Sqlite;
+using System.Data;
 
 namespace Seeing.Agent.Memory.Core;
 

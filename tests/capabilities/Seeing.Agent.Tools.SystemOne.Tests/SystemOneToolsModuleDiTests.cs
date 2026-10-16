@@ -5,7 +5,6 @@ using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Extensions;
-using Seeing.Agent.Tools.SystemOne;
 using Seeing.Agent.Tools.SystemOne.Extensions;
 using Xunit;
 

@@ -1,9 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Abstractions.Modules;
 using Xunit;
 
 namespace Seeing.Provider.OpenCodeZen.Tests;

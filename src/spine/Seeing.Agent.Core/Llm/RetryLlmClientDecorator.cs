@@ -1,6 +1,6 @@
-using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Llm;
+using System.Runtime.CompilerServices;
 
 namespace Seeing.Agent.Core.Llm;
 

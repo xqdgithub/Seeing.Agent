@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Seeing.Agent.Abstractions.Interactions;
 
 /// <summary>宿主能力调用请求（服务端 → 宿主）。</summary>

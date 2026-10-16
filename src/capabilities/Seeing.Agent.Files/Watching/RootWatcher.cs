@@ -1,6 +1,6 @@
+using Seeing.Agent.Abstractions.Files;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
-using Seeing.Agent.Abstractions.Files;
 
 namespace Seeing.Agent.Files.Watching;
 

@@ -3,7 +3,6 @@ using Moq;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Modules;
 using Seeing.Agent.WebUI.Services;
 

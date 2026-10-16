@@ -1,9 +1,9 @@
-using System.Text;
-using System.Text.RegularExpressions;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Session.Core;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Seeing.Agent.Skills.Commands;
 

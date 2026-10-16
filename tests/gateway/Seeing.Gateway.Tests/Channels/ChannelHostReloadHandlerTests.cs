@@ -1,14 +1,14 @@
-using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Gateway.Configuration;
-using Seeing.Agent.Gateway.Channels;
-using Seeing.Agent.Gateway.Hosting;
-using Seeing.Agent.Configuration; // IWorkspaceProvider (Abstractions assembly)
+using FluentAssertions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
-using FluentAssertions;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Configuration; // IWorkspaceProvider (Abstractions assembly)
+using Seeing.Agent.Gateway.Channels;
+using Seeing.Agent.Gateway.Configuration;
+using Seeing.Agent.Gateway.Hosting;
 using Xunit;
 
 namespace Seeing.Gateway.Tests.Channels;

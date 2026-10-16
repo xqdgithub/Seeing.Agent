@@ -1,10 +1,9 @@
-using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core;
-using Seeing.Agent.Core.Models;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Discovery

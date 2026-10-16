@@ -1,6 +1,6 @@
-using System.Text;
 using FluentAssertions;
 using Seeing.Gateway.Models;
+using System.Text;
 using Xunit;
 
 namespace Seeing.Gateway.Client.Tests;

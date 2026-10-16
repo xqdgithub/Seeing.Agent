@@ -2,12 +2,11 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Core.Tools;
 using Seeing.Agent.Mcp;
 using Seeing.Agent.Mcp.Configuration;
 using Seeing.Agent.Mcp.Factory;
 using Seeing.Agent.Mcp.Policy;
-using Seeing.Agent.Core.Tools;
-using System.Net.Http;
 using Xunit;
 using CoreMcpConnectionState = Seeing.Agent.Abstractions.Mcp.McpConnectionState;
 

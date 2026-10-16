@@ -1,9 +1,9 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Models;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Seeing.Agent.Scheduler.Persistence;
 

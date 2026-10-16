@@ -1,4 +1,3 @@
-using Seeing.Agent.Abstractions.Tools;
 using Microsoft.Extensions.Logging;
 using System.Reflection;
 using System.Text.Json;

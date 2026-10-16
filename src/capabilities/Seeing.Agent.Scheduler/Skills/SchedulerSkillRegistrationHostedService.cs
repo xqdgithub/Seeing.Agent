@@ -1,6 +1,6 @@
-﻿using System.Text.RegularExpressions;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Skills;
+using System.Text.RegularExpressions;
 
 namespace Seeing.Agent.Scheduler.Skills;
 

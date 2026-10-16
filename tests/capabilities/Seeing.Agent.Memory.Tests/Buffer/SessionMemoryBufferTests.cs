@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Microsoft.Extensions.Options;
 using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Core;
 using Seeing.Agent.Memory.Core.Models;

@@ -1,27 +1,25 @@
-using Seeing.Agent.Abstractions.Agents;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Abstractions.Models;
-using Seeing.Agent.Core.Execution;
-using Seeing.Agent.Core;
-using Seeing.Agent.Hosting.Execution;
-using Seeing.Agent.Core.Compression;
-using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Configuration;
-using Seeing.Agent.Core.Instructions;
-using Seeing.Agent.Core.Models;
-using Seeing.Agent.Core.Llm;
-using Seeing.Agent.Llm;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Models;
+using Seeing.Agent.Configuration;
+using Seeing.Agent.Core;
+using Seeing.Agent.Core.Compression;
+using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Core.Execution;
+using Seeing.Agent.Core.Instructions;
+using Seeing.Agent.Core.Llm;
+using Seeing.Agent.Hosting.Execution;
+using Seeing.Agent.Llm;
 using Seeing.Session.Core;
-using Seeing.Session.Management;
 using Xunit;
 
 namespace Seeing.Agent.Tests.App;
@@ -118,18 +116,18 @@ public class ExecutionRunnerInstructionTests
         string sessionId,
         string? workingDirectory = null,
         bool skipInstructionInject = false) => new()
-    {
-        ExecutionId = "exec-1",
-        SessionId = sessionId,
-        Status = ExecutionStatus.Running,
-        Input = new ChatInput { Text = "real user message" },
-        Options = new ChatOptions
         {
-            AgentId = "general",
-            WorkingDirectory = workingDirectory,
-            SkipInstructionInject = skipInstructionInject
-        }
-    };
+            ExecutionId = "exec-1",
+            SessionId = sessionId,
+            Status = ExecutionStatus.Running,
+            Input = new ChatInput { Text = "real user message" },
+            Options = new ChatOptions
+            {
+                AgentId = "general",
+                WorkingDirectory = workingDirectory,
+                SkipInstructionInject = skipInstructionInject
+            }
+        };
 
     private static InboxBatch NewBatch() =>
         new(new List<SessionMessage> { SessionMessage.UserMessage("real user message") }, HasUserInput: false, FirstUserText: null);

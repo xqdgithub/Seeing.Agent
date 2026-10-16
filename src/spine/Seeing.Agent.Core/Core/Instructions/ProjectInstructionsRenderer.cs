@@ -1,9 +1,9 @@
+using Seeing.Session.Core;
 using System.Net;
 using System.Security;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Seeing.Session.Core;
 
 namespace Seeing.Agent.Core.Instructions;
 

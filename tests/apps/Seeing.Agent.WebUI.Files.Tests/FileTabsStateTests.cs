@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Files;
 using Seeing.Agent.WebUI.Files.Services;
-using Xunit;
 
 namespace Seeing.Agent.WebUI.Files.Tests;
 

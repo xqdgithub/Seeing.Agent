@@ -1,7 +1,7 @@
-using System.Text.Json;
 using FluentAssertions;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Session.Core;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Instructions;

@@ -19,7 +19,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
 
     private JobsFile _jobsFile = new();
     private bool _started;
-    
+
     // 追踪正在执行的任务
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, RunInfo> _runningJobs = new();
 
@@ -60,7 +60,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
 
             // 加载任务文件
             _jobsFile = await _repository.LoadAsync(ct);
-            
+
             // 迁移旧版本数据
             _jobsFile.MigrateIfNeeded();
 
@@ -73,7 +73,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
 
             // 注册心跳
             await RegisterHeartbeatAsync(ct);
-            
+
             // 恢复 Running 状态（从 Quartz 获取正在执行的任务）
             if (_engine.Scheduler != null)
             {
@@ -138,17 +138,17 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         {
             return new JobStatus { JobId = jobId, State = JobState.Disabled };
         }
-        
+
         // 计算状态：Intent + Running
         var state = ComputeState(job);
-        
+
         // 从 Quartz 获取调度信息
         var engineStatus = await _engine.GetJobStatusAsync(jobId, ct);
-        
+
         // 从执行记录获取最后执行信息
         var lastRecord = await _repository.GetHistoryAsync(jobId, 1, 0, ct);
         var last = lastRecord.FirstOrDefault();
-        
+
         return new JobStatus
         {
             JobId = jobId,
@@ -231,7 +231,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
             var runId = Guid.NewGuid().ToString("N");
             if (!_runningJobs.TryAdd(jobId, new RunInfo(runId, DateTime.Now)))
                 return new TriggerResult.Conflict("任务正在执行中");
-            
+
             try
             {
                 // 确保 Heartbeat 已注册
@@ -240,10 +240,10 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
                 {
                     await RegisterHeartbeatAsync(ct);
                 }
-                
+
                 var additionalData = new JobDataMap { [JobDataKeys.Source] = ScheduleSources.Manual };
                 await _engine.TriggerJobAsync(jobId, runId, additionalData, ct);
-                
+
                 _logger.LogInformation("Heartbeat triggered with RunId={RunId}", runId);
                 return new TriggerResult.Accepted(runId);
             }
@@ -253,17 +253,17 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
                 throw;
             }
         }
-        
+
         // 普通任务
         var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
         if (job == null) return new TriggerResult.NotFound();
         if (job.Intent == ScheduleIntent.Disabled) return new TriggerResult.Disabled();
-        
+
         // 检查是否正在执行
         var runId2 = Guid.NewGuid().ToString("N");
         if (!_runningJobs.TryAdd(jobId, new RunInfo(runId2, DateTime.Now)))
             return new TriggerResult.Conflict("任务正在执行中");
-        
+
         try
         {
             // 确保 Job 已注册到 Quartz
@@ -274,11 +274,11 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
                 _logger.LogDebug("Job {JobId} not found in Quartz, registering before trigger", jobId);
                 await RegisterUserJobAsync(job, ct);
             }
-            
+
             // 使用原生 TriggerJob
             var additionalData = new JobDataMap { [JobDataKeys.Source] = ScheduleSources.Manual };
             await _engine.TriggerJobAsync(jobId, runId2, additionalData, ct);
-            
+
             _logger.LogInformation("Job {JobId} triggered with RunId={RunId}", jobId, runId2);
             return new TriggerResult.Accepted(runId2);
         }
@@ -298,10 +298,10 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
             _logger.LogWarning("Attempted to set intent for non-existent job: {JobId}", jobId);
             return;
         }
-        
+
         var oldIntent = job.Intent;
         job.Intent = intent;
-        
+
         // 同步到 Quartz
         switch (intent)
         {
@@ -321,9 +321,9 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
                     await _engine.ResumeJobAsync(jobId, ct);
                 break;
         }
-        
+
         await _repository.SaveAsync(_jobsFile, ct);
-        
+
         // 触发状态变更事件
         JobStatusChanged?.Invoke(this, new JobStatusChangedEventArgs
         {
@@ -331,7 +331,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
             OldState = ComputeStateFromIntent(oldIntent),
             NewState = ComputeStateFromIntent(intent)
         });
-        
+
         _logger.LogDebug("Job {JobId} intent changed: {OldIntent} -> {NewIntent}", jobId, oldIntent, intent);
     }
 
@@ -357,11 +357,11 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
     public async Task<bool> CancelJobAsync(string jobId, CancellationToken ct = default)
     {
         var result = await _engine.CancelJobAsync(jobId, ct);
-        
+
         // 无论 Quartz 中断是否成功，都清理本地运行状态
         // 因为任务可能已经完成但状态未更新
         _runningJobs.TryRemove(jobId, out _);
-        
+
         // 触发状态变更事件
         var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
         if (job != null)
@@ -374,7 +374,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
                 NewState = jobState
             });
         }
-        
+
         return result;
     }
 
@@ -396,7 +396,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
     {
         _runningJobs.AddOrUpdate(jobId, new RunInfo(runId, DateTime.Now), (_, _) => new RunInfo(runId, DateTime.Now));
         _logger.LogDebug("Job {JobId} started with RunId={RunId}", jobId, runId);
-        
+
         // 触发进度事件
         JobProgress?.Invoke(this, new JobProgressEventArgs
         {
@@ -411,7 +411,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
     {
         // 移除 Running 状态
         _runningJobs.TryRemove(jobId, out var runInfo);
-        
+
         // 记录历史（包含执行快照）
         var record = new JobExecutionRecord
         {
@@ -471,7 +471,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         // 如果正在执行，返回 Running
         if (_runningJobs.ContainsKey(job.Id))
             return JobState.Running;
-        
+
         // 否则根据 Intent 返回状态
         return job.Intent switch
         {
@@ -481,7 +481,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
             _ => JobState.Disabled
         };
     }
-    
+
     private static JobState ComputeStateFromIntent(ScheduleIntent intent) => intent switch
     {
         ScheduleIntent.Disabled => JobState.Disabled,

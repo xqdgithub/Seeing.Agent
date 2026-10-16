@@ -1,8 +1,8 @@
+using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Llm;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Llm;
 
 namespace Seeing.Provider.MiMo;
 

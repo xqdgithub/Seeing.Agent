@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
-using Seeing.Agent.Abstractions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.TokenBudget.Api;
@@ -44,10 +44,10 @@ public static class TokenBudgetServiceExtensions
         // Legacy GlobalTokenBudgetOptions bind (appsettings) kept for compatibility
         services.Configure<GlobalTokenBudgetOptions>(
             configuration.GetSection(GlobalTokenBudgetOptions.SectionName));
-        
+
         // Token estimation
         services.AddSingleton<ITokenCounter, CharBasedTokenCounter>();
-        
+
         // Budget management
         services.AddSingleton<ITokenBudgetConfigResolver, TokenBudgetConfigResolver>();
         services.AddSingleton<ITokenBudgetManager>(sp =>
@@ -57,10 +57,10 @@ public static class TokenBudgetServiceExtensions
             var tokenCounter = sp.GetService<ITokenCounter>();
             return new TokenBudgetManager(modelLookup, options, tokenCounter);
         });
-        
+
         // API
         services.AddScoped<ITokenBudgetApi, TokenBudgetApi>();
-        
+
         return services;
     }
 

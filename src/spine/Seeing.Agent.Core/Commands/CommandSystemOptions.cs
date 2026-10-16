@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Core.Commands.Discovery;
 using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Core.Commands.Discovery;
 using System.Reflection;
 
 namespace Seeing.Agent.Core.Commands
