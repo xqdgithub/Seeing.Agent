@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Agent.Gateway.Core;
+using Seeing.Gateway.Client;
 using Seeing.Session.Core;
 using System.Text.Json;
 using System.Text.Json.Serialization;

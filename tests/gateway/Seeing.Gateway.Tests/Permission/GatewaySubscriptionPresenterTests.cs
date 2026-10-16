@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Seeing.Agent.Gateway.Permission;
+using Seeing.Gateway.Client;
 using Xunit;
 
 namespace Seeing.Gateway.Tests.Permission;

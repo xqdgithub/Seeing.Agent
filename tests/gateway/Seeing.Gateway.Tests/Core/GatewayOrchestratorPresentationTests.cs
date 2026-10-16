@@ -7,6 +7,7 @@ using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Core;
+using Seeing.Gateway.Client;
 using Seeing.Gateway.Models;
 using Seeing.Session.Core;
 using System.Collections.Concurrent;
@@ -120,7 +121,6 @@ public class GatewayOrchestratorPresentationTests
             provider,
             new GatewayOptions(),
             new GatewayRunTracker(),
-            new Seeing.Agent.Gateway.Core.SessionExecutionQueue(),
             NullLogger<GatewayOrchestratorV2>.Instance);
 
     private static async IAsyncEnumerable<IMessageEvent> GatedEventsAsync(

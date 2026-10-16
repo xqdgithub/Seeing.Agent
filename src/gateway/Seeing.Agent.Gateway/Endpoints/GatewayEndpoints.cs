@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Permission;
+using Seeing.Gateway.Client;
 using Seeing.Gateway.Models;
 using System.Text.Json;
 using System.Text.Json.Serialization;

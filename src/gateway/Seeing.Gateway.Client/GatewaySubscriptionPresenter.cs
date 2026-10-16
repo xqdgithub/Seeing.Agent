@@ -1,6 +1,6 @@
 using Seeing.Agent.Abstractions.Interactions;
 
-namespace Seeing.Agent.Gateway.Permission;
+namespace Seeing.Gateway.Client;
 
 /// <summary>
 /// Gateway 订阅呈现端：每个执行订阅注册一个实例，声明该订阅会话可呈现。

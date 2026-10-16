@@ -14,6 +14,7 @@ using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Endpoints;
 using Seeing.Agent.Gateway.Permission;
+using Seeing.Gateway.Client;
 using Seeing.Agent.Llm;
 using Seeing.Session.Core;
 
@@ -70,7 +71,6 @@ public sealed class GatewayHost : IAsyncDisposable
         var permissionChannel = _rootServices.GetRequiredService<GatewayPermissionChannel>();
         var permissionManager = _rootServices.GetRequiredService<IPermissionRequestManager>();
         var runTracker = new GatewayRunTracker();
-        var executionQueue = new SessionExecutionQueue();
         var connectionManager = _rootServices.GetRequiredService<GatewayConnectionManager>();
         var sessionManager = _rootServices.GetRequiredService<ISessionManager>();
         var selectionResolver = _rootServices.GetRequiredService<IAgentSelectionResolver>();
@@ -88,14 +88,12 @@ public sealed class GatewayHost : IAsyncDisposable
             _rootServices,
             Options,
             runTracker,
-            executionQueue,
             orchestratorLogger);
 
         builder.Services.AddSingleton(Options);
         builder.Services.AddSingleton(permissionChannel);
         builder.Services.AddSingleton(permissionManager);
         builder.Services.AddSingleton(runTracker);
-        builder.Services.AddSingleton(executionQueue);
         builder.Services.AddSingleton(connectionManager);
         builder.Services.AddSingleton(orchestrator);
         builder.Services.AddSingleton(sessionService);

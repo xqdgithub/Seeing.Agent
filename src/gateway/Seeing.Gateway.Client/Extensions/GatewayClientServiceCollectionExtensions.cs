@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Seeing.Gateway.Client.Extensions;
 
@@ -59,6 +60,31 @@ public static class GatewayClientServiceCollectionExtensions
             options.Model = configuration[nameof(GatewayClientCommonOptions.Model)];
             options.Mode = configuration[nameof(GatewayClientCommonOptions.Mode)];
         });
+        return services;
+    }
+
+    /// <summary>
+    /// 进程内 <see cref="ISessionClient"/>（依赖根容器 <see cref="Seeing.Agent.Abstractions.Runtime.ISessionRuntime"/>）。
+    /// </summary>
+    public static IServiceCollection AddInProcessSessionClient(this IServiceCollection services)
+    {
+        services.TryAddSingleton<GatewayRunTracker>();
+        services.AddSingleton<ISessionClient, InProcessSessionClient>();
+        return services;
+    }
+
+    /// <summary>
+    /// 远程 <see cref="ISessionClient"/>，包装同一 <see cref="WebSocketGatewayClient"/> 实例。
+    /// </summary>
+    public static IServiceCollection AddRemoteSessionClient(
+        this IServiceCollection services,
+        GatewayClientOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        services.TryAddSingleton(Microsoft.Extensions.Options.Options.Create(options));
+        services.TryAddSingleton<WebSocketGatewayClient>();
+        services.TryAddSingleton<IGatewayChannelHostClient>(sp => sp.GetRequiredService<WebSocketGatewayClient>());
+        services.AddSingleton<ISessionClient, RemoteSessionClient>();
         return services;
     }
 }

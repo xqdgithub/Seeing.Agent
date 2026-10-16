@@ -12,7 +12,7 @@ namespace Seeing.Gateway.Client;
 /// <summary>
 /// 基于 WebSocket 的 <see cref="IGatewayConnection"/> 实现
 /// </summary>
-public sealed class WebSocketGatewayClient : IGatewayConnection
+public sealed class WebSocketGatewayClient : IGatewayConnection, IGatewayChannelHostClient
 {
     private readonly GatewayClientOptions _options;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -37,6 +37,9 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
     }
 
     public bool IsConnected => _webSocket?.State == WebSocketState.Open;
+
+    /// <inheritdoc />
+    public string ChannelId => _registeredChannelId ?? string.Empty;
 
     public async Task ConnectAsync(string channelId, CancellationToken cancellationToken = default)
     {
@@ -240,6 +243,36 @@ public sealed class WebSocketGatewayClient : IGatewayConnection
             cancellationToken).ConfigureAwait(false);
 
         return result ?? throw new InvalidOperationException("Empty reset response body");
+    }
+
+    public async Task<IReadOnlyList<GatewayPendingPermission>> GetPendingPermissionsAsync(
+        string sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.BaseUrl))
+            throw new InvalidOperationException("Gateway BaseUrl is required.");
+
+        using var httpClient = new HttpClient
+        {
+            BaseAddress = new Uri(_options.BaseUrl.TrimEnd('/') + "/"),
+            Timeout = _options.Timeout
+        };
+
+        if (!string.IsNullOrWhiteSpace(_options.ApiKey))
+            httpClient.DefaultRequestHeaders.Add("X-Api-Key", _options.ApiKey);
+
+        var encodedSessionId = Uri.EscapeDataString(sessionId);
+        using var response = await httpClient.GetAsync(
+            $"api/gateway/permissions/pending?sessionId={encodedSessionId}",
+            cancellationToken).ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+
+        var permissions = await response.Content.ReadFromJsonAsync<List<GatewayPendingPermission>>(
+            GatewayJsonOptions.Default,
+            cancellationToken).ConfigureAwait(false);
+
+        return permissions ?? [];
     }
 
     public async ValueTask DisposeAsync()
