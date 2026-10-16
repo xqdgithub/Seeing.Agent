@@ -74,6 +74,9 @@
     <Project Path="src/support/Seeing.Agent.Llm.Support/Seeing.Agent.Llm.Support.csproj" />
     <Project Path="src/support/Seeing.Agent.Tools.Support/Seeing.Agent.Tools.Support.csproj" />
   </Folder>
+  <Folder Name="/tests/abstractions/">
+    <Project Path="tests/abstractions/Seeing.Agent.Abstractions.Tests/Seeing.Agent.Abstractions.Tests.csproj" />
+  </Folder>
   <Folder Name="/tests/primitives/">
     <Project Path="tests/primitives/Seeing.ConfigSchema.Tests/Seeing.ConfigSchema.Tests.csproj" />
     <Project Path="tests/primitives/Seeing.Session.Tests/Seeing.Session.Tests.csproj" />
