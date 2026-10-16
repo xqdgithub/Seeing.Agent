@@ -30,6 +30,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Seeing.Gateway.QQ.Tests" />
+    <InternalsVisibleTo Include="Seeing.Agent.Comms.IntegrationTests" />
   </ItemGroup>
 
 </Project>

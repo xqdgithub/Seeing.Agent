@@ -2,7 +2,7 @@
 
 > **权威规格：** [模块化架构设计](../superpowers/specs/2026-09-08-modular-architecture-design.md)  
 > **本文档集：** 日常开发落地规范；与规格冲突时以规格为准，并应提 PR 同步两边。  
-> **更新日期：** 2026-10-11（会话入站运行时重构：DeliverAsync 唯一驱动 + 消费循环，见 14）  
+> **更新日期：** 2026-10-16（通联子系统：渠道目录与出站投递，见 17）  
 > **深化说明：** [architecture-docs-deepen-design](../superpowers/specs/2026-09-08-architecture-docs-deepen-design.md)
 
 ## 新人 5 分钟
@@ -33,6 +33,7 @@
 | [14 会话入站运行时 Release Notes](14-session-inbox-runtime-release-notes.md) | DeliverAsync 唯一驱动、消费循环、Ownership 接管、中断/停止、破坏性变更 |
 | [15 会话归档与延迟加载 Release Notes](15-session-archival-lazy-loading-release-notes.md) | 摘要列表、启动扫描按组归档、存储端口扩展、Evict、破坏性变更 |
 | [16 会话文件浏览器 Release Notes](16-session-file-explorer-release-notes.md) | 文件树/多标签查看编辑、三层分离、会话根门闸、共享写锁、watcher 稳定性、冲突裁决 |
+| [17 通联子系统 Release Notes](17-channel-comms-release-notes.md) | 渠道目录与出站投递、协议 v2、`ChannelRoute`、调度只出站、破坏性变更 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 

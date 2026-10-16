@@ -42,7 +42,9 @@
 | `Seeing.Agent.Llm.ModelCapabilities` | `llm.modelcapabilities` | 模型能力元数据源注册与查询（`IModelCapabilitySource`） |
 | `Seeing.Agent.Llm.ModelCatalog.Builtin` | `llm.modelcatalog.builtin` | 内置精简能力目录（嵌入 `catalog.json` + local 覆盖，含思考档位；无网络）；`DependsOn: llm.modelcapabilities` |
 | `Seeing.Agent.Agents.BuiltIn` | `agents.builtin` | build/plan/explore/general… |
-| `Seeing.Agent.Scheduler` | `scheduler` | cron / heartbeat |
+| `Seeing.Agent.Scheduler` | `scheduler` | cron / heartbeat；`SessionScheduleDispatcher` 负责 Inject 写回 |
+| `Seeing.Agent.Comms` | `comms` | 渠道目录、出站投递、适配器注册表；`ChannelDeliveryScheduleDispatcher` 只按 `SessionData.ChannelRoute` 出站 |
+| `Seeing.Agent.Tools.ChannelMessaging` | `channel-messaging` | `send_message` / 列用户 / 列对话；无宿主时 no-op sink |
 | `Seeing.Agent.Memory` | `memory` | 记忆 |
 | `Seeing.Agent.SystemOne` | `systemone` | SystemOne 集成（ReloadHandler 挂接式；provider owner=systemone） |
 | `Seeing.Agent.Tools.SystemOne` | `systemone.tools` | SystemOne 工具；`DependsOn: systemone` |
@@ -65,12 +67,14 @@
 
 | 包 | 模块 id | 职责 |
 |----|---------|------|
-| `Seeing.Gateway` | — | 协议 DTOs（仅 Abstractions） |
-| `Seeing.Gateway.Client` | — | HTTP/SSE/WebSocket 客户端 |
-| `Seeing.Gateway.WeCom` / `.QQ` | — | 通道桥 |
-| `Seeing.Agent.Gateway` | `gateway` | 集成包：独立 Kestrel、通道宿主；**不**引用 Core/Hosting |
+| `Seeing.Gateway` | — | 协议 DTOs（仅 Abstractions）；`channel.outbound` / `channel.register` / `cancel.mode` v2 |
+| `Seeing.Gateway.Client` | — | HTTP/SSE/WebSocket 客户端；`ISessionClient` 与 `IGatewayChannelHostClient` 双契约 |
+| `Seeing.Gateway.WeCom` / `.QQ` | — | `IChannelAdapter` + 桥（单连接双面） |
+| `Seeing.Agent.Gateway` | `gateway` | 远程 API 宿主：WS/HTTP、远程适配器代理；**不**引用 Core/Hosting。保留 `/api/gateway/health`、`/api/admin/channels/connected` |
 
-详阅 [`docs/gateway/README.md`](../gateway/README.md)。
+详阅 [`docs/gateway/README.md`](../gateway/README.md) 与 [`17 通联子系统 Release Notes`](17-channel-comms-release-notes.md)。
+
+进程内拓扑：宿主直接组合 `Seeing.Agent.Comms` + 适配器，无 WebSocket。进程外拓扑：Comms → Gateway Server → ChannelHost。调度写回与出站拆开：`SessionScheduleDispatcher` Inject，`ChannelDeliveryScheduleDispatcher` 只出站。
 
 ## 5. Host Shape（`src/hosting/`）
 

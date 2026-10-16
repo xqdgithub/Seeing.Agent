@@ -97,6 +97,7 @@ Seeing.Agent/
 | DI 注册入口 | Core `AddSeeingCore` + 各包 `AddSeeingModule*` | `InitializeSeeingAsync` 在 Host.Start 前 |
 | 会话管理 | `src/primitives/Seeing.Session/` | 独立包 |
 | ACP | `src/capabilities/Seeing.Agent.Acp/` | 能力模块 |
+| 通联 / 出站投递 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Channels/`；能力包 `src/capabilities/Seeing.Agent.Comms/`；适配器 `src/gateway/Seeing.Gateway.QQ` 与 `.WeCom`；工具 `src/capabilities/Seeing.Agent.Tools.ChannelMessaging/` | 目录登记即准入；`ChannelRoute` 出站；调度 Inject 在 Scheduler、出站在 Comms；见 `docs/architecture/17` |
 
 ## CONVENTIONS（仅非标准）
 

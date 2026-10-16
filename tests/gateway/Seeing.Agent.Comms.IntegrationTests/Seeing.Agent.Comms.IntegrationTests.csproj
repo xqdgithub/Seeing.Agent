@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Seeing.Agent.Comms.IntegrationTests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Moq" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Comms\Seeing.Agent.Comms.csproj" />
+    <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Scheduler\Seeing.Agent.Scheduler.csproj" />
+    <ProjectReference Include="..\..\..\src\gateway\Seeing.Gateway.QQ\Seeing.Gateway.QQ.csproj" />
+    <ProjectReference Include="..\..\..\src\gateway\Seeing.Gateway\Seeing.Gateway.csproj" />
+  </ItemGroup>
+
+</Project>

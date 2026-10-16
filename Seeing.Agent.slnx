@@ -118,6 +118,7 @@
     <Project Path="tests/capabilities/Seeing.IO.Local.Tests/Seeing.IO.Local.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/gateway/">
+    <Project Path="tests/gateway/Seeing.Agent.Comms.IntegrationTests/Seeing.Agent.Comms.IntegrationTests.csproj" />
     <Project Path="tests/gateway/Seeing.Gateway.Client.Tests/Seeing.Gateway.Client.Tests.csproj" />
     <Project Path="tests/gateway/Seeing.Gateway.QQ.Tests/Seeing.Gateway.QQ.Tests.csproj" />
     <Project Path="tests/gateway/Seeing.Gateway.Tests/Seeing.Gateway.Tests.csproj" />
