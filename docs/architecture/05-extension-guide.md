@@ -11,7 +11,7 @@
    - `ActivateAsync(sp, ct)`：`await tm.RegisterToolAsync(sp.GetRequiredService<XxxTool>(), ct)` + UI Register  
    - `DeactivateAsync`：`UnregisterToolAsync` + UI Unregister  
 5. Sample `Program.cs`：`AddSeeingModule<XxxModule>(registry)`（在 `AddSeeingCore` **之前**）。  
-6. 若需进内置启动集 / 工作模式：改 `BuiltInCapabilitySets`（boot SSOT）及引用它的 `BuiltInScenarios.Modules`（编译期常量，勿复制数组、勿引用工具类型）。  
+6. 若需进命名启动集（`Boot=full` 等）：改 `BuiltInCapabilitySets`（boot SSOT）。内置工作模式 `full` 的模块是 `["*"]`，会自动包含已启动模块，不必把新 id 再写进场景。  
 7. 测试放 `tests/capabilities/Seeing.Agent.Tools.Xxx.Tests/`；补不变量（未启用则 schema 无该工具）。  
 8. 把项目加入 `Seeing.Agent.slnx` 的 `/src/capabilities/` 与 `/tests/capabilities/` Folder。
 

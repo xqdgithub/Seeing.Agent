@@ -26,6 +26,7 @@ internal sealed class SessionSettlementSnapshot
 /// 模块层：
 /// <c>sessionScenario = session.Scenario ?? 进程默认工作模式</c>；
 /// <c>sessionModules = scenario.Modules ∩ catalog.Enabled(=bootEnabled)</c>；
+/// <c>Modules</c> 含 <c>*</c> 时不收窄，取全部 bootEnabled。
 /// 若有 <c>session.ScenarioOverride.Modules.Enabled</c> 则以其为候选再 ∩ bootEnabled（不能超 boot）。
 /// 工具层（模块层之后）：
 /// <c>settledToolIds = ⋃ sessionModules.ProvidedTools − scenario.Tools.Disabled − override.Tools.Disabled − Modules.Tools.Disabled</c>。
@@ -58,7 +59,7 @@ internal static class SessionSettlement
             : resolveScenario(scenarioName.Trim());
 
         // —— 模块层：只操作 module id，不应用 Tools.Disabled ——
-        // sessionModules = scenario.Modules ∩ bootEnabled
+        // sessionModules = scenario.Modules ∩ bootEnabled（"*" = 全部 bootEnabled）
         // 有 override 时再 ∩ override.Modules.Enabled（仍 ⊆ bootEnabled）
         var scenarioModules = scenario?.Modules ?? Array.Empty<string>();
         var sessionBase = Intersect(scenarioModules, bootEnabled);
@@ -101,6 +102,13 @@ internal static class SessionSettlement
         IEnumerable<string> ids,
         HashSet<string> bootEnabled)
     {
+        if (BuiltInScenarios.IncludesAllModules(ids))
+        {
+            return bootEnabled
+                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
         var result = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var raw in ids)

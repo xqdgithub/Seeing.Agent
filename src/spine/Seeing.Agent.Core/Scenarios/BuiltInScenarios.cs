@@ -1,12 +1,14 @@
-using Seeing.Agent.Core.CapabilitySets;
-
 namespace Seeing.Agent.Core.Scenarios;
 
 /// <summary>
-/// 内置场景预设（工作模式）。模块列表编译期引用 <see cref="BuiltInCapabilitySets"/> 常量，禁止复制数组。
+/// 内置工作模式。只保留 <c>full</c>：模块列表为 <see cref="AllModules"/>，
+/// 会话结算时展开为当前进程已启用的全部模块，不把某一天的勾选结果冻成清单。
 /// </summary>
 public static class BuiltInScenarios
 {
+    /// <summary>模块通配。出现在场景 <c>Modules</c> 中时表示不收窄，取全部 bootEnabled。</summary>
+    public const string AllModules = "*";
+
     private static readonly IReadOnlyDictionary<string, string> s_defaultSeams =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -15,64 +17,35 @@ public static class BuiltInScenarios
 
     private static readonly IReadOnlyList<string> s_noToolsDisabled = Array.Empty<string>();
 
-    /// <summary>最小档场景定义（默认 Agent 为 general）。</summary>
-    public static ScenarioDefinition Minimal { get; } = new(
-        Name: "minimal",
-        Modules: BuiltInCapabilitySets.Minimal,
-        DefaultAgent: "general",
-        Seams: s_defaultSeams,
-        ToolsDisabled: s_noToolsDisabled);
+    private static readonly IReadOnlyList<string> s_allModules = [AllModules];
 
-    /// <summary>编码档场景定义（默认 Agent 为 build）。</summary>
-    public static ScenarioDefinition Code { get; } = new(
-        Name: "code",
-        Modules: BuiltInCapabilitySets.Code,
-        DefaultAgent: "build",
-        Seams: s_defaultSeams,
-        ToolsDisabled: s_noToolsDisabled);
-
-    /// <summary>办公档场景定义（默认 Agent 为 general）。</summary>
-    public static ScenarioDefinition Work { get; } = new(
-        Name: "work",
-        Modules: BuiltInCapabilitySets.Work,
-        DefaultAgent: "general",
-        Seams: s_defaultSeams,
-        ToolsDisabled: s_noToolsDisabled);
-
-    /// <summary>研究档场景定义（默认 Agent 为 explore）。</summary>
-    public static ScenarioDefinition Research { get; } = new(
-        Name: "research",
-        Modules: BuiltInCapabilitySets.Research,
-        DefaultAgent: "explore",
-        Seams: s_defaultSeams,
-        ToolsDisabled: s_noToolsDisabled);
-
-    /// <summary>全功能档场景定义（默认 Agent 为 build）。</summary>
+    /// <summary>全部模块（默认 Agent 为 build）。</summary>
     public static ScenarioDefinition Full { get; } = new(
         Name: "full",
-        Modules: BuiltInCapabilitySets.Full,
+        Modules: s_allModules,
         DefaultAgent: "build",
         Seams: s_defaultSeams,
         ToolsDisabled: s_noToolsDisabled);
 
     /// <summary>按名称查找内置场景；未知名称返回 null。</summary>
-    public static ScenarioDefinition? TryGet(string name) => name switch
-    {
-        "minimal" => Minimal,
-        "code" => Code,
-        "work" => Work,
-        "research" => Research,
-        "full" => Full,
-        _ => null,
-    };
+    public static ScenarioDefinition? TryGet(string name) =>
+        string.Equals(name, Full.Name, StringComparison.OrdinalIgnoreCase) ? Full : null;
 
     /// <summary>全部内置场景（稳定顺序）。</summary>
-    public static IReadOnlyList<ScenarioDefinition> All { get; } =
-    [
-        Minimal,
-        Code,
-        Work,
-        Research,
-        Full,
-    ];
+    public static IReadOnlyList<ScenarioDefinition> All { get; } = [Full];
+
+    /// <summary>模块列表是否声明了 <see cref="AllModules"/>。</summary>
+    public static bool IncludesAllModules(IEnumerable<string>? modules)
+    {
+        if (modules is null)
+            return false;
+
+        foreach (var module in modules)
+        {
+            if (string.Equals(module?.Trim(), AllModules, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
 }

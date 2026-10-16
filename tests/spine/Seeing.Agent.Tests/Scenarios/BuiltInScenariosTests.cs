@@ -9,49 +9,34 @@ namespace Seeing.Agent.Tests.Scenarios;
 public class BuiltInScenariosTests
 {
     [Fact]
-    public void Code_Modules_Should_Contain_Git()
+    public void Only_Full_Remains_And_It_Selects_Every_Module()
     {
-        BuiltInScenarios.Code.Modules.Should().Contain("git");
-        BuiltInScenarios.Code.DefaultAgent.Should().Be("build");
-        BuiltInScenarios.Code.Name.Should().Be("code");
-    }
-
-    [Fact]
-    public void Minimal_Work_Research_Full_Should_Match_Brief()
-    {
-        BuiltInScenarios.Minimal.Modules.Should().Equal(
-            "io.local", "agents.builtin", "llm.openai", "basic",
-            "provider.deepseek", "provider.mimo", "provider.opencodezen", "provider.siliconflow");
-        BuiltInScenarios.Minimal.DefaultAgent.Should().Be("general");
-
-        BuiltInScenarios.Code.Modules.Should().Contain(
-            "io.local", "agents.builtin", "llm.openai", "basic",
-            "filesystem", "shell", "git", "subagent");
-
-        BuiltInScenarios.Work.Modules.Should().Contain(
-            "filesystem", "web", "memory", "scheduler");
-        BuiltInScenarios.Work.DefaultAgent.Should().Be("general");
-
-        BuiltInScenarios.Research.Modules.Should().Contain("web", "memory");
-        BuiltInScenarios.Research.DefaultAgent.Should().Be("explore");
-
-        BuiltInScenarios.Full.Modules.Should().Contain(
-            "git", "memory", "mcp", "skills", "acp", "gateway",
-            "provider.deepseek", "provider.mimo", "provider.opencodezen", "provider.siliconflow");
+        BuiltInScenarios.All.Should().ContainSingle();
+        BuiltInScenarios.All[0].Should().BeSameAs(BuiltInScenarios.Full);
+        BuiltInScenarios.Full.Name.Should().Be("full");
         BuiltInScenarios.Full.DefaultAgent.Should().Be("build");
+        BuiltInScenarios.Full.Modules.Should().Equal(BuiltInScenarios.AllModules);
+        BuiltInScenarios.IncludesAllModules(BuiltInScenarios.Full.Modules).Should().BeTrue();
+
+        BuiltInScenarios.TryGet("full").Should().BeSameAs(BuiltInScenarios.Full);
+        BuiltInScenarios.TryGet("FULL").Should().BeSameAs(BuiltInScenarios.Full);
+        BuiltInScenarios.TryGet("code").Should().BeNull();
+        BuiltInScenarios.TryGet("work").Should().BeNull();
+        BuiltInScenarios.TryGet("minimal").Should().BeNull();
+        BuiltInScenarios.TryGet("research").Should().BeNull();
     }
 
     [Fact]
     public void Full_Should_Enable_All_Implemented_Module_Ids()
     {
-        // 反射发现 src 内全部 ISeeingModule 实现 id，与 Full 求差：消除硬编码双写漂移。
-        // 语义：Full 覆盖全部已实现模块，仅显式豁免 FullExcludedModules（可选在线外部源）。
+        // 反射发现 src 内全部 ISeeingModule 实现 id，与 Boot 能力集 Full 求差。
+        // 内置工作模式 full 是 "*"，不再持有这份清单。
         var implemented = SrcModuleScanner.DiscoverImplementedModuleIds();
 
         implemented.Should().NotBeEmpty("扫描器应能从 src 构建产物反射发现内置模块");
 
         var missing = implemented
-            .Except(BuiltInScenarios.Full.Modules, StringComparer.Ordinal)
+            .Except(BuiltInCapabilitySets.Full, StringComparer.Ordinal)
             .Except(BuiltInCapabilitySets.FullExcludedModules, StringComparer.Ordinal)
             .ToList();
 
@@ -63,30 +48,24 @@ public class BuiltInScenariosTests
     [Fact]
     public void FullExcludedModules_Should_Be_Implemented_And_Absent_From_Full()
     {
-        // 豁免清单自检：豁免项必须真实存在且确实不在 Full，避免陈旧/错误豁免削弱守门语义
         var implemented = SrcModuleScanner.DiscoverImplementedModuleIds();
 
         foreach (var excluded in BuiltInCapabilitySets.FullExcludedModules)
         {
             implemented.Should().Contain(excluded,
                 "FullExcludedModules 中的 '{0}' 必须是真实存在的已实现模块", excluded);
-            BuiltInScenarios.Full.Modules.Should().NotContain(excluded,
+            BuiltInCapabilitySets.Full.Should().NotContain(excluded,
                 "FullExcludedModules 中的 '{0}' 不应出现在 Full 中", excluded);
         }
     }
 
     [Fact]
-    public void All_BuiltIn_Scenarios_With_OpenAi_Should_Include_Provider_Plugs()
+    public void CapabilitySet_Full_With_OpenAi_Should_Include_Provider_Plugs()
     {
-        foreach (var scenario in BuiltInScenarios.All)
-        {
-            if (!scenario.Modules.Contains("llm.openai", StringComparer.Ordinal))
-                continue;
-
-            scenario.Modules.Should().Contain(
-                ["provider.deepseek", "provider.mimo", "provider.opencodezen", "provider.siliconflow"],
-                because: "OpenAI 兼容网关插件须随 llm.openai 进入结算启用集，否则不会 Activate/拉模型");
-        }
+        BuiltInCapabilitySets.Full.Should().Contain("llm.openai");
+        BuiltInCapabilitySets.Full.Should().Contain(
+            ["provider.deepseek", "provider.mimo", "provider.opencodezen", "provider.siliconflow"],
+            because: "OpenAI 兼容网关插件须随 llm.openai 进入 Boot=full 的启用集，否则不会 Activate/拉模型");
     }
 
     [Fact]

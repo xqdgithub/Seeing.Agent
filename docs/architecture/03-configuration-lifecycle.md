@@ -64,7 +64,7 @@ bootEnabled   = resolve(bootPointer) ∩ Available − Disabled(set) − Modules
 
 | 名 | 含义 |
 |----|------|
-| `minimal` / `code` / `work` / `research` / `full` | 与内置 Scenario 模块列表同源（Scenario 编译期引用常量） |
+| `minimal` / `code` / `work` / `research` / `full` | 静态模块列表，只用于 Boot。内置工作模式只保留 `full`，模块为 `["*"]`，结算时展开为全部 bootEnabled |
 | `secure` | `Modules=["*"]`，`Disabled=[shell,mcp,acp,gateway]`（全开再禁高风险） |
 | `dev` | 与 `full` 同一模块列表引用 |
 

@@ -19,7 +19,7 @@ public static class EmbedHostShape
 
     /// <summary>
     /// 进程内嵌入形态可承载的模块类型（不含 ui / gateway 服务端表面）。
-    /// 实际启用集由宿主引用 + Scenario 结算决定；默认场景为 <c>code</c>。
+    /// 实际启用集由宿主引用 + Scenario 结算决定；默认场景为 <c>full</c>（全部已启用模块）。
     /// </summary>
     public static readonly IReadOnlyList<string> CarriableModuleTypes =
     [
@@ -42,6 +42,6 @@ public static class EmbedHostShape
     {
         Id = Id,
         CarriableModuleTypes = CarriableModuleTypes,
-        DefaultScenario = "code",
+        DefaultScenario = "full",
     };
 }

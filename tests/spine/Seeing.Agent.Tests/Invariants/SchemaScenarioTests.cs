@@ -21,6 +21,7 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Scenarios;
+using Seeing.Agent.Tests.Scenarios;
 using Seeing.Agent.Core.CapabilitySets;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Hosting.Execution;
@@ -105,7 +106,8 @@ public class SchemaScenarioTests
             ]);
 
         var session = SessionData.Create(scenario: "code");
-        var settle = SessionSettlement.Compute(session, catalog, processScenario: "full", userToolsDisabled: null);
+        var settle = SessionSettlement.Compute(
+            session, catalog, processScenario: "full", userToolsDisabled: null, resolveScenario: NarrowingScenarios.Resolve);
 
         var toolManager = await CreateToolManager(
             "git_status", "git_diff", "memory_search", "read", "current_time");
@@ -179,9 +181,9 @@ public class SchemaScenarioTests
             ]);
 
         var settleA = SessionSettlement.Compute(
-            SessionData.Create(scenario: "code"), catalog, processScenario: "full", userToolsDisabled: null);
+            SessionData.Create(scenario: "code"), catalog, processScenario: "full", userToolsDisabled: null, resolveScenario: NarrowingScenarios.Resolve);
         var settleB = SessionSettlement.Compute(
-            SessionData.Create(scenario: "work"), catalog, processScenario: "full", userToolsDisabled: null);
+            SessionData.Create(scenario: "work"), catalog, processScenario: "full", userToolsDisabled: null, resolveScenario: NarrowingScenarios.Resolve);
 
         settleA.SettledToolIds.Should().Contain("git_status");
         settleA.SettledToolIds.Should().NotContain("memory_search");
@@ -299,7 +301,7 @@ public class SchemaScenarioTests
             modules: [Desc("git", ["git_status"]), Desc("memory", ["memory_search"])]);
         var session = SessionData.Create(scenario: "code");
         var roundSnapshot = SessionSettlement.Compute(
-            session, sessionCatalog, processScenario: "full", userToolsDisabled: null);
+            session, sessionCatalog, processScenario: "full", userToolsDisabled: null, resolveScenario: NarrowingScenarios.Resolve);
 
         session.Scenario = "work";
         roundSnapshot.ScenarioName.Should().Be("code");
@@ -307,7 +309,7 @@ public class SchemaScenarioTests
         roundSnapshot.SettledToolIds.Should().NotContain("memory_search");
 
         var nextRound = SessionSettlement.Compute(
-            session, sessionCatalog, processScenario: "full", userToolsDisabled: null);
+            session, sessionCatalog, processScenario: "full", userToolsDisabled: null, resolveScenario: NarrowingScenarios.Resolve);
         nextRound.ScenarioName.Should().Be("work");
         nextRound.SettledToolIds.Should().Contain("memory_search");
         nextRound.SettledToolIds.Should().NotContain("git_status");
@@ -439,6 +441,7 @@ public class SchemaScenarioTests
         services.AddSingleton<IToolManager>(toolManager);
         services.AddSingleton(toolManager);
         services.AddSingleton<IModuleCatalog>(catalog);
+        services.AddSingleton<IScenarioCatalog>(new DelegatingScenarioCatalog(NarrowingScenarios.Resolve));
         services.AddSingleton(new ProcessSettlementOptions { HostDefaultScenario = "full" });
         services.AddSingleton<IPromptSectionContributor>(new FakeSectionContributor());
         if (lifecycle is not null)

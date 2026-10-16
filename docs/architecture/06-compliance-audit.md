@@ -136,7 +136,7 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 | 取消正确性 | ✅ | CTS 绑定 `ExecutionRecord`（per-execution），窗口期取消不再偷换 |
 | 装饰器链序 | ✅ | 实际 `OutputLimiter(Cached(Timeout(Retry(tool))))`（补齐链序断言测试） |
 | schema 单点 | ✅ | MCP 动态工具经 `IDynamicToolContributor` 并入 settledToolIds |
-| full 场景守门 | ✅ 完成 | `Full` 清单补 `systemone`/`systemone.tools`；反射守门（`BuiltInScenariosTests` 反射发现全部 `ISeeingModule` 求差）+ `FullExcludedModules` 显式豁免在线源（`2c934db` + `ead35e3`）。2026-09-30：唯一豁免项 `llm.modelcatalog.modelsdev` 随该项目移除，`FullExcludedModules` 现为空清单，守门机制保留 |
+| full 能力集守门 | ✅ 完成 | 反射守门针对 `BuiltInCapabilitySets.Full`（`BuiltInScenariosTests` 反射发现全部 `ISeeingModule` 求差）+ `FullExcludedModules` 显式豁免。内置工作模式 `full` 为 `["*"]`，不再维护模块清单。2026-09-30：唯一豁免项 `llm.modelcatalog.modelsdev` 随该项目移除，`FullExcludedModules` 现为空清单，守门机制保留 |
 
 ### 2026-09-25 整改覆盖矩阵（P0/P1 逐条落档）
 

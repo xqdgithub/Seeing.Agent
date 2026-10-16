@@ -2,6 +2,7 @@ using FluentAssertions;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Hosting.Execution;
+using Seeing.Agent.Tests.Scenarios;
 using Seeing.Agent.Core.Modules;
 using Seeing.Session.Core;
 using Xunit;
@@ -29,8 +30,8 @@ public class SessionSettlementTests
         var sessionA = SessionData.Create(scenario: "code");
         var sessionB = SessionData.Create(scenario: "work");
 
-        var settleA = SessionSettlement.Compute(sessionA, catalog, processScenario: "full", userToolsDisabled: null);
-        var settleB = SessionSettlement.Compute(sessionB, catalog, processScenario: "full", userToolsDisabled: null);
+        var settleA = SessionSettlement.Compute(sessionA, catalog, processScenario: "full", userToolsDisabled: null, resolveScenario: NarrowingScenarios.Resolve);
+        var settleB = SessionSettlement.Compute(sessionB, catalog, processScenario: "full", userToolsDisabled: null, resolveScenario: NarrowingScenarios.Resolve);
 
         settleA.EnabledModules.Should().Contain("git");
         settleA.EnabledModules.Should().NotContain("memory");
@@ -84,6 +85,28 @@ public class SessionSettlementTests
         settle.EnabledModules.Should().NotContain("filesystem");
         settle.SettledToolIds.Should().NotContain("read");
         settle.SettledToolIds.Should().NotContain("write");
+        settle.EnabledModules.Should().BeEquivalentTo(["basic", "io.local"]);
+    }
+
+    [Fact]
+    public void Compute_FullScenario_IncludesModulesMissingFromTheOldChecklist()
+    {
+        var catalog = CreateCatalog(
+            processEnabled: ["git", "editor.tools", "memory"],
+            modules:
+            [
+                Desc("git", ["git_status"]),
+                Desc("editor.tools", ["editor_read"]),
+                Desc("memory", ["memory_search"]),
+                Desc("shell", ["bash"]),
+            ]);
+
+        var session = SessionData.Create(scenario: "full");
+        var settle = SessionSettlement.Compute(session, catalog, processScenario: "full", userToolsDisabled: null);
+
+        settle.EnabledModules.Should().BeEquivalentTo(["editor.tools", "git", "memory"]);
+        settle.SettledToolIds.Should().Contain("editor_read");
+        settle.SettledToolIds.Should().NotContain("bash");
     }
 
     [Fact]
@@ -170,7 +193,8 @@ public class SessionSettlementTests
             }
         };
 
-        var settle = SessionSettlement.Compute(session, catalog, processScenario: "full", userToolsDisabled: null);
+        var settle = SessionSettlement.Compute(
+            session, catalog, processScenario: "full", userToolsDisabled: null, resolveScenario: NarrowingScenarios.Resolve);
 
         settle.EnabledModules.Should().BeEquivalentTo(["filesystem", "git"]);
         settle.EnabledModules.Should().NotContain("memory");
@@ -198,7 +222,8 @@ public class SessionSettlementTests
             session,
             catalog,
             processScenario: "full",
-            userToolsDisabled: ["write"]);
+            userToolsDisabled: ["write"],
+            resolveScenario: NarrowingScenarios.Resolve);
 
         settle.SettledToolIds.Should().Contain("git_status", "read");
         settle.SettledToolIds.Should().NotContain("git_commit");
@@ -208,16 +233,18 @@ public class SessionSettlementTests
     [Fact]
     public void Compute_NullSessionScenario_FallsBackToProcessScenario()
     {
+        var work = NarrowingScenarios.Resolve("work")!;
         var catalog = CreateCatalog(
-            processEnabled: BuiltInScenarios.Work.Modules.ToArray(),
-            modules: BuiltInScenarios.Work.Modules
+            processEnabled: work.Modules.ToArray(),
+            modules: work.Modules
                 .Select(id => Desc(id, [$"{id}_tool"]))
                 .ToArray());
 
         var session = SessionData.Create(); // Scenario null
         session.Scenario.Should().BeNull();
 
-        var settle = SessionSettlement.Compute(session, catalog, processScenario: "work", userToolsDisabled: null);
+        var settle = SessionSettlement.Compute(
+            session, catalog, processScenario: "work", userToolsDisabled: null, resolveScenario: NarrowingScenarios.Resolve);
 
         settle.ScenarioName.Should().Be("work");
         settle.EnabledModules.Should().Contain("memory");
@@ -236,7 +263,8 @@ public class SessionSettlementTests
             ]);
 
         var session = SessionData.Create(scenario: "code");
-        var snapshot = SessionSettlement.Compute(session, catalog, processScenario: "full", userToolsDisabled: null);
+        var snapshot = SessionSettlement.Compute(
+            session, catalog, processScenario: "full", userToolsDisabled: null, resolveScenario: NarrowingScenarios.Resolve);
 
         session.Scenario = "work";
         snapshot.ScenarioName.Should().Be("code");

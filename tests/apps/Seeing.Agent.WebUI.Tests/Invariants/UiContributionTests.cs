@@ -149,7 +149,7 @@ public class UiContributionTests
         var badgeBefore = SessionShellVisibility.ResolveEffectiveScenario(null, process);
         var agentBefore = SessionShellVisibility.ResolveDefaultAgent(badgeBefore);
         var badgeAfter = SessionShellVisibility.ResolveEffectiveScenario("research", process);
-        var agentAfter = SessionShellVisibility.ResolveDefaultAgent(badgeAfter);
+        var agentAfter = SessionShellVisibility.ResolveDefaultAgent(badgeAfter, NarrowingCatalog());
 
         badgeBefore.Should().Be("full");
         agentBefore.Should().Be(BuiltInScenarios.Full.DefaultAgent);
@@ -166,12 +166,12 @@ public class UiContributionTests
         };
 
         var codeSlots = SessionShellVisibility.FilterSlotsForSession(
-            slots, "session_prompt", catalog, sessionScenario: "code", processScenario: process);
+            slots, "session_prompt", catalog, sessionScenario: "code", processScenario: process, scenarioCatalog: NarrowingCatalog());
         codeSlots.Should().ContainSingle(s => s.Requires.Contains("git"));
         codeSlots.Should().NotContain(s => s.Requires.Contains("memory"));
 
         var workSlots = SessionShellVisibility.FilterSlotsForSession(
-            slots, "session_prompt", catalog, sessionScenario: "work", processScenario: process);
+            slots, "session_prompt", catalog, sessionScenario: "work", processScenario: process, scenarioCatalog: NarrowingCatalog());
         workSlots.Should().ContainSingle(s => s.Requires.Contains("memory"));
         workSlots.Should().NotContain(s => s.Requires.Contains("git"));
 
@@ -187,9 +187,9 @@ public class UiContributionTests
 
         // 模拟多次会话场景切换后，registry（Activate 产物）仍完整
         _ = SessionShellVisibility.FilterSlotsForSession(
-            slots, "session_prompt", catalog, "code", process);
+            slots, "session_prompt", catalog, "code", process, scenarioCatalog: NarrowingCatalog());
         _ = SessionShellVisibility.FilterSlotsForSession(
-            slots, "session_prompt", catalog, "work", process);
+            slots, "session_prompt", catalog, "work", process, scenarioCatalog: NarrowingCatalog());
         _ = SessionShellVisibility.ResolveEffectiveScenario("research", process);
 
         registry.NavItems.Select(n => n.Route).OrderBy(r => r).Should().Equal(navSnapshot);
@@ -258,6 +258,22 @@ public class UiContributionTests
         var router = File.ReadAllText(WebUiPath("Components", "ModuleRouter.razor"));
         router.Should().Contain("Catalog");
         router.Should().Contain("ModuleRouteResolver.Resolve");
+    }
+
+    private static IScenarioCatalog NarrowingCatalog()
+    {
+        var mock = new Mock<IScenarioCatalog>();
+        mock.Setup(c => c.Get(It.IsAny<string>())).Returns((string name) => name switch
+        {
+            "code" => new ScenarioDefinition(
+                "code", ["git", "filesystem", "shell", "basic"], "build", new Dictionary<string, string>(), []),
+            "work" => new ScenarioDefinition(
+                "work", ["memory", "filesystem", "web", "scheduler"], "general", new Dictionary<string, string>(), []),
+            "research" => new ScenarioDefinition(
+                "research", ["web", "memory"], "explore", new Dictionary<string, string>(), []),
+            _ => BuiltInScenarios.TryGet(name),
+        });
+        return mock.Object;
     }
 
     private static IModuleCatalog Enabled(params string[] ids)

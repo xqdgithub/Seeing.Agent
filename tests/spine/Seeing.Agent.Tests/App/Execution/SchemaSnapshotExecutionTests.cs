@@ -22,6 +22,8 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Execution;
+using Seeing.Agent.Core.Scenarios;
+using Seeing.Agent.Tests.Scenarios;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Llm;
@@ -236,6 +238,7 @@ public class SchemaSnapshotExecutionTests
         services.AddSingleton<IToolManager>(toolManager);
         services.AddSingleton(toolManager);
         services.AddSingleton<IModuleCatalog>(catalog);
+        services.AddSingleton<IScenarioCatalog>(new DelegatingScenarioCatalog(NarrowingScenarios.Resolve));
         services.AddSingleton(new ProcessSettlementOptions { HostDefaultScenario = "full" });
         services.AddSingleton<IPromptSectionContributor>(section);
         var provider = services.BuildServiceProvider();

@@ -5,6 +5,7 @@ using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Core.Tools;
@@ -37,7 +38,8 @@ public class VisibilityTests
             session,
             catalog,
             processScenario: "full",
-            userToolsDisabled: null);
+            userToolsDisabled: null,
+            resolveScenario: ResolveNarrowing);
 
         // code scenario ∩ process enabled：filesystem+git，不含 memory
         settlement.SettledToolIds.Should().BeEquivalentTo(["git_status", "read", "write"]);
@@ -88,7 +90,8 @@ public class VisibilityTests
             session,
             catalog,
             processScenario: "full",
-            userToolsDisabled: ["write", "git_commit"]);
+            userToolsDisabled: ["write", "git_commit"],
+            resolveScenario: ResolveNarrowing);
 
         settlement.SettledToolIds.Should().BeEquivalentTo(["git_status", "read"]);
         settlement.SettledToolIds.Should().NotContain("write");
@@ -151,6 +154,17 @@ public class VisibilityTests
 
     private static ModuleDescriptor Desc(string id, string[] tools)
         => new(id, tools, Array.Empty<string>(), Array.Empty<string>());
+
+    /// <summary>code 不再是内置工作模式；这里注入旧的收窄集，锁定层1∩层2。</summary>
+    private static ScenarioDefinition? ResolveNarrowing(string name) =>
+        string.Equals(name, "code", StringComparison.OrdinalIgnoreCase)
+            ? new ScenarioDefinition(
+                "code",
+                ["filesystem", "git", "shell", "basic"],
+                "build",
+                new Dictionary<string, string>(),
+                [])
+            : null;
 
     private sealed class NamedTool(string id) : ITool
     {

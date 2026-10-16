@@ -57,6 +57,10 @@ internal static class SrcModuleScanner
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var binDir in Directory.EnumerateDirectories(srcRoot, "bin", SearchOption.AllDirectories))
         {
+            var projectDir = Directory.GetParent(binDir)?.FullName;
+            if (projectDir is null || !Directory.EnumerateFiles(projectDir, "*.csproj").Any())
+                continue;
+
             var netDir = Path.Combine(binDir, config, "net10.0");
             if (!Directory.Exists(netDir))
                 continue;

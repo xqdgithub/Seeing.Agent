@@ -109,17 +109,17 @@ Sample **自己** `ProjectReference` 能力包；Shape 包不代引用。
 定义：`Seeing.Agent.Core.Scenarios.BuiltInScenarios`（`src/spine/`）。  
 自定义：`seeing.json` → `SeeingAgent.Scenarios`（经 `IScenarioCatalog` 合并；同名覆盖内置）。
 
-| 名 | 默认 Agent | 模块意图（摘要） |
-|----|------------|------------------|
-| minimal | general | io.local + agents.builtin + llm.openai + basic + provider.deepseek/mimo/opencodezen |
-| code | build | + filesystem/shell/git/subagent + providers |
-| work | general | + filesystem/web/memory/scheduler + providers |
-| research | explore | + web/memory + providers |
-| full | build | **全部已实现模块 id**（含 acp/gateway/providers；与 available 求交） |
+内置只保留一个工作模式：
 
-结算：`scenario.modules ∩ available`；未引用包的 id 告警忽略。宿主引用了 plug 但场景模块列表未含其 id 时，Provider **不会** Activate（模型页看不到、无法拉模型）。
+| 名 | 默认 Agent | 模块 |
+|----|------------|------|
+| full | build | `["*"]`：结算时展开为当前 **bootEnabled** 的全部模块，不维护勾选清单 |
 
-`full` 维护约定：新增 `ISeeingModule` 时同步写入 `BuiltInCapabilitySets.Full`（`src/spine/Seeing.Agent.Core/CapabilitySets/`），并更新 `BuiltInScenariosTests.Full_Should_Enable_All_Implemented_Module_Ids`（目标态为反射发现全部 `ISeeingModule` id 求差，见 06 开放项）。
+`minimal` / `code` / `work` / `research` 仍是 **启动能力集**（`BuiltInCapabilitySets`，只影响 Boot），不再是内置工作模式。需要更窄的会话滤镜时，在设置里新建自定义 Scenario，显式列出模块 id。
+
+结算：`scenario.modules ∩ bootEnabled`。`*` 表示不收窄。会话不能越过 Boot。宿主引用了 plug 但 Boot 能力集未含其 id、且 Boot 不是 `*` 时，Provider **不会** Activate。
+
+`full` 能力集维护约定（仅 Boot 名为 `full` 时）：新增 `ISeeingModule` 时同步写入 `BuiltInCapabilitySets.Full`，并由 `BuiltInScenariosTests.Full_Should_Enable_All_Implemented_Module_Ids` 对能力集清单做反射求差。内置工作模式 `full` 不用改。
 
 ## 8. WebUI 贡献
 

@@ -9,6 +9,7 @@ using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Scenarios;
+using Seeing.Agent.Tests.Scenarios;
 using Seeing.Agent.Core.CapabilitySets;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Core.Llm;
@@ -127,7 +128,7 @@ public class MigrationTests : IDisposable
         catalog.ReplaceEnabled(["git", "memory", "filesystem", "basic"]);
 
         var settle = SessionSettlement.Compute(
-            loaded, catalog, processScenario: "work", userToolsDisabled: null);
+            loaded, catalog, processScenario: "work", userToolsDisabled: null, resolveScenario: NarrowingScenarios.Resolve);
         settle.ScenarioName.Should().Be("work");
         settle.SettledToolIds.Should().Contain("memory_search");
         settle.SettledToolIds.Should().NotContain("git_status");
@@ -152,8 +153,10 @@ public class MigrationTests : IDisposable
             scenario.Modules.Should().OnlyContain(id => id.GetType() == typeof(string));
         }
 
-        BuiltInScenarios.Code.Modules.Should().Contain("git");
-        BuiltInScenarios.Work.Modules.Should().Contain("memory");
+        BuiltInScenarios.All.Should().ContainSingle(s => s.Name == "full");
+        BuiltInScenarios.Full.Modules.Should().Equal("*");
+        BuiltInScenarios.TryGet("code").Should().BeNull();
+        BuiltInScenarios.TryGet("work").Should().BeNull();
 
         var core = typeof(BuiltInScenarios).Assembly;
         var forbidden = new HashSet<string>(StringComparer.Ordinal)

@@ -14,7 +14,7 @@
 @implements IDisposable
 
 <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
-       Message="工作模式（Scenario）决定会话模块滤镜、默认 Agent、场景 Seams 与 Tools.Disabled。不驱动进程 Activate。启动能力请到「启动能力」页签配置 Boot + 能力集。当前进程默认工作模式写入 seeing.json 的 Scenario，仅影响新会话默认值。" />
+       Message="工作模式（Scenario）决定会话模块滤镜、默认 Agent、场景 Seams 与 Tools.Disabled。不驱动进程 Activate。内置 full 自动包含当前已启动的全部模块，新增模块不用再勾选。启动能力请到「启动能力」页签配置 Boot + 能力集。当前进程默认工作模式写入 seeing.json 的 Scenario，仅影响新会话默认值。" />
 
 <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
     <span>默认工作模式：</span>
@@ -78,25 +78,37 @@
             <Input @bind-Value="@_editModel.DefaultAgent" Placeholder="general / build / explore …" />
         </FormItem>
         <FormItem Label="模块（会话滤镜候选；结算时 ∩ bootEnabled）">
-            <div style="max-height: 220px; overflow: auto; border: 1px solid #f0f0f0; padding: 8px; border-radius: 6px;">
-                @foreach (var id in _availableModuleIds)
-                {
-                    <div>
-                        <Checkbox Checked="@_editModel.SelectedModules.Contains(id)"
-                                  CheckedChanged="@(v => ToggleModule(id, v))">
-                            @id
-                            @if (!ModuleCatalog.IsEnabled(id))
-                            {
-                                <span style="color:#999; margin-left:6px;">（当前未启用 / 超出 Boot）</span>
-                            }
-                        </Checkbox>
-                    </div>
-                }
-            </div>
-            <div style="margin-top: 6px; font-size: 12px; color: #888;">
-                也可手写额外模块 id（逗号分隔，结算时不在目录则告警忽略）：
-            </div>
-            <Input @bind-Value="@_editModel.ExtraModulesCsv" Placeholder="例如 experimental.foo" Style="margin-top: 4px;" />
+            <Checkbox Checked="@_editModel.AllModules" CheckedChanged="OnAllModulesChanged">
+                自动包含全部已注册模块（新增模块无需再勾选）
+            </Checkbox>
+            @if (_editModel.AllModules)
+            {
+                <div style="margin-top: 8px; font-size: 12px; color: #888;">
+                    保存为 *。结算时取当前进程已启用的全部模块，不会把今天的清单冻下来。
+                </div>
+            }
+            else
+            {
+                <div style="max-height: 220px; overflow: auto; border: 1px solid #f0f0f0; padding: 8px; border-radius: 6px; margin-top: 8px;">
+                    @foreach (var id in _availableModuleIds)
+                    {
+                        <div>
+                            <Checkbox Checked="@_editModel.SelectedModules.Contains(id)"
+                                      CheckedChanged="@(v => ToggleModule(id, v))">
+                                @id
+                                @if (!ModuleCatalog.IsEnabled(id))
+                                {
+                                    <span style="color:#999; margin-left:6px;">（当前未启用 / 超出 Boot）</span>
+                                }
+                            </Checkbox>
+                        </div>
+                    }
+                </div>
+                <div style="margin-top: 6px; font-size: 12px; color: #888;">
+                    也可手写额外模块 id（逗号分隔，结算时不在目录则告警忽略）：
+                </div>
+                <Input @bind-Value="@_editModel.ExtraModulesCsv" Placeholder="例如 experimental.foo" Style="margin-top: 4px;" />
+            }
         </FormItem>
         <FormItem Label="Seams（会话/文档语义，JSON 对象，可选）">
             <TextArea @bind-Value="@_editModel.SeamsJson" Rows="3"
@@ -156,7 +168,7 @@
                 s.Name,
                 KindLabel(builtin, over),
                 s.DefaultAgent,
-                string.Join(", ", s.Modules),
+                SummarizeModules(s.Modules),
                 builtin,
                 over,
                 string.Equals(_activeScenario, s.Name, StringComparison.OrdinalIgnoreCase));
@@ -165,6 +177,11 @@
 
     private static string KindLabel(bool builtin, bool over) =>
         builtin ? (over ? "内置·已覆盖" : "内置") : "自定义";
+
+    private static string SummarizeModules(IReadOnlyList<string> modules) =>
+        BuiltInScenarios.IncludesAllModules(modules)
+            ? "全部（自动包含已注册模块）"
+            : string.Join(", ", modules);
 
     private async Task OnActiveScenarioChanged(string? value)
     {
@@ -211,6 +228,7 @@
         {
             Name = "",
             DefaultAgent = "general",
+            AllModules = false,
             SelectedModules = ModuleCatalog.Enabled.ToHashSet(StringComparer.OrdinalIgnoreCase),
             SeamsJson = """{"executionWorld":"io.local"}""",
             ToolsDisabledCsv = "",
@@ -231,19 +249,7 @@
             ? $"查看内置工作模式 · {row.Name}（保存即覆盖）"
             : $"编辑工作模式 · {row.Name}";
 
-        var available = _availableModuleIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var selected = def.Modules.Where(available.Contains).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var extra = def.Modules.Where(m => !available.Contains(m)).ToArray();
-
-        _editModel = new EditorModel
-        {
-            Name = def.Name,
-            DefaultAgent = def.DefaultAgent,
-            SelectedModules = selected,
-            ExtraModulesCsv = string.Join(", ", extra),
-            SeamsJson = JsonSerializer.Serialize(def.Seams),
-            ToolsDisabledCsv = string.Join(", ", def.ToolsDisabled),
-        };
+        _editModel = CreateEditorModel(def, def.Name);
         _editorVisible = true;
     }
 
@@ -256,16 +262,7 @@
         _editIsNew = true;
         _editIsBuiltInBase = false;
         _editorTitle = "另存为自定义工作模式";
-        var available = _availableModuleIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        _editModel = new EditorModel
-        {
-            Name = row.IsBuiltIn ? $"{row.Name}-custom" : $"{row.Name}-copy",
-            DefaultAgent = def.DefaultAgent,
-            SelectedModules = def.Modules.Where(available.Contains).ToHashSet(StringComparer.OrdinalIgnoreCase),
-            ExtraModulesCsv = string.Join(", ", def.Modules.Where(m => !available.Contains(m))),
-            SeamsJson = JsonSerializer.Serialize(def.Seams),
-            ToolsDisabledCsv = string.Join(", ", def.ToolsDisabled),
-        };
+        _editModel = CreateEditorModel(def, row.IsBuiltIn ? $"{row.Name}-custom" : $"{row.Name}-copy");
         _editorVisible = true;
     }
 
@@ -275,6 +272,42 @@
     {
         if (on) _editModel.SelectedModules.Add(id);
         else _editModel.SelectedModules.Remove(id);
+    }
+
+    private void OnAllModulesChanged(bool on)
+    {
+        _editModel.AllModules = on;
+        if (on)
+        {
+            _editModel.ExtraModulesCsv = "";
+            return;
+        }
+
+        if (_editModel.SelectedModules.Count == 0)
+            _editModel.SelectedModules = ModuleCatalog.Enabled.ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private EditorModel CreateEditorModel(ScenarioDefinition def, string name)
+    {
+        var all = BuiltInScenarios.IncludesAllModules(def.Modules);
+        var available = _availableModuleIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var concrete = def.Modules
+            .Where(m => !string.Equals(m?.Trim(), BuiltInScenarios.AllModules, StringComparison.Ordinal))
+            .ToArray();
+        return new EditorModel
+        {
+            Name = name,
+            DefaultAgent = def.DefaultAgent,
+            AllModules = all,
+            SelectedModules = all
+                ? _availableModuleIds.ToHashSet(StringComparer.OrdinalIgnoreCase)
+                : concrete.Where(available.Contains).ToHashSet(StringComparer.OrdinalIgnoreCase),
+            ExtraModulesCsv = all
+                ? ""
+                : string.Join(", ", concrete.Where(m => !available.Contains(m))),
+            SeamsJson = JsonSerializer.Serialize(def.Seams),
+            ToolsDisabledCsv = string.Join(", ", def.ToolsDisabled),
+        };
     }
 
     private async Task SaveEditorAsync()
@@ -307,12 +340,20 @@
             return;
         }
 
-        var modules = _editModel.SelectedModules.ToList();
-        foreach (var part in (_editModel.ExtraModulesCsv ?? "")
-                     .Split([',', ';', ' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries))
+        var modules = new List<string>();
+        if (_editModel.AllModules)
         {
-            if (!modules.Contains(part, StringComparer.OrdinalIgnoreCase))
-                modules.Add(part.Trim());
+            modules.Add(BuiltInScenarios.AllModules);
+        }
+        else
+        {
+            modules.AddRange(_editModel.SelectedModules);
+            foreach (var part in (_editModel.ExtraModulesCsv ?? "")
+                         .Split([',', ';', ' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!modules.Contains(part, StringComparer.OrdinalIgnoreCase))
+                    modules.Add(part.Trim());
+            }
         }
 
         var toolsDisabled = (_editModel.ToolsDisabledCsv ?? "")
@@ -409,6 +450,7 @@
     {
         public string Name { get; set; } = "";
         public string DefaultAgent { get; set; } = "general";
+        public bool AllModules { get; set; }
         public HashSet<string> SelectedModules { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string ExtraModulesCsv { get; set; } = "";
         public string SeamsJson { get; set; } = "";

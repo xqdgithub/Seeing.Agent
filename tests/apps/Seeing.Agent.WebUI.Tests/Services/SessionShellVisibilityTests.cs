@@ -20,10 +20,13 @@ public class SessionShellVisibilityTests
     [Fact]
     public void ResolveDefaultAgent_UsesBuiltInScenarioDefaults()
     {
-        SessionShellVisibility.ResolveDefaultAgent("code").Should().Be("build");
-        SessionShellVisibility.ResolveDefaultAgent("work").Should().Be("general");
-        SessionShellVisibility.ResolveDefaultAgent("research").Should().Be("explore");
+        SessionShellVisibility.ResolveDefaultAgent("full").Should().Be("build");
+        SessionShellVisibility.ResolveDefaultAgent("code").Should().BeNull();
+        SessionShellVisibility.ResolveDefaultAgent("work").Should().BeNull();
+        SessionShellVisibility.ResolveDefaultAgent("research").Should().BeNull();
         SessionShellVisibility.ResolveDefaultAgent("unknown").Should().BeNull();
+        SessionShellVisibility.ResolveDefaultAgent("code", NarrowingCatalog()).Should().Be("build");
+        SessionShellVisibility.ResolveDefaultAgent("research", NarrowingCatalog()).Should().Be("explore");
     }
 
     [Fact]
@@ -65,13 +68,13 @@ public class SessionShellVisibilityTests
 
         // 进程 full 启用 memory/scheduler/git；会话 code 不含 memory → memory 插槽消失
         var codeSlots = SessionShellVisibility.FilterSlotsForSession(
-            slots, "session_prompt", catalog, sessionScenario: "code", processScenario: "full");
+            slots, "session_prompt", catalog, sessionScenario: "code", processScenario: "full", scenarioCatalog: NarrowingCatalog());
         codeSlots.Should().ContainSingle(s => s.Requires.Contains("git"));
         codeSlots.Should().NotContain(s => s.Requires.Contains("memory"));
 
         // 同进程下会话 work：memory 出现，git 不在 work 模块集 → 消失
         var workSlots = SessionShellVisibility.FilterSlotsForSession(
-            slots, "session_prompt", catalog, sessionScenario: "work", processScenario: "full");
+            slots, "session_prompt", catalog, sessionScenario: "work", processScenario: "full", scenarioCatalog: NarrowingCatalog());
         workSlots.Should().ContainSingle(s => s.Requires.Contains("memory"));
         workSlots.Should().NotContain(s => s.Requires.Contains("git"));
 
@@ -100,11 +103,11 @@ public class SessionShellVisibilityTests
         };
 
         SessionShellVisibility.FilterSlotsForSession(
-            slots, "session_prompt", catalog, "work", "full")
+            slots, "session_prompt", catalog, "work", "full", scenarioCatalog: NarrowingCatalog())
             .Should().ContainSingle();
 
         SessionShellVisibility.FilterSlotsForSession(
-            slots, "session_prompt", catalog, "code", "full")
+            slots, "session_prompt", catalog, "code", "full", scenarioCatalog: NarrowingCatalog())
             .Should().BeEmpty();
     }
 
@@ -116,13 +119,29 @@ public class SessionShellVisibilityTests
         var agentBefore = SessionShellVisibility.ResolveDefaultAgent(badgeBefore);
 
         var badgeAfter = SessionShellVisibility.ResolveEffectiveScenario("research", process);
-        var agentAfter = SessionShellVisibility.ResolveDefaultAgent(badgeAfter);
+        var agentAfter = SessionShellVisibility.ResolveDefaultAgent(badgeAfter, NarrowingCatalog());
 
         badgeBefore.Should().Be("full");
         agentBefore.Should().Be(BuiltInScenarios.Full.DefaultAgent);
         badgeAfter.Should().Be("research");
         agentAfter.Should().Be("explore");
         agentBefore.Should().NotBe(agentAfter);
+    }
+
+    private static IScenarioCatalog NarrowingCatalog()
+    {
+        var mock = new Mock<IScenarioCatalog>();
+        mock.Setup(c => c.Get(It.IsAny<string>())).Returns((string name) => name switch
+        {
+            "code" => new ScenarioDefinition(
+                "code", ["git", "filesystem", "shell", "basic"], "build", new Dictionary<string, string>(), []),
+            "work" => new ScenarioDefinition(
+                "work", ["memory", "filesystem", "web", "scheduler"], "general", new Dictionary<string, string>(), []),
+            "research" => new ScenarioDefinition(
+                "research", ["web", "memory"], "explore", new Dictionary<string, string>(), []),
+            _ => BuiltInScenarios.TryGet(name),
+        });
+        return mock.Object;
     }
 
     private static IModuleCatalog CreateCatalog(IEnumerable<string> enabled)

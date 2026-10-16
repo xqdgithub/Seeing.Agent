@@ -133,7 +133,7 @@ public static class SessionShellVisibility
 
         var name = effectiveScenario.Trim();
         var def = scenarioCatalog?.Get(name) ?? BuiltInScenarios.TryGet(name);
-        if (def is null)
+        if (def is null || BuiltInScenarios.IncludesAllModules(def.Modules))
             return null;
 
         return new HashSet<string>(def.Modules, StringComparer.OrdinalIgnoreCase);

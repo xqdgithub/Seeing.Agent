@@ -103,6 +103,9 @@ public static class BuiltInAgents
                 PermissionRuleEntry.Allow(PermissionKind.Skill, "*", 0),
                 // 允许子代理调用
                 PermissionRuleEntry.Allow(PermissionKind.Agent, "*", 0),
+
+                PermissionRuleEntry.Allow(PermissionKind.Editor, "*", 0),
+
             ],
             // 默认效果：允许（安全默认，因为 build 是主代理）
             PermissionDefaultEffect = PermissionEffect.Ask,
@@ -214,6 +217,8 @@ public static class BuiltInAgents
                 PermissionRuleEntry.Deny(PermissionKind.Tool, "bash", 100),
                 PermissionRuleEntry.Deny(PermissionKind.McpTool, "*", 100),
                 PermissionRuleEntry.Deny(PermissionKind.Shell, "*", 100),
+                PermissionRuleEntry.Allow(PermissionKind.Editor, "*", 0),
+
             ],
             PermissionDefaultEffect = PermissionEffect.Deny,
             Tags = ["planning", "readonly", "safe", "structured"]

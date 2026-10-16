@@ -1,7 +1,9 @@
+using System.ComponentModel;
+
 namespace Seeing.Agent.Core.CapabilitySets;
 
 /// <summary>
-/// 内置能力集（boot 模块列表 SSOT）。<see cref="Scenarios.BuiltInScenarios"/> 编译期引用本类常量，禁止复制数组。
+/// 内置能力集（boot 模块列表 SSOT）。内置工作模式不再引用这些清单：<c>full</c> 场景使用 <c>*</c>。
 /// </summary>
 public static class BuiltInCapabilitySets
 {
@@ -86,6 +88,7 @@ public static class BuiltInCapabilitySets
         "basic",
         "filesystem",
         "files.workspace",
+        "editor.tools",
         "shell",
         "git",
         "subagent",
