@@ -88,6 +88,8 @@
         _tabs = PanelState.GetTabs(SessionId);
         _tabs.Changed += OnTabsChanged;
         PanelState.Changed += OnPanelChanged;
+        // 树重建时（页面往返/重新展开）节点初始化会读取该值沿路径展开定位
+        SyncTreeSelection();
         await TryInitWorkspaceAsync();
     }
 
@@ -175,10 +177,19 @@
 
     private void OnTabsChanged() => _ = InvokeAsync(() =>
     {
+        // 树与右侧激活标签联动：高亮对应文件并展开祖先目录
+        SyncTreeSelection();
         // 无打开文件且目录树收起时，连同文件面板一起关闭；否则保持「无打开文件」状态
         ClosePanelIfEmpty();
         StateHasChanged();
     });
+
+    /// <summary>把当前激活标签同步给目录树（高亮 + 展开定位）。</summary>
+    private void SyncTreeSelection()
+    {
+        var active = _tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == _tabs.ActiveKey);
+        TreeState.SetSelected(active?.Id.RelativePath);
+    }
 
     private void HideTree()
     {

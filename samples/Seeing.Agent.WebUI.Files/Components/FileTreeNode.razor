@@ -1,6 +1,8 @@
 @using Seeing.Agent.Abstractions.Files
 @using Seeing.Agent.WebUI.Files.Services
+@using Microsoft.JSInterop
 @inject FileTreeState TreeState
+@inject IJSRuntime JS
 @implements IDisposable
 
 <li class="file-tree-node">
@@ -32,7 +34,7 @@
     }
     else
     {
-        <div class="file-tree-file" style="@($"padding-left:{Depth * 12 + 12}px")" @onclick="() => OnOpen.InvokeAsync(Entry.Id)">
+        <div class="file-tree-file @(IsSelected ? "selected" : "")" style="@($"padding-left:{Depth * 12 + 12}px")" @ref="_fileEl" @onclick="() => OnOpen.InvokeAsync(Entry.Id)">
             <svg class="file-tree-icon file-tree-icon--file @FileIconClass(Entry.Name)" viewBox="0 0 1024 1024" width="14" height="14" aria-hidden="true">
                 <path fill="currentColor" d="M854.6 288.6L639.4 73.4c-6-6-14.1-9.4-22.6-9.4H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V311.3c0-8.5-3.4-16.7-9.4-22.7zM790.2 326H602V137.8L790.2 326zm1.8 562H232V136h302v216a42 42 0 0 0 42 42h216v494z" />
             </svg>
@@ -57,11 +59,46 @@
     private bool _expanded;
     private bool _loading;
     private List<FileEntry> _children = [];
+    private ElementReference _fileEl;
+    private int _lastScrollVersion = -1;
 
     /// <summary>本目录的相对路径（正斜杠；根为 ""）。</summary>
     private string DirRelative => Entry.Id.RelativePath.Replace('\\', '/');
 
-    protected override void OnInitialized() => TreeState.Changed += OnTreeChanged;
+    /// <summary>本文件的相对路径（正斜杠）。</summary>
+    private string RelPath => Entry.Id.RelativePath.Replace('\\', '/');
+
+    /// <summary>本节点是否为当前激活文件（选中高亮）。</summary>
+    private bool IsSelected => !Entry.IsDirectory
+        && string.Equals(TreeState.SelectedFile, RelPath, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>选中文件是否位于本目录之下（驱动祖先目录自动展开）。</summary>
+    private bool SelectionInDir => Entry.IsDirectory
+        && TreeState.SelectedFile is { } sel
+        && sel.Length > DirRelative.Length + 1
+        && sel.StartsWith(DirRelative + "/", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        TreeState.Changed += OnTreeChanged;
+        TreeState.SelectionChanged += OnSelectionChanged;
+        // 树（重新）构建时选中路径已存在（如树收起后再展开/页面往返）：初始化即沿路径展开
+        if (SelectionInDir)
+            await ExpandAsync();
+    }
+
+    private void OnSelectionChanged()
+    {
+        if (!Entry.IsDirectory)
+        {
+            // 文件节点：刷新高亮
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+        // 目录节点：选中文件位于本目录之下且未展开 → 展开以定位
+        if (!_expanded && SelectionInDir)
+            _ = InvokeAsync(async () => { await ExpandAsync(); StateHasChanged(); });
+    }
 
     private void OnTreeChanged(FileChangeEvent evt)
     {
@@ -78,11 +115,12 @@
 
     private async Task ReloadAndRenderAsync()
     {
-        await ReloadChildrenAsync();
+        await LoadChildrenAsync();
         StateHasChanged();
     }
 
-    private async Task ReloadChildrenAsync()
+    /// <summary>从磁盘重列本目录子项（失败时保留现有子项，等待父级刷新）。</summary>
+    private async Task LoadChildrenAsync()
     {
         try
         {
@@ -98,7 +136,44 @@
         }
     }
 
-    public void Dispose() => TreeState.Changed -= OnTreeChanged;
+    /// <summary>展开本目录；子项未加载时先加载（已有缓存则直接复用）。</summary>
+    private async Task ExpandAsync()
+    {
+        if (_expanded) return;
+        _expanded = true;
+        if (_children.Count > 0) return;
+
+        _loading = true;
+        try
+        {
+            await LoadChildrenAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // 选中文件渲染为可见后滚动定位；同一选中版本只滚一次（预渲染阶段无 ElementReference）
+        if (_fileEl.Context is null || !IsSelected) return;
+        var version = TreeState.SelectionVersion;
+        if (version == _lastScrollVersion) return;
+        _lastScrollVersion = version;
+        try
+        {
+            await JS.InvokeVoidAsync("seeingFilesPanel.scrollTreeNodeIntoView", _fileEl);
+        }
+        catch (JSDisconnectedException) { /* circuit 已断开：忽略 */ }
+        catch (ObjectDisposedException) { /* 组件已销毁：忽略 */ }
+    }
+
+    public void Dispose()
+    {
+        TreeState.Changed -= OnTreeChanged;
+        TreeState.SelectionChanged -= OnSelectionChanged;
+    }
 
     /// <summary>按扩展名返回图标着色类（仅视觉区分，未知扩展名返回空）。</summary>
     private static string FileIconClass(string name)
@@ -118,25 +193,11 @@
 
     private async Task ToggleAsync()
     {
-        _expanded = !_expanded;
-        if (!_expanded || _children.Count > 0) return;
-
-        _loading = true;
-        try
+        if (_expanded)
         {
-            var entries = await Workspace.ListAsync(Workspace.GetAbsolutePath(Entry.Id));
-            _children = entries
-                .OrderByDescending(e => e.IsDirectory)
-                .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            _expanded = false;
+            return;
         }
-        catch
-        {
-            // 目录被删除/占用等竞态：保持空子项，避免异常冒泡到渲染器
-        }
-        finally
-        {
-            _loading = false;
-        }
+        await ExpandAsync();
     }
 }

@@ -82,6 +82,14 @@
         });
     };
 
+    // ===== 文件树选中节点滚动定位 =====
+    // 树节点联动右侧激活文件后，将选中节点滚入可视区（nearest：就近最小滚动）。
+    window.seeingFilesPanel.scrollTreeNodeIntoView = function (el) {
+        if (el && el.scrollIntoView) {
+            try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (_) { /* noop */ }
+        }
+    };
+
     // ===== 文件面板左右位置持久化 =====
     var SIDE_KEY = 'seeing-files-panel-side';
 
