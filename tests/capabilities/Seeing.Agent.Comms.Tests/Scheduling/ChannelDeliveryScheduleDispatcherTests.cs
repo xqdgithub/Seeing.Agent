@@ -61,7 +61,7 @@ public class ChannelDeliveryScheduleDispatcherTests
         });
 
         result.Success.Should().BeTrue();
-        runtime.Messages.Should().ContainSingle(m => m.Presentation == InboxPresentation.Assistant && m.Body == "hello");
+        runtime.Messages.Should().BeEmpty();
         captured.Should().NotBeNull();
         captured!.DeliveryKind.Should().Be(OutboundDeliveryKind.SystemNotice);
         captured.CorrelationSessionId.Should().Be("sess-1");
@@ -103,7 +103,7 @@ public class ChannelDeliveryScheduleDispatcherTests
         });
 
         result.Success.Should().BeTrue();
-        runtime.Messages.Should().ContainSingle();
+        runtime.Messages.Should().BeEmpty();
         delivery.Verify(
             d => d.DeliverAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()),
             Times.Never);
@@ -153,12 +153,7 @@ public class ChannelDeliveryScheduleDispatcherTests
         });
 
         result.Success.Should().BeTrue();
-        runtime.Messages.Should().HaveCount(2);
-        runtime.Messages[0].Presentation.Should().Be(InboxPresentation.System);
-        runtime.Messages[0].Body.Should().Be("plain-task");
-        runtime.Messages[0].Kind.Should().Be(SystemReminder.Kinds.Heartbeat);
-        runtime.Messages[1].Presentation.Should().Be(InboxPresentation.Assistant);
-        runtime.Messages[1].Body.Should().Be("output");
+        runtime.Messages.Should().BeEmpty();
         delivery.Verify(
             d => d.DeliverAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()),
             Times.Never);

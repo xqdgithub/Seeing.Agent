@@ -48,42 +48,9 @@ public sealed class ChannelDeliveryScheduleDispatcher : IScheduledJobDispatcher
         {
             var session = await _sessionManager.EnsureSessionAsync(request.SessionId).ConfigureAwait(false);
 
-            if (!string.IsNullOrEmpty(request.UserInput))
-            {
-                var source = SystemReminder.Sources.Job;
-                var kind = SystemReminder.Kinds.Cron;
-                var body = request.UserInput;
-                if (_reminders.TryParse(request.UserInput, out var parts))
-                {
-                    body = parts.Task;
-                    if (!string.IsNullOrEmpty(parts.Source))
-                        source = parts.Source;
-                    if (!string.IsNullOrEmpty(parts.Kind))
-                        kind = parts.Kind;
-                }
-
-                await _runtime.DeliverAsync(new InboxMessage
-                {
-                    TargetSessionId = request.SessionId,
-                    Sender = new InboxSender { Kind = InboxSenderKind.System, Id = "scheduler" },
-                    Body = body,
-                    Delivery = InboxDelivery.Inject,
-                    Presentation = InboxPresentation.System,
-                    SourceTag = source,
-                    Kind = kind
-                }, ct).ConfigureAwait(false);
-            }
-
-            await _runtime.DeliverAsync(new InboxMessage
-            {
-                TargetSessionId = request.SessionId,
-                Sender = new InboxSender { Kind = InboxSenderKind.System, Id = "scheduler" },
-                Body = request.Content,
-                Delivery = InboxDelivery.Inject,
-                Presentation = InboxPresentation.Assistant,
-                SourceTag = $"scheduler.{request.Source}",
-                Kind = SystemReminder.Kinds.Cron
-            }, ct).ConfigureAwait(false);
+            // 会话写入由 SessionScheduleDispatcher 负责，避免组合分发时双写。
+            _ = _runtime;
+            _ = _reminders;
 
             if (suppressPush)
             {

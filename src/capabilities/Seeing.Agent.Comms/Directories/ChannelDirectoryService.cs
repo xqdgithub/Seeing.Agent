@@ -80,6 +80,24 @@ public sealed class ChannelDirectoryService : IChannelDirectory
         }
     }
 
+    public Task<ConversationEntry?> FindConversationAsync(
+        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            _conversations.TryGetValue(
+                ChannelKeys.Conversation(new ConversationInfo
+                {
+                    ChannelId = channelId,
+                    Kind = kind,
+                    ExternalId = externalId
+                }),
+                out var entry);
+            return Task.FromResult(entry);
+        }
+    }
+
     public async Task SetOptOutAsync(string channelId, string externalId, bool optedOut, CancellationToken ct = default)
     {
         ChannelUserEntry? updated;

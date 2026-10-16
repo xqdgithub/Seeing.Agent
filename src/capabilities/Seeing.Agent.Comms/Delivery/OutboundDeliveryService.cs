@@ -31,18 +31,34 @@ public class OutboundDeliveryService
         ArgumentNullException.ThrowIfNull(message);
         var conversation = message.Target.Conversation;
         var userId = ResolveSubjectUserId(message);
-        if (string.IsNullOrEmpty(userId))
+
+        // 私聊（或群内定向到某人）按用户准入；群/频道整体投递按对话是否已登记准入。
+        if (!string.IsNullOrEmpty(userId))
+        {
+            var user = await _directory.FindUserAsync(conversation.ChannelId, userId, ct).ConfigureAwait(false);
+            if (user is null)
+                return OutboundDeliveryResult.Fail(OutboundFailureKind.NotInDirectory, "用户不在目录中");
+
+            if (user.OptedOut)
+                return OutboundDeliveryResult.Fail(OutboundFailureKind.OptedOut, "用户已退订");
+
+            if (_directory.IsRateLimited(conversation.ChannelId, userId))
+                return OutboundDeliveryResult.Fail(OutboundFailureKind.RateLimited, "超出每小时投递上限");
+        }
+        else if (conversation.Kind is ConversationKind.Group or ConversationKind.Guild)
+        {
+            var known = await _directory.FindConversationAsync(
+                conversation.ChannelId, conversation.Kind, conversation.ExternalId, ct).ConfigureAwait(false);
+            if (known is null)
+                return OutboundDeliveryResult.Fail(OutboundFailureKind.NotInDirectory, "对话不在目录中");
+
+            if (_directory.IsRateLimited(conversation.ChannelId, conversation.ExternalId))
+                return OutboundDeliveryResult.Fail(OutboundFailureKind.RateLimited, "超出每小时投递上限");
+        }
+        else
+        {
             return OutboundDeliveryResult.Fail(OutboundFailureKind.NotInDirectory, "缺少投递用户");
-
-        var user = await _directory.FindUserAsync(conversation.ChannelId, userId, ct).ConfigureAwait(false);
-        if (user is null)
-            return OutboundDeliveryResult.Fail(OutboundFailureKind.NotInDirectory, "用户不在目录中");
-
-        if (user.OptedOut)
-            return OutboundDeliveryResult.Fail(OutboundFailureKind.OptedOut, "用户已退订");
-
-        if (_directory.IsRateLimited(conversation.ChannelId, userId))
-            return OutboundDeliveryResult.Fail(OutboundFailureKind.RateLimited, "超出每小时投递上限");
+        }
 
         if (!_registry.TryGet(conversation.ChannelId, out var adapter) || adapter is null)
             return OutboundDeliveryResult.Fail(OutboundFailureKind.ChannelUnavailable, "通道适配器未注册");
@@ -69,7 +85,7 @@ public class OutboundDeliveryService
                 : sent;
         }
 
-        _directory.RecordDelivery(conversation.ChannelId, userId);
+        _directory.RecordDelivery(conversation.ChannelId, userId ?? conversation.ExternalId);
         await _notifier.NotifyDeliveredAsync(message, sent, ct).ConfigureAwait(false);
         return sent;
     }

@@ -18,6 +18,7 @@ public interface IChannelDirectory              // Manager：登记/查询/退�
     Task<IReadOnlyList<ChannelUserEntry>> ListUsersAsync(string channelId, int skip = 0, int take = 50, CancellationToken ct = default);
     Task<IReadOnlyList<ConversationEntry>> ListConversationsAsync(string channelId, int skip = 0, int take = 50, CancellationToken ct = default);
     Task<ChannelUserEntry?> FindUserAsync(string channelId, string externalId, CancellationToken ct = default);
+    Task<ConversationEntry?> FindConversationAsync(string channelId, ConversationKind kind, string externalId, CancellationToken ct = default);
     Task SetOptOutAsync(string channelId, string externalId, bool optedOut, CancellationToken ct = default);
     bool IsRateLimited(string channelId, string externalId);   // 滑窗判定（已投递计数）
     void RecordDelivery(string channelId, string externalId);  // 投递成功后计数
