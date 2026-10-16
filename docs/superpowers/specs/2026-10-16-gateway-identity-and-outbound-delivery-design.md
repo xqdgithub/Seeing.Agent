@@ -25,7 +25,7 @@
 | 主动推送准入 | 目录即授权 + 退订 + 频控 |
 | v1 范围 | QQ + WeCom 同步迁移；不考虑旧格式兼容 |
 | WebUI 组合形态（v3） | **v1 WebUI 保持「Server + Comms」组合不变**（管理页天然依赖 Server）；进程内拓扑 v1 目标宿主 = headless（Gateway.Server）/嵌入宿主，WebUI 双形态留待后续 |
-| cancel 帧语义（v3） | `cancel` 帧增加 `mode: interrupt|stop`（默认 `interrupt`）；WebUI 停止按钮显式 `stop` 保留原语义 |
+| cancel 帧语义（v3） | `cancel` 帧增加 `mode: interrupt|stop`（默认 `interrupt`）；**该 mode 仅作用于 WS 协议面（消费方 = 桥/远程宿主）**；WebUI 停止按钮走进程内路径（`SessionRuntime` 直调），不经 cancel 帧、语义不变 |
 
 ## 体系定位（四层形态）
 
@@ -68,6 +68,7 @@
 | `IChannelMessageSink` | Sink | agent 工具发送消息的唯一单向出口 |
 | `IChannelAdapter` | Provider | 入站事件→`ChannelInboundMessage`；出站 `DeliveryTarget`→平台 API |
 | `IChannelAdapterRegistry` | Registry | 适配器注册/查询；**单实例 per channel 语义**（重复注册：后注册者生效 + 告警日志，取消现状广播语义） |
+| `IChannelDeliveryNotifier` | Sink | 投递完成/失败的单向通知出口（默认 no-op；Gateway Server 实现以推送 WS 订阅端，保持调度注入消息可见性） |
 
 ## 通联子系统（新包 `src/capabilities/Seeing.Agent.Comms/`）
 
@@ -85,9 +86,9 @@
   5. 投递记录：内存重试队列（指数退避 ≤3 次）+ 审计 `~/.seeing/comms/outbound-log.jsonl`
 - `ChannelDeliveryScheduleDispatcher : IScheduledJobDispatcher`（自 `GatewayScheduleDispatcher` **重构迁入**，非搬家）：
   - 剥离三依赖：`GatewayConnectionManager`（宿主）→ 出站改走 `OutboundDeliveryService`；`GatewayChannelOutboundPayload`/`GatewayEvent`（协议层，能力包不可依赖）→ 改 `OutboundMessage`/目录端口
-  - **「调度注入消息推送 WS 订阅连接」行为保留**：Gateway Server 侧新增会话事件订阅转发（`PushEvent` 语义），补回 Comms 不再直接推 WS 事件的缺口
+  - **「调度注入消息推送 WS 订阅连接」行为保留（v3.1 机制修订）**：`SessionRuntime.DeliverAsync` 的 **Inject 分支只落盘、不产生任何流事件**（现状可见性来自旧 dispatcher 手工构造 GatewayEvent 直推）——故 Comms 定义通知端口 `IChannelDeliveryNotifier`（`Abstractions/Channels/`，单向出口：投递完成后通知宿主呈现端；默认 no-op），Gateway Server 实现之：收到通知 → 构造 `GatewayEvent` 经 `PushEvent` 推 WS 订阅连接。依赖方向干净（Server 实现 Comms 端口），行为与现状等价
   - `suppress_console_push` 元数据契约随迁（不得丢失）
-  - **DI 组合修正**：注册进 Scheduler 的 `CompositeScheduleDispatcher`（现状 Gateway 注册直接覆盖 Composite 是既有缺陷，迁移时一并修正）
+  - **DI 组合修正**：注册进 Scheduler 的 `CompositeScheduleDispatcher`（现状 Gateway 注册直接覆盖 Composite 是既有缺陷，迁移时一并修正；注意 Composite 现为固定数组构造，需改为枚举注册）
 - `IChannelMessageSink` 实现：薄封装投递管道 + 目录查询
 
 ## Gateway Server（`src/gateway/Seeing.Agent.Gateway/`）收窄为远程 API 宿主
@@ -115,11 +116,11 @@
 | 会话驱动面 | `ISessionClient`（见下节） | Submit / Subscribe / Cancel / RespondPermission |
 | 适配器宿主面 | **`IGatewayChannelHostClient`**（自 `WebSocketGatewayClient` 现有职责正式化：连接即 `channel.register`、`OnChannelOutbound` 出站接收、自动重连、`ResetSessionAsync`、`GetPendingPermissionsAsync`） | 桥/适配器的进程外宿主职责 |
 
-QQ/WeCom 桥组合两者（会话驱动用 ISessionClient，宿主连接用 HostClient）。
+QQ/WeCom 桥组合两者。**连接拓扑（v3.1）**：单连接双面——`IGatewayChannelHostClient` 即 `WebSocketGatewayClient` 正式化，`RemoteSessionClient` 包装**同一实例**（沿现有 `WebSocketGatewayClientFacade` 模式），桥共享单条 WS 连接，不双开。
 
 ### 管理面插件契约（v3 修订）
 
-`IGatewayChannelPlugin`（ChannelId/OptionsType/OptionsSectionName/GetConfigSchema/ConfigFormComponentType）+ `GatewayChannelRegistry` DLL 扫描 + `.seeing/gateway-clients/*.json` 配置存储**整体保留**，归属 gateway 家族（与 `IChannelAdapter` 正交：适配器包同时实现两者——`IChannelAdapter` 是行为契约，plugin 是管理元数据契约）。WebUI 客户端管理页因此**无需重写**，仅需感知「channel.register v2 携带能力声明」。
+`IGatewayChannelPlugin`（ChannelId/OptionsType/OptionsSectionName/GetConfigSchema/ConfigFormComponentType）+ `GatewayChannelRegistry` DLL 扫描 + `.seeing/gateway-clients/*.json` 配置存储**整体保留**，归属 gateway 家族（与 `IChannelAdapter` 正交：适配器包同时实现两者——`IChannelAdapter` 是行为契约，plugin 是管理元数据契约）。WebUI 客户端管理页**无需改动**（判活走 `/api/admin/channels/connected`，端点语义不变，管理页不接触 register 帧）。
 
 ### channel.register v2（v3 新增）
 
@@ -181,7 +182,7 @@ public interface ISessionClient
 
 ## 配置（v3 修订）
 
-- `CommsOptions`：节名 `Comms`，`seeing.json`，`ConfigScope.Both`，注册进 `ConfigSectionRegistry`（与 `ModelOverrides` 同惯例，零新机制）
+- `CommsOptions`：节名 `Comms`，`seeing.json`，`ConfigScope.Both`，经 `ConfigSectionMeta` 注册进 `ConfigSectionRegistry`（与 ModelOverrides **同注册机制**；存储形态不同——Comms 为 seeing.json 节而非独立文件，零新机制）
 - `~/.seeing/comms/directory.json` / `outbound-log.jsonl` 为运行时数据文件，**不进** ConfigSectionRegistry
 - **v1 无 WebUI Comms 管理卡片**（频控/退订/审计配置走 seeing.json 手编）；管理卡片列为后续演进
 - ChannelHost 进程托管层**不新增崩溃看门狗**（现有状态记录 + WS 自动重连 + 投递重试队列兜底），列为后续演进
@@ -193,7 +194,8 @@ public interface ISessionClient
           → 适配器经 ISessionClient 订阅会话事件 → 适配器直接回复(被动窗口/流帧旁路)
 调度推送: Scheduler → Composite → ChannelDeliveryScheduleDispatcher → OutboundDeliveryService
           (session.ChannelRoute) → IChannelAdapterRegistry → 适配器 → 平台
-          （Server 侧会话事件订阅转发，保持 WS 订阅端可见注入消息）
+          （投递后经 IChannelDeliveryNotifier 通知 Server → PushEvent 推 WS 订阅端，
+            保持调度注入消息对桥/远程客户端可见——WebUI 走内部事件总线不受影响）
 工具推送: agent 工具 → IChannelMessageSink → OutboundDeliveryService
           (目录解析+准入+频控) → IChannelAdapterRegistry → 适配器 → 平台
 进程内拓扑: headless/嵌入宿主 → Comms(直调适配器)     无 WS、无 Gateway Server
@@ -216,7 +218,7 @@ WebUI(v1): 保持 Server + Comms 同进程组合（管理页依赖不变）
 |---|---|
 | `SessionExecutionQueue` | 删除。论证：现键 `(channel,session)` 跨 channel 本就不互斥、WebUI 直调路径从无队列——从不提供完备串行；删除后正确性依据 = runtime 消费循环 gate + `SessionData` 锁内编辑，行为与 WebUI 路径拉平 |
 | `GatewayRunTracker` 单订阅覆盖 | 引用计数化：键含订阅身份；`CancelRun(sessionId)` 取消全部在途订阅；CTS Dispose 归各订阅 try/finally |
-| cancel 用 `StopAsync` | cancel 帧 `mode` 字段（默认 interrupt）；WebUI 停止按钮显式 stop |
+| cancel 用 `StopAsync` | cancel 帧 `mode` 字段（默认 interrupt，WS 消费方）；WebUI 进程内停止路径独立、语义不变 |
 | `GatewaySessionService.ResetAsync` | **顺序修正（v3）**：`InterruptAsync` → **清空/标记未读 consumed**（Interrupt 不停消费循环，防新轮竞态）→ `ClearMessages` 等清理 → 单次 `SaveAsync`；`ResetSessionAsync` 适配器调用方语义不变 |
 | 双事件映射器 | **以协议层 `GatewayEventMapper` 为基准**，补 `CommandResult`/`Navigate`/`SkillContent`/`LoopCancelled`；跳过未知；三处行为差异列入回归清单（LoopComplete 状态恒 Completed、StreamComplete 的 tool/assistant Object 分流——顺带修复现状 tool 消息误入 assistant 文本、`FilterThinking` 默认值显式定）；**修复 `loop_complete` ≠ `loop.complete` 现行 bug**；`ISessionClient.InProcess` 与 `GatewayOrchestratorV2` 复用之 |
 | `GatewayOrchestratorV2.PersistSessionAsync` | 删除。验证：执行路径自身完整落盘（ExecutionRunner 预执行/事件/取消/终态 Save+Flush），订阅泵 finally 的 Save 只是幂等兜底 |
@@ -229,7 +231,7 @@ WebUI(v1): 保持 Server + Comms 同进程组合（管理页依赖不变）
 - QQ 被动窗口状态机：登记 / 过期降级（body 不带 msg_id、msg_seq per-conversation）/ 4xx 分类映射
 - 适配器翻译：QQ（群/私聊/频道 × 入站/出站/命令拦截）、WeCom 同矩阵 + 流帧旁路
 - `ISessionClient`：两实现语义等价性（同一事件序列、空闲收口、取消、权限回传）
-- 映射器合并回归：桥 collector RunCompleted 命中（`loop.complete`）、WebUI 工具卡字段、三处行为差异
+- 映射器合并回归：桥 collector RunCompleted 命中（`loop.complete`）、三处行为差异（回归对象 = 桥 collector 与未来远程客户端；**WebUI 不消费 GatewayEvent，主聊天流零影响**）
 - 端到端：进程内拓扑（headless）与进程外拓扑（ChannelHost 注册 v2 + 掉线重试 + 多注册告警）
 - 回归：调度推送至群/私聊（含 `/new` 轮转后）；WebUI 出站绑定 UI 结构化改造；AdminEndpoints 保留端点
 
@@ -240,7 +242,7 @@ WebUI(v1): 保持 Server + Comms 同进程组合（管理页依赖不变）
 3. 通联子系统包 `Seeing.Agent.Comms`（目录 / 投递管道 / 注册表 / 调度分发器重构迁入含 DI Composite 修正 / Sink 实现）
 4. 协议 v2（`GatewayRequest` / `channel.outbound` / `channel.register` / `cancel.mode`）+ `SessionData.ChannelRoute`（含 WebUI 三处出站绑定 UI 改造）
 5. ISessionClient + `IGatewayChannelHostClient` 双契约 + `SessionEventPump` 提炼（Client 包补 `Seeing.Session` 引用）+ RunTracker 引用计数化
-6. Gateway Server 收窄（远程适配器代理 / 调度事件转发 / 保留端点清单）
+6. Gateway Server 收窄（远程适配器代理 / 实现 `IChannelDeliveryNotifier` 保持调度注入可见性 / 保留端点清单）
 7. QQ / WeCom 适配器化（`IChannelAdapter` + plugin 元数据保留 + 删反解 + QQ 被动窗口状态机 + WeCom 流帧旁路 + 命令扩展）
 8. 工具能力包 + no-op sink；架构债收尾（SessionExecutionQueue 删除 / ResetAsync 顺序）
 9. 测试补齐 + 文档（architecture 17 号 Release Notes + 02 模块地图更新）
