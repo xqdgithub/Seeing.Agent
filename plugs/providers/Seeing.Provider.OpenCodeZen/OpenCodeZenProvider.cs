@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Llm.Support;
 using Seeing.ConfigSchema;
 using System.Text.Json;
 
@@ -271,7 +272,7 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
             Id = model.Id,
             Name = model.Name,
             Provider = "opencode-zen",
-            Types = [ModelType.Text],
+            Types = ModelTypeInference.InferTypes(model.Id) ?? [ModelType.Text],
             Modalities = new ModelModalities
             {
                 Input = model.SupportsImage ? ["text", "image"] : ["text"],

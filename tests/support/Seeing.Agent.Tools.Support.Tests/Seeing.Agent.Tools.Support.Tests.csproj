@@ -26,7 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Tools.Support\Seeing.Agent.Tools.Support.csproj" />
+    <ProjectReference Include="..\..\..\src\support\Seeing.Agent.Tools.Support\Seeing.Agent.Tools.Support.csproj" />
   </ItemGroup>
 
 </Project>

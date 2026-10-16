@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Llm.Support;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -61,7 +62,8 @@ public sealed class SiliconFlowModelsClient
                 {
                     Id = m.Id!,
                     Name = m.Id,
-                    Provider = "siliconflow"
+                    Provider = "siliconflow",
+                    Types = ModelTypeInference.InferTypes(m.Id) ?? new List<ModelType>()
                 })
                 .ToList();
 

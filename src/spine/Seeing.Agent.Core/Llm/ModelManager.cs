@@ -245,6 +245,31 @@ public sealed class ModelManager : IModelManager
         _catalog.SetEnabledModelsAsync(providerId, modelIds, ct);
 
     /// <summary>
+    /// 获取指定模型的用户元数据覆盖补丁（无覆盖返回 null）。
+    /// </summary>
+    public ModelOverride? GetModelOverride(string providerId, string modelId) =>
+        _catalog.GetModelOverride(providerId, modelId);
+
+    /// <summary>
+    /// 应用模型元数据覆盖（仅持久化与基线有差异的字段，支持补录）。
+    /// </summary>
+    public Task UpsertModelOverrideAsync(
+        string providerId,
+        string modelId,
+        ModelOverride desired,
+        CancellationToken ct = default) =>
+        _catalog.UpsertModelOverrideAsync(providerId, modelId, desired, ct);
+
+    /// <summary>
+    /// 移除指定模型的用户元数据覆盖，恢复默认值。
+    /// </summary>
+    public Task RemoveModelOverrideAsync(
+        string providerId,
+        string modelId,
+        CancellationToken ct = default) =>
+        _catalog.RemoveModelOverrideAsync(providerId, modelId, ct);
+
+    /// <summary>
     /// 模型配置变更事件（透传目录管理器的同名事件）。
     /// </summary>
     public event EventHandler<ModelConfigChangedEventArgs>? ModelConfigChanged

@@ -24,10 +24,11 @@ public sealed class ModelReloadHandler : ReloadHandlerBase<ConfigChange>
             return Task.CompletedTask;
         }
 
-        // 启用清单变更：仅重建启用视图，不重拉 Provider。
-        if (change.ChangedSections.Contains("ModelSelection"))
+        // 启用清单 / 元数据覆盖变更：从原始缓存重走「应用覆盖 + 白名单」，不重拉 Provider。
+        if (change.ChangedSections.Contains("ModelSelection")
+            || change.ChangedSections.Contains("ModelOverrides"))
         {
-            _manager.RebuildEnabledView();
+            _manager.RebuildViews();
             return Task.CompletedTask;
         }
 

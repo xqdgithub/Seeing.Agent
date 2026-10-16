@@ -58,7 +58,6 @@
     <Project Path="src/capabilities/Seeing.Agent.Tools.Editor/Seeing.Agent.Tools.Editor.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Session/Seeing.Agent.Tools.Session.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Shell/Seeing.Agent.Tools.Shell.csproj" />
-    <Project Path="src/capabilities/Seeing.Agent.Tools.Support/Seeing.Agent.Tools.Support.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.SystemOne/Seeing.Agent.Tools.SystemOne.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Web/Seeing.Agent.Tools.Web.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Workspace/Seeing.Agent.Workspace.csproj" />
@@ -70,6 +69,10 @@
     <Project Path="src/gateway/Seeing.Gateway.Client/Seeing.Gateway.Client.csproj" />
     <Project Path="src/gateway/Seeing.Gateway.QQ/Seeing.Gateway.QQ.csproj" />
     <Project Path="src/gateway/Seeing.Gateway.WeCom/Seeing.Gateway.WeCom.csproj" />
+  </Folder>
+  <Folder Name="/src/support/">
+    <Project Path="src/support/Seeing.Agent.Llm.Support/Seeing.Agent.Llm.Support.csproj" />
+    <Project Path="src/support/Seeing.Agent.Tools.Support/Seeing.Agent.Tools.Support.csproj" />
   </Folder>
   <Folder Name="/tests/primitives/">
     <Project Path="tests/primitives/Seeing.ConfigSchema.Tests/Seeing.ConfigSchema.Tests.csproj" />
@@ -102,7 +105,6 @@
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Editor.Tests/Seeing.Agent.Tools.Editor.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Session.Tests/Seeing.Agent.Tools.Session.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Shell.Tests/Seeing.Agent.Tools.Shell.Tests.csproj" />
-    <Project Path="tests/capabilities/Seeing.Agent.Tools.Support.Tests/Seeing.Agent.Tools.Support.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.SystemOne.Tests/Seeing.Agent.Tools.SystemOne.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Web.Tests/Seeing.Agent.Tools.Web.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Workspace.Tests/Seeing.Agent.Workspace.Tests.csproj" />
@@ -115,6 +117,9 @@
     <Project Path="tests/gateway/Seeing.Gateway.WeCom.Tests/Seeing.Gateway.WeCom.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/" />
+  <Folder Name="/tests/support/">
+    <Project Path="tests/support/Seeing.Agent.Tools.Support.Tests/Seeing.Agent.Tools.Support.Tests.csproj" />
+  </Folder>
   <Folder Name="/tests/apps/">
     <Project Path="tests/apps/Seeing.Agent.Cli.Tests/Seeing.Agent.Cli.Tests.csproj" />
     <Project Path="tests/apps/Seeing.Agent.Tui.Tests/Seeing.Agent.Tui.Tests.csproj" />

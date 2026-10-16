@@ -48,6 +48,7 @@ Seeing.Agent/
 │   ├── spine/                     # Seeing.Agent.Core
 │   ├── hosting/                   # Hosting + Web/Headless/Embed/Gateway
 │   ├── capabilities/              # Tools.*, Skills, Mcp, Llm.*, Agents, Scheduler, Memory, Acp, TokenBudget, IO.Local
+│   ├── support/                   # 共享/底层支持包（Llm.Support, Tools.Support）——仅依赖 Abstractions
 │   └── gateway/                   # Seeing.Gateway*, Seeing.Agent.Gateway
 ├── tests/                         # 与 src 同名分类镜像（另含 apps/、plugs/）
 ├── samples/  Seeing.Agent.WebUI, Gateway.Server, Cli, …
@@ -61,9 +62,10 @@ Seeing.Agent/
 | 层 | 项目 | 说明 |
 |----|------|------|
 | 原语层 | `Seeing.Session`、`Seeing.TokenEstimation`、`Seeing.ConfigSchema` | 零依赖或仅 BCL |
-| 契约层 | `Seeing.Agent.Abstractions` | 接口/DTO/注解/常量；允许引用原语层 |
+| 契约层 | `Seeing.Agent.Abstractions` | 接口/DTO/注解/常量；允许引用原语层；**零实现纪律** |
+| 支持层 | `src/support/`：`Seeing.Agent.Llm.Support`、`Seeing.Agent.Tools.Support` | 仅引用 Abstractions + 原语；承载启发式/工具基类等实现；禁止引用上层包 |
 | 脊柱层 | `Seeing.Agent.Core`、`Seeing.Agent.Hosting*` | Core 瘦脊柱；Hosting 编排；Host Shape 不拉可选能力 |
-| 能力/扩展层 | `Seeing.Agent.Tools.*`、`Skills`/`Mcp`/`Llm.*`、`Scheduler`/`Memory`/`Acp`、`Seeing.Gateway*` | **只**引用 Abstractions + 原语（+ Tools.Support）；复扫见 `docs/architecture/06-compliance-audit.md` |
+| 能力/扩展层 | `Seeing.Agent.Tools.*`、`Skills`/`Mcp`/`Llm.*`、`Scheduler`/`Memory`/`Acp`、`Seeing.Gateway*` | **只**引用 Abstractions + 原语（+ support 层）；复扫见 `docs/architecture/06-compliance-audit.md` |
 
 - **依赖只能向下**：禁止能力包反向依赖 Core 具体类型
 - **Abstractions 零实现纪律**：只放接口/DTO/注解/常量/事件声明
@@ -86,6 +88,8 @@ Seeing.Agent/
 | 子 Agent / Task | `src/hosting/Seeing.Agent.Hosting/` Task 工具 | Session-first |
 | 多流 / Task 卡片 UI | `samples/Seeing.Agent.WebUI/Services/` | SessionEventStreamRouter、TaskCardAggregator |
 | WebUI 模型选择 | `samples/Seeing.Agent.WebUI/Components/Models/` | Badge+Modal（Session）/ Dropdown（配置页）；见 `docs/architecture/07-webui-model-picker.md` |
+| 模型元数据覆盖 | 契约 `src/abstractions/.../Llm/ModelOverride.cs`；应用器 `src/spine/Seeing.Agent.Core/Llm/ModelOverrideApplier.cs`；节 `ModelOverrides`（`~/.seeing/model-overrides.json`，UserOnly）；UI `samples/Seeing.Agent.WebUI/Pages/ModelsPage.razor` | 用户级稀疏覆盖（含补录），diff 持久化，聚合末端应用；见 `docs/superpowers/specs/2026-10-16-model-overrides-design.md` |
+| 共享/底层支持包 | `src/support/`（`Seeing.Agent.Llm.Support`、`Seeing.Agent.Tools.Support`） | 仅依赖 Abstractions + 原语；承载启发式/工具基类等实现，禁止引用上层包 |
 | 会话文件浏览器 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Files/`；能力包 `src/capabilities/Seeing.Agent.Files/`；组件库 `samples/Seeing.Agent.WebUI.Files/`；宿主桥接 `samples/Seeing.Agent.WebUI/Services/AgentFileChangeBridge.cs` | 文件能力只描述磁盘事实，不订阅会话事件；agent 桥接在宿主层；见 `docs/architecture/16` |
 | Hook | `HookManager` 在 `src/spine/Seeing.Agent.Core/Core/Hooks/`；`HookPoints.*` 常量在 `src/primitives/Seeing.Session/Hooks/HookPoints.cs`（原语层） | 用 `HookPoints.*`，禁止魔法字符串 |
 | 权限（授权/审批） | 引擎/Manager/Store 在 `src/spine/Seeing.Agent.Core/Core/Permission/`；契约在 `src/abstractions/Seeing.Agent.Abstractions/Permissions/`；宿主通道 `Hosting.Web`/`Gateway` | `IPermissionAuthorizer` 决策链；在途真相源 `IPermissionRequestManager`；呈现判定 `IPermissionPresentationStore.CanSurface` + 宿主呈现端 `IPermissionPresenter`；见 `docs/architecture/08` |

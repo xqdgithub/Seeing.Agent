@@ -157,16 +157,32 @@
 
                     <Card Title="模型列表" Style="margin-top: 16px;">
                         <div style="margin-bottom: 12px;">
-                            <Space>
+                            <Space Wrap>
                                 <Button Icon="@IconType.Outline.Reload" Size="@ButtonSize.Small"
                                         Loading="@_refreshingCurrent" Disabled="@_refreshingAll"
                                         OnClick="RefreshCurrentAsync">
                                     刷新
                                 </Button>
                                 <Button Icon="@IconType.Outline.Plus" Size="@ButtonSize.Small"
-                                        OnClick="ShowAddModel" Disabled="@(!CanEditCurrentProvider)">
+                                        OnClick="ShowAddModel">
                                     添加模型
                                 </Button>
+                                <Divider Type="@DividerType.Vertical" />
+                                <Input Placeholder="搜索 ID / 名称" Style="width: 220px;"
+                                       Value="@_searchText" OnInput="OnSearchInput" AllowClear />
+                                <Select Mode="@SelectMode.Multiple"
+                                        TItemValue="ModelType"
+                                        TItem="ModelType"
+                                        Values="@_typeFilter"
+                                        ValuesChanged="OnTypeFilterChanged"
+                                        Style="min-width: 200px;"
+                                        Placeholder="类型筛选"
+                                        AllowClear>
+                                    @foreach (var t in Enum.GetValues<ModelType>())
+                                    {
+                                        <SelectOption TItemValue="ModelType" TItem="ModelType" Value="@t" Label="@t.ToString()" />
+                                    }
+                                </Select>
                                 <Divider Type="@DividerType.Vertical" />
                                 <AntDesign.Switch @bind-Value="_showAll" CheckedChildren="显示全部" UnCheckedChildren="仅已启用"
                                                   OnChange="OnShowAllChanged" />
@@ -176,7 +192,8 @@
                                         Disabled="@(ModelManager.GetEnabledModelIds(_selectedProviderId).Count == 0)">全部禁用</Button>
                             </Space>
                         </div>
-                        <Table TItem="ModelRow" DataSource="@_modelRows" RowKey="@(m => m.Key)" Size="@TableSize.Small">
+                        <Table TItem="ModelRow" DataSource="@_filteredRows" RowKey="@(m => m.Key)" Size="@TableSize.Small"
+                               PageSize="20">
                             <Column TData="ModelRow" Title="启用" Width="70">
                                 <AntDesign.Switch Checked="context.IsEnabled" CheckedChildren="启用" UnCheckedChildren="禁用"
                                                  OnChange="@(v => ToggleModelEnabled(context, v))" />
@@ -197,18 +214,28 @@
                             </Column>
                             <PropertyColumn Property="c => c.Context" Title="上下文" />
                             <PropertyColumn Property="c => c.Output" Title="输出" />
-                            <ActionColumn Title="操作">
+                            <ActionColumn Title="操作" Width="300">
                                 <Space>
-                                    <Button Size="@ButtonSize.Small" OnClick="@(() => ShowEditModel(context))"
-                                            Disabled="@(!CanEditCurrentProvider)">编辑</Button>
+                                    <Button Size="@ButtonSize.Small" OnClick="@(() => ShowEditModel(context))">编辑</Button>
+                                    @if (context.IsOverridden)
+                                    {
+                                        <Tooltip Title="已应用用户覆盖">
+                                            <Tag Color="@("orange")" Style="margin: 0;">已覆盖</Tag>
+                                        </Tooltip>
+                                        <Popconfirm Title="移除用户覆盖，恢复默认元数据？" OnConfirm="@(() => RestoreModelDefault(context))">
+                                            <Button Size="@ButtonSize.Small">恢复默认</Button>
+                                        </Popconfirm>
+                                    }
                                     <Tooltip Title="当前是默认模型">
                                         <Button Size="@ButtonSize.Small" OnClick="@(() => SetDefaultModel(context.Key))"
                                                 Disabled="@context.IsDefault">设为默认</Button>
                                     </Tooltip>
-                                    <Popconfirm Title="确定要删除此模型吗？" OnConfirm="@(() => DeleteModel(context))">
-                                        <Button Size="@ButtonSize.Small" Danger Icon="@IconType.Outline.Delete"
-                                                Disabled="@(!CanEditCurrentProvider)">删除</Button>
-                                    </Popconfirm>
+                                    @if (CanDeleteModel)
+                                    {
+                                        <Popconfirm Title="确定要删除此模型吗？" OnConfirm="@(() => DeleteModel(context))">
+                                            <Button Size="@ButtonSize.Small" Danger Icon="@IconType.Outline.Delete">删除</Button>
+                                        </Popconfirm>
+                                    }
                                 </Space>
                             </ActionColumn>
                         </Table>
@@ -334,6 +361,28 @@
             <FormItem Label="输出长度（token）">
                 <AntDesign.InputNumber @bind-Value="@_editModelForm.Output" Min="1" Max="2000000" Style="width: 100%;" />
             </FormItem>
+            <FormItem Label="输入模态">
+                <Select Mode="@SelectMode.Tags"
+                        TItemValue="string"
+                        TItem="string"
+                        Values="@_editInputModalities"
+                        ValuesChanged="OnEditInputModalitiesChanged"
+                        Style="width: 100%;"
+                        Placeholder="如 text、image">
+                    @foreach (var m in new[] { "text", "image", "audio", "video", "pdf" })
+                    {
+                        <SelectOption TItemValue="string" TItem="string" Value="@m" Label="@m" />
+                    }
+                </Select>
+            </FormItem>
+            <FormItem Label="免费模型">
+                <AntDesign.Switch @bind-Value="_editModelForm.IsFree" />
+            </FormItem>
+            @if (_editHasOverride)
+            {
+                <Alert Type="@AlertType.Info" ShowIcon="true"
+                       Message="该模型已有用户覆盖；仅保存与默认值不同的字段。可点列表中的「恢复默认」清除覆盖。" />
+            }
         </Form>
     }
 </Modal>
@@ -345,6 +394,10 @@
     private string[] _selectedProviderKeys = Array.Empty<string>();
     private List<ModelRow> _modelRows = new();
     private List<ModelRow> _catalogRows = new();
+    private List<ModelRow> _filteredRows = new();
+    private string _searchText = "";
+    private IEnumerable<ModelType> _typeFilter = Array.Empty<ModelType>();
+    private CancellationTokenSource? _searchCts;
     private bool _showAll;
     private AddModelMode _addModelMode = AddModelMode.FromList;
     private ConfigLevel _saveLevel = ModelConfigManager.ModelStoreLevel;
@@ -374,11 +427,16 @@
     private string? _configLoadError;
     private bool _editModelVisible;
     private bool _savingEditModel;
+    private bool _editHasOverride;
+    private IEnumerable<string> _editInputModalities = Array.Empty<string>();
     private readonly EditModelForm _editModelForm = new();
 
     private bool CanEditCurrentProvider =>
         _currentProviderInfo?.Source == ProviderSource.Configured &&
         _currentProvider is not null;
+
+    /// <summary>删除仅对配置型 Provider 开放；扩展 Provider 用「恢复默认」表达移除语义。</summary>
+    private bool CanDeleteModel => CanEditCurrentProvider;
 
     protected override async Task OnInitializedAsync()
     {
@@ -514,11 +572,57 @@
             ? _catalogRows
             : BuildRows(ModelManager.GetModelsByProvider(_selectedProviderId));
 
+        ApplyFilter();
+
         // 当前选中测试模型若不在本 Provider 列表中，回落到首项或清空
         if (_modelRows.Count == 0)
             _testModelKey = "";
         else if (string.IsNullOrEmpty(_testModelKey) || _modelRows.All(m => m.Key != _testModelKey))
             _testModelKey = _modelRows[0].Key;
+    }
+
+    /// <summary>对当前行集合应用搜索词与类型筛选。</summary>
+    private void ApplyFilter()
+    {
+        IEnumerable<ModelRow> query = _modelRows;
+
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            var term = _searchText.Trim();
+            query = query.Where(r =>
+                r.Id.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || r.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || r.Key.Contains(term, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var types = _typeFilter?.ToArray() ?? Array.Empty<ModelType>();
+        if (types.Length > 0)
+            query = query.Where(r => r.Types.Any(t => types.Contains(t)));
+
+        _filteredRows = query.ToList();
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _searchText = e.Value?.ToString() ?? "";
+        _searchCts?.Cancel();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+        try
+        {
+            await Task.Delay(300, token);
+            ApplyFilter();
+        }
+        catch (OperationCanceledException)
+        {
+            // debounce
+        }
+    }
+
+    private void OnTypeFilterChanged(IEnumerable<ModelType> values)
+    {
+        _typeFilter = values?.ToArray() ?? Array.Empty<ModelType>();
+        ApplyFilter();
     }
 
     private List<ModelRow> BuildRows(IReadOnlyDictionary<string, ModelConfig> models)
@@ -542,8 +646,10 @@
                     Output = m.Value.Limit.Output,
                     IsDefault = isDefault,
                     TypesDisplay = string.Join(", ", effective),
+                    Types = effective.ToList(),
                     IsFree = IsFreeModel(m.Value),
-                    IsEnabled = enabledIds.Contains(m.Value.Id)
+                    IsEnabled = enabledIds.Contains(m.Value.Id),
+                    IsOverridden = ModelManager.GetModelOverride(m.Value.Provider, m.Value.Id) is not null
                 };
             })
             .ToList();
@@ -742,37 +848,46 @@
         }
 
         _editKey = row.Key;
+        _editHasOverride = ModelManager.GetModelOverride(row.Provider, row.Id) is not null;
         _editModelForm.Name = config.Name ?? config.Id;
         _editModelForm.Context = config.Limit?.Context > 0 ? config.Limit.Context : ModelLimitDefaults.Context;
         _editModelForm.Output = config.Limit?.Output > 0 ? config.Limit.Output : ModelLimitDefaults.Output;
+        _editModelForm.IsFree = IsFreeModel(config);
         _editTypes = ModelManager.GetEffectiveTypes(config).ToArray();
+        _editInputModalities = config.Modalities?.Input?.ToArray() ?? Array.Empty<string>();
         _editModelVisible = true;
     }
 
+    /// <summary>
+    /// 保存编辑：写入用户级覆盖层（仅持久化与基线不同的字段），配置型与扩展 Provider 统一路径。
+    /// </summary>
     private async Task SaveEditModelAsync()
     {
-        var config = ModelManager.GetModel(_editKey);
-        if (config is null)
+        var providerId = _selectedProviderId;
+        var modelId = ExtractModelId(_editKey, providerId);
+        if (string.IsNullOrEmpty(providerId) || string.IsNullOrEmpty(modelId))
         {
-            MessageService.Error("模型不存在");
+            MessageService.Error("模型标识无效");
             return;
         }
 
         _savingEditModel = true;
         try
         {
-            config.Name = string.IsNullOrWhiteSpace(_editModelForm.Name) ? config.Id : _editModelForm.Name.Trim();
-            config.Types = _editTypes?.ToList() ?? new List<ModelType>();
-            config.Limit ??= new ModelLimits();
-            if (_editModelForm.Context > 0)
-                config.Limit.Context = _editModelForm.Context;
-            if (_editModelForm.Output > 0)
-                config.Limit.Output = _editModelForm.Output;
+            var desired = new ModelOverride
+            {
+                Name = string.IsNullOrWhiteSpace(_editModelForm.Name) ? null : _editModelForm.Name.Trim(),
+                Types = _editTypes?.ToList() ?? new List<ModelType>(),
+                ContextLimit = _editModelForm.Context > 0 ? _editModelForm.Context : null,
+                OutputLimit = _editModelForm.Output > 0 ? _editModelForm.Output : null,
+                InputModalities = _editInputModalities?.ToList(),
+                IsFree = _editModelForm.IsFree
+            };
 
-            await ModelManager.UpdateModelAsync(_editKey, config, _saveLevel);
+            await ModelManager.UpsertModelOverrideAsync(providerId, modelId, desired);
             _editModelVisible = false;
             RefreshModelRows();
-            MessageService.Success("模型已更新");
+            MessageService.Success("模型元数据已保存（用户覆盖）");
         }
         catch (Exception ex)
         {
@@ -784,8 +899,33 @@
         }
     }
 
+    /// <summary>移除用户覆盖，恢复默认元数据。</summary>
+    private async Task RestoreModelDefault(ModelRow row)
+    {
+        try
+        {
+            await ModelManager.RemoveModelOverrideAsync(row.Provider, row.Id);
+            RefreshModelRows();
+            MessageService.Success($"已恢复 {row.Key} 的默认元数据");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"恢复失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>从 catalog key 提取模型 ID（去掉已知 Provider 前缀）。</summary>
+    private static string ExtractModelId(string key, string providerId)
+    {
+        var prefix = providerId + "/";
+        return key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? key[prefix.Length..] : key;
+    }
+
     private void OnEditTypesChanged(IEnumerable<ModelType> values)
         => _editTypes = values?.ToArray() ?? Array.Empty<ModelType>();
+
+    private void OnEditInputModalitiesChanged(IEnumerable<string> values)
+        => _editInputModalities = values?.ToArray() ?? Array.Empty<string>();
 
     private void ShowAddProvider()
     {
@@ -891,20 +1031,39 @@
             if (types.Count == 0)
                 types.Add(ModelType.Text);
 
-            var config = new ModelConfig
-            {
-                Id = modelId,
-                Name = string.IsNullOrWhiteSpace(_addModelForm.Name) ? modelId : _addModelForm.Name.Trim(),
-                Provider = _selectedProviderId,
-                Types = types,
-                Limit = new ModelLimits
-                {
-                    Context = _addModelForm.Context > 0 ? _addModelForm.Context : ModelLimitDefaults.Context,
-                    Output = _addModelForm.Output > 0 ? _addModelForm.Output : ModelLimitDefaults.Output
-                }
-            };
+            var name = string.IsNullOrWhiteSpace(_addModelForm.Name) ? modelId : _addModelForm.Name.Trim();
 
-            await ModelManager.AddModelAsync(key, config, _saveLevel);
+            // 扩展 Provider 不可写 Providers[*].Models：走用户覆盖层补录（目录中新增条目）。
+            if (!CanEditCurrentProvider)
+            {
+                await ModelManager.UpsertModelOverrideAsync(
+                    _selectedProviderId,
+                    modelId,
+                    new ModelOverride
+                    {
+                        Name = name,
+                        Types = types,
+                        ContextLimit = _addModelForm.Context > 0 ? _addModelForm.Context : null,
+                        OutputLimit = _addModelForm.Output > 0 ? _addModelForm.Output : null
+                    });
+            }
+            else
+            {
+                var config = new ModelConfig
+                {
+                    Id = modelId,
+                    Name = name,
+                    Provider = _selectedProviderId,
+                    Types = types,
+                    Limit = new ModelLimits
+                    {
+                        Context = _addModelForm.Context > 0 ? _addModelForm.Context : ModelLimitDefaults.Context,
+                        Output = _addModelForm.Output > 0 ? _addModelForm.Output : ModelLimitDefaults.Output
+                    }
+                };
+
+                await ModelManager.AddModelAsync(key, config, _saveLevel);
+            }
 
             // 新增模型默认加入启用清单，避免添加后即被隐藏。
             var enabled = ModelManager.GetEnabledModelIds(_selectedProviderId).ToList();
@@ -1002,6 +1161,8 @@
         public bool IsDefault { get; set; }
         public bool IsFree { get; set; }
         public bool IsEnabled { get; set; }
+        public bool IsOverridden { get; set; }
+        public List<ModelType> Types { get; set; } = new();
         public string TypesDisplay { get; set; } = "Text";
     }
 
@@ -1026,10 +1187,13 @@
         public string Name { get; set; } = "";
         public int Context { get; set; } = ModelLimitDefaults.Context;
         public int Output { get; set; } = ModelLimitDefaults.Output;
+        public bool IsFree { get; set; }
     }
 
     public void Dispose()
     {
         ModelManager.ModelConfigChanged -= OnModelConfigChanged;
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
     }
 }

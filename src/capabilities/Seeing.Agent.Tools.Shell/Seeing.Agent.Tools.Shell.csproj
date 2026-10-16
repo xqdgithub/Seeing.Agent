@@ -13,7 +13,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
     <ProjectReference Include="..\..\abstractions\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
-    <ProjectReference Include="..\Seeing.Agent.Tools.Support\Seeing.Agent.Tools.Support.csproj" />
+    <ProjectReference Include="..\..\support\Seeing.Agent.Tools.Support\Seeing.Agent.Tools.Support.csproj" />
   </ItemGroup>
 
   <ItemGroup>

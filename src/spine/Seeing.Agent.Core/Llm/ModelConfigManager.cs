@@ -25,7 +25,9 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         new(StringComparer.OrdinalIgnoreCase);
     private Task? _refreshShutdown;
 
-    // 模型索引缓存
+    // 原始索引缓存：Provider 聚合结果，未应用任何用户覆盖（ModelOverrides 的 diff 基线）。
+    private IReadOnlyDictionary<string, ModelConfig> _rawCache = new Dictionary<string, ModelConfig>();
+    // 模型索引缓存：_rawCache 应用用户覆盖（含补录）后的最终形态，供所有查询消费。
     private IReadOnlyDictionary<string, ModelConfig> _modelCache = new Dictionary<string, ModelConfig>();
     // 启用视图缓存：_modelCache 按 ModelSelection 白名单过滤后的子集。
     private IReadOnlyDictionary<string, ModelConfig> _enabledCache = new Dictionary<string, ModelConfig>();
@@ -373,12 +375,131 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
             .ConfigureAwait(false);
 
         // SaveSectionAsync 已同步更新内存缓存；仅重建启用视图，不重拉 Provider。
-        RebuildEnabledView();
+        RebuildViews();
 
         _logger.LogInformation(
             "已更新 Provider {ProviderId} 启用模型清单，共 {Count} 个",
             providerId,
             updated.Providers.TryGetValue(providerId, out var list) ? list.Count : 0);
+    }
+
+    #endregion
+
+    #region 元数据覆盖（ModelOverrides）
+
+    /// <inheritdoc />
+    public ModelOverride? GetModelOverride(string providerId, string modelId)
+    {
+        if (string.IsNullOrWhiteSpace(providerId) || string.IsNullOrWhiteSpace(modelId))
+            return null;
+
+        var overrides = GetModelOverrides();
+        return overrides.TryGetValue(ModelRef.Format(providerId, modelId), out var patch) ? patch : null;
+    }
+
+    /// <summary>
+    /// 获取指定模型的无覆盖基线配置（未应用任何用户覆盖的原始形态）；补录模型返回 null。
+    /// </summary>
+    internal ModelConfig? GetModelBaseline(string providerId, string modelId)
+    {
+        if (string.IsNullOrWhiteSpace(providerId) || string.IsNullOrWhiteSpace(modelId))
+            return null;
+
+        var raw = Volatile.Read(ref _rawCache);
+        return raw.TryGetValue(ModelRef.Format(providerId, modelId), out var config) ? config : null;
+    }
+
+    /// <inheritdoc />
+    public async Task UpsertModelOverrideAsync(
+        string providerId,
+        string modelId,
+        ModelOverride desired,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(desired);
+        providerId = RequireKnownProvider(providerId);
+        modelId = RequireModelId(modelId);
+
+        var key = ModelRef.Format(providerId, modelId);
+        var baseline = GetModelBaseline(providerId, modelId);
+        var patch = ModelOverrideApplier.Diff(baseline, desired);
+
+        var overrides = CloneModelOverrides();
+        if (patch.IsEmpty && baseline is not null)
+        {
+            // 与基线无差异且模型本就存在：等价于无覆盖。
+            overrides.Remove(key);
+        }
+        else
+        {
+            overrides[key] = patch;
+        }
+
+        await SaveModelOverridesAsync(overrides, key, ct).ConfigureAwait(false);
+        RebuildViews();
+
+        _logger.LogInformation("已更新模型元数据覆盖: {Key}", key);
+    }
+
+    /// <inheritdoc />
+    public async Task RemoveModelOverrideAsync(
+        string providerId,
+        string modelId,
+        CancellationToken ct = default)
+    {
+        providerId = RequireKnownProvider(providerId);
+        modelId = RequireModelId(modelId);
+
+        var key = ModelRef.Format(providerId, modelId);
+        var overrides = CloneModelOverrides();
+        if (!overrides.Remove(key))
+            return;
+
+        await SaveModelOverridesAsync(overrides, key, ct).ConfigureAwait(false);
+        RebuildViews();
+
+        _logger.LogInformation("已移除模型元数据覆盖: {Key}", key);
+    }
+
+    private string RequireKnownProvider(string providerId)
+    {
+        if (string.IsNullOrWhiteSpace(providerId))
+            throw new ArgumentException("模型必须指定 Provider。", nameof(providerId));
+
+        if (_registry.GetProvider(providerId) is null
+            && !GetUserProviders().ContainsKey(providerId))
+        {
+            throw new ArgumentException($"Provider '{providerId}' 未注册。", nameof(providerId));
+        }
+
+        return providerId;
+    }
+
+    private static string RequireModelId(string modelId)
+    {
+        if (string.IsNullOrWhiteSpace(modelId))
+            throw new ArgumentException("模型 ID 不能为空。", nameof(modelId));
+
+        return modelId.Trim();
+    }
+
+    private IReadOnlyDictionary<string, ModelOverride> GetModelOverrides()
+        => _configManager.GetSection<Dictionary<string, ModelOverride>>("ModelOverrides");
+
+    private Dictionary<string, ModelOverride> CloneModelOverrides()
+        => GetModelOverrides().ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value?.Clone() ?? new ModelOverride(),
+            StringComparer.OrdinalIgnoreCase);
+
+    private async Task SaveModelOverridesAsync(
+        Dictionary<string, ModelOverride> overrides,
+        string changedKey,
+        CancellationToken ct)
+    {
+        await _configManager
+            .SaveSectionAsync("ModelOverrides", overrides, ModelStoreLevel, new[] { changedKey }, ct)
+            .ConfigureAwait(false);
     }
 
     #endregion
@@ -519,12 +640,13 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
                 return;
             }
 
-            var merged = new Dictionary<string, ModelConfig>(_modelCache);
-            RemoveProviderEntries(merged, providerId);
+            // 在原始缓存层合并（不含覆盖/补录），再统一应用覆盖，避免把覆盖结果当成基线。
+            var mergedRaw = new Dictionary<string, ModelConfig>(_rawCache);
+            RemoveProviderEntries(mergedRaw, providerId);
             foreach (var (key, config) in slice)
-                merged[key] = config;
+                mergedRaw[key] = config;
 
-            ReplaceCacheLocked(merged);
+            ReplaceCacheLocked(mergedRaw);
             PruneInactiveProviderVersionsLocked(activeProviderIds);
         }
 
@@ -678,20 +800,13 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     }
 
     private static ModelConfig CloneModelConfig(string providerId, string modelId, ModelConfig config)
-        => new()
-        {
-            Id = string.IsNullOrWhiteSpace(config.Id) ? modelId : config.Id,
-            Name = config.Name,
-            Provider = providerId,
-            Types = config.Types is null ? new List<ModelType>() : new List<ModelType>(config.Types),
-            Modalities = config.Modalities,
-            Limit = config.Limit,
-            Options = config.Options,
-            Pricing = config.Pricing,
-            Metadata = config.Metadata is null
-                ? null
-                : new Dictionary<string, object?>(config.Metadata)
-        };
+    {
+        var clone = ModelOverrideApplier.Clone(config);
+        clone.Provider = providerId;
+        if (string.IsNullOrWhiteSpace(clone.Id))
+            clone.Id = modelId;
+        return clone;
+    }
 
     private void ReplaceCache(IReadOnlyDictionary<string, ModelConfig> models)
     {
@@ -778,11 +893,23 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
             && version < latestProviderVersion;
     }
 
-    private void ReplaceCacheLocked(IReadOnlyDictionary<string, ModelConfig> models)
+    /// <summary>
+    /// 替换原始缓存并据当前 <c>ModelOverrides</c> 计算最终视图（调用方须持有 <see cref="_cacheLock"/>）。
+    /// </summary>
+    private void ReplaceCacheLocked(IReadOnlyDictionary<string, ModelConfig> raw)
+        => ReplaceCacheLocked(raw, ModelOverrideApplier.ApplyAll(raw, GetModelOverrides()));
+
+    /// <summary>
+    /// 以给定的原始/最终缓存替换（调用方须持有 <see cref="_cacheLock"/>）。
+    /// </summary>
+    private void ReplaceCacheLocked(
+        IReadOnlyDictionary<string, ModelConfig> raw,
+        IReadOnlyDictionary<string, ModelConfig> final)
     {
-        Volatile.Write(ref _modelCache, models);
+        Volatile.Write(ref _rawCache, raw);
+        Volatile.Write(ref _modelCache, final);
         _catalogProviderIndex = new Lazy<Dictionary<string, Dictionary<string, ModelConfig>>>(
-            () => BuildProviderIndex(models),
+            () => BuildProviderIndex(final),
             LazyThreadSafetyMode.ExecutionAndPublication);
         RebuildEnabledViewLocked();
     }
@@ -830,12 +957,16 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         => _configManager.GetSection<ModelSelectionConfig>("ModelSelection")
            ?? new ModelSelectionConfig();
 
-    /// <summary>仅重建启用视图（供 <c>ModelSelection</c> 变更热重载使用，不重拉 Provider）。</summary>
-    internal void RebuildEnabledView()
+    /// <summary>
+    /// 轻量重建视图：从原始缓存重走「应用覆盖 + 白名单」，不重拉 Provider。
+    /// 供 <c>ModelSelection</c> / <c>ModelOverrides</c> 节变更热重载使用。
+    /// </summary>
+    internal void RebuildViews()
     {
         lock (_cacheLock)
         {
-            RebuildEnabledViewLocked();
+            var raw = Volatile.Read(ref _rawCache);
+            ReplaceCacheLocked(raw, ModelOverrideApplier.ApplyAll(raw, GetModelOverrides()));
         }
 
         ModelConfigChanged?.Invoke(this, new ModelConfigChangedEventArgs

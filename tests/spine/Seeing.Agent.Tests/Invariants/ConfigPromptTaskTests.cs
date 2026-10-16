@@ -46,6 +46,7 @@ public class ConfigPromptTaskTests
             "DefaultAgent",
             "DefaultModel",
             "GlobalWorkspaceRoot",
+            "ModelOverrides",
             "ModelSelection",
             "Modules",
             "Permission",

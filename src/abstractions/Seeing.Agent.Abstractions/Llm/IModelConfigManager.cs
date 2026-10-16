@@ -134,6 +134,36 @@ public interface IModelConfigManager
         IReadOnlyList<string> modelIds,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// 获取指定模型的用户覆盖补丁（无覆盖返回 null）。
+    /// <para>供管理 UI 显示「已覆盖」标记与编辑回填。</para>
+    /// </summary>
+    ModelOverride? GetModelOverride(string providerId, string modelId);
+
+    /// <summary>
+    /// 应用模型元数据覆盖：将目标模型调整为 <paramref name="desired"/> 指定的最终值，
+    /// 仅持久化与「无覆盖基线」存在差异的字段（避免固化默认值、远端更新后不再跟随）。
+    /// <para>写用户级 <c>ModelOverrides</c> 节并重建视图；支持补录目录中不存在的模型。</para>
+    /// </summary>
+    /// <param name="providerId">目标 Provider ID。</param>
+    /// <param name="modelId">模型 ID（不含 Provider 前缀）。</param>
+    /// <param name="desired">期望的最终元数据（null 字段视为不关心）。</param>
+    /// <param name="ct">取消。</param>
+    Task UpsertModelOverrideAsync(
+        string providerId,
+        string modelId,
+        ModelOverride desired,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// 移除指定模型的用户覆盖，恢复默认值。
+    /// <para>补录模型移除覆盖后将从目录中消失。</para>
+    /// </summary>
+    Task RemoveModelOverrideAsync(
+        string providerId,
+        string modelId,
+        CancellationToken ct = default);
+
     #endregion
 
     #region 事件
