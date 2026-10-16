@@ -140,12 +140,13 @@ public sealed class QQHttpApiClient
         }
         catch (QQApiException ex) when (!useMarkdown)
         {
-            return await TryAggressiveUrlFallbackAsync(target, content, ex, cancellationToken).ConfigureAwait(false);
+            await TryAggressiveUrlFallbackAsync(target, content, ex, cancellationToken).ConfigureAwait(false);
+            return true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "QQ send text failed");
-            return false;
+            throw;
         }
 
         var (fallback, hadUrl2) = QQTextSanitizer.Sanitize(content);
@@ -160,16 +161,17 @@ public sealed class QQHttpApiClient
         }
         catch (QQApiException ex2)
         {
-            return await TryAggressiveUrlFallbackAsync(target, content, ex2, cancellationToken).ConfigureAwait(false);
+            await TryAggressiveUrlFallbackAsync(target, content, ex2, cancellationToken).ConfigureAwait(false);
+            return true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "QQ plain text fallback failed");
-            return false;
+            throw;
         }
     }
 
-    private async Task<bool> TryAggressiveUrlFallbackAsync(
+    private async Task TryAggressiveUrlFallbackAsync(
         ParsedQQMessage target,
         string originalText,
         QQApiException exc,
@@ -178,7 +180,7 @@ public sealed class QQHttpApiClient
         if (!exc.IsUrlContentError)
         {
             _logger.LogError(exc, "QQ send text failed");
-            return false;
+            throw exc;
         }
 
         _logger.LogWarning("QQ rejected URL content; trying aggressive URL stripping");
@@ -187,12 +189,11 @@ public sealed class QQHttpApiClient
         {
             await SendTextCoreAsync(target, aggressive, useMarkdown: false, keyboard: null, cancellationToken)
                 .ConfigureAwait(false);
-            return true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "QQ aggressive URL fallback failed");
-            return false;
+            throw;
         }
     }
 
@@ -239,8 +240,9 @@ public sealed class QQHttpApiClient
         }
 
         if (useMsgSeq)
-            body["msg_seq"] = nextMsgSeq(target.MsgId ?? target.MessageType);
+            body["msg_seq"] = nextMsgSeq(ResolveConversationSeqKey(target));
 
+        // 主动模式（无被动窗口 msg_id）不带 msg_id。
         if (!string.IsNullOrEmpty(target.MsgId))
             body["msg_id"] = target.MsgId;
 
@@ -248,6 +250,20 @@ public sealed class QQHttpApiClient
             body["keyboard"] = keyboard;
 
         return body;
+    }
+
+    /// <summary>msg_seq 按会话键递增：<c>{messageType}:{openId}</c>。</summary>
+    internal static string ResolveConversationSeqKey(ParsedQQMessage target)
+    {
+        var mt = target.MessageType.ToLowerInvariant();
+        var openId = mt switch
+        {
+            "group" => target.GroupOpenId,
+            "guild" => target.ChannelId,
+            "dm" => target.GuildId,
+            _ => target.SenderOpenId
+        };
+        return $"{mt}:{openId}";
     }
 
     internal static bool NeedsMsgSeq(ParsedQQMessage target)
@@ -463,7 +479,7 @@ public sealed class QQHttpApiClient
         {
             ["msg_type"] = 7,
             ["media"] = new { file_info = fileInfo },
-            ["msg_seq"] = NextMsgSeq(msgId ?? $"{messageType}_media")
+            ["msg_seq"] = NextMsgSeq($"{messageType.ToLowerInvariant()}:{openId}")
         };
         if (!string.IsNullOrEmpty(filename))
             body["content"] = filename;
@@ -562,7 +578,7 @@ public sealed class QQHttpApiClient
             _ => null
         };
 
-    private string ResolveSendPath(ParsedQQMessage target) =>
+    internal static string ResolveSendPath(ParsedQQMessage target) =>
         target.MessageType.ToLowerInvariant() switch
         {
             // 禁止 group/guild/dm 静默回退到 C2C，否则群里看起来像「没收到」

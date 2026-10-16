@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.ConfigSchema;
 using Seeing.Gateway.Client;
 using Seeing.Gateway.Client.Extensions;
@@ -31,6 +32,7 @@ public sealed class QQChannelPlugin : IGatewayChannelPlugin
     {
         services.Configure<QQOptions>(configuration.GetSection(QQOptions.SectionName));
         services.AddSeeingQQChannel();
+        services.AddSingleton<IChannelAdapter>(sp => sp.GetRequiredService<QQChannelAdapter>());
         services.Configure<GatewayClientOptions>(configuration.GetSection(GatewayClientOptions.SectionName));
         services.ConfigureGatewayClientCommon(configuration);
     }

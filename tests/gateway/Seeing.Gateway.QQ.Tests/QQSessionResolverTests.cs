@@ -15,7 +15,7 @@ public class QQSessionResolverTests
             SenderOpenId = "u1"
         };
 
-        QQSessionResolver.ResolveSessionId(msg, new QQOptions()).Should().Be("qq_u1");
+        QQSessionResolver.ResolveSessionId(msg, new QQOptions()).Should().Be("qq_direct_u1");
     }
 
     [Fact]
@@ -59,6 +59,6 @@ public class QQSessionResolverTests
             ChannelId = "c1"
         };
 
-        QQSessionResolver.ResolveSessionId(msg, new QQOptions()).Should().Be("qq_channel_c1");
+        QQSessionResolver.ResolveSessionId(msg, new QQOptions()).Should().Be("qq_guild_c1");
     }
 }

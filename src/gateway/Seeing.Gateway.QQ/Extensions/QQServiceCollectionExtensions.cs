@@ -1,7 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Gateway.Client;
 using Seeing.Gateway.Client.Extensions;
 using Seeing.Gateway.QQ.Connection;
+using Seeing.Gateway.QQ.Delivery;
 
 namespace Seeing.Gateway.QQ.Extensions;
 
@@ -27,6 +30,15 @@ public static class QQServiceCollectionExtensions
         // IWorkspaceProvider 由 Host / Core 注册；本包不 new 具体实现。
         services.AddHttpClient(QQHttpApiClient.HttpClientName);
         services.AddSeeingGatewayClient();
+        services.TryAddSingleton<IGatewayChannelHostClient>(sp => sp.GetRequiredService<WebSocketGatewayClient>());
+        services.TryAddSingleton<RemoteSessionClient>();
+        services.TryAddSingleton<ISessionClient>(sp => sp.GetRequiredService<RemoteSessionClient>());
+        services.AddSingleton<QQPassiveWindowTracker>();
+        services.AddSingleton(sp => new QQChannelAdapter(
+            sp.GetRequiredService<QQHttpApiClient>(),
+            sp.GetRequiredService<QQPassiveWindowTracker>(),
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<QQChannelAdapter>>(),
+            sp.GetService<IChannelDirectory>()));
         services.AddSingleton<QQAccessTokenProvider>();
         services.AddSingleton<QQHttpApiClient>();
         services.AddSingleton<QQWebSocketClient>();

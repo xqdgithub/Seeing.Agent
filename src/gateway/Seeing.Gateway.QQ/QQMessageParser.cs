@@ -1,3 +1,4 @@
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Gateway.Models;
 using System.Text.Json;
 
@@ -157,6 +158,13 @@ public static class QQMessageParser
         {
             SessionId = sessionId,
             ChannelId = "qq",
+            Sender = new ChannelUserIdentity
+            {
+                ChannelId = "qq",
+                ExternalId = string.IsNullOrWhiteSpace(message.SenderOpenId) ? "unknown" : message.SenderOpenId
+            },
+            Conversation = QQChannelAdapter.ToConversation(message),
+            ReplyToMsgId = message.MsgId,
             AgentId = agentId,
             ModeId = modeId,
             ModelId = modelId,

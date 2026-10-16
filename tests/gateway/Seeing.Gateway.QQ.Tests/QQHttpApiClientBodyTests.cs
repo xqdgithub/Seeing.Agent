@@ -42,6 +42,51 @@ public class QQHttpApiClientBodyTests
     }
 
     [Fact]
+    public void BuildTextMessageBody_C2C_SeqKey_ShouldBePerConversation()
+    {
+        string? key = null;
+        QQHttpApiClient.BuildTextMessageBody(
+            Msg("c2c", "m1"), "hello", useMarkdown: false, keyboard: null, k =>
+            {
+                key = k;
+                return 4;
+            });
+
+        key.Should().Be("c2c:u1");
+    }
+
+    [Fact]
+    public void BuildTextMessageBody_Group_SeqKey_ShouldUseGroupOpenId()
+    {
+        string? key = null;
+        QQHttpApiClient.BuildTextMessageBody(
+            Msg("group", "m1"), "hello", useMarkdown: false, keyboard: null, k =>
+            {
+                key = k;
+                return 1;
+            });
+
+        key.Should().Be("group:g1");
+    }
+
+    [Fact]
+    public void BuildTextMessageBody_ActiveMode_ShouldOmitMsgId()
+    {
+        var active = new ParsedQQMessage
+        {
+            MessageType = "c2c",
+            MsgId = "",
+            SenderOpenId = "u1"
+        };
+
+        var body = QQHttpApiClient.BuildTextMessageBody(
+            active, "push", useMarkdown: false, keyboard: null, _ => 1);
+
+        body.Should().NotContainKey("msg_id");
+        body.Should().ContainKey("msg_seq");
+    }
+
+    [Fact]
     public void BuildTextMessageBody_Guild_ShouldOmitMsgTypeAndSeq()
     {
         var body = QQHttpApiClient.BuildTextMessageBody(

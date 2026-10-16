@@ -22,11 +22,11 @@ QQ 官方机器人 Channel Bridge：WebSocket 收事件，HTTP 发回复，经 G
 
 ## Session
 
-| 场景 | sessionId |
+| 场景 | sessionId（`:` 会换成文件系统安全的 `_`） |
 |------|-----------|
-| C2C | `qq_{openid}` |
-| 群共享 | `qq_group_{group_openid}` |
-| 频道 | `qq_channel_{channel_id}` |
+| C2C / 私信 | `qq:direct:{openid}` |
+| 群共享 | `qq:group:{group_openid}` |
+| 频道 | `qq:guild:{channel_id}` |
 
 ## 与 WeCom 差异
 

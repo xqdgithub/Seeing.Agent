@@ -59,7 +59,7 @@ public sealed class QQSessionTracker
 
 public sealed class QQCommandInterceptor
 {
-    public enum CommandKind { None, New, Clear }
+    public enum CommandKind { None, New, Clear, Subscribe, Unsubscribe }
 
     public CommandKind TryParse(string text, out string? stripped)
     {
@@ -73,9 +73,20 @@ public sealed class QQCommandInterceptor
         {
             "/new" => CommandKind.New,
             "/clear" => CommandKind.Clear,
+            "/subscribe" => CommandKind.Subscribe,
+            "/unsubscribe" => CommandKind.Unsubscribe,
             _ => CommandKind.None
         };
     }
+
+    public static string? ToCommandToken(CommandKind kind) => kind switch
+    {
+        CommandKind.New => "new",
+        CommandKind.Clear => "clear",
+        CommandKind.Subscribe => "subscribe",
+        CommandKind.Unsubscribe => "unsubscribe",
+        _ => null
+    };
 }
 
 public sealed class QQMediaFetcher

@@ -62,6 +62,14 @@ public sealed class QQOptions
     [Display(Name = "处理超时（秒）", GroupName = "消息")]
     public int ProcessingMaxDurationSeconds { get; set; } = 180;
 
+    /// <summary>被动回复时间窗（秒）。以 QQ 官方文档为准，未核实前保守取 300。</summary>
+    [Display(Name = "被动窗口（秒）", GroupName = "消息", Description = "以 QQ 官方文档为准，未核实前保守取 300 秒")]
+    public int PassiveWindowSeconds { get; set; } = 300;
+
+    /// <summary>同一 msg_id 允许的被动回复条数。以 QQ 官方文档为准，未核实前保守取 2。</summary>
+    [Display(Name = "单条消息被动回复上限", GroupName = "消息", Description = "以 QQ 官方文档为准，未核实前保守取 2 条")]
+    public int PassiveReplyLimitPerMsg { get; set; } = 2;
+
     public int EffectiveProcessingMaxDurationSeconds =>
         ProcessingMaxDurationSeconds > 0 ? ProcessingMaxDurationSeconds : 180;
 }
