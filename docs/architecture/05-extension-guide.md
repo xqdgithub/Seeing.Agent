@@ -90,7 +90,7 @@
 
 - `Boot` 决定进程 `bootEnabled` / Activate；`Scenario` 只是默认工作模式（会话可再切换，且只能 ∩ `bootEnabled`）。  
 - CapabilitySet / Scenario **各自**持有 `Modules`，**无**外键；运行时求交。  
-- 内置能力集：`minimal` / `code` / `work` / `research` / `full` / **`secure`**（`*` − shell/mcp/acp/gateway）/ **`dev`**（= full）。  
+- 内置能力集：`minimal` / `code` / `work` / `research` / `full` / **`secure`**（`*` − shell/mcp/acp/gateway/files.workspace）/ **`dev`**（= full）。  
 - 快速切换启动档：`seeing web --boot secure`，或环境变量 `SEEING_BOOT=secure`，或 `dotnet run --project samples/Seeing.Agent.WebUI -- --boot secure`（覆盖文件 `Boot`）。  
 - 同名覆盖内置能力集 / 场景；删除覆盖即回退内置。未在宿主引用的模块 id 不会真正启用。  
 - 若只需缩工具、不卸模块：写场景或全局的 `Tools.Disabled`，不要把工具 id 写进模块层 `Disabled`。  

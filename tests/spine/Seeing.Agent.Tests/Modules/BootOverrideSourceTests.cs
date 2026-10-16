@@ -47,7 +47,7 @@ public class BuiltInCapabilitySetsSecureDevTests
         var set = BuiltInCapabilitySets.SecureSet;
         set.Name.Should().Be("secure");
         set.Modules.Should().BeEquivalentTo(["*"]);
-        set.Disabled.Should().BeEquivalentTo(["shell", "mcp", "acp", "gateway"]);
+        set.Disabled.Should().BeEquivalentTo(["shell", "mcp", "acp", "gateway", "files.workspace"]);
         BuiltInCapabilitySets.TryGet("secure").Should().BeSameAs(set);
         BuiltInCapabilitySets.All.Should().Contain(set);
     }
