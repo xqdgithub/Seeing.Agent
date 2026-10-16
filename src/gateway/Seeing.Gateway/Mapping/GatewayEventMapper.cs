@@ -36,6 +36,9 @@ public static class GatewayEventMapper
             LoopCompleteEvent e => WithMeta(e, MapLoopComplete(e)),
             LoopCancelledEvent e => WithMeta(e, MapLoopCancelled(e)),
             ErrorEvent e => WithMeta(e, MapError(e)),
+            CommandResultEvent e => WithMeta(e, MapCommandResult(e)),
+            NavigateEvent e => WithMeta(e, MapNavigate(e)),
+            SkillContentEvent e => WithMeta(e, MapSkillContent(e)),
             _ => throw new NotSupportedException($"Unsupported message event type: {source.Type}")
         };
     }
@@ -46,6 +49,12 @@ public static class GatewayEventMapper
         GatewayEventMapperOptions? options = null)
     {
         options ??= new GatewayEventMapperOptions();
+
+        if (source is SessionUpdatedEvent)
+        {
+            gatewayEvent = null;
+            return false;
+        }
 
         if (source is StreamDeltaEvent deltaEvent)
         {
@@ -263,6 +272,43 @@ public static class GatewayEventMapper
             CancelReason = e.Reason,
             CompletedSteps = e.CompletedSteps,
             Usage = GatewayTokenUsage.FromTokenUsage(e.PartialUsage)
+        }
+    };
+
+    private static GatewayEvent MapCommandResult(CommandResultEvent e) => new()
+    {
+        Object = GatewayEventObject.Message,
+        Status = e.Success ? GatewayEventStatus.Completed : GatewayEventStatus.Failed,
+        SessionId = e.SessionId,
+        LoopId = e.LoopId,
+        Data = new GatewayEventData
+        {
+            Text = e.Message,
+            Success = e.Success
+        }
+    };
+
+    private static GatewayEvent MapNavigate(NavigateEvent e) => new()
+    {
+        Object = GatewayEventObject.Message,
+        Status = GatewayEventStatus.Completed,
+        SessionId = e.SessionId,
+        LoopId = e.LoopId,
+        Data = new GatewayEventData
+        {
+            Text = e.Target
+        }
+    };
+
+    private static GatewayEvent MapSkillContent(SkillContentEvent e) => new()
+    {
+        Object = GatewayEventObject.Content,
+        Status = GatewayEventStatus.InProgress,
+        SessionId = e.SessionId,
+        LoopId = e.LoopId,
+        Data = new GatewayEventData
+        {
+            Text = e.ExpandedContent
         }
     };
 

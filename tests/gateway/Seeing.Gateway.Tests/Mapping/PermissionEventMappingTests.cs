@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Gateway.Core;
 using Seeing.Gateway.Mapping;
 using Xunit;
 
@@ -36,7 +35,7 @@ public class PermissionEventMappingTests
             ]
         };
 
-        var ok = ChatEventMapper.TryMap(evt, out var gatewayEvent);
+        var ok = GatewayEventMapper.TryMap(evt, out var gatewayEvent);
 
         ok.Should().BeTrue();
         gatewayEvent!.Data!.PermissionId.Should().Be("req_1");
@@ -80,10 +79,10 @@ public class PermissionEventMappingTests
             ResolvedBy = PermissionResolvedBy.User
         };
 
-        var ok = ChatEventMapper.TryMap(evt, out var gatewayEvent);
+        var ok = GatewayEventMapper.TryMap(evt, out var gatewayEvent);
 
         ok.Should().BeTrue();
-        gatewayEvent!.SourceType.Should().Be("permission_resolved");
+        gatewayEvent!.SourceType.Should().Be(MessageEventType.PermissionResolved);
         gatewayEvent.SourceType.Should().NotBe("permission_response");
         gatewayEvent.Data!.PermissionScope.Should().Be("sessionDirectory");
     }
@@ -101,7 +100,7 @@ public class PermissionEventMappingTests
             Reason = "无交互通道"
         };
 
-        var ok = ChatEventMapper.TryMap(evt, out var gatewayEvent);
+        var ok = GatewayEventMapper.TryMap(evt, out var gatewayEvent);
 
         ok.Should().BeTrue();
         gatewayEvent!.Data!.PermissionResolvedBy.Should().Be("noChannel");

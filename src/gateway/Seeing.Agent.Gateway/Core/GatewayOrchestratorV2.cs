@@ -6,6 +6,7 @@ using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Permission;
+using Seeing.Gateway.Mapping;
 using Seeing.Gateway.Models;
 using Seeing.Session.Core;
 using System.Runtime.CompilerServices;
@@ -233,7 +234,7 @@ public sealed class GatewayOrchestratorV2
                 if (chatEvent is SessionUpdatedEvent sessionEvt)
                     runState.Session = sessionEvt.Session;
 
-                if (ChatEventMapper.TryMap(chatEvent, out var gatewayEvent) && gatewayEvent != null)
+                if (GatewayEventMapper.TryMap(chatEvent, out var gatewayEvent) && gatewayEvent != null)
                 {
                     await outputWriter.WriteAsync(gatewayEvent, cancellationToken).ConfigureAwait(false);
                 }
