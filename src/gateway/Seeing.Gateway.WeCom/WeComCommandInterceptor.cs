@@ -6,26 +6,29 @@ using Seeing.Gateway.Models;
 namespace Seeing.Gateway.WeCom;
 
 /// <summary>
-/// 拦截企微斜杠命令（/clear、/new），不转发 Agent。
+/// 拦截企微斜杠命令（/new、/clear、/subscribe、/unsubscribe），不转发 Agent。
 /// </summary>
 public sealed class WeComCommandInterceptor
 {
     private readonly WeComOptions _options;
     private readonly WeComSessionTracker _sessionTracker;
-    private readonly WebSocketGatewayClient _gatewayClient;
+    private readonly IGatewayChannelHostClient _hostClient;
+    private readonly WeComChannelAdapter _adapter;
     private readonly WeComAibotWsClient _weComClient;
     private readonly ILogger<WeComCommandInterceptor> _logger;
 
     public WeComCommandInterceptor(
         IOptions<WeComOptions> options,
         WeComSessionTracker sessionTracker,
-        WebSocketGatewayClient gatewayClient,
+        IGatewayChannelHostClient hostClient,
+        WeComChannelAdapter adapter,
         WeComAibotWsClient weComClient,
         ILogger<WeComCommandInterceptor> logger)
     {
         _options = options.Value;
         _sessionTracker = sessionTracker;
-        _gatewayClient = gatewayClient;
+        _hostClient = hostClient;
+        _adapter = adapter;
         _weComClient = weComClient;
         _logger = logger;
     }
@@ -53,6 +56,10 @@ public sealed class WeComCommandInterceptor
                 WeComConversationCommand.Clear => await HandleClearAsync(currentSessionId, cancellationToken)
                     .ConfigureAwait(false),
                 WeComConversationCommand.New => HandleNew(parsed),
+                WeComConversationCommand.Subscribe => await HandleSubscriptionAsync(parsed, optedOut: false, cancellationToken)
+                    .ConfigureAwait(false),
+                WeComConversationCommand.Unsubscribe => await HandleSubscriptionAsync(parsed, optedOut: true, cancellationToken)
+                    .ConfigureAwait(false),
                 _ => string.Empty
             };
         }
@@ -81,9 +88,20 @@ public sealed class WeComCommandInterceptor
         {
             "clear" => Assign(WeComConversationCommand.Clear, out command),
             "new" => Assign(WeComConversationCommand.New, out command),
+            "subscribe" => Assign(WeComConversationCommand.Subscribe, out command),
+            "unsubscribe" => Assign(WeComConversationCommand.Unsubscribe, out command),
             _ => false
         };
     }
+
+    internal static string? ToCommandToken(WeComConversationCommand command) => command switch
+    {
+        WeComConversationCommand.New => "new",
+        WeComConversationCommand.Clear => "clear",
+        WeComConversationCommand.Subscribe => "subscribe",
+        WeComConversationCommand.Unsubscribe => "unsubscribe",
+        _ => null
+    };
 
     internal static string ExtractCommandText(ParsedWeComMessage parsed)
     {
@@ -108,7 +126,7 @@ public sealed class WeComCommandInterceptor
     {
         try
         {
-            await _gatewayClient.ResetSessionAsync(sessionId, cancellationToken).ConfigureAwait(false);
+            await _hostClient.ResetSessionAsync(sessionId, cancellationToken).ConfigureAwait(false);
             return "✅ 上下文已清空，可以继续对话。";
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("Session not found", StringComparison.Ordinal))
@@ -129,6 +147,19 @@ public sealed class WeComCommandInterceptor
         return $"✅ 已开启新对话。\n会话 ID: {newSessionId}";
     }
 
+    private async Task<string> HandleSubscriptionAsync(
+        ParsedWeComMessage parsed,
+        bool optedOut,
+        CancellationToken cancellationToken)
+    {
+        var userId = parsed.UserId;
+        if (!_adapter.HasDirectory || string.IsNullOrWhiteSpace(userId))
+            return "当前进程未接入通道目录，订阅状态未变更。";
+
+        await _adapter.SetOptOutAsync(userId, optedOut, cancellationToken).ConfigureAwait(false);
+        return optedOut ? "已退订主动消息。" : "已恢复订阅。";
+    }
+
     private async Task ReplyTextAsync(WeComWsFrame frame, string text, CancellationToken cancellationToken)
     {
         await using var streamState = new WeComStreamState(_weComClient, frame, _options);
@@ -145,5 +176,7 @@ public sealed class WeComCommandInterceptor
 internal enum WeComConversationCommand
 {
     Clear,
-    New
+    New,
+    Subscribe,
+    Unsubscribe
 }

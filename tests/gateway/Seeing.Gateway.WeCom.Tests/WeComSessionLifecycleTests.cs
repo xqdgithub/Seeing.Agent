@@ -116,6 +116,16 @@ public class WeComCommandInterceptorTests
         var newer = CreateMessage("user", "/new");
         WeComCommandInterceptor.TryParseCommand(newer, out var newCmd).Should().BeTrue();
         newCmd.Should().Be(WeComConversationCommand.New);
+
+        var subscribe = CreateMessage("user", "/subscribe");
+        WeComCommandInterceptor.TryParseCommand(subscribe, out var subscribeCmd).Should().BeTrue();
+        subscribeCmd.Should().Be(WeComConversationCommand.Subscribe);
+        WeComCommandInterceptor.ToCommandToken(subscribeCmd).Should().Be("subscribe");
+
+        var unsubscribe = CreateMessage("user", "/unsubscribe now");
+        WeComCommandInterceptor.TryParseCommand(unsubscribe, out var unsubscribeCmd).Should().BeTrue();
+        unsubscribeCmd.Should().Be(WeComConversationCommand.Unsubscribe);
+        WeComCommandInterceptor.ToCommandToken(unsubscribeCmd).Should().Be("unsubscribe");
     }
 
     [Fact]

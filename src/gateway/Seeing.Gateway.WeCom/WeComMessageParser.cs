@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Gateway.Models;
 
 namespace Seeing.Gateway.WeCom;
@@ -189,7 +190,14 @@ public static class WeComMessageParser
         return new GatewayRequest
         {
             SessionId = sessionId,
-            ChannelId = "wecom",
+            ChannelId = WeComChannelAdapter.Channel,
+            Sender = new ChannelUserIdentity
+            {
+                ChannelId = WeComChannelAdapter.Channel,
+                ExternalId = string.IsNullOrWhiteSpace(parsed.UserId) ? "unknown" : parsed.UserId
+            },
+            Conversation = WeComChannelAdapter.ToConversation(parsed),
+            ReplyToMsgId = parsed.MessageId,
             AgentId = agentId,
             ModeId = modeId,
             ModelId = modelId,

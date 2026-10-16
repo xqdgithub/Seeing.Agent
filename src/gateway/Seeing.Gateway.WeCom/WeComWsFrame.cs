@@ -38,6 +38,7 @@ public static class WeComWsCommands
     public const string MsgCallback = "aibot_msg_callback";
     public const string EventCallback = "aibot_event_callback";
     public const string RespondMsg = "aibot_respond_msg";
+    public const string SendMsg = "aibot_send_msg";
     public const string RespondWelcome = "aibot_respond_welcome_msg";
     public const string RespondUpdate = "aibot_respond_update_msg";
 }

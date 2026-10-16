@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Gateway.Client;
 using Seeing.Gateway.Client.Extensions;
 using Seeing.Gateway.WeCom.Connection;
@@ -28,6 +30,9 @@ public static class WeComServiceCollectionExtensions
         services.AddHttpClient(WeComMediaFetcher.HttpClientName);
         services.AddSingleton<WeComMediaFetcher>();
         services.AddSeeingGatewayClient();
+        services.TryAddSingleton<IGatewayChannelHostClient>(sp => sp.GetRequiredService<WebSocketGatewayClient>());
+        services.TryAddSingleton<RemoteSessionClient>();
+        services.TryAddSingleton<ISessionClient>(sp => sp.GetRequiredService<RemoteSessionClient>());
         services.AddSingleton<WeComSessionTracker>();
         services.AddSingleton<WeComCommandInterceptor>();
         services.AddSingleton<WeComAibotSession>();
@@ -35,6 +40,11 @@ public static class WeComServiceCollectionExtensions
         services.AddSingleton<WeComOutboundChannel>();
         services.AddSingleton<WeComConnectionManager>();
         services.AddSingleton<WeComAibotWsClient>();
+        services.AddSingleton(sp => new WeComChannelAdapter(
+            sp.GetRequiredService<WeComOutboundChannel>(),
+            sp.GetRequiredService<WeComAibotWsClient>(),
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<WeComChannelAdapter>>(),
+            sp.GetService<IChannelDirectory>()));
         services.AddSingleton<WeComPermissionPolicy>();
         services.AddSingleton<WeComPermissionState>();
         services.AddSingleton<WeComPermissionResponder>();

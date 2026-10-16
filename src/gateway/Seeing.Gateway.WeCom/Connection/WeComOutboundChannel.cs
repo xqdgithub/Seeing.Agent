@@ -14,6 +14,7 @@ public sealed class WeComOutboundChannel
 
     private WeComWebSocketTransport? _transport;
     private long _epoch;
+    private Func<WeComWsFrame, string, string, long, CancellationToken, Task>? _deliverTerminal;
 
     public WeComOutboundChannel(
         WeComOutboundGovernor governor,
@@ -39,6 +40,16 @@ public sealed class WeComOutboundChannel
         Volatile.Write(ref _epoch, 0);
     }
 
+    /// <summary>
+    /// 终态（<c>finish=true</c>）交给通道适配器。
+    /// 未绑定时仍直发，避免破坏既有流式完成。
+    /// </summary>
+    internal void BindTerminalDelivery(
+        Func<WeComWsFrame, string, string, long, CancellationToken, Task> deliverTerminal)
+    {
+        _deliverTerminal = deliverTerminal;
+    }
+
     public Task ReplyStreamAsync(
         WeComWsFrame requestFrame,
         string streamId,
@@ -47,6 +58,44 @@ public sealed class WeComOutboundChannel
         long epoch,
         CancellationToken cancellationToken = default,
         WeComOutboundPriority priority = WeComOutboundPriority.ContentDelta)
+    {
+        if (!finish)
+        {
+            return SendStreamFrameBypassAsync(
+                requestFrame,
+                streamId,
+                content,
+                finish: false,
+                epoch,
+                cancellationToken,
+                priority);
+        }
+
+        var deliver = _deliverTerminal;
+        if (deliver != null)
+            return deliver(requestFrame, streamId, content, epoch, cancellationToken);
+
+        return SendStreamFrameBypassAsync(
+            requestFrame,
+            streamId,
+            content,
+            finish: true,
+            epoch,
+            cancellationToken,
+            WeComOutboundPriority.Finish);
+    }
+
+    /// <summary>
+    /// 被动回复窗口内的 streamId/epoch 流帧直发，不经投递管道。
+    /// </summary>
+    private Task SendStreamFrameBypassAsync(
+        WeComWsFrame requestFrame,
+        string streamId,
+        string content,
+        bool finish,
+        long epoch,
+        CancellationToken cancellationToken,
+        WeComOutboundPriority priority)
     {
         var body = new WeComRespondStreamBody
         {

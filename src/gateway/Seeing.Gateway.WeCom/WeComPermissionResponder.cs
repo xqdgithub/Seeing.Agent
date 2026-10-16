@@ -12,7 +12,7 @@ public sealed class WeComPermissionResponder
 {
     private readonly WeComOptions _options;
     private readonly WeComPermissionPolicy _permissionPolicy;
-    private readonly WebSocketGatewayClient _gatewayClient;
+    private readonly ISessionClient _sessionClient;
     private readonly WeComPermissionState _permissionState;
     private readonly WeComAibotWsClient _weComClient;
     private readonly ILogger<WeComPermissionResponder> _logger;
@@ -20,14 +20,14 @@ public sealed class WeComPermissionResponder
     public WeComPermissionResponder(
         IOptions<WeComOptions> options,
         WeComPermissionPolicy permissionPolicy,
-        WebSocketGatewayClient gatewayClient,
+        ISessionClient sessionClient,
         WeComPermissionState permissionState,
         WeComAibotWsClient weComClient,
         ILogger<WeComPermissionResponder> logger)
     {
         _options = options.Value;
         _permissionPolicy = permissionPolicy;
-        _gatewayClient = gatewayClient;
+        _sessionClient = sessionClient;
         _permissionState = permissionState;
         _weComClient = weComClient;
         _logger = logger;
@@ -105,11 +105,11 @@ public sealed class WeComPermissionResponder
     {
         try
         {
-            var result = await _gatewayClient.RespondPermissionAsync(
+            var result = await _sessionClient.RespondPermissionAsync(
                 pending.SessionId,
                 pending.PermissionId,
                 allow,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+                ct: cancellationToken).ConfigureAwait(false);
 
             if (!result.Success)
             {

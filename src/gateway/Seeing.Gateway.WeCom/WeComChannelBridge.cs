@@ -1,23 +1,28 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Gateway.Channels;
 using Seeing.Gateway.Client;
 using Seeing.Gateway.Models;
+using Seeing.Gateway.Protocol;
 using Seeing.Gateway.WeCom.Connection;
 using System.Collections.Concurrent;
 
 namespace Seeing.Gateway.WeCom;
 
 /// <summary>
-/// 企微 Channel Bridge：企微 WebSocket ↔ Gateway WebSocket
+/// 企微 Channel Bridge：企微 WebSocket ↔ Gateway WebSocket。
+/// 会话面与通道宿主面共用同一 <see cref="WebSocketGatewayClient"/> 实例。
 /// </summary>
 public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 {
     private readonly WeComOptions _options;
     private readonly GatewayClientCommonOptions _commonOptions;
     private readonly WeComAibotWsClient _weComClient;
-    private readonly WebSocketGatewayClient _gatewayClient;
+    private readonly ISessionClient _sessionClient;
+    private readonly IGatewayChannelHostClient _hostClient;
+    private readonly WeComChannelAdapter _adapter;
     private readonly WeComMediaFetcher _mediaFetcher;
     private readonly WeComPermissionPolicy _permissionPolicy;
     private readonly WeComPermissionState _permissionState;
@@ -29,14 +34,15 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
     private readonly ILogger<WeComChannelBridge> _logger;
 
     private readonly ConcurrentDictionary<string, byte> _processedMessageIds = new();
-    private readonly WebSocketGatewayClientFacade _gatewayFacade;
     private CancellationTokenSource? _cts;
 
     public WeComChannelBridge(
         IOptions<WeComOptions> options,
         IOptions<GatewayClientCommonOptions> commonOptions,
         WeComAibotWsClient weComClient,
-        WebSocketGatewayClient gatewayClient,
+        ISessionClient sessionClient,
+        IGatewayChannelHostClient hostClient,
+        WeComChannelAdapter adapter,
         WeComMediaFetcher mediaFetcher,
         WeComPermissionPolicy permissionPolicy,
         WeComPermissionState permissionState,
@@ -50,7 +56,9 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         _options = options.Value;
         _commonOptions = commonOptions.Value;
         _weComClient = weComClient;
-        _gatewayClient = gatewayClient;
+        _sessionClient = sessionClient;
+        _hostClient = hostClient;
+        _adapter = adapter;
         _mediaFetcher = mediaFetcher;
         _permissionPolicy = permissionPolicy;
         _permissionState = permissionState;
@@ -58,14 +66,15 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         _commandInterceptor = commandInterceptor;
         _permissionResponder = permissionResponder;
         _activeStreams = activeStreams;
-        _gatewayFacade = new WebSocketGatewayClientFacade(gatewayClient);
         _hostLifetime = hostLifetime;
         _logger = logger;
     }
 
-    public string ChannelId => "wecom";
+    public string ChannelId => WeComChannelAdapter.Channel;
 
-    IGatewayConnection IChannelBridge.GatewayConnection => _gatewayClient;
+    IGatewayConnection IChannelBridge.GatewayConnection =>
+        _hostClient as IGatewayConnection
+        ?? throw new InvalidOperationException("WeCom 通道宿主客户端必须同时实现 IGatewayConnection");
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -82,6 +91,7 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         _weComClient.OnMessage += HandleWeComMessageAsync;
         _weComClient.OnEvent += HandleWeComEventAsync;
         _weComClient.ConnectionChanged += HandleConnectionChanged;
+        _hostClient.OnChannelOutbound += HandleChannelOutboundAsync;
 
         await _weComClient.ConnectAsync(new WeComWsClientOptions
         {
@@ -100,6 +110,7 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         _weComClient.OnMessage -= HandleWeComMessageAsync;
         _weComClient.OnEvent -= HandleWeComEventAsync;
         _weComClient.ConnectionChanged -= HandleConnectionChanged;
+        _hostClient.OnChannelOutbound -= HandleChannelOutboundAsync;
 
         await _activeStreams.AbortAllAsync("Bridge 正在停止", CancellationToken.None).ConfigureAwait(false);
         _cts?.Cancel();
@@ -186,6 +197,12 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 
         if (IsDuplicate(parsed.MessageId))
             return;
+
+        if (WeComChannelAdapter.TryMapInbound(parsed, _options, out var inbound) && inbound != null)
+        {
+            _adapter.RememberInbound(parsed);
+            _adapter.RegisterDirectoryInbound(inbound);
+        }
 
         var sessionId = _sessionTracker.ResolveSessionId(parsed);
         _logger.LogInformation(
@@ -326,14 +343,14 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 
             try
             {
-                var submit = await _gatewayFacade.SubmitAsync(request, cancellationToken).ConfigureAwait(false);
+                var submit = await _sessionClient.SubmitAsync(request, cancellationToken).ConfigureAwait(false);
                 if (!submit.Success)
                 {
                     await streamState.FailAsync(submit.Error ?? "Submit failed", cancellationToken).ConfigureAwait(false);
                     return;
                 }
 
-                await foreach (var gatewayEvent in _gatewayFacade.SubscribeAsync(sessionId, cancellationToken)
+                await foreach (var gatewayEvent in _sessionClient.SubscribeAsync(sessionId, cancellationToken)
                                    .ConfigureAwait(false))
                 {
                     var disposition = reply.Apply(gatewayEvent);
@@ -394,7 +411,7 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
             catch (OperationCanceledException)
             {
                 _logger.LogWarning("WeCom 消息处理超时: SessionId={SessionId}", sessionId);
-                await _gatewayFacade.CancelAsync(sessionId, CancellationToken.None).ConfigureAwait(false);
+                await _sessionClient.CancelAsync(sessionId, CancellationToken.None).ConfigureAwait(false);
                 await streamState.FailAsync("处理超时，请稍后重试", CancellationToken.None).ConfigureAwait(false);
                 _sessionTracker.Touch(parsed);
             }
@@ -443,11 +460,11 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 
         if (!_permissionPolicy.ShouldPromptUser(gatewayEvent))
         {
-            await _gatewayClient.RespondPermissionAsync(
+            await _sessionClient.RespondPermissionAsync(
                 sessionId,
                 permissionId,
                 allow: true,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+                ct: cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -496,6 +513,68 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
             gatewayEvent.Data?.Resource ?? string.Empty);
 
         await _weComClient.ReplyTemplateCardAsync(requestFrame, card, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task HandleChannelOutboundAsync(
+        GatewayChannelOutboundPayload payload,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(payload.Channel, ChannelId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (string.IsNullOrWhiteSpace(payload.Text))
+        {
+            _logger.LogWarning(
+                "WeCom channel outbound ignored: empty text session={SessionId}",
+                payload.CorrelationSessionId);
+            return;
+        }
+
+        if (payload.Conversation == null)
+        {
+            _logger.LogError(
+                "WeCom channel outbound missing conversation session={SessionId}",
+                payload.CorrelationSessionId);
+            return;
+        }
+
+        var message = new OutboundMessage
+        {
+            Target = new DeliveryTarget
+            {
+                Conversation = payload.Conversation,
+                RecipientUserId = payload.RecipientUserId,
+                ReplyToMsgId = payload.ReplyToMsgId
+            },
+            DeliveryKind = payload.DeliveryKind ?? OutboundDeliveryKind.Push,
+            Text = payload.Text,
+            Source = payload.Source,
+            CorrelationSessionId = payload.CorrelationSessionId,
+            JobId = payload.JobId
+        };
+
+        try
+        {
+            _logger.LogInformation(
+                "WeCom channel outbound → {Kind} session={SessionId} len={Length} source={Source}",
+                message.Target.Conversation.Kind,
+                payload.CorrelationSessionId,
+                payload.Text.Length,
+                payload.Source);
+            var result = await _adapter.SendAsync(message, cancellationToken).ConfigureAwait(false);
+            if (!result.Delivered)
+            {
+                _logger.LogError(
+                    "WeCom channel outbound failed session={SessionId} kind={Kind} detail={Detail}",
+                    payload.CorrelationSessionId,
+                    result.FailureKind,
+                    result.Detail);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "WeCom channel outbound send failed session={SessionId}", payload.CorrelationSessionId);
+        }
     }
 
     private bool IsDuplicate(string messageId)

@@ -1,7 +1,7 @@
 namespace Seeing.Gateway.WeCom;
 
 /// <summary>
-/// 企微 sessionId 映射（使用文件系统安全字符，不含 <c>:</c>）
+/// 企微会话命名（仅生成，不反解路由）。使用文件系统安全字符，不含 <c>:</c>。
 /// </summary>
 public static class WeComSessionResolver
 {
