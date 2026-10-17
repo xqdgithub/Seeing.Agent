@@ -39,14 +39,8 @@ public static class JobDataKeys
     /// <summary>超时秒数</summary>
     public const string TimeoutSeconds = "timeoutSeconds";
 
-    /// <summary>是否后台运行</summary>
-    public const string RunInBackground = "runInBackground";
-
     /// <summary>Misfire 宽限期（秒）</summary>
     public const string MisfireGraceSeconds = "misfireGraceSeconds";
-
-    /// <summary>是否共享 Session</summary>
-    public const string ShareSession = "shareSession";
 
     // ===== 投递配置 =====
 

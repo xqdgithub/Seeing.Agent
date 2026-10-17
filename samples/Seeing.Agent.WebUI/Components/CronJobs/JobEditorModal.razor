@@ -210,24 +210,14 @@
         
         <Divider Orientation="@DividerOrientation.Left">高级配置</Divider>
         <Row Gutter="16">
-            <Col Span="8">
+            <Col Span="12">
                 <FormItem Label="超时（秒）">
                     <InputNumber @bind-Value="@Job.Runtime.TimeoutSeconds" Min="10" Max="3600" Style="width: 100%;" />
                 </FormItem>
             </Col>
-            <Col Span="8">
+            <Col Span="12">
                 <FormItem Label="Misfire 宽限（秒）">
                     <InputNumber @bind-Value="@Job.Runtime.MisfireGraceSeconds" Min="0" Max="3600" Style="width: 100%;" />
-                </FormItem>
-            </Col>
-            <Col Span="8">
-                <FormItem Label="选项">
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <Checkbox Checked="@Job.Runtime.RunInBackground"
-                                  CheckedChanged="@((bool value) => Job.Runtime.RunInBackground = value)">后台运行</Checkbox>
-                        <Checkbox Checked="@Job.Runtime.ShareSession"
-                                  CheckedChanged="@((bool value) => Job.Runtime.ShareSession = value)">共享 Session</Checkbox>
-                    </div>
                 </FormItem>
             </Col>
         </Row>

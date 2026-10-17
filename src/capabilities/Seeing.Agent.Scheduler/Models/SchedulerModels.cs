@@ -142,10 +142,8 @@ public class DispatchSpec
 /// <summary>运行时配置</summary>
 public class JobRuntimeSpec
 {
-    public bool RunInBackground { get; set; }
     public int TimeoutSeconds { get; set; } = SchedulerConstants.DefaultTimeoutSeconds;
     public int MisfireGraceSeconds { get; set; } = SchedulerConstants.DefaultMisfireGraceSeconds;
-    public bool ShareSession { get; set; }
 }
 
 /// <summary>定时任务定义</summary>
