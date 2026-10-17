@@ -2,10 +2,12 @@
 @using Seeing.Agent.Scheduler
 @using Seeing.Agent.Scheduler.Engine
 @using Seeing.Agent.Scheduler.Models
+@using Seeing.Session.Core
 @using Seeing.Agent.Core.Models
 @using Seeing.Agent.Core.Configuration
 @using Seeing.Agent.Configuration
 @inject IAgentRegistry AgentRegistry
+@inject Seeing.Session.Core.ISessionManager SessionManager
 
 <Modal Title="@(IsEdit ? "编辑任务" : "新建任务")"
        Visible="@Visible"
@@ -156,15 +158,17 @@
         <Row Gutter="16">
             <Col Span="12">
                 <FormItem Label="目标 Session">
-                    <Input @bind-Value="@Job.Dispatch.Target.SessionId" Placeholder="可选，如 main" />
-                    <small style="color: #999;">可选。执行与留档会话；留空且配置了出站 conversation 时，每次触发新建会话。</small>
+                    <Input @bind-Value="@Job.Dispatch.Target.SessionId"
+                           @bind-Value:after="OnSessionIdCommitted"
+                           Placeholder="可选，如 main" />
+                    <small style="color: #999;">可选。未填写出站 conversation 时，会从该会话的出站绑定自动带上，会话归档后仍可推送。</small>
                 </FormItem>
             </Col>
             <Col Span="12">
                 <FormItem Label="出站 conversation">
                     <ConversationPicker Placeholder="从目录选择出站会话（可选）"
                                         OnSelected="@OnConversationSelected" />
-                    <small style="color: #999;">推送目标对话（优先于会话绑定）。目标 Session 留空时，每次触发新建会话并挂上该 conversation。</small>
+                    <small style="color: #999;">推送目标对话，优先于会话绑定。留空则保存时从目标会话的出站绑定补上。</small>
                 </FormItem>
             </Col>
         </Row>
@@ -181,7 +185,9 @@
             <AntDesign.Row Gutter="16">
                 <AntDesign.Col Span="6">
                     <FormItem Label="ChannelId">
-                        <Input @bind-Value="@Job.Dispatch.Target.Conversation!.ChannelId" Placeholder="qq / wecom" />
+                        <Input @bind-Value="@Job.Dispatch.Target.Conversation!.ChannelId"
+                               @bind-Value:after="LockManualConversation"
+                               Placeholder="qq / wecom" />
                     </FormItem>
                 </AntDesign.Col>
                 <AntDesign.Col Span="6">
@@ -189,6 +195,7 @@
                         <Select TItemValue="string"
                                 TItem="string"
                                 @bind-Value="@Job.Dispatch.Target.Conversation!.Kind"
+                                @bind-Value:after="LockManualConversation"
                                 DataSource="@_conversationKinds"
                                 Placeholder="direct / group / guild"
                                 AllowClear="true"
@@ -197,12 +204,16 @@
                 </AntDesign.Col>
                 <AntDesign.Col Span="6">
                     <FormItem Label="ExternalId">
-                        <Input @bind-Value="@Job.Dispatch.Target.Conversation!.ExternalId" Placeholder="对话 ExternalId" />
+                        <Input @bind-Value="@Job.Dispatch.Target.Conversation!.ExternalId"
+                               @bind-Value:after="LockManualConversation"
+                               Placeholder="对话 ExternalId" />
                     </FormItem>
                 </AntDesign.Col>
                 <AntDesign.Col Span="6">
                     <FormItem Label="Title">
-                        <Input @bind-Value="@Job.Dispatch.Target.Conversation!.Title" Placeholder="可选标题" />
+                        <Input @bind-Value="@Job.Dispatch.Target.Conversation!.Title"
+                               @bind-Value:after="LockManualConversation"
+                               Placeholder="可选标题" />
                     </FormItem>
                 </AntDesign.Col>
             </AntDesign.Row>
@@ -286,7 +297,10 @@
 
             // conversation 目标编辑模型（空模型占位，保存时清洗为 null）
             Job.Dispatch.Target.Conversation ??= new ConversationSpec();
-            _showConversationFields = Job.Dispatch.Target.Conversation.IsComplete;
+            _autoConversation = Job.Dispatch.Target.Conversation is not { IsComplete: true };
+            _showConversationFields = !_autoConversation;
+            if (_autoConversation)
+                _ = FillConversationFromSessionAsync(Job.Dispatch.Target.SessionId);
 
             RefreshAgentRuntime();
         }
@@ -295,7 +309,49 @@
     /// <summary>conversation 手填字段展开状态（目录选择或手动展开时 true）。</summary>
     private bool _showConversationFields;
 
+    /// <summary>当前 conversation 是从会话绑定自动带上的；改目标会话时可以换，手选后不再覆盖。</summary>
+    private bool _autoConversation;
+
     private static readonly string[] _conversationKinds = ["direct", "group", "guild"];
+
+    private async Task OnSessionIdCommitted()
+    {
+        if (!_autoConversation && Job.Dispatch.Target.Conversation is { IsComplete: true })
+            return;
+
+        await FillConversationFromSessionAsync(Job.Dispatch.Target.SessionId);
+    }
+
+    private async Task FillConversationFromSessionAsync(string? sessionId)
+    {
+        SessionChannelRoute? route = null;
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            var session = SessionManager.Get(sessionId) ?? await SessionManager.LoadAsync(sessionId);
+            route = session?.ChannelRoute;
+        }
+
+        if (_autoConversation)
+            Job.Dispatch.Target.Conversation = new ConversationSpec();
+
+        if (!ConversationSpec.TryCopyFromRoute(Job.Dispatch.Target, route))
+        {
+            if (_autoConversation)
+            {
+                Job.Dispatch.Target.Conversation = new ConversationSpec();
+                _showConversationFields = false;
+            }
+
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _autoConversation = true;
+        _showConversationFields = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void LockManualConversation() => _autoConversation = false;
 
     /// <summary>目录选择器选中 → 回填 conversation 4 字段并展开手填区。</summary>
     private void OnConversationSelected(Seeing.Agent.Abstractions.Channels.ConversationInfo conversation)
@@ -307,6 +363,7 @@
             ExternalId = conversation.ExternalId,
             Title = conversation.Title
         };
+        _autoConversation = false;
         _showConversationFields = true;
         InvokeAsync(StateHasChanged);
     }

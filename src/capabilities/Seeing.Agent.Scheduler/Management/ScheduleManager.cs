@@ -5,6 +5,7 @@ using Seeing.Agent.Scheduler.Configuration;
 using Seeing.Agent.Scheduler.Engine;
 using Seeing.Agent.Scheduler.Jobs;
 using Seeing.Agent.Scheduler.Models;
+using Seeing.Session.Core;
 
 namespace Seeing.Agent.Scheduler.Management;
 
@@ -14,6 +15,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
     private readonly IScheduleRepository _repository;
     private readonly QuartzSchedulerEngine _engine;
     private readonly ISchedulerOptionsProvider _optionsProvider;
+    private readonly ISessionManager? _sessions;
     private readonly ILogger<ScheduleManager> _logger;
     private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
 
@@ -30,12 +32,14 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         IScheduleRepository repository,
         QuartzSchedulerEngine engine,
         ISchedulerOptionsProvider optionsProvider,
-        ILogger<ScheduleManager> logger)
+        ILogger<ScheduleManager> logger,
+        ISessionManager? sessions = null)
     {
         _repository = repository;
         _engine = engine;
         _optionsProvider = optionsProvider;
         _logger = logger;
+        _sessions = sessions;
     }
 
     /// <inheritdoc/>
@@ -66,6 +70,11 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
 
             // 启动 Quartz 调度器
             await _engine.StartAsync(ct);
+
+            // 已有任务若只绑了会话、还没有 conversation，从会话出站绑定补一份快照。
+            // 否则会话归档后 ChannelRoute 不可用，到点无法推送。
+            if (await SnapshotMissingConversationsAsync(ct).ConfigureAwait(false))
+                await _repository.SaveAsync(_jobsFile, ct).ConfigureAwait(false);
 
             // 注册用户任务（只注册 Active 状态的）
             foreach (var job in _jobsFile.Jobs.Where(j => j.Intent == ScheduleIntent.Active))
@@ -195,6 +204,8 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
     {
         if (string.IsNullOrWhiteSpace(job.Id))
             job.Id = Guid.NewGuid().ToString("N");
+
+        await SnapshotConversationAsync(job, ct).ConfigureAwait(false);
 
         var existing = _jobsFile.Jobs.FindIndex(j => j.Id == job.Id);
         if (existing >= 0)
@@ -489,6 +500,33 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         ScheduleIntent.Active => JobState.Scheduled,
         _ => JobState.Disabled
     };
+
+    private async Task<bool> SnapshotMissingConversationsAsync(CancellationToken ct)
+    {
+        var changed = false;
+        foreach (var job in _jobsFile.Jobs)
+        {
+            if (await SnapshotConversationAsync(job, ct).ConfigureAwait(false))
+                changed = true;
+        }
+
+        return changed;
+    }
+
+    /// <summary>任务 conversation 不完整时，从目标会话的出站绑定抄一份快照。</summary>
+    private async Task<bool> SnapshotConversationAsync(ScheduledJobSpec job, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (_sessions is null)
+            return false;
+
+        var sessionId = job.Dispatch.Target.SessionId;
+        if (string.IsNullOrWhiteSpace(sessionId) || job.Dispatch.Target.Conversation is { IsComplete: true })
+            return false;
+
+        var session = _sessions.Get(sessionId) ?? await _sessions.LoadAsync(sessionId).ConfigureAwait(false);
+        return ConversationSpec.TryCopyFromRoute(job.Dispatch.Target, session?.ChannelRoute);
+    }
 
     private async Task RegisterUserJobAsync(ScheduledJobSpec job, CancellationToken ct)
     {

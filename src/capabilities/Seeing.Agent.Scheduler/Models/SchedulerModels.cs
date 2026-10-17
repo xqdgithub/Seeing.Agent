@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Seeing.Session.Core;
 
 namespace Seeing.Agent.Scheduler.Models;
 
@@ -130,6 +131,32 @@ public class ConversationSpec
         !string.IsNullOrWhiteSpace(ChannelId)
         && !string.IsNullOrWhiteSpace(Kind)
         && !string.IsNullOrWhiteSpace(ExternalId);
+
+    /// <summary>
+    /// 会话出站绑定快照到任务 conversation。任务已有完整 conversation 时不覆盖（显式目标优先）。
+    /// 返回是否写入。
+    /// </summary>
+    public static bool TryCopyFromRoute(DispatchTarget target, SessionChannelRoute? route)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        if (target.Conversation is { IsComplete: true })
+            return false;
+
+        if (route is null
+            || string.IsNullOrWhiteSpace(route.ChannelId)
+            || string.IsNullOrWhiteSpace(route.Kind)
+            || string.IsNullOrWhiteSpace(route.ExternalId))
+            return false;
+
+        target.Conversation = new ConversationSpec
+        {
+            ChannelId = route.ChannelId.Trim(),
+            Kind = route.Kind.Trim().ToLowerInvariant(),
+            ExternalId = route.ExternalId.Trim(),
+            Title = string.IsNullOrWhiteSpace(route.Title) ? null : route.Title.Trim()
+        };
+        return true;
+    }
 }
 
 /// <summary>投递配置</summary>

@@ -22,7 +22,7 @@ public sealed class CronCreateTool : ToolBase
     public override string Description =>
         "创建或替换定时任务。必填：taskType（text|agent）、prompt、schedule（cron/interval/once）；可选 id/name/agent/model/mode。" +
         " interval 可带 windows 生效时段（本地墙钟，空=全天，起点对齐间隔）。" +
-        " text=到点投递固定文案；agent=到点运行 Agent。SessionId 自动取自当前会话。" +
+        " text=到点投递固定文案；agent=到点运行 Agent。SessionId 自动取自当前会话；该会话已有出站绑定时，conversation 会一并快照到任务上（会话归档后仍可推送）。" +
         " model（仅 agent）：Native agent 用 modelId；ACP agent 用 provider/model。mode（仅 agent 且 ACP）：build/ask 等 ACP 会话模式。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
