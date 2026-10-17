@@ -164,13 +164,20 @@ public class HeartbeatJob : IJob
             var target = data.GetStringValue(JobDataKeys.HeartbeatTarget) ?? HeartbeatTargets.Main;
             sessionId = await ResolveTargetSessionIdAsync(target, sessionId, timeoutCts.Token);
 
+            // conversation 出站目标（可选）：会话仍按 Target 解析（现状），仅挂绑 + 出站目标变更
+            var conversation = ScheduleConversationResolver.ReadConversation(data);
+            if (conversation is not null)
+                await ScheduleConversationResolver.AttachRouteAsync(_sessionManager, sessionId, conversation)
+                    .ConfigureAwait(false);
+
             // 执行 Agent
             var agentId = data.GetStringValue(JobDataKeys.AgentId);
             var result = await ExecuteAgentAsync(queryText, agentId, sessionId, timeoutCts.Token);
 
-            // 投递结果（非 main 目标）
+            // 投递结果（非 main 目标，或配置了 conversation 出站目标）
             if (result.Success && !string.IsNullOrEmpty(result.Output) &&
-                !string.Equals(target, HeartbeatTargets.Main, StringComparison.OrdinalIgnoreCase))
+                (conversation is not null ||
+                 !string.Equals(target, HeartbeatTargets.Main, StringComparison.OrdinalIgnoreCase)))
             {
                 var wrappedQuery = _reminders.TryParse(queryText, out _)
                     ? queryText
@@ -184,7 +191,9 @@ public class HeartbeatJob : IJob
                     TaskType = ScheduleTaskTypes.Agent,
                     Content = result.Output,
                     UserInput = wrappedQuery,
-                    SessionId = sessionId
+                    SessionId = sessionId,
+                    // 任务级 conversation 出站目标（ChannelDeliveryScheduleDispatcher 优先于会话 ChannelRoute）
+                    Conversation = conversation
                 }, timeoutCts.Token);
             }
 

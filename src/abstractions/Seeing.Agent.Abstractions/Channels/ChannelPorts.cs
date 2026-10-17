@@ -17,6 +17,10 @@ public interface IChannelDirectory              // Manager：登记/查询/退�
     void RegisterInbound(ChannelInboundMessage message);   // 提交方显式调用；入站登记不清除 OptedOut
     Task<IReadOnlyList<ChannelUserEntry>> ListUsersAsync(string channelId, int skip = 0, int take = 50, CancellationToken ct = default);
     Task<IReadOnlyList<ConversationEntry>> ListConversationsAsync(string channelId, int skip = 0, int take = 50, CancellationToken ct = default);
+
+    /// <summary>已出现会话的渠道 ID 集合（目录维度枚举，绑定选择器数据源）</summary>
+    Task<IReadOnlyList<string>> ListChannelIdsAsync(CancellationToken ct = default);
+
     Task<ChannelUserEntry?> FindUserAsync(string channelId, string externalId, CancellationToken ct = default);
     Task<ConversationEntry?> FindConversationAsync(string channelId, ConversationKind kind, string externalId, CancellationToken ct = default);
     Task SetOptOutAsync(string channelId, string externalId, bool optedOut, CancellationToken ct = default);

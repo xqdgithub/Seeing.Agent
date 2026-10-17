@@ -497,9 +497,13 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
             [JobDataKeys.JobId] = job.Id,
             [JobDataKeys.JobName] = job.Name ?? job.Id,
             [JobDataKeys.TaskType] = job.TaskType,
-            [JobDataKeys.SessionId] = job.Dispatch.Target.SessionId ?? "main",
+            // 仅显式配置才写 SessionId 键：未配置时省略，任务侧据此区分
+            // 「显式会话（挂绑 conversation）」与「仅 conversation（每次触发新建会话）」
             [JobDataKeys.TimeoutSeconds] = job.Runtime.TimeoutSeconds.ToString()
         };
+
+        if (!string.IsNullOrEmpty(job.Dispatch.Target.SessionId))
+            jobData[JobDataKeys.SessionId] = job.Dispatch.Target.SessionId;
 
         if (job.TaskType == ScheduleTaskTypes.Text)
         {
@@ -518,6 +522,17 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         // 投递配置
         if (!string.IsNullOrEmpty(job.Dispatch.Target.SessionId))
             jobData[JobDataKeys.DispatchSessionId] = job.Dispatch.Target.SessionId;
+
+        // 投递 conversation 目标（四键；任务侧按齐备性判定生效）
+        var conversation = job.Dispatch.Target.Conversation;
+        if (conversation is { IsComplete: true })
+        {
+            jobData[JobDataKeys.ConversationChannelId] = conversation.ChannelId!.Trim();
+            jobData[JobDataKeys.ConversationKind] = conversation.Kind!.Trim().ToLowerInvariant();
+            jobData[JobDataKeys.ConversationExternalId] = conversation.ExternalId!.Trim();
+            if (!string.IsNullOrWhiteSpace(conversation.Title))
+                jobData[JobDataKeys.ConversationTitle] = conversation.Title!.Trim();
+        }
 
         await _engine.UpsertJobAsync(job.Id, job.Schedule, job.Intent, jobData, ct);
     }

@@ -17,7 +17,31 @@ public sealed class DispatchRequest
     public string? Channel { get; init; }
     public string? UserId { get; init; }
     public string? SessionId { get; init; }
+
+    /// <summary>任务级 conversation 出站目标（优先于会话 <c>ChannelRoute</c>；出站投递器消费）。</summary>
+    public DispatchConversation? Conversation { get; init; }
+
     public Dictionary<string, object>? Metadata { get; init; }
+}
+
+/// <summary>
+/// 投递 conversation 目标（出站推送路由）。ChannelId / Kind / ExternalId 齐备才生效。
+/// </summary>
+public sealed record DispatchConversation
+{
+    public required string ChannelId { get; init; }
+
+    /// <summary>对话种类稳定字符串（direct / group / guild）</summary>
+    public required string Kind { get; init; }
+
+    public required string ExternalId { get; init; }
+
+    public string? Title { get; init; }
+
+    public bool IsComplete =>
+        !string.IsNullOrWhiteSpace(ChannelId)
+        && !string.IsNullOrWhiteSpace(Kind)
+        && !string.IsNullOrWhiteSpace(ExternalId);
 }
 
 /// <summary>投递结果。</summary>

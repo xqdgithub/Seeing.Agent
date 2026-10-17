@@ -60,11 +60,12 @@ public sealed class ChannelDeliveryScheduleDispatcher : IScheduledJobDispatcher
                 return DispatchResult.Ok();
             }
 
-            var route = session.ChannelRoute;
+            // 出站目标解析：任务级 conversation（优先）→ 会话 ChannelRoute（现状）
+            var route = ResolveRoute(request, session);
             if (route is null || string.IsNullOrWhiteSpace(route.ChannelId))
             {
                 _logger.LogDebug(
-                    "Skipping channel outbound (empty Session.ChannelRoute): session={SessionId}",
+                    "Skipping channel outbound (no route: neither job conversation nor Session.ChannelRoute): session={SessionId}",
                     request.SessionId);
                 return DispatchResult.Ok();
             }
@@ -122,6 +123,23 @@ public sealed class ChannelDeliveryScheduleDispatcher : IScheduledJobDispatcher
             return alt.ToString();
 
         return null;
+    }
+
+    /// <summary>出站路由：任务级 conversation（齐备即生效）优先；否则会话 ChannelRoute（现状）。</summary>
+    private static SessionChannelRoute? ResolveRoute(DispatchRequest request, SessionData session)
+    {
+        if (request.Conversation is { IsComplete: true } conversation)
+        {
+            return new SessionChannelRoute
+            {
+                ChannelId = conversation.ChannelId.Trim(),
+                Kind = conversation.Kind.Trim().ToLowerInvariant(),
+                ExternalId = conversation.ExternalId.Trim(),
+                Title = string.IsNullOrWhiteSpace(conversation.Title) ? null : conversation.Title.Trim()
+            };
+        }
+
+        return session.ChannelRoute;
     }
 
     private static ConversationKind ParseKind(string? kind)

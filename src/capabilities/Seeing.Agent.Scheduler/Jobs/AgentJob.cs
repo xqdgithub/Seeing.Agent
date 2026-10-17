@@ -70,7 +70,7 @@ public class AgentJob : IJob
         _logger.LogInformation("AgentJob: FireTime = {Time}, ScheduledFireTime = {Scheduled}",
             context.FireTimeUtc.LocalDateTime, context.ScheduledFireTimeUtc?.LocalDateTime);
         var taskType = data.GetStringValue(JobDataKeys.TaskType) ?? ScheduleTaskTypes.Agent;
-        var sessionId = data.GetStringValue(JobDataKeys.SessionId) ?? "main";
+        var configuredSessionId = data.GetStringValue(JobDataKeys.SessionId);
         var agentId = data.GetStringValue(JobDataKeys.AgentId);
         var prompt = data.GetStringValue(JobDataKeys.Prompt);
         var text = data.GetStringValue(JobDataKeys.Text);
@@ -82,6 +82,15 @@ public class AgentJob : IJob
         var ct = context.CancellationToken;
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        // 目标矩阵解析：显式会话 + conversation（挂绑）/ 仅 conversation（每次触发新建会话）/ 现状
+        var sessionId = await ScheduleConversationResolver.ResolveSessionIdAsync(
+            _services,
+            data,
+            jobId,
+            data.GetStringValue(JobDataKeys.JobName),
+            configuredSessionId,
+            timeoutCts.Token).ConfigureAwait(false);
 
         // 触发执行前 Hook
         var hookResult = await _hooks.TriggerBlockingAsync(
@@ -423,7 +432,9 @@ public class AgentJob : IJob
             TaskType = ScheduleTaskTypes.Agent,
             Content = content,
             UserInput = userInput,
-            SessionId = dispatchSessionId
+            SessionId = dispatchSessionId,
+            // 任务级 conversation 出站目标（ChannelDeliveryScheduleDispatcher 优先于会话 ChannelRoute）
+            Conversation = ScheduleConversationResolver.ReadConversation(data)
         }, ct);
 
         if (!dispatchResult.Success)

@@ -245,6 +245,10 @@
            OkText="@OkText"
            CancelText="@CancelText">
         <Form Model="@OutboundForm" Layout="@FormLayout.Horizontal">
+            <FormItem Label="目录选择">
+                <ConversationPicker Placeholder="从目录选择会话，自动填充下方字段"
+                                    OnSelected="@OnOutboundConversationSelected" />
+            </FormItem>
             <FormItem Label="ChannelId">
                 <Input @bind-Value="@OutboundForm.ChannelId"
                        Placeholder="如 qq / wecom，全部留空则清除绑定" />
@@ -514,6 +518,19 @@
             Title = route?.Title ?? ""
         };
         OutboundModalVisible = true;
+    }
+
+    /// <summary>目录选择器选中 → 回填表单 4 字段（手填字段可再改，确认时以表单为准）。</summary>
+    private void OnOutboundConversationSelected(Seeing.Agent.Abstractions.Channels.ConversationInfo conversation)
+    {
+        OutboundForm = new OutboundEditForm
+        {
+            ChannelId = conversation.ChannelId,
+            Kind = conversation.Kind.ToString().ToLowerInvariant(),
+            ExternalId = conversation.ExternalId,
+            Title = conversation.Title ?? ""
+        };
+        InvokeAsync(StateHasChanged);
     }
 
     private async Task OnOutboundConfirm()

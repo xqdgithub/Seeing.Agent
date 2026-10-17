@@ -98,6 +98,20 @@ public sealed class ChannelDirectoryService : IChannelDirectory
         }
     }
 
+    public Task<IReadOnlyList<string>> ListChannelIdsAsync(CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            IReadOnlyList<string> channelIds = _conversations.Values
+                .Select(c => c.Conversation.ChannelId)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(c => c, StringComparer.Ordinal)
+                .ToList();
+            return Task.FromResult(channelIds);
+        }
+    }
+
     public async Task SetOptOutAsync(string channelId, string externalId, bool optedOut, CancellationToken ct = default)
     {
         ChannelUserEntry? updated;

@@ -108,6 +108,28 @@ public class ScheduleWindow
 public class DispatchTarget
 {
     public string? SessionId { get; set; }
+
+    /// <summary>conversation 出站目标（可选；ChannelId / Kind / ExternalId 齐备才生效；优先于会话 ChannelRoute）</summary>
+    public ConversationSpec? Conversation { get; set; }
+}
+
+/// <summary>投递 conversation 目标（出站推送路由；JSON 配置模型，与 ConversationInfo 平面镜像）</summary>
+public class ConversationSpec
+{
+    public string? ChannelId { get; set; }
+
+    /// <summary>对话种类稳定字符串（direct / group / guild）</summary>
+    public string? Kind { get; set; }
+
+    public string? ExternalId { get; set; }
+
+    public string? Title { get; set; }
+
+    /// <summary>ChannelId / Kind / ExternalId 齐备才生效</summary>
+    public bool IsComplete =>
+        !string.IsNullOrWhiteSpace(ChannelId)
+        && !string.IsNullOrWhiteSpace(Kind)
+        && !string.IsNullOrWhiteSpace(ExternalId);
 }
 
 /// <summary>投递配置</summary>

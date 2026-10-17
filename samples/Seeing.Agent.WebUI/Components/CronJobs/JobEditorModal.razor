@@ -154,13 +154,59 @@
         
         <Divider Orientation="@DividerOrientation.Left">投递配置</Divider>
         <Row Gutter="16">
-            <Col Span="24">
-                <FormItem Label="目标 Session" Required>
-                    <Input @bind-Value="@Job.Dispatch.Target.SessionId" Placeholder="main" />
-                    <small style="color: #999;">必填，通常为 "main"。出站 Channel 在 Session 上配置，无需在此填写。</small>
+            <Col Span="12">
+                <FormItem Label="目标 Session">
+                    <Input @bind-Value="@Job.Dispatch.Target.SessionId" Placeholder="可选，如 main" />
+                    <small style="color: #999;">可选。执行与留档会话；留空且配置了出站 conversation 时，每次触发新建会话。</small>
+                </FormItem>
+            </Col>
+            <Col Span="12">
+                <FormItem Label="出站 conversation">
+                    <ConversationPicker Placeholder="从目录选择出站会话（可选）"
+                                        OnSelected="@OnConversationSelected" />
+                    <small style="color: #999;">推送目标对话（优先于会话绑定）。目标 Session 留空时，每次触发新建会话并挂上该 conversation。</small>
                 </FormItem>
             </Col>
         </Row>
+        <Row Gutter="16">
+            <Col Span="24">
+                <a style="font-size: 12px; color: #1890ff; cursor: pointer;"
+                   @onclick="@(() => _showConversationFields = !_showConversationFields)">
+                    @(_showConversationFields ? "收起出站 conversation 手动填写" : "手动填写出站 conversation")
+                </a>
+            </Col>
+        </Row>
+        @if (_showConversationFields)
+        {
+            <AntDesign.Row Gutter="16">
+                <AntDesign.Col Span="6">
+                    <FormItem Label="ChannelId">
+                        <Input @bind-Value="@Job.Dispatch.Target.Conversation!.ChannelId" Placeholder="qq / wecom" />
+                    </FormItem>
+                </AntDesign.Col>
+                <AntDesign.Col Span="6">
+                    <FormItem Label="Kind">
+                        <Select TItemValue="string"
+                                TItem="string"
+                                @bind-Value="@Job.Dispatch.Target.Conversation!.Kind"
+                                DataSource="@_conversationKinds"
+                                Placeholder="direct / group / guild"
+                                AllowClear="true"
+                                Style="width: 100%;" />
+                    </FormItem>
+                </AntDesign.Col>
+                <AntDesign.Col Span="6">
+                    <FormItem Label="ExternalId">
+                        <Input @bind-Value="@Job.Dispatch.Target.Conversation!.ExternalId" Placeholder="对话 ExternalId" />
+                    </FormItem>
+                </AntDesign.Col>
+                <AntDesign.Col Span="6">
+                    <FormItem Label="Title">
+                        <Input @bind-Value="@Job.Dispatch.Target.Conversation!.Title" Placeholder="可选标题" />
+                    </FormItem>
+                </AntDesign.Col>
+            </AntDesign.Row>
+        }
         
         <Divider Orientation="@DividerOrientation.Left">高级配置</Divider>
         <Row Gutter="16">
@@ -247,8 +293,32 @@
             _selectedAgentName = Job.Agent ?? "";
             _selectedModel = Job.Model ?? "";
             _selectedAcpMode = Job.Mode ?? "";
+
+            // conversation 目标编辑模型（空模型占位，保存时清洗为 null）
+            Job.Dispatch.Target.Conversation ??= new ConversationSpec();
+            _showConversationFields = Job.Dispatch.Target.Conversation.IsComplete;
+
             RefreshAgentRuntime();
         }
+    }
+
+    /// <summary>conversation 手填字段展开状态（目录选择或手动展开时 true）。</summary>
+    private bool _showConversationFields;
+
+    private static readonly string[] _conversationKinds = ["direct", "group", "guild"];
+
+    /// <summary>目录选择器选中 → 回填 conversation 4 字段并展开手填区。</summary>
+    private void OnConversationSelected(Seeing.Agent.Abstractions.Channels.ConversationInfo conversation)
+    {
+        Job.Dispatch.Target.Conversation = new ConversationSpec
+        {
+            ChannelId = conversation.ChannelId,
+            Kind = conversation.Kind.ToString().ToLowerInvariant(),
+            ExternalId = conversation.ExternalId,
+            Title = conversation.Title
+        };
+        _showConversationFields = true;
+        InvokeAsync(StateHasChanged);
     }
 
     private void RefreshAgentRuntime()
@@ -392,14 +462,19 @@
             }
         }
         
-        if (string.IsNullOrWhiteSpace(Job.Dispatch?.Target?.SessionId))
+        // 先判定再清洗：半配置 conversation 在校验失败时必须留在表单上，避免绑定空引用
+        var hasConversation = Job.Dispatch?.Target?.Conversation is { IsComplete: true };
+        if (string.IsNullOrWhiteSpace(Job.Dispatch?.Target?.SessionId) && !hasConversation)
         {
-            _validationError = "目标 Session 不能为空";
+            _validationError = "目标 Session 与出站 conversation 至少配置一项";
             StateHasChanged();
             if (OnError.HasDelegate)
                 await OnError.InvokeAsync(_validationError);
             return;
         }
+
+        if (Job.Dispatch?.Target?.Conversation is { IsComplete: false })
+            Job.Dispatch.Target.Conversation = null;
 
         if (Job.Schedule.Type == ScheduleTypes.Once && !string.IsNullOrWhiteSpace(_runAtText))
         {

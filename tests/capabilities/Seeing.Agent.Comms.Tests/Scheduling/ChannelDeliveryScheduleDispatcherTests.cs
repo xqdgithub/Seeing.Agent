@@ -160,6 +160,107 @@ public class ChannelDeliveryScheduleDispatcherTests
     }
 
     [Fact]
+    public async Task Dispatch_JobConversation_WithoutSessionRoute_DeliversToJobConversation()
+    {
+        // 目标矩阵（2026-10-17 设计）：任务级 conversation 齐备即出站，会话无 ChannelRoute 不再跳过
+        var session = SessionData.Create();
+        session.Id = "sess-4";
+        session.ChannelRoute = null;
+
+        OutboundMessage? captured = null;
+        var delivery = new Mock<OutboundDeliveryService>(
+            Mock.Of<IChannelDirectory>(),
+            Mock.Of<IChannelAdapterRegistry>(),
+            Mock.Of<IChannelDeliveryNotifier>(),
+            NullLogger<OutboundDeliveryService>.Instance);
+        delivery
+            .Setup(d => d.DeliverAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<OutboundMessage, CancellationToken>((message, _) => captured = message)
+            .ReturnsAsync(OutboundDeliveryResult.Ok());
+
+        var dispatcher = new ChannelDeliveryScheduleDispatcher(
+            new RecordingRuntime(),
+            SessionManager(session),
+            Mock.Of<ISystemReminderRenderer>(),
+            delivery.Object,
+            NullLogger<ChannelDeliveryScheduleDispatcher>.Instance);
+
+        var result = await dispatcher.DispatchAsync(new DispatchRequest
+        {
+            Source = "cron",
+            TaskType = "agent",
+            Content = "播报",
+            SessionId = "sess-4",
+            Conversation = new DispatchConversation
+            {
+                ChannelId = "qq",
+                Kind = "group",
+                ExternalId = "gr-100",
+                Title = "测试群"
+            }
+        });
+
+        result.Success.Should().BeTrue();
+        captured.Should().NotBeNull();
+        captured!.Target.Conversation.ChannelId.Should().Be("qq");
+        captured.Target.Conversation.Kind.Should().Be(ConversationKind.Group);
+        captured.Target.Conversation.ExternalId.Should().Be("gr-100");
+        captured.Target.Conversation.Title.Should().Be("测试群");
+    }
+
+    [Fact]
+    public async Task Dispatch_JobConversation_OverSessionRoute_PrefersJobConversation()
+    {
+        // 出站优先级：任务级 conversation > 会话 ChannelRoute
+        var session = SessionData.Create();
+        session.Id = "sess-5";
+        session.ChannelRoute = new SessionChannelRoute
+        {
+            ChannelId = "wecom",
+            Kind = "direct",
+            ExternalId = "u-legacy"
+        };
+
+        OutboundMessage? captured = null;
+        var delivery = new Mock<OutboundDeliveryService>(
+            Mock.Of<IChannelDirectory>(),
+            Mock.Of<IChannelAdapterRegistry>(),
+            Mock.Of<IChannelDeliveryNotifier>(),
+            NullLogger<OutboundDeliveryService>.Instance);
+        delivery
+            .Setup(d => d.DeliverAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<OutboundMessage, CancellationToken>((message, _) => captured = message)
+            .ReturnsAsync(OutboundDeliveryResult.Ok());
+
+        var dispatcher = new ChannelDeliveryScheduleDispatcher(
+            new RecordingRuntime(),
+            SessionManager(session),
+            Mock.Of<ISystemReminderRenderer>(),
+            delivery.Object,
+            NullLogger<ChannelDeliveryScheduleDispatcher>.Instance);
+
+        var result = await dispatcher.DispatchAsync(new DispatchRequest
+        {
+            Source = "cron",
+            TaskType = "agent",
+            Content = "播报",
+            SessionId = "sess-5",
+            Conversation = new DispatchConversation
+            {
+                ChannelId = "qq",
+                Kind = "group",
+                ExternalId = "gr-new"
+            }
+        });
+
+        result.Success.Should().BeTrue();
+        captured.Should().NotBeNull();
+        captured!.Target.Conversation.ChannelId.Should().Be("qq");
+        captured.Target.Conversation.ExternalId.Should().Be("gr-new");
+        captured.Target.RecipientUserId.Should().BeNull(because: "group 目标无 RecipientUserId");
+    }
+
+    [Fact]
     public void MoveCompositeScheduleDispatcherLast_KeepsCompositeAsResolvedDispatcher()
     {
         var services = new ServiceCollection();

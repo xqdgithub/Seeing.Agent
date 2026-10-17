@@ -56,6 +56,20 @@ public static class JobDataKeys
     /// <summary>投递元数据（JSON）</summary>
     public const string DispatchMeta = "dispatchMeta";
 
+    // ===== 投递 conversation 目标（四键齐备才生效） =====
+
+    /// <summary>conversation 渠道 ID（如 qq / wecom）</summary>
+    public const string ConversationChannelId = "conversationChannelId";
+
+    /// <summary>conversation 种类（direct / group / guild）</summary>
+    public const string ConversationKind = "conversationKind";
+
+    /// <summary>conversation 外部 ID</summary>
+    public const string ConversationExternalId = "conversationExternalId";
+
+    /// <summary>conversation 标题（可选）</summary>
+    public const string ConversationTitle = "conversationTitle";
+
     // ===== 任务来源 =====
 
     /// <summary>任务来源：cron / heartbeat / manual</summary>

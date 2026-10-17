@@ -1,0 +1,97 @@
+@inject Seeing.Agent.Abstractions.Channels.IChannelDirectory ChannelDirectory
+@implements IDisposable
+
+<div class="conversation-picker">
+    <AntDesign.Select TItemValue="string"
+                      TItem="ConversationOption"
+                      Value="@_selectedKey"
+                      ValueChanged="@OnKeyChanged"
+                      DataSource="@_options"
+                      ValueName="@nameof(ConversationOption.Key)"
+                      LabelName="@nameof(ConversationOption.Label)"
+                      Placeholder="@Placeholder"
+                      AllowClear="true"
+                      ShowSearch="true"
+                      Style="width: 100%;" />
+    @if (_loading)
+    {
+        <small style="color: #999;">正在加载目录会话…</small>
+    }
+    else if (!_loading && _options.Count == 0)
+    {
+        <small style="color: #999;">目录暂无已登记会话（收到渠道消息后自动登记）；可手动填写下方字段。</small>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// conversation 目录选择器（与 list_conversations 工具同源：主程序 IChannelDirectory，
+    /// 渠道消息经 WS 入站时服务端 RegisterInbound 登记）。
+    /// 选中后经 <see cref="OnSelected"/> 回填 4 字段；目录为空时宿主可保留手填兜底。
+    /// </summary>
+    [Parameter]
+    public EventCallback<Seeing.Agent.Abstractions.Channels.ConversationInfo> OnSelected { get; set; }
+
+    [Parameter]
+    public string Placeholder { get; set; } = "从目录选择会话（可选）";
+
+    private string? _selectedKey;
+    private bool _loading = true;
+    private List<ConversationOption> _options = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var channelIds = await ChannelDirectory.ListChannelIdsAsync();
+            var options = new List<ConversationOption>();
+            foreach (var channelId in channelIds)
+            {
+                var entries = await ChannelDirectory.ListConversationsAsync(channelId, take: 200);
+                foreach (var entry in entries)
+                {
+                    var info = entry.Conversation;
+                    options.Add(new ConversationOption(
+                        $"{info.ChannelId}|{info.Kind}|{info.ExternalId}",
+                        $"{(string.IsNullOrWhiteSpace(info.Title) ? info.ExternalId : info.Title)}（{info.ChannelId} · {info.Kind} · {info.ExternalId}）",
+                        info));
+                }
+            }
+
+            _options = options
+                .OrderBy(o => o.Conversation.ChannelId, StringComparer.Ordinal)
+                .ThenBy(o => o.Conversation.ExternalId, StringComparer.Ordinal)
+                .ToList();
+        }
+        catch
+        {
+            // 目录不可用（模块未启用等）：留空，宿主手填兜底
+            _options = [];
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnKeyChanged(string? key)
+    {
+        _selectedKey = key;
+        if (string.IsNullOrEmpty(key))
+            return;
+
+        var option = _options.FirstOrDefault(o =>
+            string.Equals(o.Key, key, StringComparison.Ordinal));
+        if (option?.Conversation is null)
+            return;
+
+        await OnSelected.InvokeAsync(option.Conversation);
+    }
+
+    public void Dispose()
+    {
+        _options.Clear();
+    }
+
+    private sealed record ConversationOption(string Key, string Label, Seeing.Agent.Abstractions.Channels.ConversationInfo Conversation);
+}
