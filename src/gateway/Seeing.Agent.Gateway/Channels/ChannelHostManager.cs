@@ -83,6 +83,9 @@ public sealed class ChannelHostManager
 
         try
         {
+            // 宿主停止竞态兜底：启动前最后检查（stopping 时中止，防止宿主关闭瞬间拉起孤儿进程）
+            ct.ThrowIfCancellationRequested();
+
             var startInfo = BuildChannelHostStartInfo(host.HostDll, host.WorkingDirectory, pluginPath, configPath);
             var process = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("Channel 进程启动失败");
@@ -120,13 +123,18 @@ public sealed class ChannelHostManager
         }
     }
 
+    /// <summary>
+    /// 停止 ChannelHost 子进程。清理链（Kill / WaitForExit / 状态落盘）一律用
+    /// <see cref="CancellationToken.None"/>：停止是尽力而为语义，
+    /// 不得因调用方 token（如宿主 shutdown 竞速）半途而废造成孤儿进程。
+    /// </summary>
     public async Task StopAsync(string channelId, CancellationToken ct = default)
     {
-        var state = await _configStore.LoadRuntimeStateAsync(channelId, ct);
+        var state = await _configStore.LoadRuntimeStateAsync(channelId, CancellationToken.None).ConfigureAwait(false);
         if (state.ProcessId is not int pid)
         {
             state.Status = GatewayClientStatuses.Stopped;
-            await _configStore.SaveRuntimeStateAsync(channelId, state, ct);
+            await _configStore.SaveRuntimeStateAsync(channelId, state, CancellationToken.None).ConfigureAwait(false);
             return;
         }
 
@@ -136,7 +144,7 @@ public sealed class ChannelHostManager
             if (!process.HasExited)
             {
                 process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync(ct);
+                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
             }
         }
         catch (Exception ex)
@@ -146,7 +154,7 @@ public sealed class ChannelHostManager
 
         state.ProcessId = null;
         state.Status = GatewayClientStatuses.Stopped;
-        await _configStore.SaveRuntimeStateAsync(channelId, state, ct);
+        await _configStore.SaveRuntimeStateAsync(channelId, state, CancellationToken.None).ConfigureAwait(false);
     }
 
     public async Task RestartAsync(string channelId, CancellationToken ct = default)
@@ -183,13 +191,13 @@ public sealed class ChannelHostManager
         var hosts = _configStore.GetChannelHosts();
         foreach (var entry in hosts)
         {
-            var state = await _configStore.LoadRuntimeStateAsync(entry.ChannelId, ct);
-            if (state.ProcessId is not int pid || !IsProcessAlive(pid))
-                continue;
-
             try
             {
-                await StopAsync(entry.ChannelId, ct);
+                var state = await _configStore.LoadRuntimeStateAsync(entry.ChannelId, ct).ConfigureAwait(false);
+                if (state.ProcessId is not int pid || !IsProcessAlive(pid))
+                    continue;
+
+                await StopAsync(entry.ChannelId, ct).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -363,13 +371,17 @@ public sealed class ChannelHostManager
 
     private sealed record ChannelHostLocation(string HostDll, string WorkingDirectory);
 
-    private static ProcessStartInfo BuildChannelHostStartInfo(
+    /// <summary>
+    /// 构建 ChannelHost 启动参数：附带 <c>--parent-pid</c>（宿主进程 Id），
+    /// 供 ChannelHost 父进程退出看门狗在宿主被强杀/崩溃时自行退出，杜绝孤儿进程。
+    /// </summary>
+    internal static ProcessStartInfo BuildChannelHostStartInfo(
         string hostPath, string workingDirectory, string pluginPath, string configPath)
     {
         return new ProcessStartInfo
         {
             FileName = "dotnet",
-            Arguments = $"\"{hostPath}\" --plugin \"{pluginPath}\" --config \"{configPath}\"",
+            Arguments = $"\"{hostPath}\" --plugin \"{pluginPath}\" --config \"{configPath}\" --parent-pid {Environment.ProcessId}",
             WorkingDirectory = workingDirectory,
             UseShellExecute = false,
             CreateNoWindow = true,

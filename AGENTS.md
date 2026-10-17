@@ -29,7 +29,7 @@
 
 设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
 
-**硬规则摘要：** Core 瘦脊柱（零工具）；能力经 `AddSeeingModule`；`InitializeSeeingAsync` 在 Host.Start 前；schema 只在 `ExecutionRunner` 计算；能力包目标只依赖 Abstractions；会话驱动唯一入口 `ISessionRuntime.DeliverAsync`。
+**硬规则摘要：** Core 瘦脊柱（零工具）；能力经 `AddSeeingModule`；`InitializeSeeingAsync` 在 Host.Start 前；schema 只在 `SessionToolSchemaResolver`（Hosting）计算（主执行链与 Scheduler 直连共用出口）；能力包目标只依赖 Abstractions；会话驱动唯一入口 `ISessionRuntime.DeliverAsync`。
 
 ## 概述
 
@@ -80,7 +80,7 @@ Seeing.Agent/
 | 新增内置 Agent | `src/capabilities/Seeing.Agent.Agents.BuiltIn/` | AgentDefinition 纯数据；经模块 Activate |
 | Agent 执行入口 | `src/abstractions/Seeing.Agent.Abstractions/Agents/IAgentExecutor.cs` | Native / ACP 分流 |
 | 会话运行时（唯一驱动入口） | `src/hosting/Seeing.Agent.Hosting/Execution/SessionRuntime.cs` | `ISessionRuntime.DeliverAsync` + 消费循环；契约在 `src/abstractions/.../Runtime/ISessionRuntime.cs`；见 `docs/architecture/14` |
-| 编排 / schema 单点 | `src/hosting/Seeing.Agent.Hosting/Execution/ExecutionRunner.cs` | 跑一轮执行；工具 schema 只在此计算 |
+| 编排 / schema 单点 | `src/hosting/Seeing.Agent.Hosting/Execution/ExecutionRunner.cs` + `src/hosting/Seeing.Agent.Hosting/Execution/SessionToolSchemaResolver.cs` | 跑一轮执行；工具 schema 唯一计算在 `SessionToolSchemaResolver`（契约 `src/abstractions/.../Execution/ISessionToolSchemaResolver.cs`）；见 `docs/architecture/18` |
 | Todo 存取 | `src/abstractions/.../Todo/` + Hosting 适配器 | 端口-适配器 |
 | 模块生命周期 | `src/abstractions/.../Modules/` + `src/spine/.../SettlementEngine` | 结算 / Activate / Deactivate |
 | 契约类型总览 | `src/abstractions/Seeing.Agent.Abstractions/` | Events/Hooks/Tools/Agents/… |
@@ -196,7 +196,7 @@ public static async Task<string> GetWeather(
 | **使用已删除的 `AddSeeingAgent`** | 改用 `AddSeeingCore(registry)` + 显式模块 |
 | **能力包引用 Core 具体类型** | 只依赖 Abstractions（复扫见 `docs/architecture/06`） |
 | **在 `ConfigureServices` 永久挂死工具且无法 Deactivate** | enabled 与 DI/schema 不一致；目标 Activate 挂载 |
-| **schema 在 executor / 多处重复计算** | 只在 `ExecutionRunner` 算一次 |
+| **schema 在 executor / 多处重复计算** | 只在 `SessionToolSchemaResolver`（Hosting）算一次（Scheduler 直连执行经 `ISessionToolSchemaResolver` 端口共用；见 `docs/architecture/18`） |
 | **SeeingAgent 配置写进 appsettings.json** | 只用 `~/.seeing` / `.seeing/seeing.json` |
 | **混用路径分隔符** | `\\` 和 `/` 混用破坏跨平台 |
 | **WebUI 项目禁用 CPM** | 破坏包版本一致性 |
@@ -239,6 +239,7 @@ public static async Task<string> GetWeather(
 | **P2** | 文件能力无统一入口 / 会话页无法查看工作区文件 / agent 改文件 UI 无感知 | **已完成**（2026-10-14 会话文件浏览器：三层分离（契约 `Abstractions.Files` → 能力包 `Seeing.Agent.Files` → 组件库 `Seeing.Agent.WebUI.Files`）；会话根经 `ISessionWorkspaceResolver` 端口纳入门闸；`IPathWriteLock` 统一进程内写锁；见 `docs/architecture/16`） |
 | **P3** | 文件工具与 facade 读写逻辑并存（未收敛单一真相源） | 已知边界（P4 仅统一写锁；工具改 facade 适配器会回退 agent 能力，留作后续可选项） |
 | **P3** | 文件浏览器：`.git`/`bin` 等忽略目录下 agent 改动不触发刷新；Markdown 预览仅只读文件；同 circuit 多 Full 窗口共享单一面板状态 | 已知边界（见 `docs/architecture/16` §7） |
+| **P1** | Gateway 回复污染（会话订阅回放 + 先投递后订阅竞态 → 陈旧终态判死本轮，秒回 `⚠️ user`/`(空回复)`）；Scheduler 直连执行无 ToolSchemas → cron 输出垃圾文本 | **已完成**（2026-10-17：实时订阅三件套 `SubscribeLive`/`BeginLive`/Collector 轮次门控 + `ISessionToolSchemaResolver` 共享结算出口；已知边界见 `docs/architecture/18` §5） |
 
 ## 命令
 

@@ -319,7 +319,8 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
                 return;
             }
 
-            await foreach (var gatewayEvent in _sessionClient.SubscribeAsync(sessionId, jobToken)
+            // 按 submit 关联 ID 订阅请求/应答流：跳过他轮滞留帧（含桥提前 return 残留的陈旧 execution.complete）
+            await foreach (var gatewayEvent in _sessionClient.SubscribeAsync(sessionId, submit.RequestId, jobToken)
                                .ConfigureAwait(false))
             {
                 var disposition = reply.Apply(gatewayEvent);

@@ -10,10 +10,16 @@ namespace Seeing.Gateway.Channels;
 /// <see cref="GatewayEventObject.Message"/>+Completed 为单轮 assistant 快照（仅填补空累积）；
 /// <see cref="GatewayRunTerminal.Completed"/> 表示整轮结束。
 /// </para>
+/// <para>
+/// 轮次门控：请求/应答消费方（IM 桥）在订阅建立后、本轮 <see cref="MessageEventType.LoopStart"/> 之前
+/// 收到的事件均为上一轮回放或仍在途的尾流（含陈旧终态），一律忽略——防止陈旧
+/// LoopComplete/LoopCancelled 把本轮提前判死。须与实时订阅（无回放）配合使用。
+/// </para>
 /// </summary>
 public sealed class GatewayAssistantReplyCollector
 {
     public const string LoopCompleteSourceType = MessageEventType.LoopComplete;
+    public const string LoopStartSourceType = MessageEventType.LoopStart;
 
     public string Text { get; private set; } = string.Empty;
 
@@ -21,9 +27,19 @@ public sealed class GatewayAssistantReplyCollector
 
     public string? TerminalMessage { get; private set; }
 
+    /// <summary>是否已观察到本轮 LoopStart（门控开启后才开始累积）。</summary>
+    public bool RunStarted { get; private set; }
+
     /// <summary>应用事件并返回建议的 Bridge 动作。</summary>
     public GatewayReplyDisposition Apply(GatewayEvent gatewayEvent)
     {
+        if (!RunStarted)
+        {
+            if (IsLoopStart(gatewayEvent))
+                RunStarted = true;
+            return GatewayReplyDisposition.Ignored;
+        }
+
         switch (gatewayEvent.Object)
         {
             case GatewayEventObject.Content when gatewayEvent.Data?.Delta == true:
@@ -71,6 +87,11 @@ public sealed class GatewayAssistantReplyCollector
 
     private static bool IsLoopComplete(GatewayEvent gatewayEvent) =>
         string.Equals(gatewayEvent.SourceType, LoopCompleteSourceType, StringComparison.Ordinal);
+
+    private static bool IsLoopStart(GatewayEvent gatewayEvent) =>
+        string.Equals(gatewayEvent.SourceType, LoopStartSourceType, StringComparison.Ordinal)
+        && gatewayEvent.Object == GatewayEventObject.Response
+        && gatewayEvent.Status == GatewayEventStatus.InProgress;
 }
 
 public enum GatewayRunTerminal

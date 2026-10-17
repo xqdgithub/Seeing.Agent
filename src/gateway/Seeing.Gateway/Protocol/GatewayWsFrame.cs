@@ -67,6 +67,9 @@ public record GatewaySubmitAckPayload
 {
     public required string SessionId { get; init; }
 
+    /// <summary>submit 帧关联 ID（服务端回填；客户端据此对订阅流做按轮次关联过滤）</summary>
+    public string? RequestId { get; init; }
+
     public bool Success { get; init; }
 
     public string? Error { get; init; }

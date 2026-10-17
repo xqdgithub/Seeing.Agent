@@ -350,7 +350,8 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
                     return;
                 }
 
-                await foreach (var gatewayEvent in _sessionClient.SubscribeAsync(sessionId, cancellationToken)
+                // 按 submit 关联 ID 订阅请求/应答流：跳过他轮滞留帧（含提前 return 残留的陈旧 execution.complete）
+                await foreach (var gatewayEvent in _sessionClient.SubscribeAsync(sessionId, submit.RequestId, cancellationToken)
                                    .ConfigureAwait(false))
                 {
                     var disposition = reply.Apply(gatewayEvent);

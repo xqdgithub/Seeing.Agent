@@ -55,11 +55,10 @@ internal sealed class ExecutionRunner : IExecutionRunner
     private readonly IServiceProvider _serviceProvider;
     private readonly IExecutionEventPublisher _eventPublisher;
     private readonly ExecutionOptions _options;
-    private readonly IOptionsMonitor<SeeingAgentOptions> _seeingAgentOptions;
     private readonly IConfigSectionStore _configStore;
     private readonly CompactionRunner _compactionRunner;
     private readonly ILogger<ExecutionRunner> _logger;
-    private readonly IScenarioCatalog? _scenarioCatalog;
+    private readonly SessionToolSchemaResolver _schemaResolver;
 
     public ExecutionRunner(
         IServiceProvider serviceProvider,
@@ -69,16 +68,19 @@ internal sealed class ExecutionRunner : IExecutionRunner
         IConfigSectionStore configStore,
         CompactionRunner compactionRunner,
         ILogger<ExecutionRunner> logger,
-        IScenarioCatalog? scenarioCatalog = null)
+        IScenarioCatalog? scenarioCatalog = null,
+        SessionToolSchemaResolver? schemaResolver = null)
     {
         _serviceProvider = serviceProvider;
         _eventPublisher = eventPublisher;
         _options = options ?? new ExecutionOptions();
-        _seeingAgentOptions = seeingAgentOptions;
         _configStore = configStore;
         _compactionRunner = compactionRunner ?? throw new ArgumentNullException(nameof(compactionRunner));
         _logger = logger;
-        _scenarioCatalog = scenarioCatalog;
+        // schema 唯一计算点：未注入（测试直连构造）时回退构造同一实现，不产生第二套结算路径。
+        // 注意：该回退要求 SessionToolSchemaResolver 保持无状态，否则 DI 单例与回退实例会漂移。
+        _schemaResolver = schemaResolver ?? new SessionToolSchemaResolver(
+            serviceProvider, seeingAgentOptions, scenarioCatalog: scenarioCatalog);
     }
 
     /// <summary>跑一轮执行：模型/模式落盘、指令注入、投影事件、终态落盘，返回终态记录。不做忙闲/循环管理。</summary>
@@ -438,8 +440,11 @@ internal sealed class ExecutionRunner : IExecutionRunner
             ?? session.WorkingDirectory
             ?? executionWorld.Cwd;
 
-        var (settlement, toolSchemas, sectionIds) = await SettleSessionAndSchemasAsync(
+        // schema 唯一计算点：经 SessionToolSchemaResolver（与 Scheduler 直连执行共用同一结算）
+        var schemaSettlement = await _schemaResolver.SettleAsync(
             session, agentDef, services).ConfigureAwait(false);
+        var toolSchemas = schemaSettlement.ToolSchemas;
+        var sectionIds = schemaSettlement.SectionIds;
 
         string? requestThinkingEffort = record.Options?.ThinkingEffort;
         if (requestThinkingEffort is null && !string.IsNullOrWhiteSpace(session.SelectedThinkingEffort))
@@ -457,101 +462,9 @@ internal sealed class ExecutionRunner : IExecutionRunner
             AcpModeId = acpModeId,
             RequestModelId = requestModelId,
             RequestThinkingEffort = requestThinkingEffort,
-            Settlement = settlement,
             ToolSchemas = toolSchemas,
             SectionIds = sectionIds
         };
-    }
-
-    /// <summary>
-    /// 会话级结算 + schema 唯一计算。无 <see cref="IModuleCatalog"/> 时 settled 为空集（schema 亦空）。
-    /// </summary>
-    private async Task<(SessionSettlementSnapshot? Settlement, IReadOnlyList<FunctionToolSchema> ToolSchemas, IReadOnlyList<string> SectionIds)>
-        SettleSessionAndSchemasAsync(
-            SessionData session,
-            AgentDefinition agent,
-            IServiceProvider services)
-    {
-        var catalog = services.GetService<IModuleCatalog>();
-        var toolManager = services.GetService<IToolManager>();
-        var options = _seeingAgentOptions.CurrentValue;
-        var processScenario = options.Scenario
-            ?? services.GetService<ProcessSettlementOptions>()?.HostDefaultScenario;
-        var scenarioCatalog = _scenarioCatalog ?? services.GetService<IScenarioCatalog>();
-
-        SessionSettlementSnapshot? settlement = null;
-        IReadOnlyList<string> settledToolIds = Array.Empty<string>();
-
-        if (catalog != null)
-        {
-            settlement = SessionSettlement.Compute(
-                session,
-                catalog,
-                processScenario,
-                options.Modules?.Tools?.Disabled,
-                resolveScenario: scenarioCatalog is not null
-                    ? name => scenarioCatalog.Get(name)
-                    : null);
-            settledToolIds = settlement.SettledToolIds;
-
-            // 动态工具贡献（如 MCP 运行时注册的工具）并入结算集，避免被 ToolManager.settled.Contains 滤出 schema。
-            var dynamicRegistry = services.GetService<IDynamicToolContributorRegistry>();
-            if (dynamicRegistry is not null)
-            {
-                var dynamicIds = dynamicRegistry.GetDynamicToolIds(settlement.EnabledModules);
-                if (dynamicIds.Count > 0)
-                    settledToolIds = MergeDynamicToolIds(settledToolIds, dynamicIds);
-            }
-
-            _logger.LogDebug(
-                "会话级结算: session={SessionId}, scenario={Scenario}, modules={ModuleCount}, tools={ToolCount}",
-                session.Id,
-                settlement.ScenarioName,
-                settlement.EnabledModules.Count,
-                settlement.SettledToolIds.Count);
-        }
-        else
-        {
-            _logger.LogDebug(
-                "IModuleCatalog 未注册，跳过会话级结算（schema 空集）: {SessionId}",
-                session.Id);
-        }
-
-        IReadOnlyList<FunctionToolSchema> toolSchemas = Array.Empty<FunctionToolSchema>();
-        if (toolManager != null)
-        {
-            toolSchemas = await toolManager.GetToolSchemasAsync(settledToolIds, agent)
-                .ConfigureAwait(false);
-        }
-
-        var sectionIds = services.GetServices<IPromptSectionContributor>()
-            .Select(c => c.SectionName)
-            .Where(n => !string.IsNullOrWhiteSpace(n))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        return (settlement, toolSchemas, sectionIds);
-    }
-
-    /// <summary>
-    /// 将 enabled 模块的动态工具贡献并入已结算工具 id 集（去重、稳定排序）。
-    /// </summary>
-    internal static IReadOnlyList<string> MergeDynamicToolIds(
-        IReadOnlyList<string> settledToolIds,
-        IEnumerable<string> dynamicToolIds)
-    {
-        ArgumentNullException.ThrowIfNull(settledToolIds);
-        ArgumentNullException.ThrowIfNull(dynamicToolIds);
-
-        var merged = new HashSet<string>(settledToolIds, StringComparer.OrdinalIgnoreCase);
-        foreach (var id in dynamicToolIds)
-        {
-            if (!string.IsNullOrWhiteSpace(id))
-                merged.Add(id.Trim());
-        }
-
-        return merged.OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     /// <summary>

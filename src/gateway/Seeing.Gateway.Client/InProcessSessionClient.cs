@@ -72,6 +72,11 @@ public sealed class InProcessSessionClient : ISessionClient
     public IAsyncEnumerable<GatewayEvent> SubscribeAsync(string sessionId, CancellationToken ct = default) =>
         _pump.StreamAsync(sessionId, ct);
 
+    /// <summary>进程内无共享队列串轮问题，requestId 忽略（等价于无参重载）。</summary>
+    public IAsyncEnumerable<GatewayEvent> SubscribeAsync(
+        string sessionId, string? requestId, CancellationToken ct = default) =>
+        _pump.StreamAsync(sessionId, ct);
+
     public Task<bool> CancelAsync(string sessionId, CancellationToken ct = default) =>
         _runtime.InterruptAsync(sessionId, ct);
 

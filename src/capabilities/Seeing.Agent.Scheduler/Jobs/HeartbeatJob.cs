@@ -304,6 +304,9 @@ public class HeartbeatJob : IJob
             WorkingDirectory = cwd,
             WorkspaceRoot = projectRoot,
             IsBackground = true,
+            // schema 单点纪律：直连执行必须携带会话级结算后的真实工具 schema
+            ToolSchemas = await AgentJob.ResolveToolSchemasAsync(_services, sessionId, agentDefinition, _logger, ct)
+                .ConfigureAwait(false),
             Metadata = new Dictionary<string, object>
             {
                 ["source"] = ScheduleSources.Heartbeat

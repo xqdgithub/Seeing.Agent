@@ -107,6 +107,40 @@ public class ExecutionEventPublisher : IExecutionEventPublisher, IDisposable
     }
 
     /// <inheritdoc/>
+    public ILiveEventSubscription SubscribeLive(string sessionId)
+    {
+        if (string.IsNullOrEmpty(sessionId))
+            return LiveEventSubscription.Completed;
+
+        var subscriberChannel = Channel.CreateUnbounded<IMessageEvent>(
+            new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
+
+        // 注册同锁（无回放）：与 Publish 的（缓冲区写入 + 扇出）互斥，
+        // 保证注册点先于其后任何 Publish——消费方在触发执行前注册即可整轮不漏。
+        lock (_lock)
+        {
+            var subscribers = _subscribers.GetOrAdd(sessionId, _ => new List<ChannelWriter<IMessageEvent>>());
+            subscribers.Add(subscriberChannel.Writer);
+        }
+
+        return new LiveEventSubscription(
+            subscriberChannel.Reader,
+            () =>
+            {
+                lock (_lock)
+                {
+                    if (_subscribers.TryGetValue(sessionId, out var subscribers))
+                    {
+                        subscribers.Remove(subscriberChannel.Writer);
+                        if (subscribers.Count == 0)
+                            _subscribers.TryRemove(sessionId, out _);
+                    }
+                }
+                subscriberChannel.Writer.TryComplete();
+            });
+    }
+
+    /// <inheritdoc/>
     public IReadOnlyList<IMessageEvent> GetBufferedEvents(string sessionId)
     {
         if (string.IsNullOrEmpty(sessionId))

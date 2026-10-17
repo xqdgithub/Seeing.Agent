@@ -36,7 +36,7 @@ public class DynamicToolSettlementTests
     [Fact]
     public void MergeDynamicToolIds_AddsDistinctAndSorted()
     {
-        var merged = ExecutionRunner.MergeDynamicToolIds(["read", "write"], ["demo_echo", "read", "  "]);
+        var merged = SessionToolSchemaResolver.MergeDynamicToolIds(["read", "write"], ["demo_echo", "read", "  "]);
 
         merged.Should().Equal("demo_echo", "read", "write");
     }
@@ -53,8 +53,8 @@ public class DynamicToolSettlementTests
         var registry = new DynamicToolContributorRegistry();
         registry.Register(new FakeContributor("mcp", ["demo_echo"]));
 
-        // 模拟 ExecutionJobService 结算合并段：静态 settled ∪ enabled 模块动态贡献
-        var merged = ExecutionRunner.MergeDynamicToolIds(
+        // 模拟 schema 结算合并段（SessionToolSchemaResolver）：静态 settled ∪ enabled 模块动态贡献
+        var merged = SessionToolSchemaResolver.MergeDynamicToolIds(
             ["read"],
             registry.GetDynamicToolIds(["mcp"]));
 

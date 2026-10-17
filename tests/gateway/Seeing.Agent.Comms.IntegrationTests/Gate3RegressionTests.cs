@@ -12,12 +12,18 @@ public class Gate3RegressionTests
     public void LoopComplete_MapperThenCollector_IsRunCompleted()
     {
         GatewayEventMapper.TryMap(
+            new LoopStartEvent { SessionId = "s", LoopId = "l" },
+            out var loopStart).Should().BeTrue();
+        GatewayEventMapper.TryMap(
             new LoopCompleteEvent { SessionId = "s", LoopId = "l", Success = true },
             out var gatewayEvent).Should().BeTrue();
 
         gatewayEvent!.SourceType.Should().Be(MessageEventType.LoopComplete);
 
-        var disposition = new GatewayAssistantReplyCollector().Apply(gatewayEvent);
+        // 请求/应答流按 run 门控：先见 LoopStart，终态方生效
+        var collector = new GatewayAssistantReplyCollector();
+        collector.Apply(loopStart!).Should().Be(GatewayReplyDisposition.Ignored);
+        var disposition = collector.Apply(gatewayEvent);
         disposition.Should().Be(GatewayReplyDisposition.RunCompleted);
     }
 

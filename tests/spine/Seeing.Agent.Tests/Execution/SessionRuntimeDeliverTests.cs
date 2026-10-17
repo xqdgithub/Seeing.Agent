@@ -346,5 +346,8 @@ public class SessionRuntimeDeliverTests
         public void ClearBuffer(string sessionId) { }
 
         public void CompleteSession(string sessionId) { }
+
+        public Seeing.Agent.Abstractions.Events.ILiveEventSubscription SubscribeLive(string sessionId)
+            => Seeing.Agent.Core.Execution.LiveEventSubscription.Completed;
     }
 }

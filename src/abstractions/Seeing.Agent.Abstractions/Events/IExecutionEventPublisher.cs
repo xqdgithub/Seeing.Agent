@@ -21,6 +21,18 @@ public interface IExecutionEventPublisher
     IAsyncEnumerable<IMessageEvent> SubscribeAsync(string sessionId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// 实时订阅（不回放）：同步注册即刻生效，仅接收注册之后发布的事件。
+    /// <para>
+    /// 供请求/应答消费方（IM 桥等）使用：须在触发执行的投递（唤醒）之前调用，
+    /// 并配合轮次门控忽略上一轮仍在途的尾流。UI 重连类消费方应继续使用
+    /// <see cref="SubscribeAsync"/>（含缓冲回放）。
+    /// </para>
+    /// </summary>
+    /// <param name="sessionId">The session ID.</param>
+    /// <returns>实时订阅句柄；<see cref="IDisposable.Dispose"/> 注销。</returns>
+    ILiveEventSubscription SubscribeLive(string sessionId);
+
+    /// <summary>
     /// Gets buffered events for a session (for reconnection).
     /// </summary>
     /// <param name="sessionId">The session ID.</param>

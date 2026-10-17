@@ -77,12 +77,7 @@ internal class ChatExecutionContext
     public string? AcpModeId { get; init; }
 
     /// <summary>
-    /// 本轮会话级结算快照（进入执行前计算；中途改 session.Scenario 不影响本轮）。
-    /// </summary>
-    public SessionSettlementSnapshot? Settlement { get; init; }
-
-    /// <summary>
-    /// 本轮工具 schema（ExecutionRunner 唯一计算点；经 AgentContext.ToolSchemas 传入 executor）。
+    /// 本轮工具 schema（经 SessionToolSchemaResolver 计算；经 AgentContext.ToolSchemas 传入 executor）。
     /// </summary>
     public IReadOnlyList<FunctionToolSchema>? ToolSchemas { get; init; }
 
@@ -115,7 +110,6 @@ internal class ChatExecutionContext
             ParentAgentName = parentAgentName,
             IsTopLevel = false,
             IsBackground = true,
-            Settlement = Settlement,
             ToolSchemas = ToolSchemas,
             SectionIds = SectionIds,
             Metadata = new Dictionary<string, object>(Metadata)

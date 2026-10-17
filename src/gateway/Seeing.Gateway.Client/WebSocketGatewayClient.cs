@@ -511,11 +511,20 @@ public sealed class WebSocketGatewayClient : IGatewayConnection, IGatewayChannel
             return false;
 
         var ack = inbound.SubmitAck;
-        var result = ack == null
-            ? GatewaySubmitResult.Failed("", "Empty submit ack")
-            : ack.Success
-                ? GatewaySubmitResult.Succeeded(ack.SessionId, ack.PendingInputCount)
-                : GatewaySubmitResult.Failed(ack.SessionId, ack.Error ?? "Submit failed");
+        GatewaySubmitResult result;
+        if (ack == null)
+            result = GatewaySubmitResult.Failed("", "Empty submit ack");
+        else if (ack.Success)
+            // RequestId：提交帧关联 ID（服务端回填，兜底取帧 Id），请求/应答流按轮次关联消费的依据
+            result = new GatewaySubmitResult
+            {
+                Success = true,
+                SessionId = ack.SessionId,
+                RequestId = ack.RequestId ?? inbound.Id,
+                PendingInputCount = ack.PendingInputCount
+            };
+        else
+            result = GatewaySubmitResult.Failed(ack.SessionId, ack.Error ?? "Submit failed");
 
         tcs.TrySetResult(result);
         return true;

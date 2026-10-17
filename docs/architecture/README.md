@@ -2,7 +2,7 @@
 
 > **权威规格：** [模块化架构设计](../superpowers/specs/2026-09-08-modular-architecture-design.md)  
 > **本文档集：** 日常开发落地规范；与规格冲突时以规格为准，并应提 PR 同步两边。  
-> **更新日期：** 2026-10-16（通联子系统：渠道目录与出站投递，见 17）  
+> **更新日期：** 2026-10-17（Gateway 请求/应答实时订阅与会话 schema 解析端口，见 18）  
 > **深化说明：** [architecture-docs-deepen-design](../superpowers/specs/2026-09-08-architecture-docs-deepen-design.md)
 
 ## 新人 5 分钟
@@ -34,6 +34,7 @@
 | [15 会话归档与延迟加载 Release Notes](15-session-archival-lazy-loading-release-notes.md) | 摘要列表、启动扫描按组归档、存储端口扩展、Evict、破坏性变更 |
 | [16 会话文件浏览器 Release Notes](16-session-file-explorer-release-notes.md) | 文件树/多标签查看编辑、三层分离、会话根门闸、共享写锁、watcher 稳定性、冲突裁决 |
 | [17 通联子系统 Release Notes](17-channel-comms-release-notes.md) | 渠道目录与出站投递、协议 v2、`ChannelRoute`、调度只出站、破坏性变更 |
+| [18 Gateway 实时订阅与 schema 解析端口 Release Notes](18-gateway-live-subscription-and-schema-resolver-release-notes.md) | 请求/应答实时订阅三件套、Collector 轮次门控、`ISessionToolSchemaResolver` 共享结算出口、已知边界 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 
@@ -42,7 +43,7 @@
 1. **编译期引用 = 进程目录（available）**；**配置启用 = enabled 子集**。目录外 id 告警忽略。  
 2. **Core 是瘦脊柱**：零工具实现、零能力包 ProjectReference、不 `AddSeeingAgent`。  
 3. **能力包只依赖 Abstractions**（+ 原语 / Tools.Support）；禁止引用 Core 具体类型。  
-4. **schema 只在 `ExecutionRunner`（会话运行时）算一次**；executor 读 `context.ToolSchemas`。  
+4. **schema 只在 `SessionToolSchemaResolver`（Hosting）算一次**（主执行链与 Scheduler 直连执行共用出口）；executor 读 `context.ToolSchemas`。  
 5. **工具在 Activate 挂载、Deactivate 卸载**；连接与 HostedService 与模块生命周期对称。  
 6. **进程场景改导航/激活；会话场景只收窄下一次 `DeliverAsync`**；热重载 Deactivate 默认等在途结束。  
 7. **单一真相源**：enabled 模块集、ToolManager 注册表、UI 贡献、HostedService 门闩必须同源结算结果，禁止旁路第二套开关。

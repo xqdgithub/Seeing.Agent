@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Runtime;
@@ -71,7 +72,7 @@ public sealed class GatewayOrchestratorV2
 
     /// <summary>
     /// 会话级订阅：流式转发会话事件，直到消费循环空闲（<see cref="ISessionRuntime.WaitForIdleAsync"/> 语义）
-    /// 或取消/超时。不再按 executionId 过滤。
+    /// 或取消/超时。不再按 executionId 过滤。含环形缓冲回放（UI/SSE 重连语义）。
     /// </summary>
     public async IAsyncEnumerable<GatewayEvent> SubscribeSessionEventsAsync(
         string sessionId,
@@ -83,6 +84,23 @@ public sealed class GatewayOrchestratorV2
         var pump = new SessionEventPump(runtime, _runTracker, presentation, _logger);
         await foreach (var gatewayEvent in pump.StreamAsync(sessionId, cancellationToken).ConfigureAwait(false))
             yield return gatewayEvent;
+    }
+
+    /// <summary>
+    /// 请求/应答实时流：先同步注册（呈现端 + run 跟踪 + 实时订阅，不回放），
+    /// 供 WS submit 等请求/应答消费方在 <see cref="SubmitAsync"/>（投递唤醒）<b>之前</b>调用，
+    /// 保证整轮事件自 LoopStart 起不漏；桥侧配合 <c>GatewayAssistantReplyCollector</c>
+    /// 轮次门控忽略上一轮仍在途的尾流。投递触发后枚举 <see cref="LiveSessionEventStream.StreamAsync"/>；
+    /// <see cref="LiveSessionEventStream.Dispose"/> 注销全部注册。
+    /// </summary>
+    public LiveSessionEventStream BeginReplyStream(string sessionId)
+    {
+        var publisher = _services.GetRequiredService<IExecutionEventPublisher>();
+        var runtime = _services.GetRequiredService<ISessionRuntime>();
+        var presentation = _services.GetRequiredService<IPermissionSurfaceRegistry>();
+        var pump = new SessionEventPump(runtime, _runTracker, presentation, _logger);
+        var subscription = publisher.SubscribeLive(sessionId);
+        return pump.BeginLive(sessionId, subscription);
     }
 
     /// <summary>取消会话。默认 interrupt；<paramref name="mode"/> 为 stop 时停止消费循环。</summary>

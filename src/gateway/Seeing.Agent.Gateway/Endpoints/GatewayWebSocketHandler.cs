@@ -196,6 +196,11 @@ public sealed class GatewayWebSocketHandler
             request = frame.Payload.Value.Deserialize<GatewayRequest>(GatewayWsFrameSerializer.JsonOptions)
                 ?? throw new InvalidOperationException("submit payload is empty");
 
+            // ① 先注册请求/应答实时订阅（不回放）：注册点先于投递唤醒，整轮事件自 LoopStart 起不漏。
+            //    桥侧 GatewayAssistantReplyCollector 轮次门控会忽略上一轮仍在途的尾流。
+            using var replyStream = _orchestrator.BeginReplyStream(request.SessionId);
+
+            // ② 投递并唤醒消费循环
             var submit = await _orchestrator.SubmitAsync(request, cancellationToken).ConfigureAwait(false);
 
             await connection.SendFrameAsync(
@@ -205,6 +210,8 @@ public sealed class GatewayWebSocketHandler
                     new GatewaySubmitAckPayload
                     {
                         SessionId = submit.SessionId,
+                        // 回填 submit 帧关联 ID：客户端请求/应答订阅按此过滤（frame.Id 与之同值）
+                        RequestId = frame.Id,
                         Success = submit.Success,
                         Error = submit.Error,
                         PendingInputCount = submit.PendingInputCount
@@ -217,9 +224,9 @@ public sealed class GatewayWebSocketHandler
             RegisterInbound(request);
             _connectionManager.SubscribeSession(connection.ConnectionId, request.SessionId);
 
+            // ③ 枚举实时流：事件已在实时订阅通道缓冲，投递前后到达均不丢
             string? loopId = null;
-            await foreach (var gatewayEvent in _orchestrator.SubscribeSessionEventsAsync(
-                               request.SessionId, cancellationToken))
+            await foreach (var gatewayEvent in replyStream.StreamAsync(cancellationToken))
             {
                 loopId = gatewayEvent.LoopId ?? loopId;
                 await connection.SendFrameAsync(

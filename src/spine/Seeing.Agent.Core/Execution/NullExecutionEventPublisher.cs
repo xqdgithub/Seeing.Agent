@@ -28,6 +28,9 @@ public sealed class NullExecutionEventPublisher : IExecutionEventPublisher
     public IReadOnlyList<IMessageEvent> GetBufferedEvents(string sessionId) => Array.Empty<IMessageEvent>();
 
     /// <inheritdoc />
+    public ILiveEventSubscription SubscribeLive(string sessionId) => LiveEventSubscription.Completed;
+
+    /// <inheritdoc />
     public void ClearBuffer(string sessionId)
     {
     }

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Quartz;
 using Seeing.Agent.Abstractions.Agents;
@@ -315,6 +316,11 @@ public class AgentJob : IJob
             }
         };
 
+        // schema 单点纪律：直连执行必须携带会话级结算后的真实工具 schema，
+        // 否则 LLM 请求无 tools，模型只能靠文本「表演」工具调用
+        var toolSchemas = await ResolveToolSchemasAsync(_services, sessionId, agentDefinition, _logger, ct)
+            .ConfigureAwait(false);
+
         var context = new AgentContext
         {
             SessionId = sessionId,
@@ -323,6 +329,7 @@ public class AgentJob : IJob
             WorkingDirectory = cwd,
             WorkspaceRoot = projectRoot,
             IsBackground = true,
+            ToolSchemas = toolSchemas,
             Metadata = metadata
         };
 
@@ -356,6 +363,42 @@ public class AgentJob : IJob
             Prompt = prompt,
             DispatchSessionId = dispatchSessionId
         };
+    }
+
+    /// <summary>
+    /// schema 单点纪律（AgentJob / HeartbeatJob 共用）：直连 <see cref="IAgentExecutor"/> 的旁路执行
+    /// 经 <see cref="ISessionToolSchemaResolver"/> 解析会话级工具 schema；未注册或解析失败时空集继续（不阻断任务）。
+    /// </summary>
+    internal static async Task<IReadOnlyList<FunctionToolSchema>?> ResolveToolSchemasAsync(
+        IServiceProvider services,
+        string sessionId,
+        AgentDefinition agent,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        var resolver = services.GetService<ISessionToolSchemaResolver>();
+        if (resolver is null)
+        {
+            logger.LogWarning(
+                "ISessionToolSchemaResolver 未注册：任务执行将无工具 schema（模型无法真实调用工具）: SessionId={SessionId}, Agent={Agent}",
+                sessionId, agent.Name);
+            return null;
+        }
+
+        try
+        {
+            var resolution = await resolver.ResolveAsync(sessionId, agent, cancellationToken).ConfigureAwait(false);
+            return resolution.ToolSchemas;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(
+                ex,
+                "工具 schema 解析失败，任务执行将以空 schema 继续: SessionId={SessionId}, Agent={Agent}",
+                sessionId,
+                agent.Name);
+            return null;
+        }
     }
 
     private string? WrapJobUserInput(string? userInput)

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Gateway.Plugins;
+using System.Diagnostics;
 using System.Runtime.Loader;
 
 namespace Seeing.Gateway.ChannelHost;
@@ -47,6 +48,13 @@ internal static class Program
                 services.AddSingleton<IWorkspaceProvider>(_ => new WorkspaceProvider(workspaceRoot));
                 plugin.ConfigureServices(services, context.Configuration);
                 services.AddHostedService<ChannelBridgeHostedService>();
+                // 宿主被强杀/崩溃时兜底自灭：父进程（Gateway 宿主）退出后本进程优雅退出，
+                // 防止 Windows 无进程树级联导致的孤儿进程
+                if (arguments.ParentPid is int parentPid)
+                    services.AddHostedService(sp => new ParentExitWatchdogService(
+                        parentPid,
+                        sp.GetRequiredService<IHostApplicationLifetime>(),
+                        sp.GetRequiredService<ILogger<ParentExitWatchdogService>>()));
             })
             .ConfigureLogging(logging =>
             {
@@ -96,12 +104,14 @@ internal sealed class ChannelHostArguments
 {
     public string? PluginPath { get; init; }
     public string? ConfigPath { get; init; }
+    public int? ParentPid { get; init; }
     public bool ShowHelp { get; init; }
 
     public static ChannelHostArguments Parse(string[] args)
     {
         string? plugin = null;
         string? config = null;
+        int? parentPid = null;
         var showHelp = false;
 
         for (var i = 0; i < args.Length; i++)
@@ -114,6 +124,10 @@ internal sealed class ChannelHostArguments
                 case "--config" when i + 1 < args.Length:
                     config = args[++i];
                     break;
+                case "--parent-pid" when i + 1 < args.Length && int.TryParse(args[i + 1], out var pid):
+                    parentPid = pid;
+                    i++;
+                    break;
                 case "--help":
                 case "-h":
                     showHelp = true;
@@ -125,8 +139,82 @@ internal sealed class ChannelHostArguments
         {
             PluginPath = plugin,
             ConfigPath = config,
+            ParentPid = parentPid,
             ShowHelp = showHelp
         };
+    }
+}
+
+/// <summary>
+/// 父进程退出看门狗：父进程（Gateway 宿主）死亡后优雅停止本 Host。
+/// 手动运行（未传 <c>--parent-pid</c>）时不启用，不影响调试。
+/// </summary>
+internal sealed class ParentExitWatchdogService : IHostedService, IDisposable
+{
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
+
+    private readonly int _parentPid;
+    private readonly IHostApplicationLifetime _lifetime;
+    private readonly ILogger<ParentExitWatchdogService> _logger;
+    private CancellationTokenSource? _cts;
+
+    public ParentExitWatchdogService(
+        int parentPid,
+        IHostApplicationLifetime lifetime,
+        ILogger<ParentExitWatchdogService> logger)
+    {
+        _parentPid = parentPid;
+        _lifetime = lifetime;
+        _logger = logger;
+    }
+
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _ = WatchAsync(_cts.Token);
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        _cts?.Cancel();
+        return Task.CompletedTask;
+    }
+
+    public void Dispose() => _cts?.Dispose();
+
+    private async Task WatchAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(PollInterval, cancellationToken).ConfigureAwait(false);
+                if (IsProcessAlive(_parentPid))
+                    continue;
+
+                _logger.LogWarning("父进程 {ParentPid} 已退出，ChannelHost 自行停止", _parentPid);
+                _lifetime.StopApplication();
+                return;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 正常停止
+        }
+    }
+
+    private static bool IsProcessAlive(int pid)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }
 

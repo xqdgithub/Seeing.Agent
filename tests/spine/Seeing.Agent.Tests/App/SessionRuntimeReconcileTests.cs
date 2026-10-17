@@ -45,6 +45,9 @@ public class SessionRuntimeReconcileTests
         public IReadOnlyList<IMessageEvent> GetBufferedEvents(string sessionId) => Array.Empty<IMessageEvent>();
         public void ClearBuffer(string sessionId) { }
         public void CompleteSession(string sessionId) { }
+
+        public Seeing.Agent.Abstractions.Events.ILiveEventSubscription SubscribeLive(string sessionId)
+            => Seeing.Agent.Core.Execution.LiveEventSubscription.Completed;
     }
 
     private static SessionRuntime CreateRuntime(

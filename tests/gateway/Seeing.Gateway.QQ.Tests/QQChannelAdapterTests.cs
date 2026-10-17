@@ -134,6 +134,13 @@ public class QQChannelAdapterTests
     public void ReplyCollector_LoopComplete_ShouldBeRunCompleted()
     {
         var collector = new GatewayAssistantReplyCollector();
+        collector.Apply(new GatewayEvent
+        {
+            Object = GatewayEventObject.Response,
+            Status = GatewayEventStatus.InProgress,
+            SessionId = "qq_direct_u1",
+            SourceType = GatewayAssistantReplyCollector.LoopStartSourceType
+        });
         var disposition = collector.Apply(new GatewayEvent
         {
             Object = GatewayEventObject.Response,

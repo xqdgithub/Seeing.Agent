@@ -80,6 +80,9 @@ public static class HostingServiceCollectionExtensions
         // 执行运行时（Singleton）：唯一入口 + 消费循环 + 执行记录 + 取消/中断 + 热重载边界
         services.AddSingleton<ExecutionRunner>();
         services.AddSingleton<IExecutionRunner>(sp => sp.GetRequiredService<ExecutionRunner>());
+        // 会话级 schema 解析（schema 单点纪律共享出口）：主执行链与 Scheduler 旁路执行共用同一结算
+        services.AddSingleton<SessionToolSchemaResolver>();
+        services.AddSingleton<ISessionToolSchemaResolver>(sp => sp.GetRequiredService<SessionToolSchemaResolver>());
         services.AddSingleton<SessionRuntime>(sp => new SessionRuntime(
             sp.GetRequiredService<IExecutionRunner>(),
             sp.GetRequiredService<IExecutionEventPublisher>(),

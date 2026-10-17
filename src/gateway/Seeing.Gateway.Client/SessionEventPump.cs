@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Gateway.Mapping;
@@ -11,6 +12,14 @@ namespace Seeing.Gateway.Client;
 /// <summary>
 /// 会话事件泵：订阅级呈现端注册、空闲后 50ms 排空、经 <see cref="GatewayEventMapper.TryMap"/> 映射。
 /// 取消合成 <see cref="GatewayEventStatus.Cancelled"/>，枚举异常合成 Error。不落盘。
+/// <para>
+/// 两种订阅模式：
+/// <list type="bullet">
+/// <item><see cref="StreamAsync"/>（回放）：UI/SSE 重连语义，订阅时回放环形缓冲历史；</item>
+/// <item><see cref="BeginLive(string, ILiveEventSubscription)"/>（实时）：请求/应答语义，
+/// 不回放；必须在触发执行（投递唤醒）之前调用完成注册，保证整轮事件自 LoopStart 起不漏。</item>
+/// </list>
+/// </para>
 /// </summary>
 public sealed class SessionEventPump
 {
@@ -34,6 +43,7 @@ public sealed class SessionEventPump
         _logger = logger;
     }
 
+    /// <summary>回放订阅流（UI/SSE 重连语义）：订阅时回放缓冲历史，空闲后 50ms 排空收口。</summary>
     public async IAsyncEnumerable<GatewayEvent> StreamAsync(
         string sessionId,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -45,42 +55,11 @@ public sealed class SessionEventPump
         {
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, runToken);
 
-            Exception? fault = null;
-            var cancelled = false;
-
-            await using var enumerator = StreamSessionEventsAsync(sessionId, linkedCts.Token)
-                .GetAsyncEnumerator(linkedCts.Token);
-
-            while (true)
+            var source = _runtime.SubscribeEvents(sessionId, linkedCts.Token);
+            await foreach (var gatewayEvent in StreamUntilIdleAsync(sessionId, source, linkedCts.Token)
+                               .ConfigureAwait(false))
             {
-                var hasNext = false;
-                try
-                {
-                    hasNext = await enumerator.MoveNextAsync();
-                }
-                catch (OperationCanceledException)
-                {
-                    cancelled = true;
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    fault = ex;
-                    break;
-                }
-
-                if (!hasNext)
-                    break;
-
-                yield return enumerator.Current;
-            }
-
-            if (cancelled)
-                yield return await BuildCancelledEventAsync(sessionId).ConfigureAwait(false);
-            else if (fault != null)
-            {
-                _logger?.LogError(fault, "Gateway 会话订阅失败: SessionId={SessionId}", sessionId);
-                yield return await BuildErrorEventAsync(sessionId, fault).ConfigureAwait(false);
+                yield return gatewayEvent;
             }
         }
         finally
@@ -90,8 +69,27 @@ public sealed class SessionEventPump
         }
     }
 
-    private async IAsyncEnumerable<GatewayEvent> StreamSessionEventsAsync(
+    /// <summary>
+    /// 请求/应答实时流：立即同步注册（呈现端 + run 跟踪，实时订阅由调用方先经
+    /// <see cref="IExecutionEventPublisher.SubscribeLive"/> 建立），不回放。
+    /// 必须在触发执行（<c>SubmitAsync</c> 投递唤醒）之前调用，保证整轮事件自 LoopStart 起不漏；
+    /// 配合 <see cref="Seeing.Gateway.Channels.GatewayAssistantReplyCollector"/> 轮次门控忽略上一轮尾流。
+    /// </summary>
+    public LiveSessionEventStream BeginLive(string sessionId, ILiveEventSubscription subscription)
+    {
+        var presenter = new GatewaySubscriptionPresenter(sessionId);
+        _presentation.Register(presenter);
+        var (runId, runToken) = _runTracker.RegisterRun(sessionId);
+        return new LiveSessionEventStream(this, sessionId, subscription, presenter, runId, runToken);
+    }
+
+    /// <summary>
+    /// 核心：消费事件源 → 映射转发 → 消费循环空闲（<see cref="ISessionRuntime.WaitForIdleAsync"/> 语义）
+    /// + 50ms 排空收口；取消合成 <see cref="GatewayEventStatus.Cancelled"/>，枚举异常合成 Error。
+    /// </summary>
+    internal async IAsyncEnumerable<GatewayEvent> StreamUntilIdleAsync(
         string sessionId,
+        IAsyncEnumerable<IMessageEvent> source,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var outputChannel = Channel.CreateUnbounded<GatewayEvent>(new UnboundedChannelOptions
@@ -103,7 +101,7 @@ public sealed class SessionEventPump
         using var pumpCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         var pumpTask = Task.Run(
-            () => PumpSessionEventsAsync(sessionId, outputChannel.Writer, pumpCts.Token),
+            () => PumpSessionEventsAsync(source, outputChannel.Writer, pumpCts.Token),
             CancellationToken.None);
 
         var idleTask = Task.Run(async () =>
@@ -124,10 +122,35 @@ public sealed class SessionEventPump
             }
         }, CancellationToken.None);
 
+        Exception? fault = null;
+        var cancelled = false;
+
         try
         {
-            await foreach (var gatewayEvent in outputChannel.Reader.ReadAllAsync(cancellationToken))
-                yield return gatewayEvent;
+            while (true)
+            {
+                bool hasNext;
+                try
+                {
+                    hasNext = await outputChannel.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    cancelled = true;
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    fault = ex;
+                    break;
+                }
+
+                if (!hasNext)
+                    break;
+
+                while (outputChannel.Reader.TryRead(out var gatewayEvent))
+                    yield return gatewayEvent;
+            }
         }
         finally
         {
@@ -136,16 +159,24 @@ public sealed class SessionEventPump
             await AwaitQuietlyAsync(pumpTask).ConfigureAwait(false);
             await AwaitQuietlyAsync(idleTask).ConfigureAwait(false);
         }
+
+        if (cancelled)
+            yield return await BuildCancelledEventAsync(sessionId).ConfigureAwait(false);
+        else if (fault != null)
+        {
+            _logger?.LogError(fault, "Gateway 会话订阅失败: SessionId={SessionId}", sessionId);
+            yield return await BuildErrorEventAsync(sessionId, fault).ConfigureAwait(false);
+        }
     }
 
     private async Task PumpSessionEventsAsync(
-        string sessionId,
+        IAsyncEnumerable<IMessageEvent> source,
         ChannelWriter<GatewayEvent> outputWriter,
         CancellationToken cancellationToken)
     {
         try
         {
-            await foreach (var chatEvent in _runtime.SubscribeEvents(sessionId, cancellationToken))
+            await foreach (var chatEvent in source)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -237,5 +268,73 @@ public sealed class SessionEventPump
         {
             // 收尾任务异常隔离：订阅主路径不得因此中断
         }
+    }
+
+    internal void FinishLive(
+        string sessionId,
+        GatewaySubscriptionPresenter presenter,
+        string runId,
+        ILiveEventSubscription subscription)
+    {
+        _runTracker.UnregisterRun(sessionId, runId);
+        _presentation.Unregister(presenter);
+        subscription.Dispose();
+    }
+}
+
+/// <summary>
+/// 请求/应答实时流句柄：<see cref="SessionEventPump.BeginLive(string, ILiveEventSubscription)"/> 的返回值。
+/// 枚举 <see cref="StreamAsync"/>（投递触发之后）开始消费；结束或 <see cref="Dispose"/> 时自动注销全部注册。
+/// </summary>
+public sealed class LiveSessionEventStream : IDisposable
+{
+    private readonly SessionEventPump _pump;
+    private readonly string _sessionId;
+    private readonly ILiveEventSubscription _subscription;
+    private readonly GatewaySubscriptionPresenter _presenter;
+    private readonly string _runId;
+    private readonly CancellationToken _runToken;
+    private int _disposed;
+
+    internal LiveSessionEventStream(
+        SessionEventPump pump,
+        string sessionId,
+        ILiveEventSubscription subscription,
+        GatewaySubscriptionPresenter presenter,
+        string runId,
+        CancellationToken runToken)
+    {
+        _pump = pump;
+        _sessionId = sessionId;
+        _subscription = subscription;
+        _presenter = presenter;
+        _runId = runId;
+        _runToken = runToken;
+    }
+
+    /// <summary>流式转发实时订阅事件，直到消费循环空闲（含 50ms 排空）或取消/异常。</summary>
+    public async IAsyncEnumerable<GatewayEvent> StreamAsync(
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _runToken);
+            await foreach (var gatewayEvent in _pump.StreamUntilIdleAsync(_sessionId, _subscription, linkedCts.Token)
+                               .ConfigureAwait(false))
+            {
+                yield return gatewayEvent;
+            }
+        }
+        finally
+        {
+            Dispose();
+        }
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+            return;
+        _pump.FinishLive(_sessionId, _presenter, _runId, _subscription);
     }
 }

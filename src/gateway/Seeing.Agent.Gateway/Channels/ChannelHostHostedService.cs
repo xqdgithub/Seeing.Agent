@@ -18,6 +18,7 @@ public sealed class ChannelHostHostedService : IHostedService
     private readonly GatewayOptions _gatewayOptions;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<ChannelHostHostedService> _logger;
+    private readonly CancellationTokenSource _stoppingCts = new();
 
     public ChannelHostHostedService(
         ChannelHostManager manager,
@@ -37,6 +38,10 @@ public sealed class ChannelHostHostedService : IHostedService
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        // 宿主停止信号：中止「等待 Gateway → 启动 ChannelHost」链路，
+        // 防止宿主在等待窗口内关闭后，ChannelHost 仍被拉起成孤儿进程
+        _lifetime.ApplicationStopping.Register(() => _stoppingCts.Cancel());
+
         _lifetime.ApplicationStarted.Register(() =>
         {
             _ = StartEnabledAsync();
@@ -47,9 +52,12 @@ public sealed class ChannelHostHostedService : IHostedService
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
+        _stoppingCts.Cancel();
         try
         {
-            await _manager.StopAllAsync();
+            // 尽力清理：不受 shutdown token 竞速影响（内部链路一律 CancellationToken.None），
+            // 保证宿主关闭时所有 ChannelHost 子进程被杀掉
+            await _manager.StopAllAsync(CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -61,6 +69,10 @@ public sealed class ChannelHostHostedService : IHostedService
     {
         try
         {
+            // 宿主停止后不再启动新进程（防止热重载晚到拉起孤儿）
+            if (_stoppingCts.IsCancellationRequested)
+                return;
+
             if (!_gatewayServer.IsRunning)
             {
                 _logger.LogDebug("Gateway 尚未运行，跳过 ChannelHost 热重载协调");
@@ -109,10 +121,16 @@ public sealed class ChannelHostHostedService : IHostedService
     {
         try
         {
-            if (!await WaitForGatewayAsync().ConfigureAwait(false))
+            var ct = _stoppingCts.Token;
+            if (!await WaitForGatewayAsync(ct).ConfigureAwait(false))
                 return;
 
-            await _manager.StartEnabledAsync().ConfigureAwait(false);
+            await _manager.StartEnabledAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // 宿主在启动等待窗口内停止：放弃启动，StopAsync 已负责清理
+            _logger.LogInformation("宿主停止，取消 ChannelHost 自动启动");
         }
         catch (Exception ex)
         {
@@ -120,7 +138,7 @@ public sealed class ChannelHostHostedService : IHostedService
         }
     }
 
-    private async Task<bool> WaitForGatewayAsync()
+    private async Task<bool> WaitForGatewayAsync(CancellationToken ct)
     {
         if (!_gatewayOptions.Enabled)
         {
@@ -130,7 +148,7 @@ public sealed class ChannelHostHostedService : IHostedService
 
         var deadline = DateTime.Now.AddSeconds(30);
         while (!_gatewayServer.IsRunning && DateTime.Now < deadline)
-            await Task.Delay(200).ConfigureAwait(false);
+            await Task.Delay(200, ct).ConfigureAwait(false);
 
         if (!_gatewayServer.IsRunning)
         {
@@ -138,7 +156,7 @@ public sealed class ChannelHostHostedService : IHostedService
             return false;
         }
 
-        await Task.Delay(300).ConfigureAwait(false);
+        await Task.Delay(300, ct).ConfigureAwait(false);
         return true;
     }
 }

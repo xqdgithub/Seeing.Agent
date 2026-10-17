@@ -103,6 +103,8 @@ public static class BuiltInCapabilitySets
         "mcp",
         "acp",
         "gateway",
+        "comms",
+        "channel-messaging",
         "systemone",
         "systemone.tools",
         "workspace.git-exclude",
