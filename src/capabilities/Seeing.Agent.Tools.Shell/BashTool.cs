@@ -89,13 +89,15 @@ public class BashTool : ToolBase
             workdir, context.SessionId, context.CallId, context.CancellationToken);
 
         var prepared = _shellService.PrepareCommand(shell, command);
-        var args = _shellService.BuildArguments(shell, prepared);
+        var argumentList = _shellService.BuildArgumentList(shell, prepared);
         var environment = EnsureUtf8OutputEnvironment(envVars);
 
         var spec = new SubprocessSpec
         {
             FileName = shell,
-            Arguments = args,
+            // POSIX：argv 直传，避免 Linux 把 -c '…' 按空白拆开。cmd/powershell 仍走原始命令行。
+            Arguments = argumentList is null ? _shellService.BuildArguments(shell, prepared) : "",
+            ArgumentList = argumentList,
             WorkingDirectory = workdir,
             Environment = environment,
             RedirectStandardOutput = true,

@@ -17,7 +17,6 @@ public sealed class LocalSubprocessFactory : ISubprocessFactory
         var startInfo = new ProcessStartInfo
         {
             FileName = spec.FileName,
-            Arguments = spec.Arguments,
             WorkingDirectory = spec.WorkingDirectory ?? Directory.GetCurrentDirectory(),
             RedirectStandardOutput = spec.RedirectStandardOutput,
             RedirectStandardError = spec.RedirectStandardError,
@@ -26,6 +25,16 @@ public sealed class LocalSubprocessFactory : ISubprocessFactory
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+
+        if (spec.ArgumentList is { Count: > 0 })
+        {
+            foreach (var argument in spec.ArgumentList)
+                startInfo.ArgumentList.Add(argument);
+        }
+        else
+        {
+            startInfo.Arguments = spec.Arguments;
+        }
 
         foreach (var (key, value) in spec.Environment)
         {

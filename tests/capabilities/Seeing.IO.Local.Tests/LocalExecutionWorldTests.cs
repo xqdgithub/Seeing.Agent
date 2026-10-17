@@ -87,6 +87,43 @@ public class LocalExecutionWorldTests
     }
 
     [Fact]
+    public async Task LocalSubprocessFactory_ArgumentList_PreservesSpacesAndQuotes()
+    {
+        var bash = ResolveBash();
+        if (bash is null)
+            return;
+
+        var command = "printf '%s' \"step15' more\"";
+        var factory = new LocalSubprocessFactory();
+        using var process = factory.Start(new SubprocessSpec
+        {
+            FileName = bash,
+            ArgumentList = ["-c", command],
+        });
+
+        var stdout = await process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+        var stderr = await process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
+        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+
+        stderr.Should().NotContain("unexpected EOF");
+        stdout.Should().Be("step15' more");
+        process.ExitCode.Should().Be(0);
+    }
+
+    private static string? ResolveBash()
+    {
+        if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+        {
+            if (File.Exists("/bin/bash")) return "/bin/bash";
+            if (File.Exists("/usr/bin/bash")) return "/usr/bin/bash";
+            return null;
+        }
+
+        var gitBash = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Git", "bin", "bash.exe");
+        return File.Exists(gitBash) ? gitBash : null;
+    }
+
+    [Fact]
     public void LocalExecutionWorldModule_Id_ShouldBeIoLocal()
     {
         var module = new LocalExecutionWorldModule();

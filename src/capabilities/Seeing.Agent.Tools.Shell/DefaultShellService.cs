@@ -69,7 +69,18 @@ public sealed class DefaultShellService : IShellService
         {
             "cmd" => $"/c \"{EscapeDoubleQuotes(preparedCommand)}\"",
             "powershell" or "pwsh" => $"-Command \"{EscapeDoubleQuotes(preparedCommand)}\"",
+            // 保留给仍读取原始命令行的调用方。真正启动 POSIX shell 时走 BuildArgumentList。
             _ => $"-c '{EscapeSingleQuotes(preparedCommand)}'"
+        };
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<string>? BuildArgumentList(string shell, string preparedCommand)
+    {
+        return GetShellName(shell) switch
+        {
+            "cmd" or "powershell" or "pwsh" => null,
+            _ => ["-c", preparedCommand],
         };
     }
 

@@ -84,6 +84,24 @@ public class BashToolSubprocessTests
         await bash.ExecuteAsync(BuildArgs("raw-cmd"), ctx);
         capturedSpec!.FileName.Should().Be("/bin/zsh");
         capturedSpec.Arguments.Should().Be("-c 'prepared-cmd'");
+        capturedSpec.ArgumentList.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenShellProvidesArgumentList_ShouldNotUseQuotedCommandLine()
+    {
+        SubprocessSpec? capturedSpec = null;
+        string[] argv = ["-c", "echo step15"];
+        var (bash, ctx) = CreateBashTool(
+            spec => capturedSpec = spec,
+            shellPath: "/bin/bash",
+            preparedCommand: "echo step15",
+            argumentList: argv);
+
+        await bash.ExecuteAsync(BuildArgs("echo step15"), ctx);
+
+        capturedSpec!.ArgumentList.Should().Equal(argv);
+        capturedSpec.Arguments.Should().BeEmpty();
     }
 
     [Fact]
@@ -113,6 +131,7 @@ public class BashToolSubprocessTests
         string shellPath = "/bin/bash",
         string preparedCommand = "echo hi",
         string arguments = "-c 'echo hi'",
+        IReadOnlyList<string>? argumentList = null,
         string stdout = "hello\n",
         Action<IMessageEvent>? onEmit = null)
     {
@@ -123,6 +142,7 @@ public class BashToolSubprocessTests
         shellService.Setup(s => s.SelectShell()).Returns(shellPath);
         shellService.Setup(s => s.PrepareCommand(shellPath, It.IsAny<string>())).Returns(preparedCommand);
         shellService.Setup(s => s.BuildArguments(shellPath, preparedCommand)).Returns(arguments);
+        shellService.Setup(s => s.BuildArgumentList(shellPath, preparedCommand)).Returns(argumentList);
         shellService.Setup(s => s.GetShellName(It.IsAny<string>()))
             .Returns((string s) => Path.GetFileNameWithoutExtension(s).ToLowerInvariant());
 

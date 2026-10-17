@@ -59,6 +59,35 @@ public class DefaultShellServiceSubprocessTests
         }
     }
 
+    [Fact]
+    public void BuildArgumentList_PosixShell_ShouldPassCommandAsOneArg()
+    {
+        var svc = CreateService();
+        const string command = "echo step15";
+
+        svc.BuildArgumentList("/bin/bash", command).Should().Equal("-c", command);
+        svc.BuildArgumentList("/bin/sh", "printf '%s' \"a b'c\"").Should().Equal("-c", "printf '%s' \"a b'c\"");
+    }
+
+    [Fact]
+    public void BuildArgumentList_WindowsShells_ShouldStayOnRawCommandLine()
+    {
+        var svc = CreateService();
+
+        svc.BuildArgumentList("cmd.exe", "echo hi").Should().BeNull();
+        svc.BuildArgumentList("pwsh", "echo hi").Should().BeNull();
+        svc.BuildArguments("cmd.exe", "echo \"hi\"").Should().Be("/c \"echo \\\"hi\\\"\"");
+    }
+
+    private static DefaultShellService CreateService()
+    {
+        var world = new Mock<IExecutionWorld>();
+        world.Setup(w => w.Subprocess).Returns(Mock.Of<ISubprocessFactory>());
+        var options = new Mock<IOptionsMonitor<ShellOptions>>();
+        options.Setup(o => o.CurrentValue).Returns(new ShellOptions());
+        return new DefaultShellService(NullLogger<DefaultShellService>.Instance, options.Object, world.Object);
+    }
+
     private sealed class FakeSubprocess : ISubprocess
     {
         public FakeSubprocess(string stdout)

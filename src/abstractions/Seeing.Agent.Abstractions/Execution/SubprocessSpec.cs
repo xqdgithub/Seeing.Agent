@@ -10,8 +10,14 @@ public class SubprocessSpec
     /// <summary>可执行文件路径或名称（必填）。</summary>
     public required string FileName { get; set; }
 
-    /// <summary>命令行参数。</summary>
+    /// <summary>命令行参数。与 <see cref="ArgumentList"/> 同时存在时，工厂优先使用 argv 列表。</summary>
     public string Arguments { get; set; } = "";
+
+    /// <summary>
+    /// 按元素传递的 argv。Linux 上不要把带空格的脚本塞进 <see cref="Arguments"/>：
+    /// 运行时按空白拆分，且不把单引号当作引号。
+    /// </summary>
+    public IReadOnlyList<string>? ArgumentList { get; set; }
 
     /// <summary>工作目录；为 <see langword="null"/> 时使用当前目录。</summary>
     public string? WorkingDirectory { get; set; }
