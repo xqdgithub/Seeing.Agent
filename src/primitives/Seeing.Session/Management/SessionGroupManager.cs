@@ -276,7 +276,7 @@ namespace Seeing.Session.Management
             var group = await GetGroupForSessionLiveAsync(sessionId, ct).ConfigureAwait(false);
             if (group == null)
             {
-                _sessions.Delete(sessionId);
+                await _sessions.DeleteAsync(sessionId, ct).ConfigureAwait(false);
                 return;
             }
 
@@ -351,7 +351,7 @@ namespace Seeing.Session.Management
             }
 
             foreach (var id in removedSessionIds)
-                _sessions.Delete(id);
+                await _sessions.DeleteAsync(id, ct).ConfigureAwait(false);
 
             RaiseChanged(snapshot);
         }
@@ -884,7 +884,7 @@ namespace Seeing.Session.Management
                 }
             }
 
-            _sessions.Delete(sessionId);
+            await _sessions.DeleteAsync(sessionId, CancellationToken.None).ConfigureAwait(false);
         }
 
         // ============================ 内部辅助 ============================

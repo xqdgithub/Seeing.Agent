@@ -189,32 +189,55 @@ namespace Seeing.Session.Management
             string.IsNullOrEmpty(id) ? null : _sessionDataCache.TryGetValue(id, out var s) ? s : null;
 
         /// <summary>
-        /// 删除会话
+        /// 删除会话。返回值仅表示是否从内存缓存移除；存储删除不依赖缓存命中。
         /// </summary>
         /// <param name="id">会话 ID</param>
-        /// <returns>是否成功删除</returns>
+        /// <returns>是否从内存缓存移除</returns>
         public bool Delete(string id)
         {
             if (string.IsNullOrEmpty(id)) return false;
 
-            if (_sessionDataCache.TryRemove(id, out var session))
+            var removed = RemoveCached(id);
+            if (_store != null)
             {
-                // 触发 Destroyed Hook（非阻塞）
-                _hookManager?.TriggerFireAndForget(
-                    HookPoints.Destroyed,
-                    session.Id,
-                    result: new Dictionary<string, object?> { ["session"] = session });
-
-                // 异步删除存储（fire-and-forget）；异常须内部消化，避免未观察任务异常
-                if (_store != null)
-                {
-                    _ = DeleteFromStoreAsync(id);
-                }
-
-                _logger?.LogInformation("删除会话: {SessionId}", id);
-                return true;
+                // 同步契约不得等待存储；异常在后台任务内消化
+                _ = DeleteFromStoreAsync(id);
             }
-            return false;
+
+            if (!removed)
+                _logger?.LogInformation("删除未加载会话: {SessionId}", id);
+
+            return removed;
+        }
+
+        /// <summary>
+        /// 删除会话并等待存储完成。缓存未命中时仍删除后端，避免摘要列表中的会话只提示成功、文件仍在。
+        /// </summary>
+        public async Task DeleteAsync(string id, CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(id)) return;
+
+            var removed = RemoveCached(id);
+            if (!removed)
+                _logger?.LogInformation("删除未加载会话: {SessionId}", id);
+
+            if (_store != null)
+                await _store.DeleteAsync(id, ct).ConfigureAwait(false);
+        }
+
+        /// <summary>从缓存移除并触发 Destroyed。缓存中不存在时返回 false，不访问存储。</summary>
+        private bool RemoveCached(string id)
+        {
+            if (!_sessionDataCache.TryRemove(id, out var session))
+                return false;
+
+            _hookManager?.TriggerFireAndForget(
+                HookPoints.Destroyed,
+                session.Id,
+                result: new Dictionary<string, object?> { ["session"] = session });
+
+            _logger?.LogInformation("删除会话: {SessionId}", id);
+            return true;
         }
 
         /// <summary>

@@ -26,8 +26,17 @@ namespace Seeing.Session.Core
         /// <summary>获取会话</summary>
         SessionData? Get(string id);
 
-        /// <summary>删除会话</summary>
+        /// <summary>
+        /// 删除会话。返回值表示是否从内存缓存移除。
+        /// 存储删除为后台任务，缓存未命中时同样会删除存储。
+        /// </summary>
         bool Delete(string id);
+
+        /// <summary>
+        /// 删除会话并等待存储删除完成。不依赖内存缓存：仅存在于摘要/磁盘的会话同样删除。
+        /// 若会话在缓存中，同时移除并触发 Destroyed。
+        /// </summary>
+        Task DeleteAsync(string id, CancellationToken ct = default);
 
         /// <summary>注册现有会话到缓存</summary>
         void Register(SessionData session);

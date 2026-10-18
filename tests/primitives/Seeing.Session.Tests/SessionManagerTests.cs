@@ -264,6 +264,21 @@ namespace Seeing.Session.Tests
             _mockStore.Verify(s => s.DeleteAsync(created.Id), Times.Once);
         }
 
+        [Fact]
+        public async Task DeleteAsync_WhenNotInCache_ShouldStillDeleteFromStore()
+        {
+            const string id = "ses_summary_only";
+            _mockStore
+                .Setup(s => s.DeleteAsync(id, It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+
+            _sessionManager.Get(id).Should().BeNull();
+
+            await _sessionManager.DeleteAsync(id, TestContext.Current.CancellationToken);
+
+            _mockStore.Verify(s => s.DeleteAsync(id, It.IsAny<CancellationToken>()), Times.Once);
+        }
+
         // === List 测试 ===
 
         [Fact]

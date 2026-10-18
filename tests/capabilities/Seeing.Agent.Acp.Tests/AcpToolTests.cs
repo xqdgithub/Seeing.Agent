@@ -324,6 +324,12 @@ public sealed class FakeSessionManager : ISessionManager
 
     public bool Delete(string id) => _sessions.Remove(id);
 
+    public Task DeleteAsync(string id, CancellationToken ct = default)
+    {
+        _sessions.Remove(id);
+        return Task.CompletedTask;
+    }
+
     public void Register(SessionData session) => _sessions[session.Id] = session;
 
     public IReadOnlyList<SessionData> List() => _sessions.Values.ToList();

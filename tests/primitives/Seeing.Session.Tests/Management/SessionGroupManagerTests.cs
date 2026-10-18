@@ -251,6 +251,23 @@ public class SessionGroupManagerTests
     }
 
     [Fact]
+    public async Task RemoveSessionAsync_WhenNotInCache_ShouldDeleteStoredSession()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot();
+        var child = await h.Manager.CreateChildAsync(
+            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
+
+        h.Sessions.EvictAll();
+        h.Sessions.Get(child.Id).Should().BeNull();
+        (await h.SessionStore.LoadAsync(child.Id, TestContext.Current.CancellationToken)).Should().NotBeNull();
+
+        await h.Manager.RemoveSessionAsync(child.Id, TestContext.Current.CancellationToken);
+
+        (await h.SessionStore.LoadAsync(child.Id, TestContext.Current.CancellationToken)).Should().BeNull();
+    }
+
+    [Fact]
     public async Task RemoveSessionAsync_WhenGroupBecomesEmpty_ShouldDeleteGroup()
     {
         using var h = new SessionGroupTestHarness();
