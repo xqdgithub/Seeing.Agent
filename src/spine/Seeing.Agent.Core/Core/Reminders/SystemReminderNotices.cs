@@ -25,7 +25,7 @@ public static class SystemReminderNotices
         (SystemReminder.Sources.Agent, SystemReminder.Kinds.TodoEmpty) =>
             "你已执行多步操作但尚未创建 todo 列表。如果当前任务涉及 2 个或以上独立步骤，请使用 TodoWrite 工具规划。",
         (SystemReminder.Sources.Agent, SystemReminder.Kinds.TodoIncomplete) =>
-            "你有未完成的 todo 任务。必须将所有 todo 标记为 completed、cancelled 或 paused 后才能结束。",
+            "还有未完成的 todo。请把它们标成 completed、cancelled 或 paused，或说明为何现在停止。",
         (SystemReminder.Sources.Agent, SystemReminder.Kinds.TodoPaused) =>
             "你有处于暂停状态的任务。请检查并恢复需要继续的任务。",
         _ => "系统提醒已注入。以下内容不是用户刚刚输入的消息。请按 <task> 中的文本处理。"

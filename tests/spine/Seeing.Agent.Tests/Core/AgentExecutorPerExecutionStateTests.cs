@@ -20,31 +20,23 @@ using Xunit;
 namespace Seeing.Agent.Tests.Core;
 
 /// <summary>
-/// X5：AgentExecutor 为 Singleton，执行期可变状态（TodoEmpty/Incomplete 提醒标志等）
+/// X5：AgentExecutor 为 Singleton，执行期可变状态（Incomplete 提醒标志等）
 /// 必须 per-execution 隔离，避免并发 Loop 互相踩踏。
 /// </summary>
 public class AgentExecutorPerExecutionStateTests
 {
     /// <summary>
-    /// 通过门控强制两个 Loop 交错，确定性复现共享字段竞态：
-    /// <list type="number">
-    /// <item>A 跑到 step2，注入 TodoEmpty 提醒并将标志置 true，随后在该步 LLM 处阻塞；</item>
-    /// <item>B 启动，其入口重置共享标志为 false 后阻塞在 step0；</item>
-    /// <item>释放 A：A 的 step3 复查标志。若标志被 B 重置，A 会重复注入提醒；</item>
-    /// <item>释放 B 完成。</item>
-    /// </list>
-    /// per-execution 状态下，A、B 各自应恰好注入一次提醒。
+    /// A 在未完成拦截后的第二次模型调用处阻塞（标志已置位）。
+    /// 此时启动 B 并让它跑完。若标志被共享，B 会跳过自己的那一次拦截。
     /// </summary>
     [Fact]
-    public async Task ConcurrentLoops_ShouldNotInterfere_OnTodoEmptyReminderFlag()
+    public async Task ConcurrentLoops_ShouldNotInterfere_OnIncompleteReminderFlag()
     {
         var callCounts = new ConcurrentDictionary<string, int>();
-        var lastRequests = new ConcurrentDictionary<string, List<ChatMessage>>();
+        var requests = new ConcurrentDictionary<string, List<List<ChatMessage>>>();
 
-        var aAtStep2 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var bAtStart = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var aAtReminder = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var gateA = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var gateB = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var llm = new Mock<ILlmService>();
         llm.Setup(s => s.CompleteStreamAsync(
@@ -52,28 +44,14 @@ public class AgentExecutorPerExecutionStateTests
             .Returns((string _, ChatRequest req, string? sid, CancellationToken _) =>
             {
                 var n = callCounts.AddOrUpdate(sid!, 1, (_, v) => v + 1);
-                lastRequests[sid!] = req.Messages.ToList();
+                var bucket = requests.GetOrAdd(sid!, _ => new List<List<ChatMessage>>());
+                lock (bucket)
+                    bucket.Add(req.Messages.ToList());
 
-                if (sid == "A")
+                if (sid == "A" && n == 2)
                 {
-                    // step2（第 3 次）：提醒已注入并置位，阻塞等待外部放行。
-                    if (n == 3)
-                    {
-                        aAtStep2.TrySetResult();
-                        return StreamAfterGate(gateA.Task, "loop_probe", "{}");
-                    }
-                    return n < 3 ? StreamToolCall("loop_probe", "{}") : StreamPlainCompletion();
-                }
-
-                if (sid == "B")
-                {
-                    // step0（入口重置后立即阻塞，尚未到达 step2）。
-                    if (n == 1)
-                    {
-                        bAtStart.TrySetResult();
-                        return StreamAfterGate(gateB.Task, "loop_probe", "{\"b\":1}");
-                    }
-                    return n < 4 ? StreamToolCall("loop_probe", $"{{\"b\":{n}}}") : StreamPlainCompletion();
+                    aAtReminder.TrySetResult();
+                    return StreamPlainAfterGate(gateA.Task);
                 }
 
                 return StreamPlainCompletion();
@@ -81,28 +59,28 @@ public class AgentExecutorPerExecutionStateTests
 
         var todoStore = new Mock<ITodoStore>();
         todoStore.Setup(t => t.LoadAsync(It.IsAny<string>()))
-            .ReturnsAsync((string sid) => new TodoList { SessionId = sid, Items = new() });
+            .ReturnsAsync((string sid) => new TodoList
+            {
+                SessionId = sid,
+                Items = [new TodoItem { Id = "1", Content = "finish", Status = TodoStatus.Pending }]
+            });
 
         var executor = await CreateExecutorAsync(llm.Object, todoStore.Object);
 
         var aTask = RunOne(executor, "A");
-        await aAtStep2.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await aAtReminder.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-        var bTask = RunOne(executor, "B");
-        await bAtStart.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await RunOne(executor, "B").WaitAsync(TimeSpan.FromSeconds(10));
 
         gateA.TrySetResult();
         await aTask.WaitAsync(TimeSpan.FromSeconds(10));
 
-        gateB.TrySetResult();
-        await bTask.WaitAsync(TimeSpan.FromSeconds(10));
-
-        CountTodoEmptyReminders(lastRequests["A"]).Should().Be(1, "会话 A 应恰好收到一次 TodoEmpty 提醒");
-        CountTodoEmptyReminders(lastRequests["B"]).Should().Be(1, "会话 B 应恰好收到一次 TodoEmpty 提醒");
+        CountIncompleteReminders(requests["A"]).Should().Be(1, "会话 A 应恰好收到一次未完成提醒");
+        CountIncompleteReminders(requests["B"]).Should().Be(1, "会话 B 应恰好收到一次未完成提醒");
     }
 
-    private static int CountTodoEmptyReminders(IReadOnlyList<ChatMessage> messages) =>
-        messages.Count(m => m.Content != null && m.Content.Contains("kind=\"todo_empty\""));
+    private static int CountIncompleteReminders(List<List<ChatMessage>> calls) =>
+        calls.Sum(messages => messages.Count(m => m.Content != null && m.Content.Contains("kind=\"todo_incomplete\"")));
 
     private static async Task RunOne(AgentExecutor executor, string sessionId)
     {
@@ -117,7 +95,8 @@ public class AgentExecutorPerExecutionStateTests
         {
             SessionId = sessionId,
             WorkingDirectory = "workspace-root",
-            WorkspaceRoot = "workspace-root"
+            WorkspaceRoot = "workspace-root",
+            ToolSchemas = [new FunctionToolSchema { Function = new FunctionSchema { Name = "todowrite" } }]
         };
         var messages = new List<ChatMessage> { new() { Role = ChatRole.User, Content = "hi" } };
 
@@ -126,16 +105,10 @@ public class AgentExecutorPerExecutionStateTests
         }
     }
 
-    private static async IAsyncEnumerable<StreamUpdate> StreamToolCall(string name, string arguments)
-    {
-        yield return ToolCallUpdate(name, arguments);
-        await Task.CompletedTask;
-    }
-
-    private static async IAsyncEnumerable<StreamUpdate> StreamAfterGate(Task gate, string name, string arguments)
+    private static async IAsyncEnumerable<StreamUpdate> StreamPlainAfterGate(Task gate)
     {
         await gate.ConfigureAwait(false);
-        yield return ToolCallUpdate(name, arguments);
+        yield return new StreamUpdate { IsComplete = true, FinishReason = "stop" };
     }
 
     private static async IAsyncEnumerable<StreamUpdate> StreamPlainCompletion()
@@ -143,21 +116,6 @@ public class AgentExecutorPerExecutionStateTests
         yield return new StreamUpdate { IsComplete = true, FinishReason = "stop" };
         await Task.CompletedTask;
     }
-
-    private static StreamUpdate ToolCallUpdate(string name, string arguments) => new()
-    {
-        IsComplete = true,
-        FinishReason = "tool_calls",
-        ToolCallDeltas = new List<ToolCall>
-        {
-            new()
-            {
-                Id = "c1",
-                Type = "function",
-                Function = new FunctionCall { Name = name, Arguments = arguments }
-            }
-        }
-    };
 
     private static async Task<AgentExecutor> CreateExecutorAsync(ILlmService llm, ITodoStore todoStore)
     {

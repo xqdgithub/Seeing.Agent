@@ -19,7 +19,9 @@ public class SystemReminderNoticesTests
     {
         var notice = SystemReminderNotices.Resolve(
             SystemReminder.Sources.Agent, SystemReminder.Kinds.TodoIncomplete);
-        Assert.Contains("todo", notice, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            "还有未完成的 todo。请把它们标成 completed、cancelled 或 paused，或说明为何现在停止。",
+            notice);
     }
 
     [Fact]

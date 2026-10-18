@@ -169,35 +169,9 @@ public class AgentExecutor : IAgentExecutor
                 effectiveToken.ThrowIfCancellationRequested();
                 totalSteps = step + 1;
 
-                // === 循环开始检查：上一轮遗留的 paused todo ===
-                if (step == 0 && _todoStore != null && !string.IsNullOrEmpty(context.SessionId))
-                {
-                    var todoList = await LoadTodoList(context.SessionId);
-                    if (todoList.HasPaused())
-                    {
-                        var reminder = BuildTodoReminderMessage(
-                            SystemReminder.Kinds.TodoPaused,
-                            todoList.FormatBrief());
-                        if (reminder != null)
-                            history.Add(reminder);
-                    }
-                }
-
-                // === TodoEmpty 检查：已执行多步但未创建 todo ===
-                if (step >= 2 && !state.TodoEmptyReminded
-                    && _todoStore != null && !string.IsNullOrEmpty(context.SessionId))
-                {
-                    var todoList = await LoadTodoList(context.SessionId);
-                    if (todoList.IsEmpty())
-                    {
-                        var reminder = BuildTodoReminderMessage(
-                            SystemReminder.Kinds.TodoEmpty,
-                            "请评估当前任务是否需要使用 TodoWrite 规划。");
-                        if (reminder != null)
-                            history.Add(reminder);
-                        state.TodoEmptyReminded = true;
-                    }
-                }
+                // 暂停项只在本轮第一次请求前追加到消息末尾，不改系统提示（保住前缀缓存）。
+                if (step == 0)
+                    await AppendPausedTodoReminderAsync(history, context).ConfigureAwait(false);
 
                 // 构建请求（异步注入动态上下文；token 改用 effectiveToken）
                 var request = await BuildRequestAsync(agent, history, context, effectiveToken).ConfigureAwait(false);
@@ -451,28 +425,11 @@ public class AgentExecutor : IAgentExecutor
                     Usage = lastUsage
                 }, effectiveToken);
 
-                // 无工具调用则检查 todo 状态
+                // 无工具调用则检查 todo 状态。未完成只拦一次，第二次放行。
                 if (assistantMessage.ToolCalls == null || assistantMessage.ToolCalls.Count == 0)
                 {
-                    // === 退出检查：未完成 todo ===
-                    if (_todoStore != null && !string.IsNullOrEmpty(context.SessionId))
-                    {
-                        var todoList = await LoadTodoList(context.SessionId);
-                        if (todoList.HasIncompletePendingOrInProgress())
-                        {
-                            if (!state.IncompleteReminded)
-                            {
-                                var reminder = BuildTodoReminderMessage(
-                                    SystemReminder.Kinds.TodoIncomplete,
-                                    todoList.FormatBrief());
-                                if (reminder != null)
-                                    history.Add(reminder);
-                                state.IncompleteReminded = true;
-                                continue; // 不退出，再给一轮
-                            }
-                            // 第二次仍然未完成 → 信任 agent，允许退出
-                        }
-                    }
+                    if (await HoldForIncompleteTodosAsync(history, context, state).ConfigureAwait(false))
+                        continue;
 
                     // 发布 LoopComplete 事件（成功）
                     await writer.WriteAsync(new LoopCompleteEvent
@@ -486,10 +443,6 @@ public class AgentExecutor : IAgentExecutor
                     }, CancellationToken.None);
                     return;
                 }
-
-                // 累计工具调用次数
-                if (assistantMessage.ToolCalls != null)
-                    state.TotalToolCallsExecuted += assistantMessage.ToolCalls.Count;
 
                 // ========== 执行工具调用（内部排空，保证终态送达）==========
                 var (endTurn, endTurnReason) = await ExecuteToolCallsAsync(
@@ -521,9 +474,12 @@ public class AgentExecutor : IAgentExecutor
                     return;
                 }
 
-                // 工具要求结束本轮：全部工具结束后发出成功的 LoopComplete，不再进入下一轮 LLM
+                // 工具要求结束本轮。未完成 todo 与无工具退出共用一次拦截；再次 EndTurn 则放行。
                 if (endTurn)
                 {
+                    if (await HoldForIncompleteTodosAsync(history, context, state).ConfigureAwait(false))
+                        continue;
+
                     await writer.WriteAsync(new LoopCompleteEvent
                     {
                         SessionId = context.SessionId,
@@ -1143,6 +1099,65 @@ public class AgentExecutor : IAgentExecutor
     }
 
     /// <summary>
+    /// 本轮工具 schema 是否包含 todowrite。没有该工具时不做 todo 编排。
+    /// </summary>
+    private static bool HasTodoWriteTool(AgentContext context) =>
+        context.ToolSchemas?.Any(s =>
+            string.Equals(s.Function?.Name, "todowrite", StringComparison.OrdinalIgnoreCase)) == true;
+
+    /// <summary>
+    /// 有暂停项时，在消息末尾追加一条 todo_paused 提醒。同一轮只在 step 0 调用。
+    /// </summary>
+    private async Task AppendPausedTodoReminderAsync(List<ChatMessage> history, AgentContext context)
+    {
+        if (!HasTodoWriteTool(context)
+            || _todoStore == null
+            || string.IsNullOrEmpty(context.SessionId))
+            return;
+
+        var todoList = await LoadTodoList(context.SessionId).ConfigureAwait(false);
+        if (!todoList.HasPaused())
+            return;
+
+        var reminder = BuildTodoReminderMessage(
+            SystemReminder.Kinds.TodoPaused,
+            todoList.FormatBrief());
+        if (reminder != null)
+            history.Add(reminder);
+    }
+
+    /// <summary>
+    /// 仍有 Pending / InProgress 时追加一条 todo_incomplete 并要求再跑一轮。
+    /// 每轮循环最多拦截一次。
+    /// </summary>
+    /// <returns>已拦截并应 continue 时为 true。</returns>
+    private async Task<bool> HoldForIncompleteTodosAsync(
+        List<ChatMessage> history,
+        AgentContext context,
+        LoopExecutionState state)
+    {
+        if (state.IncompleteReminded
+            || !HasTodoWriteTool(context)
+            || _todoStore == null
+            || string.IsNullOrEmpty(context.SessionId))
+            return false;
+
+        var todoList = await LoadTodoList(context.SessionId).ConfigureAwait(false);
+        if (!todoList.HasIncompletePendingOrInProgress())
+            return false;
+
+        var reminder = BuildTodoReminderMessage(
+            SystemReminder.Kinds.TodoIncomplete,
+            todoList.FormatBrief());
+        if (reminder == null)
+            return false;
+
+        history.Add(reminder);
+        state.IncompleteReminded = true;
+        return true;
+    }
+
+    /// <summary>
     /// 从会话加载 Todo 列表（经 ITodoStore 端口，不再直读 Session 键值）
     /// </summary>
     private async Task<TodoList> LoadTodoList(string sessionId)
@@ -1176,14 +1191,8 @@ public class AgentExecutor : IAgentExecutor
 /// </summary>
 internal sealed class LoopExecutionState
 {
-    /// <summary>是否已发送过「未创建 Todo」提醒。</summary>
-    public bool TodoEmptyReminded { get; set; }
-
     /// <summary>是否已发送过「未完成 Todo」提醒。</summary>
     public bool IncompleteReminded { get; set; }
-
-    /// <summary>本 Loop 累计执行的工具调用次数。</summary>
-    public int TotalToolCallsExecuted { get; set; }
 
     /// <summary>本 Loop 专用的循环检测器（参数 SHA256 哈希，连续 3 次警告、5 次终止）。</summary>
     public LoopDetector LoopDetector { get; } = new(threshold: 3);
