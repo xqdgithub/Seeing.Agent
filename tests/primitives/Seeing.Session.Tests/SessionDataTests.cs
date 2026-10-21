@@ -64,6 +64,55 @@ namespace Seeing.Session.Tests
         }
 
         [Fact]
+        public void ClearUsageCache_ShouldNullSchemaTokenCache()
+        {
+            // Arrange
+            var data = SessionData.Create();
+            data.CachedSchemaTokens = 120;
+            data.CachedCatalogTokens = 40;
+
+            // Act
+            data.ClearUsageCache();
+
+            // Assert
+            data.CachedSchemaTokens.Should().BeNull();
+            data.CachedCatalogTokens.Should().BeNull();
+        }
+
+        [Fact]
+        public void ClearMessages_ShouldNullSchemaTokenCache()
+        {
+            // Arrange
+            var data = SessionData.Create();
+            data.AddMessage(SessionMessage.UserMessage("One"));
+            data.CachedSchemaTokens = 120;
+            data.CachedCatalogTokens = 40;
+
+            // Act
+            data.ClearMessages();
+
+            // Assert：与 CachedInputTokens 同族，清会话同时清 token 估算缓存
+            data.CachedSchemaTokens.Should().BeNull();
+            data.CachedCatalogTokens.Should().BeNull();
+        }
+
+        [Fact]
+        public void Clone_ShouldInheritSchemaTokenCache()
+        {
+            // Arrange
+            var data = SessionData.Create();
+            data.CachedSchemaTokens = 120;
+            data.CachedCatalogTokens = 40;
+
+            // Act
+            var clone = data.Clone();
+
+            // Assert
+            clone.CachedSchemaTokens.Should().Be(120);
+            clone.CachedCatalogTokens.Should().Be(40);
+        }
+
+        [Fact]
         public void Clone_ShouldBeIndependentCopy()
         {
             // Arrange

@@ -16,6 +16,11 @@ public class SourceBreakdown
     public int ToolDefinitions { get; set; }
 
     /// <summary>
+    /// Tokens from the deferred-tool catalog (separate from tool definitions to avoid understating inline cost).
+    /// </summary>
+    public int Catalog { get; set; }
+
+    /// <summary>
     /// Tokens from user messages.
     /// </summary>
     public int UserMessages { get; set; }
@@ -33,18 +38,19 @@ public class SourceBreakdown
     /// <summary>
     /// Gets the total tokens across all sources.
     /// </summary>
-    public int Total => SystemPrompt + ToolDefinitions + UserMessages + AssistantMessages + ToolResults;
+    public int Total => SystemPrompt + ToolDefinitions + Catalog + UserMessages + AssistantMessages + ToolResults;
 
     /// <summary>
     /// Converts the breakdown to a dictionary with standardized keys.
     /// </summary>
-    /// <returns>A dictionary with keys: "system-prompt", "tool-definitions", "user-messages", "assistant-messages", "tool-results"</returns>
+    /// <returns>A dictionary with keys: "system-prompt", "tool-definitions", "catalog", "user-messages", "assistant-messages", "tool-results"</returns>
     public Dictionary<string, int> ToDictionary()
     {
         return new Dictionary<string, int>
         {
             ["system-prompt"] = SystemPrompt,
             ["tool-definitions"] = ToolDefinitions,
+            ["catalog"] = Catalog,
             ["user-messages"] = UserMessages,
             ["assistant-messages"] = AssistantMessages,
             ["tool-results"] = ToolResults

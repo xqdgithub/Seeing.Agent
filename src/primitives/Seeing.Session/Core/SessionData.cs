@@ -190,6 +190,18 @@ namespace Seeing.Session.Core
         /// </summary>
         public DateTime? CachedUsageUpdatedAt { get; set; }
 
+        // === 工具定义/目录 Token 估算缓存（本地，schema 结算产出） ===
+        /// <summary>
+        /// 本轮 inline 工具 schema 的估算 token 数（schema 结算单点产出，供预算分解读取）。
+        /// 与 <see cref="CachedInputTokens"/> 同属每轮 token 标量：ClearMessages/ClearUsageCache 清、Clone 复制、Fork 不继承。
+        /// </summary>
+        public int? CachedSchemaTokens { get; set; }
+
+        /// <summary>
+        /// 本轮工具目录摘要的估算 token 数（与工具定义口径分列，不混入 <see cref="CachedSchemaTokens"/>）。
+        /// </summary>
+        public int? CachedCatalogTokens { get; set; }
+
         // === 向后兼容字段（Deprecated） ===
 
         public Dictionary<string, string> State { get; set; } = new Dictionary<string, string>();
@@ -417,6 +429,8 @@ namespace Seeing.Session.Core
             CachedInputTokens = null;
             CachedOutputTokens = null;
             CachedUsageUpdatedAt = null;
+            CachedSchemaTokens = null;
+            CachedCatalogTokens = null;
             UpdatedAt = DateTime.Now;
         }
 
@@ -428,6 +442,8 @@ namespace Seeing.Session.Core
             CachedInputTokens = null;
             CachedOutputTokens = null;
             CachedUsageUpdatedAt = null;
+            CachedSchemaTokens = null;
+            CachedCatalogTokens = null;
         }
 
         public void RemoveContext(string key)
@@ -483,7 +499,10 @@ namespace Seeing.Session.Core
                 // Token Usage 缓存
                 CachedInputTokens = CachedInputTokens,
                 CachedOutputTokens = CachedOutputTokens,
-                CachedUsageUpdatedAt = CachedUsageUpdatedAt
+                CachedUsageUpdatedAt = CachedUsageUpdatedAt,
+                // 工具定义/目录 Token 估算缓存（同族，随 Clone 继承）
+                CachedSchemaTokens = CachedSchemaTokens,
+                CachedCatalogTokens = CachedCatalogTokens
             };
         }
 

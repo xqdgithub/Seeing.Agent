@@ -38,12 +38,16 @@
 ## 5. 工具定义 token 计量（tool-schema-settlement）
 
 - [ ] 5.1 在 `src/hosting/Seeing.Agent.Hosting/Seeing.Agent.Hosting.csproj` 增加 `<ProjectReference Include="..\..\primitives\Seeing.TokenEstimation\Seeing.TokenEstimation.csproj" />`（**禁止**引用 `Seeing.Agent.TokenBudget`）
-- [ ] 5.2 写失败测试 `ToolTokenAccountingTests.ShouldEstimateSchemaTokens`：3 个 schema 求和，断言 `SourceBreakdown.ToolDefinitions > 0`
-- [ ] 5.3 在 `src/primitives/Seeing.TokenEstimation/SourceBreakdown.cs` 新增 `Catalog` 字段，并在 `Total` 与 `ToDictionary()`（键 `"catalog"`）中计入
-- [ ] 5.4 在 `ChatExecutionContext`（`src/hosting/Seeing.Agent.Hosting/Execution/ChatExecutionContext.cs`）新增 `int ToolDefinitionTokens { get; init; }` 与 `int CatalogTokens { get; init; }`
-- [ ] 5.5 在 `BuildExecutionContextAsync` 用 `ITokenCounter`（未注册回退 `new CharBasedTokenCounter()`）对每个 schema 的 `Description + Parameters.ToString()` 求和
-- [ ] 5.6 在 `TokenBudgetManager.CalculateBreakdown(..., toolTokens)` 调用方传入 `context.ToolDefinitionTokens`（路径：`AgentContext.Metadata` 携带，能力包从 metadata 读；不得能力包反向依赖 Hosting）
-- [ ] 5.7 运行 5.2 与 `tests/primitives/Seeing.TokenEstimation.Tests`、`tests/spine/Seeing.Agent.Tests/TokenBudget/TokenBudgetManagerTests.cs`
+- [ ] 5.2 在 `src/primitives/Seeing.Session/Core/SessionData.cs` 新增 `CachedSchemaTokens`（`int?`）与 `CachedCatalogTokens`（`int?`），紧邻既有 `CachedInputTokens` 的「Token Usage 缓存」段
+- [ ] 5.3 让新字段与 `CachedInputTokens` 同进同出：`ClearMessages()` 与 `ClearUsageCache()` 置 null；fork/clone 逐字段复制处（`SessionData.cs:484-486`）新增两字段赋值
+- [ ] 5.4 在 `src/primitives/Seeing.TokenEstimation/SourceBreakdown.cs` 新增 `Catalog` 字段，并在 `Total` 与 `ToDictionary()`（键 `"catalog"`）中计入
+- [ ] 5.5 写失败测试 `ToolTokenAccountingTests.ShouldEstimateSchemaTokens`：3 个 schema 求和 → `SourceBreakdown.ToolDefinitions > 0`；`Catalog` 单列、不计入 `ToolDefinitions`
+- [ ] 5.6 在 `TokenBudgetManager.CalculateBreakdown` 移除 `toolTokens` 形参（`ITokenBudgetManager` 声明 + 实现 + 全部调用点，均已验证不传该参），改为内部读 `session.CachedSchemaTokens`→`ToolDefinitions`、`session.CachedCatalogTokens`→`Catalog`
+- [ ] 5.7 在 `BuildExecutionContextAsync` 用 `ITokenCounter`（未注册回退 `new CharBasedTokenCounter()`）对 `schemaSettlement.ToolSchemas` 逐条 `Description + Parameters.ToString()` 求和，写入 `session.CachedSchemaTokens`（`CachedCatalogTokens` 本期置 0，目录 token 于组 12 接入）
+- [ ] 5.8 写测试 `CalculateBreakdown_ReadsSessionCachedTokens_ShouldPopulateToolDefinitions`：session 设 `CachedSchemaTokens=123`/`CachedCatalogTokens=45` → breakdown `ToolDefinitions==123`/`Catalog==45`/`Total` 含二者
+- [ ] 5.9 写测试 `SessionDataTests.ClearUsageCache_ShouldNullSchemaTokenCache` 与 `SessionForkerTests.Fork_ShouldCopySchemaTokenCache`
+- [ ] 5.10 运行 5.5/5.8/5.9 与 `tests/primitives/Seeing.TokenEstimation.Tests`、`tests/spine/Seeing.Agent.Tests/TokenBudget/`、`tests/primitives/Seeing.Session.Tests`
+- [ ] 5.11 确认 `ChatExecutionContext` **不**新增 token 字段（估算走 `SessionData` 归属，非跨包通道）；删除旧「Metadata 携带 / toolTokens 传参」的接线残留（若有）
 
 ## 6. ExecutionRunner 依赖接口化（tool-schema-settlement）
 

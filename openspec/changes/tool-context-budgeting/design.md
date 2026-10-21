@@ -149,15 +149,16 @@
 
 **同名 server 重复注册语义**：当前 `McpToolRegistry` 为静默覆盖。本变更改为**注册失败并给出明确错误**，已注册工具不受影响。这是行为变更，须在 Release Notes 列明。
 
-### D9：token 计量复用既有 breakdown 通道，不新增估算器
+### D9：token 计量以 SessionData 缓存字段为归属，不做跨包通道
 
-**选择**：`SourceBreakdown.ToolDefinitions` 在 schema 结算后填充；`TokenBudgetManager.CalculateBreakdown(..., toolTokens)` 传参。估算复用 `ITokenCounter`（`CharBasedTokenCounter`），`Seeing.Agent.Hosting` 通过 ProjectReference 引用原语层 `Seeing.TokenEstimation`。
+**选择**：schema 结算产出的估算 token 写入 `SessionData.CachedSchemaTokens` 与 `CachedCatalogTokens`——与既有 `CachedInputTokens` 同属"每轮 token 标量"，同受 `ClearMessages`/`ClearUsageCache` 清理与 fork 逐字段复制约束。`TokenBudgetManager.CalculateBreakdown(session)` 内部直接读这两字段填 `SourceBreakdown.ToolDefinitions`/`Catalog`；**移除** `CalculateBreakdown` 上无人能填的 `toolTokens` 形参。估算复用 `ITokenCounter`（`CharBasedTokenCounter`），`Seeing.Agent.Hosting` 通过 ProjectReference 引用原语层 `Seeing.TokenEstimation`。
 
 **理由**
-- 字段与入口已存在，只是未接线；新增估算器会引入第二套口径。
-- 原语层引用符合依赖方向；不得引用 `Seeing.Agent.TokenBudget` 能力包。
+- 每轮 token 标量**已有归属先例**（`CachedInputTokens`，`SessionData.cs:175-191`）；沿用同一归属，避免为搬一个整数新增跨包魔法字符串通道。
+- 旧「`ChatExecutionContext` 字段 → `AgentContext.Metadata` → 能力包读串」在缝合处**根本不成立**：`BudgetUpdateHook` 在 `ChatAfterComplete`（`LlmService.cs:418-428` 触发）执行，其 payload 仅 `{modelId,messageId,response}`，无 `AgentContext`；强行接线还要再往 hook payload 开口，属补丁叠补丁。
+- 单一计算点：resolver 结算时估算**一次**，写 session（预算出口）与 `SchemaSnapshotEvent`（可观测出口）皆取同一次结果，不二次估算、不分叉口径。
 
-**口径分离**：工具定义预算与目录预算**分列**报告——目录不进入 `ToolDefinitions`，单独计入 `SourceBreakdown.Catalog`（新增）。避免"工具定义看起来变小了"的误读。
+**口径分离**：工具定义与目录分列——目录不进入 `ToolDefinitions`，单独计入 `SourceBreakdown.Catalog`（新增）。避免"工具定义看起来变小了"的误读。
 
 ### D10：缓存键显式包含 Hook 版本
 

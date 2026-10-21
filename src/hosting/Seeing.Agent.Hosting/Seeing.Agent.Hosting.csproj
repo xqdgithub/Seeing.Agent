@@ -26,5 +26,6 @@
     <ProjectReference Include="..\..\spine\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
     <ProjectReference Include="..\..\support\Seeing.Agent.Tools.Support\Seeing.Agent.Tools.Support.csproj" />
     <ProjectReference Include="..\..\primitives\Seeing.Session\Seeing.Session.csproj" />
+    <ProjectReference Include="..\..\primitives\Seeing.TokenEstimation\Seeing.TokenEstimation.csproj" />
   </ItemGroup>
 </Project>

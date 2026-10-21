@@ -86,7 +86,7 @@ public class TokenBudgetManager : ITokenBudgetManager
     }
 
     /// <inheritdoc />
-    public TokenBreakdown CalculateBreakdown(SessionData session, string? systemPrompt = null, int? toolTokens = null)
+    public TokenBreakdown CalculateBreakdown(SessionData session, string? systemPrompt = null)
     {
         var breakdown = new TokenBreakdown();
 
@@ -97,11 +97,9 @@ public class TokenBudgetManager : ITokenBudgetManager
             breakdown.ByRole.System += breakdown.BySource.SystemPrompt;
         }
 
-        // Add tool tokens if provided
-        if (toolTokens.HasValue)
-        {
-            breakdown.BySource.ToolDefinitions = toolTokens.Value;
-        }
+        // 工具定义/目录 token 读自会话缓存（schema 结算单点写入 SessionData.CachedSchemaTokens/CachedCatalogTokens）
+        breakdown.BySource.ToolDefinitions = session.CachedSchemaTokens ?? 0;
+        breakdown.BySource.Catalog = session.CachedCatalogTokens ?? 0;
 
         // Snapshot active messages before estimating them. Session messages are updated by the
         // execution/event pipeline while a budget update may be running.

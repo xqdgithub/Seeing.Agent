@@ -69,6 +69,38 @@ public class TokenBreakdownTests
     }
 
     [Fact]
+    public void SourceBreakdown_Total_IncludesCatalog()
+    {
+        // Arrange
+        var breakdown = new SourceBreakdown
+        {
+            SystemPrompt = 100,
+            ToolDefinitions = 200,
+            Catalog = 70,
+            UserMessages = 300,
+            AssistantMessages = 400,
+            ToolResults = 500
+        };
+
+        // Act & Assert
+        breakdown.Total.Should().Be(1570);
+    }
+
+    [Fact]
+    public void SourceBreakdown_Catalog_ShouldBeSeparateFromToolDefinitions()
+    {
+        // Arrange
+        var breakdown = new SourceBreakdown { ToolDefinitions = 200, Catalog = 70 };
+
+        // Act
+        var dict = breakdown.ToDictionary();
+
+        // Assert：目录单列，不混入工具定义口径
+        dict["tool-definitions"].Should().Be(200);
+        dict.Should().ContainKey("catalog").WhoseValue.Should().Be(70);
+    }
+
+    [Fact]
     public void RoleBreakdown_ToDictionary_ReturnsCorrectKeys()
     {
         // Arrange
