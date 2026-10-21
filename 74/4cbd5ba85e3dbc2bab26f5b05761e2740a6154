@@ -1,0 +1,73 @@
+src/hosting/Seeing.Agent.Hosting/Execution/ToolExposure/TieredToolExposurePolicy.cs
+  s_c077d30d5ff9bb::t_e15efb55940921 1-64
+src/hosting/Seeing.Agent.Hosting/Execution/ToolExposure/AllToolExposurePolicy.cs
+  s_c077d30d5ff9bb::t_dea7ce883b10a5 1-42
+src/hosting/Seeing.Agent.Hosting/Execution/ToolExposure/ToolExposureConfigResolver.cs
+  s_d2ac0946145870::t_45ac7070444f08 1-71,76-137
+  s_d2ac0946145870::t_b0e6368e257c2b 72-75
+tests/hosting/Seeing.Agent.Hosting.Tests/ToolExposure/ToolCatalogBuilderTests.cs
+  s_c077d30d5ff9bb::t_c1851c772b8577 69
+  s_c077d30d5ff9bb::t_df1c1526b1b23a 1-10,12,14-29,31,40,46-56,58-68,70-71,73,76,82,84-85
+  s_c077d30d5ff9bb::t_1e620fd4d1eb88 11,13,30,32-39,41-45,57,72,74-75,77-81,83
+src/hosting/Seeing.Agent.Hosting/Execution/ToolExposure/SessionToolDiscoveryStore.cs
+  s_aee2e1d4d97549::t_f2f27408ae3a1d 1-91
+tests/hosting/Seeing.Agent.Hosting.Tests/ToolExposure/ExposureEscalationTrackerTests.cs
+  s_c077d30d5ff9bb::t_08e03fe5bb95b0 10,19,28,37
+  s_c077d30d5ff9bb::t_5a289d617aef4c 1-9,11-18,20-27,29-36,38-44
+tests/hosting/Seeing.Agent.Hosting.Tests/ToolExposure/ToolExposurePolicySelectorTests.cs
+  s_c077d30d5ff9bb::t_6fb8d0bcc5ae13 1-49
+tests/hosting/Seeing.Agent.Hosting.Tests/ToolExposure/SessionToolDiscoveryStoreTests.cs
+  s_aee2e1d4d97549::t_ad1063414f0b46 1-89
+src/hosting/Seeing.Agent.Hosting/Execution/ToolExposure/ToolExposurePolicySelector.cs
+  s_c077d30d5ff9bb::t_8f4709348395dd 1-45
+tests/hosting/Seeing.Agent.Hosting.Tests/ToolExposure/ToolExposureConfigResolverTests.cs
+  s_d2ac0946145870::t_e478e373b898d6 1-2
+  s_d2ac0946145870::t_a1a4401999e7f8 3-138,140-148
+  s_d2ac0946145870::t_fb726947d29e57 139
+tests/hosting/Seeing.Agent.Hosting.Tests/ToolExposure/AllToolExposurePolicyTests.cs
+  s_c077d30d5ff9bb::t_fc38137789023a 1-12,14-15,17,19-60
+  s_c077d30d5ff9bb::t_e58f533485cd7a 13,16,18
+src/hosting/Seeing.Agent.Hosting/Execution/ToolExposure/ExposureEscalationTracker.cs
+  s_c077d30d5ff9bb::t_bcd937e64693c3 1-3,6,8,22,24-27,29-30
+  s_c077d30d5ff9bb::t_d73b59352930ba 4-5,7,9-21,23,28
+src/hosting/Seeing.Agent.Hosting/Execution/ToolExposure/ToolCatalogBuilder.cs
+  s_c077d30d5ff9bb::t_f173a211f516d8 166
+  s_c077d30d5ff9bb::t_dba9c72adfa98b 1-2
+  s_c077d30d5ff9bb::t_9c28e8215f32d4 3-79,81-165,167-178
+  s_c077d30d5ff9bb::t_a8c240c2f2a68e 80
+tests/hosting/Seeing.Agent.Hosting.Tests/ToolExposure/TieredToolExposurePolicyTests.cs
+  s_c077d30d5ff9bb::t_60775d8a968c07 1-19,23-24,26-88
+  s_c077d30d5ff9bb::t_a64f784d13468b 20-22,25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "744cbd5ba85e3dbc2bab26f5b05761e2740a6154",
+  "prompts": {},
+  "sessions": {
+    "s_aee2e1d4d97549": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea119ac7fffe5wiFf6HH7Nn86X",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_c077d30d5ff9bb": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea11a11dfffe1QTFTaksCFX03f",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_d2ac0946145870": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea119db93ffeC5VKhhitbow218",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
