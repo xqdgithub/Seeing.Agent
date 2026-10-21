@@ -91,6 +91,8 @@ public static class HostingServiceCollectionExtensions
         services.AddSingleton<ToolExposurePolicySelector>();
         services.AddSingleton<ToolExposureConfigResolver>();
         services.AddSingleton<IToolDiscoveryStore, SessionToolDiscoveryStore>();
+        // 检索语料端口：tool_search 经此单源获取 deferred 目录（不自行重算 settle）
+        services.AddSingleton<IToolSearchProvider, SessionToolSearchProvider>();
         // 目录分节贡献者（透传执行链渲染的目录正文进系统提示）
         services.AddSingleton<Seeing.Agent.Abstractions.Prompts.IPromptSectionContributor, Seeing.Agent.Hosting.Prompts.ToolCatalogSectionContributor>();
         services.AddSingleton<SessionRuntime>(sp => new SessionRuntime(

@@ -95,6 +95,7 @@ public static class BuiltInCapabilitySets
         "git",
         "subagent",
         "session.tools",
+        "tool-discovery",
         "question.tools",
         "web",
         "memory",

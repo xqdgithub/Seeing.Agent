@@ -1,0 +1,393 @@
+using System.Text;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Tools.Support;
+
+namespace Seeing.Agent.Tools.ToolDiscovery;
+
+/// <summary>
+/// 工具检索 — 在"可发现但未内联"的目录（deferred 集合）中检索工具，
+/// 按 name/summary/full 三档返回；full 命中项写入发现态并取权威全量定义（下一轮生效）。
+/// <para>只依赖 Abstractions + Seeing.Session + Tools.Support；经注入端口获取能力，不引用 Core。</para>
+/// <para>默认值（limit/offset/分页上限/full 硬上限）为工具内常量：能力包不读 Core options。</para>
+/// </summary>
+public sealed class ToolSearchTool : ToolBase
+{
+    private const int DefaultLimit = 10;
+    private const int MaxLimit = 30;
+    private const int FullPageHardCap = 3;
+
+    private const int ScoreExactId = 20;
+    private const int ScoreIdWord = 12;
+    private const int ScoreIdSubstring = 8;
+    private const int ScoreSummarySubstring = 4;
+    private const int ScoreTextSubstring = 2;
+
+    private readonly IToolSearchProvider _provider;
+    private readonly IToolDiscoveryStore _discoveryStore;
+    private readonly IToolManager _toolManager;
+
+    /// <summary>创建 ToolSearchTool 实例。</summary>
+    public ToolSearchTool(
+        IToolSearchProvider provider,
+        IToolDiscoveryStore discoveryStore,
+        IToolManager toolManager,
+        ILogger<ToolSearchTool>? logger = null)
+        : base(logger ?? NullLogger<ToolSearchTool>.Instance)
+    {
+        _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+        _discoveryStore = discoveryStore ?? throw new ArgumentNullException(nameof(discoveryStore));
+        _toolManager = toolManager ?? throw new ArgumentNullException(nameof(toolManager));
+    }
+
+    /// <inheritdoc />
+    public override string Id => "tool_search";
+
+    /// <inheritdoc />
+    public override string Description =>
+        "检索当前会话可发现但尚未内联的工具目录（延迟暴露集合）。" +
+        "query 省略时浏览全部；可经 namespace 限定范围；" +
+        "detail=name/summary/full（默认 summary）：full 将命中项写入发现态并返回完整定义，该工具将在下一轮变为可直接调用，每页最多 3 条。" +
+        $"支持 limit（默认 {DefaultLimit}，上限 {MaxLimit}）与 offset 分页。";
+
+    /// <inheritdoc />
+    public override IReadOnlyList<string> Tags => ["discovery", "tools"];
+
+    /// <inheritdoc />
+    public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
+    {
+        type = "object",
+        properties = new
+        {
+            query = new
+            {
+                type = "string",
+                description = "检索关键词（驼峰/下划线自动分词，支持单复数还原）；省略则浏览全部目录"
+            },
+            @namespace = new
+            {
+                type = "string",
+                description = "命名空间限定（前缀/等值，大小写不敏感）"
+            },
+            detail = new
+            {
+                type = "string",
+                @enum = new[] { "name", "summary", "full" },
+                description = "详情档位：name=仅 id；summary=id+签名/摘要（默认）；full=写入发现态+完整定义（下一轮生效，每页最多 3 条）"
+            },
+            limit = new
+            {
+                type = "integer",
+                minimum = 1,
+                maximum = MaxLimit,
+                description = $"返回条数上限（默认 {DefaultLimit}，上限 {MaxLimit}）"
+            },
+            offset = new
+            {
+                type = "integer",
+                minimum = 0,
+                description = "分页起始偏移（默认 0）"
+            }
+        }
+    });
+
+    /// <inheritdoc />
+    public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
+    {
+        var ct = context.CancellationToken;
+        var query = GetStringArgument(arguments, "query");
+        var nsFilter = GetStringArgument(arguments, "namespace");
+        var detail = (GetStringArgument(arguments, "detail") ?? "summary").Trim().ToLowerInvariant();
+
+        if (detail is not ("name" or "summary" or "full"))
+            return Failure($"未知的 detail: {detail}。可选值：name、summary、full");
+
+        var limit = Math.Clamp(GetIntArgument(arguments, "limit") ?? DefaultLimit, 1, MaxLimit);
+        var offset = Math.Max(GetIntArgument(arguments, "offset") ?? 0, 0);
+
+        if (detail == "full" && context.Agent is null)
+            return Failure("detail=full 需要 Agent 上下文以权威获取全量定义，请改用 detail=summary 或浏览目录");
+
+        var corpus = await _provider
+            .GetDiscoverableAsync(context.SessionId, context.Agent, ct).ConfigureAwait(false);
+
+        if (corpus is null || corpus.Count == 0)
+        {
+            var emptyMeta = BuildMetadata(detail, 0, 0, 0, null);
+            await TryEmitAsync(context, detail, query, nsFilter, offset, 0, 0, 0, Array.Empty<string>(), ct)
+                .ConfigureAwait(false);
+            return Success("当前无额外可发现工具，所有可用工具已内联。", emptyMeta);
+        }
+
+        IReadOnlyList<ToolCatalogEntry> scoped = string.IsNullOrWhiteSpace(nsFilter)
+            ? corpus
+            : corpus
+                .Where(e => e.Namespace is not null &&
+                            e.Namespace.StartsWith(nsFilter.Trim(), StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+        if (scoped.Count == 0)
+        {
+            var text = $"未命中：命名空间 '{nsFilter}' 下没有可发现工具。\n" +
+                       $"可用命名空间:\n{FormatNamespaceCounts(corpus)}\n" +
+                       "建议：检查命名空间拼写，或去掉 namespace 参数重新检索。";
+            var meta = BuildMetadata(detail, 0, 0, 0, null);
+            await TryEmitAsync(context, detail, query, nsFilter, offset, 0, 0, 0, Array.Empty<string>(), ct)
+                .ConfigureAwait(false);
+            return Success(text, meta);
+        }
+
+        var ranked = Rank(scoped, query);
+
+        if (ranked.Count == 0)
+        {
+            var text = $"未命中：关键词 '{query}' 没有匹配到可发现工具。\n" +
+                       $"可用命名空间:\n{FormatNamespaceCounts(scoped)}\n" +
+                       "建议：换用更宽泛或不同措辞的关键词，或去掉 namespace 限定重新检索。";
+            var meta = BuildMetadata(detail, 0, 0, 0, null);
+            await TryEmitAsync(context, detail, query, nsFilter, offset, 0, 0, 0, Array.Empty<string>(), ct)
+                .ConfigureAwait(false);
+            return Success(text, meta);
+        }
+
+        var total = ranked.Count;
+
+        if (offset >= total)
+        {
+            var text = $"offset 越界：offset={offset} 不在有效区间 [0, {total})，返回 0 条。";
+            var meta = BuildMetadata(detail, total, 0, 0, null);
+            await TryEmitAsync(context, detail, query, nsFilter, offset, total, 0, 0, Array.Empty<string>(), ct)
+                .ConfigureAwait(false);
+            return Success(text, meta);
+        }
+
+        var effectiveLimit = detail == "full" ? Math.Min(limit, FullPageHardCap) : limit;
+        var page = ranked.Skip(offset).Take(effectiveLimit).ToList();
+        var remaining = total - offset - page.Count;
+        var nextOffset = offset + page.Count;
+        var hitIds = page.Select(p => p.Entry.Id).ToList();
+
+        if (detail == "full")
+        {
+            _discoveryStore.Add(context.SessionId, hitIds);
+        }
+
+        var sb = new StringBuilder();
+        sb.Append($"工具检索结果（detail={detail}, total={total}, returned={page.Count}, remaining={remaining}）:");
+        if (detail == "full" && limit > FullPageHardCap)
+        {
+            sb.Append($"\n(detail=full 每页最多加载 {FullPageHardCap} 条全量定义，已按硬上限截断)");
+        }
+
+        for (var i = 0; i < page.Count; i++)
+        {
+            var entry = page[i].Entry;
+            sb.Append('\n').Append(i + 1).Append(". ").Append(entry.Id);
+            if (detail == "name")
+                continue;
+
+            if (!string.IsNullOrWhiteSpace(entry.Signature))
+                sb.Append(" | ").Append(entry.Signature);
+            if (!string.IsNullOrWhiteSpace(entry.Summary))
+                sb.Append("\n   ").Append(entry.Summary);
+
+            if (detail != "full")
+                continue;
+
+            sb.Append("\n   该工具将在下一轮变为可直接调用（已写入发现态）:");
+            var schemaText = await GetFullDefinitionAsync(entry.Id, context, ct).ConfigureAwait(false);
+            sb.Append('\n').Append(schemaText);
+        }
+
+        sb.Append('\n');
+        if (remaining > 0)
+        {
+            sb.Append($"提示：优先使用更精确关键词或指定 namespace 参数收窄结果；如需继续翻页可用 offset={nextOffset}。");
+            if (detail == "full")
+            {
+                sb.Append($"\n注意：继续以 detail=full 加载会写入过多 schema，建议先用 detail=summary 浏览候选。");
+            }
+        }
+        else if (total > 0)
+        {
+            sb.Append("已到末页；若未找到合适工具，可换用更宽泛或不同措辞的关键词。");
+        }
+
+        var resultMeta = BuildMetadata(detail, total, page.Count, remaining, remaining > 0 ? nextOffset : null);
+        await TryEmitAsync(context, detail, query, nsFilter, offset, total, page.Count, remaining, hitIds, ct)
+            .ConfigureAwait(false);
+        return Success(sb.ToString(), resultMeta);
+    }
+
+    private async Task<string> GetFullDefinitionAsync(
+        string toolId, ToolContext context, CancellationToken ct)
+    {
+        var schemas = await _toolManager
+            .GetToolSchemasAsync(new[] { toolId }, context.Agent!, ct).ConfigureAwait(false);
+
+        var schema = schemas.FirstOrDefault();
+        if (schema is null)
+            return "   (未能获取该工具的完整定义，可能已被注销)";
+
+        return "   " + JsonSerializer.Serialize(schema);
+    }
+
+    private static Dictionary<string, object> BuildMetadata(
+        string detail, int total, int returned, int remaining, int? nextOffset)
+    {
+        var meta = new Dictionary<string, object>
+        {
+            ["detail"] = detail,
+            ["total"] = total,
+            ["returned"] = returned,
+            ["remaining"] = remaining,
+        };
+        if (nextOffset is not null)
+            meta["next_offset"] = nextOffset.Value;
+        return meta;
+    }
+
+    private async Task TryEmitAsync(
+        ToolContext context,
+        string detail,
+        string? query,
+        string? nsFilter,
+        int offset,
+        int total,
+        int returned,
+        int remaining,
+        IReadOnlyList<string> hitIds,
+        CancellationToken ct)
+    {
+        if (context.EventSink is null)
+            return;
+
+        try
+        {
+            await context.EventSink.EmitAsync(new ToolSearchEvent
+            {
+                SessionId = context.SessionId,
+                Detail = detail,
+                Query = query,
+                Namespace = nsFilter,
+                Offset = offset,
+                Total = total,
+                Returned = returned,
+                Remaining = remaining,
+                HitIds = hitIds,
+            }).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // 取消路径：跳过发布
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "tool_search 事件发布失败: {SessionId}", context.SessionId);
+        }
+    }
+
+    private static List<(ToolCatalogEntry Entry, int Score)> Rank(
+        IReadOnlyList<ToolCatalogEntry> entries, string? query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return entries
+                .Select(e => (Entry: e, Score: 0))
+                .OrderBy(x => x.Entry.Id, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        var tokens = Tokenize(query).ToList();
+        var fullQueryLower = query.Trim().ToLowerInvariant();
+        var scored = new List<(ToolCatalogEntry, int)>();
+
+        foreach (var entry in entries)
+        {
+            var idLower = entry.Id.ToLowerInvariant();
+            var summaryLower = (entry.Summary ?? string.Empty).ToLowerInvariant();
+            var nsLower = (entry.Namespace ?? string.Empty).ToLowerInvariant();
+            var fullText = string.Join(' ', entry.Id, entry.Namespace ?? "", entry.Signature, entry.Summary)
+                .ToLowerInvariant();
+            var idWords = SplitWords(entry.Id).Select(Stem).ToHashSet(StringComparer.Ordinal);
+
+            var score = 0;
+            if (fullQueryLower == idLower)
+                score += ScoreExactId;
+
+            foreach (var token in tokens)
+            {
+                if (idWords.Contains(token))
+                    score += ScoreIdWord;
+                else if (idLower.Contains(token))
+                    score += ScoreIdSubstring;
+                else if (summaryLower.Contains(token))
+                    score += ScoreSummarySubstring;
+                else if (nsLower.Contains(token) || fullText.Contains(token))
+                    score += ScoreTextSubstring;
+            }
+
+            if (score > 0)
+                scored.Add((entry, score));
+        }
+
+        return scored
+            .OrderByDescending(x => x.Item2)
+            .ThenBy(x => x.Item1.Id, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static IEnumerable<string> Tokenize(string input) =>
+        SplitWords(input).Select(Stem).Where(w => w.Length > 0);
+
+    /// <summary>按分隔符与驼峰边界拆词并小写。</summary>
+    private static List<string> SplitWords(string input)
+    {
+        var result = new List<string>();
+        foreach (var part in input.Split(
+                     ['_', '-', '.', '/', '\\', ':', ' '], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var sb = new StringBuilder();
+            for (var i = 0; i < part.Length; i++)
+            {
+                var c = part[i];
+                if (char.IsUpper(c) && sb.Length > 0)
+                {
+                    var prev = sb[^1];
+                    var nextIsLower = i + 1 < part.Length && char.IsLower(part[i + 1]);
+                    if (!char.IsUpper(prev) || nextIsLower)
+                    {
+                        result.Add(sb.ToString().ToLowerInvariant());
+                        sb.Clear();
+                    }
+                }
+
+                sb.Append(c);
+            }
+
+            if (sb.Length > 0)
+                result.Add(sb.ToString().ToLowerInvariant());
+        }
+
+        return result;
+    }
+
+    /// <summary>末尾 s/es 词形还原去复数。</summary>
+    private static string Stem(string word)
+    {
+        if (word.Length > 2 && word.EndsWith("es", StringComparison.Ordinal))
+            return word[..^2];
+        if (word.Length > 2 && word.EndsWith("s", StringComparison.Ordinal))
+            return word[..^1];
+        return word;
+    }
+
+    private static string FormatNamespaceCounts(IReadOnlyList<ToolCatalogEntry> entries) =>
+        string.Join("\n", entries
+            .GroupBy(e => e.Namespace ?? "(无命名空间)")
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g => $"  {g.Key}: {g.Count()} 个"));
+}
