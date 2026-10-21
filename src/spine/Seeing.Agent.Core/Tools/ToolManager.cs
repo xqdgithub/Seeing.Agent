@@ -9,6 +9,7 @@ using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Decorators;
 using System.Collections.Concurrent;
+using System.Text;
 using System.Text.Json;
 namespace Seeing.Agent.Core.Tools
 {
@@ -42,6 +43,11 @@ namespace Seeing.Agent.Core.Tools
         private readonly object _registrationLock = new();
         private HashSet<string> _userDisabledTools = new(StringComparer.OrdinalIgnoreCase);
         private HashSet<string> _projectDisabledTools = new(StringComparer.OrdinalIgnoreCase);
+
+        // 键：目标 id 集（排序后拼接）+ allowed + denied + 禁用集版本 + Hook 版本
+        private readonly ConcurrentDictionary<string, IReadOnlyList<FunctionToolSchema>> _schemaCache = new(StringComparer.Ordinal);
+        private const int SchemaCacheCapacity = 32;
+        private long _toolStateVersion;
 
         /// <summary>初始化工具管理器，注入日志器、Hook 管理器及装饰器/规则/权限等可选依赖。</summary>
         public ToolManager(
@@ -94,12 +100,120 @@ namespace Seeing.Agent.Core.Tools
             ArgumentNullException.ThrowIfNull(agent);
             cancellationToken.ThrowIfCancellationRequested();
 
-            var settled = new HashSet<string>(settledToolIds, StringComparer.OrdinalIgnoreCase);
-            var all = await GetToolSchemasAsync().ConfigureAwait(false);
-            var layer12 = all.Where(s =>
-                s.Function != null &&
-                settled.Contains(s.Function.Name)).ToList();
-            return FilterSchemasByAgentToolLists(layer12, agent.AllowedTools, agent.DeniedTools);
+            // 先求交集（settled ∩ enabled ∩ allowed − denied），再为存活 id 生成 schema
+            var targetIds = new HashSet<string>(settledToolIds, StringComparer.OrdinalIgnoreCase);
+            if (agent.AllowedTools is { Count: > 0 } allowed)
+            {
+                var allowedSet = new HashSet<string>(allowed, StringComparer.OrdinalIgnoreCase);
+                targetIds.IntersectWith(allowedSet);
+            }
+
+            if (agent.DeniedTools is { Count: > 0 } denied)
+            {
+                targetIds.ExceptWith(new HashSet<string>(denied, StringComparer.OrdinalIgnoreCase));
+            }
+
+            var cacheKey = BuildSchemaCacheKey(targetIds, agent);
+            if (_schemaCache.TryGetValue(cacheKey, out var cached))
+                return cached;
+
+            var schemas = new List<FunctionToolSchema>(targetIds.Count);
+            var cacheable = true;
+
+            foreach (var id in targetIds)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (!TryGetToolIgnoreCase(id, out var tool))
+                    continue;
+
+                if (!IsSchemaCacheable(tool))
+                    cacheable = false;
+
+                var schema = await BuildSchemaAsync(tool, cancellationToken).ConfigureAwait(false);
+                if (schema != null)
+                    schemas.Add(schema);
+            }
+
+            var result = schemas
+                .OrderBy(x => x.Function!.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList()
+                .AsReadOnly();
+
+            if (cacheable)
+                StoreSchemaCache(cacheKey, result);
+
+            return result;
+        }
+
+        /// <summary>构造 schema 缓存键：目标 id 集（排序后拼接）+ allowed + denied + 禁用集版本 + Hook 版本。</summary>
+        private string BuildSchemaCacheKey(HashSet<string> targetIds, AgentDefinition agent)
+        {
+            static string JoinSorted(IEnumerable<string>? ids)
+                => string.Join(",", (ids ?? Enumerable.Empty<string>()).OrderBy(id => id, StringComparer.OrdinalIgnoreCase));
+
+            var sb = new StringBuilder()
+                .Append(Interlocked.Read(ref _toolStateVersion))
+                .Append('|')
+                .Append(_hookManager.Version)
+                .Append('|')
+                .Append(JoinSorted(targetIds))
+                .Append('|')
+                .Append(JoinSorted(agent.AllowedTools))
+                .Append('|')
+                .Append(JoinSorted(agent.DeniedTools));
+
+            return sb.ToString();
+        }
+
+        private void StoreSchemaCache(string cacheKey, IReadOnlyList<FunctionToolSchema> schemas)
+        {
+            _schemaCache[cacheKey] = schemas;
+
+            // 超限淘汰：移除第一个键（不实现 LRU）
+            if (_schemaCache.Count > SchemaCacheCapacity)
+            {
+                foreach (var key in _schemaCache.Keys)
+                {
+                    if (key == cacheKey)
+                        continue;
+
+                    _schemaCache.TryRemove(key, out _);
+                    break;
+                }
+            }
+        }
+
+        /// <summary>按 id 取工具（大小写不敏感，保持原 settled ∩ schema 名称比较语义）。</summary>
+        private bool TryGetToolIgnoreCase(string toolId, out ITool tool)
+        {
+            if (_tools.TryGetValue(toolId, out var found))
+            {
+                tool = found;
+                return true;
+            }
+
+            foreach (var pair in _tools)
+            {
+                if (string.Equals(pair.Key, toolId, StringComparison.OrdinalIgnoreCase))
+                {
+                    tool = pair.Value;
+                    return true;
+                }
+            }
+
+            tool = null!;
+            return false;
+        }
+
+        /// <summary>工具能力是否允许其 schema 进入缓存（缺省 true；<c>cacheable=false</c> 时不缓存）。</summary>
+        private static bool IsSchemaCacheable(ITool tool)
+        {
+            var capabilities = tool.Capabilities;
+            if (capabilities == null || !capabilities.TryGetValue(ToolCapabilityKeys.Cacheable, out var raw))
+                return true;
+
+            return !string.Equals(raw, "false", StringComparison.OrdinalIgnoreCase);
         }
 
         private static List<FunctionToolSchema> FilterSchemasByAgentToolLists(
@@ -172,6 +286,8 @@ namespace Seeing.Agent.Core.Tools
                 _projectDisabledTools = projectDisabled;
             }
 
+            Interlocked.Increment(ref _toolStateVersion);
+
             _logger.LogInformation("工具禁用状态已加载，用户级: {UserCount} 个，项目级: {ProjectCount} 个",
                 _userDisabledTools.Count, _projectDisabledTools.Count);
         }
@@ -188,6 +304,7 @@ namespace Seeing.Agent.Core.Tools
             }
 
             await SaveToolStateAsync(toolId, enabled, level, ct).ConfigureAwait(false);
+            Interlocked.Increment(ref _toolStateVersion);
             OnToolStateChanged?.Invoke();
         }
 
@@ -291,37 +408,53 @@ namespace Seeing.Agent.Core.Tools
         {
             var schemas = new List<FunctionToolSchema>();
 
-            foreach (var tool in _tools.Values)
+            foreach (var toolId in _tools.Keys.ToList())
             {
-                // 过滤禁用工具
-                if (!IsToolEnabled(tool.Id))
+                if (!_tools.TryGetValue(toolId, out var tool))
                     continue;
 
-                // ========== Hook: tool.definition ==========
-                var mutable = new Dictionary<string, object?>
-                {
-                    ["description"] = tool.Description,
-                    ["parameters"] = tool.ParametersSchema
-                };
-
-                await _hookManager.TriggerBlockingAsync(
-                    HookRegistry.ToolDefinition,
-                    string.Empty,
-                    new Dictionary<string, object?> { ["toolId"] = tool.Id },
-                    mutable).ConfigureAwait(false);
-
-                schemas.Add(new FunctionToolSchema
-                {
-                    Function = new FunctionSchema
-                    {
-                        Name = tool.Id,
-                        Description = mutable["description"]?.ToString() ?? tool.Description,
-                        Parameters = mutable["parameters"] is JsonElement je ? je : tool.ParametersSchema
-                    }
-                });
+                var schema = await BuildSchemaAsync(tool, CancellationToken.None).ConfigureAwait(false);
+                if (schema != null)
+                    schemas.Add(schema);
             }
 
-            return schemas;
+            return schemas
+                .OrderBy(x => x.Function!.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        /// <summary>
+        /// 为单个工具生成 schema（触发 <c>tool.definition</c> Hook）；工具被禁用时返回 null。
+        /// </summary>
+        private async Task<FunctionToolSchema?> BuildSchemaAsync(ITool tool, CancellationToken ct)
+        {
+            // 过滤禁用工具
+            if (!IsToolEnabled(tool.Id))
+                return null;
+
+            // ========== Hook: tool.definition ==========
+            var mutable = new Dictionary<string, object?>
+            {
+                ["description"] = tool.Description,
+                ["parameters"] = tool.ParametersSchema
+            };
+
+            await _hookManager.TriggerBlockingAsync(
+                HookRegistry.ToolDefinition,
+                string.Empty,
+                new Dictionary<string, object?> { ["toolId"] = tool.Id },
+                mutable,
+                ct).ConfigureAwait(false);
+
+            return new FunctionToolSchema
+            {
+                Function = new FunctionSchema
+                {
+                    Name = tool.Id,
+                    Description = mutable["description"]?.ToString() ?? tool.Description,
+                    Parameters = mutable["parameters"] is JsonElement je ? je : tool.ParametersSchema
+                }
+            };
         }
 
         /// <summary>
@@ -376,6 +509,8 @@ namespace Seeing.Agent.Core.Tools
                 _tools[tool.Id] = finalTool;
             }
 
+            Interlocked.Increment(ref _toolStateVersion);
+
             _logger.LogDebug("注册工具: {ToolId}, Tags={Tags}, Category={Category}",
                 tool.Id, string.Join(",", tool.Tags), tool.Category);
 
@@ -427,6 +562,7 @@ namespace Seeing.Agent.Core.Tools
             if (!_tools.TryRemove(toolId, out _))
                 return false;
 
+            Interlocked.Increment(ref _toolStateVersion);
             _logger.LogDebug("注销工具: {ToolId}", toolId);
             OnToolStateChanged?.Invoke();
             return true;

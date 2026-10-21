@@ -25,6 +25,9 @@ namespace Seeing.Agent.Abstractions.Tools
         /// <summary>缓存键作用域（"global"/"session"，默认 session）。session 时键含 SessionId。</summary>
         public const string CacheScope = "cache.scope";
 
+        /// <summary>是否允许该工具的 schema 进入 schema 缓存（"true"/"false"，默认 true）。</summary>
+        public const string Cacheable = "cacheable";
+
         // === 输出限制能力键（ToolOutputLimiterDecorator 消费）===
 
         /// <summary>豁免工具输出限制（"true"/"false"，默认 false）。工具自身已控制输出（如内置分页工具）时声明。</summary>
