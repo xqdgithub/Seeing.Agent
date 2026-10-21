@@ -142,5 +142,31 @@
   <Folder Name="/tests/e2e/">
     <Project Path="tests/e2e/Seeing.Agent.E2E.Tests/Seeing.Agent.E2E.Tests.csproj" />
   </Folder>
+  <Folder Name="/openspec/">
+    <File Path="openspec/config.yaml" />
+  </Folder>
+  <Folder Name="/openspec/changes/" />
+  <Folder Name="/openspec/changes/tool-context-budgeting/">
+    <File Path="openspec/changes/tool-context-budgeting/.openspec.yaml" />
+    <File Path="openspec/changes/tool-context-budgeting/proposal.md" />
+    <File Path="openspec/changes/tool-context-budgeting/design.md" />
+    <File Path="openspec/changes/tool-context-budgeting/tasks.md" />
+  </Folder>
+  <Folder Name="/openspec/changes/tool-context-budgeting/specs/" />
+  <Folder Name="/openspec/changes/tool-context-budgeting/specs/tool-schema-settlement/">
+    <File Path="openspec/changes/tool-context-budgeting/specs/tool-schema-settlement/spec.md" />
+  </Folder>
+  <Folder Name="/openspec/changes/tool-context-budgeting/specs/tool-exposure-policy/">
+    <File Path="openspec/changes/tool-context-budgeting/specs/tool-exposure-policy/spec.md" />
+  </Folder>
+  <Folder Name="/openspec/changes/tool-context-budgeting/specs/tool-discovery/">
+    <File Path="openspec/changes/tool-context-budgeting/specs/tool-discovery/spec.md" />
+  </Folder>
+  <Folder Name="/openspec/changes/tool-context-budgeting/specs/tool-catalog-instructions/">
+    <File Path="openspec/changes/tool-context-budgeting/specs/tool-catalog-instructions/spec.md" />
+  </Folder>
+  <Folder Name="/openspec/changes/tool-context-budgeting/specs/mcp-tool-naming/">
+    <File Path="openspec/changes/tool-context-budgeting/specs/mcp-tool-naming/spec.md" />
+  </Folder>
   <Folder Name="/解决方案项/" />
 </Solution>

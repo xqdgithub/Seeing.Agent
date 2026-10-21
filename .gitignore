@@ -394,7 +394,6 @@ samples/*/plugins/*.dll
 /*.png
 /samples/Seeing.Agent.WebUI/alert_report
 /docs/plans
-/openspec
 /current-state.yml
 /tests/test_results.json
 /tests/test_screenshot_final.png
