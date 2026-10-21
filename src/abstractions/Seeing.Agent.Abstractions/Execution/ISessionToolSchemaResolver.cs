@@ -1,5 +1,6 @@
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Abstractions.Execution;
@@ -45,8 +46,13 @@ public interface ISessionToolSchemaResolver
 /// <summary>会话级 schema 解析结果。</summary>
 public sealed record SessionToolSchemaResolution(
     IReadOnlyList<FunctionToolSchema> ToolSchemas,
-    IReadOnlyList<string> SectionIds)
+    IReadOnlyList<string> SectionIds,
+    IReadOnlyList<ToolCatalogEntry> CatalogEntries = default!,
+    int InlineToolCount = 0,
+    int DeferredToolCount = 0,
+    int EstimatedDefinitionTokens = 0,
+    int CatalogTokens = 0)
 {
     public static SessionToolSchemaResolution Empty { get; } =
-        new(Array.Empty<FunctionToolSchema>(), Array.Empty<string>());
+        new(Array.Empty<FunctionToolSchema>(), Array.Empty<string>(), Array.Empty<ToolCatalogEntry>());
 }
