@@ -62,11 +62,11 @@ commit `b96bfcc` 后 `IAgentExecutor` 只读 `context.ToolSchemas`；`AgentJob` 
 
 ### 3.2 端口设计（schema 单点纪律保持）
 
-- **契约**（`Abstractions/Execution/ISessionToolSchemaResolver.cs`）：`ISessionToolSchemaResolver.ResolveAsync(sessionId, agent, ct)` → `SessionToolSchemaResolution(ToolSchemas, SectionIds)`（record + `Empty`）。能力包（Scheduler）只依赖 Abstractions ✓。
+- **契约**（`Abstractions/Execution/ISessionToolSchemaResolver.cs`）：两个重载——`ResolveAsync(sessionId, agent, ct)`（能力包 Scheduler 用，按 id 加载）与 `ResolveAsync(SessionData, agent, ct)`（主执行链用，复用已加载会话实例）→ `SessionToolSchemaResolution(ToolSchemas, SectionIds)`（record + `Empty`）。能力包（Scheduler）只依赖 Abstractions ✓。
 - **实现唯一在 Hosting**（`SessionToolSchemaResolver`）：
-  - `SettleAsync(session, agent, services)`——从 `ExecutionRunner` 迁移的结算逻辑 + `MergeDynamicToolIds`；
-  - `ResolveAsync`——`Get → LoadAsync → EnsureSessionAsync` 加载会话后结算（端口方法）。
-- **`ExecutionRunner` 委派**：ctor 可选注入 resolver（null 时回退构造同一实现，不产生第二路径）；`BuildExecutionContextAsync` 改调 `_schemaResolver.SettleAsync`；删除私有 `SettleSessionAndSchemasAsync` / `MergeDynamicToolIds`。
+  - `ResolveAsync`（公开端口）：`sessionId` 版 `Get → LoadAsync → EnsureSessionAsync` 加载后结算；`SessionData` 版直接复用传入实例（避免读到未落盘前的旧状态）。
+  - `SettleAsync(session, agent, services)` + `MergeDynamicToolIds`——**已降为 private 核心**，仅由两个公开重载调用，杜绝绕过端口直取内部结算。
+- **`ExecutionRunner` 依赖接口化**：ctor **必需注入 `ISessionToolSchemaResolver`**（删除 `new SessionToolSchemaResolver` 回退分支；缺依赖构造期 `ArgumentNullException` 失败，杜绝第二套结算路径与对具体类型的耦合）；`BuildExecutionContextAsync` 改调 `_schemaResolver.ResolveAsync(session, agentDef)` 端口方法；随回退移除而一并删除已死参数 `IOptionsMonitor<SeeingAgentOptions>` / `IScenarioCatalog`（原仅服务于回退构造）。
 - **`AgentJob` / `HeartbeatJob` 接入**：`ResolveToolSchemasAsync`（Scheduler 内共享 internal static 助手）——未注册 resolver → 警告 + null 空集继续（不阻断任务）；解析失败 → 警告 + null，不阻断。
 - `ChatExecutionContext` 删除无人读取的 `Settlement` 属性（`SessionSettlement` / `SessionSettlementSnapshot` 留在 Hosting internal，被 resolver 使用）。
 

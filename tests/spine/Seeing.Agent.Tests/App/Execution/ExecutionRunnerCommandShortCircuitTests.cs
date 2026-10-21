@@ -370,13 +370,13 @@ public class ExecutionRunnerCommandShortCircuitTests
             provider,
             publisher,
             new ExecutionOptions(),
-            Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
             configStore.Object,
             new CompactionRunner(
                 new CompressionService(null!, sessionManager.Object),
                 publisher,
                 sessionManager.Object),
-            NullLogger<ExecutionRunner>.Instance);
+            NullLogger<ExecutionRunner>.Instance,
+            new StubSessionToolSchemaResolver());
     }
 
     private static async IAsyncEnumerable<IMessageEvent> EmptyStream()

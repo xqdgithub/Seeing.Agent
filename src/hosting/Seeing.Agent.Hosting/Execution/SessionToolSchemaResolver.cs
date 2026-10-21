@@ -68,11 +68,27 @@ public sealed class SessionToolSchemaResolver : ISessionToolSchemaResolver
         return new SessionToolSchemaResolution(settlement.ToolSchemas, settlement.SectionIds);
     }
 
+    /// <inheritdoc />
+    public async Task<SessionToolSchemaResolution> ResolveAsync(
+        SessionData session,
+        AgentDefinition agent,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(agent);
+
+        // 复用调用方已加载的 session 实例；结算依赖（IToolManager 等）均为单例，
+        // 从根容器自开作用域与主执行链 turn 作用域等价，且避免二次加载读到未落盘前的旧状态。
+        using var scope = _rootProvider.CreateScope();
+        var settlement = await SettleAsync(session, agent, scope.ServiceProvider, cancellationToken).ConfigureAwait(false);
+        return new SessionToolSchemaResolution(settlement.ToolSchemas, settlement.SectionIds);
+    }
+
     /// <summary>
-    /// 会话级结算 + schema 唯一计算（供已持有会话与执行 scope 的调用方共用）。
+    /// 会话级结算 + schema 唯一计算（本类私有核心，仅供两个公开端口重载调用）。
     /// 无 <see cref="IModuleCatalog"/> 时 settled 为空集（schema 亦空）。
     /// </summary>
-    internal async Task<SessionSchemaSettlement> SettleAsync(
+    private async Task<SessionSchemaSettlement> SettleAsync(
         SessionData session,
         AgentDefinition agent,
         IServiceProvider services,

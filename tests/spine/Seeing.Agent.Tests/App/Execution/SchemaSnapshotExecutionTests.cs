@@ -249,10 +249,12 @@ public class SchemaSnapshotExecutionTests
             provider,
             publisher,
             new ExecutionOptions(),
-            Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
             configStore.Object,
             new CompactionRunner(new CompressionService(null!, Mock.Of<ISessionManager>()), Mock.Of<IExecutionEventPublisher>(), Mock.Of<ISessionManager>()),
-            NullLogger<ExecutionRunner>.Instance);
+            NullLogger<ExecutionRunner>.Instance,
+            new SessionToolSchemaResolver(
+                provider,
+                Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions())));
     }
 
     private sealed class NamedTool(string id) : ITool

@@ -71,12 +71,12 @@ public class ExecutionRunnerPermissionAuthorizerTests
             Mock.Of<IServiceProvider>(),
             Mock.Of<IExecutionEventPublisher>(),
             new ExecutionOptions(),
-            Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(),
             Mock.Of<IConfigSectionStore>(),
             new CompactionRunner(
                 new CompressionService(null!, Mock.Of<ISessionManager>()),
                 Mock.Of<IExecutionEventPublisher>(),
                 Mock.Of<ISessionManager>()),
-            NullLogger<ExecutionRunner>.Instance);
+            NullLogger<ExecutionRunner>.Instance,
+            new StubSessionToolSchemaResolver());
     }
 }

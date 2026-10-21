@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Configuration;
@@ -8,7 +7,6 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Models;
-using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Abstractions.Runtime;
@@ -59,18 +57,16 @@ internal sealed class ExecutionRunner : IExecutionRunner
     private readonly IConfigSectionStore _configStore;
     private readonly CompactionRunner _compactionRunner;
     private readonly ILogger<ExecutionRunner> _logger;
-    private readonly SessionToolSchemaResolver _schemaResolver;
+    private readonly ISessionToolSchemaResolver _schemaResolver;
 
     public ExecutionRunner(
         IServiceProvider serviceProvider,
         IExecutionEventPublisher eventPublisher,
         ExecutionOptions options,
-        IOptionsMonitor<SeeingAgentOptions> seeingAgentOptions,
         IConfigSectionStore configStore,
         CompactionRunner compactionRunner,
         ILogger<ExecutionRunner> logger,
-        IScenarioCatalog? scenarioCatalog = null,
-        SessionToolSchemaResolver? schemaResolver = null)
+        ISessionToolSchemaResolver schemaResolver)
     {
         _serviceProvider = serviceProvider;
         _eventPublisher = eventPublisher;
@@ -78,10 +74,9 @@ internal sealed class ExecutionRunner : IExecutionRunner
         _configStore = configStore;
         _compactionRunner = compactionRunner ?? throw new ArgumentNullException(nameof(compactionRunner));
         _logger = logger;
-        // schema 唯一计算点：未注入（测试直连构造）时回退构造同一实现，不产生第二套结算路径。
-        // 注意：该回退要求 SessionToolSchemaResolver 保持无状态，否则 DI 单例与回退实例会漂移。
-        _schemaResolver = schemaResolver ?? new SessionToolSchemaResolver(
-            serviceProvider, seeingAgentOptions, scenarioCatalog: scenarioCatalog);
+        // schema 唯一计算点经端口 ISessionToolSchemaResolver：必需注入，缺失即构造期失败，
+        // 不再自构造回退实例，杜绝第二套结算路径与类型耦合。
+        _schemaResolver = schemaResolver ?? throw new ArgumentNullException(nameof(schemaResolver));
     }
 
     /// <summary>跑一轮执行：模型/模式落盘、指令注入、投影事件、终态落盘，返回终态记录。不做忙闲/循环管理。</summary>
@@ -441,9 +436,9 @@ internal sealed class ExecutionRunner : IExecutionRunner
             ?? session.WorkingDirectory
             ?? executionWorld.Cwd;
 
-        // schema 唯一计算点：经 SessionToolSchemaResolver（与 Scheduler 直连执行共用同一结算）
-        var schemaSettlement = await _schemaResolver.SettleAsync(
-            session, agentDef, services).ConfigureAwait(false);
+        // schema 唯一计算点：经 ISessionToolSchemaResolver 端口（与 Scheduler 直连执行共用同一结算出口）
+        var schemaSettlement = await _schemaResolver.ResolveAsync(
+            session, agentDef).ConfigureAwait(false);
         var toolSchemas = schemaSettlement.ToolSchemas;
         var sectionIds = schemaSettlement.SectionIds;
 

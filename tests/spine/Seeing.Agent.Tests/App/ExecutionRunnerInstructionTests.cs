@@ -191,14 +191,13 @@ public class ExecutionRunnerInstructionTests
             provider,
             publisher ?? Mock.Of<IExecutionEventPublisher>(),
             new ExecutionOptions(),
-            Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(
-                monitor => monitor.CurrentValue == new SeeingAgentOptions()),
             configStore.Object,
             new CompactionRunner(
                 new CompressionService(null!, Mock.Of<ISessionManager>()),
                 Mock.Of<IExecutionEventPublisher>(),
                 Mock.Of<ISessionManager>()),
-            NullLogger<ExecutionRunner>.Instance);
+            NullLogger<ExecutionRunner>.Instance,
+            new StubSessionToolSchemaResolver());
     }
 
     private static IModelManager CreateModelManager()

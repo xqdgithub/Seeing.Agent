@@ -179,13 +179,13 @@ public class ExecutionRunnerCompactionTests
             provider,
             publisher,
             new ExecutionOptions(),
-            Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
             configStore,
             new CompactionRunner(
                 new CompressionService(summarizer, sessionManager.Object),
                 publisher,
                 sessionManager.Object),
-            NullLogger<ExecutionRunner>.Instance);
+            NullLogger<ExecutionRunner>.Instance,
+            new StubSessionToolSchemaResolver());
     }
 
     private static async IAsyncEnumerable<IMessageEvent> EmptyStream()

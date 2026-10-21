@@ -1,5 +1,6 @@
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Session.Core;
 
 namespace Seeing.Agent.Abstractions.Execution;
 
@@ -25,6 +26,18 @@ public interface ISessionToolSchemaResolver
     /// <param name="cancellationToken">取消令牌。</param>
     Task<SessionToolSchemaResolution> ResolveAsync(
         string sessionId,
+        AgentDefinition agent,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 解析已加载会话 + Agent 的本轮工具 schema。主执行链（ExecutionRunner）用此重载：
+    /// 复用调用方已加载且可能含未落盘变更的 <see cref="SessionData"/> 实例，避免二次加载读到旧状态。
+    /// </summary>
+    /// <param name="session">已加载的会话实例（直接使用，不再按 id 重新加载）。</param>
+    /// <param name="agent">目标 Agent 定义。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    Task<SessionToolSchemaResolution> ResolveAsync(
+        SessionData session,
         AgentDefinition agent,
         CancellationToken cancellationToken = default);
 }
