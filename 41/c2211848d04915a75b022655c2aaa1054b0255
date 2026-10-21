@@ -1,0 +1,38 @@
+docs/architecture/01-overview.md
+  s_1ea8d9f04df9d9::t_809cc972f517c6 92
+tests/hosting/Seeing.Agent.Hosting.Tests/Prompts/ToolCatalogSectionContributorTests.cs
+  s_1ea8d9f04df9d9::t_0ae91441163afe 50-59,65
+  s_1ea8d9f04df9d9::t_381d09b3e69abb 60-64
+AGENTS.md
+  s_1ea8d9f04df9d9::t_31f9dcb98d0696 84-85
+  s_1ea8d9f04df9d9::t_3a45970320d99f 29
+docs/architecture/06-compliance-audit.md
+  s_1ea8d9f04df9d9::t_381916e9c292cc 29-30
+docs/architecture/README.md
+  s_1ea8d9f04df9d9::t_539bfb859dce6a 38
+docs/architecture/02-modules.md
+  s_1ea8d9f04df9d9::t_66a09a362e5ede 35
+tests/spine/Seeing.Agent.Tests/App/Execution/SessionToolSchemaResolverExposureTests.cs
+  s_1ea8d9f04df9d9::t_ec0a05de27b2e3 159-200
+docs/architecture/04-development-standards.md
+  s_1ea8d9f04df9d9::t_d5ae5916de4dbe 105-111
+  s_1ea8d9f04df9d9::t_dab11b9fe44e2a 75-78
+docs/architecture/19-tool-context-budgeting-release-notes.md
+  s_1ea8d9f04df9d9::t_8c230d9fecf7f9 1-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "41c2211848d04915a75b022655c2aaa1054b0255",
+  "prompts": {},
+  "sessions": {
+    "s_1ea8d9f04df9d9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea33351c3ffehsFT7BcthOlXiQ",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
