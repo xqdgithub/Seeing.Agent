@@ -1,0 +1,34 @@
+src/abstractions/Seeing.Agent.Abstractions/Tools/ToolCatalogEntry.cs
+  s_fb2a10d386482c::t_795aefea265601 1-20
+src/abstractions/Seeing.Agent.Abstractions/Tools/ToolExposurePolicyMode.cs
+  s_fb2a10d386482c::t_373061de49408a 1-16
+src/abstractions/Seeing.Agent.Abstractions/Tools/IToolDiscoveryStore.cs
+  s_fb2a10d386482c::t_6c8b177e9f6ace 1-16
+src/abstractions/Seeing.Agent.Abstractions/Execution/ISessionToolSchemaResolver.cs
+  s_fb2a10d386482c::t_d82b9249dc43c7 3
+  s_fb2a10d386482c::t_45be4a7d97dca7 49-54,57
+src/abstractions/Seeing.Agent.Abstractions/Tools/IToolExposurePolicy.cs
+  s_fb2a10d386482c::t_3f656448f5edab 1-14
+src/abstractions/Seeing.Agent.Abstractions/Tools/ToolExposureInput.cs
+  s_fb2a10d386482c::t_bd4591075048e4 1-20
+src/abstractions/Seeing.Agent.Abstractions/Tools/ToolExposureMode.cs
+  s_fb2a10d386482c::t_c01b1edf59a74a 1-16
+src/abstractions/Seeing.Agent.Abstractions/Tools/ToolExposurePlan.cs
+  s_fb2a10d386482c::t_fb3170837b9c05 1-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "91536f0d768b4b8ffdee73e27e92829872430247",
+  "prompts": {},
+  "sessions": {
+    "s_fb2a10d386482c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea12d06d5ffeUe3nZYCos71yNv",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
