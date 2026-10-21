@@ -10,7 +10,7 @@ namespace Seeing.Agent.Tools.ToolDiscovery;
 /// </summary>
 public sealed class ToolDiscoveryModule : ISeeingModule
 {
-    private static readonly IReadOnlyList<string> s_providedTools = ["tool_search"];
+    private static readonly IReadOnlyList<string> s_providedTools = [ToolIdConventions.SearchToolId];
 
     /// <inheritdoc />
     public string Id => "tool-discovery";

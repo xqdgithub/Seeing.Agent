@@ -12,7 +12,7 @@ namespace Seeing.Agent.Hosting.Commands;
 public class ToolsCommands
 {
     /// <summary>MCP 工具 id 前缀（与 <c>McpTool.Id</c> 形式一致）。</summary>
-    public const string McpToolIdPrefix = "mcp__";
+    public const string McpToolIdPrefix = Seeing.Agent.Abstractions.Tools.ToolIdConventions.McpPrefix;
 
     private readonly ToolManager _toolInvoker;
 

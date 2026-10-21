@@ -20,7 +20,7 @@ public sealed class AllToolExposurePolicy : IToolExposurePolicy
         var entries = input.Available
             .Select(e => e with
             {
-                Mode = e.Id == ToolExposureConstants.SearchToolId
+                Mode = string.Equals(e.Id, ToolIdConventions.SearchToolId, StringComparison.OrdinalIgnoreCase)
                     ? ToolExposureMode.Hidden
                     : ToolExposureMode.Inline
             })

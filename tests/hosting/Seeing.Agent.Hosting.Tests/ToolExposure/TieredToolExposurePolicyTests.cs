@@ -93,8 +93,5 @@ public class TieredToolExposurePolicyTests
             ToolExposurePolicyMode.Tiered,
             available,
             discovered ?? new HashSet<string>(StringComparer.Ordinal),
-            pinned ?? Array.Empty<string>(),
-            4000,
-            200,
-            escalated);
+            pinned ?? Array.Empty<string>());
 }

@@ -45,7 +45,7 @@ public sealed class TieredToolExposurePolicy : IToolExposurePolicy
 
     private static ToolExposureMode ResolveMode(ToolCatalogEntry entry, ToolExposureInput input)
     {
-        if (entry.Id == ToolExposureConstants.SearchToolId)
+        if (string.Equals(entry.Id, ToolIdConventions.SearchToolId, StringComparison.OrdinalIgnoreCase))
         {
             return ToolExposureMode.Inline;
         }
@@ -57,7 +57,7 @@ public sealed class TieredToolExposurePolicy : IToolExposurePolicy
 
         foreach (var pinnedId in input.PinnedIds)
         {
-            if (string.Equals(pinnedId, entry.Id, StringComparison.Ordinal))
+            if (string.Equals(pinnedId, entry.Id, StringComparison.OrdinalIgnoreCase))
             {
                 return ToolExposureMode.Inline;
             }

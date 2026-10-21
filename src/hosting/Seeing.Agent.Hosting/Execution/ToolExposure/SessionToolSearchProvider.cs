@@ -28,6 +28,7 @@ public sealed class SessionToolSearchProvider : IToolSearchProvider
 
         var resolution = await _resolver.ResolveAsync(sessionId, agent, cancellationToken)
             .ConfigureAwait(false);
-        return resolution.CatalogEntries;
+        // 检索语料为**全量 deferred**（不受显示预算裁剪影响）；显示目录另为 CatalogNamespaces。
+        return resolution.DeferredEntries;
     }
 }

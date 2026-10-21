@@ -53,8 +53,5 @@ public class AllToolExposurePolicyTests
             ToolExposurePolicyMode.All,
             available,
             new HashSet<string>(StringComparer.Ordinal),
-            Array.Empty<string>(),
-            4000,
-            200,
-            false);
+            Array.Empty<string>());
 }

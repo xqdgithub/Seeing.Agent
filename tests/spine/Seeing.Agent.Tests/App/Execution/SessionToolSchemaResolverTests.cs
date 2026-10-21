@@ -115,11 +115,22 @@ public class SessionToolSchemaResolverTests
         return sessionManager;
     }
 
-    private static SessionToolSchemaResolver CreateResolver(IServiceProvider services) =>
-        new(
+    private static SessionToolSchemaResolver CreateResolver(IServiceProvider services)
+    {
+        var optionsMonitor =
+            Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions());
+        return new SessionToolSchemaResolver(
             services,
-            Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
+            optionsMonitor,
+            new Seeing.Agent.Hosting.Execution.ToolExposure.ToolExposureConfigResolver(optionsMonitor),
+            new Seeing.Agent.Hosting.Execution.ToolExposure.ToolExposurePolicySelector(
+                [
+                    new Seeing.Agent.Hosting.Execution.ToolExposure.AllToolExposurePolicy(),
+                    new Seeing.Agent.Hosting.Execution.ToolExposure.TieredToolExposurePolicy()
+                ]),
+            new Seeing.TokenEstimation.CharBasedTokenCounter(),
             NullLogger<SessionToolSchemaResolver>.Instance);
+    }
 
     private static async Task<IServiceProvider> BuildServicesAsync(Mock<ISessionManager> sessionManager, bool withCatalog)
     {

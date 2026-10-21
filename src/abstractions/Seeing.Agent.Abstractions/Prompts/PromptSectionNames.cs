@@ -16,4 +16,9 @@ public static class PromptSectionNames
 
     /// <summary>环境信息分节</summary>
     public const string Environment = "environment";
+
+    /// <summary>
+    /// 工具目录分节键（<c>PromptContext.Sections</c> 通用槽中的键 + 贡献者 SectionName 同源）。
+    /// </summary>
+    public const string ToolCatalog = "tool-catalog";
 }

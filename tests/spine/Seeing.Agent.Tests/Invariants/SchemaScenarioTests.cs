@@ -463,7 +463,15 @@ public class SchemaScenarioTests
             NullLogger<ExecutionRunner>.Instance,
             new SessionToolSchemaResolver(
                 provider,
-                Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions())));
+                Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
+                new Seeing.Agent.Hosting.Execution.ToolExposure.ToolExposureConfigResolver(
+                    Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions())),
+                new Seeing.Agent.Hosting.Execution.ToolExposure.ToolExposurePolicySelector(
+                    [
+                        new Seeing.Agent.Hosting.Execution.ToolExposure.AllToolExposurePolicy(),
+                        new Seeing.Agent.Hosting.Execution.ToolExposure.TieredToolExposurePolicy()
+                    ]),
+                new Seeing.TokenEstimation.CharBasedTokenCounter()));
 
         return new Fixture(runner, provider, lifecycle);
     }

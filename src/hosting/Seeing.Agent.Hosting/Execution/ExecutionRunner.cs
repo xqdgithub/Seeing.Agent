@@ -21,7 +21,6 @@ using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Core.Services;
-using Seeing.Agent.Hosting.Execution.ToolExposure;
 using Seeing.Agent.Llm;
 using Seeing.Session.Core;
 using System.Diagnostics.CodeAnalysis;
@@ -447,10 +446,8 @@ internal sealed class ExecutionRunner : IExecutionRunner
         var toolSchemas = schemaSettlement.ToolSchemas;
         var sectionIds = schemaSettlement.SectionIds;
 
-        // token 归属单点：resolver 已在同一次结算估算 inline 定义 token 与目录 token，直接落会话缓存，
-        // 不在此二次估算（避免分叉口径）。与 CachedInputTokens 同族，随本轮 SaveAsync 落盘。
-        session.CachedSchemaTokens = schemaSettlement.EstimatedDefinitionTokens;
-        session.CachedCatalogTokens = schemaSettlement.CatalogTokens;
+        // token 归属与目录正文均由 resolver 单点产出（含写入 session.CachedSchemaTokens/CatalogTokens），
+        // 执行链只读不重算，主链与 Scheduler 旁路同获同源产物。
 
         string? requestThinkingEffort = record.Options?.ThinkingEffort;
         if (requestThinkingEffort is null && !string.IsNullOrWhiteSpace(session.SelectedThinkingEffort))
@@ -470,13 +467,12 @@ internal sealed class ExecutionRunner : IExecutionRunner
             RequestThinkingEffort = requestThinkingEffort,
             ToolSchemas = toolSchemas,
             SectionIds = sectionIds,
-            CatalogEntries = schemaSettlement.CatalogEntries,
             InlineToolCount = schemaSettlement.InlineToolCount,
             DeferredToolCount = schemaSettlement.DeferredToolCount,
             EstimatedDefinitionTokens = schemaSettlement.EstimatedDefinitionTokens,
             CatalogTokens = schemaSettlement.CatalogTokens,
             ExposureMode = schemaSettlement.ExposureMode,
-            CatalogText = ToolCatalogRenderer.Render(schemaSettlement.CatalogEntries)
+            CatalogText = schemaSettlement.CatalogText
         };
     }
 

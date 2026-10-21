@@ -86,8 +86,10 @@ public static class HostingServiceCollectionExtensions
         services.AddSingleton<SessionToolSchemaResolver>();
         services.AddSingleton<ISessionToolSchemaResolver>(sp => sp.GetRequiredService<SessionToolSchemaResolver>());
         // 工具暴露裁剪子系统（组9/10/11）：策略 + 选择器 + 四级配置解析 + 发现态存储，由 resolver 单点消费
-        services.AddSingleton<IToolExposurePolicy, AllToolExposurePolicy>();
-        services.AddSingleton<IToolExposurePolicy, TieredToolExposurePolicy>();
+        // token 估算默认口径（TryAdd：能力包若提供更准实现则覆盖，全局仅一套）
+        services.TryAddSingleton<Seeing.TokenEstimation.ITokenCounter, Seeing.TokenEstimation.CharBasedTokenCounter>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolExposurePolicy, AllToolExposurePolicy>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolExposurePolicy, TieredToolExposurePolicy>());
         services.AddSingleton<ToolExposurePolicySelector>();
         services.AddSingleton<ToolExposureConfigResolver>();
         services.AddSingleton<IToolDiscoveryStore, SessionToolDiscoveryStore>();

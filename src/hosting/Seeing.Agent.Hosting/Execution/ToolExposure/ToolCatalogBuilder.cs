@@ -3,42 +3,24 @@ using Seeing.Agent.Abstractions.Tools;
 namespace Seeing.Agent.Hosting.Execution.ToolExposure;
 
 /// <summary>
-/// 工具暴露子系统共享常量。
+/// 工具元信息（目录构建器输入，纯数据）。
 /// </summary>
-internal static class ToolExposureConstants
-{
-    /// <summary>检索元工具 ID（Tiered 常驻内联；All 模式隐藏）。</summary>
-    internal const string SearchToolId = "tool_search";
-}
-
-/// <summary>
-/// 工具元信息三元组：目录构建器的输入（纯数据）。
-/// </summary>
-/// <param name="Id">工具 ID。</param>
-/// <param name="Namespace">命名空间（可空）。</param>
-/// <param name="Signature">可调用签名摘要。</param>
-/// <param name="Description">工具描述。</param>
-/// <param name="EstimatedTokens">估算 token 数。</param>
-/// <param name="Pinned">是否固定（不参与预算裁剪）。</param>
 public sealed record ToolMeta(
     string Id,
     string? Namespace,
-    string Signature,
     string Description,
-    int EstimatedTokens,
-    bool Pinned);
+    int EstimatedTokens);
 
 /// <summary>
-/// 工具目录构建器：纯静态，负责截断、分组、确定性排序与预算裁剪算法（渲染成 prompt 文本不在此处）。
+/// 工具目录构建器：纯静态，负责行截断、确定性排序、命名空间预算分组。
+/// 渲染成 prompt 文本不在此处（由 <see cref="ToolCatalogRenderer"/>）。
 /// </summary>
 public static class ToolCatalogBuilder
 {
     /// <summary>
-    /// 按命名空间分组构建目录条目：生成单行签名、截断摘要、按 (namespace, id) 确定性排序。
-    /// Mode 一律先给 Deferred，实际暴露模式由策略覆盖。
+    /// 构建全量目录条目：生成单行签名、描述截断到 lineMaxChars、按 (namespace, id) 确定性排序。
+    /// Mode 先置 Deferred，实际暴露模式由策略覆盖。
     /// </summary>
-    /// <param name="metas">工具元信息集合。</param>
-    /// <param name="lineMaxChars">单行摘要字符上限。</param>
     public static IReadOnlyList<ToolCatalogEntry> Build(IEnumerable<ToolMeta> metas, int lineMaxChars)
     {
         ArgumentNullException.ThrowIfNull(metas);
@@ -51,103 +33,72 @@ public static class ToolCatalogBuilder
     }
 
     /// <summary>
-    /// 预算内构建目录：先为每个命名空间保底 1 行，再按签名行长度升序轮转补全，
-    /// 直到预算耗尽；未完整展示的命名空间在其首行末尾标注 "(N tools, M shown)"。确定性。
+    /// 对 deferred 条目按命名空间分组并施加字符预算，产出显示分组：
+    /// <para>
+    /// 每个命名空间**恒出现在结果中**（含 0 展示），并带 TotalCount；预算不足时该组 Shown 为空。
+    /// 分配确定性：① 每命名空间先按最短签名保底 1 行；② 余量按签名行长度升序轮转补全。
+    /// </para>
+    /// 预算仅约束"展示哪些条目"，不影响可发现性（检索语料为全量 deferred，另由结算出口提供）。
     /// </summary>
-    /// <param name="all">全量工具元信息。</param>
-    /// <param name="catalogBudgetChars">目录整体字符预算。</param>
-    /// <param name="lineMaxChars">单行摘要字符上限。</param>
-    public static IReadOnlyList<ToolCatalogEntry> BuildWithinBudget(
-        IReadOnlyList<ToolMeta> all,
-        int catalogBudgetChars,
-        int lineMaxChars)
+    public static IReadOnlyList<ToolCatalogNamespace> BuildNamespaces(
+        IReadOnlyList<ToolCatalogEntry> deferred,
+        int catalogBudgetChars)
     {
-        ArgumentNullException.ThrowIfNull(all);
+        ArgumentNullException.ThrowIfNull(deferred);
 
-        var ordered = Build(all, lineMaxChars);
-        var groups = ordered
+        var groups = deferred
             .GroupBy(e => e.Namespace ?? string.Empty, StringComparer.Ordinal)
-            .Select(g => g.ToList())
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => g.OrderBy(e => e.Id, StringComparer.Ordinal).ToList())
             .ToList();
 
-        var descById = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var meta in all)
-        {
-            descById[meta.Id] = meta.Description ?? string.Empty;
-        }
-
         var selected = groups.Select(_ => new List<ToolCatalogEntry>()).ToList();
-        var queue = new List<(ToolCatalogEntry Entry, int Group)>();
-        var remaining = catalogBudgetChars;
-        var budgetExhausted = false;
+        var remaining = Math.Max(0, catalogBudgetChars);
 
-        // 阶段 1：每命名空间保底 1 行
-        for (var i = 0; i < groups.Count && !budgetExhausted; i++)
+        // 阶段 1：每命名空间保底 1 行（最短签名优先），放不下则该组本轮 0 展示（仍保留分组）。
+        var pending = new List<(int Group, int Index)>();
+        for (var i = 0; i < groups.Count; i++)
         {
-            var first = groups[i][0];
-            if (remaining >= first.Signature.Length)
+            var ordered = groups[i].OrderBy(e => e.Signature.Length).ThenBy(e => e.Id, StringComparer.Ordinal).ToList();
+            if (ordered.Count > 0 && remaining >= ordered[0].Signature.Length)
             {
-                selected[i].Add(first);
-                remaining -= first.Signature.Length;
+                selected[i].Add(ordered[0]);
+                remaining -= ordered[0].Signature.Length;
+                for (var j = 1; j < ordered.Count; j++)
+                    pending.Add((i, groups[i].IndexOf(ordered[j])));
             }
             else
             {
-                budgetExhausted = true;
-            }
-
-            for (var j = 1; j < groups[i].Count; j++)
-            {
-                queue.Add((groups[i][j], i));
+                for (var j = 0; j < ordered.Count; j++)
+                    pending.Add((i, groups[i].IndexOf(ordered[j])));
             }
         }
 
-        // 阶段 2：按签名行长度升序轮转补全（长度相等按 ns、id 次序，确定性）
-        if (!budgetExhausted)
+        // 阶段 2：余量按签名行长度升序轮转补全（等长按 ns、id 序，确定性）。
+        var queue = pending
+            .Select(p => (p.Group, Entry: groups[p.Group][p.Index]))
+            .Where(p => !selected[p.Group].Contains(p.Entry))
+            .OrderBy(x => x.Entry.Signature.Length)
+            .ThenBy(x => groups[x.Group][0].Namespace ?? string.Empty, StringComparer.Ordinal)
+            .ThenBy(x => x.Entry.Id, StringComparer.Ordinal)
+            .ToList();
+
+        foreach (var (group, entry) in queue)
         {
-            var pending = queue
-                .OrderBy(x => x.Entry.Signature.Length)
-                .ThenBy(x => groups[x.Group][0].Namespace ?? string.Empty, StringComparer.Ordinal)
-                .ThenBy(x => x.Entry.Id, StringComparer.Ordinal)
-                .ToList();
-
-            foreach (var (entry, group) in pending)
-            {
-                if (remaining < entry.Signature.Length)
-                {
-                    break;
-                }
-
-                selected[group].Add(entry);
-                remaining -= entry.Signature.Length;
-            }
+            if (remaining < entry.Signature.Length)
+                break;
+            selected[group].Add(entry);
+            remaining -= entry.Signature.Length;
         }
 
-        // 阶段 3：未完整展示的命名空间在其首行末尾追加计数标注
-        var result = new List<ToolCatalogEntry>();
+        // 各组展示条目恢复 id 序，保证渲染确定性。
+        var result = new List<ToolCatalogNamespace>(groups.Count);
         for (var i = 0; i < groups.Count; i++)
         {
-            var total = groups[i].Count;
-            var shown = selected[i].Count;
-            if (shown == 0)
-            {
-                continue;
-            }
-
-            if (shown < total)
-            {
-                var note = $" ({total} tools, {shown} shown)";
-                var first = selected[i][0];
-                var summary = Truncate(
-                    descById.TryGetValue(first.Id, out var desc) ? desc : first.Summary,
-                    Math.Max(0, lineMaxChars - note.Length)) + note;
-                selected[i][0] = first with
-                {
-                    Summary = summary,
-                    Signature = $"{first.Id}({summary})"
-                };
-            }
-
-            result.AddRange(selected[i]);
+            var shown = selected[i]
+                .OrderBy(e => e.Id, StringComparer.Ordinal)
+                .ToList();
+            result.Add(new ToolCatalogNamespace(groups[i][0].Namespace ?? string.Empty, groups[i].Count, shown));
         }
 
         return result;
@@ -162,17 +113,19 @@ public static class ToolCatalogBuilder
             $"{meta.Id}({summary})",
             summary,
             meta.EstimatedTokens,
-            meta.Pinned,
+            false,
             ToolExposureMode.Deferred);
     }
 
+    // 截断保证总长（含省略号）不超过 maxChars：预留 1 个字符给省略号。
     private static string Truncate(string text, int maxChars)
     {
         if (maxChars <= 0)
-        {
             return string.Empty;
-        }
-
-        return text.Length <= maxChars ? text : text[..maxChars] + "…";
+        if (text.Length <= maxChars)
+            return text;
+        if (maxChars == 1)
+            return "…";
+        return text[..(maxChars - 1)] + "…";
     }
 }

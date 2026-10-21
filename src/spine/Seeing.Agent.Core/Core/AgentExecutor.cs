@@ -582,7 +582,7 @@ public class AgentExecutor : IAgentExecutor
             };
             // 工具目录正文（执行链渲染，string-only 携带）经通用 Sections 槽交给 ToolCatalog 分节贡献者
             if (!string.IsNullOrWhiteSpace(context.CatalogText))
-                promptContext.Sections["tool-catalog"] = context.CatalogText;
+                promptContext.Sections[PromptSectionNames.ToolCatalog] = context.CatalogText;
 
             systemPrompt = await _promptBuilder.BuildAsync(promptContext, cancellationToken).ConfigureAwait(false);
             if (string.IsNullOrEmpty(systemPrompt))

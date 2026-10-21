@@ -44,7 +44,7 @@ public sealed class ToolSearchTool : ToolBase
     }
 
     /// <inheritdoc />
-    public override string Id => "tool_search";
+    public override string Id => Seeing.Agent.Abstractions.Tools.ToolIdConventions.SearchToolId;
 
     /// <inheritdoc />
     public override string Description =>

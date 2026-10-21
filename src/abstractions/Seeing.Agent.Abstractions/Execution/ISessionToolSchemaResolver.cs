@@ -47,7 +47,9 @@ public interface ISessionToolSchemaResolver
 public sealed record SessionToolSchemaResolution(
     IReadOnlyList<FunctionToolSchema> ToolSchemas,
     IReadOnlyList<string> SectionIds,
-    IReadOnlyList<ToolCatalogEntry> CatalogEntries = default!,
+    IReadOnlyList<ToolCatalogEntry> DeferredEntries = default!,
+    IReadOnlyList<ToolCatalogNamespace> CatalogNamespaces = default!,
+    string? CatalogText = null,
     int InlineToolCount = 0,
     int DeferredToolCount = 0,
     int EstimatedDefinitionTokens = 0,
@@ -55,5 +57,6 @@ public sealed record SessionToolSchemaResolution(
     ToolExposurePolicyMode ExposureMode = ToolExposurePolicyMode.Auto)
 {
     public static SessionToolSchemaResolution Empty { get; } =
-        new(Array.Empty<FunctionToolSchema>(), Array.Empty<string>(), Array.Empty<ToolCatalogEntry>());
+        new(Array.Empty<FunctionToolSchema>(), Array.Empty<string>(),
+            Array.Empty<ToolCatalogEntry>(), Array.Empty<ToolCatalogNamespace>());
 }

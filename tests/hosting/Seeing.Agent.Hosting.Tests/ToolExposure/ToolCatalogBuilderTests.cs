@@ -5,81 +5,77 @@ using Xunit;
 
 namespace Seeing.Agent.Hosting.Tests.ToolExposure;
 
+/// <summary>
+/// 目录构建器：行截断、确定性排序、命名空间预算分组（恒含每命名空间与总数、支持 0-shown）。
+/// </summary>
 public class ToolCatalogBuilderTests
 {
+    private static ToolMeta Meta(string id, string ns, string desc = "d", int tokens = 10) =>
+        new(id, ns, desc, tokens);
+
     [Fact]
-    public void ShouldRetainEveryNamespaceUnderBudget()
+    public void Build_ShouldTruncateDescriptionAtLimit()
     {
-        var metas = BuildSixtyToolsAcrossFiveNamespaces();
+        var longDesc = new string('x', 200);
+        var entries = ToolCatalogBuilder.Build([Meta("a", "ns", longDesc)], 20);
 
-        // 每行签名固定 13 字符（id 10 + "(d)"），预算 156 恰好容 12 行
-        var result = ToolCatalogBuilder.BuildWithinBudget(metas, 156, 200);
-
-        result.Should().HaveCount(12);
-        result.Select(e => e.Namespace).Distinct().Should().HaveCount(5);
-        foreach (var group in result.GroupBy(e => e.Namespace))
-        {
-            group.Should().NotBeEmpty();
-        }
-
-        var again = ToolCatalogBuilder.BuildWithinBudget(metas, 156, 200);
-        result.Should().BeEquivalentTo(again);
+        var summary = entries.Single().Summary;
+        summary.Should().HaveLength(20);       // 含省略号总长不超上限
+        summary.Should().EndWith("…");
     }
 
     [Fact]
-    public void ShouldTruncateDescriptionAtLimit()
+    public void Build_ShouldOrderDeterministically()
     {
-        var meta = new ToolMeta("t1", "ns", string.Empty, new string('x', 50), 10, false);
+        var metas = new[] { Meta("z", "b"), Meta("a", "b"), Meta("m", "a") };
 
-        var entry = ToolCatalogBuilder.Build(new[] { meta }, 10).Single();
+        var first = ToolCatalogBuilder.Build(metas, 50);
+        var second = ToolCatalogBuilder.Build(metas, 50);
 
-        entry.Summary.Should().Be(new string('x', 10) + "…");
-        entry.Signature.Should().Be($"t1({entry.Summary})");
-        entry.Mode.Should().Be(ToolExposureMode.Deferred);
+        first.Select(e => e.Id).Should().Equal("m", "a", "z"); // ns 先(a), 再 b 内 id 序 a,z
+        first.Should().BeEquivalentTo(second);
     }
 
     [Fact]
-    public void ShouldAnnotatePartiallyShownNamespaces()
+    public void BuildNamespaces_ShouldRetainEveryNamespaceWithTotal()
     {
-        var metas = BuildSixtyToolsAcrossFiveNamespaces();
-
-        var result = ToolCatalogBuilder.BuildWithinBudget(metas, 156, 200);
-
-        result.Should().OnlyContain(e => e.Mode == ToolExposureMode.Deferred);
-        foreach (var group in result.GroupBy(e => e.Namespace))
-        {
-            group.First().Summary.Should().Contain("12 tools");
-            group.First().Summary.Should().Contain("shown");
-        }
-    }
-
-    [Fact]
-    public void ShouldSortByNamespaceThenId()
-    {
-        var metas = new[]
-        {
-            new ToolMeta("z1", "zeta", string.Empty, "d", 1, false),
-            new ToolMeta("a2", "alpha", string.Empty, "d", 1, false),
-            new ToolMeta("a1", "alpha", string.Empty, "d", 1, false),
-            new ToolMeta("z0", "alpha", string.Empty, "d", 1, false)
-        };
-
-        var result = ToolCatalogBuilder.Build(metas, 100);
-
-        result.Select(e => e.Id).Should().Equal("a1", "a2", "z0", "z1");
-    }
-
-    private static List<ToolMeta> BuildSixtyToolsAcrossFiveNamespaces()
-    {
+        // 5 命名空间、各 12 工具，预算仅容约 12 行 → 每命名空间仍出现在分组中并带总数
         var metas = new List<ToolMeta>();
-        foreach (var ns in new[] { "ns0", "ns1", "ns2", "ns3", "ns4" })
-        {
+        for (var ns = 0; ns < 5; ns++)
             for (var i = 0; i < 12; i++)
-            {
-                metas.Add(new ToolMeta($"{ns}_tool{i:D2}", ns, string.Empty, "d", 10, false));
-            }
-        }
+                metas.Add(Meta($"t{ns}_{i}", $"ns{ns}"));
 
-        return metas;
+        var deferred = ToolCatalogBuilder.Build(metas, 30);
+        var groups = ToolCatalogBuilder.BuildNamespaces(deferred, catalogBudgetChars: 200);
+
+        groups.Should().HaveCount(5);
+        groups.Select(g => g.Namespace).Should().OnlyContain(s => s!.StartsWith("ns"));
+        groups.Should().OnlyContain(g => g.TotalCount == 12);
+    }
+
+    [Fact]
+    public void BuildNamespaces_ShouldShowNamespaceEvenWhenZeroFit()
+    {
+        // 预算 0：每命名空间恒出现且 0 展示（spec MUST：0-shown 仍列）
+        var metas = new[] { Meta("a", "x"), Meta("b", "y"), Meta("c", "z") };
+        var deferred = ToolCatalogBuilder.Build(metas, 30);
+
+        var groups = ToolCatalogBuilder.BuildNamespaces(deferred, catalogBudgetChars: 0);
+
+        groups.Should().HaveCount(3);
+        groups.Should().OnlyContain(g => g.Shown.Count == 0);
+        groups.Should().OnlyContain(g => g.TotalCount == 1);
+    }
+
+    [Fact]
+    public void BuildNamespaces_ShouldBeDeterministic()
+    {
+        var metas = new[] { Meta("a", "x", "alpha"), Meta("b", "x", "beta"), Meta("c", "y", "gamma") };
+        var deferred = ToolCatalogBuilder.Build(metas, 40);
+
+        var first = ToolCatalogBuilder.BuildNamespaces(deferred, 100);
+        var second = ToolCatalogBuilder.BuildNamespaces(deferred, 100);
+
+        first.Should().BeEquivalentTo(second);
     }
 }

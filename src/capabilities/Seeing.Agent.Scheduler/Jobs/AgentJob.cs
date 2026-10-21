@@ -326,8 +326,9 @@ public class AgentJob : IJob
         };
 
         // schema 单点纪律：直连执行必须携带会话级结算后的真实工具 schema，
-        // 否则 LLM 请求无 tools，模型只能靠文本「表演」工具调用
-        var toolSchemas = await ResolveToolSchemasAsync(_services, sessionId, agentDefinition, _logger, ct)
+        // 否则 LLM 请求无 tools，模型只能靠文本「表演」工具调用。
+        // 同源：目录正文随同一结算产出注入旁路 AgentContext，避免旁路只见裁剪后 schema 却无目录指引。
+        var resolution = await ResolveToolSchemasAsync(_services, sessionId, agentDefinition, _logger, ct)
             .ConfigureAwait(false);
 
         var context = new AgentContext
@@ -338,7 +339,8 @@ public class AgentJob : IJob
             WorkingDirectory = cwd,
             WorkspaceRoot = projectRoot,
             IsBackground = true,
-            ToolSchemas = toolSchemas,
+            ToolSchemas = resolution?.ToolSchemas,
+            CatalogText = resolution?.CatalogText,
             Metadata = metadata
         };
 
@@ -378,7 +380,7 @@ public class AgentJob : IJob
     /// schema 单点纪律（AgentJob / HeartbeatJob 共用）：直连 <see cref="IAgentExecutor"/> 的旁路执行
     /// 经 <see cref="ISessionToolSchemaResolver"/> 解析会话级工具 schema；未注册或解析失败时空集继续（不阻断任务）。
     /// </summary>
-    internal static async Task<IReadOnlyList<FunctionToolSchema>?> ResolveToolSchemasAsync(
+    internal static async Task<Seeing.Agent.Abstractions.Execution.SessionToolSchemaResolution?> ResolveToolSchemasAsync(
         IServiceProvider services,
         string sessionId,
         AgentDefinition agent,
@@ -396,8 +398,7 @@ public class AgentJob : IJob
 
         try
         {
-            var resolution = await resolver.ResolveAsync(sessionId, agent, cancellationToken).ConfigureAwait(false);
-            return resolution.ToolSchemas;
+            return await resolver.ResolveAsync(sessionId, agent, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

@@ -54,7 +54,7 @@ public class SessionToolSchemaResolverExposureTests
             .Should().BeEquivalentTo(["git_status", "read"]);
         // scenario=code：memory_search 未启用不可用；可用集 {git_status, read, current_time}
         resolution.DeferredToolCount.Should().Be(1);   // current_time
-        resolution.CatalogEntries.Select(e => e.Id)
+        resolution.DeferredEntries.Select(e => e.Id)
             .Should().BeEquivalentTo(["current_time"]);
         resolution.InlineToolCount.Should().Be(2);
     }
@@ -97,7 +97,7 @@ public class SessionToolSchemaResolverExposureTests
 
         resolution.ToolSchemas.Select(s => s.Function!.Name)
             .Should().Contain(["git_status", "read", "current_time"]);
-        resolution.CatalogEntries.Should().BeEmpty();
+        resolution.DeferredEntries.Should().BeEmpty();
         resolution.DeferredToolCount.Should().Be(0);
     }
 
@@ -153,6 +153,9 @@ public class SessionToolSchemaResolverExposureTests
 
     private static SessionToolSchemaResolver CreateResolver(IServiceProvider services) =>
         new(services, services.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(),
+            services.GetRequiredService<ToolExposureConfigResolver>(),
+            services.GetRequiredService<ToolExposurePolicySelector>(),
+            services.GetRequiredService<ITokenCounter>(),
             NullLogger<SessionToolSchemaResolver>.Instance);
 
     [Fact]
@@ -211,7 +214,10 @@ public class SessionToolSchemaResolverExposureTests
         var services = await BuildAsync(session, agent);
         var logger = new RecordingLogger<SessionToolSchemaResolver>();
         var resolver = new SessionToolSchemaResolver(
-            services, services.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(), logger);
+            services, services.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(),
+            services.GetRequiredService<ToolExposureConfigResolver>(),
+            services.GetRequiredService<ToolExposurePolicySelector>(),
+            services.GetRequiredService<ITokenCounter>(), logger);
 
         await resolver.ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
 

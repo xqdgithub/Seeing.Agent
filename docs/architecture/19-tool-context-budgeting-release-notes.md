@@ -50,6 +50,10 @@
 4. **`tool_search` 无专属配额**：连续调用计入既有 `MaxSteps`；`LoopDetector` 按 (tool,argsHash) 判定，检索参数各异不误触发。
 5. **`ToolSearchEvent.ExecutionId/LoopId` 暂空**：`ToolContext` 未携带二者，宿主接线（`AgentExecutor`）可后续补。
 6. **运行期降幅度量（spec 17.1–17.3）需实运验证**：51 内置工具场景 input token 降幅 ≥60%、50-MCP 仿真 ≥85% 属真实 LLM 会话基线对比，本环境不含 live provider，未产出数字，**不臆造**；由 `baseline.md` 流程在联调环境记录。自动化侧已用「前缀稳定 / 升级只一次不回退 / 目录不含权限 / full 硬上限3 / 分页 total-next」等确定性测试锁定行为。
+7. **检索语料为全量 deferred（不受显示预算裁剪）**：`tool_search` 经 `IToolSearchProvider` 取 resolver 的 `DeferredEntries`（全量），显示目录（`CatalogNamespaces`）另做命名空间预算裁剪且**每命名空间恒出现含总数、0 展示仍列出**。二者正交，预算只影响"展示哪些"，不影响"可发现哪些"。
+8. **目录 `tool_search` 指引条件化**：当本轮可用集不含 `tool_search`（如宿主未启用 `tool-discovery` 模块）时，目录正文不出现"先用 tool_search 检索"文案，避免指向不存在的工具。宿主若启用分层暴露应在能力集内挂载 `tool-discovery`。
+9. **配置容错不对称**：Agent 层 `Exposure` 为强类型枚举，其 JSON 绑定大小写敏感（写错值在配置反序列化期报错）；会话/场景/全局字符串层为忽略大小写 + 非法值回退不抛。字符串层承载者（`PolicyMode`）统一 ignoreCase；Agent 枚举层如需 JSON 大小写容错需全局配置 `JsonStringEnumConverter(ignoreCase)`（本次未改全局）。
+10. **MCP server/tool 名不得含 `__`**：id 归一 `mcp__{server}__{tool}` 的双下划线为分隔约定；若 server 或 tool 名本身含 `__`，`DeriveNamespace` 按首个 `__` 切分会归错命名空间。应由连接配置侧校验拒收含 `__` 的命名。
 
 ## 7. 回退
 

@@ -8,8 +8,8 @@ namespace Seeing.Agent.Hosting.Prompts;
 /// </summary>
 public sealed class ToolCatalogSectionContributor : IPromptSectionContributor
 {
-    /// <summary>目录正文在 <see cref="PromptContext.Sections"/> 中的键。</summary>
-    public const string CatalogSectionKey = "tool-catalog";
+    /// <summary>目录正文在 <see cref="PromptContext.Sections"/> 中的键（与 <see cref="PromptSectionNames.ToolCatalog"/> 同源）。</summary>
+    public const string CatalogSectionKey = PromptSectionNames.ToolCatalog;
 
     /// <inheritdoc />
     public string SectionName => CatalogSectionKey;

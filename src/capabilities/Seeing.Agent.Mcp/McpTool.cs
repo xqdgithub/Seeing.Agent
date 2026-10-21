@@ -15,8 +15,8 @@ public class McpTool : ITool
     private readonly JsonElement _parametersSchema;
     private readonly Func<string, Dictionary<string, object?>, CancellationToken, Task<McpToolResult>> _executeFunc;
 
-    /// <summary>MCP 工具 id 前缀。</summary>
-    public const string IdPrefix = "mcp__";
+    /// <summary>MCP 工具 id 前缀（统一来自 Abstractions 约定常量）。</summary>
+    public const string IdPrefix = ToolIdConventions.McpPrefix;
 
     /// <summary>模型可见 id，形式为 <c>mcp__{server}__{tool}</c>（可由双下划线唯一还原）。</summary>
     public string Id => BuildId(_serverName, _realName);
@@ -30,7 +30,7 @@ public class McpTool : ITool
 
     /// <summary>按 server 名与工具名构造统一 id；所有 id 生产点都须经此方法。</summary>
     public static string BuildId(string serverName, string toolName) =>
-        $"{IdPrefix}{serverName}__{toolName}";
+        $"{IdPrefix}{serverName}{ToolIdConventions.McpSeparator}{toolName}";
 
     /// <summary>工具标签（用于分类和过滤）</summary>
     public IReadOnlyList<string> Tags => Array.Empty<string>();
