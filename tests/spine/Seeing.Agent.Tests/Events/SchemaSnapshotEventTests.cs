@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Tools;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Events;
@@ -51,5 +52,26 @@ public class SchemaSnapshotEventTests
         evt.LoopId.Should().Be("loop-1");
         evt.Timestamp.Should().Be(timestamp);
         evt.Type.Should().Be(MessageEventType.SchemaSnapshot);
+    }
+
+    [Fact]
+    public void SchemaSnapshotEvent_ShouldCarryExposureCounts()
+    {
+        var evt = new SchemaSnapshotEvent
+        {
+            SessionId = "s1",
+            ExecutionId = "e1",
+            ExposureMode = ToolExposurePolicyMode.Tiered,
+            InlineToolCount = 12,
+            DeferredToolCount = 39,
+            EstimatedDefinitionTokens = 4400,
+            CatalogTokens = 800
+        };
+
+        evt.ExposureMode.Should().Be(ToolExposurePolicyMode.Tiered);
+        evt.InlineToolCount.Should().Be(12);
+        evt.DeferredToolCount.Should().Be(39);
+        evt.EstimatedDefinitionTokens.Should().Be(4400);
+        evt.CatalogTokens.Should().Be(800);
     }
 }

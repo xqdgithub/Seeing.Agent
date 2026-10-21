@@ -94,6 +94,15 @@ internal class ChatExecutionContext
     /// <summary>本轮延迟（进目录）的工具数。</summary>
     public int DeferredToolCount { get; init; }
 
+    /// <summary>本轮内联工具定义估算 token（与目录分列）。</summary>
+    public int EstimatedDefinitionTokens { get; init; }
+
+    /// <summary>本轮目录估算 token。</summary>
+    public int CatalogTokens { get; init; }
+
+    /// <summary>本轮生效的暴露策略模式（反映实际行为）。</summary>
+    public ToolExposurePolicyMode ExposureMode { get; init; } = ToolExposurePolicyMode.Auto;
+
     /// <summary>本轮目录正文（由 ToolCatalogRenderer 渲染；无延迟工具时为空，供 ToolCatalog 分节透传）。</summary>
     public string? CatalogText { get; init; }
 

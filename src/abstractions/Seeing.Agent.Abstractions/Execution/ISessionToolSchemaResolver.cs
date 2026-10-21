@@ -51,7 +51,8 @@ public sealed record SessionToolSchemaResolution(
     int InlineToolCount = 0,
     int DeferredToolCount = 0,
     int EstimatedDefinitionTokens = 0,
-    int CatalogTokens = 0)
+    int CatalogTokens = 0,
+    ToolExposurePolicyMode ExposureMode = ToolExposurePolicyMode.Auto)
 {
     public static SessionToolSchemaResolution Empty { get; } =
         new(Array.Empty<FunctionToolSchema>(), Array.Empty<string>(), Array.Empty<ToolCatalogEntry>());

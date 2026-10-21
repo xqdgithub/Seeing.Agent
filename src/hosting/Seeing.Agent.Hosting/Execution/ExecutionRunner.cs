@@ -247,7 +247,12 @@ internal sealed class ExecutionRunner : IExecutionRunner
                         .Select(s => s.Function.Name)
                         .ToArray()
                         ?? Array.Empty<string>(),
-                    SectionIds = context.SectionIds
+                    SectionIds = context.SectionIds,
+                    ExposureMode = context.ExposureMode,
+                    InlineToolCount = context.InlineToolCount,
+                    DeferredToolCount = context.DeferredToolCount,
+                    EstimatedDefinitionTokens = context.EstimatedDefinitionTokens,
+                    CatalogTokens = context.CatalogTokens
                 };
                 eventTracker.ApplyEvent(session, schemaSnapshot);
                 _eventPublisher.Publish(record.SessionId, schemaSnapshot);
@@ -468,6 +473,9 @@ internal sealed class ExecutionRunner : IExecutionRunner
             CatalogEntries = schemaSettlement.CatalogEntries,
             InlineToolCount = schemaSettlement.InlineToolCount,
             DeferredToolCount = schemaSettlement.DeferredToolCount,
+            EstimatedDefinitionTokens = schemaSettlement.EstimatedDefinitionTokens,
+            CatalogTokens = schemaSettlement.CatalogTokens,
+            ExposureMode = schemaSettlement.ExposureMode,
             CatalogText = ToolCatalogRenderer.Render(schemaSettlement.CatalogEntries)
         };
     }

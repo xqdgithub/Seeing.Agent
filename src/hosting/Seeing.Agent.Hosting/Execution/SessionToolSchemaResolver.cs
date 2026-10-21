@@ -27,7 +27,8 @@ internal sealed record SessionSchemaSettlement(
     int InlineToolCount,
     int DeferredToolCount,
     int EstimatedDefinitionTokens,
-    int CatalogTokens);
+    int CatalogTokens,
+    ToolExposurePolicyMode ExposureMode);
 
 /// <summary>
 /// 会话级工具 schema 解析（<see cref="ISessionToolSchemaResolver"/> 唯一实现）：
@@ -101,7 +102,8 @@ public sealed class SessionToolSchemaResolver : ISessionToolSchemaResolver
         s.InlineToolCount,
         s.DeferredToolCount,
         s.EstimatedDefinitionTokens,
-        s.CatalogTokens);
+        s.CatalogTokens,
+        s.ExposureMode);
 
     /// <summary>
     /// 会话级结算 + schema 唯一计算 + 暴露裁剪（本类私有核心，仅供两个公开端口重载调用）。
@@ -200,7 +202,7 @@ public sealed class SessionToolSchemaResolver : ISessionToolSchemaResolver
             var tokens = toolSchemas.Sum(s => counter.Estimate(JsonSerializer.Serialize(s)));
             return new SessionSchemaSettlement(
                 toolSchemas, sectionIds, Array.Empty<ToolCatalogEntry>(),
-                toolSchemas.Count, 0, tokens, 0);
+                toolSchemas.Count, 0, tokens, 0, ToolExposurePolicyMode.All);
         }
 
         var scenarioDef = scenarioName is not null && scenarioCatalog is not null
@@ -305,6 +307,11 @@ public sealed class SessionToolSchemaResolver : ISessionToolSchemaResolver
 
         var catalogTokens = catalogEntries.Sum(e => counter.Estimate(e.Signature));
 
+        _logger.LogDebug(
+            "工具暴露结算: session={SessionId}, mode={Mode}, inline={Inline}, deferred={Deferred}, schemaTokens={Schema}, catalogTokens={Catalog}",
+            session.Id, selectedMode, plan.InlineToolCount, plan.DeferredToolCount,
+            plan.EstimatedDefinitionTokens, catalogTokens);
+
         return new SessionSchemaSettlement(
             inlineSchemas,
             sectionIds,
@@ -312,7 +319,8 @@ public sealed class SessionToolSchemaResolver : ISessionToolSchemaResolver
             plan.InlineToolCount,
             plan.DeferredToolCount,
             plan.EstimatedDefinitionTokens,
-            catalogTokens);
+            catalogTokens,
+            selectedMode);
     }
 
     /// <summary>

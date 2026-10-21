@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -153,6 +154,38 @@ public class SessionToolSchemaResolverExposureTests
     private static SessionToolSchemaResolver CreateResolver(IServiceProvider services) =>
         new(services, services.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(),
             NullLogger<SessionToolSchemaResolver>.Instance);
+
+    [Fact]
+    public async Task ShouldLogExposureMetrics_WhenTieredActive()
+    {
+        var session = SessionData.Create(scenario: "code");
+        var agent = new AgentDefinition
+        {
+            Name = "build",
+            Runtime = AgentRuntime.Native,
+            Exposure = ToolExposurePolicyMode.Tiered
+        };
+        var services = await BuildAsync(session, agent);
+        var logger = new RecordingLogger<SessionToolSchemaResolver>();
+        var resolver = new SessionToolSchemaResolver(
+            services, services.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(), logger);
+
+        await resolver.ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
+
+        logger.DebugCount.Should().BeGreaterThan(0);
+    }
+
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public int DebugCount;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Debug) DebugCount++;
+        }
+    }
 
     private static async Task<IServiceProvider> BuildAsync(
         SessionData session,
