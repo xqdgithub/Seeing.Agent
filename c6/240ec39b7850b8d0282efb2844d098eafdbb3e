@@ -1,0 +1,48 @@
+src/primitives/Seeing.Session/Core/SessionData.cs
+  s_aee2e1d4d97549::t_a0043764c520e1 519-522
+  s_aee2e1d4d97549::t_cc668092407df6 205-218
+src/spine/Seeing.Agent.Core/Scenarios/ScenarioDefinition.cs
+  s_d2ac0946145870::t_f48bcc5e2c221c 6-9,15-16
+src/primitives/Seeing.Session/Management/SessionForker.cs
+  s_aee2e1d4d97549::t_dfc0e0ae5d370f 53-55
+src/spine/Seeing.Agent.Core/Scenarios/ScenarioConfig.cs
+  s_d2ac0946145870::t_2ff47084187132 87-89
+  s_d2ac0946145870::t_9332fe96088798 107-108
+  s_d2ac0946145870::t_e228303c32d537 119-124
+src/spine/Seeing.Agent.Core/Configuration/SeeingAgentOptions.cs
+  s_d2ac0946145870::t_97b91ccf91bb21 163-215
+  s_d2ac0946145870::t_35e82dab923042 106-108
+src/abstractions/Seeing.Agent.Abstractions/Agents/AgentDefinition.cs
+  s_d2ac0946145870::t_79cf16a059ac0a 96-108
+  s_d2ac0946145870::t_996a6061551f64 2
+tests/spine/Seeing.Agent.Tests/Sessions/SessionEnhancedTests.cs
+  s_aee2e1d4d97549::t_7f72074cfef9fe 103-120
+tests/primitives/Seeing.Session.Tests/SessionDataTests.cs
+  s_aee2e1d4d97549::t_357359c056e112 100-114
+src/primitives/Seeing.Session/Core/SessionScenarioOverride.cs
+  s_d2ac0946145870::t_ee56491afc9691 27-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "c6240ec39b7850b8d0282efb2844d098eafdbb3e",
+  "prompts": {},
+  "sessions": {
+    "s_aee2e1d4d97549": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea119ac7fffe5wiFf6HH7Nn86X",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_d2ac0946145870": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea119db93ffeC5VKhhitbow218",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
