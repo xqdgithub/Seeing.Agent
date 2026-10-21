@@ -11,11 +11,17 @@ public class HookManager : IHookManager
 {
     private readonly ConcurrentDictionary<string, List<object>> _handlers = new();
     private readonly ILogger<HookManager> _logger;
+    private long _version;
 
     /// <summary>
     /// 构造 Hook 管理器。
     /// </summary>
     public HookManager(ILogger<HookManager> logger) => _logger = logger;
+
+    /// <summary>
+    /// 处理器集合版本号，单调递增；注册/移除/清空 Hook 时递增，供 schema 缓存失效判定使用。
+    /// </summary>
+    public long Version => Interlocked.Read(ref _version);
 
     /// <summary>
     /// 注册单点 Hook 处理器，按其 Spec.Point 归组并按优先级排序。
@@ -24,6 +30,7 @@ public class HookManager : IHookManager
     {
         if (handler == null) { _logger.LogWarning("尝试注册空 Handler"); return; }
         AddHandler(handler.Spec.Point, handler);
+        Interlocked.Increment(ref _version);
         _logger.LogDebug("注册 Handler: {Point}, Priority={Priority}", handler.Spec.Point, handler.Priority);
     }
 
@@ -33,7 +40,9 @@ public class HookManager : IHookManager
     public void RegisterMulti(IMultiHookHandler handler)
     {
         if (handler == null) { _logger.LogWarning("尝试注册空多点 Handler"); return; }
+
         foreach (var spec in handler.Specs) AddHandler(spec.Point, handler);
+        if (handler.Specs.Count > 0) Interlocked.Increment(ref _version);
         _logger.LogDebug("注册多点 Handler: Points={Count}", handler.Specs.Count);
     }
 
@@ -43,7 +52,10 @@ public class HookManager : IHookManager
     public bool Remove(IHookHandler handler)
     {
         if (handler == null) return false;
-        return RemoveHandler(handler.Spec.Point, handler);
+
+        var removed = RemoveHandler(handler.Spec.Point, handler);
+        if (removed) Interlocked.Increment(ref _version);
+        return removed;
     }
 
     /// <summary>
@@ -57,6 +69,7 @@ public class HookManager : IHookManager
         foreach (var spec in handler.Specs)
             removed |= RemoveHandler(spec.Point, handler);
 
+        if (removed) Interlocked.Increment(ref _version);
         return removed;
     }
 
@@ -66,8 +79,11 @@ public class HookManager : IHookManager
     public bool Clear(HookSpec spec)
     {
         var removed = _handlers.TryRemove(spec.Point, out _);
-        if (removed) _logger.LogDebug("清除 Hook 点: {Point}", spec.Point);
-        return removed;
+        if (!removed) return false;
+
+        Interlocked.Increment(ref _version);
+        _logger.LogDebug("清除 Hook 点: {Point}", spec.Point);
+        return true;
     }
 
     /// <summary>

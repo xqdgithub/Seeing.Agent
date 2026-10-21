@@ -108,20 +108,32 @@ public class MemoryModuleHookLifecycleTests
     private sealed class RecordingHookManager : IHookManager
     {
         private readonly Dictionary<string, List<object>> _handlers = new();
+        private long _version;
 
-        public void Register(IHookHandler handler) => Add(handler.Spec.Point, handler);
+        /// <inheritdoc />
+        public long Version => Interlocked.Read(ref _version);
+
+        public void Register(IHookHandler handler)
+        {
+            Add(handler.Spec.Point, handler);
+            Interlocked.Increment(ref _version);
+        }
 
         public void RegisterMulti(IMultiHookHandler handler)
         {
             foreach (var spec in handler.Specs)
                 Add(spec.Point, handler);
+            Interlocked.Increment(ref _version);
         }
 
         public bool Remove(IHookHandler handler)
         {
             if (!_handlers.TryGetValue(handler.Spec.Point, out var list))
                 return false;
-            return list.Remove(handler);
+            if (!list.Remove(handler))
+                return false;
+            Interlocked.Increment(ref _version);
+            return true;
         }
 
         public bool Remove(IMultiHookHandler handler)
@@ -132,10 +144,18 @@ public class MemoryModuleHookLifecycleTests
                 if (_handlers.TryGetValue(spec.Point, out var list))
                     removed |= list.Remove(handler);
             }
+            if (removed)
+                Interlocked.Increment(ref _version);
             return removed;
         }
 
-        public bool Clear(HookSpec spec) => _handlers.Remove(spec.Point);
+        public bool Clear(HookSpec spec)
+        {
+            if (!_handlers.Remove(spec.Point))
+                return false;
+            Interlocked.Increment(ref _version);
+            return true;
+        }
 
         public int Count(HookSpec spec) => _handlers.TryGetValue(spec.Point, out var list) ? list.Count : 0;
 

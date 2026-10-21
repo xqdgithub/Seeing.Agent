@@ -116,5 +116,86 @@ namespace Seeing.Agent.Tests.Hooks
 
             _manager.Count(HookRegistry.ToolExecuteBefore).Should().Be(0);
         }
+
+        [Fact]
+        public void Version_ShouldIncreaseOnRegister()
+        {
+            var handler = new Mock<IHookHandler>();
+            handler.Setup(h => h.Spec).Returns(HookRegistry.ToolExecuteBefore);
+
+            var before = _manager.Version;
+            _manager.Register(handler.Object);
+
+            _manager.Version.Should().BeGreaterThan(before);
+        }
+
+        [Fact]
+        public void Version_ShouldIncreaseOnRegisterMulti()
+        {
+            var handler = new Mock<IMultiHookHandler>();
+            handler.Setup(h => h.Specs).Returns(new[] { HookRegistry.ToolDefinition, HookRegistry.ToolBeforeRegister });
+
+            var before = _manager.Version;
+            _manager.RegisterMulti(handler.Object);
+
+            _manager.Version.Should().BeGreaterThan(before);
+        }
+
+        [Fact]
+        public void Version_ShouldIncreaseOnRemove()
+        {
+            var handler = new Mock<IHookHandler>();
+            handler.Setup(h => h.Spec).Returns(HookRegistry.ToolExecuteBefore);
+            _manager.Register(handler.Object);
+
+            var before = _manager.Version;
+            _manager.Remove(handler.Object).Should().BeTrue();
+
+            _manager.Version.Should().BeGreaterThan(before);
+        }
+
+        [Fact]
+        public void Version_ShouldNotIncreaseOnFailedRemove()
+        {
+            var handler = new Mock<IHookHandler>();
+            handler.Setup(h => h.Spec).Returns(HookRegistry.ToolExecuteBefore);
+
+            var before = _manager.Version;
+            _manager.Remove(handler.Object).Should().BeFalse();
+
+            _manager.Version.Should().Be(before);
+        }
+
+        [Fact]
+        public void Version_ShouldIncreaseOnClear()
+        {
+            var handler = new Mock<IHookHandler>();
+            handler.Setup(h => h.Spec).Returns(HookRegistry.ToolDefinition);
+            _manager.Register(handler.Object);
+
+            var before = _manager.Version;
+            _manager.Clear(HookRegistry.ToolDefinition).Should().BeTrue();
+
+            _manager.Version.Should().BeGreaterThan(before);
+        }
+
+        [Fact]
+        public void Version_ShouldBeMonotonicallyIncreasing()
+        {
+            var handler = new Mock<IHookHandler>();
+            handler.Setup(h => h.Spec).Returns(HookRegistry.ToolDefinition);
+
+            var v0 = _manager.Version;
+            _manager.Register(handler.Object);
+            var v1 = _manager.Version;
+            _manager.Remove(handler.Object);
+            var v2 = _manager.Version;
+            _manager.Clear(HookRegistry.ToolDefinition);
+            var v3 = _manager.Version;
+
+            v1.Should().BeGreaterThan(v0);
+            v2.Should().BeGreaterThan(v1);
+            v3.Should().BeGreaterThan(v2);
+        }
     }
 }
