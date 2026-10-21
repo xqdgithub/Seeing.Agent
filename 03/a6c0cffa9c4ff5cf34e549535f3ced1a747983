@@ -1,0 +1,99 @@
+tests/capabilities/Seeing.Agent.Mcp.Tests/McpModuleLifecycleTests.cs
+  s_03cbf089d2f995::t_e2b46276ac5bdf 52
+src/capabilities/Seeing.Agent.Mcp/Management/McpDuplicateServerException.cs
+  s_03cbf089d2f995::t_f024191985e07c 1-18
+src/capabilities/Seeing.Agent.Mcp/Management/IMcpToolRegistry.cs
+  s_03cbf089d2f995::t_6a9871c9ed1304 14-18
+  s_03cbf089d2f995::t_4cf74ae1cbef71 13,19-21,37,40,44
+  s_03cbf089d2f995::t_6629b7ffafe799 29-34
+  s_03cbf089d2f995::t_ef5f8bb9e380d2 8-10
+  s_03cbf089d2f995::t_dfcc02a042f0ec 22-28
+  s_03cbf089d2f995::t_1c28233d958f9c 35,38
+tests/capabilities/Seeing.Agent.Mcp.Tests/Seeing.Agent.Mcp.Tests.csproj
+  s_03cbf089d2f995::t_6a93889e611050 32
+tests/capabilities/Seeing.Agent.Mcp.Tests/ToolsCommandsMcpTests.cs
+  s_03cbf089d2f995::t_50098d61b4fa9d 71-77
+  s_03cbf089d2f995::t_803cd5c10f8804 2
+  s_03cbf089d2f995::t_4b5ac88d5060d3 1,3-70,79-85,87-93
+  s_03cbf089d2f995::t_4db39ed4686ca2 78,86
+tests/capabilities/Seeing.Agent.Mcp.Tests/McpToolIdTests.cs
+  s_03cbf089d2f995::t_63ae8f10d5d735 1-66
+src/capabilities/Seeing.Agent.Mcp/Management/McpConnectionCoordinator.cs
+  s_03cbf089d2f995::t_c43f08bed0658b 144-145
+  s_03cbf089d2f995::t_f308d4e636072e 222
+  s_03cbf089d2f995::t_9d5ca52abcb3ff 220
+  s_03cbf089d2f995::t_eb9d7217e44deb 588
+  s_03cbf089d2f995::t_81fc27b5f92df2 269-271
+  s_03cbf089d2f995::t_546416e01efd26 221
+  s_03cbf089d2f995::t_2b7cbfcd0d1d27 592-594
+  s_03cbf089d2f995::t_f42aa6d2499dae 168,175
+  s_03cbf089d2f995::t_a08d589ce8e4e5 152-154
+  s_03cbf089d2f995::t_0754e41d2219f0 218-219,223-228
+src/capabilities/Seeing.Agent.Mcp/McpTool.cs
+  s_03cbf089d2f995::t_9d214227faa741 18-26,31-33
+src/capabilities/Seeing.Agent.Mcp/Management/McpToolRegistry.cs
+  s_03cbf089d2f995::t_e4bafc78115595 45
+  s_03cbf089d2f995::t_e465244502d7d8 19-20,23-24
+  s_03cbf089d2f995::t_d099717070cede 68,118-123
+  s_03cbf089d2f995::t_e31cf9b1a1eae1 204
+  s_03cbf089d2f995::t_1893f40b65ea28 21-22
+  s_1ea8d9f04df9d9::t_59a2cfedf96d28 67,82-84,87
+  s_03cbf089d2f995::t_6491b81f5439be 107
+  s_03cbf089d2f995::t_a4b3592781c3a0 151
+  s_03cbf089d2f995::t_e29c7185bd0cf5 263-265
+  s_03cbf089d2f995::t_25f27f1d7808ae 247
+  s_03cbf089d2f995::t_6867e47e7338d2 266-282
+  s_03cbf089d2f995::t_957299e849defc 283,285
+  s_03cbf089d2f995::t_f480c2524fe598 284
+  s_03cbf089d2f995::t_803f9e25ce4e4e 66
+  s_03cbf089d2f995::t_d05f850f11b602 71
+  s_1ea8d9f04df9d9::t_34ce3e49839749 105-106,109-117,124-127
+  s_03cbf089d2f995::t_c93a8319effccf 174-175
+  s_03cbf089d2f995::t_70c2cc45253543 290
+  s_03cbf089d2f995::t_8e3801a28432d3 243,248-262,286-289,291-292
+  s_afe20cd186ffdd::t_db653de287746b 86
+  s_03cbf089d2f995::t_cda775cb219bc3 108,128-129
+  s_03cbf089d2f995::t_7be713e0abbfcd 72
+tests/capabilities/Seeing.Agent.Mcp.Tests/McpToolRegistryTests.cs
+  s_afe20cd186ffdd::t_f52148a9e3c2e6 127,130-139,145-147
+  s_03cbf089d2f995::t_a9bbb410d659c8 1-5,7-125,148-168
+  s_1ea8d9f04df9d9::t_95babc4c529434 126,128-129,140-144
+  s_03cbf089d2f995::t_4b093fce56614c 6
+src/hosting/Seeing.Agent.Hosting/Commands/ToolsCommands.cs
+  s_03cbf089d2f995::t_6c6370d672ac96 14-16,24-26
+  s_03cbf089d2f995::t_515cf2457a66b2 46
+src/capabilities/Seeing.Agent.Mcp/McpModule.cs
+  s_03cbf089d2f995::t_19a5c1439f62e3 239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "03a6c0cffa9c4ff5cf34e549535f3ced1a747983",
+  "prompts": {},
+  "sessions": {
+    "s_03cbf089d2f995": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea1b2b7b3ffePNQXVZNAmFoK0p",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_1ea8d9f04df9d9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea33351c3ffehsFT7BcthOlXiQ",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_afe20cd186ffdd": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea16c9512ffeu1PJaPvkKqxxw5",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
