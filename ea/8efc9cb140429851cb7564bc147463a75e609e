@@ -1,0 +1,38 @@
+src/spine/Seeing.Agent.Core/Core/Hooks/HookManager.cs
+  s_e4189a88170e8f::t_f446457bedd7b1 45
+  s_e4189a88170e8f::t_80b5efba0872af 14,21-25,33,43,55-58,72,82-86
+src/abstractions/Seeing.Agent.Abstractions/Hooks/IHookManager.cs
+  s_1ea8d9f04df9d9::t_77c3f3dca522eb 11
+  s_e4189a88170e8f::t_d59092c82732a9 8,10
+  s_e4189a88170e8f::t_6fad8a86440d4a 5-7,12
+  s_1ea8d9f04df9d9::t_22f5019cebb3a1 9
+tests/spine/Seeing.Agent.Tests/Hooks/HookManagerTests.cs
+  s_e4189a88170e8f::t_2a6d91fad837a8 119-199
+tests/capabilities/Seeing.Agent.Memory.Tests/Integration/MemoryModuleHookLifecycleTests.cs
+  s_1ea8d9f04df9d9::t_dfa15d6ada7b84 116-120,126,133-136,147-148,152-158
+  s_1ea8d9f04df9d9::t_4646398ebecab6 111,113-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "ea8efc9cb140429851cb7564bc147463a75e609e",
+  "prompts": {},
+  "sessions": {
+    "s_1ea8d9f04df9d9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea33351c3ffehsFT7BcthOlXiQ",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_e4189a88170e8f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea1b2d475ffe64URVqkdKW0bhC",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
