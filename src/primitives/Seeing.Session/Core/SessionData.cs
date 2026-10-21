@@ -202,6 +202,20 @@ namespace Seeing.Session.Core
         /// </summary>
         public int? CachedCatalogTokens { get; set; }
 
+        // === 会话级工具发现态 / 曝光升级态（执行链结算产出） ===
+        /// <summary>
+        /// 会话已发现的工具 ID 集（按发现顺序追加）。
+        /// <para>append-only 单调增长：执行失败不回收，仅在工具消失时由 Prune 裁剪；
+        /// <see cref="ClearMessages"/> 不清除（清消息不抹发现态）。</para>
+        /// </summary>
+        public List<string> DiscoveredTools { get; set; } = new();
+
+        /// <summary>
+        /// 曝光升级粘性标记（单调：一旦升级为全量曝光不再回退）。
+        /// <para><see cref="ClearMessages"/> 不清除。</para>
+        /// </summary>
+        public bool ExposureEscalated { get; set; }
+
         // === 向后兼容字段（Deprecated） ===
 
         public Dictionary<string, string> State { get; set; } = new Dictionary<string, string>();
@@ -502,7 +516,10 @@ namespace Seeing.Session.Core
                 CachedUsageUpdatedAt = CachedUsageUpdatedAt,
                 // 工具定义/目录 Token 估算缓存（同族，随 Clone 继承）
                 CachedSchemaTokens = CachedSchemaTokens,
-                CachedCatalogTokens = CachedCatalogTokens
+                CachedCatalogTokens = CachedCatalogTokens,
+                // 会话级发现态/升级态：随 Clone 继承（列表复制新容器，避免共享变更）
+                DiscoveredTools = new List<string>(DiscoveredTools),
+                ExposureEscalated = ExposureEscalated
             };
         }
 

@@ -84,7 +84,9 @@ public sealed class ScenarioConfig
             Modules: modules,
             DefaultAgent: string.IsNullOrWhiteSpace(DefaultAgent) ? "general" : DefaultAgent.Trim(),
             Seams: seams,
-            ToolsDisabled: disabled.ToArray());
+            ToolsDisabled: disabled.ToArray(),
+            // 透传场景级模式字符串（不解析）；null 表示未覆盖。
+            PolicyMode: string.IsNullOrWhiteSpace(Tools?.PolicyMode) ? null : Tools!.PolicyMode!.Trim());
     }
 
     /// <summary>从定义创建可写配置副本。</summary>
@@ -102,6 +104,8 @@ public sealed class ScenarioConfig
             Tools = new ScenarioToolsConfig
             {
                 Disabled = definition.ToolsDisabled.ToList(),
+                // 从定义回读场景级模式字符串（不解析）。
+                PolicyMode = definition.PolicyMode,
             },
         };
     }
@@ -112,4 +116,10 @@ public sealed class ScenarioToolsConfig
 {
     /// <summary>需禁用的工具 ID 列表。</summary>
     public List<string> Disabled { get; set; } = [];
+
+    /// <summary>
+    /// 工具暴露策略模式（场景级；四级优先级第三层）。字符串承载（不依赖 Abstractions 枚举），
+    /// null = 未覆盖；透传到 <see cref="ScenarioDefinition.PolicyMode"/>，解析推迟到读取处。
+    /// </summary>
+    public string? PolicyMode { get; set; }
 }

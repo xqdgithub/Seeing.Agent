@@ -1,4 +1,5 @@
 ﻿using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Abstractions.Agents;
@@ -91,6 +92,19 @@ public class AgentDefinition
 
     /// <summary>允许的子代理</summary>
     public List<string> AllowedAgents { get; set; } = new();
+
+    // === 工具暴露策略覆盖（四级优先级中的 Agent 层；null = 不覆盖，回退场景/全局）===
+
+    /// <summary>
+    /// 工具暴露策略模式覆盖（Agent 层直接用枚举，Abstractions 已定义该枚举）。
+    /// null = 未覆盖，交由场景/全局层解析。
+    /// </summary>
+    public ToolExposurePolicyMode? Exposure { get; set; }
+
+    /// <summary>
+    /// 钉选工具 id 覆盖（Agent 层）。null = 未覆盖，回退全局 <c>Tools.Exposure.PinnedTools</c>。
+    /// </summary>
+    public List<string>? PinnedTools { get; set; }
 
     // === 执行配置 ===
 

@@ -24,4 +24,11 @@ public sealed class SessionToolsOverride
 {
     /// <summary>禁用的工具 id。</summary>
     public List<string> Disabled { get; set; } = [];
+
+    /// <summary>
+    /// 工具暴露策略模式覆盖（会话级；四级优先级最高层）。
+    /// 以字符串承载（原语层不依赖 Abstractions 枚举）：<c>All</c>/<c>Auto</c>/<c>Tiered</c>，
+    /// 大小写不敏感；null = 未覆盖。解析推迟到读取处，非法值记 Warning 后回退下一级。
+    /// </summary>
+    public string? PolicyMode { get; set; }
 }

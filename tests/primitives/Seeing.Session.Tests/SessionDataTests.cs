@@ -97,6 +97,22 @@ namespace Seeing.Session.Tests
         }
 
         [Fact]
+        public void ClearMessages_ShouldKeepDiscoveryState()
+        {
+            // 清会话消息不应抹掉发现态/升级态（与 token 缓存族语义相反）
+            var data = SessionData.Create();
+            data.AddMessage(SessionMessage.UserMessage("One"));
+            data.DiscoveredTools.AddRange(new[] { "tool_a", "tool_b" });
+            data.ExposureEscalated = true;
+
+            data.ClearMessages();
+
+            data.Messages.Should().BeEmpty();
+            data.DiscoveredTools.Should().Equal("tool_a", "tool_b");
+            data.ExposureEscalated.Should().BeTrue();
+        }
+
+        [Fact]
         public void Clone_ShouldInheritSchemaTokenCache()
         {
             // Arrange

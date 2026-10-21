@@ -103,6 +103,9 @@ namespace Seeing.Agent.Core.Configuration
 
         /// <summary>会话标题自动生成配置</summary>
         public TitleGenerationOptions TitleGeneration { get; set; } = new();
+
+        /// <summary>工具子系统全局配置（暴露策略等；被会话/Agent/场景逐级覆盖）</summary>
+        public ToolOptions Tools { get; set; } = new();
     }
 
     /// <summary>
@@ -156,5 +159,58 @@ namespace Seeing.Agent.Core.Configuration
 
         /// <summary>预览尾部字符数</summary>
         public int PreviewTailChars { get; set; } = 2 * 1024;
+    }
+
+    /// <summary>
+    /// 工具子系统全局选项（seeing.json <c>Tools</c> 节）。
+    /// </summary>
+    public sealed class ToolOptions
+    {
+        /// <summary>工具暴露策略全局默认（被会话/Agent/场景逐级覆盖）</summary>
+        public ToolExposureOptions Exposure { get; set; } = new();
+    }
+
+    /// <summary>
+    /// 工具暴露策略选项（seeing.json <c>Tools.Exposure</c> 节）。
+    /// <para>
+    /// 本层以 <see cref="PolicyMode"/> 字符串承载模式，避免配置层耦合 Abstractions 枚举；
+    /// 解析推迟到读取处（<c>ToolExposureConfigResolver</c>），非法值记 Warning 后回退下一级。
+    /// 目录预算以<b>字符</b>计。
+    /// </para>
+    /// </summary>
+    public sealed class ToolExposureOptions
+    {
+        /// <summary>
+        /// 暴露策略模式（字符串，供 ConfigSchema 生成与跨层统一解析）：
+        /// <c>All</c>/<c>Auto</c>/<c>Tiered</c>（大小写不敏感）。全局层给确定默认值 <c>Auto</c>。
+        /// </summary>
+        public string? PolicyMode { get; set; } = "Auto";
+
+        /// <summary>钉选工具 id 列表（Tiered 层级优先内联）。</summary>
+        public List<string> PinnedTools { get; set; } = [];
+
+        /// <summary>目录预算（字符）：内联工具目录的字符上限。</summary>
+        public int CatalogBudgetChars { get; set; } = 2000;
+
+        /// <summary>目录单条目最大字符数。</summary>
+        public int CatalogLineMaxChars { get; set; } = 120;
+
+        /// <summary>升级阈值：可用工具数超过此值触发降档（All→Auto 类启发）。</summary>
+        public int EscalateToolCount { get; set; } = 30;
+
+        /// <summary>升级阈值：schema token 估计超过此值触发降档。</summary>
+        public int EscalateSchemaTokens { get; set; } = 8000;
+
+        /// <summary>搜索详情模式：<c>summary</c>/<c>full</c>。</summary>
+        public string SearchDetail { get; set; } = "summary";
+
+        /// <summary>搜索默认返回条数。</summary>
+        public int SearchDefaultLimit { get; set; } = 10;
+
+        /// <summary>搜索最大返回条数。</summary>
+        public int SearchMaxLimit { get; set; } = 30;
+
+        /// <summary>full 详情搜索最大返回条数。</summary>
+        public int SearchFullMaxLimit { get; set; } = 3;
     }
 }

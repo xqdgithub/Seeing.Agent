@@ -100,6 +100,24 @@ public class SessionForkerTests
             "fork 复制消息应改写归属为新会话 Id，避免消息大屏按 SessionId 分组时 fork 会话丢失消息");
     }
 
+    [Fact]
+    public async Task Fork_ShouldInheritDiscoveryAndEscalation()
+    {
+        // Arrange：源会话带发现态与升级标记
+        var (manager, forker) = CreateForker();
+        var original = manager.Create();
+        original.DiscoveredTools.AddRange(new[] { "a", "b" });
+        original.ExposureEscalated = true;
+
+        // Act
+        var forked = await forker.ForkAsync(original.Id, ct: TestContext.Current.CancellationToken);
+
+        // Assert：fork 继承发现态（复制新列表）与升级标记，且与源列表独立
+        forked.DiscoveredTools.Should().Equal("a", "b");
+        forked.ExposureEscalated.Should().BeTrue();
+        forked.DiscoveredTools.Should().NotBeSameAs(original.DiscoveredTools);
+    }
+
     private static (SessionManager, SessionForker) CreateForker()
     {
         var logger = new Mock<ILogger<SessionManager>>();

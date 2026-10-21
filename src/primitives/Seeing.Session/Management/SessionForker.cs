@@ -50,6 +50,9 @@ namespace Seeing.Session.Management
             forkedSession.SelectedModel = sourceSession.SelectedModel;
             forkedSession.SelectedThinkingEffort = sourceSession.SelectedThinkingEffort;
             forkedSession.ScenarioOverride = CloneScenarioOverride(sourceSession.ScenarioOverride);
+            // 发现态/升级态随分支继承：不加则 fork 后静默丢失
+            forkedSession.DiscoveredTools = new List<string>(sourceSession.DiscoveredTools);
+            forkedSession.ExposureEscalated = sourceSession.ExposureEscalated;
             CopyInstructionFingerprints(sourceSession, forkedSession);
 
             foreach (var msg in sourceSession.Messages)
