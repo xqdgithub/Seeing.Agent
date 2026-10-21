@@ -1,0 +1,45 @@
+tests/spine/Seeing.Agent.Tests/App/Execution/ExecutionRunnerResolverInjectionTests.cs
+  s_1ea8d9f04df9d9::t_2dca3f2d5eb848 15,21
+  s_1ea8d9f04df9d9::t_aa6ce2ef003e4f 1-11,16,18-20,22-143,146-177
+  s_1ea8d9f04df9d9::t_48aad87a33ed51 12-14,17
+  s_1ea8d9f04df9d9::t_c712683347d4b0 144-145
+src/abstractions/Seeing.Agent.Abstractions/Execution/ISessionToolSchemaResolver.cs
+  s_1ea8d9f04df9d9::t_2b29af8f92fb8f 3,31-40
+tests/spine/Seeing.Agent.Tests/App/ExecutionRunnerInstructionTests.cs
+  s_1ea8d9f04df9d9::t_86d2fe1c6938b4 199-200
+src/hosting/Seeing.Agent.Hosting/Execution/ExecutionRunner.cs
+  s_1ea8d9f04df9d9::t_f0466e11e89ad9 60,69,77-79
+  s_1ea8d9f04df9d9::t_734f8f7f749f63 439-441
+src/hosting/Seeing.Agent.Hosting/Execution/SessionToolSchemaResolver.cs
+  s_1ea8d9f04df9d9::t_b3a0f84ff88efd 71-86,88,91
+tests/spine/Seeing.Agent.Tests/App/ExecutionRunnerPermissionAuthorizerTests.cs
+  s_1ea8d9f04df9d9::t_d98bc1d82c2ae7 79-80
+tests/spine/Seeing.Agent.Tests/App/Execution/SchemaSnapshotExecutionTests.cs
+  s_1ea8d9f04df9d9::t_42a1e2b19ef272 254-257
+tests/spine/Seeing.Agent.Tests/Invariants/SchemaScenarioTests.cs
+  s_1ea8d9f04df9d9::t_681bd4d879b0ea 463-466
+tests/spine/Seeing.Agent.Tests/App/Execution/ExecutionRunnerCommandShortCircuitTests.cs
+  s_1ea8d9f04df9d9::t_ed9d8f84ccbd52 378-379
+tests/spine/Seeing.Agent.Tests/StubSessionToolSchemaResolver.cs
+  s_1ea8d9f04df9d9::t_7980ccae86e03a 1-20
+docs/architecture/18-gateway-live-subscription-and-schema-resolver-release-notes.md
+  s_1ea8d9f04df9d9::t_1e6802f6ca0935 65,67-69
+tests/spine/Seeing.Agent.Tests/App/Execution/ExecutionRunnerCompactionTests.cs
+  s_1ea8d9f04df9d9::t_c32a244cc35473 187-188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "3c62bc7b69e8703ee407cf376549cb7d36fc3e04",
+  "prompts": {},
+  "sessions": {
+    "s_1ea8d9f04df9d9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea33351c3ffehsFT7BcthOlXiQ",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
