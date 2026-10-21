@@ -7,11 +7,13 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Runtime;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Commands.Discovery;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Hosting.Commands;
 using Seeing.Agent.Hosting.Commands.BuiltIn;
 using Seeing.Agent.Hosting.Execution;
+using Seeing.Agent.Hosting.Execution.ToolExposure;
 using Seeing.Agent.Hosting.Tools;
 using Seeing.Session.Core;
 
@@ -83,6 +85,12 @@ public static class HostingServiceCollectionExtensions
         // 会话级 schema 解析（schema 单点纪律共享出口）：主执行链与 Scheduler 旁路执行共用同一结算
         services.AddSingleton<SessionToolSchemaResolver>();
         services.AddSingleton<ISessionToolSchemaResolver>(sp => sp.GetRequiredService<SessionToolSchemaResolver>());
+        // 工具暴露裁剪子系统（组9/10/11）：策略 + 选择器 + 四级配置解析 + 发现态存储，由 resolver 单点消费
+        services.AddSingleton<IToolExposurePolicy, AllToolExposurePolicy>();
+        services.AddSingleton<IToolExposurePolicy, TieredToolExposurePolicy>();
+        services.AddSingleton<ToolExposurePolicySelector>();
+        services.AddSingleton<ToolExposureConfigResolver>();
+        services.AddSingleton<IToolDiscoveryStore, SessionToolDiscoveryStore>();
         services.AddSingleton<SessionRuntime>(sp => new SessionRuntime(
             sp.GetRequiredService<IExecutionRunner>(),
             sp.GetRequiredService<IExecutionEventPublisher>(),

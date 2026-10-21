@@ -5,6 +5,11 @@ using Xunit;
 
 namespace Seeing.Agent.Hosting.Tests.ToolExposure;
 
+/// <summary>
+/// Tiered 分层策略：pinned/已发现/tool_search 内联，其余延迟。
+/// 升级(auto→分层)由 resolver 依阈值决定，本策略对 Escalated 参数不敏感（纯分层语义）。
+/// 契约：<c>Plan.CatalogEntries</c> 返回全量条目并各带最终 Mode（与 All 策略一致）。
+/// </summary>
 public class TieredToolExposurePolicyTests
 {
     [Fact]
@@ -17,16 +22,20 @@ public class TieredToolExposurePolicyTests
 
         var plan = new TieredToolExposurePolicy().Plan(input);
 
-        plan.CatalogEntries.Should().HaveCount(1);
-        plan.CatalogEntries[0].Id.Should().Be("o1");
-        plan.CatalogEntries[0].Mode.Should().Be(ToolExposureMode.Deferred);
+        // 全量条目带 Mode：4 条
+        plan.CatalogEntries.Should().HaveCount(4);
+        plan.CatalogEntries.Single(e => e.Id == "o1").Mode.Should().Be(ToolExposureMode.Deferred);
+        plan.CatalogEntries.Where(e => e.Mode == ToolExposureMode.Inline).Select(e => e.Id)
+            .Should().BeEquivalentTo(["p1", "d1", "tool_search"]);
         plan.InlineToolCount.Should().Be(3);
         plan.DeferredToolCount.Should().Be(1);
         plan.InlineSchemas.Should().BeEmpty();
+        // 定义 token 仅计内联（3 条各 10）
+        plan.EstimatedDefinitionTokens.Should().Be(30);
     }
 
     [Fact]
-    public void Plan_DiscoveredIdNoLongerAvailable_ShouldBeDropped()
+    public void Plan_DiscoveredIdNoLongerAvailable_ShouldNotAppear()
     {
         var input = Input(
             new[] { Entry("a") },
@@ -40,18 +49,21 @@ public class TieredToolExposurePolicyTests
     }
 
     [Fact]
-    public void Plan_Escalated_ShouldTurnAllDeferredIntoInlineKeepingSearchToolInline()
+    public void Plan_EscalatedFlag_ShouldStillDeferNonPinned()
     {
+        // 升级由 resolver 选择策略实现；Tiered 本身对 Escalated 无副作用（不退化为全内联）。
         var input = Input(
             new[] { Entry("a", 1), Entry("tool_search", 2), Entry("b", 3) },
             escalated: true);
 
         var plan = new TieredToolExposurePolicy().Plan(input);
 
-        plan.CatalogEntries.Should().BeEmpty();
-        plan.InlineToolCount.Should().Be(3);
-        plan.DeferredToolCount.Should().Be(0);
-        plan.EstimatedDefinitionTokens.Should().Be(6);
+        plan.CatalogEntries.Should().HaveCount(3);
+        plan.CatalogEntries.Single(e => e.Id == "tool_search").Mode.Should().Be(ToolExposureMode.Inline);
+        plan.CatalogEntries.Single(e => e.Id == "a").Mode.Should().Be(ToolExposureMode.Deferred);
+        plan.InlineToolCount.Should().Be(1);
+        plan.DeferredToolCount.Should().Be(2);
+        plan.EstimatedDefinitionTokens.Should().Be(2);
     }
 
     [Fact]

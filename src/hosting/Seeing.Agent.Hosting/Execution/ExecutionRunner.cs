@@ -23,7 +23,6 @@ using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Core.Services;
 using Seeing.Agent.Llm;
 using Seeing.Session.Core;
-using Seeing.TokenEstimation;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -442,11 +441,10 @@ internal sealed class ExecutionRunner : IExecutionRunner
         var toolSchemas = schemaSettlement.ToolSchemas;
         var sectionIds = schemaSettlement.SectionIds;
 
-        // token 计量单点归属：估算本轮 inline schema 成本写入会话缓存（供 TokenBudget 分解读取），
-        // 与 CachedInputTokens 同族，随本轮 SaveAsync 落盘；目录 token 于分层暴露接入（本期 0）。
-        var tokenCounter = services.GetService<ITokenCounter>() ?? new CharBasedTokenCounter();
-        session.CachedSchemaTokens = EstimateSchemaTokens(toolSchemas, tokenCounter);
-        session.CachedCatalogTokens = 0;
+        // token 归属单点：resolver 已在同一次结算估算 inline 定义 token 与目录 token，直接落会话缓存，
+        // 不在此二次估算（避免分叉口径）。与 CachedInputTokens 同族，随本轮 SaveAsync 落盘。
+        session.CachedSchemaTokens = schemaSettlement.EstimatedDefinitionTokens;
+        session.CachedCatalogTokens = schemaSettlement.CatalogTokens;
 
         string? requestThinkingEffort = record.Options?.ThinkingEffort;
         if (requestThinkingEffort is null && !string.IsNullOrWhiteSpace(session.SelectedThinkingEffort))
@@ -465,22 +463,11 @@ internal sealed class ExecutionRunner : IExecutionRunner
             RequestModelId = requestModelId,
             RequestThinkingEffort = requestThinkingEffort,
             ToolSchemas = toolSchemas,
-            SectionIds = sectionIds
+            SectionIds = sectionIds,
+            CatalogEntries = schemaSettlement.CatalogEntries,
+            InlineToolCount = schemaSettlement.InlineToolCount,
+            DeferredToolCount = schemaSettlement.DeferredToolCount
         };
-    }
-
-    /// <summary>
-    /// 估算本轮 inline 工具 schema 的 token 成本：逐条序列化 <see cref="FunctionToolSchema"/>
-    /// （与真正发给 provider 的 tools[] 元素同源，且属性声明序稳定）后按 <see cref="ITokenCounter"/> 求和。
-    /// </summary>
-    internal static int EstimateSchemaTokens(
-        IReadOnlyList<FunctionToolSchema> schemas,
-        ITokenCounter counter)
-    {
-        var total = 0;
-        foreach (var schema in schemas)
-            total += counter.Estimate(JsonSerializer.Serialize(schema));
-        return total;
     }
 
     /// <summary>

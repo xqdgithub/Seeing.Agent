@@ -2,7 +2,6 @@ using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.TokenBudget;
 using Seeing.Agent.TokenBudget.Configuration;
 using Seeing.Session.Core;
@@ -12,8 +11,8 @@ using Xunit;
 namespace Seeing.Agent.Tests.TokenBudget;
 
 /// <summary>
-/// 工具定义 token 计量单点归属测试：估算在 Hosting（EstimateSchemaTokens），
-/// 归属在 SessionData 缓存字段，消费在 TokenBudget 分解（读 session，非跨包通道）。
+/// 工具定义 token 归属消费侧测试：TokenBudget 分解读 SessionData 缓存（单点归属，非跨包通道）。
+/// 估算产生侧契约（resolver 单点）见 SessionToolSchemaResolverTests（组12）。
 /// </summary>
 public class ToolTokenAccountingTests
 {
@@ -21,40 +20,6 @@ public class ToolTokenAccountingTests
         Mock.Of<IModelConfigLookup>(),
         Mock.Of<IOptionsMonitor<TokenBudgetOptions>>(m => m.CurrentValue == new TokenBudgetOptions()),
         counter);
-
-    private static IReadOnlyList<FunctionToolSchema> ThreeSchemas() => new[]
-    {
-        new FunctionToolSchema { Function = new FunctionSchema { Name = "read", Description = "Read a file from disk" } },
-        new FunctionToolSchema { Function = new FunctionSchema { Name = "write", Description = "Write a file to disk" } },
-        new FunctionToolSchema { Function = new FunctionSchema { Name = "grep", Description = "Search contents by pattern" } },
-    };
-
-    [Fact]
-    public void EstimateSchemaTokens_WithThreeSchemas_ShouldReturnPositive()
-    {
-        // Arrange
-        var counter = new CharBasedTokenCounter();
-
-        // Act
-        var tokens = ExecutionRunner.EstimateSchemaTokens(ThreeSchemas(), counter);
-
-        // Assert
-        tokens.Should().BeGreaterThan(0);
-    }
-
-    [Fact]
-    public void EstimateSchemaTokens_ShouldBeDeterministic()
-    {
-        // Arrange
-        var counter = new CharBasedTokenCounter();
-
-        // Act
-        var first = ExecutionRunner.EstimateSchemaTokens(ThreeSchemas(), counter);
-        var second = ExecutionRunner.EstimateSchemaTokens(ThreeSchemas(), counter);
-
-        // Assert
-        first.Should().Be(second);
-    }
 
     [Fact]
     public void CalculateBreakdown_ReadsSessionCachedTokens_ShouldPopulateToolDefinitionsAndCatalog()

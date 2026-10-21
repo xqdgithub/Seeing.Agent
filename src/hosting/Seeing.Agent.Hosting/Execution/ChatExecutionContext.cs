@@ -1,6 +1,7 @@
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Hosting.Execution;
@@ -83,6 +84,15 @@ internal class ChatExecutionContext
 
     /// <summary>本轮提示词分节 id（写入 SchemaSnapshotEvent）。</summary>
     public IReadOnlyList<string> SectionIds { get; init; } = Array.Empty<string>();
+
+    /// <summary>本轮 deferred 工具的目录条目（经预算裁剪，供 ToolCatalog 分节渲染与可观测计数）。</summary>
+    public IReadOnlyList<ToolCatalogEntry> CatalogEntries { get; init; } = Array.Empty<ToolCatalogEntry>();
+
+    /// <summary>本轮内联暴露的工具数。</summary>
+    public int InlineToolCount { get; init; }
+
+    /// <summary>本轮延迟（进目录）的工具数。</summary>
+    public int DeferredToolCount { get; init; }
 
     // ========== 元数据 ==========
 
