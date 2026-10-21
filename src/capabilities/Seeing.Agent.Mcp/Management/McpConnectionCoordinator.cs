@@ -141,17 +141,21 @@ internal sealed class McpConnectionCoordinator : IDisposable
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(config.ConnectionTimeout);
         var connectCt = timeoutCts.Token;
+        // 本连接已成功注册的工具名（供冲突/禁用/异常路径回滚；须声明在 try 外以便 catch 访问）
+        var toolNames = new List<string>();
 
         try
         {
             _client = _factoryRegistry.Create(config, _httpClientFactory, _loggerFactory);
             await _client.ConnectAsync(connectCt);
 
+            // 抢先占用 server 名：零工具 server 也能拒绝同名抢名；同一协调器（重连）不报错
+            _toolRegistry.ClaimServer(_serverName, this);
+
             if (await TryAbortConnectIfDisabledAsync(currentStatus, ct) is { } abortedAfterConnect)
                 return abortedAfterConnect;
 
             var tools = await _client.ListToolsAsync(connectCt);
-            var toolNames = new List<string>();
 
             foreach (var tool in tools)
             {
@@ -161,14 +165,14 @@ internal sealed class McpConnectionCoordinator : IDisposable
                     return await FinalizeDisabledConnectAbortAsync(currentStatus, ct);
                 }
 
-                var toolId = $"{_serverName}_{tool.Name}";
+                var toolId = McpTool.BuildId(_serverName, tool.Name);
                 var toolInfo = new McpToolInfo
                 {
                     Name = tool.Name,
                     Description = tool.Description,
                     ParametersSchema = tool.ParametersSchema
                 };
-                await _toolRegistry.RegisterToolAsync(_serverName, toolId, toolInfo, connectCt);
+                await _toolRegistry.RegisterToolAsync(_serverName, toolId, toolInfo, this, connectCt);
                 toolNames.Add(tool.Name);
 
                 _hookManager.TriggerFireAndForget(
@@ -211,6 +215,17 @@ internal sealed class McpConnectionCoordinator : IDisposable
             return McpOperationResult.Succeeded(_serverName, McpOperationType.Connect,
                 CoreMcpConnectionState.Connected, DateTime.Now - startTime);
         }
+        catch (McpDuplicateServerException ex)
+        {
+            // 同名 server 已被其他连接占用：抢名在注册工具之前完成，本连接未写入任何工具，
+            // 因此 CleanupFailedConnectAsync 会尝试释放自己（非占用者时不生效），不影响对方。
+            await CleanupFailedConnectAsync();
+            _logger.LogError(ex, "MCP Server {Server} 重复注册，连接中止", _serverName);
+            var error = McpErrorInfo.ConfigInvalid(_serverName, ex.Message);
+            UpdateStateWithError(error);
+            return McpOperationResult.Failed(_serverName, McpOperationType.Connect, error,
+                CoreMcpConnectionState.Error, DateTime.Now - startTime);
+        }
         catch (OperationCanceledException ex) when (ct.IsCancellationRequested)
         {
             await CleanupFailedConnectAsync();
@@ -251,6 +266,9 @@ internal sealed class McpConnectionCoordinator : IDisposable
 
     private async Task CleanupFailedConnectAsync()
     {
+        // 连接失败时释放本连接对 server 名的占用（若已成功注册工具则不释放，交由注册表管理）
+        _toolRegistry.ReleaseServer(_serverName, this);
+
         if (_client == null) return;
 
         try
@@ -326,7 +344,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
             var toolNames = currentStatus.ToolNames;
             foreach (var toolName in toolNames)
             {
-                var toolId = $"{_serverName}_{toolName}";
+                var toolId = McpTool.BuildId(_serverName, toolName);
                 await _toolRegistry.UnregisterToolAsync(_serverName, toolId, ct);
 
                 _hookManager.TriggerFireAndForget(
@@ -567,9 +585,12 @@ internal sealed class McpConnectionCoordinator : IDisposable
     {
         foreach (var toolName in registeredToolNames)
         {
-            var toolId = $"{_serverName}_{toolName}";
+            var toolId = McpTool.BuildId(_serverName, toolName);
             await _toolRegistry.UnregisterToolAsync(_serverName, toolId, ct);
         }
+
+        // 工具已清空时归还 server 名占用（零工具 server 的中止路径尤其需要）
+        _toolRegistry.ReleaseServer(_serverName, this);
 
         if (_client != null)
         {

@@ -29,6 +29,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Mcp\Seeing.Agent.Mcp.csproj" />
     <ProjectReference Include="..\..\..\src\spine\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
+    <ProjectReference Include="..\..\..\src\hosting\Seeing.Agent.Hosting\Seeing.Agent.Hosting.csproj" />
   </ItemGroup>
 
 </Project>

@@ -11,12 +11,19 @@ namespace Seeing.Agent.Hosting.Commands;
 [CommandProvider]
 public class ToolsCommands
 {
+    /// <summary>MCP 工具 id 前缀（与 <c>McpTool.Id</c> 形式一致）。</summary>
+    public const string McpToolIdPrefix = "mcp__";
+
     private readonly ToolManager _toolInvoker;
 
     public ToolsCommands(ToolManager toolInvoker)
     {
         _toolInvoker = toolInvoker;
     }
+
+    /// <summary>判定工具 id 是否属于 MCP 工具（<c>mcp__{server}__{tool}</c>）。</summary>
+    public static bool IsMcpToolId(string? toolId) =>
+        toolId is not null && toolId.StartsWith(McpToolIdPrefix, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// /mcp - 管理 MCP 服务器
@@ -36,7 +43,7 @@ public class ToolsCommands
         {
             // 显示 MCP 工具列表
             var schemas = await _toolInvoker.GetToolSchemasAsync();
-            var mcpTools = schemas.Where(s => s.Function.Name.StartsWith("mcp_", StringComparison.OrdinalIgnoreCase)).ToList();
+            var mcpTools = schemas.Where(s => IsMcpToolId(s.Function.Name)).ToList();
 
             var list = "**MCP Tools**\n\n";
             if (mcpTools.Count == 0)

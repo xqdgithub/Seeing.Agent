@@ -236,7 +236,7 @@ public sealed class McpModule : ISeeingModule, IUiContribution
 
             return _manager.GetTools()
                 .Where(t => !string.IsNullOrEmpty(t.ServerName) && !string.IsNullOrEmpty(t.Name))
-                .Select(t => $"{t.ServerName}_{t.Name}")
+                .Select(t => McpTool.BuildId(t.ServerName, t.Name))
                 .ToArray();
         }
     }

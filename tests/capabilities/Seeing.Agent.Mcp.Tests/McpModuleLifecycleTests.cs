@@ -49,7 +49,7 @@ public class McpModuleLifecycleTests
 
         captured.Should().NotBeNull();
         captured!.ModuleId.Should().Be("mcp");
-        captured.GetDynamicToolIds().Should().Contain("demo_echo");
+        captured.GetDynamicToolIds().Should().Contain("mcp__demo__echo");
     }
 
     [Fact]

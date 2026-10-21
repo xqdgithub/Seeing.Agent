@@ -15,10 +15,22 @@ public class McpTool : ITool
     private readonly JsonElement _parametersSchema;
     private readonly Func<string, Dictionary<string, object?>, CancellationToken, Task<McpToolResult>> _executeFunc;
 
-    public string Id => $"{_serverName}_{_realName}";
+    /// <summary>MCP 工具 id 前缀。</summary>
+    public const string IdPrefix = "mcp__";
+
+    /// <summary>模型可见 id，形式为 <c>mcp__{server}__{tool}</c>（可由双下划线唯一还原）。</summary>
+    public string Id => BuildId(_serverName, _realName);
+
+    /// <summary>命名空间，形式为 <c>mcp__{server}</c>，用于目录分组与检索加权。</summary>
+    public string Namespace => $"{IdPrefix}{_serverName}";
+
     public string ServerName => _serverName;
     public string ToolName => _realName;
     public string Description => _description;
+
+    /// <summary>按 server 名与工具名构造统一 id；所有 id 生产点都须经此方法。</summary>
+    public static string BuildId(string serverName, string toolName) =>
+        $"{IdPrefix}{serverName}__{toolName}";
 
     /// <summary>工具标签（用于分类和过滤）</summary>
     public IReadOnlyList<string> Tags => Array.Empty<string>();
