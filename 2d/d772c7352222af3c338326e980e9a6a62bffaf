@@ -1,0 +1,61 @@
+src/capabilities/Seeing.Agent.Skills/SkillManager.cs
+  s_8848febcb130a9::t_92e24d2c7ade22 49-53
+src/abstractions/Seeing.Agent.Abstractions/Prompts/IPromptSectionContributor.cs
+  s_8848febcb130a9::t_ccb062fe85759b 5-8,15-19
+tests/spine/Seeing.Agent.Tests/Modules/ModuleLifecycleManagerTests.cs
+  s_8848febcb130a9::t_ccb0db7742cc48 185-186
+tests/spine/Seeing.Agent.Tests/App/Execution/SchemaSnapshotExecutionTests.cs
+  s_8848febcb130a9::t_9eeebf929227d4 276-277
+src/spine/Seeing.Agent.Core/Core/Prompts/AgentsPromptSectionContributor.cs
+  s_8848febcb130a9::t_aeb694018307c4 26-30
+src/abstractions/Seeing.Agent.Abstractions/Prompts/PromptSectionPlacement.cs
+  s_8848febcb130a9::t_640b2ba6f28b53 1-22
+src/spine/Seeing.Agent.Core/Core/Prompts/ToolsPromptSectionContributor.cs
+  s_8848febcb130a9::t_15d0f7453ac615 21-25,35-38
+src/spine/Seeing.Agent.Core/Core/Prompts/EnvironmentPromptSectionContributor.cs
+  s_8848febcb130a9::t_ba9aa118fd280a 15-19
+tests/spine/Seeing.Agent.Tests/Prompts/PromptBuilderSectionInjectionTests.cs
+  s_8848febcb130a9::t_39a2bfa4965ffd 86-88,94-95,102,106,108-117,119-122
+  s_8848febcb130a9::t_0e5e3df6275a46 128-138,150-151,153,158-159
+  s_8848febcb130a9::t_8f812a2193aa32 207
+  s_8848febcb130a9::t_a07504450be1fe 364-369,374-375,379-380
+  s_8848febcb130a9::t_da33c0c277ed55 42-44
+  s_8848febcb130a9::t_f7b3d3966947c3 179
+tests/spine/Seeing.Agent.Tests/Prompts/PromptBuilderPlacementTests.cs
+  s_8848febcb130a9::t_e551f86b9adbe2 1-82,84-146
+  s_1ea8d9f04df9d9::t_743b2cda1e5da2 83
+src/spine/Seeing.Agent.Core/Extensions/ServiceCollectionExtensions.cs
+  s_8848febcb130a9::t_59974ca63d0b03 795-797
+tests/spine/Seeing.Agent.Tests/Invariants/LifecycleTests.cs
+  s_8848febcb130a9::t_4ed4eafb94816d 209-210
+tests/spine/Seeing.Agent.Tests/Invariants/SchemaScenarioTests.cs
+  s_8848febcb130a9::t_3c651f9ca5b32f 513-514
+tests/spine/Seeing.Agent.Tests/App/Execution/SessionToolSchemaResolverTests.cs
+  s_8848febcb130a9::t_0c6b846970c91c 173-174
+src/spine/Seeing.Agent.Core/Core/Prompts/PromptBuilder.cs
+  s_8848febcb130a9::t_df4de62b408a60 1-2,11-17,24,29-31,34,61-68,74-102,105-106,108,111,122,124-125,127-129,131-147,153,159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "2dd772c7352222af3c338326e980e9a6a62bffaf",
+  "prompts": {},
+  "sessions": {
+    "s_1ea8d9f04df9d9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea33351c3ffehsFT7BcthOlXiQ",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_8848febcb130a9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea12ccce5ffeTN3f177agYsmor",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
