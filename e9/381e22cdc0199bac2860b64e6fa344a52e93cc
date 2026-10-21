@@ -1,0 +1,46 @@
+src/hosting/Seeing.Agent.Hosting/Execution/ExecutionRunner.cs
+  s_1ea8d9f04df9d9::t_a9df8b3cc15c41 450-455
+  s_1ea8d9f04df9d9::t_6dac009836174e 478-490
+  s_1ea8d9f04df9d9::t_cdb00ab987482d 28
+src/hosting/Seeing.Agent.Hosting/Seeing.Agent.Hosting.csproj
+  s_1ea8d9f04df9d9::t_4671d1cc57fcb4 29
+src/capabilities/Seeing.Agent.TokenBudget/Services/ITokenBudgetManager.cs
+  s_1ea8d9f04df9d9::t_836352c4adb79e 29,34
+openspec/changes/tool-context-budgeting/design.md
+  s_1ea8d9f04df9d9::t_658bec9ec50ccb 152,154,157-159,161
+tests/primitives/Seeing.Session.Tests/SessionDataTests.cs
+  s_1ea8d9f04df9d9::t_9bf571032c59e3 67-114
+src/capabilities/Seeing.Agent.TokenBudget/Services/TokenBudgetManager.cs
+  s_1ea8d9f04df9d9::t_cff00c96d28221 89,100-102
+openspec/changes/tool-context-budgeting/tasks.md
+  s_1ea8d9f04df9d9::t_41664bc4340db7 41-50
+src/primitives/Seeing.Session/Core/SessionData.cs
+  s_1ea8d9f04df9d9::t_fd66db2af6cb37 502-505
+  s_1ea8d9f04df9d9::t_947dd018cd12a1 432-433
+  s_1ea8d9f04df9d9::t_b65d772b654216 445-446
+  s_1ea8d9f04df9d9::t_61965343a6e9d8 193-204
+src/primitives/Seeing.TokenEstimation/SourceBreakdown.cs
+  s_1ea8d9f04df9d9::t_6d3179727c1159 46,53
+  s_1ea8d9f04df9d9::t_fec72340281d6d 41
+  s_1ea8d9f04df9d9::t_33551f55cf3497 19-22
+tests/spine/Seeing.Agent.Tests/TokenBudget/ToolTokenAccountingTests.cs
+  s_1ea8d9f04df9d9::t_1c8842e163944b 1-91
+tests/primitives/Seeing.TokenEstimation.Tests/TokenBreakdownTests.cs
+  s_1ea8d9f04df9d9::t_4adbcc4bac1322 72-102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "e9381e22cdc0199bac2860b64e6fa344a52e93cc",
+  "prompts": {},
+  "sessions": {
+    "s_1ea8d9f04df9d9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea33351c3ffehsFT7BcthOlXiQ",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
