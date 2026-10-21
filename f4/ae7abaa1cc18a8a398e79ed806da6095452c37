@@ -1,0 +1,37 @@
+src/spine/Seeing.Agent.Core/Tools/ToolManager.cs
+  s_d2d3ba72885cd5::t_388e2f27b1e5cb 441
+  s_d2d3ba72885cd5::t_7228fa97dfb285 290
+  s_d2d3ba72885cd5::t_fdd4381742fc8e 513
+  s_1ea8d9f04df9d9::t_47bfab5f2d3e08 12,47-51,103-216,289,307,411,413,416-419,421-424,426-433,435-440,442-457,512,565
+src/abstractions/Seeing.Agent.Abstractions/Tools/ToolCapabilityKeys.cs
+  s_1ea8d9f04df9d9::t_47bfab5f2d3e08 28-30
+tests/spine/Seeing.Agent.Tests/Tools/ToolManagerSchemaSettlementTests.cs
+  s_d2d3ba72885cd5::t_6521b0e7d3a17e 36-37
+  s_d2d3ba72885cd5::t_28345cc2cfaeb5 20,41
+  s_d2d3ba72885cd5::t_cb4612e6d719f9 67,87
+  s_d2d3ba72885cd5::t_576369b14b4099 1-19,21-35,38-40,42-66,68-86,88-196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "f4ae7abaa1cc18a8a398e79ed806da6095452c37",
+  "prompts": {},
+  "sessions": {
+    "s_1ea8d9f04df9d9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea33351c3ffehsFT7BcthOlXiQ",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_d2d3ba72885cd5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea1654ac1ffetKN6SC61xPC7bo",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
