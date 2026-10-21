@@ -792,7 +792,9 @@ namespace Seeing.Agent.Core.Extensions
             services.AddSingleton<IPromptSectionContributor, ToolsPromptSectionContributor>();
             services.AddSingleton<IPromptSectionContributor, AgentsPromptSectionContributor>();
             services.AddSingleton<IPromptSectionContributor, EnvironmentPromptSectionContributor>();
-            services.AddSingleton<PromptBuilder>();
+            services.AddSingleton<PromptBuilder>(sp => new PromptBuilder(
+                sp.GetServices<IPromptSectionContributor>(),
+                sp.GetService<ILogger<PromptBuilder>>()));
 
             return services;
         }

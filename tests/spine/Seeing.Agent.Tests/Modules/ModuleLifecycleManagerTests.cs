@@ -182,6 +182,8 @@ public class ModuleLifecycleManagerTests
     {
         public bool Active { get; set; }
         public string SectionName => PromptSectionNames.Tools;
+        public string Heading => "## Tools";
+        public PromptSectionPlacement Placement => PromptSectionPlacement.AtEnd;
         public int Order => 0;
 
         public Task<string?> BuildAsync(PromptContext context, CancellationToken cancellationToken = default)

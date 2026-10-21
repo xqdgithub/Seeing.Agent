@@ -23,6 +23,12 @@ public sealed class AgentsPromptSectionContributor : IPromptSectionContributor
     public string SectionName => PromptSectionNames.Agents;
 
     /// <inheritdoc />
+    public string Heading => "## Agents";
+
+    /// <inheritdoc />
+    public PromptSectionPlacement Placement => PromptSectionPlacement.After(PromptSectionNames.Skills);
+
+    /// <inheritdoc />
     public int Order => 300;
 
     /// <inheritdoc />

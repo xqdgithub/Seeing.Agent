@@ -39,9 +39,9 @@ public class PromptBuilderSectionInjectionTests
     [Fact]
     public async Task BuildAsync_ShouldInjectSections_UnderAnchorHeadings_OrderedByOrder()
     {
-        var low = new FakeContributor(PromptSectionNames.Tools, order: 10, "LOW");
-        var high = new FakeContributor(PromptSectionNames.Tools, order: 50, "HIGH");
-        var skills = new FakeContributor(PromptSectionNames.Skills, order: 200, "SKILL-BODY");
+        var low = new FakeContributor(PromptSectionNames.Tools, order: 10, "LOW", "## Tools");
+        var high = new FakeContributor(PromptSectionNames.Tools, order: 50, "HIGH", "## Tools");
+        var skills = new FakeContributor(PromptSectionNames.Skills, order: 200, "SKILL-BODY", "## Skills");
 
         var builder = new PromptBuilder([low, high, skills]);
         var context = new PromptContext
@@ -83,8 +83,30 @@ public class PromptBuilderSectionInjectionTests
     [Fact]
     public async Task BuildAsync_ShouldNotAppendTools_WhenAnchorMissing()
     {
-        // Tools 已由 API tools 字段承载；无 ## Tools 锚点时不兜底追加，避免冗余
-        var tools = new FakeContributor(PromptSectionNames.Tools, order: 1, "SHOULD-NOT-APPEAR");
+        // Tools 已由 API tools 字段承载；真实贡献者在模板无 ## Tools 锚点时自述返回 null（不兜底追加），
+        // 该"避免冗余"保护从旧 builder 特例上收至 ToolsPromptSectionContributor 自身。
+        var builder = new PromptBuilder([new ToolsPromptSectionContributor()]);
+        var context = new PromptContext
+        {
+            Agent = new AgentDefinition
+            {
+                SystemPrompt = "No anchors here."
+            },
+            Tools = [new FunctionSchema { Name = "read", Description = "Read a file" }]
+        };
+
+        var result = await builder.BuildAsync(context, TestContext.Current.CancellationToken);
+
+        result.Should().Be("No anchors here.");
+        result.Should().NotContain("## Tools");
+        result.Should().NotContain("read");
+    }
+
+    [Fact]
+    public async Task BuildAsync_ShouldAppendAnySectionPerPlacement_WhenAnchorMissing()
+    {
+        // builder 不认识具体分节名：即便是 tools 分节，只要声明 AtEnd 且模板无锚点，同样按声明追加。
+        var tools = new FakeContributor(PromptSectionNames.Tools, order: 1, "TOOLS-BODY", "## Tools");
         var builder = new PromptBuilder([tools]);
         var context = new PromptContext
         {
@@ -96,20 +118,24 @@ public class PromptBuilderSectionInjectionTests
 
         var result = await builder.BuildAsync(context, TestContext.Current.CancellationToken);
 
-        result.Should().Be("No anchors here.");
-        result.Should().NotContain("## Tools");
-        result.Should().NotContain("SHOULD-NOT-APPEAR");
+        result.Should().Contain("## Tools");
+        result.Should().Contain("TOOLS-BODY");
     }
 
     [Fact]
     public async Task BuildAsync_ShouldAppendNonToolsSections_WhenAnchorsMissing_InStableOrder()
     {
-        var tools = new FakeContributor(PromptSectionNames.Tools, order: 100, "TOOLS-BODY");
-        var skills = new FakeContributor(PromptSectionNames.Skills, order: 200, "SKILLS-BODY");
-        var agents = new FakeContributor(PromptSectionNames.Agents, order: 300, "AGENTS-BODY");
-        var env = new FakeContributor(PromptSectionNames.Environment, order: 400, "ENV-BODY");
+        var tools = new FakeContributor(PromptSectionNames.Tools, order: 100, "TOOLS-BODY", "## Tools");
+        var skills = new FakeContributor(PromptSectionNames.Skills, order: 200, "SKILLS-BODY", "## Skills");
+        var agents = new FakeContributor(
+            PromptSectionNames.Agents, order: 300, "AGENTS-BODY", "## Agents",
+            PromptSectionPlacement.After(PromptSectionNames.Skills));
+        var env = new FakeContributor(
+            PromptSectionNames.Environment, order: 400, "ENV-BODY", "## Environment",
+            PromptSectionPlacement.After(PromptSectionNames.Agents));
 
-        // 故意乱序注册；Tools 无锚点跳过，其余按锚点定义顺序兜底追加
+        // 故意乱序注册；builder 不认识分节名，按贡献者自述的 Order + Placement 追加
+        // （tools 此处是 fake 贡献者，无锚点即按声明追加；真实 Tools 贡献者自带锚点门闸）
         var builder = new PromptBuilder([skills, env, tools, agents]);
         var context = new PromptContext
         {
@@ -121,13 +147,16 @@ public class PromptBuilderSectionInjectionTests
 
         var result = await builder.BuildAsync(context, TestContext.Current.CancellationToken);
 
-        result.Should().NotContain("## Tools");
-        result.Should().NotContain("TOOLS-BODY");
+        result.Should().Contain("## Tools");
+        result.Should().Contain("TOOLS-BODY");
 
+        var toolsIdx = result.IndexOf("## Tools", StringComparison.Ordinal);
         var skillsIdx = result.IndexOf("## Skills", StringComparison.Ordinal);
         var agentsIdx = result.IndexOf("## Agents", StringComparison.Ordinal);
         var envIdx = result.IndexOf("## Environment", StringComparison.Ordinal);
 
+        toolsIdx.Should().BeGreaterThan(-1);
+        toolsIdx.Should().BeLessThan(skillsIdx);
         skillsIdx.Should().BeGreaterThan(-1);
         skillsIdx.Should().BeLessThan(agentsIdx);
         agentsIdx.Should().BeLessThan(envIdx);
@@ -147,7 +176,7 @@ public class PromptBuilderSectionInjectionTests
             ### pdf
             处理 PDF 文档
             """;
-        var skills = new FakeContributor(PromptSectionNames.Skills, order: 200, skillsContent);
+        var skills = new FakeContributor(PromptSectionNames.Skills, order: 200, skillsContent, "## Skills");
         var builder = new PromptBuilder([skills]);
         var context = new PromptContext
         {
@@ -175,7 +204,7 @@ public class PromptBuilderSectionInjectionTests
     public async Task BuildAsync_ShouldPreferAnchor_Injection_WhenAnchorExists()
     {
         // 有锚点时仍走精确注入（锚点下方），而非末尾追加
-        var tools = new FakeContributor(PromptSectionNames.Tools, order: 100, "TOOLS-BODY");
+        var tools = new FakeContributor(PromptSectionNames.Tools, order: 100, "TOOLS-BODY", "## Tools");
         var builder = new PromptBuilder([tools]);
         var context = new PromptContext
         {
@@ -332,14 +361,23 @@ public class PromptBuilderSectionInjectionTests
     {
         private readonly string _body;
 
-        public FakeContributor(string sectionName, int order, string body)
+        public FakeContributor(
+            string sectionName,
+            int order,
+            string body,
+            string heading = "## Section",
+            PromptSectionPlacement? placement = null)
         {
             SectionName = sectionName;
             Order = order;
             _body = body;
+            Heading = heading;
+            Placement = placement ?? PromptSectionPlacement.AtEnd;
         }
 
         public string SectionName { get; }
+        public string Heading { get; }
+        public PromptSectionPlacement Placement { get; }
         public int Order { get; }
 
         public Task<string?> BuildAsync(PromptContext context, CancellationToken cancellationToken = default)

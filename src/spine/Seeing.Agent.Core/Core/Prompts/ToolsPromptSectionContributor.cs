@@ -18,12 +18,24 @@ public sealed class ToolsPromptSectionContributor : IPromptSectionContributor
     public string SectionName => PromptSectionNames.Tools;
 
     /// <inheritdoc />
+    public string Heading => "## Tools";
+
+    /// <inheritdoc />
+    public PromptSectionPlacement Placement => PromptSectionPlacement.AtEnd;
+
+    /// <inheritdoc />
     public int Order => 100;
 
     /// <inheritdoc />
     public Task<string?> BuildAsync(PromptContext context, CancellationToken cancellationToken = default)
     {
         if (context.Tools == null)
+            return Task.FromResult<string?>(null);
+
+        // 仅在模板含 "## Tools" 锚点时注入：完整 schema 由 API tools 参数承载，
+        // 模板无锚点时不兜底追加，避免 system 冗余（原构建器 tools 特例上收为贡献者自述）。
+        var template = context.Agent?.SystemPrompt;
+        if (string.IsNullOrEmpty(template) || !PromptBuilder.ContainsHeading(template, Heading))
             return Task.FromResult<string?>(null);
 
         return Task.FromResult<string?>(BuildToolSection(context.Tools));

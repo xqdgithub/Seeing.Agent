@@ -273,6 +273,8 @@ public class SchemaSnapshotExecutionTests
     private sealed class FakeSectionContributor : IPromptSectionContributor
     {
         public string SectionName => PromptSectionNames.Tools;
+        public string Heading => "## Tools";
+        public PromptSectionPlacement Placement => PromptSectionPlacement.AtEnd;
         public int Order => 0;
         public Task<string?> BuildAsync(PromptContext context, CancellationToken cancellationToken = default) =>
             Task.FromResult<string?>("tools");

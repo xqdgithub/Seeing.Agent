@@ -46,6 +46,12 @@ namespace Seeing.Agent.Skills
         public string SectionName => PromptSectionNames.Skills;
 
         /// <inheritdoc />
+        public string Heading => "## Skills";
+
+        /// <inheritdoc />
+        public PromptSectionPlacement Placement => PromptSectionPlacement.AtEnd;
+
+        /// <inheritdoc />
         public int Order => 200;
 
         public SkillManager(ILogger<SkillManager> logger, ISeeingDirectories? directories = null)

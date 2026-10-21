@@ -12,6 +12,12 @@ public sealed class EnvironmentPromptSectionContributor : IPromptSectionContribu
     public string SectionName => PromptSectionNames.Environment;
 
     /// <inheritdoc />
+    public string Heading => "## Environment";
+
+    /// <inheritdoc />
+    public PromptSectionPlacement Placement => PromptSectionPlacement.After(PromptSectionNames.Agents);
+
+    /// <inheritdoc />
     public int Order => 400;
 
     /// <inheritdoc />
