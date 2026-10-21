@@ -1,0 +1,57 @@
+tests/capabilities/Seeing.Agent.Tools.ToolDiscovery.Tests/ToolSearchToolTests.cs
+  s_af334f8f0af3a4::t_40d161bd38913d 1-52,54-301
+  s_af334f8f0af3a4::t_aa87f4b8f81863 53
+src/hosting/Seeing.Agent.Hosting/HostingServiceCollectionExtensions.cs
+  s_1ea8d9f04df9d9::t_2fb1c2cc1e27a0 94-95
+samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj
+  s_1ea8d9f04df9d9::t_fe7600a9b2896e 25
+src/spine/Seeing.Agent.Core/CapabilitySets/BuiltInCapabilitySets.cs
+  s_1ea8d9f04df9d9::t_f31991b4325955 98
+Seeing.Agent.slnx
+  s_1ea8d9f04df9d9::t_29dac09433f2b8 62
+  s_1ea8d9f04df9d9::t_618f0f3cce00ea 115
+samples/Seeing.Agent.WebUI/Program.cs
+  s_1ea8d9f04df9d9::t_b144f0df4de688 72
+  s_1ea8d9f04df9d9::t_dae9db7f5f3a97 30
+tests/capabilities/Seeing.Agent.Tools.ToolDiscovery.Tests/Seeing.Agent.Tools.ToolDiscovery.Tests.csproj
+  s_af334f8f0af3a4::t_92daebe2fefc87 1-34
+src/capabilities/Seeing.Agent.Tools.ToolDiscovery/ToolSearchTool.cs
+  s_af334f8f0af3a4::t_1e7ec0ac38030b 119
+  s_af334f8f0af3a4::t_792b74fa0230b8 253,283,285,287,289
+  s_af334f8f0af3a4::t_c8c34831357ec0 4
+  s_af334f8f0af3a4::t_f5be9493f90939 1-3,5-118,120-252,254-282,284,286,288,290-393
+src/hosting/Seeing.Agent.Hosting/Execution/ToolExposure/SessionToolSearchProvider.cs
+  s_1ea8d9f04df9d9::t_47e05f8b612f72 1-33
+src/abstractions/Seeing.Agent.Abstractions/Tools/IToolSearchProvider.cs
+  s_1ea8d9f04df9d9::t_13c0b0b5f40146 1-19
+src/abstractions/Seeing.Agent.Abstractions/Events/ToolSearchEvent.cs
+  s_af334f8f0af3a4::t_e48160c1b625ea 1-50
+src/capabilities/Seeing.Agent.Tools.ToolDiscovery/ToolDiscoveryModule.cs
+  s_af334f8f0af3a4::t_650df55ce97f07 1-55
+src/capabilities/Seeing.Agent.Tools.ToolDiscovery/Seeing.Agent.Tools.ToolDiscovery.csproj
+  s_af334f8f0af3a4::t_bd7ab6e11e617a 1-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "052f70afe172149b56466a02c0904dc5462d5190",
+  "prompts": {},
+  "sessions": {
+    "s_1ea8d9f04df9d9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea33351c3ffehsFT7BcthOlXiQ",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    },
+    "s_af334f8f0af3a4": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea0eca840ffeeIWyWHDPJ3Eriw",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
