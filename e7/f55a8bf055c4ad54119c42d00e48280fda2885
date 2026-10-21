@@ -1,0 +1,81 @@
+openspec/changes/tool-context-budgeting/design.md
+  s_1ea8d9f04df9d9::t_bb9383086a6679 25
+  s_1ea8d9f04df9d9::t_0674e7bb1ad6ef 68-72,75,77,80
+  s_1ea8d9f04df9d9::t_09e4ad0d49df4d 144
+  s_1ea8d9f04df9d9::t_23f254229731bc 279
+  s_1ea8d9f04df9d9::t_5b0d95a134c025 1-9,11-18,21-24,26-28,31-35,37-38,40,42-46,48,54,57,60-61,63,65,67,73,82-90,92,95-100,104,106,108-110,114,129,131,136,138-141,143,152-153,155-157,159,162-167,186,217-222,224-225,231-232,234-236,238,245,247,255-256
+  s_1ea8d9f04df9d9::t_36f5798593f8c0 10,19-20,29-30,36,39,41,47,49-53,55-56,58-59,62,64,66,74,76,78-79,81,91,93-94,101-103,105,107,111-113,115,117,121-124,126,128,130,132-135,137,142,145-148,150,154,158,160-161,168-185,187-216,223,228-230,233,237,239-244,246,248-254,275-278,280-285
+  s_1ea8d9f04df9d9::t_1935c76c5297b1 257,270-274
+  s_1ea8d9f04df9d9::t_de9ca710c047c1 286
+  s_1ea8d9f04df9d9::t_8d4d0a715aab7c 226-227
+  s_1ea8d9f04df9d9::t_23d53dc6c4b5fc 259-268
+  s_1ea8d9f04df9d9::t_23027b7ac54996 116,118-120,125,127
+  s_1ea8d9f04df9d9::t_4f947b37a38a4e 258
+  s_1ea8d9f04df9d9::t_d2d80ad5436b8f 269
+  s_1ea8d9f04df9d9::t_34dd5f1488e673 149,151
+  s_1ea8d9f04df9d9::t_b3d93944769946 287
+openspec/changes/tool-context-budgeting/specs/tool-discovery/spec.md
+  s_1ea8d9f04df9d9::t_df5714a9bccd83 4,6,8,12,14,18,20,23
+  s_1ea8d9f04df9d9::t_23812caeb01227 3,5,7,9-11,13,15-17,19,21-22,26,28,32,46-51,54,66-70,104-109,128-129,131-142,145,228-233
+  s_1ea8d9f04df9d9::t_c2eeb36bf7976d 143,147,149-208
+  s_1ea8d9f04df9d9::t_afc0225abda5f5 241-262
+  s_1ea8d9f04df9d9::t_29f805b15e8df9 220,222,224,226,235,237-238,263,265,270,272-281
+  s_1ea8d9f04df9d9::t_9bb20cc932d21a 1-2,24-25,27,29-31,33-45,52-53,55-65,71-103,110-127,130,144,146,148,209-219,221,223,225,227,234,236,239-240,264,266-269,271
+openspec/changes/tool-context-budgeting/specs/mcp-tool-naming/spec.md
+  s_1ea8d9f04df9d9::t_3282e101c352b6 1-17,33-34,36,38-40,46-49,51-52,70-77,79,81,83,86
+  s_1ea8d9f04df9d9::t_0a5c1898f81eb5 53-69
+  s_1ea8d9f04df9d9::t_3a7d469700de87 18-32,35,50,78,80,82,84-85
+  s_1ea8d9f04df9d9::t_881535d8306e3c 37,41-45
+docs/superpowers/specs/2026-10-21-tool-context-economy-research-and-design.md
+  s_1ea8d9f04df9d9::t_e4fb702efc71ca 1-851
+openspec/changes/tool-context-budgeting/proposal.md
+  s_1ea8d9f04df9d9::t_0993c0d8347378 1-4,6-8,10-12,39,42-46,52-54,56-60,71,77,81,85-87,98-100,105-109
+  s_1ea8d9f04df9d9::t_5c686c4141d928 33-34
+  s_1ea8d9f04df9d9::t_ee96b621864364 5,9,13-20,22-32,37-38,40-41,47-51,61-70,72-76,78-80,83-84,88-97,101-104
+  s_1ea8d9f04df9d9::t_5230cf45b208df 21,55,82
+  s_1ea8d9f04df9d9::t_6014f5b34052d9 35-36
+openspec/changes/tool-context-budgeting/specs/tool-catalog-instructions/spec.md
+  s_1ea8d9f04df9d9::t_e6d5593302de0c 3-24,65,70,72,83,85,87,89-91
+  s_1ea8d9f04df9d9::t_9734422780d8a0 1-2,25-64,66-69,71,73-82,84,86,88
+openspec/changes/tool-context-budgeting/specs/tool-schema-settlement/spec.md
+  s_1ea8d9f04df9d9::t_be274f40922f5d 1-32,48-66,73,82-83,85-90,93,98-99,101-106,109,114-115,117-122,129-133
+  s_1ea8d9f04df9d9::t_3d24eea30e0b83 33-47,67-72,74-81,84,91-92,94-97,100,107-108,110-113,116,123-128
+openspec/changes/tool-context-budgeting/tasks.md
+  s_1ea8d9f04df9d9::t_7ab3083f3a2cc2 188
+  s_1ea8d9f04df9d9::t_a295a34d7e55c3 74,101
+  s_1ea8d9f04df9d9::t_75f2a96d22dcde 220-222,225,227
+  s_1ea8d9f04df9d9::t_f3c7aa0db94fdc 42
+  s_1ea8d9f04df9d9::t_68265bdc860aa0 103-111
+  s_1ea8d9f04df9d9::t_783453f1413203 186-187,189
+  s_1ea8d9f04df9d9::t_b1f4971566b4c8 216,218-219
+  s_1ea8d9f04df9d9::t_7e57244667e493 1-41,43-73,75-100,102,112-183,190-215,217,223-224,226
+  s_1ea8d9f04df9d9::t_a992381cc405a7 184-185
+openspec/changes/tool-context-budgeting/specs/tool-exposure-policy/spec.md
+  s_1ea8d9f04df9d9::t_d2b1b1361394ed 90,94-95,98-111,114,116,118-124,135-144,146,149
+  s_1ea8d9f04df9d9::t_ace2f3c8537516 1-4,6-19,21,23,25,28,43-44,46-51,57-59,61-70,73,75,77-89,91,93,96,112-113,148,159,163-178
+  s_1ea8d9f04df9d9::t_99281c982edfa7 5,20,22,24,26-27,29-42,45,52-56,60,71-72,74,76,92,97,115,117,125-134,145,147,150-158,160-162
+Seeing.Agent.slnx
+  s_1ea8d9f04df9d9::t_2774b7659afc7d 145-146,170
+  s_1ea8d9f04df9d9::t_42b7d2f6fb4507 147-169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "e7f55a8bf055c4ad54119c42d00e48280fda2885",
+  "prompts": {},
+  "humans": {
+    "h_2674648465396e": {
+      "author": "qd.xu <qd.xu@trip.com>"
+    }
+  },
+  "sessions": {
+    "s_1ea8d9f04df9d9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea33351c3ffehsFT7BcthOlXiQ",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
