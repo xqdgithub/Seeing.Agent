@@ -6,8 +6,8 @@ namespace Seeing.Agent.Hosting.Execution.ToolExposure;
 /// <summary>
 /// 分层暴露策略：pinned / 已发现 / 检索元工具内联，其余延迟。
 /// <para>
-/// 纯分层语义——不感知"升级"：<c>auto</c> 是否落到本策略由 resolver 依阈值与粘滞决定
-/// （升级 = 从全内联进入分层，而非相反）。因此本策略对 <see cref="ToolExposureInput.Escalated"/> 不敏感。
+/// 分层语义本身不感知"升级"：<c>auto</c> 是否落到本策略由 resolver 依阈值与粘滞决定
+/// （升级 = 从全内联进入分层，而非相反）。
 /// </para>
 /// <para>
 /// 职责边界：<see cref="ToolExposurePlan.CatalogEntries"/> 输出**全量条目并标注各自 Mode**
