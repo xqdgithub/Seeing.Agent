@@ -21,6 +21,12 @@ public class PromptContext
     /// <summary>自定义变量</summary>
     public Dictionary<string, string> Variables { get; set; } = new();
 
+    /// <summary>
+    /// 通用分节内容槽（键为分节标识，如 "tool-catalog"）。仅承载**已渲染的字符串**，
+    /// 不引入具体领域类型（如目录条目）——渲染由产出方完成，贡献者按此槽透传。
+    /// </summary>
+    public Dictionary<string, string> Sections { get; set; } = new();
+
     /// <summary>当前模型名称</summary>
     public string? ModelName { get; set; }
 

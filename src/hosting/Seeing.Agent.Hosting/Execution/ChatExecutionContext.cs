@@ -94,6 +94,9 @@ internal class ChatExecutionContext
     /// <summary>本轮延迟（进目录）的工具数。</summary>
     public int DeferredToolCount { get; init; }
 
+    /// <summary>本轮目录正文（由 ToolCatalogRenderer 渲染；无延迟工具时为空，供 ToolCatalog 分节透传）。</summary>
+    public string? CatalogText { get; init; }
+
     // ========== 元数据 ==========
 
     /// <summary>附加元数据</summary>

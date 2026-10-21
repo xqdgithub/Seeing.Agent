@@ -91,6 +91,8 @@ public static class HostingServiceCollectionExtensions
         services.AddSingleton<ToolExposurePolicySelector>();
         services.AddSingleton<ToolExposureConfigResolver>();
         services.AddSingleton<IToolDiscoveryStore, SessionToolDiscoveryStore>();
+        // 目录分节贡献者（透传执行链渲染的目录正文进系统提示）
+        services.AddSingleton<Seeing.Agent.Abstractions.Prompts.IPromptSectionContributor, Seeing.Agent.Hosting.Prompts.ToolCatalogSectionContributor>();
         services.AddSingleton<SessionRuntime>(sp => new SessionRuntime(
             sp.GetRequiredService<IExecutionRunner>(),
             sp.GetRequiredService<IExecutionEventPublisher>(),

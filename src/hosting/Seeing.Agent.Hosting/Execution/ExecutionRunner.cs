@@ -21,6 +21,7 @@ using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Core.Services;
+using Seeing.Agent.Hosting.Execution.ToolExposure;
 using Seeing.Agent.Llm;
 using Seeing.Session.Core;
 using System.Diagnostics.CodeAnalysis;
@@ -466,7 +467,8 @@ internal sealed class ExecutionRunner : IExecutionRunner
             SectionIds = sectionIds,
             CatalogEntries = schemaSettlement.CatalogEntries,
             InlineToolCount = schemaSettlement.InlineToolCount,
-            DeferredToolCount = schemaSettlement.DeferredToolCount
+            DeferredToolCount = schemaSettlement.DeferredToolCount,
+            CatalogText = ToolCatalogRenderer.Render(schemaSettlement.CatalogEntries)
         };
     }
 
@@ -801,7 +803,8 @@ internal sealed class ExecutionRunner : IExecutionRunner
             WorkspaceRoot = context.WorkspaceRoot ?? "",
             PermissionAuthorizer = context.PermissionAuthorizer,
             CancellationToken = cancellationToken,
-            ToolSchemas = context.ToolSchemas ?? Array.Empty<FunctionToolSchema>()
+            ToolSchemas = context.ToolSchemas ?? Array.Empty<FunctionToolSchema>(),
+            CatalogText = context.CatalogText
         };
 
         // 传递请求级模型选择到 Metadata（适用于 Native Agent 和 ACP Passthrough）

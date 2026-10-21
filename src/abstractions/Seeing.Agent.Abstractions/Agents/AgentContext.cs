@@ -66,4 +66,10 @@ public class AgentContext
     /// null 表示调用方未提供（非 Hosting 入口的遗留路径）。
     /// </summary>
     public IReadOnlyList<FunctionToolSchema>? ToolSchemas { get; set; }
+
+    /// <summary>
+    /// 本轮延迟工具的目录文本（由 resolver 结算产出、执行链渲染；经 PromptContext.Sections["tool-catalog"] 进系统提示）。
+    /// null/空 表示无延迟工具，目录分节不输出。
+    /// </summary>
+    public string? CatalogText { get; set; }
 }

@@ -580,6 +580,10 @@ public class AgentExecutor : IAgentExecutor
                 Platform = Environment.OSVersion.Platform.ToString(),
                 Tools = toolSchemas.Select(ts => ts.Function).ToList(),
             };
+            // 工具目录正文（执行链渲染，string-only 携带）经通用 Sections 槽交给 ToolCatalog 分节贡献者
+            if (!string.IsNullOrWhiteSpace(context.CatalogText))
+                promptContext.Sections["tool-catalog"] = context.CatalogText;
+
             systemPrompt = await _promptBuilder.BuildAsync(promptContext, cancellationToken).ConfigureAwait(false);
             if (string.IsNullOrEmpty(systemPrompt))
                 systemPrompt = null;
