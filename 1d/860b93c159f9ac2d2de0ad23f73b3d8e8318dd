@@ -1,0 +1,38 @@
+tests/spine/Seeing.Agent.Tests/Events/SchemaSnapshotEventTests.cs
+  s_1ea8d9f04df9d9::t_065671ae746a6c 3
+  s_1ea8d9f04df9d9::t_ffcc600d5f458a 56-76
+tests/spine/Seeing.Agent.Tests/App/Execution/SessionToolSchemaResolverExposureTests.cs
+  s_1ea8d9f04df9d9::t_9de82b123d0e7c 158-189
+  s_1ea8d9f04df9d9::t_3bde3581ac8679 3
+src/hosting/Seeing.Agent.Hosting/Execution/ExecutionRunner.cs
+  s_1ea8d9f04df9d9::t_d0177daa7bee79 476-478
+  s_1ea8d9f04df9d9::t_e5ad9f819cf999 250-255
+src/abstractions/Seeing.Agent.Abstractions/Execution/ISessionToolSchemaResolver.cs
+  s_1ea8d9f04df9d9::t_1340b316fb3cb0 54-55
+src/hosting/Seeing.Agent.Hosting/Execution/ChatExecutionContext.cs
+  s_1ea8d9f04df9d9::t_5a64af435dcd9e 97-105
+src/abstractions/Seeing.Agent.Abstractions/Events/SchemaSnapshotEvent.cs
+  s_1ea8d9f04df9d9::t_d06ec077155a90 1,6,30-44
+  s_1ea8d9f04df9d9::t_4aab0aa6335eb4 2
+src/hosting/Seeing.Agent.Hosting/Execution/SessionToolSchemaResolver.cs
+  s_1ea8d9f04df9d9::t_dea3ae1070827a 310-314,322-323
+  s_1ea8d9f04df9d9::t_aed54648f93fd3 30-31
+  s_1ea8d9f04df9d9::t_5b12c9841f3133 105-106
+  s_1ea8d9f04df9d9::t_f932e14f500f2e 205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "1d860b93c159f9ac2d2de0ad23f73b3d8e8318dd",
+  "prompts": {},
+  "sessions": {
+    "s_1ea8d9f04df9d9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea33351c3ffehsFT7BcthOlXiQ",
+        "model": "qwen3.8-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
