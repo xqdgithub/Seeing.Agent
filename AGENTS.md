@@ -26,6 +26,7 @@
 - [SessionMessage 内容不可变并发契约 Release Notes](docs/architecture/12-session-message-immutability-release-notes.md)
 - [单一权威写入者 Release Notes](docs/architecture/13-single-writer-release-notes.md)
 - [会话入站运行时 Release Notes](docs/architecture/14-session-inbox-runtime-release-notes.md)
+- [工具上下文预算与分层暴露 Release Notes](docs/architecture/19-tool-context-budgeting-release-notes.md)
 
 设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
 
@@ -80,7 +81,8 @@ Seeing.Agent/
 | 新增内置 Agent | `src/capabilities/Seeing.Agent.Agents.BuiltIn/` | AgentDefinition 纯数据；经模块 Activate |
 | Agent 执行入口 | `src/abstractions/Seeing.Agent.Abstractions/Agents/IAgentExecutor.cs` | Native / ACP 分流 |
 | 会话运行时（唯一驱动入口） | `src/hosting/Seeing.Agent.Hosting/Execution/SessionRuntime.cs` | `ISessionRuntime.DeliverAsync` + 消费循环；契约在 `src/abstractions/.../Runtime/ISessionRuntime.cs`；见 `docs/architecture/14` |
-| 编排 / schema 单点 | `src/hosting/Seeing.Agent.Hosting/Execution/ExecutionRunner.cs` + `src/hosting/Seeing.Agent.Hosting/Execution/SessionToolSchemaResolver.cs` | 跑一轮执行；工具 schema 唯一计算在 `SessionToolSchemaResolver`（契约 `src/abstractions/.../Execution/ISessionToolSchemaResolver.cs`）；见 `docs/architecture/18` |
+| 编排 / schema 单点 | `src/hosting/Seeing.Agent.Hosting/Execution/ExecutionRunner.cs` + `src/hosting/Seeing.Agent.Hosting/Execution/SessionToolSchemaResolver.cs` + `src/hosting/Seeing.Agent.Hosting/Execution/SessionToolSchemaResolver.cs` | 跑一轮执行；工具 schema 唯一计算在 `SessionToolSchemaResolver`（契约 `src/abstractions/.../Execution/ISessionToolSchemaResolver.cs`）；见 `docs/architecture/18` |
+| 工具分层暴露 / 目录 / tool_search | `src/hosting/Seeing.Agent.Hosting/Execution/ToolExposure/`（策略/目录构建/升级/配置解析/发现存储/检索 provider）+ `src/abstractions/.../Tools/{ToolExposure*,IToolExposurePolicy,IToolDiscoveryStore,IToolSearchProvider}.cs` + `src/capabilities/Seeing.Agent.Tools.ToolDiscovery/` | 默认 auto 升级分层；exposure≠permission；发现下一轮生效；见 `docs/architecture/19` |
 | Todo 存取 | `src/abstractions/.../Todo/` + Hosting 适配器 | 端口-适配器 |
 | 模块生命周期 | `src/abstractions/.../Modules/` + `src/spine/.../SettlementEngine` | 结算 / Activate / Deactivate |
 | 契约类型总览 | `src/abstractions/Seeing.Agent.Abstractions/` | Events/Hooks/Tools/Agents/… |

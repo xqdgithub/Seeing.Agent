@@ -35,6 +35,7 @@
 | [16 会话文件浏览器 Release Notes](16-session-file-explorer-release-notes.md) | 文件树/多标签查看编辑、三层分离、会话根门闸、共享写锁、watcher 稳定性、冲突裁决 |
 | [17 通联子系统 Release Notes](17-channel-comms-release-notes.md) | 渠道目录与出站投递、协议 v2、`ChannelRoute`、调度只出站、破坏性变更 |
 | [18 Gateway 实时订阅与 schema 解析端口 Release Notes](18-gateway-live-subscription-and-schema-resolver-release-notes.md) | 请求/应答实时订阅三件套、Collector 轮次门控、`ISessionToolSchemaResolver` 共享结算出口、已知边界 |
+| [19 工具上下文预算与分层暴露 Release Notes](19-tool-context-budgeting-release-notes.md) | MCP id 零兼容、默认 auto 分层、`tool_search` 下一轮生效、token 归属单源、`Tools.Exposure`、破坏性清单与回退 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 

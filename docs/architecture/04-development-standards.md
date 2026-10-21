@@ -72,6 +72,10 @@ Core 程序集内命名空间须为 `Seeing.Agent.Core.*`（契约仍可在 Abst
 
 - [ ] 不在 Native executor 自算工具 schema 写入请求  
 - [ ] 工具观察 `CancellationToken`；取消后不写父会话  
+- [ ] schema/目录输出按工具 id 稳定排序（序数），保护 provider 前缀缓存  
+- [ ] 分层暴露(exposure)只决定「进不进本轮 schema/目录」，**不得**当作权限；发现后的工具仍走完整审批链  
+- [ ] 新增 prompt 分节靠贡献者自述 `Heading`/`Placement`，**禁止**改 `PromptBuilder` 的锚点表  
+- [ ] 每轮 `tools[]` 与目录 token 计入 `SchemaSnapshotEvent`/`SourceBreakdown`，口径单源（resolver 一次估算）  
 
 ### 测试与扫描
 
@@ -98,6 +102,13 @@ Core 程序集内命名空间须为 `Seeing.Agent.Core.*`（契约仍可在 Abst
 | 用 appsettings 覆盖 SeeingAgent 真相 | 只写 `seeing.json` |
 | 对 `SessionMessage`/`SessionToolCall` 集合属性原地 `Add/Remove/索引写` | **publish-on-write**：整体替换不可变集合引用（`x.ToolCalls = x.ToolCalls.Add(tc)`、`x.Metadata = x.Metadata.SetItem(k,v)`） |
 | 宿主（WebUI/TUI/Gateway）直接写 `SessionData` 消息内容 | 只读投影；写入统一由 Hosting 权威路径（`ChatEventTracker`）完成 |
+| 把 exposure/deferred（分层暴露、目录）当权限门 | exposure 只控制本轮 `tools[]`/目录可见性；调用许可恒走 `IPermissionAuthorizer` 决策链；目录正文不得含允许/拒绝裁决 |
+| 为新增 prompt 分节改 `PromptBuilder` 硬编码锚点 | 贡献者自述 `Heading`+`Placement`；builder 不认识具体分节名 |
+
+### 5.0 Code Mode（未来项）前置约束
+
+本变更**不做** Code Mode（无 `Code` 策略值、无 `run_code`、无 Jint/ClearScript/Roslyn Scripting）。未来若要引入，隔离形态**必须先定**：受限解释器 vs 独立 runner 子进程。**进程内 Roslyn 脚本不可接受**——可 I/O / 反射 / 退出进程，等同任意代码执行。必须先有进程/沙箱边界再谈能力。
+
 
 ### 5.1 消息内容并发契约（publish-on-write）
 

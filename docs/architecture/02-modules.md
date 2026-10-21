@@ -32,6 +32,7 @@
 | `Seeing.Agent.Tools.Git` | `git` | git_* |
 | `Seeing.Agent.Workspace` | `workspace.git-exclude` | 启动/工作区切换时将工作区 `.seeing` 幂等加入本机 git 排除（`.git/info/exclude`，不改 `.gitignore`；非仓库/git 缺失静默降级） |
 | `Seeing.Agent.Tools.Session` | `session.tools` | session_list/search/read/trim/handoff |
+| `Seeing.Agent.Tools.ToolDiscovery` | `tool-discovery` | tool_search 检索（分层暴露目录按需展开，发现下一轮生效）|
 | `Seeing.Agent.Tools.Question` | `question.tools` | 交互式提问工具（single/text） |
 | `Seeing.Agent.Tools.Basic` | `basic` | current_time |
 | `Seeing.Agent.Tools.Support` | — | ToolBase 等共享；**不是** `ISeeingModule` |

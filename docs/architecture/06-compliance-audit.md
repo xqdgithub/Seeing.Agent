@@ -26,7 +26,8 @@
 | Core 命名空间 `Seeing.Agent.Core.*` | ✅ | spine 内已迁 |
 | 磁盘分类目录 | ✅ | `src/` 顶层仅六类；`tests/` 含镜像 + apps/plugs |
 | 能力包互硬引用（Skills/Mcp） | ✅ | Scheduler/Acp 等无 Skills/Mcp ProjectReference |
-| schema 单点（执行路径） | ✅ | Native `AgentExecutor` 只读 `context.ToolSchemas`；计算在 `ExecutionRunner` |
+| schema 单点（执行路径） | ✅ | 计算唯一在 `SessionToolSchemaResolver`（含工具暴露裁剪）；`ExecutionRunner` 经端口 `ISessionToolSchemaResolver` 依赖、无回退构造；Native `AgentExecutor` 只读 `context.ToolSchemas` |
+| tool-discovery 能力包依赖方向 | ✅ | `Seeing.Agent.Tools.ToolDiscovery` 仅依赖 Abstractions+Seeing.Session+Tools.Support；经 `IToolSearchProvider`/`IToolDiscoveryStore`/`IToolManager` 端口取数，不引 Core/Hosting；Search 配置用工具内常量（未反向消费 Core options） |
 | 无阻塞式 GetToolSchemas 同步包装 | ✅ | 已删除 `Task.Run().GetResult()` 同步 API |
 | CapabilitySet / Boot 契约落点 | ✅（目标态） | `CapabilitySetDefinition` / `ICapabilitySetCatalog` **仅** Abstractions + Core；能力包不得自实现目录或引用 Core 结算类型；会话滤镜不外键绑 CapabilitySet |
 

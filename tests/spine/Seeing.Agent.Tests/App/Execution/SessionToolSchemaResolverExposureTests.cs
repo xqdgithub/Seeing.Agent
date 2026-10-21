@@ -156,6 +156,49 @@ public class SessionToolSchemaResolverExposureTests
             NullLogger<SessionToolSchemaResolver>.Instance);
 
     [Fact]
+    public async Task SchemaPrefix_ShouldBeStableAcrossRounds()
+    {
+        // 17.4：同一会话+Agent 连续多轮，inline 工具 id 序列完全一致（保护 provider 前缀缓存）
+        var session = SessionData.Create(scenario: "code");
+        var agent = new AgentDefinition { Name = "build", Runtime = AgentRuntime.Native, Exposure = ToolExposurePolicyMode.Tiered, PinnedTools = ["git_status"] };
+        session.DiscoveredTools.Add("read");
+        var services = await BuildAsync(session, agent);
+        var resolver = CreateResolver(services);
+
+        string[]? first = null;
+        for (var i = 0; i < 20; i++)
+        {
+            var r = await resolver.ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
+            var ids = r.ToolSchemas.Select(s => s.Function!.Name).ToArray();
+            if (first is null) first = ids;
+            else ids.Should().Equal(first);
+        }
+    }
+
+    [Fact]
+    public async Task Escalation_ShouldFlipOnceAndNeverDowngrade()
+    {
+        // 17.5：auto 越阈值升级一次并粘滞；后续即使工具减少也不回退
+        var session = SessionData.Create(scenario: "code");
+        var agent = new AgentDefinition { Name = "build", Runtime = AgentRuntime.Native };
+        var services = await BuildAsync(session, agent, escalateToolCount: 2);
+        var resolver = CreateResolver(services);
+
+        await resolver.ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
+        session.ExposureEscalated.Should().BeTrue();
+
+        // 工具骤减（denied 剩 1）仍不回退
+        var few = new AgentDefinition
+        {
+            Name = "build",
+            Runtime = AgentRuntime.Native,
+            DeniedTools = ["memory_search", "read", "current_time"]
+        };
+        await resolver.ResolveAsync(session.Id, few, TestContext.Current.CancellationToken);
+        session.ExposureEscalated.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task ShouldLogExposureMetrics_WhenTieredActive()
     {
         var session = SessionData.Create(scenario: "code");

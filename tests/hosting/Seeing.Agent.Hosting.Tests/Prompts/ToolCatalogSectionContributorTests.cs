@@ -47,6 +47,23 @@ public class ToolCatalogSectionContributorTests
     }
 
     [Fact]
+    public void Render_ShouldNotContainPermissionDecision()
+    {
+        // 17.8：目录仅描述"可发现/下一轮生效"，绝不出现权限裁决语（允许/拒绝/审批/denied/permission）
+        var text = ToolCatalogRenderer.Render(Entries());
+
+        text.Should().NotBeNull();
+        text!.Should().NotContain("允许");
+        text.Should().NotContain("拒绝");
+        text.Should().NotContain("审批");
+
+        var lower = text!.ToLowerInvariant();
+        lower.Should().NotContain("permission");
+        lower.Should().NotContain("deny");
+        lower.Should().NotContain("approve");
+    }
+
+    [Fact]
     public async Task Contributor_ShouldNotEmit_WhenNoCatalogSection()
     {
         var contributor = new ToolCatalogSectionContributor();
