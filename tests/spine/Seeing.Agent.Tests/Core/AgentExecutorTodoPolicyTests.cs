@@ -54,7 +54,7 @@ public class AgentExecutorTodoPolicyTests
             Pending("s1"),
             manager => manager.RegisterToolAsync(new EndTurnTool(() => reasons.Dequeue())));
 
-        var events = await RunAsync(executor, "s1", withTodoWrite: true, maxSteps: 5);
+        var events = await RunAsync(executor, "s1", withTodoWrite: true, maxSteps: 5, extraVisibleTools: "end_turn_tool");
 
         requests.Should().HaveCount(2);
         CountKind(requests[1], "todo_incomplete").Should().Be(1);
@@ -74,7 +74,7 @@ public class AgentExecutorTodoPolicyTests
             Pending("s1"),
             manager => manager.RegisterToolAsync(new EndTurnTool(() => "kept")));
 
-        var events = await RunAsync(executor, "s1", withTodoWrite: false, maxSteps: 5);
+        var events = await RunAsync(executor, "s1", withTodoWrite: false, maxSteps: 5, extraVisibleTools: "end_turn_tool");
 
         requests.Should().HaveCount(1);
         requests[0].Should().NotContain(m => m.Content != null && m.Content.Contains("todo_incomplete"));
@@ -106,7 +106,7 @@ public class AgentExecutorTodoPolicyTests
             },
             manager => manager.RegisterToolAsync(new NoopTool()));
 
-        await RunAsync(executor, "s1", withTodoWrite: true, maxSteps: 4, systemPrompt: "BASE PROMPT");
+        await RunAsync(executor, "s1", withTodoWrite: true, maxSteps: 4, systemPrompt: "BASE PROMPT", extraVisibleTools: "loop_probe");
 
         requests.Should().HaveCount(2);
         requests.Should().OnlyContain(r => r.SystemPrompt == "BASE PROMPT");
@@ -132,7 +132,7 @@ public class AgentExecutorTodoPolicyTests
             new TodoList { SessionId = "s1", Items = new() },
             manager => manager.RegisterToolAsync(new NoopTool()));
 
-        await RunAsync(executor, "s1", withTodoWrite: true, maxSteps: 6);
+        await RunAsync(executor, "s1", withTodoWrite: true, maxSteps: 6, extraVisibleTools: "loop_probe");
 
         requests.Should().HaveCount(4);
         requests.SelectMany(r => r).Should().NotContain(m =>
@@ -164,7 +164,8 @@ public class AgentExecutorTodoPolicyTests
         string sessionId,
         bool withTodoWrite,
         int maxSteps,
-        string? systemPrompt = null)
+        string? systemPrompt = null,
+        params string[] extraVisibleTools)
     {
         var agent = new AgentDefinition
         {
@@ -174,17 +175,21 @@ public class AgentExecutorTodoPolicyTests
             MaxSteps = maxSteps,
             SystemPrompt = systemPrompt
         };
+        // 本轮可见集必须覆盖所有会被调用的工具：执行层按 ToolSettlement 做可见集校验。
+        var visibleIds = withTodoWrite
+            ? new[] { "todowrite" }.Concat(extraVisibleTools).ToArray()
+            : extraVisibleTools;
         var context = new AgentContext
         {
             SessionId = sessionId,
             WorkingDirectory = "workspace-root",
             WorkspaceRoot = "workspace-root",
-            ToolSettlement = withTodoWrite
+            ToolSettlement = visibleIds.Length > 0
                 ? new Seeing.Agent.Abstractions.Execution.SessionToolSchemaResolution(
-                    [new Seeing.Agent.Abstractions.Tools.ExposedTool(
-                        "todowrite", "", "todowrite()",
-                        new FunctionToolSchema { Function = new FunctionSchema { Name = "todowrite" } },
-                        1, Seeing.Agent.Abstractions.Tools.ToolExposureMode.Inline)],
+                    visibleIds.Select(id => new Seeing.Agent.Abstractions.Tools.ExposedTool(
+                        id, "", $"{id}()",
+                        new FunctionToolSchema { Function = new FunctionSchema { Name = id } },
+                        1, Seeing.Agent.Abstractions.Tools.ToolExposureMode.Inline)).ToList(),
                     [],
                     Seeing.Agent.Abstractions.Tools.ToolExposureLayout.Flat,
                     null, 1, 0)

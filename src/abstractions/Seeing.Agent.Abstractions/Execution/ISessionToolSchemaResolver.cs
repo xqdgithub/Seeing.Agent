@@ -74,6 +74,22 @@ public sealed record SessionToolSchemaResolution(
     public bool Contains(string toolId) =>
         Tools.Any(t => string.Equals(t.Id, toolId, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// 该工具本轮是否**可直接调用**：schema 已随本视图下发（<see cref="ToolExposureMode.Inline"/>）。
+    /// <para>执行层据此做可见集校验；未下发 schema 的调用一律拒绝。</para>
+    /// </summary>
+    public bool IsCallable(string toolId) =>
+        Tools.Any(t => string.Equals(t.Id, toolId, StringComparison.OrdinalIgnoreCase)
+                       && t.Mode == ToolExposureMode.Inline);
+
+    /// <summary>
+    /// 该工具本轮是否以**目录条目延迟暴露**（<see cref="ToolExposureMode.Deferred"/>）：
+    /// 模型只看到 id 与摘要，需先经检索才能取得 schema。
+    /// </summary>
+    public bool IsDeferred(string toolId) =>
+        Tools.Any(t => string.Equals(t.Id, toolId, StringComparison.OrdinalIgnoreCase)
+                       && t.Mode == ToolExposureMode.Deferred);
+
     /// <summary>本轮是否有检索工具可用（决定目录引导文案与执行层提示）。</summary>
     public bool HasSearchTool =>
         Contains(ToolIdConventions.SearchToolId) &&

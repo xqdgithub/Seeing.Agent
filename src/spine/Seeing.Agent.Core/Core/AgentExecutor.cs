@@ -856,6 +856,22 @@ public class AgentExecutor : IAgentExecutor
 
         // Session-first：task 走正常 ToolManager 路径（TaskTool），不再旁路
 
+        // ========== 可见集校验 ==========
+        // 本会话本轮未下发给模型的工具（延迟暴露 / 被 Agent 或模块过滤）不得被调用。
+        // 这是执行层对"模型凭空调用未加载工具"的确定性拦截，位于权限判定之前：
+        // 不可见的工具不应进入审批流程，也不应因历史授权而意外放行。
+        if (context.ToolSettlement is { } settlement
+            && !settlement.IsCallable(name))
+        {
+            var reason = settlement.IsDeferred(name)
+                ? $"工具 '{name}' 尚未加载。请先用 {ToolIdConventions.SearchToolId} 检索该工具，再于下一轮调用。"
+                : $"工具 '{name}' 在本会话当前上下文中不可用。";
+            _logger.LogWarning(
+                "[AgentExecutor] 拒绝了本轮不可见工具的调用: {ToolName} (deferred={IsDeferred})",
+                name, settlement.IsDeferred(name));
+            return BuildTerminalEvent(tc, name, context, loopId, ToolCallStatus.Rejected, reason);
+        }
+
         var decision = await EvaluatePermissionAsync(name, arguments, agent, context, permissionAuthorizer, tc.Id).ConfigureAwait(false);
 
         if (decision.Action == PermissionAction.Deny)
