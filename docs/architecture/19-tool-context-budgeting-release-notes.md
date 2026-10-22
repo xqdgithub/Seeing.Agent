@@ -58,6 +58,7 @@
 12. **`tool_search` 每次调用重算会话结算**：检索语料经 `IToolSearchProvider`→resolver 现算（保证单源、无额外持久化 store），因此 `tool_search` 的调用会在该时点重写 `CachedSchemaTokens/CatalogTokens` 与 `ExposureEscalated`（同 session/agent/配置下幂等；跨 agent 并发或热重载期间的短暂口径差异属已知边界）。真正的"turn 级只读快照"需新增结算快照载体，留作后续演进。
 13. **目录签名为 `id(截断描述)`，不含参数列表**：spec 示例的 `(path, offset?, limit?)` 形式需 `ToolMeta` 携带参数摘要，当前未采；目录用途为"可发现性索引"，参数详情由 `detail=full` 检索获取。
 14. **`tool_search` 空查询返回按 id 排序的全部条目**（而非"命名空间+计数概览"）；有 query 时零分过滤、命名空间计数在未命中时给出。0-shown 命名空间仍以标题行 `### ns (N tools, 0 shown)` 出现（见 §6.7 与目录命名空间契约）。
+15. **`SessionData.DiscoveredTools` 为无锁 `List<string>`**：resolver 裁剪采"快照 + 整体替换"，`SessionToolDiscoveryStore.Add` 为原地追加；二者并发（典型：Scheduler 旁路 `AgentJob`/`HeartbeatJob` 直连 resolver、不经 `SessionRuntime` 的 per-session gate，与主链同会话）存在极小交错窗口，最坏为一次发现丢失或枚举异常，自愈于下一轮、不损坏持久化。收敛修法（专用 `_discoveryGate` + 加锁快照/替换/追加）留作后续。
 
 ## 7. 回退
 

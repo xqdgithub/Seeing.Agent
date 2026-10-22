@@ -173,6 +173,29 @@ public class SessionToolSchemaResolverExposureTests
         session.DiscoveredTools.Should().Contain("read");
     }
 
+    [Fact]
+    public async Task Tiered_WithoutSearchToolAvailable_ShouldClampToAllInline()
+    {
+        // 分层依赖检索入口；Agent 禁用 tool_search 时本轮可用集不含它 → 降级全内联（不藏工具）。
+        var session = SessionData.Create(scenario: "code");
+        var agent = new AgentDefinition
+        {
+            Name = "build",
+            Runtime = AgentRuntime.Native,
+            Exposure = ToolExposurePolicyMode.Tiered,
+            DeniedTools = ["tool_search"]
+        };
+        var services = await BuildAsync(session, agent);
+
+        var resolution = await CreateResolver(services)
+            .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
+
+        resolution.DeferredEntries.Should().BeEmpty();
+        resolution.DeferredToolCount.Should().Be(0);
+        resolution.ToolSchemas.Select(s => s.Function!.Name)
+            .Should().Contain(["git_status", "read", "current_time"]);
+    }
+
     private static SessionToolSchemaResolver CreateResolver(IServiceProvider services) =>
         new(services, services.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(),
             services.GetRequiredService<ToolExposureConfigResolver>(),

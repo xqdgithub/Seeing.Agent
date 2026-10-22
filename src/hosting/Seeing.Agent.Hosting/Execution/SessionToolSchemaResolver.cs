@@ -246,14 +246,15 @@ public sealed class SessionToolSchemaResolver : ISessionToolSchemaResolver
             _ => ToolExposurePolicyMode.All
         };
 
-        // 安全钳制：分层依赖检索入口。若本轮可用集不含 tool_search（宿主未挂载 tool-discovery 模块），
-        // 分层会把工具藏进目录却无检索手段 → 静默能力损伤。此时退回全内联（All）并告警。
+        // 安全钳制：分层依赖检索入口。若本轮可用集不含 tool_search（可能是 tool-discovery 模块未挂载，
+        // 也可能是 Agent 白名单/会话禁用排除），分层会把工具藏进目录却无检索手段 → 静默能力损伤。
+        // 此时退回全内联（All）。用 Debug 避免无检索入口的宿主每轮刷 Warning。
         if (selectedMode == ToolExposurePolicyMode.Tiered
             && !availableIds.Contains(ToolIdConventions.SearchToolId))
         {
-            _logger.LogWarning(
-                "分层暴露已启用但本轮无 tool_search（tool-discovery 模块未挂载），降级为全内联: session={SessionId}",
-                session.Id);
+            _logger.LogDebug(
+                "分层暴露生效但本轮可用集不含 {SearchTool}（模块未挂载/被白名单或禁用排除），降级为全内联: session={SessionId}",
+                ToolIdConventions.SearchToolId, session.Id);
             selectedMode = ToolExposurePolicyMode.All;
         }
 
