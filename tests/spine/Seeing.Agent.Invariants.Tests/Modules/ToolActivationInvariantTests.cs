@@ -35,7 +35,7 @@ public class ToolActivationInvariantTests
         using var sp = services.BuildServiceProvider();
         var tools = sp.GetRequiredService<IToolManager>();
 
-        tools.GetTools().Should().BeEmpty();
+        tools.GetRegisteredTools().Should().BeEmpty();
         services.Where(d => d.ServiceType == typeof(ITool)).Should().BeEmpty();
     }
 
@@ -59,10 +59,10 @@ public class ToolActivationInvariantTests
         await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
 
         var tm = sp.GetRequiredService<IToolManager>();
-        tm.GetTools().Select(t => t.Id).Should().BeEquivalentTo(["current_time"]);
+        tm.GetRegisteredTools().Select(t => t.Id).Should().BeEquivalentTo(["current_time"]);
 
         var basic = modules.Single(m => m.Id == "basic");
-        basic.ProvidedTools.Should().BeEquivalentTo(tm.GetTools().Select(t => t.Id));
+        basic.ProvidedTools.Should().BeEquivalentTo(tm.GetRegisteredTools().Select(t => t.Id));
     }
 
     [Fact]
@@ -90,11 +90,11 @@ public class ToolActivationInvariantTests
 
         await lifecycle.DeactivateAsync(["filesystem"], TestContext.Current.CancellationToken);
         tm.GetTool("read").Should().BeNull();
-        tm.GetTools().Select(t => t.Id).Should().NotContain(FileSystemModuleIds);
+        tm.GetRegisteredTools().Select(t => t.Id).Should().NotContain(FileSystemModuleIds);
 
         await lifecycle.ActivateAsync(TestContext.Current.CancellationToken);
         tm.GetTool("read").Should().NotBeNull();
-        tm.GetTools().Select(t => t.Id).Should().Contain(FileSystemModuleIds);
+        tm.GetRegisteredTools().Select(t => t.Id).Should().Contain(FileSystemModuleIds);
     }
 
     [Fact]

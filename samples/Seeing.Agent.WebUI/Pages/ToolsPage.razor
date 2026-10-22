@@ -1,7 +1,7 @@
 @using AntDesign
 @using Seeing.Agent.Core.Tools
 @using Seeing.Agent.Mcp
-@inject ToolManager ToolInvoker
+@inject IToolManager ToolInvoker
 @inject IMessageService MessageService
 
 <PageTitle>工具 - Seeing.Agent</PageTitle>
@@ -161,7 +161,7 @@
     private int _enabledCount = 0;
     
     protected override void OnInitialized() {
-        _tools = ToolInvoker.GetToolsIncludingDisabled().ToList();
+        _tools = ToolInvoker.GetRegisteredTools().ToList();
         _categories = _tools.Select(t => t.Category.ToString()).Distinct().OrderBy(c => c).ToList();
         _categoryStats = _tools.GroupBy(t => t.Category.ToString()).ToDictionary(g => g.Key, g => g.Count());
         _enabledCount = _tools.Count(t => ToolInvoker.IsToolEnabled(t.Id));

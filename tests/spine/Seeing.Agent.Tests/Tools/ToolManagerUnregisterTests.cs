@@ -38,7 +38,7 @@ public class ToolManagerUnregisterTests
 
         removed.Should().BeTrue();
         manager.HasTool("demo").Should().BeFalse();
-        manager.GetTools().Select(t => t.Id).Should().NotContain("demo");
+        manager.GetRegisteredTools().Select(t => t.Id).Should().NotContain("demo");
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public class ToolManagerUnregisterTests
         var removed = await manager.UnregisterToolAsync("async_demo", TestContext.Current.CancellationToken);
 
         removed.Should().BeTrue();
-        manager.GetTools().Should().BeEmpty();
+        manager.GetRegisteredTools().Should().BeEmpty();
     }
 
     [Fact]

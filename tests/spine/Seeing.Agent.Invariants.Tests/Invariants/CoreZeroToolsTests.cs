@@ -36,7 +36,7 @@ public class CoreZeroToolsTests
         await using var sp = services.BuildServiceProvider();
         var tools = sp.GetRequiredService<IToolManager>();
 
-        var ids = tools.GetTools().Select(t => t.Id).ToArray();
+        var ids = tools.GetRegisteredTools().Select(t => t.Id).ToArray();
 
         ids.Should().NotContain(CapabilityToolIds);
         ids.Should().BeEmpty("AddSeeingCore alone must register zero ITool");

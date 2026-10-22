@@ -29,7 +29,6 @@
 @inject IMessageService MessageService
 @inject ISessionDirectory SessionDirectory
 @inject IWorkspaceProvider WorkspaceProvider
-@inject ToolManager ToolInvoker
 @inject SkillManager SkillManager
 @inject Services.SessionEventStreamRouter Router
 @inject CircuitContext CircuitContext
@@ -580,8 +579,7 @@
     {
         try
         {
-            // 加载工具和技能信息（用于其他用途）
-            await ToolInvoker.GetToolSchemasAsync();
+            // 加载技能信息（工具清单由会话结算提供，无需在此预热）
             await SkillManager.DiscoverSkillsAsync();
         }
         catch (Exception)

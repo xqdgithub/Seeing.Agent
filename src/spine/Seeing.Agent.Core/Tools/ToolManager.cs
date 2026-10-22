@@ -238,7 +238,7 @@ namespace Seeing.Agent.Core.Tools
         /// <summary>
         /// 获取所有已注册的工具
         /// </summary>
-        public IReadOnlyCollection<ITool> GetTools() => _tools.Values.ToList().AsReadOnly();
+        public IReadOnlyCollection<ITool> GetRegisteredTools() => _tools.Values.ToList().AsReadOnly();
 
         /// <summary>合并后的禁用工具集合（用户级 + 项目级）</summary>
         public IReadOnlySet<string> DisabledTools
@@ -267,7 +267,7 @@ namespace Seeing.Agent.Core.Tools
         }
 
         /// <summary>获取所有工具（包括禁用的，供 UI 使用）</summary>
-        public IReadOnlyCollection<ITool> GetToolsIncludingDisabled() => _tools.Values.ToList().AsReadOnly();
+
 
         /// <summary>加载工具禁用状态（双层级）</summary>
         public async Task LoadToolStateAsync(CancellationToken ct = default)

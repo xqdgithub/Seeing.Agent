@@ -6,15 +6,29 @@ using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Abstractions.Tools;
 
 /// <summary>
-/// 工具管理器契约 - 工具的注册、查询与执行
+/// 工具管理器契约 - 工具的注册、查询、启用状态与执行。
+/// <para>
+/// 读侧分两个问题，不要混用：
+/// <see cref="GetRegisteredTools"/> 回答"注册表里有哪些工具"（管理视图，含被禁用项）；
+/// <see cref="GetToolSchemasAsync"/> 回答"本会话+Agent 本轮能用哪些工具"（运行视图，经结算与过滤）。
+/// </para>
 /// </summary>
 public interface IToolManager
 {
-    /// <summary>获取全部可用工具</summary>
-    IReadOnlyCollection<ITool> GetTools();
+    /// <summary>
+    /// 获取**全部已注册**工具（含被禁用的），供管理/配置界面使用。
+    /// 这不是"本轮模型可用工具集"——那需要经会话结算与 Agent 过滤，走 <see cref="GetToolSchemasAsync"/>。
+    /// </summary>
+    IReadOnlyCollection<ITool> GetRegisteredTools();
 
-    /// <summary>按 ID 获取工具</summary>
+    /// <summary>按 ID 获取工具（含被禁用项）。</summary>
     ITool? GetTool(string id);
+
+    /// <summary>查询工具的全局启用状态（用户级 + 项目级禁用集的并集判定）。</summary>
+    bool IsToolEnabled(string toolId);
+
+    /// <summary>工具启用状态变更通知（供管理界面刷新）。</summary>
+    event Action? OnToolStateChanged;
 
     /// <summary>注册工具（自动应用装饰器链）</summary>
     Task RegisterToolAsync(ITool tool, CancellationToken cancellationToken = default);
