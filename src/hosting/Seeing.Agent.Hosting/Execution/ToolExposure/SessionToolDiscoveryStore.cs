@@ -34,7 +34,7 @@ public sealed class SessionToolDiscoveryStore : IToolDiscoveryStore
             return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
 
-        return new HashSet<string>(session.DiscoveredTools, StringComparer.OrdinalIgnoreCase);
+        return new HashSet<string>(session.GetDiscoveredToolsSnapshot(), StringComparer.OrdinalIgnoreCase);
     }
 
     /// <inheritdoc />
@@ -50,24 +50,13 @@ public sealed class SessionToolDiscoveryStore : IToolDiscoveryStore
             return;
         }
 
-        var existing = new HashSet<string>(session.DiscoveredTools, StringComparer.OrdinalIgnoreCase);
-        var appended = false;
-        foreach (var toolId in toolIds)
-        {
-            if (string.IsNullOrWhiteSpace(toolId))
-                continue;
+        // 加锁去重追加（同一锁序列与 resolver 的替换/快照互斥）。
+        var before = session.GetDiscoveredToolsSnapshot().Count;
+        session.AppendDiscoveredTools(toolIds);
 
-            // HashSet.Add 返回 false 表示已发现过：保持 append-only 与首次发现顺序
-            if (existing.Add(toolId))
-            {
-                session.DiscoveredTools.Add(toolId);
-                appended = true;
-            }
-        }
-
-        if (appended)
+        if (session.GetDiscoveredToolsSnapshot().Count != before)
             _logger?.LogDebug("会话发现态追加: SessionId={SessionId}, Total={Count}",
-                sessionId, session.DiscoveredTools.Count);
+                sessionId, session.GetDiscoveredToolsSnapshot().Count);
     }
 
     /// <inheritdoc />
@@ -83,9 +72,10 @@ public sealed class SessionToolDiscoveryStore : IToolDiscoveryStore
             return;
         }
 
-        // Where 保序过滤：剩余条目维持原发现顺序
-        session.DiscoveredTools = session.DiscoveredTools
+        // 加锁整体替换：剩余条目维持原发现顺序（避免就地修改竞态）。
+        var kept = session.GetDiscoveredToolsSnapshot()
             .Where(availableToolIds.Contains)
             .ToList();
+        session.ReplaceDiscoveredTools(kept);
     }
 }

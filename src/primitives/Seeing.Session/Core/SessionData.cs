@@ -207,14 +207,49 @@ namespace Seeing.Session.Core
         /// 会话已发现的工具 ID 集（按发现顺序追加）。
         /// <para>append-only 单调增长：执行失败不回收，仅在工具消失时由 Prune 裁剪；
         /// <see cref="ClearMessages"/> 不清除（清消息不抹发现态）。</para>
+        /// <para>并发写请走 <see cref="GetDiscoveredToolsSnapshot"/> / <see cref="ReplaceDiscoveredTools"/> /
+        /// <see cref="AppendDiscoveredTools"/>（内部加专用锁）；直接读写该属性仅供序列化/测试。</para>
         /// </summary>
         public List<string> DiscoveredTools { get; set; } = new();
 
         /// <summary>
-        /// 曝光升级粘性标记（单调：一旦升级为全量曝光不再回退）。
+        /// 曝光升级粘性标记（单调：一旦升级为分层暴露不再回退）。
         /// <para><see cref="ClearMessages"/> 不清除。</para>
         /// </summary>
         public bool ExposureEscalated { get; set; }
+
+        /// <summary>发现态专用锁（与 <see cref="_messagesGate"/> 分离，避免与消息区争用）。</summary>
+        private readonly object _discoveryGate = new();
+
+        /// <summary>获取发现态快照（加锁复制，供并发读）。</summary>
+        public IReadOnlyList<string> GetDiscoveredToolsSnapshot()
+        {
+            lock (_discoveryGate)
+                return DiscoveredTools.ToArray();
+        }
+
+        /// <summary>整体替换发现态（加锁；顺序由调用方给定，用于裁剪/保序过滤）。</summary>
+        public void ReplaceDiscoveredTools(IEnumerable<string> toolIds)
+        {
+            ArgumentNullException.ThrowIfNull(toolIds);
+            lock (_discoveryGate)
+                DiscoveredTools = new List<string>(toolIds);
+        }
+
+        /// <summary>去重追加发现态（加锁；保持首次发现顺序，空白忽略）。</summary>
+        public void AppendDiscoveredTools(IEnumerable<string> toolIds)
+        {
+            ArgumentNullException.ThrowIfNull(toolIds);
+            lock (_discoveryGate)
+            {
+                var existing = new HashSet<string>(DiscoveredTools, StringComparer.OrdinalIgnoreCase);
+                foreach (var id in toolIds)
+                {
+                    if (!string.IsNullOrWhiteSpace(id) && existing.Add(id))
+                        DiscoveredTools.Add(id);
+                }
+            }
+        }
 
         // === 向后兼容字段（Deprecated） ===
 
@@ -518,7 +553,7 @@ namespace Seeing.Session.Core
                 CachedSchemaTokens = CachedSchemaTokens,
                 CachedCatalogTokens = CachedCatalogTokens,
                 // 会话级发现态/升级态：随 Clone 继承（列表复制新容器，避免共享变更）
-                DiscoveredTools = new List<string>(DiscoveredTools),
+                DiscoveredTools = new List<string>(GetDiscoveredToolsSnapshot()),
                 ExposureEscalated = ExposureEscalated
             };
         }

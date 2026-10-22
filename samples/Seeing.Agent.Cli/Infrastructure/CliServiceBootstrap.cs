@@ -20,6 +20,7 @@ using Seeing.Agent.Tools.FileSystem;
 using Seeing.Agent.Tools.Git;
 using Seeing.Agent.Tools.Question;
 using Seeing.Agent.Tools.Session;
+using Seeing.Agent.Tools.ToolDiscovery;
 using Seeing.Agent.Tools.Shell;
 using Seeing.Agent.Tools.Web;
 using Seeing.IO.Local;
@@ -72,6 +73,7 @@ public static class CliServiceBootstrap
         builder.Services.AddSeeingModule<GitModule>(registry);
         builder.Services.AddSeeingModule<Seeing.Agent.Workspace.WorkspaceGitExcludeModule>(registry);
         builder.Services.AddSeeingModule<SessionToolsModule>(registry);
+        builder.Services.AddSeeingModule<ToolDiscoveryModule>(registry);
         builder.Services.AddSeeingModule<QuestionToolsModule>(registry);
         builder.Services.AddSeeingModule<SkillsModule>(registry);
         builder.Services.AddSeeingModule<McpModule>(registry);

@@ -201,16 +201,5 @@ namespace Seeing.Agent.Core.Configuration
         /// <summary>升级阈值：schema token 估计超过此值触发降档。</summary>
         public int EscalateSchemaTokens { get; set; } = 8000;
 
-        /// <summary>搜索详情模式：<c>summary</c>/<c>full</c>。</summary>
-        public string SearchDetail { get; set; } = "summary";
-
-        /// <summary>搜索默认返回条数。</summary>
-        public int SearchDefaultLimit { get; set; } = 10;
-
-        /// <summary>搜索最大返回条数。</summary>
-        public int SearchMaxLimit { get; set; } = 30;
-
-        /// <summary>full 详情搜索最大返回条数。</summary>
-        public int SearchFullMaxLimit { get; set; } = 3;
     }
 }

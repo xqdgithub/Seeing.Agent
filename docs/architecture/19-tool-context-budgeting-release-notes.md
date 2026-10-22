@@ -44,7 +44,7 @@
 
 ## 6. 已知边界
 
-1. **`tool_search` 不消费 `Tools.Exposure.Search*`**：能力包不得依赖 Core 的 `SeeingAgentOptions`，故三档 detail 默认值、limit 上限、full 硬上限 3 以**工具内常量**实现（10 / 30 / 3，detail 默认 summary）。如需用户可调，需另立 Abstractions 级配置契约或由 Hosting 注入适配器。
+1. **`tool_search` 的检索参数不来自 `Tools.Exposure`**：能力包不得依赖 Core 的 `SeeingAgentOptions`，故三档 detail 默认值、limit 上限、full 硬上限 3 以**工具内常量**实现（10 / 30 / 3，detail 默认 summary）。原先计划但从未接线的 `Tools.Exposure.Search*` 四个字段已**删除**（避免"配置可见而无效"）。如需用户可调，需另立 Abstractions 级配置契约或由 Hosting 注入适配器。
 2. **`tool_search` 语料单源经 `IToolSearchProvider`→resolver 再结算**：检索时重新解析会话 catalog（一次性开销；search 为模型偶发调用，可接受）。升级粘滞使重算幂等。
 3. **发现下一轮生效**：`detail=full` 当轮不可直接调用命中工具，需下一轮。模型侧文案已明示。
 4. **`tool_search` 无专属配额**：连续调用计入既有 `MaxSteps`；`LoopDetector` 按 (tool,argsHash) 判定，检索参数各异不误触发。
@@ -54,11 +54,11 @@
 8. **目录 `tool_search` 指引条件化**：当本轮可用集不含 `tool_search`（如宿主未启用 `tool-discovery` 模块）时，目录正文不出现"先用 tool_search 检索"文案，避免指向不存在的工具。宿主若启用分层暴露应在能力集内挂载 `tool-discovery`。
 9. **配置容错不对称**：Agent 层 `Exposure` 为强类型枚举，其 JSON 绑定大小写敏感（写错值在配置反序列化期报错）；会话/场景/全局字符串层为忽略大小写 + 非法值回退不抛。字符串层承载者（`PolicyMode`）统一 ignoreCase；Agent 枚举层如需 JSON 大小写容错需全局配置 `JsonStringEnumConverter(ignoreCase)`（本次未改全局）。
 10. **MCP server/tool 名不得含 `__`**：id 归一 `mcp__{server}__{tool}` 的双下划线为分隔约定；若 server 或 tool 名本身含 `__`，`DeriveNamespace` 按首个 `__` 切分会归错命名空间。应由连接配置侧校验拒收含 `__` 的命名。
-11. **分层依赖检索入口的安全钳制**：若本轮可用集不含 `tool_search`（宿主未挂载 `tool-discovery`），分层会降级为全内联并记 Warning，避免"工具被藏进目录却无检索手段"的静默能力损伤。启用分层的宿主应挂载 `tool-discovery`（WebUI 已挂；Cli/Tui/Embed/Gateway.Server 等如接全量能力集需自行挂载）。
+11. **分层依赖检索入口的安全钳制**：若本轮可用集不含 `tool_search`（模块未挂载，或被 Agent 白名单/会话禁用排除），分层会降级为全内联并记 Debug（避免无检索入口宿主刷屏），防止"工具被藏进目录却无检索手段"的静默能力损伤。全量能力集宿主均已挂载 `tool-discovery`（WebUI、Cli、Tui、Embed.Demo）；`Gateway.Server` 为精简工具集宿主、未挂，靠钳制兜底；自定义宿主接全量工具集时应自行挂载。
 12. **`tool_search` 每次调用重算会话结算**：检索语料经 `IToolSearchProvider`→resolver 现算（保证单源、无额外持久化 store），因此 `tool_search` 的调用会在该时点重写 `CachedSchemaTokens/CatalogTokens` 与 `ExposureEscalated`（同 session/agent/配置下幂等；跨 agent 并发或热重载期间的短暂口径差异属已知边界）。真正的"turn 级只读快照"需新增结算快照载体，留作后续演进。
 13. **目录签名为 `id(截断描述)`，不含参数列表**：spec 示例的 `(path, offset?, limit?)` 形式需 `ToolMeta` 携带参数摘要，当前未采；目录用途为"可发现性索引"，参数详情由 `detail=full` 检索获取。
 14. **`tool_search` 空查询返回按 id 排序的全部条目**（而非"命名空间+计数概览"）；有 query 时零分过滤、命名空间计数在未命中时给出。0-shown 命名空间仍以标题行 `### ns (N tools, 0 shown)` 出现（见 §6.7 与目录命名空间契约）。
-15. **`SessionData.DiscoveredTools` 为无锁 `List<string>`**：resolver 裁剪采"快照 + 整体替换"，`SessionToolDiscoveryStore.Add` 为原地追加；二者并发（典型：Scheduler 旁路 `AgentJob`/`HeartbeatJob` 直连 resolver、不经 `SessionRuntime` 的 per-session gate，与主链同会话）存在极小交错窗口，最坏为一次发现丢失或枚举异常，自愈于下一轮、不损坏持久化。收敛修法（专用 `_discoveryGate` + 加锁快照/替换/追加）留作后续。
+15. **`SessionData.DiscoveredTools` 并发访问已收敛为加锁 API**：读走 `GetDiscoveredToolsSnapshot()`、裁剪走 `ReplaceDiscoveredTools(...)`、追加走 `AppendDiscoveredTools(...)`（内部专用 `_discoveryGate`）；resolver 与 `SessionToolDiscoveryStore` 均改用这些方法，消除"快照替换 vs 原地追加"的枚举异常/丢项窗口。直接读写公开属性 `DiscoveredTools` 仅供序列化与测试。
 
 ## 7. 回退
 

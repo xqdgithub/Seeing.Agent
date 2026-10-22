@@ -45,6 +45,7 @@
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Git\Seeing.Agent.Tools.Git.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Workspace\Seeing.Agent.Workspace.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Session\Seeing.Agent.Tools.Session.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.ToolDiscovery\Seeing.Agent.Tools.ToolDiscovery.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Question\Seeing.Agent.Tools.Question.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.SystemOne\Seeing.Agent.SystemOne.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.SystemOne\Seeing.Agent.Tools.SystemOne.csproj" />
