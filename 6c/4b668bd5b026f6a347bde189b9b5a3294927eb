@@ -1,0 +1,53 @@
+src/hosting/Seeing.Agent.Hosting/Execution/ExecutionRunner.cs
+  s_1ea8d9f04df9d9::t_be045829027253 453
+  s_1ea8d9f04df9d9::t_764100186c6530 452
+src/abstractions/Seeing.Agent.Abstractions/Execution/ISessionToolSchemaResolver.cs
+  s_1ea8d9f04df9d9::t_8a459b160d2457 57-58
+  s_1ea8d9f04df9d9::t_b194dc5d034afb 46-49
+docs/architecture/13-single-writer-release-notes.md
+  s_1ea8d9f04df9d9::t_9748229e41e5ce 66-69
+docs/architecture/19-tool-context-budgeting-release-notes.md
+  s_1ea8d9f04df9d9::t_072b95b4106fc7 56,64
+docs/architecture/03-configuration-lifecycle.md
+  s_1ea8d9f04df9d9::t_7b58aabb20329f 25-43
+src/hosting/Seeing.Agent.Hosting/Execution/SessionToolSchemaResolver.cs
+  s_1ea8d9f04df9d9::t_b08354c8bed469 159
+  s_1ea8d9f04df9d9::t_a87d26f3692d4a 177-178
+tests/primitives/Seeing.Session.Tests/SessionDataTests.cs
+  s_1ea8d9f04df9d9::t_cbad04567c9e69 98,104,106,108,112,114-128
+src/primitives/Seeing.Session/Core/SessionToolExposureState.cs
+  s_1ea8d9f04df9d9::t_612a3fb190391a 104-109,112,119-120
+tests/spine/Seeing.Agent.Tests/App/Execution/SessionToolSchemaResolverExposureTests.cs
+  s_1ea8d9f04df9d9::t_957e91beb20458 68,76-78
+src/hosting/Seeing.Agent.Hosting/Execution/ChatEventTracker.cs
+  s_1ea8d9f04df9d9::t_5a7b696bb5e98e 261-268
+tests/hosting/Seeing.Agent.Hosting.Tests/ToolExposure/ToolExposureEngineTests.cs
+  s_1ea8d9f04df9d9::t_691425968a2f9d 46-48
+src/hosting/Seeing.Agent.Hosting/Execution/ToolExposure/ToolExposureEngine.cs
+  s_1ea8d9f04df9d9::t_09e86a79728df8 17-20,27,35,42-43
+  s_1ea8d9f04df9d9::t_030925bfb23677 164-165
+  s_1ea8d9f04df9d9::t_0f32e9c9a4675f 76-77,82
+  s_1ea8d9f04df9d9::t_2734d153897996 79
+src/capabilities/Seeing.Agent.Tools.ToolDiscovery/ToolDiscoveryModule.cs
+  s_1ea8d9f04df9d9::t_f125273bd679d4 43-51
+  s_1ea8d9f04df9d9::t_aa125052729262 2-3
+docs/architecture/01-overview.md
+  s_1ea8d9f04df9d9::t_c11b054f8f0045 109
+  s_1ea8d9f04df9d9::t_7d0fef03d7306f 98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "6c4b668bd5b026f6a347bde189b9b5a3294927eb",
+  "prompts": {},
+  "sessions": {
+    "s_1ea8d9f04df9d9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea33351c3ffehsFT7BcthOlXiQ",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
