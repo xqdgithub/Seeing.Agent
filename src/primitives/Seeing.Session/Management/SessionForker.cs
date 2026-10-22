@@ -110,7 +110,8 @@ namespace Seeing.Session.Management
                     ? null
                     : new SessionToolsOverride
                     {
-                        Disabled = new List<string>(source.Tools.Disabled)
+                        Disabled = new List<string>(source.Tools.Disabled),
+                        PolicyMode = source.Tools.PolicyMode
                     }
             };
         }

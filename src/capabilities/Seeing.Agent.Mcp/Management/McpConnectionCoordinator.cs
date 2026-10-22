@@ -228,6 +228,8 @@ internal sealed class McpConnectionCoordinator : IDisposable
         }
         catch (OperationCanceledException ex) when (ct.IsCancellationRequested)
         {
+            // 注册中途被取消：已注册的工具须回滚（用 None，取消状态下仍需尽力清理），再释放占用。
+            await RollbackConnectAsync(toolNames, CancellationToken.None);
             await CleanupFailedConnectAsync();
             _logger.LogWarning(ex, "连接 MCP Server {Server} 已取消", _serverName);
             var error = McpErrorInfo.OperationCancelled(_serverName, McpOperationType.Connect);
@@ -237,6 +239,8 @@ internal sealed class McpConnectionCoordinator : IDisposable
         }
         catch (OperationCanceledException ex)
         {
+            // 超时/内层取消：注册中途失败须回滚已注册工具（None 令牌确保清理不被取消打断）。
+            await RollbackConnectAsync(toolNames, CancellationToken.None);
             await CleanupFailedConnectAsync();
             var elapsed = DateTime.Now - startTime;
             _logger.LogWarning(ex,
@@ -253,6 +257,8 @@ internal sealed class McpConnectionCoordinator : IDisposable
         }
         catch (Exception ex)
         {
+            // 注册中途失败须回滚已注册工具（None 令牌确保清理不被取消打断），避免残留半注册工具。
+            await RollbackConnectAsync(toolNames, CancellationToken.None);
             await CleanupFailedConnectAsync();
             var error = ClassifyError(ex, config);
             _logger.LogError(ex,

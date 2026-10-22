@@ -170,13 +170,19 @@ public sealed class SessionToolSchemaResolver : ISessionToolSchemaResolver
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        return ApplyExposure(toolSchemas, sectionIds, session, agent, settlement?.ScenarioName, scenarioCatalog);
+        // 发现态裁剪的基准必须是**会话级**可用集（settledToolIds，未经 Agent Allowed/Denied 过滤），
+        // 否则跨 Agent（如 build→plan）执行会把该 Agent 未允许、但会话仍可用的已发现工具误删。
+        // 无 catalog 时 settledToolIds 为空且语义未知，传 null 表示"不裁剪"。
+        IReadOnlySet<string>? sessionAvailable = settlement is not null
+            ? new HashSet<string>(settledToolIds, StringComparer.OrdinalIgnoreCase)
+            : null;
+        return ApplyExposure(toolSchemas, sectionIds, session, agent, settlement?.ScenarioName,
+            scenarioCatalog, sessionAvailable);
     }
 
     /// <summary>
     /// 工具暴露裁剪（单点）：四级有效模式 → auto 阈值升级(粘滞不回退) → 选择 All/Tiered 策略 →
     /// 全量 deferred（检索语料）+ 命名空间预算显示分组 + 正文渲染 → 度量与 token 写入会话缓存。
-    /// 元信息全部来自同一次 schema 遍历；发现态按传入 session 实例读写（不另查缓存实例）。
     /// </summary>
     private SessionSchemaSettlement ApplyExposure(
         IReadOnlyList<FunctionToolSchema> toolSchemas,
@@ -184,7 +190,8 @@ public sealed class SessionToolSchemaResolver : ISessionToolSchemaResolver
         SessionData session,
         AgentDefinition agent,
         string? scenarioName,
-        IScenarioCatalog? scenarioCatalog)
+        IScenarioCatalog? scenarioCatalog,
+        IReadOnlySet<string>? sessionAvailableIds)
     {
         var scenarioDef = scenarioName is not null && scenarioCatalog is not null
             ? scenarioCatalog.Get(scenarioName)
@@ -202,14 +209,21 @@ public sealed class SessionToolSchemaResolver : ISessionToolSchemaResolver
             schemaById[id] = s;
         }
 
-        // 发现态：按传入 session 实例裁剪消失项后读取（同一引用，避免与缓存实例分裂）。
         var availableIds = metas.Select(m => m.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        for (var i = session.DiscoveredTools.Count - 1; i >= 0; i--)
+
+        // 发现态快照 + 会话级裁剪（原子整体替换，避免并发枚举时 List 就地修改抛异常/丢项）。
+        // 仅当可确定会话级可用集时裁剪；保留 discovered ∩ 会话可用集，顺序不变。
+        var discoveredSnapshot = session.DiscoveredTools.ToList();
+        if (sessionAvailableIds is not null)
         {
-            if (!availableIds.Contains(session.DiscoveredTools[i]))
-                session.DiscoveredTools.RemoveAt(i);
+            var kept = discoveredSnapshot.Where(sessionAvailableIds.Contains).ToList();
+            if (kept.Count != discoveredSnapshot.Count)
+            {
+                session.DiscoveredTools = kept;
+                discoveredSnapshot = kept;
+            }
         }
-        IReadOnlySet<string> discovered = new HashSet<string>(session.DiscoveredTools, StringComparer.OrdinalIgnoreCase);
+        IReadOnlySet<string> discovered = new HashSet<string>(discoveredSnapshot, StringComparer.OrdinalIgnoreCase);
 
         // 升级判定（仅 auto）：阈值命中或已粘滞 → 进入分层；命中即置粘滞位，单调不回退。
         var escalated = session.ExposureEscalated;
@@ -232,6 +246,17 @@ public sealed class SessionToolSchemaResolver : ISessionToolSchemaResolver
             _ => ToolExposurePolicyMode.All
         };
 
+        // 安全钳制：分层依赖检索入口。若本轮可用集不含 tool_search（宿主未挂载 tool-discovery 模块），
+        // 分层会把工具藏进目录却无检索手段 → 静默能力损伤。此时退回全内联（All）并告警。
+        if (selectedMode == ToolExposurePolicyMode.Tiered
+            && !availableIds.Contains(ToolIdConventions.SearchToolId))
+        {
+            _logger.LogWarning(
+                "分层暴露已启用但本轮无 tool_search（tool-discovery 模块未挂载），降级为全内联: session={SessionId}",
+                session.Id);
+            selectedMode = ToolExposurePolicyMode.All;
+        }
+
         var allEntries = ToolCatalogBuilder.Build(metas, effective.CatalogLineMaxChars);
         var input = new ToolExposureInput(effective.Mode, allEntries, discovered, effective.PinnedTools);
         var plan = _selector.Select(selectedMode).Plan(input);
@@ -251,7 +276,7 @@ public sealed class SessionToolSchemaResolver : ISessionToolSchemaResolver
         }
 
         foreach (var p in effective.PinnedTools) TryAdd(p);
-        foreach (var d in session.DiscoveredTools) TryAdd(d);
+        foreach (var d in discoveredSnapshot) TryAdd(d);
         foreach (var e in plan.CatalogEntries) TryAdd(e.Id);
 
         var inlineSchemas = inlineIds.Select(id => schemaById[id]).ToList();

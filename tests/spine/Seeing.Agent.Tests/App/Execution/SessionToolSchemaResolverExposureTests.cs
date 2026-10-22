@@ -51,12 +51,12 @@ public class SessionToolSchemaResolverExposureTests
             }, TestContext.Current.CancellationToken);
 
         resolution.ToolSchemas.Select(s => s.Function!.Name)
-            .Should().BeEquivalentTo(["git_status", "read"]);
-        // scenario=code：memory_search 未启用不可用；可用集 {git_status, read, current_time}
+            .Should().BeEquivalentTo(["git_status", "read", "tool_search"]);
+        // scenario=code：memory_search 未启用不可用；可用集 {git_status, read, current_time, tool_search}
         resolution.DeferredToolCount.Should().Be(1);   // current_time
         resolution.DeferredEntries.Select(e => e.Id)
             .Should().BeEquivalentTo(["current_time"]);
-        resolution.InlineToolCount.Should().Be(2);
+        resolution.InlineToolCount.Should().Be(3);
     }
 
     [Fact]
@@ -148,7 +148,29 @@ public class SessionToolSchemaResolverExposureTests
             .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
 
         resolution.ToolSchemas.Select(s => s.Function!.Name)
-            .Should().Equal("git_status", "current_time", "read");
+            .Should().Equal("git_status", "current_time", "read", "tool_search");
+    }
+
+    [Fact]
+    public async Task Prune_ShouldUseSessionLevelSet_NotAgentFiltered()
+    {
+        // 发现态代表"会话级已发现"；某 Agent 本轮 Denied 某工具不应把它从会话发现态删除。
+        var session = SessionData.Create(scenario: "code");
+        session.DiscoveredTools.Add("read");           // 会话级已发现（read 在 code 场景可用）
+        var agent = new AgentDefinition
+        {
+            Name = "build",
+            Runtime = AgentRuntime.Native,
+            Exposure = ToolExposurePolicyMode.Tiered,
+            DeniedTools = ["read"]                      // 本 Agent 禁用 read → 本轮 schema 不含
+        };
+        var services = await BuildAsync(session, agent);
+
+        await CreateResolver(services)
+            .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
+
+        // read 从会话可用集未消失 → 不得被裁剪
+        session.DiscoveredTools.Should().Contain("read");
     }
 
     private static SessionToolSchemaResolver CreateResolver(IServiceProvider services) =>
@@ -244,7 +266,7 @@ public class SessionToolSchemaResolverExposureTests
         var toolManager = new Seeing.Agent.Core.Tools.ToolManager(
             NullLogger<Seeing.Agent.Core.Tools.ToolManager>.Instance,
             new HookManager(NullLogger<HookManager>.Instance));
-        foreach (var id in new[] { "git_status", "memory_search", "read", "current_time" })
+        foreach (var id in new[] { "git_status", "memory_search", "read", "current_time", "tool_search" })
             await toolManager.RegisterToolAsync(new NamedTool(id));
 
         var options = new SeeingAgentOptions
@@ -270,7 +292,7 @@ public class SessionToolSchemaResolverExposureTests
             new ModuleDescriptor("git", ["git_status"], [], []),
             new ModuleDescriptor("memory", ["memory_search"], [], []),
             new ModuleDescriptor("filesystem", ["read"], [], []),
-            new ModuleDescriptor("basic", ["current_time"], [], [])
+            new ModuleDescriptor("basic", ["current_time", "tool_search"], [], [])
         ]);
         catalog.ReplaceEnabled(["git", "memory", "filesystem", "basic"]);
 

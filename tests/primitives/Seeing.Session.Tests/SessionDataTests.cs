@@ -129,6 +129,26 @@ namespace Seeing.Session.Tests
         }
 
         [Fact]
+        public void Clone_ShouldPreserveScenarioToolsPolicyMode()
+        {
+            // Arrange：会话级最高优先覆盖（PolicyMode）必须在 Clone 后保留，否则落盘失败
+            var data = SessionData.Create();
+            data.ScenarioOverride = new SessionScenarioOverride
+            {
+                Tools = new SessionToolsOverride { Disabled = ["x"], PolicyMode = "Tiered" }
+            };
+
+            // Act
+            var clone = data.Clone();
+
+            // Assert
+            clone.ScenarioOverride.Should().NotBeNull();
+            clone.ScenarioOverride!.Tools.Should().NotBeNull();
+            clone.ScenarioOverride.Tools!.PolicyMode.Should().Be("Tiered");
+            clone.ScenarioOverride.Tools.Disabled.Should().BeEquivalentTo(["x"]);
+        }
+
+        [Fact]
         public void Clone_ShouldBeIndependentCopy()
         {
             // Arrange

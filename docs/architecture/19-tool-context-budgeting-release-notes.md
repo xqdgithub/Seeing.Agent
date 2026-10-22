@@ -54,6 +54,10 @@
 8. **目录 `tool_search` 指引条件化**：当本轮可用集不含 `tool_search`（如宿主未启用 `tool-discovery` 模块）时，目录正文不出现"先用 tool_search 检索"文案，避免指向不存在的工具。宿主若启用分层暴露应在能力集内挂载 `tool-discovery`。
 9. **配置容错不对称**：Agent 层 `Exposure` 为强类型枚举，其 JSON 绑定大小写敏感（写错值在配置反序列化期报错）；会话/场景/全局字符串层为忽略大小写 + 非法值回退不抛。字符串层承载者（`PolicyMode`）统一 ignoreCase；Agent 枚举层如需 JSON 大小写容错需全局配置 `JsonStringEnumConverter(ignoreCase)`（本次未改全局）。
 10. **MCP server/tool 名不得含 `__`**：id 归一 `mcp__{server}__{tool}` 的双下划线为分隔约定；若 server 或 tool 名本身含 `__`，`DeriveNamespace` 按首个 `__` 切分会归错命名空间。应由连接配置侧校验拒收含 `__` 的命名。
+11. **分层依赖检索入口的安全钳制**：若本轮可用集不含 `tool_search`（宿主未挂载 `tool-discovery`），分层会降级为全内联并记 Warning，避免"工具被藏进目录却无检索手段"的静默能力损伤。启用分层的宿主应挂载 `tool-discovery`（WebUI 已挂；Cli/Tui/Embed/Gateway.Server 等如接全量能力集需自行挂载）。
+12. **`tool_search` 每次调用重算会话结算**：检索语料经 `IToolSearchProvider`→resolver 现算（保证单源、无额外持久化 store），因此 `tool_search` 的调用会在该时点重写 `CachedSchemaTokens/CatalogTokens` 与 `ExposureEscalated`（同 session/agent/配置下幂等；跨 agent 并发或热重载期间的短暂口径差异属已知边界）。真正的"turn 级只读快照"需新增结算快照载体，留作后续演进。
+13. **目录签名为 `id(截断描述)`，不含参数列表**：spec 示例的 `(path, offset?, limit?)` 形式需 `ToolMeta` 携带参数摘要，当前未采；目录用途为"可发现性索引"，参数详情由 `detail=full` 检索获取。
+14. **`tool_search` 空查询返回按 id 排序的全部条目**（而非"命名空间+计数概览"）；有 query 时零分过滤、命名空间计数在未命中时给出。0-shown 命名空间仍以标题行 `### ns (N tools, 0 shown)` 出现（见 §6.7 与目录命名空间契约）。
 
 ## 7. 回退
 

@@ -118,6 +118,27 @@ public class SessionForkerTests
         forked.DiscoveredTools.Should().NotBeSameAs(original.DiscoveredTools);
     }
 
+    [Fact]
+    public async Task Fork_ShouldInheritScenarioToolsPolicyMode()
+    {
+        // Arrange：会话级 PolicyMode 覆盖必须在 fork 后保留
+        var (manager, forker) = CreateForker();
+        var original = manager.Create();
+        original.ScenarioOverride = new Seeing.Session.Core.SessionScenarioOverride
+        {
+            Tools = new Seeing.Session.Core.SessionToolsOverride { PolicyMode = "Tiered", Disabled = ["x"] }
+        };
+
+        // Act
+        var forked = await forker.ForkAsync(original.Id, ct: TestContext.Current.CancellationToken);
+
+        // Assert
+        forked.ScenarioOverride.Should().NotBeNull();
+        forked.ScenarioOverride!.Tools.Should().NotBeNull();
+        forked.ScenarioOverride.Tools!.PolicyMode.Should().Be("Tiered");
+        forked.ScenarioOverride.Tools.Disabled.Should().BeEquivalentTo(["x"]);
+    }
+
     private static (SessionManager, SessionForker) CreateForker()
     {
         var logger = new Mock<ILogger<SessionManager>>();
