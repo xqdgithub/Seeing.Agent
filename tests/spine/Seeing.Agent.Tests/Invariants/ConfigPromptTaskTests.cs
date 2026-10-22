@@ -58,6 +58,7 @@ public class ConfigPromptTaskTests
             "Seams",
             "TitleGeneration",
             "ToolOutput",
+            "Tools",
             "Workspace");
 
         keys.Should().NotContain("Acp");

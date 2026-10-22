@@ -63,6 +63,7 @@ public sealed class ConfigSectionRegistry : IConfigSectionRegistry
         Register(new("Workspace", "seeing.json", ConfigScope.ProjectOnly, typeof(WorkspaceOptions)));
         Register(new("GlobalWorkspaceRoot", "seeing.json", ConfigScope.UserOnly, typeof(string)));
         Register(new("ToolOutput", "seeing.json", ConfigScope.Both, typeof(ToolOutputOptions)));
+        Register(new("Tools", "seeing.json", ConfigScope.Both, typeof(ToolOptions)));
         Register(new("TitleGeneration", "seeing.json", ConfigScope.Both, typeof(TitleGenerationOptions)));
     }
 

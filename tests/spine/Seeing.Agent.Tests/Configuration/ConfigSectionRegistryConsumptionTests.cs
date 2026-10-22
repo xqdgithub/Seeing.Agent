@@ -37,6 +37,7 @@ public class ConfigSectionRegistryConsumptionTests
             "Seams",
             "TitleGeneration",
             "ToolOutput",
+            "Tools",
             "Workspace");
 
         keys.Should().NotContain("Acp");
@@ -103,9 +104,65 @@ public class ConfigSectionRegistryConsumptionTests
         Directory.Delete(tempDir, recursive: true);
     }
 
+    /// <summary>
+    /// Tools 节必须在脊柱注册表中登记，否则 <c>SaveSectionAsync("Tools", …)</c> 抛"未注册的配置节"，
+    /// 且 WebUI 配置页看不到 Tools.Exposure。
+    /// </summary>
     [Fact]
-    public void AddSeeingCore_Factory_Should_Not_Sync_Load()
+    public async Task Tools_Section_Should_Be_Saveable_And_Reloadable()
     {
+        var tempDir = Path.Combine(Path.GetTempPath(), "ucm-tools-" + Guid.NewGuid().ToString("N"));
+        var userSeeing = Path.Combine(tempDir, "user", ".seeing");
+        var projectSeeing = Path.Combine(tempDir, "project", ".seeing");
+        Directory.CreateDirectory(userSeeing);
+        Directory.CreateDirectory(projectSeeing);
+        try
+        {
+            var workspace = new Mock<IWorkspaceProvider>();
+            workspace.Setup(w => w.UserSeeingDirectory).Returns(userSeeing);
+            workspace.Setup(w => w.ProjectSeeingDirectory).Returns(projectSeeing);
+
+            var manager = new UnifiedConfigManager(
+                workspace.Object,
+                NullLogger<UnifiedConfigManager>.Instance,
+                ConfigSectionRegistry.CreateWithSpine());
+
+            var tools = new ToolOptions
+            {
+                Exposure = new ToolExposureOptions
+                {
+                    PolicyMode = "Tiered",
+                    PinnedTools = ["read"],
+                    CatalogBudgetChars = 1234,
+                    EscalateToolCount = 7
+                }
+            };
+
+            await manager.SaveSectionAsync("Tools", tools, ConfigLevel.Project, TestContext.Current.CancellationToken);
+
+            // 写入位置必须是 SeeingAgent.Tools（嵌套节），而非顶层 Tools。
+            var raw = await manager.GetRawJsonAsync(ConfigLevel.Project, "seeing.json", TestContext.Current.CancellationToken);
+            raw.Should().Contain("\"Tools\"");
+
+            await manager.LoadAsync(TestContext.Current.CancellationToken);
+
+            var reloaded = manager.GetSection<ToolOptions>("Tools");
+            reloaded.Exposure.PolicyMode.Should().Be("Tiered");
+            reloaded.Exposure.PinnedTools.Should().ContainSingle().Which.Should().Be("read");
+            reloaded.Exposure.CatalogBudgetChars.Should().Be(1234);
+            reloaded.Exposure.EscalateToolCount.Should().Be(7);
+
+            // 合并后的 SeeingAgentOptions 也应反映热重载结果（ToolExposureConfigResolver 的读取路径）。
+            manager.GetSeeingAgentOptions().Tools.Exposure.PolicyMode.Should().Be("Tiered");
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AddSeeingCore_Factory_Should_Not_Sync_Load()    {
         var workspace = new Mock<IWorkspaceProvider>();
         workspace.Setup(w => w.UserSeeingDirectory).Returns(Path.GetTempPath());
         workspace.Setup(w => w.ProjectSeeingDirectory).Returns(Path.GetTempPath());
