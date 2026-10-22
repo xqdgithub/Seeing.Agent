@@ -213,12 +213,9 @@ public sealed class SessionToolSchemaResolver : ISessionToolSchemaResolver
 
         // 发现态：原子裁剪（会话级可用集）+ 加锁快照读取。
         // 仅当可确定会话级可用集时裁剪；保留 discovered ∩ 会话可用集，顺序不变。
-        var discoveredSnapshot = session.GetDiscoveredToolsSnapshot().ToList();
         if (sessionAvailableIds is not null)
-        {
             session.PruneDiscoveredTools(sessionAvailableIds);
-            discoveredSnapshot = session.GetDiscoveredToolsSnapshot().ToList();
-        }
+        var discoveredSnapshot = session.GetDiscoveredToolsSnapshot().ToList();
         IReadOnlySet<string> discovered = new HashSet<string>(discoveredSnapshot, StringComparer.OrdinalIgnoreCase);
 
         // 升级判定（仅 auto）：阈值命中或已粘滞 → 进入分层；命中即置粘滞位，单调不回退。

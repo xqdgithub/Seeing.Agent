@@ -605,7 +605,9 @@ namespace Seeing.Session.Core
                     ? null
                     : new SessionToolsOverride
                     {
-                        Disabled = new List<string>(source.Tools.Disabled),
+                        Disabled = source.Tools.Disabled is null
+                            ? []
+                            : new List<string>(source.Tools.Disabled),
                         PolicyMode = source.Tools.PolicyMode
                     }
             };
