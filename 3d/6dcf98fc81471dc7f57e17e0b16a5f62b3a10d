@@ -1,0 +1,23 @@
+tests/spine/Seeing.Agent.Tests/App/Execution/SessionToolSchemaResolverExposureTests.cs
+  s_1ea8d9f04df9d9::t_dbf817ba529791 176-198
+docs/architecture/19-tool-context-budgeting-release-notes.md
+  s_1ea8d9f04df9d9::t_116ed4f11d0fc1 61
+src/hosting/Seeing.Agent.Hosting/Execution/SessionToolSchemaResolver.cs
+  s_1ea8d9f04df9d9::t_33628390d5b41b 249-251,255-257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "3d6dcf98fc81471dc7f57e17e0b16a5f62b3a10d",
+  "prompts": {},
+  "sessions": {
+    "s_1ea8d9f04df9d9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea33351c3ffehsFT7BcthOlXiQ",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
