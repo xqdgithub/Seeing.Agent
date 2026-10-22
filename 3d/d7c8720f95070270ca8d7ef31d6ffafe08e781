@@ -1,0 +1,42 @@
+docs/architecture/19-tool-context-budgeting-release-notes.md
+  s_1ea8d9f04df9d9::t_ab0b5856cf735d 57-60
+src/primitives/Seeing.Session/Management/SessionForker.cs
+  s_1ea8d9f04df9d9::t_2f9eda9eacf6f1 113-114
+src/primitives/Seeing.Session/Core/SessionData.cs
+  s_1ea8d9f04df9d9::t_09bd420d2aba4e 552-553
+tests/spine/Seeing.Agent.Tests/Sessions/SessionEnhancedTests.cs
+  s_1ea8d9f04df9d9::t_0c84650bbb0485 121-141
+src/hosting/Seeing.Agent.Hosting/Execution/SessionToolSchemaResolver.cs
+  s_1ea8d9f04df9d9::t_11c22289b2211a 173-180,193-194
+  s_1ea8d9f04df9d9::t_905988b38b0da7 249-259
+  s_1ea8d9f04df9d9::t_ec9456ffe9db14 279
+  s_1ea8d9f04df9d9::t_4c9237757c316c 213-217,219-224,226
+src/capabilities/Seeing.Agent.Mcp/Management/McpConnectionCoordinator.cs
+  s_1ea8d9f04df9d9::t_20c2643895c79f 231-232
+  s_1ea8d9f04df9d9::t_59fb42322e4328 242-243
+  s_1ea8d9f04df9d9::t_8ce4f15cee8928 260-261
+tests/spine/Seeing.Agent.Tests/App/Execution/SessionToolSchemaResolverExposureTests.cs
+  s_1ea8d9f04df9d9::t_c1e216aed3204f 151
+  s_1ea8d9f04df9d9::t_37950d1694aaa2 54-55,59
+  s_1ea8d9f04df9d9::t_35695c0f2ffd53 269
+  s_1ea8d9f04df9d9::t_da71e4b3c88383 295
+  s_1ea8d9f04df9d9::t_e3dd5920aee397 154-173
+tests/primitives/Seeing.Session.Tests/SessionDataTests.cs
+  s_1ea8d9f04df9d9::t_6104968c579b69 132-150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "3dd7c8720f95070270ca8d7ef31d6ffafe08e781",
+  "prompts": {},
+  "sessions": {
+    "s_1ea8d9f04df9d9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea33351c3ffehsFT7BcthOlXiQ",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
