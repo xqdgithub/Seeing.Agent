@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
@@ -78,30 +79,13 @@ internal class ChatExecutionContext
     public string? AcpModeId { get; init; }
 
     /// <summary>
-    /// 本轮工具 schema（经 SessionToolSchemaResolver 计算；经 AgentContext.ToolSchemas 传入 executor）。
+    /// 本轮工具视图结算结果（唯一工具列表来源）。经 AgentContext 传入 executor，
+    /// 事件、目录注入与内联 schema 都取自它。
     /// </summary>
-    public IReadOnlyList<FunctionToolSchema>? ToolSchemas { get; init; }
+    public SessionToolSchemaResolution? ToolSettlement { get; init; }
 
     /// <summary>本轮提示词分节 id（写入 SchemaSnapshotEvent）。</summary>
     public IReadOnlyList<string> SectionIds { get; init; } = Array.Empty<string>();
-
-    /// <summary>本轮内联暴露的工具数。</summary>
-    public int InlineToolCount { get; init; }
-
-    /// <summary>本轮延迟（进目录）的工具数。</summary>
-    public int DeferredToolCount { get; init; }
-
-    /// <summary>本轮内联工具定义估算 token（与目录分列）。</summary>
-    public int EstimatedDefinitionTokens { get; init; }
-
-    /// <summary>本轮目录估算 token。</summary>
-    public int CatalogTokens { get; init; }
-
-    /// <summary>本轮生效的暴露策略模式（反映实际行为）。</summary>
-    public ToolExposurePolicyMode ExposureMode { get; init; } = ToolExposurePolicyMode.Auto;
-
-    /// <summary>本轮目录正文（由 ToolCatalogRenderer 渲染；无延迟工具时为空，供 ToolCatalog 分节透传）。</summary>
-    public string? CatalogText { get; init; }
 
     // ========== 元数据 ==========
 
@@ -129,7 +113,7 @@ internal class ChatExecutionContext
             ParentAgentName = parentAgentName,
             IsTopLevel = false,
             IsBackground = true,
-            ToolSchemas = ToolSchemas,
+            ToolSettlement = ToolSettlement,
             SectionIds = SectionIds,
             Metadata = new Dictionary<string, object>(Metadata)
         };

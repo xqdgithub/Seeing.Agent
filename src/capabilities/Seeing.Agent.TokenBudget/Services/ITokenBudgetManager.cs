@@ -26,7 +26,7 @@ public interface ITokenBudgetManager
 
     /// <summary>
     /// Calculates a comprehensive breakdown of token usage for a session.
-    /// 工具定义/目录 token 读自会话缓存字段（<c>SessionData.CachedSchemaTokens</c> / <c>CachedCatalogTokens</c>，由 schema 结算单点写入）。
+    /// 工具定义/目录 token 读自会话缓存字段（<c>SessionData.ToolExposure.SchemaTokens</c> / <c>CatalogTokens</c>，由 schema 结算单点写入）。
     /// </summary>
     /// <param name="session">The session to analyze.</param>
     /// <param name="systemPrompt">Optional system prompt to include in the breakdown.</param>

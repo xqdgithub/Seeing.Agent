@@ -190,88 +190,19 @@ namespace Seeing.Session.Core
         /// </summary>
         public DateTime? CachedUsageUpdatedAt { get; set; }
 
-        // === 工具定义/目录 Token 估算缓存（本地，schema 结算产出） ===
-        /// <summary>
-        /// 本轮 inline 工具 schema 的估算 token 数（schema 结算单点产出，供预算分解读取）。
-        /// 与 <see cref="CachedInputTokens"/> 同属每轮 token 标量：ClearMessages/ClearUsageCache 清、Clone 复制、Fork 不继承。
-        /// </summary>
-        public int? CachedSchemaTokens { get; set; }
+        // === 会话级工具暴露状态（发现集/待生效发现/升级位/每轮度量） ===
+        private SessionToolExposureState _toolExposure = new();
 
         /// <summary>
-        /// 本轮工具目录摘要的估算 token 数（与工具定义口径分列，不混入 <see cref="CachedSchemaTokens"/>）。
+        /// 会话级工具暴露状态。<see cref="ClearMessages"/> 只清其中的每轮度量，不抹发现态与升级位；
+        /// Clone 深拷贝（含度量），分叉会话继承发现态与升级位但不继承度量。
+        /// <para>JSON 反序列化遇显式 null 时回落为空状态，调用方恒得非空。</para>
         /// </summary>
-        public int? CachedCatalogTokens { get; set; }
-
-        // === 会话级工具发现态 / 曝光升级态（执行链结算产出） ===
-        /// <summary>
-        /// 会话已发现的工具 ID 集（按发现顺序追加）。
-        /// <para>append-only 单调增长：执行失败不回收，仅在工具消失时由 Prune 裁剪；
-        /// <see cref="ClearMessages"/> 不清除（清消息不抹发现态）。</para>
-        /// <para>并发写请走 <see cref="GetDiscoveredToolsSnapshot"/> / <see cref="ReplaceDiscoveredTools"/> /
-        /// <see cref="AppendDiscoveredTools"/>（内部加专用锁）；直接读写该属性仅供序列化/测试。</para>
-        /// </summary>
-        public List<string> DiscoveredTools { get; set; } = new();
-
-        /// <summary>
-        /// 曝光升级粘性标记（单调：一旦升级为分层暴露不再回退）。
-        /// <para><see cref="ClearMessages"/> 不清除。</para>
-        /// </summary>
-        public bool ExposureEscalated { get; set; }
-
-        /// <summary>发现态专用锁（与 <see cref="_messagesGate"/> 分离，避免与消息区争用）。</summary>
-        private readonly object _discoveryGate = new();
-
-        // 说明：所有写入都在锁内**整体替换新 List**（绝不对当前引用就地 Add/Remove），
-        // 因此落盘时 JsonSerializer 枚举到的 List 实例不会再被修改，规避 "Collection was modified"。
-        // 与 Messages 采用"锁内快照"的并发契约一致。
-
-        /// <summary>获取发现态快照（加锁复制，供并发读）。</summary>
-        public IReadOnlyList<string> GetDiscoveredToolsSnapshot()
+        public SessionToolExposureState ToolExposure
         {
-            lock (_discoveryGate)
-                return (DiscoveredTools ?? new List<string>()).ToArray();
+            get => _toolExposure;
+            set => _toolExposure = value ?? new SessionToolExposureState();
         }
-
-        /// <summary>整体替换发现态（加锁；顺序由调用方给定，用于裁剪/保序过滤）。</summary>
-        public void ReplaceDiscoveredTools(IEnumerable<string> toolIds)
-        {
-            ArgumentNullException.ThrowIfNull(toolIds);
-            lock (_discoveryGate)
-                DiscoveredTools = new List<string>(toolIds);
-        }
-
-        /// <summary>去重追加发现态（加锁；保持首次发现顺序，空白忽略）。</summary>
-        public void AppendDiscoveredTools(IEnumerable<string> toolIds)
-        {
-            ArgumentNullException.ThrowIfNull(toolIds);
-            lock (_discoveryGate)
-            {
-                // 锁内构造新列表后整体替换，绝不就地修改当前实例（保证并发序列化安全）。
-                var merged = new List<string>(DiscoveredTools ?? new List<string>());
-                var existing = new HashSet<string>(merged, StringComparer.OrdinalIgnoreCase);
-                foreach (var id in toolIds)
-                {
-                    if (!string.IsNullOrWhiteSpace(id) && existing.Add(id))
-                        merged.Add(id);
-                }
-                DiscoveredTools = merged;
-            }
-        }
-
-        /// <summary>
-        /// 原子裁剪发现态（加锁）：仅保留 <paramref name="availableToolIds"/> 中的条目，保持原顺序。
-        /// 在同一把锁内完成"读-过滤-替换"，避免与并发 Append 的 TOCTOU 丢更新。
-        /// </summary>
-        public void PruneDiscoveredTools(IReadOnlySet<string> availableToolIds)
-        {
-            ArgumentNullException.ThrowIfNull(availableToolIds);
-            lock (_discoveryGate)
-            {
-                var current = DiscoveredTools ?? new List<string>();
-                DiscoveredTools = current.Where(availableToolIds.Contains).ToList();
-            }
-        }
-
         // === 向后兼容字段（Deprecated） ===
 
         public Dictionary<string, string> State { get; set; } = new Dictionary<string, string>();
@@ -499,8 +430,8 @@ namespace Seeing.Session.Core
             CachedInputTokens = null;
             CachedOutputTokens = null;
             CachedUsageUpdatedAt = null;
-            CachedSchemaTokens = null;
-            CachedCatalogTokens = null;
+            // 只清每轮度量；发现集/待生效发现/升级位属于会话级暴露事实，清消息不抹。
+            ToolExposure.ClearMetrics();
             UpdatedAt = DateTime.Now;
         }
 
@@ -512,8 +443,7 @@ namespace Seeing.Session.Core
             CachedInputTokens = null;
             CachedOutputTokens = null;
             CachedUsageUpdatedAt = null;
-            CachedSchemaTokens = null;
-            CachedCatalogTokens = null;
+            ToolExposure.ClearMetrics();
         }
 
         public void RemoveContext(string key)
@@ -541,7 +471,7 @@ namespace Seeing.Session.Core
                 SelectedThinkingEffort = SelectedThinkingEffort,
                 SelectedAcpMode = SelectedAcpMode,
                 Scenario = Scenario,
-                ScenarioOverride = CloneScenarioOverride(ScenarioOverride),
+                ScenarioOverride = ScenarioOverride?.Clone(),
                 WorkingDirectory = WorkingDirectory,
                 Status = Status,
                 ChannelRoute = ChannelRoute,
@@ -570,12 +500,8 @@ namespace Seeing.Session.Core
                 CachedInputTokens = CachedInputTokens,
                 CachedOutputTokens = CachedOutputTokens,
                 CachedUsageUpdatedAt = CachedUsageUpdatedAt,
-                // 工具定义/目录 Token 估算缓存（同族，随 Clone 继承）
-                CachedSchemaTokens = CachedSchemaTokens,
-                CachedCatalogTokens = CachedCatalogTokens,
-                // 会话级发现态/升级态：随 Clone 继承（列表复制新容器，避免共享变更）
-                DiscoveredTools = new List<string>(GetDiscoveredToolsSnapshot()),
-                ExposureEscalated = ExposureEscalated
+                // 会话级工具暴露状态：深拷贝（含度量），避免克隆与原对象共享可变列表
+                ToolExposure = ToolExposure.Clone(includeMetrics: true)
             };
         }
 
@@ -584,33 +510,6 @@ namespace Seeing.Session.Core
         {
             lock (_messagesGate)
                 return _messages.Select(m => m.Clone()).ToList();
-        }
-
-        private static SessionScenarioOverride? CloneScenarioOverride(SessionScenarioOverride? source)
-        {
-            if (source is null)
-                return null;
-
-            return new SessionScenarioOverride
-            {
-                Modules = source.Modules is null
-                    ? null
-                    : new SessionModulesOverride
-                    {
-                        Enabled = source.Modules.Enabled is null
-                            ? null
-                            : new List<string>(source.Modules.Enabled)
-                    },
-                Tools = source.Tools is null
-                    ? null
-                    : new SessionToolsOverride
-                    {
-                        Disabled = source.Tools.Disabled is null
-                            ? []
-                            : new List<string>(source.Tools.Disabled),
-                        PolicyMode = source.Tools.PolicyMode
-                    }
-            };
         }
     }
 }

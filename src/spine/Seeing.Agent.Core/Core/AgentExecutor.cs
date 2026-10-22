@@ -562,8 +562,10 @@ public class AgentExecutor : IAgentExecutor
         AgentContext context,
         CancellationToken cancellationToken)
     {
-        // schema 唯一计算点在 ExecutionRunner；此处只读 context.ToolSchemas
-        var toolSchemas = context.ToolSchemas ?? (IReadOnlyList<FunctionToolSchema>)Array.Empty<FunctionToolSchema>();
+        // 工具视图唯一出口在 Hosting 结算；此处只读 context.ToolSettlement
+        var settlement = context.ToolSettlement;
+        var toolSchemas = settlement?.InlineSchemas
+            ?? (IReadOnlyList<FunctionToolSchema>)Array.Empty<FunctionToolSchema>();
 
         // 使用 PromptBuilder 构建系统提示词
         string? systemPrompt = null;
@@ -580,9 +582,9 @@ public class AgentExecutor : IAgentExecutor
                 Platform = Environment.OSVersion.Platform.ToString(),
                 Tools = toolSchemas.Select(ts => ts.Function).ToList(),
             };
-            // 工具目录正文（执行链渲染，string-only 携带）经通用 Sections 槽交给 ToolCatalog 分节贡献者
-            if (!string.IsNullOrWhiteSpace(context.CatalogText))
-                promptContext.Sections[PromptSectionNames.ToolCatalog] = context.CatalogText;
+            // 工具目录正文（结算时渲染，string-only 携带）经通用 Sections 槽交给 ToolCatalog 分节贡献者
+            if (!string.IsNullOrWhiteSpace(settlement?.CatalogText))
+                promptContext.Sections[PromptSectionNames.ToolCatalog] = settlement.CatalogText;
 
             systemPrompt = await _promptBuilder.BuildAsync(promptContext, cancellationToken).ConfigureAwait(false);
             if (string.IsNullOrEmpty(systemPrompt))
@@ -1106,7 +1108,7 @@ public class AgentExecutor : IAgentExecutor
     /// 本轮工具 schema 是否包含 todowrite。没有该工具时不做 todo 编排。
     /// </summary>
     private static bool HasTodoWriteTool(AgentContext context) =>
-        context.ToolSchemas?.Any(s =>
+        context.ToolSettlement?.InlineSchemas.Any(s =>
             string.Equals(s.Function?.Name, "todowrite", StringComparison.OrdinalIgnoreCase)) == true;
 
     /// <summary>

@@ -23,269 +23,195 @@ using Xunit;
 namespace Seeing.Agent.Tests.App.Execution;
 
 /// <summary>
-/// 组12：SessionToolSchemaResolver 接入工具暴露裁剪——tiered 仅内联 pinned/已发现、
-/// auto 阈值升级(粘滞不回退)、all 与改造前一致、顺序 pinned→discovered。
+/// 会话工具视图（唯一工具列表来源）：tiered 只内联 pinned/已发现/检索工具、
+/// 视图只读（不写会话状态）、发现集按会话可用集裁剪、升级单调。
 /// </summary>
 public class SessionToolSchemaResolverExposureTests
 {
     [Fact]
     public async Task Tiered_ShouldExposeOnlyPinnedAndDiscovered()
     {
-        var session = SessionData.Create(scenario: "code");
-        session.DiscoveredTools.Add("read");
-        var services = await BuildAsync(session, new AgentDefinition
-        {
-            Name = "build",
-            Runtime = AgentRuntime.Native,
-            Exposure = ToolExposurePolicyMode.Tiered,
-            PinnedTools = ["git_status"]
-        });
+        var (session, agent, services) = await SetupAsync(
+            AgentDefinition(ToolExposurePolicyMode.Tiered, pinned: ["git_status"]),
+            discovered: new[] { "read" });
 
         var resolution = await CreateResolver(services)
-            .ResolveAsync(session.Id, new AgentDefinition
-            {
-                Name = "build",
-                Runtime = AgentRuntime.Native,
-                Exposure = ToolExposurePolicyMode.Tiered,
-                PinnedTools = ["git_status"]
-            }, TestContext.Current.CancellationToken);
+            .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
 
-        resolution.ToolSchemas.Select(s => s.Function!.Name)
+        resolution.Layout.Should().Be(ToolExposureLayout.Tiered);
+        resolution.InlineSchemas.Select(s => s.Function!.Name)
             .Should().BeEquivalentTo(["git_status", "read", "tool_search"]);
-        // scenario=code：memory_search 未启用不可用；可用集 {git_status, read, current_time, tool_search}
-        resolution.DeferredToolCount.Should().Be(1);   // current_time
-        resolution.DeferredEntries.Select(e => e.Id)
-            .Should().BeEquivalentTo(["current_time"]);
-        resolution.InlineToolCount.Should().Be(3);
+        resolution.DeferredTools.Select(t => t.Id).Should().BeEquivalentTo(["current_time"]);
+        resolution.CatalogText.Should().NotBeNull();
     }
 
     [Fact]
-    public async Task Tiered_DiscoveredToolVanished_ShouldPruneNotThrow()
+    public async Task Resolve_ShouldNotWriteSessionState()
     {
-        var session = SessionData.Create(scenario: "code");
-        session.DiscoveredTools.Add("nope_tool");   // 已不在可用集
-        var agent = new AgentDefinition
-        {
-            Name = "build",
-            Runtime = AgentRuntime.Native,
-            Exposure = ToolExposurePolicyMode.Tiered
-        };
-        var services = await BuildAsync(session, agent);
+        // 端口只读：结算不得修改会话的发现集、升级位与度量。
+        var (session, agent, services) = await SetupAsync(
+            AgentDefinition(ToolExposurePolicyMode.Tiered, pinned: ["git_status"]),
+            discovered: new[] { "gone", "read" });
 
-        var resolution = await CreateResolver(services)
+        await CreateResolver(services)
             .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
 
-        // 消失的 discovered 被裁剪，不内联、不抛
-        resolution.ToolSchemas.Select(s => s.Function!.Name).Should().NotContain("nope_tool");
-        session.DiscoveredTools.Should().NotContain("nope_tool");
-    }
-
-    [Fact]
-    public async Task All_ShouldBehaveAsBefore_NoCatalog()
-    {
-        var session = SessionData.Create(scenario: "code");
-        var agent = new AgentDefinition
-        {
-            Name = "build",
-            Runtime = AgentRuntime.Native,
-            Exposure = ToolExposurePolicyMode.All
-        };
-        var services = await BuildAsync(session, agent);
-
-        var resolution = await CreateResolver(services)
-            .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
-
-        resolution.ToolSchemas.Select(s => s.Function!.Name)
-            .Should().Contain(["git_status", "read", "current_time"]);
-        resolution.DeferredEntries.Should().BeEmpty();
-        resolution.DeferredToolCount.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task Auto_ShouldEscalate_WhenOverThreshold_AndStayEscalated()
-    {
-        var session = SessionData.Create(scenario: "code");
-        var agent = new AgentDefinition { Name = "build", Runtime = AgentRuntime.Native }; // 无覆盖 → 全局 auto
-        // 全局阈值：EscalateToolCount=2，4 工具 → 升级
-        var services = await BuildAsync(session, agent, escalateToolCount: 2);
-
-        var resolution = await CreateResolver(services)
-            .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
-
-        session.ExposureEscalated.Should().BeTrue();
-        resolution.DeferredToolCount.Should().BeGreaterThan(0);
-
-        // 工具移除到阈值以下（Denied 排到只剩 1 个内联候选）后，仍粘滞分层，不自动降级
-        var agent2 = new AgentDefinition
-        {
-            Name = "build",
-            Runtime = AgentRuntime.Native,
-            DeniedTools = ["memory_search", "read", "current_time"]   // 仅剩 git_status
-        };
-        var resolution2 = await CreateResolver(services)
-            .ResolveAsync(session.Id, agent2, TestContext.Current.CancellationToken);
-
-        session.ExposureEscalated.Should().BeTrue();
-        resolution2.ToolSchemas.Should().NotBeNull();
-    }
-
-    [Fact]
-    public async Task Ordering_ShouldBePinnedThenDiscovered()
-    {
-        var session = SessionData.Create(scenario: "code");
-        session.DiscoveredTools.Add("current_time");   // 发现序 1
-        session.DiscoveredTools.Add("read");             // 发现序 2
-        var agent = new AgentDefinition
-        {
-            Name = "build",
-            Runtime = AgentRuntime.Native,
-            Exposure = ToolExposurePolicyMode.Tiered,
-            PinnedTools = ["git_status"]
-        };
-        var services = await BuildAsync(session, agent);
-
-        var resolution = await CreateResolver(services)
-            .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
-
-        resolution.ToolSchemas.Select(s => s.Function!.Name)
-            .Should().Equal("git_status", "current_time", "read", "tool_search");
+        session.ToolExposure.GetDiscovered().Should().Equal("gone", "read");
+        session.ToolExposure.Escalated.Should().BeFalse();
+        session.ToolExposure.SchemaTokens.Should().BeNull();
+        session.ToolExposure.CatalogTokens.Should().BeNull();
     }
 
     [Fact]
     public async Task Prune_ShouldUseSessionLevelSet_NotAgentFiltered()
     {
-        // 发现态代表"会话级已发现"；某 Agent 本轮 Denied 某工具不应把它从会话发现态删除。
-        var session = SessionData.Create(scenario: "code");
-        session.DiscoveredTools.Add("read");           // 会话级已发现（read 在 code 场景可用）
-        var agent = new AgentDefinition
-        {
-            Name = "build",
-            Runtime = AgentRuntime.Native,
-            Exposure = ToolExposurePolicyMode.Tiered,
-            DeniedTools = ["read"]                      // 本 Agent 禁用 read → 本轮 schema 不含
-        };
-        var services = await BuildAsync(session, agent);
-
-        await CreateResolver(services)
-            .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
-
-        // read 从会话可用集未消失 → 不得被裁剪
-        session.DiscoveredTools.Should().Contain("read");
-    }
-
-    [Fact]
-    public async Task Tiered_WithoutSearchToolAvailable_ShouldClampToAllInline()
-    {
-        // 分层依赖检索入口；Agent 禁用 tool_search 时本轮可用集不含它 → 降级全内联（不藏工具）。
-        var session = SessionData.Create(scenario: "code");
-        var agent = new AgentDefinition
-        {
-            Name = "build",
-            Runtime = AgentRuntime.Native,
-            Exposure = ToolExposurePolicyMode.Tiered,
-            DeniedTools = ["tool_search"]
-        };
-        var services = await BuildAsync(session, agent);
+        // 发现集裁剪基准是会话级可用集：Agent 本轮禁用某工具不应把它从视图外剔除。
+        var (session, agent, services) = await SetupAsync(
+            AgentDefinition(ToolExposurePolicyMode.Tiered, denied: ["read"]),
+            discovered: new[] { "read" });
 
         var resolution = await CreateResolver(services)
             .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
 
-        resolution.DeferredEntries.Should().BeEmpty();
-        resolution.DeferredToolCount.Should().Be(0);
-        resolution.ToolSchemas.Select(s => s.Function!.Name)
-            .Should().Contain(["git_status", "read", "current_time"]);
+        // read 被 Agent 禁用 → 本轮不在候选中，但视图的会话可用集仍包含它
+        resolution.SessionAvailableIds.Should().Contain("read");
     }
 
-    private static SessionToolSchemaResolver CreateResolver(IServiceProvider services) =>
-        new(services, services.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(),
-            services.GetRequiredService<ToolExposureConfigResolver>(),
-            services.GetRequiredService<ToolExposurePolicySelector>(),
-            services.GetRequiredService<ITokenCounter>(),
-            NullLogger<SessionToolSchemaResolver>.Instance);
+    [Fact]
+    public async Task All_ShouldInlineEverything_NoCatalog()
+    {
+        var (session, agent, services) = await SetupAsync(AgentDefinition(ToolExposurePolicyMode.All));
+
+        var resolution = await CreateResolver(services)
+            .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
+
+        resolution.Layout.Should().Be(ToolExposureLayout.Flat);
+        resolution.InlineSchemas.Select(s => s.Function!.Name)
+            .Should().Contain(["git_status", "read", "current_time"]);
+        resolution.CatalogText.Should().BeNull();
+        resolution.DeferredTools.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Auto_ShouldEscalateWhenOverThreshold()
+    {
+        var (session, agent, services) = await SetupAsync(
+            new AgentDefinition { Name = "build", Runtime = AgentRuntime.Native },
+            escalateToolCount: 2);
+
+        var resolution = await CreateResolver(services)
+            .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
+
+        resolution.Layout.Should().Be(ToolExposureLayout.Tiered);
+    }
+
+    [Fact]
+    public async Task EscalatedSession_ShouldStayTiered()
+    {
+        var (session, agent, services) = await SetupAsync(
+            new AgentDefinition { Name = "build", Runtime = AgentRuntime.Native });
+        session.ToolExposure.Commit(null, escalated: true, 0, 0);
+
+        var resolution = await CreateResolver(services)
+            .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
+
+        resolution.Layout.Should().Be(ToolExposureLayout.Tiered);
+    }
+
+    [Fact]
+    public async Task Tiered_WithoutSearchToolAvailable_ShouldClampToFlat()
+    {
+        var (session, agent, services) = await SetupAsync(
+            AgentDefinition(ToolExposurePolicyMode.Tiered, denied: ["tool_search"]));
+
+        var resolution = await CreateResolver(services)
+            .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
+
+        resolution.Layout.Should().Be(ToolExposureLayout.Flat);
+        resolution.DeferredTools.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Ordering_ShouldBePinnedThenDiscovered()
+    {
+        var (session, agent, services) = await SetupAsync(
+            AgentDefinition(ToolExposurePolicyMode.Tiered, pinned: ["git_status"]),
+            discovered: new[] { "current_time", "read" });
+
+        var resolution = await CreateResolver(services)
+            .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
+
+        resolution.InlineSchemas.Select(s => s.Function!.Name)
+            .Should().Equal("git_status", "current_time", "read", "tool_search");
+    }
 
     [Fact]
     public async Task SchemaPrefix_ShouldBeStableAcrossRounds()
     {
-        // 17.4：同一会话+Agent 连续多轮，inline 工具 id 序列完全一致（保护 provider 前缀缓存）
-        var session = SessionData.Create(scenario: "code");
-        var agent = new AgentDefinition { Name = "build", Runtime = AgentRuntime.Native, Exposure = ToolExposurePolicyMode.Tiered, PinnedTools = ["git_status"] };
-        session.DiscoveredTools.Add("read");
-        var services = await BuildAsync(session, agent);
+        var (session, agent, services) = await SetupAsync(
+            AgentDefinition(ToolExposurePolicyMode.Tiered, pinned: ["git_status"]),
+            discovered: new[] { "read" });
         var resolver = CreateResolver(services);
 
         string[]? first = null;
         for (var i = 0; i < 20; i++)
         {
-            var r = await resolver.ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
-            var ids = r.ToolSchemas.Select(s => s.Function!.Name).ToArray();
+            var ids = (await resolver.ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken))
+                .InlineSchemas.Select(s => s.Function!.Name).ToArray();
             if (first is null) first = ids;
             else ids.Should().Equal(first);
         }
     }
 
     [Fact]
-    public async Task Escalation_ShouldFlipOnceAndNeverDowngrade()
+    public async Task ShouldLogExposureMetrics()
     {
-        // 17.5：auto 越阈值升级一次并粘滞；后续即使工具减少也不回退
-        var session = SessionData.Create(scenario: "code");
-        var agent = new AgentDefinition { Name = "build", Runtime = AgentRuntime.Native };
-        var services = await BuildAsync(session, agent, escalateToolCount: 2);
-        var resolver = CreateResolver(services);
-
-        await resolver.ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
-        session.ExposureEscalated.Should().BeTrue();
-
-        // 工具骤减（denied 剩 1）仍不回退
-        var few = new AgentDefinition
-        {
-            Name = "build",
-            Runtime = AgentRuntime.Native,
-            DeniedTools = ["memory_search", "read", "current_time"]
-        };
-        await resolver.ResolveAsync(session.Id, few, TestContext.Current.CancellationToken);
-        session.ExposureEscalated.Should().BeTrue();
-    }
-
-    [Fact]
-    public async Task ShouldLogExposureMetrics_WhenTieredActive()
-    {
-        var session = SessionData.Create(scenario: "code");
-        var agent = new AgentDefinition
-        {
-            Name = "build",
-            Runtime = AgentRuntime.Native,
-            Exposure = ToolExposurePolicyMode.Tiered
-        };
-        var services = await BuildAsync(session, agent);
+        var (session, agent, services) = await SetupAsync(AgentDefinition(ToolExposurePolicyMode.Tiered));
         var logger = new RecordingLogger<SessionToolSchemaResolver>();
         var resolver = new SessionToolSchemaResolver(
-            services, services.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(),
+            services,
+            services.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(),
             services.GetRequiredService<ToolExposureConfigResolver>(),
-            services.GetRequiredService<ToolExposurePolicySelector>(),
-            services.GetRequiredService<ITokenCounter>(), logger);
+            services.GetRequiredService<ITokenCounter>(),
+            logger);
 
         await resolver.ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
 
         logger.DebugCount.Should().BeGreaterThan(0);
     }
 
-    private sealed class RecordingLogger<T> : ILogger<T>
+    private static AgentDefinition AgentDefinition(
+        ToolExposurePolicyMode mode,
+        IReadOnlyList<string>? pinned = null,
+        IReadOnlyList<string>? denied = null) => new()
     {
-        public int DebugCount;
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel logLevel) => true;
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter)
-        {
-            if (logLevel == LogLevel.Debug) DebugCount++;
-        }
-    }
+        Name = "build",
+        Runtime = AgentRuntime.Native,
+        Exposure = mode,
+        PinnedTools = pinned?.ToList(),
+        DeniedTools = denied?.ToList()
+    };
 
-    private static async Task<IServiceProvider> BuildAsync(
-        SessionData session,
+    private static SessionToolSchemaResolver CreateResolver(IServiceProvider services) =>
+        new(services,
+            services.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>(),
+            services.GetRequiredService<ToolExposureConfigResolver>(),
+            services.GetRequiredService<ITokenCounter>(),
+            NullLogger<SessionToolSchemaResolver>.Instance);
+
+    private static async Task<(SessionData Session, AgentDefinition Agent, IServiceProvider Services)> SetupAsync(
         AgentDefinition agent,
+        IReadOnlyList<string>? discovered = null,
         int escalateToolCount = 9999)
     {
+        var session = SessionData.Create(scenario: "code");
+        if (discovered is not null)
+        {
+            foreach (var id in discovered)
+                session.ToolExposure.AddPending([id]);
+            session.ToolExposure.PromotePending();
+        }
+
         var toolManager = new Seeing.Agent.Core.Tools.ToolManager(
             NullLogger<Seeing.Agent.Core.Tools.ToolManager>.Instance,
             new HookManager(NullLogger<HookManager>.Instance));
@@ -306,8 +232,7 @@ public class SessionToolSchemaResolverExposureTests
                 }
             }
         };
-        var optionsMonitor =
-            Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == options);
+        var optionsMonitor = Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == options);
 
         var catalog = new ModuleCatalog();
         catalog.ReplaceAvailable(
@@ -332,14 +257,9 @@ public class SessionToolSchemaResolverExposureTests
         services.AddSingleton<IPromptSectionContributor>(new FakeSectionContributor());
         services.AddSingleton<IOptionsMonitor<SeeingAgentOptions>>(optionsMonitor);
         services.AddSingleton<ITokenCounter, CharBasedTokenCounter>();
-        // 暴露子系统接线
-        services.AddSingleton<IToolExposurePolicy, AllToolExposurePolicy>();
-        services.AddSingleton<IToolExposurePolicy, TieredToolExposurePolicy>();
-        services.AddSingleton<ToolExposurePolicySelector>();
         services.AddSingleton<ToolExposureConfigResolver>();
-        services.AddSingleton<IToolDiscoveryStore, SessionToolDiscoveryStore>();
 
-        return services.BuildServiceProvider();
+        return (session, agent, services.BuildServiceProvider());
     }
 
     private sealed class NamedTool(string id) : ITool
@@ -363,5 +283,17 @@ public class SessionToolSchemaResolverExposureTests
         public int Order => 0;
         public Task<string?> BuildAsync(PromptContext context, CancellationToken cancellationToken = default) =>
             Task.FromResult<string?>("tools");
+    }
+
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public int DebugCount;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Debug) DebugCount++;
+        }
     }
 }

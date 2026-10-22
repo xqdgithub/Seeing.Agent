@@ -339,8 +339,7 @@ public class AgentJob : IJob
             WorkingDirectory = cwd,
             WorkspaceRoot = projectRoot,
             IsBackground = true,
-            ToolSchemas = resolution?.ToolSchemas,
-            CatalogText = resolution?.CatalogText,
+            ToolSettlement = resolution,
             Metadata = metadata
         };
 
@@ -377,8 +376,12 @@ public class AgentJob : IJob
     }
 
     /// <summary>
-    /// schema 单点纪律（AgentJob / HeartbeatJob 共用）：直连 <see cref="IAgentExecutor"/> 的旁路执行
-    /// 经 <see cref="ISessionToolSchemaResolver"/> 解析会话级工具 schema；未注册或解析失败时空集继续（不阻断任务）。
+    /// 工具视图单点纪律（AgentJob / HeartbeatJob 共用）：直连 <see cref="IAgentExecutor"/> 的旁路执行
+    /// 经 <see cref="ISessionToolSchemaResolver"/> 取本轮工具视图；未注册或解析失败时空集继续（不阻断任务）。
+    /// <para>
+    /// 旁路**不提交**结算状态（不写度量、不改升级位），但会先提升上一轮登记的待生效发现，
+    /// 否则 cron 会话里 tool_search 的发现永远不会生效。
+    /// </para>
     /// </summary>
     internal static async Task<Seeing.Agent.Abstractions.Execution.SessionToolSchemaResolution?> ResolveToolSchemasAsync(
         IServiceProvider services,

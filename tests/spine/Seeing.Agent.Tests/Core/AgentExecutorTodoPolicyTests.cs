@@ -179,8 +179,15 @@ public class AgentExecutorTodoPolicyTests
             SessionId = sessionId,
             WorkingDirectory = "workspace-root",
             WorkspaceRoot = "workspace-root",
-            ToolSchemas = withTodoWrite
-                ? [new FunctionToolSchema { Function = new FunctionSchema { Name = "todowrite" } }]
+            ToolSettlement = withTodoWrite
+                ? new Seeing.Agent.Abstractions.Execution.SessionToolSchemaResolution(
+                    [new Seeing.Agent.Abstractions.Tools.ExposedTool(
+                        "todowrite", "", "todowrite()",
+                        new FunctionToolSchema { Function = new FunctionSchema { Name = "todowrite" } },
+                        1, Seeing.Agent.Abstractions.Tools.ToolExposureMode.Inline)],
+                    [],
+                    Seeing.Agent.Abstractions.Tools.ToolExposureLayout.Flat,
+                    null, 1, 0)
                 : null
         };
         var messages = new List<ChatMessage> { new() { Role = ChatRole.User, Content = "go" } };

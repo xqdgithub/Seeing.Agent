@@ -79,9 +79,9 @@ public class SchemaSnapshotExecutionTests
 
         var snapshot = published.Select(p => p.Event).OfType<SchemaSnapshotEvent>().Single();
         capturedContext.Should().NotBeNull();
-        capturedContext!.ToolSchemas.Should().NotBeNull();
+        capturedContext!.ToolSettlement.Should().NotBeNull();
 
-        var contextToolIds = capturedContext.ToolSchemas!
+        var contextToolIds = capturedContext.ToolSettlement!.InlineSchemas
             .Where(s => s.Function != null)
             .Select(s => s.Function.Name)
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
@@ -258,11 +258,6 @@ public class SchemaSnapshotExecutionTests
                 provider,
                 optionsMonitor,
                 new Seeing.Agent.Hosting.Execution.ToolExposure.ToolExposureConfigResolver(optionsMonitor),
-                new Seeing.Agent.Hosting.Execution.ToolExposure.ToolExposurePolicySelector(
-                    [
-                        new Seeing.Agent.Hosting.Execution.ToolExposure.AllToolExposurePolicy(),
-                        new Seeing.Agent.Hosting.Execution.ToolExposure.TieredToolExposurePolicy()
-                    ]),
                 new Seeing.TokenEstimation.CharBasedTokenCounter()));
     }
 

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.Support;
 
@@ -26,21 +27,18 @@ public sealed class ToolSearchTool : ToolBase
     private const int ScoreSummarySubstring = 4;
     private const int ScoreTextSubstring = 2;
 
-    private readonly IToolSearchProvider _provider;
+    private readonly ISessionToolSchemaResolver _resolver;
     private readonly IToolDiscoveryStore _discoveryStore;
-    private readonly IToolManager _toolManager;
 
     /// <summary>创建 ToolSearchTool 实例。</summary>
     public ToolSearchTool(
-        IToolSearchProvider provider,
+        ISessionToolSchemaResolver resolver,
         IToolDiscoveryStore discoveryStore,
-        IToolManager toolManager,
         ILogger<ToolSearchTool>? logger = null)
         : base(logger ?? NullLogger<ToolSearchTool>.Instance)
     {
-        _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+        _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
         _discoveryStore = discoveryStore ?? throw new ArgumentNullException(nameof(discoveryStore));
-        _toolManager = toolManager ?? throw new ArgumentNullException(nameof(toolManager));
     }
 
     /// <inheritdoc />
@@ -108,11 +106,13 @@ public sealed class ToolSearchTool : ToolBase
         var limit = Math.Clamp(GetIntArgument(arguments, "limit") ?? DefaultLimit, 1, MaxLimit);
         var offset = Math.Max(GetIntArgument(arguments, "offset") ?? 0, 0);
 
-        if (detail == "full" && context.Agent is null)
-            return Failure("detail=full 需要 Agent 上下文以权威获取全量定义，请改用 detail=summary 或浏览目录");
+        if (context.Agent is null)
+            return Failure("需要 Agent 上下文才能确定本会话的工具视图");
 
-        var corpus = await _provider
-            .GetDiscoverableAsync(context.SessionId, context.Agent, ct).ConfigureAwait(false);
+        // 工具视图唯一来源：结算端口（只读）。语料 = 本轮未内联的工具。
+        var settlement = await _resolver
+            .ResolveAsync(context.SessionId, context.Agent, ct).ConfigureAwait(false);
+        var corpus = settlement.DeferredTools;
 
         if (corpus is null || corpus.Count == 0)
         {
@@ -122,10 +122,10 @@ public sealed class ToolSearchTool : ToolBase
             return Success("当前无额外可发现工具，所有可用工具已内联。", emptyMeta);
         }
 
-        IReadOnlyList<ToolCatalogEntry> scoped = string.IsNullOrWhiteSpace(nsFilter)
+        IReadOnlyList<ExposedTool> scoped = string.IsNullOrWhiteSpace(nsFilter)
             ? corpus
             : corpus
-                .Where(e => e.Namespace is not null &&
+                .Where(e => !string.IsNullOrEmpty(e.Namespace) &&
                             e.Namespace.StartsWith(nsFilter.Trim(), StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
@@ -170,10 +170,7 @@ public sealed class ToolSearchTool : ToolBase
         var nextOffset = offset + page.Count;
         var hitIds = page.Select(p => p.Entry.Id).ToList();
 
-        if (detail == "full")
-        {
-            _discoveryStore.Add(context.SessionId, hitIds);
-        }
+        var discovered = detail != "full" || hitIds.Count == 0 || _discoveryStore.Add(context.SessionId, hitIds);
 
         var sb = new StringBuilder();
         sb.Append($"工具检索结果（detail={detail}, total={total}, returned={page.Count}, remaining={remaining}）:");
@@ -191,14 +188,14 @@ public sealed class ToolSearchTool : ToolBase
 
             if (!string.IsNullOrWhiteSpace(entry.Signature))
                 sb.Append(" | ").Append(entry.Signature);
-            if (!string.IsNullOrWhiteSpace(entry.Summary))
-                sb.Append("\n   ").Append(entry.Summary);
 
             if (detail != "full")
                 continue;
 
-            sb.Append("\n   该工具将在下一轮变为可直接调用（已写入发现态）:");
-            var schemaText = await GetFullDefinitionAsync(entry.Id, context, ct).ConfigureAwait(false);
+            sb.Append(discovered
+                ? "\n   该工具将在下一轮变为可直接调用（已登记待生效发现）:"
+                : "\n   警告：发现态登记失败（会话不可用），该工具本轮及下一轮均不可直接调用:");
+            var schemaText = GetFullDefinition(entry.Id, settlement);
             sb.Append('\n').Append(schemaText);
         }
 
@@ -222,17 +219,15 @@ public sealed class ToolSearchTool : ToolBase
         return Success(sb.ToString(), resultMeta);
     }
 
-    private async Task<string> GetFullDefinitionAsync(
-        string toolId, ToolContext context, CancellationToken ct)
+    private static string GetFullDefinition(string toolId, SessionToolSchemaResolution settlement)
     {
-        var schemas = await _toolManager
-            .GetToolSchemasAsync(new[] { toolId }, context.Agent!, ct).ConfigureAwait(false);
+        // full 定义直接取自本轮视图，不再回头查注册表（避免第二条 schema 路径）
+        var hit = settlement.Tools.FirstOrDefault(t =>
+            string.Equals(t.Id, toolId, StringComparison.OrdinalIgnoreCase));
+        if (hit is null)
+            return "   (本轮视图中未找到该工具定义)";
 
-        var schema = schemas.FirstOrDefault();
-        if (schema is null)
-            return "   (未能获取该工具的完整定义，可能已被注销)";
-
-        return "   " + JsonSerializer.Serialize(schema);
+        return "   " + JsonSerializer.Serialize(hit.Schema);
     }
 
     private static Dictionary<string, object> BuildMetadata(
@@ -290,8 +285,8 @@ public sealed class ToolSearchTool : ToolBase
         }
     }
 
-    private static List<(ToolCatalogEntry Entry, int Score)> Rank(
-        IReadOnlyList<ToolCatalogEntry> entries, string? query)
+    private static List<(ExposedTool Entry, int Score)> Rank(
+        IReadOnlyList<ExposedTool> entries, string? query)
     {
         if (string.IsNullOrWhiteSpace(query))
         {
@@ -303,14 +298,14 @@ public sealed class ToolSearchTool : ToolBase
 
         var tokens = Tokenize(query).ToList();
         var fullQueryLower = query.Trim().ToLowerInvariant();
-        var scored = new List<(ToolCatalogEntry, int)>();
+        var scored = new List<(ExposedTool, int)>();
 
         foreach (var entry in entries)
         {
             var idLower = entry.Id.ToLowerInvariant();
-            var summaryLower = (entry.Summary ?? string.Empty).ToLowerInvariant();
+            var summaryLower = entry.Signature.ToLowerInvariant();
             var nsLower = (entry.Namespace ?? string.Empty).ToLowerInvariant();
-            var fullText = string.Join(' ', entry.Id, entry.Namespace ?? "", entry.Signature, entry.Summary)
+            var fullText = string.Join(' ', entry.Id, entry.Namespace ?? "", entry.Signature)
                 .ToLowerInvariant();
             var idWords = SplitWords(entry.Id).Select(Stem).ToHashSet(StringComparer.Ordinal);
 
@@ -385,7 +380,7 @@ public sealed class ToolSearchTool : ToolBase
         return word;
     }
 
-    private static string FormatNamespaceCounts(IReadOnlyList<ToolCatalogEntry> entries) =>
+    private static string FormatNamespaceCounts(IReadOnlyList<ExposedTool> entries) =>
         string.Join("\n", entries
             .GroupBy(e => e.Namespace ?? "(无命名空间)")
             .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)

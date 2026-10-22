@@ -85,17 +85,12 @@ public static class HostingServiceCollectionExtensions
         // 会话级 schema 解析（schema 单点纪律共享出口）：主执行链与 Scheduler 旁路执行共用同一结算
         services.AddSingleton<SessionToolSchemaResolver>();
         services.AddSingleton<ISessionToolSchemaResolver>(sp => sp.GetRequiredService<SessionToolSchemaResolver>());
-        // 工具暴露裁剪子系统（组9/10/11）：策略 + 选择器 + 四级配置解析 + 发现态存储，由 resolver 单点消费
+        // 工具暴露子系统：纯引擎（静态）+ 四级配置解析 + 发现态写入
         // token 估算默认口径（TryAdd：能力包若提供更准实现则覆盖，全局仅一套）
         services.TryAddSingleton<Seeing.TokenEstimation.ITokenCounter, Seeing.TokenEstimation.CharBasedTokenCounter>();
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolExposurePolicy, AllToolExposurePolicy>());
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolExposurePolicy, TieredToolExposurePolicy>());
-        services.AddSingleton<ToolExposurePolicySelector>();
         services.AddSingleton<ToolExposureConfigResolver>();
         services.AddSingleton<IToolDiscoveryStore, SessionToolDiscoveryStore>();
-        // 检索语料端口：tool_search 经此单源获取 deferred 目录（不自行重算 settle）
-        services.AddSingleton<IToolSearchProvider, SessionToolSearchProvider>();
-        // 目录分节贡献者（透传执行链渲染的目录正文进系统提示）
+        // 目录分节贡献者（透传结算产出的目录正文进系统提示）
         services.AddSingleton<Seeing.Agent.Abstractions.Prompts.IPromptSectionContributor, Seeing.Agent.Hosting.Prompts.ToolCatalogSectionContributor>();
         services.AddSingleton<SessionRuntime>(sp => new SessionRuntime(
             sp.GetRequiredService<IExecutionRunner>(),

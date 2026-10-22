@@ -10,6 +10,26 @@ public sealed class SessionScenarioOverride
 
     /// <summary>会话级工具裁剪。</summary>
     public SessionToolsOverride? Tools { get; set; }
+
+    /// <summary>
+    /// 深拷贝（列表复制新容器；脏 JSON 中 <c>null</c> 列表按空处理）。
+    /// </summary>
+    public SessionScenarioOverride Clone() => new()
+    {
+        Modules = Modules is null
+            ? null
+            : new SessionModulesOverride
+            {
+                Enabled = Modules.Enabled is null ? null : new List<string>(Modules.Enabled)
+            },
+        Tools = Tools is null
+            ? null
+            : new SessionToolsOverride
+            {
+                Disabled = Tools.Disabled is null ? [] : new List<string>(Tools.Disabled),
+                PolicyMode = Tools.PolicyMode
+            }
+    };
 }
 
 /// <summary>会话级 modules 覆盖（对应结算式 <c>session.modules.enabled</c>）。</summary>

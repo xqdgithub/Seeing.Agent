@@ -236,22 +236,24 @@ internal sealed class ExecutionRunner : IExecutionRunner
                 // 服务端负责将事件投影到 Session 并落盘；UI 只订阅展示
                 var eventTracker = new ChatEventTracker();
 
-                // schema 快照事件：与随后 ChatRequest.Tools 同源（context.ToolSchemas）
+                // schema 快照事件：与随后 ChatRequest.Tools 同源（同一份工具视图结算）
+                var settlement = context.ToolSettlement ?? SessionToolSchemaResolution.Empty;
                 var schemaSnapshot = new SchemaSnapshotEvent
                 {
                     SessionId = record.SessionId,
                     ExecutionId = record.ExecutionId,
-                    ToolIds = context.ToolSchemas?
+                    ToolIds = settlement.InlineSchemas
                         .Where(s => s.Function != null)
                         .Select(s => s.Function.Name)
-                        .ToArray()
-                        ?? Array.Empty<string>(),
+                        .ToArray(),
                     SectionIds = context.SectionIds,
-                    ExposureMode = context.ExposureMode,
-                    InlineToolCount = context.InlineToolCount,
-                    DeferredToolCount = context.DeferredToolCount,
-                    EstimatedDefinitionTokens = context.EstimatedDefinitionTokens,
-                    CatalogTokens = context.CatalogTokens
+                    ExposureMode = settlement.Layout == ToolExposureLayout.Tiered
+                        ? ToolExposurePolicyMode.Tiered
+                        : ToolExposurePolicyMode.All,
+                    InlineToolCount = settlement.InlineToolCount,
+                    DeferredToolCount = settlement.DeferredToolCount,
+                    EstimatedDefinitionTokens = settlement.SchemaTokens,
+                    CatalogTokens = settlement.CatalogTokens
                 };
                 eventTracker.ApplyEvent(session, schemaSnapshot);
                 _eventPublisher.Publish(record.SessionId, schemaSnapshot);
@@ -440,14 +442,18 @@ internal sealed class ExecutionRunner : IExecutionRunner
             ?? session.WorkingDirectory
             ?? executionWorld.Cwd;
 
-        // schema 唯一计算点：经 ISessionToolSchemaResolver 端口（与 Scheduler 直连执行共用同一结算出口）
+        // 工具视图唯一出口：轮首先把上一轮登记的发现提升为生效，再结算本轮视图，
+        // 最后把结算增量提交回会话（发现集裁剪、升级粘滞位、每轮度量）。
+        // 提交只在这里发生，Scheduler 旁路与 tool_search 都只读。
+        session.ToolExposure.PromotePending();
         var schemaSettlement = await _schemaResolver.ResolveAsync(
             session, agentDef).ConfigureAwait(false);
-        var toolSchemas = schemaSettlement.ToolSchemas;
+        session.ToolExposure.Commit(
+            schemaSettlement.SessionAvailableIds,
+            schemaSettlement.Layout == ToolExposureLayout.Tiered,
+            schemaSettlement.SchemaTokens,
+            schemaSettlement.CatalogTokens);
         var sectionIds = schemaSettlement.SectionIds;
-
-        // token 归属与目录正文均由 resolver 单点产出（含写入 session.CachedSchemaTokens/CatalogTokens），
-        // 执行链只读不重算，主链与 Scheduler 旁路同获同源产物。
 
         string? requestThinkingEffort = record.Options?.ThinkingEffort;
         if (requestThinkingEffort is null && !string.IsNullOrWhiteSpace(session.SelectedThinkingEffort))
@@ -465,14 +471,8 @@ internal sealed class ExecutionRunner : IExecutionRunner
             AcpModeId = acpModeId,
             RequestModelId = requestModelId,
             RequestThinkingEffort = requestThinkingEffort,
-            ToolSchemas = toolSchemas,
-            SectionIds = sectionIds,
-            InlineToolCount = schemaSettlement.InlineToolCount,
-            DeferredToolCount = schemaSettlement.DeferredToolCount,
-            EstimatedDefinitionTokens = schemaSettlement.EstimatedDefinitionTokens,
-            CatalogTokens = schemaSettlement.CatalogTokens,
-            ExposureMode = schemaSettlement.ExposureMode,
-            CatalogText = schemaSettlement.CatalogText
+            ToolSettlement = schemaSettlement,
+            SectionIds = sectionIds
         };
     }
 
@@ -807,8 +807,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
             WorkspaceRoot = context.WorkspaceRoot ?? "",
             PermissionAuthorizer = context.PermissionAuthorizer,
             CancellationToken = cancellationToken,
-            ToolSchemas = context.ToolSchemas ?? Array.Empty<FunctionToolSchema>(),
-            CatalogText = context.CatalogText
+            ToolSettlement = context.ToolSettlement
         };
 
         // 传递请求级模型选择到 Metadata（适用于 Native Agent 和 ACP Passthrough）

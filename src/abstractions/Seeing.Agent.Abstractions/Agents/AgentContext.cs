@@ -62,14 +62,8 @@ public class AgentContext
     public string? ParentAgentName { get; init; }
 
     /// <summary>
-    /// 本轮工具 schema（由 <c>ExecutionRunner</c> 唯一计算后传入；executor 不得自算）。
-    /// null 表示调用方未提供（非 Hosting 入口的遗留路径）。
+    /// 本轮工具视图（由 Hosting 结算后传入；executor 不得自算）。
+    /// null 表示调用方未提供（非 Hosting 入口的遗留路径），此时执行器不做可见集校验。
     /// </summary>
-    public IReadOnlyList<FunctionToolSchema>? ToolSchemas { get; set; }
-
-    /// <summary>
-    /// 本轮延迟工具的目录文本（由 resolver 结算产出、执行链渲染；经 PromptContext.Sections["tool-catalog"] 进系统提示）。
-    /// null/空 表示无延迟工具，目录分节不输出。
-    /// </summary>
-    public string? CatalogText { get; set; }
+    public Abstractions.Execution.SessionToolSchemaResolution? ToolSettlement { get; set; }
 }

@@ -39,12 +39,12 @@ public class SessionToolSchemaResolverTests
 
         var resolution = await resolver.ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
 
-        resolution.ToolSchemas.Select(s => s.Function!.Name)
+        resolution.InlineSchemas.Select(s => s.Function!.Name)
             .Should().Contain("git_status")
             .And.Contain("read")
             .And.Contain("current_time");
         // 会话 scenario=code：memory 模块未启用 → memory_search 不入 schema
-        resolution.ToolSchemas.Select(s => s.Function!.Name)
+        resolution.InlineSchemas.Select(s => s.Function!.Name)
             .Should().NotContain("memory_search");
         resolution.SectionIds.Should().Contain("tools");
     }
@@ -67,7 +67,7 @@ public class SessionToolSchemaResolverTests
 
         var resolution = await resolver.ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
 
-        resolution.ToolSchemas.Select(s => s.Function!.Name)
+        resolution.InlineSchemas.Select(s => s.Function!.Name)
             .Should().NotContain("git_status")
             .And.Contain("read");
     }
@@ -84,28 +84,28 @@ public class SessionToolSchemaResolverTests
 
         var resolution = await resolver.ResolveAsync(session.Id, new AgentDefinition { Name = "build" });
 
-        resolution.ToolSchemas.Should().BeEmpty();
+        resolution.InlineSchemas.Should().BeEmpty();
         resolution.SectionIds.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task ResolveAsync_SessionMissing_ShouldEnsureSession()
+    public async Task ResolveAsync_SessionMissing_ShouldReturnEmptyWithoutCreatingSession()
     {
+        // 端口只读：会话不存在时返回空视图，绝不新建会话。
         var session = SessionData.Create(scenario: "code");
         var sessionManager = new Mock<ISessionManager>();
         sessionManager.Setup(m => m.Get(It.IsAny<string>())).Returns((SessionData?)null);
         sessionManager.Setup(m => m.LoadAsync(It.IsAny<string>())).ReturnsAsync((SessionData?)null);
-        sessionManager
-            .Setup(m => m.EnsureSessionAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
-            .ReturnsAsync(session);
 
         var services = await BuildServicesAsync(sessionManager: sessionManager, withCatalog: true);
         var resolver = CreateResolver(services);
 
         var resolution = await resolver.ResolveAsync(session.Id, new AgentDefinition { Name = "build" });
 
-        resolution.ToolSchemas.Should().NotBeEmpty();
-        sessionManager.Verify(m => m.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()), Times.Once);
+        resolution.InlineSchemas.Should().BeEmpty();
+        sessionManager.Verify(
+            m => m.EnsureSessionAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()),
+            Times.Never);
     }
 
     private static Mock<ISessionManager> MockSessionManager(SessionData session)
@@ -123,11 +123,6 @@ public class SessionToolSchemaResolverTests
             services,
             optionsMonitor,
             new Seeing.Agent.Hosting.Execution.ToolExposure.ToolExposureConfigResolver(optionsMonitor),
-            new Seeing.Agent.Hosting.Execution.ToolExposure.ToolExposurePolicySelector(
-                [
-                    new Seeing.Agent.Hosting.Execution.ToolExposure.AllToolExposurePolicy(),
-                    new Seeing.Agent.Hosting.Execution.ToolExposure.TieredToolExposurePolicy()
-                ]),
             new Seeing.TokenEstimation.CharBasedTokenCounter(),
             NullLogger<SessionToolSchemaResolver>.Instance);
     }

@@ -6,57 +6,77 @@ using Seeing.Session.Core;
 namespace Seeing.Agent.Abstractions.Execution;
 
 /// <summary>
-/// 会话级工具 schema 解析端口：按会话结算（scenario / 模块启用 / 工具禁用）+ Agent 过滤，
-/// 计算本轮可用 <see cref="FunctionToolSchema"/> 集。
+/// 会话级工具视图端口：按会话结算（scenario / 模块启用 / 工具禁用）+ Agent 过滤 + 暴露裁剪，
+/// 产出本轮**一个**工具视图，作为"工具列表"的唯一来源。
 /// <para>
-/// schema 单点纪律的共享出口：主执行链（Hosting ExecutionRunner）与旁路执行
-/// （Scheduler 的 AgentJob / HeartbeatJob 直连 <c>IAgentExecutor</c>）必须经同一解析，
-/// 保证任何执行路径的 LLM 请求都携带真实工具 schema（否则模型只能靠文本「表演」工具调用）。
+/// 主执行链（Hosting ExecutionRunner）、Scheduler 旁路、以及需要了解工具清单的元工具
+/// 必须经同一出口取用，不得各自去问工具注册表。
 /// </para>
 /// <para>
-/// 契约：未注册结算依赖（<c>IModuleCatalog</c> 等）时返回空集，不抛异常。
+/// 契约：本端口**只读**，不写会话状态；未注册结算依赖（<c>IModuleCatalog</c> 等）时返回空视图，不抛异常。
+/// 会话状态的提交由执行入口在每轮开头单独完成。
 /// </para>
 /// </summary>
 public interface ISessionToolSchemaResolver
 {
     /// <summary>
-    /// 解析指定会话 + Agent 的本轮工具 schema（含会话级结算）。
+    /// 解析指定会话 + Agent 的本轮工具视图（按需加载已存在的会话；不存在时返回空视图，不创建会话）。
     /// </summary>
-    /// <param name="sessionId">会话 ID（按需加载会话，取其 Scenario / ScenarioOverride）。</param>
-    /// <param name="agent">目标 Agent 定义。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
     Task<SessionToolSchemaResolution> ResolveAsync(
         string sessionId,
         AgentDefinition agent,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// 解析已加载会话 + Agent 的本轮工具 schema。主执行链（ExecutionRunner）用此重载：
-    /// 复用调用方已加载且可能含未落盘变更的 <see cref="SessionData"/> 实例，避免二次加载读到旧状态。
+    /// 解析已加载会话 + Agent 的本轮工具视图（执行入口用此重载，复用同一会话实例）。
     /// </summary>
-    /// <param name="session">已加载的会话实例（直接使用，不再按 id 重新加载）。</param>
-    /// <param name="agent">目标 Agent 定义。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
     Task<SessionToolSchemaResolution> ResolveAsync(
         SessionData session,
         AgentDefinition agent,
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>会话级 schema 解析结果。</summary>
+/// <summary>
+/// 会话级工具视图。
+/// <para>
+/// <see cref="Tools"/> 是本轮全部可用工具（含未内联的），其余成员都是它的派生投影，
+/// 调用方不应再从别处查询工具清单。
+/// </para>
+/// </summary>
 public sealed record SessionToolSchemaResolution(
-    IReadOnlyList<FunctionToolSchema> ToolSchemas,
+    IReadOnlyList<ExposedTool> Tools,
     IReadOnlyList<string> SectionIds,
-    IReadOnlyList<ToolCatalogEntry> DeferredEntries = default!,
-    IReadOnlyList<ToolCatalogNamespace> CatalogNamespaces = default!,
-    string? CatalogText = null,
-    int InlineToolCount = 0,
-    int DeferredToolCount = 0,
-    int EstimatedDefinitionTokens = 0,
-    int CatalogTokens = 0,
-    ToolExposurePolicyMode ExposureMode = ToolExposurePolicyMode.Auto)
+    ToolExposureLayout Layout,
+    string? CatalogText,
+    int SchemaTokens,
+    int CatalogTokens,
+    IReadOnlySet<string>? SessionAvailableIds = null)
 {
-    public static SessionToolSchemaResolution Empty { get; } =
-        new(Array.Empty<FunctionToolSchema>(), Array.Empty<string>(),
-            Array.Empty<ToolCatalogEntry>(), Array.Empty<ToolCatalogNamespace>());
+    /// <summary>空视图。</summary>
+    public static SessionToolSchemaResolution Empty { get; } = new(
+        Array.Empty<ExposedTool>(), Array.Empty<string>(), ToolExposureLayout.Flat, null, 0, 0);
+
+    /// <summary>本轮内联进请求的工具（按物化顺序）。</summary>
+    public IReadOnlyList<FunctionToolSchema> InlineSchemas =>
+        Tools.Where(t => t.Mode == ToolExposureMode.Inline).Select(t => t.Schema).ToList();
+
+    /// <summary>本轮可被检索发现但未内联的工具（检索语料）。</summary>
+    public IReadOnlyList<ExposedTool> DeferredTools =>
+        Tools.Where(t => t.Mode == ToolExposureMode.Deferred).ToList();
+
+    /// <summary>内联工具数。</summary>
+    public int InlineToolCount => Tools.Count(t => t.Mode == ToolExposureMode.Inline);
+
+    /// <summary>延迟工具数。</summary>
+    public int DeferredToolCount => Tools.Count(t => t.Mode == ToolExposureMode.Deferred);
+
+    /// <summary>本轮 toolbar 中是否存在指定 id 的工具（任意模式）。</summary>
+    public bool Contains(string toolId) =>
+        Tools.Any(t => string.Equals(t.Id, toolId, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>本轮是否有检索工具可用（决定目录引导文案与执行层提示）。</summary>
+    public bool HasSearchTool =>
+        Contains(ToolIdConventions.SearchToolId) &&
+        Tools.Any(t => string.Equals(t.Id, ToolIdConventions.SearchToolId, StringComparison.OrdinalIgnoreCase)
+                       && t.Mode == ToolExposureMode.Inline);
 }

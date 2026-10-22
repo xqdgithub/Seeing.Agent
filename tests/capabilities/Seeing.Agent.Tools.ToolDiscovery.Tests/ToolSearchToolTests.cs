@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Moq;
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Tools;
 using Xunit;
@@ -10,9 +11,8 @@ namespace Seeing.Agent.Tools.ToolDiscovery.Tests;
 
 public class ToolSearchToolTests
 {
-    private readonly Mock<IToolSearchProvider> _provider = new();
+    private readonly Mock<ISessionToolSchemaResolver> _resolver = new();
     private readonly Mock<IToolDiscoveryStore> _store = new();
-    private readonly Mock<IToolManager> _toolManager = new();
 
     private readonly ToolContext _context = new()
     {
@@ -20,33 +20,37 @@ public class ToolSearchToolTests
         Agent = new AgentDefinition { Name = "build" },
     };
 
-    private ToolSearchTool CreateTool(params ToolCatalogEntry[] entries)
+    private ToolSearchTool CreateTool(params ExposedTool[] deferred)
     {
-        _provider
-            .Setup(p => p.GetDiscoverableAsync(
-                It.IsAny<string>(), It.IsAny<AgentDefinition?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(entries);
+        // 视图 = 内联的 tool_search + 传入的 deferred；tool_search 只读这一个来源。
+        var settlement = new SessionToolSchemaResolution(
+            deferred, Array.Empty<string>(), ToolExposureLayout.Tiered, "catalog", 0, 0);
+        _resolver
+            .Setup(r => r.ResolveAsync(
+                It.IsAny<string>(), It.IsAny<AgentDefinition>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(settlement);
 
-        _toolManager
-            .Setup(tm => tm.GetToolSchemasAsync(
-                It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<AgentDefinition>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyCollection<string> ids, AgentDefinition _, CancellationToken _) =>
-                ids.Select(id => new FunctionToolSchema
-                {
-                    Function = new FunctionSchema
-                    {
-                        Name = id,
-                        Description = $"desc of {id}",
-                        Parameters = JsonSerializer.SerializeToElement(new { type = "object" }),
-                    },
-                }).ToList());
+        _store
+            .Setup(s => s.Add(It.IsAny<string>(), It.IsAny<IEnumerable<string>>()))
+            .Returns(true);
 
-        return new ToolSearchTool(_provider.Object, _store.Object, _toolManager.Object);
+        return new ToolSearchTool(_resolver.Object, _store.Object);
     }
 
-    private static ToolCatalogEntry Entry(
+    private static ExposedTool Entry(
         string id, string? ns = "fs", string signature = "sig()", string summary = "sum") =>
-        new(id, ns, signature, summary, 10, false, ToolExposureMode.Deferred);
+        new(id, ns ?? string.Empty, $"{signature} {summary}",
+            new FunctionToolSchema
+            {
+                Function = new FunctionSchema
+                {
+                    Name = id,
+                    Description = summary,
+                    Parameters = JsonSerializer.SerializeToElement(new { type = "object" })
+                }
+            },
+            10,
+            ToolExposureMode.Deferred);
 
     private static JsonElement Args(object value) => JsonSerializer.SerializeToElement(value);
 
@@ -85,14 +89,10 @@ public class ToolSearchToolTests
         var result = await tool.ExecuteAsync(Args(new { query = "file_read", detail = "full" }), _context);
 
         result.Success.Should().BeTrue();
-        result.Output.Should().Contain("desc of file_read");
+        result.Output.Should().Contain("file_read");
+        result.Output.Should().Contain("下一轮");
         _store.Verify(
             s => s.Add("s1", It.Is<IEnumerable<string>>(ids => ids.Contains("file_read"))),
-            Times.Once);
-        _toolManager.Verify(
-            tm => tm.GetToolSchemasAsync(
-                It.Is<IReadOnlyCollection<string>>(ids => ids.SequenceEqual(new[] { "file_read" })),
-                It.IsAny<AgentDefinition>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -241,10 +241,6 @@ public class ToolSearchToolTests
         var result = await tool.ExecuteAsync(Args(new { detail = "full", limit = 30 }), _context);
 
         result.Success.Should().BeTrue();
-        _toolManager.Verify(
-            tm => tm.GetToolSchemasAsync(
-                It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<AgentDefinition>(), It.IsAny<CancellationToken>()),
-            Times.Exactly(3));
         _store.Verify(
             s => s.Add("s1", It.Is<IEnumerable<string>>(ids => ids.Count() == 3)),
             Times.Once);

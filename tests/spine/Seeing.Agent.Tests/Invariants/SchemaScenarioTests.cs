@@ -77,7 +77,7 @@ public class SchemaScenarioTests
         var snapshot = published.Select(p => p.Event).OfType<SchemaSnapshotEvent>().Single();
         captured.Should().NotBeNull();
 
-        var contextToolIds = captured!.ToolSchemas!
+        var contextToolIds = captured!.ToolSettlement!.InlineSchemas
             .Where(s => s.Function != null)
             .Select(s => s.Function.Name)
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
@@ -466,11 +466,6 @@ public class SchemaScenarioTests
                 Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions()),
                 new Seeing.Agent.Hosting.Execution.ToolExposure.ToolExposureConfigResolver(
                     Mock.Of<IOptionsMonitor<SeeingAgentOptions>>(m => m.CurrentValue == new SeeingAgentOptions())),
-                new Seeing.Agent.Hosting.Execution.ToolExposure.ToolExposurePolicySelector(
-                    [
-                        new Seeing.Agent.Hosting.Execution.ToolExposure.AllToolExposurePolicy(),
-                        new Seeing.Agent.Hosting.Execution.ToolExposure.TieredToolExposurePolicy()
-                    ]),
                 new Seeing.TokenEstimation.CharBasedTokenCounter()));
 
         return new Fixture(runner, provider, lifecycle);

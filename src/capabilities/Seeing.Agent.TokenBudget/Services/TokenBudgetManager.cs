@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.TokenBudget.Configuration;
 using Seeing.Session.Core;
@@ -98,8 +98,8 @@ public class TokenBudgetManager : ITokenBudgetManager
         }
 
         // 工具定义/目录 token 读自会话缓存（schema 结算单点写入 SessionData.CachedSchemaTokens/CachedCatalogTokens）
-        breakdown.BySource.ToolDefinitions = session.CachedSchemaTokens ?? 0;
-        breakdown.BySource.Catalog = session.CachedCatalogTokens ?? 0;
+        breakdown.BySource.ToolDefinitions = session.ToolExposure.SchemaTokens ?? 0;
+        breakdown.BySource.Catalog = session.ToolExposure.CatalogTokens ?? 0;
 
         // Snapshot active messages before estimating them. Session messages are updated by the
         // execution/event pipeline while a budget update may be running.

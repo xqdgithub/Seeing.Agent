@@ -64,106 +64,107 @@ namespace Seeing.Session.Tests
         }
 
         [Fact]
-        public void ClearUsageCache_ShouldNullSchemaTokenCache()
+        public void ClearUsageCache_ShouldClearExposureMetricsOnly()
         {
-            // Arrange
             var data = SessionData.Create();
-            data.CachedSchemaTokens = 120;
-            data.CachedCatalogTokens = 40;
+            data.ToolExposure.Commit(null, false, 120, 40);
+            data.ToolExposure.AddPending(["tool_p"]);
 
-            // Act
             data.ClearUsageCache();
 
-            // Assert
-            data.CachedSchemaTokens.Should().BeNull();
-            data.CachedCatalogTokens.Should().BeNull();
+            data.ToolExposure.SchemaTokens.Should().BeNull();
+            data.ToolExposure.CatalogTokens.Should().BeNull();
+            data.ToolExposure.GetPending().Should().Equal("tool_p"); // 发现事实不受影响
         }
 
         [Fact]
-        public void ClearMessages_ShouldNullSchemaTokenCache()
+        public void ClearMessages_ShouldClearExposureMetricsButKeepDiscovery()
         {
-            // Arrange
             var data = SessionData.Create();
             data.AddMessage(SessionMessage.UserMessage("One"));
-            data.CachedSchemaTokens = 120;
-            data.CachedCatalogTokens = 40;
-
-            // Act
-            data.ClearMessages();
-
-            // Assert：与 CachedInputTokens 同族，清会话同时清 token 估算缓存
-            data.CachedSchemaTokens.Should().BeNull();
-            data.CachedCatalogTokens.Should().BeNull();
-        }
-
-        [Fact]
-        public void ClearMessages_ShouldKeepDiscoveryState()
-        {
-            // 清会话消息不应抹掉发现态/升级态（与 token 缓存族语义相反）
-            var data = SessionData.Create();
-            data.AddMessage(SessionMessage.UserMessage("One"));
-            data.DiscoveredTools.AddRange(new[] { "tool_a", "tool_b" });
-            data.ExposureEscalated = true;
+            data.ToolExposure.AddPending(["tool_a"]);
+            data.ToolExposure.PromotePending();
+            data.ToolExposure.Commit(null, true, 120, 40);
 
             data.ClearMessages();
 
             data.Messages.Should().BeEmpty();
-            data.DiscoveredTools.Should().Equal("tool_a", "tool_b");
-            data.ExposureEscalated.Should().BeTrue();
+            data.ToolExposure.SchemaTokens.Should().BeNull();
+            data.ToolExposure.GetDiscovered().Should().Equal("tool_a");
+            data.ToolExposure.Escalated.Should().BeTrue();
         }
 
         [Fact]
-        public void AppendDiscoveredTools_ShouldReplaceReference_DedupAndKeepOrder()
+        public void Commit_ShouldPruneDiscoveredByAvailableIds_AndKeepEscalationMonotonic()
         {
-            // 追加必须整体替换新列表（旧引用不再被就地修改 → 并发序列化枚举安全），并去重保序
             var data = SessionData.Create();
-            data.DiscoveredTools.AddRange(new[] { "a", "b" });
-            var oldRef = data.DiscoveredTools;
+            data.ToolExposure.AddPending(["a", "b", "c"]);
+            data.ToolExposure.PromotePending();
 
-            data.AppendDiscoveredTools(new[] { "b", "c", "a", "d", " " });
+            data.ToolExposure.Commit(
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "b", "x" }, true, 10, 5);
 
-            data.DiscoveredTools.Should().Equal("a", "b", "c", "d");
-            data.DiscoveredTools.Should().NotBeSameAs(oldRef,
-                "写入应整体替换列表实例，避免落盘枚举期间被就地修改");
-            oldRef.Should().Equal("a", "b"); // 旧引用保持原样
+            data.ToolExposure.GetDiscovered().Should().Equal("b"); // 保序裁剪
+            data.ToolExposure.Escalated.Should().BeTrue();
+
+            data.ToolExposure.Commit(
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "b" }, false, 1, 1);
+
+            data.ToolExposure.Escalated.Should().BeTrue("升级位单调，永不回退");
         }
 
         [Fact]
-        public void PruneDiscoveredTools_ShouldKeepOrderedIntersection()
+        public void AppendPending_ShouldDeduplicateAndPreserveOrder()
         {
             var data = SessionData.Create();
-            data.DiscoveredTools.AddRange(new[] { "a", "b", "c", "d" });
 
-            data.PruneDiscoveredTools(new HashSet<string>(new[] { "d", "b", "x" }, StringComparer.OrdinalIgnoreCase));
+            data.ToolExposure.AddPending(["a", "b"]).Should().Be(2);
+            data.ToolExposure.AddPending(["b", "c", " "]).Should().Be(1);
 
-            data.DiscoveredTools.Should().Equal("b", "d"); // 保留原顺序
+            data.ToolExposure.GetPending().Should().Equal("a", "b", "c");
         }
 
         [Fact]
-        public void GetDiscoveredToolsSnapshot_ShouldBeNullSafe()
+        public void PromotePending_ShouldAppendToDiscovered_WithoutDuplicate()
         {
             var data = SessionData.Create();
-            data.DiscoveredTools = null!; // 手改/旧 JSON 显式 null
+            data.ToolExposure.AddPending(["a"]);
+            data.ToolExposure.PromotePending();
+            data.ToolExposure.AddPending(["a", "b"]);
 
-            data.GetDiscoveredToolsSnapshot().Should().BeEmpty();
+            data.ToolExposure.PromotePending();
+
+            data.ToolExposure.GetDiscovered().Should().Equal("a", "b");
+            data.ToolExposure.GetPending().Should().BeEmpty();
         }
 
         [Fact]
-        public void Clone_ShouldInheritSchemaTokenCache()
+        public void ExposureState_ShouldBeNullSafe()
         {
-            // Arrange
             var data = SessionData.Create();
-            data.CachedSchemaTokens = 120;
-            data.CachedCatalogTokens = 40;
+            data.ToolExposure = null!;
 
-            // Act
+            data.ToolExposure.Should().NotBeNull();
+            data.ToolExposure.GetDiscovered().Should().BeEmpty();
+            data.ToolExposure.GetPending().Should().BeEmpty();
+        }
+
+        [Fact]
+        public void Clone_ShouldCopyExposureWithMetrics()
+        {
+            var data = SessionData.Create();
+            data.ToolExposure.AddPending(["a"]);
+            data.ToolExposure.PromotePending();
+            data.ToolExposure.Commit(null, true, 120, 40);
+
             var clone = data.Clone();
 
-            // Assert
-            clone.CachedSchemaTokens.Should().Be(120);
-            clone.CachedCatalogTokens.Should().Be(40);
+            clone.ToolExposure.GetDiscovered().Should().Equal("a");
+            clone.ToolExposure.Escalated.Should().BeTrue();
+            clone.ToolExposure.SchemaTokens.Should().Be(120);
+            clone.ToolExposure.CatalogTokens.Should().Be(40);
+            clone.ToolExposure.Should().NotBeSameAs(data.ToolExposure);
         }
-
         [Fact]
         public void Clone_ShouldPreserveScenarioToolsPolicyMode()
         {

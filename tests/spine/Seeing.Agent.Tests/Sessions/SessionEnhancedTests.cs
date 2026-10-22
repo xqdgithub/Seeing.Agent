@@ -101,21 +101,26 @@ public class SessionForkerTests
     }
 
     [Fact]
-    public async Task Fork_ShouldInheritDiscoveryAndEscalation()
+    public async Task Fork_ShouldInheritDiscoveryAndEscalation_ButNotMetrics()
     {
-        // Arrange：源会话带发现态与升级标记
+        // Arrange：源会话带发现态、待生效发现与升级标记
         var (manager, forker) = CreateForker();
         var original = manager.Create();
-        original.DiscoveredTools.AddRange(new[] { "a", "b" });
-        original.ExposureEscalated = true;
+        original.ToolExposure.AddPending(["a", "b"]);
+        original.ToolExposure.PromotePending();
+        original.ToolExposure.Commit(null, true, 120, 40);
+        original.ToolExposure.AddPending(["c"]);
 
         // Act
         var forked = await forker.ForkAsync(original.Id, ct: TestContext.Current.CancellationToken);
 
-        // Assert：fork 继承发现态（复制新列表）与升级标记，且与源列表独立
-        forked.DiscoveredTools.Should().Equal("a", "b");
-        forked.ExposureEscalated.Should().BeTrue();
-        forked.DiscoveredTools.Should().NotBeSameAs(original.DiscoveredTools);
+        // Assert：发现集/待生效/升级位继承且与源独立；每轮度量不继承
+        forked.ToolExposure.GetDiscovered().Should().Equal("a", "b");
+        forked.ToolExposure.GetPending().Should().Equal("c");
+        forked.ToolExposure.Escalated.Should().BeTrue();
+        forked.ToolExposure.Should().NotBeSameAs(original.ToolExposure);
+        forked.ToolExposure.SchemaTokens.Should().BeNull();
+        forked.ToolExposure.CatalogTokens.Should().BeNull();
     }
 
     [Fact]

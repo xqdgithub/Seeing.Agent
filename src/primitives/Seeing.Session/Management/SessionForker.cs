@@ -49,10 +49,9 @@ namespace Seeing.Session.Management
             forkedSession.WorkingDirectory = sourceSession.WorkingDirectory;
             forkedSession.SelectedModel = sourceSession.SelectedModel;
             forkedSession.SelectedThinkingEffort = sourceSession.SelectedThinkingEffort;
-            forkedSession.ScenarioOverride = CloneScenarioOverride(sourceSession.ScenarioOverride);
-            // 发现态/升级态随分支继承：不加则 fork 后静默丢失
-            forkedSession.ReplaceDiscoveredTools(sourceSession.GetDiscoveredToolsSnapshot());
-            forkedSession.ExposureEscalated = sourceSession.ExposureEscalated;
+            forkedSession.ScenarioOverride = sourceSession.ScenarioOverride?.Clone();
+            // 发现集/待生效发现/升级位随分支继承（同一对话的暴露事实）；每轮度量不继承，分支下一轮重新结算。
+            forkedSession.ToolExposure = sourceSession.ToolExposure.Clone(includeMetrics: false);
             CopyInstructionFingerprints(sourceSession, forkedSession);
 
             foreach (var msg in sourceSession.Messages)
@@ -89,33 +88,6 @@ namespace Seeing.Session.Management
             var clone = msg.Clone();
             clone.Id = Guid.NewGuid().ToString("N");
             return clone;
-        }
-
-        private static SessionScenarioOverride? CloneScenarioOverride(SessionScenarioOverride? source)
-        {
-            if (source is null)
-                return null;
-
-            return new SessionScenarioOverride
-            {
-                Modules = source.Modules is null
-                    ? null
-                    : new SessionModulesOverride
-                    {
-                        Enabled = source.Modules.Enabled is null
-                            ? null
-                            : new List<string>(source.Modules.Enabled)
-                    },
-                Tools = source.Tools is null
-                    ? null
-                    : new SessionToolsOverride
-                    {
-                        Disabled = source.Tools.Disabled is null
-                            ? []
-                            : new List<string>(source.Tools.Disabled),
-                        PolicyMode = source.Tools.PolicyMode
-                    }
-            };
         }
 
         private static void CopyInstructionFingerprints(SessionData source, SessionData target)

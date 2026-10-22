@@ -316,8 +316,7 @@ public class HeartbeatJob : IJob
             WorkingDirectory = cwd,
             WorkspaceRoot = projectRoot,
             IsBackground = true,
-            ToolSchemas = hbResolution?.ToolSchemas,
-            CatalogText = hbResolution?.CatalogText,
+            ToolSettlement = hbResolution,
             Metadata = new Dictionary<string, object>
             {
                 ["source"] = ScheduleSources.Heartbeat

@@ -27,8 +27,8 @@ public class ToolTokenAccountingTests
         // Arrange
         var manager = NewManager(new CharBasedTokenCounter());
         var session = SessionData.Create();
-        session.CachedSchemaTokens = 123;
-        session.CachedCatalogTokens = 45;
+        session.ToolExposure.Commit(null, false, 123, 45);
+        
 
         // Act
         var breakdown = manager.CalculateBreakdown(session);

@@ -38,7 +38,13 @@ public class ExecutionRunnerResolverInjectionTests
         var customResolver = new Mock<ISessionToolSchemaResolver>();
         customResolver
             .Setup(r => r.ResolveAsync(It.IsAny<SessionData>(), It.IsAny<AgentDefinition>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SessionToolSchemaResolution(new[] { oneSchema }, new[] { "tools" }));
+            .ReturnsAsync(new SessionToolSchemaResolution(
+                new[] { new ExposedTool("custom_tool", "", "custom_tool(): d", oneSchema, 5, ToolExposureMode.Inline) },
+                new[] { "tools" },
+                ToolExposureLayout.Flat,
+                null,
+                5,
+                0));
 
         var published = new ConcurrentQueue<(string SessionId, IMessageEvent Event)>();
         var publisher = new Mock<IExecutionEventPublisher>();
@@ -71,7 +77,7 @@ public class ExecutionRunnerResolverInjectionTests
             r => r.ResolveAsync(It.IsAny<SessionData>(), It.IsAny<AgentDefinition>(), It.IsAny<CancellationToken>()),
             Times.AtLeastOnce);
         capturedContext.Should().NotBeNull();
-        capturedContext!.ToolSchemas.Should().ContainSingle(s => s.Function!.Name == "custom_tool");
+        capturedContext!.ToolSettlement!.InlineSchemas.Should().ContainSingle(s => s.Function!.Name == "custom_tool");
 
         var snapshot = published.Select(p => p.Event).OfType<SchemaSnapshotEvent>().Single();
         snapshot.ToolIds.Should().Contain("custom_tool");

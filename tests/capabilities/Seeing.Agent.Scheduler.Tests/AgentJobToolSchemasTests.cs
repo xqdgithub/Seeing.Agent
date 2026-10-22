@@ -41,7 +41,13 @@ public class AgentJobToolSchemasTests
         var resolver = new Mock<ISessionToolSchemaResolver>();
         resolver
             .Setup(r => r.ResolveAsync("s-cron", It.IsAny<AgentDefinition>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SessionToolSchemaResolution(toolSchemas, ["tools"]));
+            .ReturnsAsync(new SessionToolSchemaResolution(
+                new[] { new ExposedTool("current_time", "", "current_time(): 获取当前时间", toolSchemas[0], 10, ToolExposureMode.Inline) },
+                ["tools"],
+                ToolExposureLayout.Flat,
+                null,
+                10,
+                0));
 
         AgentContext? capturedContext = null;
         var executor = new Mock<IAgentExecutor>();
@@ -70,7 +76,7 @@ public class AgentJobToolSchemasTests
 
         // Assert
         capturedContext.Should().NotBeNull(because: Describe(jobContextMock));
-        capturedContext!.ToolSchemas.Should().BeEquivalentTo(toolSchemas);
+        capturedContext!.ToolSettlement!.InlineSchemas.Should().BeEquivalentTo(toolSchemas);
         resolver.Verify(
             r => r.ResolveAsync("s-cron", It.IsAny<AgentDefinition>(), It.IsAny<CancellationToken>()),
             Times.Once);
@@ -105,7 +111,7 @@ public class AgentJobToolSchemasTests
 
         // Assert
         capturedContext.Should().NotBeNull(because: Describe(jobContextMock));
-        capturedContext!.ToolSchemas.Should().BeNull();
+        capturedContext!.ToolSettlement.Should().BeNull();
     }
 
     private static AgentJob CreateJob(IAgentExecutor executor, IServiceProvider services)
