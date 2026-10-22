@@ -1,0 +1,23 @@
+docs/architecture/19-tool-context-budgeting-release-notes.md
+  s_1ea8d9f04df9d9::t_30641e42bd959d 38-49,51-52
+  s_1ea8d9f04df9d9::t_9599de9ffef9bc 50
+tests/spine/Seeing.Agent.Invariants.Tests/Invariants/ToolViewSingleSourceTests.cs
+  s_1ea8d9f04df9d9::t_f56954d1f5290a 1-62,65-73,76,78-161
+  s_1ea8d9f04df9d9::t_363f6548a11857 63-64,74-75,77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "4ee8dce2515333a0f927ce31bd6beb5715ab4412",
+  "prompts": {},
+  "sessions": {
+    "s_1ea8d9f04df9d9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea33351c3ffehsFT7BcthOlXiQ",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
