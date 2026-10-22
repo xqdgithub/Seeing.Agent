@@ -35,8 +35,21 @@
 - **schema 单点**：唯一计算在 `SessionToolSchemaResolver`（Hosting），`SettleAsync` 为私有核心，仅经端口 `ISessionToolSchemaResolver.ResolveAsync`（`sessionId` / `SessionData` 双重载）访问。`ExecutionRunner` 必需注入端口、无回退构造。主链与 Scheduler 旁路同源。
 - **单轮 schema 不变**：一次执行内 `tools[]` 一经结算不再变；`tool_search` 的 `detail=full` 只写发现态，**下一轮**才并入 inline（对齐 dsh native）。无同轮换 schema、无 `ToolResult.Metadata` 执行控制信号。
 - **exposure ≠ permission**：分层只决定"是否进本轮 schema / 目录"，不决定"能否调用"。发现后的工具经普通执行链走完整权限审批（无绕过）。目录正文只描述可发现性与下一轮，不含任何权限裁决语。
-- **token 归属单点**：内联定义 token 与目录 token 由 resolver 一次结算产出，写 `SessionData.CachedSchemaTokens`/`CachedCatalogTokens`（与 `CachedInputTokens` 同族：`ClearMessages`/`ClearUsageCache` 清、`Clone` 继承、Fork 不继承）。`TokenBudgetManager.CalculateBreakdown` 读该缓存填 `SourceBreakdown.ToolDefinitions`/`Catalog`（**已移除无人填的 `toolTokens` 形参**）。无跨包 `AgentContext.Metadata` 通道。
-- **升级单调粘滞**：`SessionData.ExposureEscalated` 一旦置位不回退（fork 继承，`ClearMessages` 不清）。
+- **token 归属单点**：内联定义 token 与目录 token 由 resolver 一次结算产出，写入 `SessionData.ToolExposure.SchemaTokens`/`CatalogTokens`（与 `CachedInputTokens` 同族：`ClearMessages`/`ClearUsageCache` 走 `ToolExposure.ClearMetrics()` 清、`Clone` 继承、Fork 不继承）。`TokenBudgetManager.CalculateBreakdown` 读该缓存填 `SourceBreakdown.ToolDefinitions`/`Catalog`（**已移除无人填的 `toolTokens` 形参**）。无跨包 `AgentContext.Metadata` 通道。
+- **升级单调粘滞**：`SessionData.ToolExposure.Escalated` 一旦置位不回退（fork 继承，`ClearMessages` 不清）。
+- **唯一提交点**：会话暴露状态的写入只在 `ExecutionRunner` 轮首（`PromotePending()` → `ResolveAsync` → `Commit(availableIds, escalated, schemaTokens, catalogTokens)`）。`SessionToolSchemaResolver` 只读；Scheduler 旁路只读并提升发现，不提交度量与升级位。
+
+### 4.1 升级到本版本时的手工清理（MCP id 归一零兼容）
+
+MCP 工具 id 由 `mcp_{server}_{tool}` 改为 `mcp__{server}__{tool}`，**不提供迁移与告警代码**。以下持久化位置中的旧 id 在升级后会静默失效（表现为"原本禁用的 MCP 工具重新可用"）：
+
+| 位置 | 影响 | 处理 |
+|---|---|---|
+| `~/.seeing/tool-state.json`、`{project}/.seeing/tool-state.json` 的 `DisabledTools` | 旧 id 不再匹配任何工具，禁用规则失效 | 手工删除旧条目，或删文件后重新在工具配置页禁用 |
+| Agent 配置的 `DeniedTools`（`~/.seeing/agents/*.json`、内置 Agent 覆盖） | 旧 id 不再拦截该工具 | 手工替换为新 id |
+| 会话级 `SessionScenarioOverride.Tools.Disabled`（若已持久化） | 同上 | 同上 |
+
+`IPermissionGrantStore` 为进程内存态（不落盘），重启即清，无残留风险。
 
 ## 5. 可观测
 
