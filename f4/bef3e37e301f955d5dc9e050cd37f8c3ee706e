@@ -1,0 +1,45 @@
+samples/Seeing.Agent.Cli/Infrastructure/CliServiceBootstrap.cs
+  s_1ea8d9f04df9d9::t_ed15df782fa08d 76
+  s_1ea8d9f04df9d9::t_5d71cb777efe0d 23
+samples/Seeing.Agent.Cli/Seeing.Agent.Cli.csproj
+  s_1ea8d9f04df9d9::t_b858971e019ba7 34
+samples/Seeing.Agent.Tui/Program.cs
+  s_1ea8d9f04df9d9::t_a8672bccee7176 64-65
+  s_1ea8d9f04df9d9::t_45656b9c157b7a 28
+src/hosting/Seeing.Agent.Hosting/Execution/SessionToolSchemaResolver.cs
+  s_1ea8d9f04df9d9::t_4dfe104ea94fe1 216,222
+src/hosting/Seeing.Agent.Hosting/Execution/ToolExposure/SessionToolDiscoveryStore.cs
+  s_1ea8d9f04df9d9::t_f75b1add427829 37,53-55,57,59,75-76,79
+samples/Seeing.Agent.Embed.Demo/Seeing.Agent.Embed.Demo.csproj
+  s_1ea8d9f04df9d9::t_b858971e019ba7 21
+samples/Seeing.Agent.Embed.Demo/Program.cs
+  s_1ea8d9f04df9d9::t_36ecdc51a71b65 28
+  s_1ea8d9f04df9d9::t_c8b7e1098813f6 13
+src/primitives/Seeing.Session/Management/SessionForker.cs
+  s_1ea8d9f04df9d9::t_a50d27017b84d2 54
+docs/architecture/19-tool-context-budgeting-release-notes.md
+  s_1ea8d9f04df9d9::t_ed73d4a8ca1248 57
+  s_1ea8d9f04df9d9::t_da255be3066585 47
+  s_1ea8d9f04df9d9::t_fffcc8ac2d5fff 61
+src/primitives/Seeing.Session/Core/SessionData.cs
+  s_1ea8d9f04df9d9::t_2eb18bfd635393 210-211,216,221-252
+  s_1ea8d9f04df9d9::t_eb2ea146711b8c 556
+samples/Seeing.Agent.Tui/Seeing.Agent.Tui.csproj
+  s_1ea8d9f04df9d9::t_b858971e019ba7 48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "f4bef3e37e301f955d5dc9e050cd37f8c3ee706e",
+  "prompts": {},
+  "sessions": {
+    "s_1ea8d9f04df9d9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea33351c3ffehsFT7BcthOlXiQ",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
