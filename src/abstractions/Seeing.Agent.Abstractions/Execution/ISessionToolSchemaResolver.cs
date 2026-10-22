@@ -43,6 +43,10 @@ public interface ISessionToolSchemaResolver
 /// 调用方不应再从别处查询工具清单。
 /// </para>
 /// </summary>
+/// <param name="Discovered">
+/// 本轮结算后的发现集（已裁剪到会话仍可用的工具）。执行入口用它提交会话状态，
+/// 裁剪语义只存在于结算引擎一处，此处只做传递。
+/// </param>
 public sealed record SessionToolSchemaResolution(
     IReadOnlyList<ExposedTool> Tools,
     IReadOnlyList<string> SectionIds,
@@ -50,7 +54,8 @@ public sealed record SessionToolSchemaResolution(
     string? CatalogText,
     int SchemaTokens,
     int CatalogTokens,
-    IReadOnlySet<string>? SessionAvailableIds = null)
+    IReadOnlyList<string>? Discovered = null,
+    bool IsEscalated = false)
 {
     /// <summary>空视图。</summary>
     public static SessionToolSchemaResolution Empty { get; } = new(

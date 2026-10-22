@@ -2,7 +2,6 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.Support;
@@ -117,8 +116,6 @@ public sealed class ToolSearchTool : ToolBase
         if (corpus is null || corpus.Count == 0)
         {
             var emptyMeta = BuildMetadata(detail, 0, 0, 0, null);
-            await TryEmitAsync(context, detail, query, nsFilter, offset, 0, 0, 0, Array.Empty<string>(), ct)
-                .ConfigureAwait(false);
             return Success("当前无额外可发现工具，所有可用工具已内联。", emptyMeta);
         }
 
@@ -135,8 +132,6 @@ public sealed class ToolSearchTool : ToolBase
                        $"可用命名空间:\n{FormatNamespaceCounts(corpus)}\n" +
                        "建议：检查命名空间拼写，或去掉 namespace 参数重新检索。";
             var meta = BuildMetadata(detail, 0, 0, 0, null);
-            await TryEmitAsync(context, detail, query, nsFilter, offset, 0, 0, 0, Array.Empty<string>(), ct)
-                .ConfigureAwait(false);
             return Success(text, meta);
         }
 
@@ -148,8 +143,6 @@ public sealed class ToolSearchTool : ToolBase
                        $"可用命名空间:\n{FormatNamespaceCounts(scoped)}\n" +
                        "建议：换用更宽泛或不同措辞的关键词，或去掉 namespace 限定重新检索。";
             var meta = BuildMetadata(detail, 0, 0, 0, null);
-            await TryEmitAsync(context, detail, query, nsFilter, offset, 0, 0, 0, Array.Empty<string>(), ct)
-                .ConfigureAwait(false);
             return Success(text, meta);
         }
 
@@ -159,8 +152,6 @@ public sealed class ToolSearchTool : ToolBase
         {
             var text = $"offset 越界：offset={offset} 不在有效区间 [0, {total})，返回 0 条。";
             var meta = BuildMetadata(detail, total, 0, 0, null);
-            await TryEmitAsync(context, detail, query, nsFilter, offset, total, 0, 0, Array.Empty<string>(), ct)
-                .ConfigureAwait(false);
             return Success(text, meta);
         }
 
@@ -214,8 +205,6 @@ public sealed class ToolSearchTool : ToolBase
         }
 
         var resultMeta = BuildMetadata(detail, total, page.Count, remaining, remaining > 0 ? nextOffset : null);
-        await TryEmitAsync(context, detail, query, nsFilter, offset, total, page.Count, remaining, hitIds, ct)
-            .ConfigureAwait(false);
         return Success(sb.ToString(), resultMeta);
     }
 
@@ -243,46 +232,6 @@ public sealed class ToolSearchTool : ToolBase
         if (nextOffset is not null)
             meta["next_offset"] = nextOffset.Value;
         return meta;
-    }
-
-    private async Task TryEmitAsync(
-        ToolContext context,
-        string detail,
-        string? query,
-        string? nsFilter,
-        int offset,
-        int total,
-        int returned,
-        int remaining,
-        IReadOnlyList<string> hitIds,
-        CancellationToken ct)
-    {
-        if (context.EventSink is null)
-            return;
-
-        try
-        {
-            await context.EventSink.EmitAsync(new ToolSearchEvent
-            {
-                SessionId = context.SessionId,
-                Detail = detail,
-                Query = query,
-                Namespace = nsFilter,
-                Offset = offset,
-                Total = total,
-                Returned = returned,
-                Remaining = remaining,
-                HitIds = hitIds,
-            }).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            // 取消路径：跳过发布
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "tool_search 事件发布失败: {SessionId}", context.SessionId);
-        }
     }
 
     private static List<(ExposedTool Entry, int Score)> Rank(

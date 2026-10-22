@@ -63,3 +63,7 @@
 - `Running` 态 Task* 依赖 LLM 按 schema 传参；未传则不回填（与旧行为一致）。
 - 极端进程终止下取消未走 `catch(OCE)` 时，仍依赖加载期 reconcile 兜底。
 - **例外**：宿主在**非执行期**注入的会话级系统消息（Gateway 取消/错误横幅 `AddMessage`、会话重置）与 `SelectedModel/SelectedAcpMode` 用户显式选择，不属执行期投影，仍由宿主负责。
+- **例外（工具暴露状态）**：`SessionData.ToolExposure`（`Discovered`/`Pending`/`Escalated`/`SchemaTokens`/`CatalogTokens`）有独立写入契约，不受本节"消息内容单一写入者"约束——它不写消息内容。写入点为：
+  - `ExecutionRunner` 轮首唯一提交（`PromotePending` → `ResolveAsync` → `Commit`）；
+  - `SessionToolDiscoveryStore.Add`（经 `IToolDiscoveryStore`）写 `Pending`，只登记"下一轮生效"，当轮视图不变；
+  - `SessionToolSchemaResolver` **只读**，不写会话状态。

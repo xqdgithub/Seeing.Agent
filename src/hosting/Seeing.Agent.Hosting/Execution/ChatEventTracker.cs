@@ -258,7 +258,14 @@ internal class ChatEventTracker
         {
             ["executionId"] = snapshot.ExecutionId,
             ["toolIds"] = snapshot.ToolIds.ToList(),
-            ["sectionIds"] = snapshot.SectionIds.ToList()
+            ["sectionIds"] = snapshot.SectionIds.ToList(),
+            // 暴露度量的持久化副本：会话历史回看时需要与当轮 tools[] 对齐，
+            // 否则刷新后无法还原"当时 inline/deferred 各多少、占多少 token"。
+            ["exposureMode"] = snapshot.ExposureMode.ToString(),
+            ["inlineToolCount"] = snapshot.InlineToolCount,
+            ["deferredToolCount"] = snapshot.DeferredToolCount,
+            ["estimatedDefinitionTokens"] = snapshot.EstimatedDefinitionTokens,
+            ["catalogTokens"] = snapshot.CatalogTokens
         };
     }
 

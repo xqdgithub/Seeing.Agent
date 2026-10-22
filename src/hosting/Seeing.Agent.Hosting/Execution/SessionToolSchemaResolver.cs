@@ -156,6 +156,7 @@ public sealed class SessionToolSchemaResolver : ISessionToolSchemaResolver
             new ToolExposureInput(
                 candidates,
                 availableIds,
+                settledToolIds.Count,
                 session.ToolExposure.GetDiscovered(),
                 session.ToolExposure.Escalated,
                 effective),
@@ -173,7 +174,8 @@ public sealed class SessionToolSchemaResolver : ISessionToolSchemaResolver
             result.CatalogText,
             result.SchemaTokens,
             result.CatalogTokens,
-            availableIds);
+            result.Discovered,
+            result.Escalated);
     }
 
     internal static IReadOnlyList<string> MergeDynamicToolIds(

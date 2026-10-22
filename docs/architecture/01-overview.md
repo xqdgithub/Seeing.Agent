@@ -95,7 +95,7 @@ Scenario       = { Name, Modules[], DefaultAgent, Seams?, Tools.Disabled? }
         → 事件 → SessionEventStreamRouter → UI
 ```
 
-**硬规则：** Native executor **不得**自行 `GetToolSchemas(agent)`；只读 `AgentContext.ToolSchemas`。  
+**硬规则：** Native executor **不得**自行 `SessionToolSchemaResolver.ResolveAsync`；只读 `AgentContext.ToolSettlement`。  
 `/tools` 等命令可查询 ToolManager 当前注册表（诊断用），**不得**用其结果覆盖下一次 ChatRequest.Tools。  
 `Tools.Disabled` **只**在工具层；**禁止**写入模块层 / Activate 公式。
 
@@ -106,7 +106,7 @@ Scenario       = { Name, Modules[], DefaultAgent, Seams?, Tools.Disabled? }
 | 视图 | 真相源 | 禁止 |
 |------|--------|------|
 | 模块是否启用 | `IModuleCatalog.IsEnabled`（≡ bootEnabled） | 页面 `GetService<T>()!=null` 当开关；用默认 Scenario 名当挂载真相 |
-| LLM 可见工具 | `ExecutionRunner` → `context.ToolSchemas`（会话 settledToolIds） | executor / 别处再算一版 schema |
+| LLM 可见工具 | `ExecutionRunner` → `context.ToolSettlement`（会话 settledToolIds） | executor / 别处再算一版 schema |
 | 运行时可调用工具 | `IToolManager`（仅 Activate 注册） | `ConfigureServices` 永久挂 `ITool` |
 | 侧栏 / 路由 / 插槽 | `IUiContributionRegistry`（Activate 登记）；导航可见性 = Requires ⊆ **bootEnabled** | 按进程默认 Scenario 名硬藏已挂载模块；模块页写死 `@page` 绕过 registry |
 

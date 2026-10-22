@@ -65,7 +65,7 @@ public class SessionToolSchemaResolverExposureTests
     [Fact]
     public async Task Prune_ShouldUseSessionLevelSet_NotAgentFiltered()
     {
-        // 发现集裁剪基准是会话级可用集：Agent 本轮禁用某工具不应把它从视图外剔除。
+        // 发现集裁剪基准是会话级可用集（Agent 过滤仅影响候选视图，不应把已发现工具永久剔除）。
         var (session, agent, services) = await SetupAsync(
             AgentDefinition(ToolExposurePolicyMode.Tiered, denied: ["read"]),
             discovered: new[] { "read" });
@@ -73,8 +73,9 @@ public class SessionToolSchemaResolverExposureTests
         var resolution = await CreateResolver(services)
             .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
 
-        // read 被 Agent 禁用 → 本轮不在候选中，但视图的会话可用集仍包含它
-        resolution.SessionAvailableIds.Should().Contain("read");
+        // read 被 Agent 过滤掉（不在候选视图），但会话级仍可用 → 发现集保留。
+        resolution.Discovered.Should().Contain("read");
+        resolution.Tools.Should().NotContain(t => t.Id == "read");
     }
 
     [Fact]

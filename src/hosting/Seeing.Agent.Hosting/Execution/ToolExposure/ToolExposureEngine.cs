@@ -14,12 +14,17 @@ namespace Seeing.Agent.Hosting.Execution.ToolExposure;
 /// </summary>
 /// <param name="Tools">本轮候选工具（已按会话结算 + Agent 过滤）。</param>
 /// <param name="AvailableIds">会话级可用工具 id 集（未经 Agent 过滤，用于发现集裁剪）。</param>
+/// <param name="SettledToolCount">
+/// 会话级结算工具数（**未经 Agent 过滤**）。升级阈值必须用它：
+/// 否则切换 Agent（如 build→explore）会让工具数掉到阈值下，产生与"会话真实工具规模"无关的误判。
+/// </param>
 /// <param name="Discovered">本轮已生效发现集（发现顺序）。</param>
 /// <param name="Escalated">会话当前升级粘滞位。</param>
 /// <param name="Config">四级解析后的有效配置。</param>
 internal sealed record ToolExposureInput(
     IReadOnlyList<FunctionToolSchema> Tools,
     IReadOnlySet<string>? AvailableIds,
+    int SettledToolCount,
     IReadOnlyList<string> Discovered,
     bool Escalated,
     EffectiveExposureConfig Config);
@@ -27,13 +32,15 @@ internal sealed record ToolExposureInput(
 /// <summary>
 /// 暴露结算结果：本轮工具视图与判定结果。纯计算结果，不触碰会话。
 /// </summary>
+/// <param name="Discovered">裁剪后的发现集——只保留本轮会话仍可用的工具。唯一裁剪点。</param>
 internal sealed record ToolExposureResult(
     IReadOnlyList<ExposedTool> Tools,
     ToolExposureLayout Layout,
     string? CatalogText,
     int SchemaTokens,
     int CatalogTokens,
-    bool Escalated);
+    bool Escalated,
+    IReadOnlyList<string> Discovered);
 
 /// <summary>
 /// 工具暴露结算引擎：**纯函数**。输入是值，输出是值，无 DI、无 I/O、无会话写入、确定。
@@ -66,11 +73,13 @@ internal static class ToolExposureEngine
             .ToList();
 
         // 升级判定：显式 Tiered 恒定分层；Auto 依阈值与会话粘滞；All 永不升级。
-        var count = input.Tools.Count;
+        // 计数与 token 阈值都基于**会话级结算规模**（SettledToolCount / 未过滤候选 token），
+        // 而非 Agent 过滤后的候选集——否则切换 Agent 会造成误升级或误降级。
         var allInlineTokens = metas.Sum(m => m.EstimatedTokens);
+        var thresholdCount = Math.Max(input.SettledToolCount, input.Tools.Count);
         var escalated = input.Escalated;
         if (cfg.Mode == ToolExposurePolicyMode.Auto)
-            escalated = escalated || ExceedsThreshold(count, allInlineTokens, cfg);
+            escalated = escalated || ExceedsThreshold(thresholdCount, allInlineTokens, cfg);
 
         var layout = cfg.Mode == ToolExposurePolicyMode.Tiered
             ? ToolExposureLayout.Tiered
@@ -152,7 +161,8 @@ internal static class ToolExposureEngine
             catalogText,
             schemaTokens,
             catalogTokens,
-            escalated);
+            escalated,
+            discovered);
     }
 
     private static bool ExceedsThreshold(int toolCount, int schemaTokens, EffectiveExposureConfig cfg) =>

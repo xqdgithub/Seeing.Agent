@@ -95,22 +95,37 @@ namespace Seeing.Session.Tests
         }
 
         [Fact]
-        public void Commit_ShouldPruneDiscoveredByAvailableIds_AndKeepEscalationMonotonic()
+        public void Commit_ShouldPersistPrunedDiscovered_AndKeepEscalationMonotonic()
         {
             var data = SessionData.Create();
             data.ToolExposure.AddPending(["a", "b", "c"]);
             data.ToolExposure.PromotePending();
 
+            // Commit 只持久化引擎给出的裁剪结果，不再自行按可用集过滤。
             data.ToolExposure.Commit(
-                new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "b", "x" }, true, 10, 5);
+                new[] { "b" }, true, 10, 5);
 
-            data.ToolExposure.GetDiscovered().Should().Equal("b"); // 保序裁剪
+            data.ToolExposure.GetDiscovered().Should().Equal("b");
             data.ToolExposure.Escalated.Should().BeTrue();
 
             data.ToolExposure.Commit(
-                new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "b" }, false, 1, 1);
+                new[] { "b" }, false, 1, 1);
 
-            data.ToolExposure.Escalated.Should().BeTrue("升级位单调，永不回退");
+            data.ToolExposure.Escalated.Should().BeTrue("升级位单调粘滞，不因后续 false 而回退");
+        }
+
+        [Fact]
+        public void Commit_WithNullDiscovered_ShouldNotTouchDiscoveredSet()
+        {
+            var data = SessionData.Create();
+            data.ToolExposure.AddPending(["a"]);
+            data.ToolExposure.PromotePending();
+
+            data.ToolExposure.Commit(null, false, 7, 3);
+
+            data.ToolExposure.GetDiscovered().Should().Equal("a");
+            data.ToolExposure.SchemaTokens.Should().Be(7);
+            data.ToolExposure.CatalogTokens.Should().Be(3);
         }
 
         [Fact]

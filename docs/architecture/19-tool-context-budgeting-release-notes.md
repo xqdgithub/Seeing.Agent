@@ -53,7 +53,7 @@ MCP 工具 id 由 `mcp_{server}_{tool}` 改为 `mcp__{server}__{tool}`，**不�
 
 ## 5. 可观测
 
-`SchemaSnapshotEvent` 新增 `ExposureMode` / `InlineToolCount` / `DeferredToolCount` / `EstimatedDefinitionTokens` / `CatalogTokens`。`SourceBreakdown` 新增 `Catalog`（与 `ToolDefinitions` 分列）。resolver 结算记 Debug 度量日志。`ToolSearchEvent`（`tool.search`）记录检索动作。
+`SchemaSnapshotEvent` 携带 `ExposureMode` / `InlineToolCount` / `DeferredToolCount` / `EstimatedDefinitionTokens` / `CatalogTokens`，并随会话消息 metadata 持久化（`ChatEventTracker`）；`SourceBreakdown` 增加 `Catalog`（与 `ToolDefinitions` 并列）；resolver 另打 Debug 结构化日志。`tool_search` 的单次检索明细经 `ToolResult.Metadata`（`detail`/`total`/`returned`/`remaining`/`next_offset`）随 `ToolCallEvent` 持久化，不另设专用事件。
 
 ## 6. 已知边界
 
@@ -61,7 +61,7 @@ MCP 工具 id 由 `mcp_{server}_{tool}` 改为 `mcp__{server}__{tool}`，**不�
 2. **`tool_search` 语料单源经 `IToolSearchProvider`→resolver 再结算**：检索时重新解析会话 catalog（一次性开销；search 为模型偶发调用，可接受）。升级粘滞使重算幂等。
 3. **发现下一轮生效**：`detail=full` 当轮不可直接调用命中工具，需下一轮。模型侧文案已明示。
 4. **`tool_search` 无专属配额**：连续调用计入既有 `MaxSteps`；`LoopDetector` 按 (tool,argsHash) 判定，检索参数各异不误触发。
-5. **`ToolSearchEvent.ExecutionId/LoopId` 暂空**：`ToolContext` 未携带二者，宿主接线（`AgentExecutor`）可后续补。
+5. **`tool_search` 检索明细不设专用事件**：数据经 `ToolResult.Metadata` → `ToolCallEvent.Metadata` → 会话消息 metadata 持久化，与 `SchemaSnapshotEvent` 走同一条可观测链路，避免第二份重复数据源。
 6. **运行期降幅度量（spec 17.1–17.3）需实运验证**：51 内置工具场景 input token 降幅 ≥60%、50-MCP 仿真 ≥85% 属真实 LLM 会话基线对比，本环境不含 live provider，未产出数字，**不臆造**；由 `baseline.md` 流程在联调环境记录。自动化侧已用「前缀稳定 / 升级只一次不回退 / 目录不含权限 / full 硬上限3 / 分页 total-next」等确定性测试锁定行为。
 7. **检索语料为全量 deferred（不受显示预算裁剪）**：`tool_search` 经 `IToolSearchProvider` 取 resolver 的 `DeferredEntries`（全量），显示目录（`CatalogNamespaces`）另做命名空间预算裁剪且**每命名空间恒出现含总数、0 展示仍列出**。二者正交，预算只影响"展示哪些"，不影响"可发现哪些"。
 8. **目录 `tool_search` 指引条件化**：当本轮可用集不含 `tool_search`（如宿主未启用 `tool-discovery` 模块）时，目录正文不出现"先用 tool_search 检索"文案，避免指向不存在的工具。宿主若启用分层暴露应在能力集内挂载 `tool-discovery`。

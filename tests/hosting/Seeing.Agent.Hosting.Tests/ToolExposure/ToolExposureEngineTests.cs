@@ -43,8 +43,9 @@ public class ToolExposureEngineTests
         EffectiveExposureConfig config,
         IReadOnlyList<string>? discovered = null,
         bool escalated = false,
-        IReadOnlySet<string>? available = null) =>
-        new(tools, available, discovered ?? Array.Empty<string>(), escalated, config);
+        IReadOnlySet<string>? available = null,
+        int? settledToolCount = null) =>
+        new(tools, available, settledToolCount ?? tools.Count, discovered ?? Array.Empty<string>(), escalated, config);
 
     [Fact]
     public void FlatLayout_ShouldInlineEverything_AndHideSearchTool()

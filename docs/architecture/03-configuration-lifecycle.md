@@ -22,7 +22,25 @@
 | `Modules` | `Disabled`（boot 全局模块黑名单）+ `Tools.Disabled`（工具层全局裁剪）；**不再**消费 `Enabled` |
 | `Seams` | 进程级 seam 绑定覆盖（如 `executionWorld` → 模块 id）；与 `HostDefaultSeams` 合并 |
 | `DefaultAgent` / `DefaultModel` | 全局默认 |
-| `Permission` / `Workspace` / … | 脊柱其它节 |
+| `Tools.Exposure` | 工具暴露策略（见下） |
+| `ToolOutput` | 工具输出限长（`MaxInlineBytes` 等） |
+| `Permission` / `Workspace` / … | 各域配置 |
+
+### 2.1 `Tools.Exposure`（工具上下文预算）
+
+节路径 `SeeingAgent.Tools.Exposure`，已登记于 `RegisterSpineSections`（`Tools` 节 → `ToolOptions`），可被配置页读写。
+
+| 字段 | 默认 | 说明 |
+|------|------|------|
+| `PolicyMode` | `Auto` | `All` / `Auto` / `Tiered`（字符串，非法值 Warning 后回落下一级） |
+| `PinnedTools` | `[]` | 始终内联的工具 id（单调保留） |
+| `CatalogBudgetChars` | 2000 | 目录正文预算（**字符**，非 token） |
+| `CatalogLineMaxChars` | 120 | 目录单行最大字符 |
+| `EscalateToolCount` | 30 | `Auto` 升级阈值：会话结算工具数 ≥ 此值 |
+| `EscalateSchemaTokens` | 8000 | `Auto` 升级阈值：全内联 schema token ≥ 此值 |
+
+四级解析（会话 > Agent > 场景 > 全局）由 `ToolExposureConfigResolver` 完成；升级判定单调粘滞，阈值基于**会话级结算规模**（非 Agent 过滤后的候选集）。详见 `docs/architecture/19-tool-context-budgeting-release-notes.md`。
+
 
 JSON 键统一 **PascalCase**。模块层减法统一 `Disabled`；工具层统一 `Tools.Disabled`（勿与模块层混用）。
 

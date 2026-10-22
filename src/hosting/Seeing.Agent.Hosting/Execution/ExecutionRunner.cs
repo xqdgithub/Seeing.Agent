@@ -449,8 +449,8 @@ internal sealed class ExecutionRunner : IExecutionRunner
         var schemaSettlement = await _schemaResolver.ResolveAsync(
             session, agentDef).ConfigureAwait(false);
         session.ToolExposure.Commit(
-            schemaSettlement.SessionAvailableIds,
-            schemaSettlement.Layout == ToolExposureLayout.Tiered,
+            schemaSettlement.Discovered,
+            schemaSettlement.IsEscalated,
             schemaSettlement.SchemaTokens,
             schemaSettlement.CatalogTokens);
         var sectionIds = schemaSettlement.SectionIds;

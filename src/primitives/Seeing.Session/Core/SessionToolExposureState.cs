@@ -101,20 +101,23 @@ public sealed class SessionToolExposureState
     }
 
     /// <summary>
-    /// 提交一次本轮结算结果（每轮开头调用一次，唯一写入点）：
-    /// 按会话级可用集裁剪发现集（<paramref name="availableToolIds"/> 为 null 时不裁剪），
-    /// 升级位按单调语义合并，并写入每轮度量。
+    /// 提交一次暴露结算结果（每轮开头一次，唯一写入点）。
+    /// <para>
+    /// 发现集由结算引擎给出**裁剪后的结果**（只保留会话仍可用的工具），此处只持久化，
+    /// 不重复实现裁剪谓词——裁剪语义只存在于引擎一处。
+    /// </para>
+    /// 度量与升级位直接覆盖；<paramref name="escalated"/> 为 true 即置位（单调粘滞）。
     /// </summary>
     public void Commit(
-        IReadOnlySet<string>? availableToolIds,
+        IReadOnlyList<string>? discovered,
         bool escalated,
         int schemaTokens,
         int catalogTokens)
     {
         lock (_gate)
         {
-            if (availableToolIds is not null)
-                Discovered = (Discovered ?? new List<string>()).Where(availableToolIds.Contains).ToList();
+            if (discovered is not null)
+                Discovered = new List<string>(discovered);
 
             Escalated = Escalated || escalated;
             SchemaTokens = schemaTokens;

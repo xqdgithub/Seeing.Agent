@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
 
@@ -37,6 +39,15 @@ public sealed class ToolDiscoveryModule : ISeeingModule
         var tm = services.GetService<IToolManager>();
         if (tm is null)
             return;
+
+        // tool_search 依赖结算端口（Hosting）与发现态写入端口；缺任一则无法工作。
+        // 与 SessionToolsModule 对齐：缺依赖时 Warning 跳过，不因单个能力缺宿主而中断整机启动。
+        if (services.GetService<ISessionToolSchemaResolver>() is null)
+        {
+            services.GetService<ILogger<ToolDiscoveryModule>>()?.LogWarning(
+                "ISessionToolSchemaResolver 未注册，tool_search 未启用（需 Hosting 结算端口）");
+            return;
+        }
 
         await tm.RegisterToolAsync(
             services.GetRequiredService<ToolSearchTool>(), cancellationToken).ConfigureAwait(false);
