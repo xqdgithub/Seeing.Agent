@@ -1,0 +1,30 @@
+src/abstractions/Seeing.Agent.Abstractions/Execution/ISessionToolSchemaResolver.cs
+  s_1ea8d9f04df9d9::t_27c92b638e1328 77-92
+src/spine/Seeing.Agent.Core/Core/AgentExecutor.cs
+  s_1ea8d9f04df9d9::t_c3654f69325395 859-874
+tests/spine/Seeing.Agent.Tests/Core/AgentExecutorToolVisibilityTests.cs
+  s_1ea8d9f04df9d9::t_29b4a1b461d933 29,43,59,75
+  s_1ea8d9f04df9d9::t_bc0831c94351a5 1-28,30-42,44-47,49-58,60-62,64-74,76,78-110,112-138,140-143,145-168,170-180,182-186
+  s_1ea8d9f04df9d9::t_340c18a31d5fcd 139,144,169,181
+  s_1ea8d9f04df9d9::t_dec4faa1c344f1 48,63,77,111
+tests/spine/Seeing.Agent.Tests/Core/AgentExecutorTodoPolicyTests.cs
+  s_1ea8d9f04df9d9::t_e99dc05735a2da 167-168,178-181,187,189-192
+  s_1ea8d9f04df9d9::t_56945a503c2a2e 77,109,135
+  s_1ea8d9f04df9d9::t_b63c38d21b9552 57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "97041aadbfa2c038c090daa0a9f648cd2cf97aff",
+  "prompts": {},
+  "sessions": {
+    "s_1ea8d9f04df9d9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ea33351c3ffehsFT7BcthOlXiQ",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
