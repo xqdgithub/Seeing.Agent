@@ -211,17 +211,13 @@ public sealed class SessionToolSchemaResolver : ISessionToolSchemaResolver
 
         var availableIds = metas.Select(m => m.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        // 发现态快照 + 会话级裁剪（原子整体替换，避免并发枚举时 List 就地修改抛异常/丢项）。
+        // 发现态：原子裁剪（会话级可用集）+ 加锁快照读取。
         // 仅当可确定会话级可用集时裁剪；保留 discovered ∩ 会话可用集，顺序不变。
         var discoveredSnapshot = session.GetDiscoveredToolsSnapshot().ToList();
         if (sessionAvailableIds is not null)
         {
-            var kept = discoveredSnapshot.Where(sessionAvailableIds.Contains).ToList();
-            if (kept.Count != discoveredSnapshot.Count)
-            {
-                session.ReplaceDiscoveredTools(kept);
-                discoveredSnapshot = kept;
-            }
+            session.PruneDiscoveredTools(sessionAvailableIds);
+            discoveredSnapshot = session.GetDiscoveredToolsSnapshot().ToList();
         }
         IReadOnlySet<string> discovered = new HashSet<string>(discoveredSnapshot, StringComparer.OrdinalIgnoreCase);
 

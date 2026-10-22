@@ -221,11 +221,15 @@ namespace Seeing.Session.Core
         /// <summary>发现态专用锁（与 <see cref="_messagesGate"/> 分离，避免与消息区争用）。</summary>
         private readonly object _discoveryGate = new();
 
+        // 说明：所有写入都在锁内**整体替换新 List**（绝不对当前引用就地 Add/Remove），
+        // 因此落盘时 JsonSerializer 枚举到的 List 实例不会再被修改，规避 "Collection was modified"。
+        // 与 Messages 采用"锁内快照"的并发契约一致。
+
         /// <summary>获取发现态快照（加锁复制，供并发读）。</summary>
         public IReadOnlyList<string> GetDiscoveredToolsSnapshot()
         {
             lock (_discoveryGate)
-                return DiscoveredTools.ToArray();
+                return (DiscoveredTools ?? new List<string>()).ToArray();
         }
 
         /// <summary>整体替换发现态（加锁；顺序由调用方给定，用于裁剪/保序过滤）。</summary>
@@ -242,12 +246,29 @@ namespace Seeing.Session.Core
             ArgumentNullException.ThrowIfNull(toolIds);
             lock (_discoveryGate)
             {
-                var existing = new HashSet<string>(DiscoveredTools, StringComparer.OrdinalIgnoreCase);
+                // 锁内构造新列表后整体替换，绝不就地修改当前实例（保证并发序列化安全）。
+                var merged = new List<string>(DiscoveredTools ?? new List<string>());
+                var existing = new HashSet<string>(merged, StringComparer.OrdinalIgnoreCase);
                 foreach (var id in toolIds)
                 {
                     if (!string.IsNullOrWhiteSpace(id) && existing.Add(id))
-                        DiscoveredTools.Add(id);
+                        merged.Add(id);
                 }
+                DiscoveredTools = merged;
+            }
+        }
+
+        /// <summary>
+        /// 原子裁剪发现态（加锁）：仅保留 <paramref name="availableToolIds"/> 中的条目，保持原顺序。
+        /// 在同一把锁内完成"读-过滤-替换"，避免与并发 Append 的 TOCTOU 丢更新。
+        /// </summary>
+        public void PruneDiscoveredTools(IReadOnlySet<string> availableToolIds)
+        {
+            ArgumentNullException.ThrowIfNull(availableToolIds);
+            lock (_discoveryGate)
+            {
+                var current = DiscoveredTools ?? new List<string>();
+                DiscoveredTools = current.Where(availableToolIds.Contains).ToList();
             }
         }
 

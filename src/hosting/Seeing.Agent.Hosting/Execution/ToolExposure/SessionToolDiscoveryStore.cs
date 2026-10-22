@@ -72,10 +72,7 @@ public sealed class SessionToolDiscoveryStore : IToolDiscoveryStore
             return;
         }
 
-        // 加锁整体替换：剩余条目维持原发现顺序（避免就地修改竞态）。
-        var kept = session.GetDiscoveredToolsSnapshot()
-            .Where(availableToolIds.Contains)
-            .ToList();
-        session.ReplaceDiscoveredTools(kept);
+        // 原子裁剪（锁内读-过滤-替换），避免与并发 Append 的 TOCTOU 丢更新。
+        session.PruneDiscoveredTools(availableToolIds);
     }
 }

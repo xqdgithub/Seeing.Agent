@@ -113,6 +113,42 @@ namespace Seeing.Session.Tests
         }
 
         [Fact]
+        public void AppendDiscoveredTools_ShouldReplaceReference_DedupAndKeepOrder()
+        {
+            // 追加必须整体替换新列表（旧引用不再被就地修改 → 并发序列化枚举安全），并去重保序
+            var data = SessionData.Create();
+            data.DiscoveredTools.AddRange(new[] { "a", "b" });
+            var oldRef = data.DiscoveredTools;
+
+            data.AppendDiscoveredTools(new[] { "b", "c", "a", "d", " " });
+
+            data.DiscoveredTools.Should().Equal("a", "b", "c", "d");
+            data.DiscoveredTools.Should().NotBeSameAs(oldRef,
+                "写入应整体替换列表实例，避免落盘枚举期间被就地修改");
+            oldRef.Should().Equal("a", "b"); // 旧引用保持原样
+        }
+
+        [Fact]
+        public void PruneDiscoveredTools_ShouldKeepOrderedIntersection()
+        {
+            var data = SessionData.Create();
+            data.DiscoveredTools.AddRange(new[] { "a", "b", "c", "d" });
+
+            data.PruneDiscoveredTools(new HashSet<string>(new[] { "d", "b", "x" }, StringComparer.OrdinalIgnoreCase));
+
+            data.DiscoveredTools.Should().Equal("b", "d"); // 保留原顺序
+        }
+
+        [Fact]
+        public void GetDiscoveredToolsSnapshot_ShouldBeNullSafe()
+        {
+            var data = SessionData.Create();
+            data.DiscoveredTools = null!; // 手改/旧 JSON 显式 null
+
+            data.GetDiscoveredToolsSnapshot().Should().BeEmpty();
+        }
+
+        [Fact]
         public void Clone_ShouldInheritSchemaTokenCache()
         {
             // Arrange
