@@ -30,7 +30,7 @@ public sealed class ChannelMessageSink : IChannelMessageSink
                     Title = user?.DisplayName,
                 },
             },
-            DeliveryKind = OutboundDeliveryKind.Push,
+            DeliveryKind = OutboundDeliveryKind.Reply,
             Content = content,
             Source = "tool.send_message",
         };
@@ -43,7 +43,7 @@ public sealed class ChannelMessageSink : IChannelMessageSink
         var message = new OutboundMessage
         {
             Target = target,
-            DeliveryKind = OutboundDeliveryKind.Push,
+            DeliveryKind = OutboundDeliveryKind.Reply,
             Content = content,
             Source = "tool.send_message",
         };
