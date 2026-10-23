@@ -28,8 +28,8 @@
 |---|---|---|
 | `PolicyMode` | `Auto` | `All` / `Auto` / `Tiered`。`All` 全内联（回退）；`Tiered` 恒分层；`Auto` 阈值+粘滞升级 |
 | `PinnedTools` | `[]`（空 = 使用代码默认集） | 恒内联工具 id；代码默认集为 16 个常用工具（`ToolExposureConfigResolver.DefaultPinnedTools`）；**非空时整体替换**；Agent 级 `PinnedTools` 优先且同样整体覆盖 |
-| `CatalogBudgetChars` | 2000 | 目录整体字符预算（按字符，非 token；参照 opencode catalog.ts） |
-| `CatalogLineMaxChars` | 120 | 目录单行摘要截断上限 |
+| `CatalogBudgetChars` | 8000 | 目录整体字符预算（按字符，非 token）。默认值按「35 个延迟工具全量可见」取值：35 × (200+3) ≈ 7.1k，加开场白与分组标题 ≈ 7.3k，余量容纳 MCP 命名空间标题 |
+| `CatalogLineMaxChars` | 200 | 目录单行**整行**截断上限（`id(参数摘要): 描述`） |
 | `EscalateToolCount` | 30 | auto 升级阈值：可用工具数 |
 | `EscalateSchemaTokens` | 8000 | auto 升级阈值：全内联估算 token |
 | `SearchDetail` / `SearchDefaultLimit` / `SearchMaxLimit` / `SearchFullMaxLimit` | `summary`/10/30/3 | **当前未被 `tool_search` 消费**（见 §6 已知边界） |
@@ -76,7 +76,7 @@ MCP 工具 id 由 `mcp_{server}_{tool}` 改为 `mcp__{server}__{tool}`，**不�
 10. **MCP server/tool 名不得含 `__`**：id 归一 `mcp__{server}__{tool}` 的双下划线为分隔约定；若 server 或 tool 名本身含 `__`，`DeriveNamespace` 按首个 `__` 切分会归错命名空间。应由连接配置侧校验拒收含 `__` 的命名。
 11. **分层依赖检索入口的安全钳制**：若本轮可用集不含 `tool_search`（模块未挂载，或被 Agent 白名单/会话禁用排除），分层会降级为全内联并记 Debug（避免无检索入口宿主刷屏），防止"工具被藏进目录却无检索手段"的静默能力损伤。全量能力集宿主均已挂载 `tool-discovery`（WebUI、Cli、Tui、Embed.Demo）；`Gateway.Server` 为精简工具集宿主、未挂，靠钳制兜底；自定义宿主接全量工具集时应自行挂载。
 12. **仅非执行器宿主会重算结算**：执行器路径的检索语料来自冻结快照，不再重复结算；只有未透传 `IExecutionToolScope` 的宿主才回退 `ResolveAsync`（该路径仍可能重写 `CachedSchemaTokens/CatalogTokens` 与 `ExposureEscalated`，同 session/agent/配置下幂等）。
-13. **目录签名为 `id(参数摘要): 截断描述`**：参数摘要最多列 4 个（第 5 个起以 `…` 表示，必填不加 `?`），描述按 `CatalogLineMaxChars` 截断；完整参数 schema 仍由 `detail=full` 检索获取（`ToolExposureEngine.DescribeParameters`）。
+13. **目录签名与检索语料分离**：展示行仍是 `id(参数摘要): 截断描述`，参数摘要最多列 4 个（第 5 个起以 `…` 表示，必填不加 `?`），描述按 `CatalogLineMaxChars` 截断；而 `tool_search` 的**排序语料**改用完整描述 + 参数名（`ToolSearchTool.BuildCorpus`），不受截断影响。`detail=summary` 输出 `id(参数摘要): 描述`，描述上限 300 字符（`SummaryMaxChars`）；完整参数 schema 仍由 `detail=full` 获取。
 14. **`tool_search` 空查询返回按 id 排序的全部条目**（而非"命名空间+计数概览"）；有 query 时零分过滤、命名空间计数在未命中时给出。0-shown 命名空间仍以标题行 `### ns (N tools, 0 shown)` 出现（见 §6.7 与目录命名空间契约）。
 15. **`SessionData.DiscoveredTools` 并发访问已收敛为加锁 API**：读走 `GetDiscoveredToolsSnapshot()`、裁剪走 `ReplaceDiscoveredTools(...)`、追加走 `AppendDiscoveredTools(...)`（内部专用 `_discoveryGate`）；resolver 与 `SessionToolDiscoveryStore` 均改用这些方法，消除"快照替换 vs 原地追加"的枚举异常/丢项窗口。直接读写公开属性 `DiscoveredTools` 仅供序列化与测试。
 

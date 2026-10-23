@@ -129,6 +129,31 @@ public class ToolMetadataTests
         props.GetProperty("priority").GetProperty("enum").GetArrayLength().Should().Be(3);
     }
 
+    [Fact]
+    public void Catalog_ShouldCoverEveryBuiltInToolExactly()
+    {
+        var ids = BuiltInToolCatalog.All().Select(t => t.Id).ToArray();
+
+        ids.Should().HaveCount(52);
+        ids.Should().OnlyHaveUniqueItems();
+        ids.Should().BeEquivalentTo(new[]
+        {
+            "read", "write", "edit", "delete", "grep", "glob", "open_file", "add_workspace_path", "bash",
+            "task", "task_status", "todowrite",
+            "session_list", "session_read", "session_search", "session_trim", "session_handoff",
+            "session_inbox_send", "session_takeover", "session_release",
+            "memory_search", "memory_read", "memory_write",
+            "editor_query", "editor_list_commands", "editor_command",
+            "cron_create", "cron_list", "cron_disable", "cron_resume", "cron_run", "cron_delete",
+            "websearch", "webfetch", "codesearch", "skill", "tool_search",
+            "git_status", "git_diff", "git_log", "git_commit",
+            "send_channel_message", "list_channel_conversations", "list_channel_users",
+            "acp", "acp_status",
+            "systemone_ask", "systemone_noul", "systemone_choice", "systemone_score",
+            "current_time", "question",
+        });
+    }
+
     private static void AssertDescribed(JsonElement schema, string id, string path)
     {
         if (schema.ValueKind != JsonValueKind.Object)

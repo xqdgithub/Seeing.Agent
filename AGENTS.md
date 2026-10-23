@@ -88,7 +88,7 @@ Seeing.Agent/
 | Todo 存取 | `src/abstractions/.../Todo/` + Hosting 适配器 | 端口-适配器 |
 | 模块生命周期 | `src/abstractions/.../Modules/` + `src/spine/.../SettlementEngine` | 结算 / Activate / Deactivate |
 | 契约类型总览 | `src/abstractions/Seeing.Agent.Abstractions/` | Events/Hooks/Tools/Agents/… |
-| 新增 Tool | `src/capabilities/Seeing.Agent.Tools.*` + `[Tool]` | 经 `AddSeeingModule`；Activate 挂载 |
+| 新增 Tool | `src/capabilities/Seeing.Agent.Tools.*` + `[Tool]` | 经 `AddSeeingModule`；Activate 挂载；**描述与参数 Schema 必须遵守 `docs/architecture/04` §9（R1–R9）** |
 | 子 Agent / Task | `src/hosting/Seeing.Agent.Hosting/` Task 工具 | Session-first |
 | 多流 / Task 卡片 UI | `samples/Seeing.Agent.WebUI/Services/` | SessionEventStreamRouter、TaskCardAggregator |
 | WebUI 模型选择 | `samples/Seeing.Agent.WebUI/Components/Models/` | Badge+Modal（Session）/ Dropdown（配置页）；见 `docs/architecture/07-webui-model-picker.md` |

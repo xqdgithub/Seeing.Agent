@@ -160,3 +160,21 @@ dotnet vstest tests/spine/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Test
 ```
 
 注意：测试项目若启用 MTP，本环境常出现 “Zero tests ran”；优先对已构建 dll 使用 `dotnet vstest`。
+
+## 9. 工具描述与参数 Schema 规范（R1–R9）
+
+适用于所有实现 `ITool.Description` 的内置工具（MCP 工具由 server 定义，不适用）。设计来源：`docs/superpowers/specs/2026-10-23-builtin-tool-descriptions-and-prompt-routing-design.md`。
+
+- **R1 语言**：简体中文；工具 id、参数名、命令、专有名词保留原文。
+- **R2 首句**：`Description` 第一行 ≤ 60 字符、自足、不依赖后文；前 20 字符内出现「动作 + 对象」；包含该工具的主用途中文词（`tool_search` 的检索语料也取自描述）。
+- **R3 正文**：可选，总长 ≤ 700 字符；用短行 + `-` 列表；**不使用 `##` 标题**。
+- **R4 兄弟工具路由**：易混工具必须双向点名，用反引号包裹**精确 id**（`read` 而非 `Read`）。
+- **R5 写入语义**：`write`/`edit`/`delete` 明说创建、覆盖、递归、不可恢复。
+- **R6 路径语义**：统一写「绝对路径，或相对当前工作目录的路径」。
+- **R7 前置条件**：需要审批、宿主面板、模块挂载的必须写明。
+- **R8 动态描述**：运行时生成的描述同样遵守 R1–R7，且与 fallback 共享首句（`task`）。
+- **R9 术语**：当前会话 / 本次执行 / 下一次执行 / 工作目录 / 子代理；不用「本轮」「下一轮」。
+
+参数 Schema 同规则：每个属性（含 `items` 与嵌套对象）必须有非空 `description`；有默认值写进描述；离散取值用 `enum` 且描述列出取值；数值给 `minimum`/`maximum` 与单位；`required` 必须与实现一致。
+
+约束由 `tests/capabilities/Seeing.Agent.Tools.Metadata.Tests` 机械校验（52 个内置工具全覆盖）；提示词路由段由 `tests/capabilities/Seeing.Agent.Agents.BuiltIn.Tests/PromptRoutingTests.cs` 校验。
