@@ -4,41 +4,18 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Acp.Extensions;
-using Seeing.Agent.Agents.BuiltIn;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Core.Modules;
+using Seeing.Agent.HostComposition;
 using Seeing.Agent.Hosting;
 using Seeing.Agent.Hosting.Tui;
-using Seeing.Agent.Llm.Anthropic;
-using Seeing.Agent.Llm.ModelCapabilities;
-using Seeing.Agent.Llm.ModelCatalog.Builtin;
-using Seeing.Agent.Llm.OpenAI;
-using Seeing.Agent.Mcp;
-using Seeing.Agent.Memory.Extensions;
-using Seeing.Agent.Scheduler.Extensions;
-using Seeing.Agent.Skills;
-using Seeing.Agent.SystemOne.Extensions;
 using Seeing.Agent.TokenBudget.Extensions;
-using Seeing.Agent.Tools.Basic;
-using Seeing.Agent.Tools.FileSystem;
-using Seeing.Agent.Tools.Git;
-using Seeing.Agent.Tools.Question;
-using Seeing.Agent.Tools.Session;
-using Seeing.Agent.Tools.ToolDiscovery;
-using Seeing.Agent.Tools.Shell;
-using Seeing.Agent.Tools.SystemOne.Extensions;
-using Seeing.Agent.Tools.Web;
 using Seeing.Agent.Tui;
 using Seeing.Agent.Tui.Input;
 using Seeing.Agent.Tui.Logging;
 using Seeing.Agent.Tui.Rendering;
 using Seeing.Agent.Tui.Services;
-using Seeing.IO.Local;
-using Seeing.Provider.DeepSeek;
-using Seeing.Provider.MiMo;
-using Seeing.Provider.OpenCodeZen;
-using Seeing.Provider.SiliconFlow;
 
 // 任何 Console/AnsiConsole 访问之前统一 UTF-8：系统默认 GBK(936) 会让中文输入乱码。
 TuiConsoleEncoding.EnsureUtf8();
@@ -55,33 +32,9 @@ builder.Logging.AddProvider(new TuiFileLoggerProvider(ResolveLogDirectory(), Res
 var registry = new ConfigSectionRegistry();
 builder.Services.AddSingleton<IConfigSectionRegistry>(registry);
 
-builder.Services.AddSeeingModule<LocalExecutionWorldModule>(registry);
-builder.Services.AddSeeingModule<FileSystemModule>(registry);
-builder.Services.AddSeeingModule<WebModule>(registry);
-builder.Services.AddSeeingModule<ShellModule>(registry);
-builder.Services.AddSeeingModule<BasicModule>(registry);
-builder.Services.AddSeeingModule<GitModule>(registry);
-        builder.Services.AddSeeingModule<SessionToolsModule>(registry);
-        builder.Services.AddSeeingModule<ToolDiscoveryModule>(registry);
-builder.Services.AddSeeingModule<SkillsModule>(registry);
-builder.Services.AddSeeingModule<McpModule>(registry);
-builder.Services.AddSeeingModule<OpenAiLlmModule>(registry);
-builder.Services.AddSeeingModule<AnthropicLlmModule>(registry);
-builder.Services.AddSeeingModule<ModelCapabilitiesModule>(registry);
-builder.Services.AddSeeingModule<BuiltinCatalogModule>(registry);
-builder.Services.AddSeeingModule<DeepSeekLlmModule>(registry);
-builder.Services.AddSeeingModule<MiMoLlmModule>(registry);
-builder.Services.AddSeeingModule<OpenCodeZenLlmModule>(registry);
-builder.Services.AddSeeingModule<SiliconFlowLlmModule>(registry);
-builder.Services.AddSeeingModule<AgentsBuiltInModule>(registry);
-builder.Services.AddSeeingModule<QuestionToolsModule>(registry);
-builder.Services.AddSeeingModule<Seeing.Agent.Workspace.WorkspaceGitExcludeModule>(registry);
-builder.Services.AddSeeingAcp(registry);
-builder.Services.AddSeeingScheduler(registry);
-builder.Services.AddTokenBudgetIntegration(registry, builder.Configuration);
-builder.Services.AddMemoryServices(registry);
-builder.Services.AddSystemOne(registry);
-builder.Services.AddSystemOneTools(registry);
+// ── Full 能力集：与 WebUI / CLI / Gateway.Server 共用同一注册点 ──
+// Tui 不监听 Gateway 端口，但仍登记 gateway/comms 模块以保持 Full 一致。
+builder.Services.AddSeeingFullCapabilities(registry, builder.Configuration, includeGatewayServer: false);
 
 builder.Services.AddSeeingCore(registry);
 

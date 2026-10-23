@@ -101,11 +101,10 @@
 |------|------|
 | `samples/Seeing.Agent.WebUI` | Blazor 主开发宿主；组合能力 + Web Shape |
 | `samples/Seeing.Agent.Tui` | `seeing-tui` 内联流式终端组合根；组合能力 + Tui Shape |
-| `samples/Seeing.Gateway.Server` | 无 UI Gateway 宿主；`AddSeeingHostingGateway` + `AddSeeingGatewayServer` |
+| `samples/Seeing.Gateway.Server` | 无 UI Gateway 宿主；`AddSeeingHostingGateway` + `AddSeeingGatewayServer` + `AddSessionHosting`/`AddExecutionEngine` |
 | `samples/Seeing.Agent.Cli` | 命令行管理；无参数/`tui` 在前台原地进入 TUI，`web` 默认前台、`--background` 回退后台 |
-| `samples/Seeing.Agent.Embed.Demo` | Embed Shape 演示 |
+| `samples/Seeing.Agent.HostComposition` | **共享组合根**：`AddSeeingFullCapabilities` 统一 4 个宿主的默认能力集 |
 | `samples/Seeing.Gateway.ChannelHost` | 通道外进程宿主 |
-| `samples/Seeing.Gateway.*.Demo` | 通道演示 |
 | `plugs/providers/Seeing.Provider.*` | 可选 LLM Provider 插件（DeepSeek、MiMo、OpenCodeZen、SiliconFlow） |
 
 Sample **自己** `ProjectReference` 能力包；Shape 包不代引用。
@@ -125,7 +124,10 @@ Sample **自己** `ProjectReference` 能力包；Shape 包不代引用。
 
 结算：`scenario.modules ∩ bootEnabled`。`*` 表示不收窄。会话不能越过 Boot。宿主引用了 plug 但 Boot 能力集未含其 id、且 Boot 不是 `*` 时，Provider **不会** Activate。
 
-`full` 能力集维护约定（仅 Boot 名为 `full` 时）：新增 `ISeeingModule` 时同步写入 `BuiltInCapabilitySets.Full`，并由 `BuiltInScenariosTests.Full_Should_Enable_All_Implemented_Module_Ids` 对能力集清单做反射求差。内置工作模式 `full` 不用改。
+`full` 能力集维护约定（仅 Boot 名为 `full` 时）：新增 `ISeeingModule` 时同步写入 `BuiltInCapabilitySets.Full`，
+并登记到 `samples/Seeing.Agent.HostComposition`（4 个宿主共用），由
+`BuiltInScenariosTests.Full_Should_Enable_All_Implemented_Module_Ids` 与
+`Seeing.Agent.HostComposition.Tests` 双向守门。内置工作模式 `full` 不用改。
 
 ## 8. WebUI 贡献
 

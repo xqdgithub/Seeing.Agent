@@ -1,3 +1,5 @@
+using Seeing.Agent.Core.CapabilitySets;
+
 namespace Seeing.Agent.Hosting.Tui;
 
 /// <summary>
@@ -23,26 +25,7 @@ public static class TuiHostShape
     /// 逐字沿用 WebHostShape 的既有字符串约定（tools.* / provider.* / token-budget），去掉 gateway 与 ui。
     /// 该属性全仓无运行时读取方，仅作形态自描述；实施时以 sample 实际注册集为准。
     /// </summary>
-    public static readonly IReadOnlyList<string> CarriableModuleTypes =
-    [
-        "tools.basic",
-        "tools.filesystem",
-        "tools.shell",
-        "tools.web",
-        "tools.git",
-        "llm.openai",
-        "llm.anthropic",
-        "provider.deepseek",
-        "provider.mimo",
-        "provider.opencodezen",
-        "provider.siliconflow",
-        "skills",
-        "mcp",
-        "memory",
-        "scheduler",
-        "acp",
-        "token-budget",
-    ];
+    public static readonly IReadOnlyList<string> CarriableModuleTypes = BuiltInCapabilitySets.Full;
 
     public static HostShapeDescriptor Descriptor { get; } = new()
     {

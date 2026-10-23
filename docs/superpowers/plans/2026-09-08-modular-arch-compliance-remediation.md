@@ -311,7 +311,7 @@ public async Task DeactivateAsync(IServiceProvider sp, CancellationToken ct)
 1. 确认规格中 Embed Shape 的契约（无 UI、进程内嵌入）
 2. 新建 `src/Seeing.Agent.Hosting.Embed`（不 ref Web/Headless）
 3. 提供 `AddSeeingEmbedHost` 入口
-4. sample：`samples/Seeing.Agent.Embed.Demo`（或文档示例）
+4. sample：文档示例（仓库内不再内置 Embed demo）
 5. 验证：不拉 Web 程序集；可独立初始化 agent 执行
 
 

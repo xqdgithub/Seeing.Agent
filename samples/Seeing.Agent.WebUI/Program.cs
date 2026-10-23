@@ -1,45 +1,20 @@
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Acp.Extensions;
-using Seeing.Agent.Agents.BuiltIn;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Gateway.Channels;
-using Seeing.Agent.Gateway.Extensions;
+using Seeing.Agent.HostComposition;
 using Seeing.Agent.Hosting;
 using Seeing.Agent.Hosting.Web;
 using Seeing.Agent.Hosting.Web.Circuits;
-using Seeing.Agent.Llm.Anthropic;
-using Seeing.Agent.Llm.ModelCapabilities;
-using Seeing.Agent.Llm.ModelCatalog.Builtin;
-using Seeing.Agent.Llm.OpenAI;
-using Seeing.Agent.Mcp;
-using Seeing.Agent.Memory.Extensions;
-using Seeing.Agent.Scheduler.Extensions;
-using Seeing.Agent.Skills;
-using Seeing.Agent.SystemOne.Extensions;
 using Seeing.Agent.TokenBudget.Extensions;
-using Seeing.Agent.Tools.Basic;
-using Seeing.Agent.Tools.ChannelMessaging;
-using Seeing.Agent.Tools.FileSystem;
-using Seeing.Agent.Tools.Git;
-using Seeing.Agent.Tools.Question;
-using Seeing.Agent.Tools.Session;
-using Seeing.Agent.Tools.ToolDiscovery;
-using Seeing.Agent.Tools.Shell;
-using Seeing.Agent.Tools.SystemOne.Extensions;
-using Seeing.Agent.Tools.Web;
 using Seeing.Agent.WebUI.Rendering;
 using Seeing.Agent.WebUI.Rendering.Providers;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Agent.WebUI.State;
-using Seeing.IO.Local;
-using Seeing.Provider.DeepSeek;
-using Seeing.Provider.MiMo;
-using Seeing.Provider.OpenCodeZen;
-using Seeing.Provider.SiliconFlow;
 using Seeing.Session.Core;
 using System.Net;
 
@@ -60,42 +35,11 @@ builder.Services.AddServerSideBlazor();
 // 共享配置节注册表：模块先于 Core 登记节
 var registry = new ConfigSectionRegistry();
 builder.Services.AddSingleton<IConfigSectionRegistry>(registry);
-builder.Services.AddSeeingModule<LocalExecutionWorldModule>(registry);
-builder.Services.AddSeeingModule<FileSystemModule>(registry);
-builder.Services.AddSeeingModule<Seeing.Agent.Files.FileWorkspaceModule>(registry);
-builder.Services.AddSeeingModule<WebModule>(registry);
-builder.Services.AddSeeingModule<ShellModule>(registry);
-builder.Services.AddSeeingModule<BasicModule>(registry);
-builder.Services.AddSeeingModule<GitModule>(registry);
-builder.Services.AddSeeingModule<ChannelMessagingModule>(registry);
-builder.Services.AddSeeingModule<SessionToolsModule>(registry);
-builder.Services.AddSeeingModule<ToolDiscoveryModule>(registry);
-builder.Services.AddSeeingModule<SkillsModule>(registry);
-builder.Services.AddSeeingModule<McpModule>(registry);
-builder.Services.AddSeeingModule<OpenAiLlmModule>(registry);
-builder.Services.AddSeeingModule<AnthropicLlmModule>(registry);
-builder.Services.AddSeeingModule<ModelCapabilitiesModule>(registry);
-builder.Services.AddSeeingModule<BuiltinCatalogModule>(registry);
-builder.Services.AddSeeingModule<DeepSeekLlmModule>(registry);
-builder.Services.AddSeeingModule<MiMoLlmModule>(registry);
-builder.Services.AddSeeingModule<OpenCodeZenLlmModule>(registry);
-builder.Services.AddSeeingModule<SiliconFlowLlmModule>(registry);
-builder.Services.AddSeeingModule<AgentsBuiltInModule>(registry);
-builder.Services.AddSeeingAcp(registry);
-builder.Services.AddSeeingScheduler(registry);
-builder.Services.AddSeeingModule<QuestionToolsModule>(registry);
-builder.Services.AddSeeingModule<Seeing.Agent.Tools.Editor.EditorToolsModule>(registry);
-builder.Services.AddSeeingModule<Seeing.Agent.Workspace.WorkspaceGitExcludeModule>(registry);
-builder.Services.AddTokenBudgetIntegration(registry, builder.Configuration);
-builder.Services.AddSeeingGatewayServer(registry, builder.Configuration);
+
+// ── Full 能力集：与 Tui / CLI / Gateway.Server 共用同一注册点 ──
+// 新增能力模块只需改 samples/Seeing.Agent.HostComposition，不再逐宿主补行。
+builder.Services.AddSeeingFullCapabilities(registry, builder.Configuration, includeGatewayServer: true);
 builder.Services.AddGatewayChannelRegistry();
-
-// === Memory 服务（混合检索、图谱、成本控制）===
-builder.Services.AddMemoryServices(registry);
-
-// === SystemOne 判别（Jev）：客户端 + systemone_ask + systemone_noul/choice/score 工具 + 内嵌 Skill ===
-builder.Services.AddSystemOne(registry);
-builder.Services.AddSystemOneTools(registry);
 
 builder.Services.AddSeeingCore(registry);
 

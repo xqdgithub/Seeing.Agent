@@ -1,3 +1,5 @@
+using Seeing.Agent.Core.CapabilitySets;
+
 namespace Seeing.Agent.Hosting.Web;
 
 /// <summary>
@@ -25,28 +27,7 @@ public static class WebHostShape
     /// <summary>
     /// Web 形态可承载的模块类型（含 UI 贡献）。实际启用集由 sample 引用 + Scenario 结算决定。
     /// </summary>
-    public static readonly IReadOnlyList<string> CarriableModuleTypes =
-    [
-        "tools.basic",
-        "tools.filesystem",
-        "tools.shell",
-        "tools.web",
-        "tools.git",
-        "llm.openai",
-        "llm.anthropic",
-        "provider.deepseek",
-        "provider.mimo",
-        "provider.opencodezen",
-        "provider.siliconflow",
-        "skills",
-        "mcp",
-        "memory",
-        "scheduler",
-        "acp",
-        "token-budget",
-        "gateway",
-        "ui",
-    ];
+    public static readonly IReadOnlyList<string> CarriableModuleTypes = BuiltInCapabilitySets.Full;
 
     public static HostShapeDescriptor Descriptor { get; } = new()
     {

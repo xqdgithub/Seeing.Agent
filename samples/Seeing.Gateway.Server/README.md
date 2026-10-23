@@ -1,6 +1,6 @@
 # Seeing.Gateway.Server
 
-无头 **Agent + Gateway** 宿主，用于生产部署、企微 Bridge、Console 客户端联调。
+无头 **Agent + Gateway** 宿主，用于生产部署、企微 Bridge、Gateway 客户端联调。
 
 ## 启动
 
@@ -36,6 +36,5 @@ curl http://127.0.0.1:8765/api/gateway/health
 
 ## 客户端
 
-```bash
-dotnet run --project samples/Seeing.Gateway.Console.Demo
-```
+客户端 SDK 见 [`src/gateway/Seeing.Gateway.Client/README.md`](../../src/gateway/Seeing.Gateway.Client/README.md)；
+仓库内不再内置 Console/WeCom 演示宿主。

@@ -132,9 +132,9 @@ Activate：`IUiContributionRegistry.Register`；Deactivate：`Unregister(moduleI
 
 ## 9. Embed 宿主
 
-- Shape：`Seeing.Agent.Hosting.Embed`  
-- Sample：`samples/Seeing.Agent.Embed.Demo`  
-- 能力集仍由该 sample 的 `AddSeeingModule*` 决定，与 Web 相同规则  
+- Shape：`Seeing.Agent.Hosting.Embed`（库契约；仓库内**不再提供示例宿主**）  
+- 默认 `HostDefaultBoot = "minimal"`；嵌入方可用 `seeing.json` 的 `Boot` 或 `--boot` 切换  
+- 能力集仍由嵌入方自己的 `AddSeeingModule*` 决定；可参考 `samples/Seeing.Agent.HostComposition` 的 Full 组合方式  
 
 ## 10. 最小可运行 Sample 清单
 
@@ -146,7 +146,9 @@ Activate：`IUiContributionRegistry.Register`；Deactivate：`Unregister(moduleI
 - 所需 Tools 模块  
 - `AddSeeingCore` + `InitializeSeeingAsync`  
 
-否则 `bootEnabled` / 结算 base 可能为空或硬依赖失败。Embed 等 Shape 可通过 `HostDefaultBoot`（如 `minimal`）收窄默认启动集。
+否则 `bootEnabled` / 结算 base 可能为空或硬依赖失败。仓库内 4 个宿主统一经
+`samples/Seeing.Agent.HostComposition` 的 `AddSeeingFullCapabilities` 注册 Full 能力集；
+新增能力模块只改该共享组合根。
 
 ## 11. 工具进度与元数据通道
 
@@ -160,6 +162,8 @@ Activate：`IUiContributionRegistry.Register`；Deactivate：`Unregister(moduleI
 
 - [ ] 磁盘路径在正确分类目录；slnx Folder 已加  
 - [ ] csproj 无 Core（能力包）/ 无违规互引  
+- [ ] 新增能力模块已加入 `BuiltInCapabilitySets.Full` **且** `samples/Seeing.Agent.HostComposition`
+      （4 个宿主共用同一注册点；`Seeing.Agent.HostComposition.Tests` 会守门）  
 - [ ] Activate / Deactivate 成对；未启用时无工具、无 UI、无连接、无后台循环  
 - [ ] Options 已 Register；改 seeing.json 可热反应或有文档说明「需重启」  
 - [ ] 未在 executor 双算 schema  

@@ -117,10 +117,8 @@ await wsClient.CancelAsync(request.SessionId);
 
 ## 示例项目
 
-```bash
-dotnet run --project samples/Seeing.Gateway.Console.Demo
-dotnet run --project samples/Seeing.Gateway.Console.Demo -- --transport ws
-```
+仓库内不再内置 Console 演示宿主；使用方式见上方 API 表与
+[Gateway Server](../../../samples/Seeing.Gateway.Server/README.md)。
 
 ## 测试
 

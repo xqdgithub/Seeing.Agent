@@ -16,6 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Seeing.Agent.HostComposition\Seeing.Agent.HostComposition.csproj" />
     <ProjectReference Include="..\..\src\hosting\Seeing.Agent.Hosting\Seeing.Agent.Hosting.csproj" />
     <ProjectReference Include="..\..\src\hosting\Seeing.Agent.Hosting.Headless\Seeing.Agent.Hosting.Headless.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Acp\Seeing.Agent.Acp.csproj" />

@@ -569,7 +569,7 @@ public record InboxNoticeEvent : IMessageEvent
 | Gateway 模型/协议字段 `GatewaySubmitResult.QueuePosition`、`GatewaySubmitAckPayload.QueuePosition` | `QueuePosition` | 改 `PendingInputCount` |
 | UI 队列字段消费点：`SessionWindow.razor:1064`、`SessionToolbar.razor:69`、`SessionState.cs:176`、`SessionWindowContext.cs:97` | `QueueLength`/`QueuePosition` | 读 `PendingInputCount` |
 | WebUI 页面注入 `IChatOrchestrator`（CRUD）：`MainLayout.razor:15`、`Index.razor`、`Session.razor`、`Conference.razor`、`SessionsPage.razor` | `IChatOrchestrator` | CRUD → `ISessionDirectory`；执行/控制 → `ISessionRuntime` |
-| Embed Demo、测试桩（`StubExecutionSubmitter` 等） | `IChatOrchestrator` / `IExecutionSubmitter` | `ISessionRuntime` |
+| 测试桩（`StubExecutionSubmitter` 等） | `IChatOrchestrator` / `IExecutionSubmitter` | `ISessionRuntime` |
 
 > **执行级取消无归宿**：新模型取消统一为会话级（`InterruptAsync`/`StopAsync`），不再有 `executionId` 取消。所有"按 executionId 取消"的调用点（TUI/Gateway/WebUI）改为按 `sessionId` 取消；Gateway 协议若以 executionId 取消，需在取消请求中携带 sessionId（或由 Gateway 维护 executionId→sessionId 映射）。
 

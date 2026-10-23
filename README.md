@@ -294,9 +294,8 @@ Gateway 兼容层（Agent 外部通讯）→ 详见 [docs/gateway/README.md](doc
 ├── src/gateway/Seeing.Gateway.Client/    # HTTP/SSE + WebSocket 客户端 SDK
 ├── src/gateway/Seeing.Agent.Gateway/     # Server 插件（独立 Kestrel）
 ├── src/gateway/Seeing.Gateway.WeCom/     # 企业微信 Channel Bridge
-├── samples/Seeing.Gateway.Console.Demo/
-├── samples/Seeing.Gateway.Server/        # 无头 Agent+Gateway 宿主（推荐）
-└── samples/Seeing.Gateway.WeCom.Demo/
+├── samples/Seeing.Gateway.ChannelHost/   # 通道外进程宿主
+└── samples/Seeing.Gateway.Server/        # 无头 Agent+Gateway 宿主（推荐）
 ```
 
 ## 配置选项
@@ -351,8 +350,6 @@ Seeing.Agent 从 **用户级** `~/.seeing/seeing.json` 与 **项目级** `./.see
 | [Seeing.Agent.Gateway](src/gateway/Seeing.Agent.Gateway/README.md) | Server 集成（`AddSeeingGatewayServer`）与 API |
 | [Gateway Server](samples/Seeing.Gateway.Server/README.md) | 无头 Agent+Gateway 宿主（推荐） |
 | [Seeing.Gateway.WeCom](src/gateway/Seeing.Gateway.WeCom/README.md) | 企业微信 Bridge |
-| [Console Demo](samples/Seeing.Gateway.Console.Demo/README.md) | 本地 Gateway 联调 |
-| [WeCom Demo](samples/Seeing.Gateway.WeCom.Demo/README.md) | 企微端到端联调 |
 
 ```bash
 # 启动 Agent + Gateway（:8765，推荐无头宿主）
@@ -360,12 +357,6 @@ dotnet run --project samples/Seeing.Gateway.Server
 
 # 或本地 UI 开发时联启 Gateway
 dotnet run --project samples/Seeing.Agent.WebUI
-
-# Console 客户端验证
-dotnet run --project samples/Seeing.Gateway.Console.Demo -- --transport ws
-
-# 企微 Bridge（需配置 BotId/Secret）
-dotnet run --project samples/Seeing.Gateway.WeCom.Demo
 ```
 
 ## 许可证

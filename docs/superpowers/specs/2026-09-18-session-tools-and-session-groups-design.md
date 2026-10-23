@@ -404,7 +404,7 @@ related = 组成员；all = `ListAnchorsAsync`/`LoadAllFromStorageAsync` 过滤 
 - 组 store/manager 注册：`Extensions/ServiceCollectionExtensions.cs`（`RegisterCoreServices`，参照 `:438-462`）；同处注册 `SessionForker`（`ILogger<SessionForker>` + `ISessionManager`），并清理 `SessionManager` 工厂中的 `forker: null`。
 - 独立包路径：`SessionServiceExtensions.cs`（`AddSessionManager`）同步注册 `ISessionGroupStore`/`ISessionGroupManager`/`SessionForker`，保证不依赖 Core 的独立使用场景也有组能力。
 - 重定位：新增 `Configuration/SessionGroupReloadHandler.cs`（模式同 `SessionReloadHandler.cs:30-41`，`ComponentId="session.groups"`）。
-- Samples：`WebUI/Program.cs`、`Cli/Infrastructure/CliServiceBootstrap.cs:39-54`、`Embed.Demo/Program.cs` 增 `AddSeeingModule<SessionToolsModule>(registry)`。
+- Samples：`WebUI/Program.cs`、`Cli/Infrastructure/CliServiceBootstrap.cs:39-54` 增 `AddSeeingModule<SessionToolsModule>(registry)`。
 - 文档：`docs/architecture/05-extension-guide.md`（能力包可引原语）、`02-modules.md`（登记 `Seeing.Agent.Tools.Session | session.tools`）、`06-compliance-audit.md`（复扫纳入新包）。
 - `Seeing.Agent.slnx`：在既有 `/src/capabilities/`、`/tests/capabilities/` Folder（`:33,:73`）内追加项目条目。
 
@@ -477,7 +477,6 @@ related = 组成员；all = `ListAnchorsAsync`/`LoadAllFromStorageAsync` 过滤 
 - `samples/Seeing.Agent.WebUI/Components/SessionWindow.razor:111,228,705,797,106,142,990,1243,1249,1264,1298,1305-1315`
 - `samples/Seeing.Agent.WebUI/Components/SessionToolbar.razor:43,57,70,97,110,135,149,151,160,174`
 - `samples/Seeing.Agent.WebUI/Services/SessionWindowContext.cs:28`、`Services/TaskSessionResolver.cs:35,42`
-- `samples/Seeing.Agent.Embed.Demo/Program.cs`
 - `docs/architecture/05-extension-guide.md`、`02-modules.md`、`06-compliance-audit.md`
 - `Seeing.Agent.slnx`（既有 Folder 内追加）
 

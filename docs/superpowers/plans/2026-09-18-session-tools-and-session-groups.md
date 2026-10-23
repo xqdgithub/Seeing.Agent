@@ -671,7 +671,7 @@ git commit -m "feat(session-tools): scaffold module"
 
 ### Task 19: 能力集与示例注册
 
-**Files:** Modify `BuiltInCapabilitySets.cs`（`full` 加 `session.tools`，建议 `code`）；`WebUI/Program.cs`、`Cli/Infrastructure/CliServiceBootstrap.cs`、`Embed.Demo/Program.cs`；`BuiltInScenariosTests.cs:46-69`。
+**Files:** Modify `BuiltInCapabilitySets.cs`（`full` 加 `session.tools`，建议 `code`）；`WebUI/Program.cs`、`Cli/Infrastructure/CliServiceBootstrap.cs`；`BuiltInScenariosTests.cs:46-69`。
 
 - [ ] **Step 1–4:** 更新常量 + 注册模块；运行 `BuiltInScenariosTests`。
 - [ ] **Step 5: 提交**

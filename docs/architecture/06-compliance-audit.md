@@ -22,7 +22,7 @@
 | HostedService 复活 | ✅ | `IModuleHostedService` + Acp/Memory/Scheduler 实现 |
 | 连接自管 | ✅ | Acp/Memory Owner；Memory 消费者经 `RequireOpen` 每次取连接 |
 | Blazor 全贡献路由 | ✅ | 壳页无 `@page`；ModuleRouter |
-| Embed Host Shape | ✅ | `src/hosting/...Embed` + `samples/...Embed.Demo` |
+| Embed Host Shape | ✅ | `src/hosting/...Embed`（库契约；仓库内无 sample） |
 | Core 命名空间 `Seeing.Agent.Core.*` | ✅ | spine 内已迁 |
 | 磁盘分类目录 | ✅ | `src/` 顶层仅六类；`tests/` 含镜像 + apps/plugs |
 | 能力包互硬引用（Skills/Mcp） | ✅ | Scheduler/Acp 等无 Skills/Mcp ProjectReference |

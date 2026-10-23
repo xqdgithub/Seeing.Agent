@@ -351,7 +351,7 @@ public interface IQuestionRequestManager
 ### 8.3 宿主接线（含 CapabilitySet/Scenario 登记 · 回应审查 Issue 3）
 
 1. `.slnx` 在 `/src/capabilities/` 登记项目。
-2. 宿主 csproj 加 `ProjectReference`；入口在 `AddSeeingCore` **前**加 `AddSeeingModule<QuestionToolsModule>(registry)`（WebUI/CLI/Gateway.Server/Embed.Demo）。
+2. 宿主 csproj 加 `ProjectReference`；入口在 `AddSeeingCore` **前**加 `AddSeeingModule<QuestionToolsModule>(registry)`（WebUI/CLI/Gateway.Server）。
 3. **模块 id `question.tools`**，`ProvidedTools = ["question"]`。
 4. **能力集/场景登记**：把 `question.tools` 纳入相关 `BuiltInCapabilitySets`（Code/Work/Research 等，`src/.../BuiltInCapabilitySets.cs`）的 `Modules`，并同步 `BuiltInScenarios`；同步硬编码测试列表（`BuiltInScenariosTests.cs`）。否则会话 `settledToolIds` 不含 `question`，schema 不生效。
 5. 工具 schema 由既有链路计算（`ToolManager` → `ExecutionJobService`），不在工具内重复。

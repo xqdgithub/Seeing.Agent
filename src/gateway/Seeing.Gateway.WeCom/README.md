@@ -54,7 +54,7 @@ services.AddSeeingWeComChannel(configureGateway: g =>
 {
     g.BaseUrl = "http://127.0.0.1:8765";
 });
-services.AddHostedService<WeComBridgeHostedService>(); // 见 Demo
+services.AddHostedService<WeComBridgeHostedService>(); // 由宿主/ChannelHost 承载，参见 docs/gateway/README.md
 ```
 
 ## 配置项
@@ -223,7 +223,8 @@ ACP / 长工具链任务可能持续数分钟，期间 WeCom 连接可能 transi
 
 ## 示例
 
-见 [samples/Seeing.Gateway.WeCom.Demo](../../samples/Seeing.Gateway.WeCom.Demo/README.md)。
+仓库内不再内置 WeCom 演示宿主；Bridge 通过 `IGatewayChannelPlugin` 由外部 ChannelHost 加载，
+参见 [Gateway 总览](../../../docs/gateway/README.md) 与 [Gateway Server](../../../samples/Seeing.Gateway.Server/README.md)。
 
 ## 测试
 

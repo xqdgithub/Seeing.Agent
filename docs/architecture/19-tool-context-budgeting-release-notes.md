@@ -74,7 +74,7 @@ MCP 工具 id 由 `mcp_{server}_{tool}` 改为 `mcp__{server}__{tool}`，**不�
 8. **目录 `tool_search` 指引条件化**：当本轮可用集不含 `tool_search`（如宿主未启用 `tool-discovery` 模块）时，目录正文不出现"先用 tool_search 检索"文案，避免指向不存在的工具。宿主若启用分层暴露应在能力集内挂载 `tool-discovery`。
 9. **配置容错不对称**：Agent 层 `Exposure` 为强类型枚举，其 JSON 绑定大小写敏感（写错值在配置反序列化期报错）；会话/场景/全局字符串层为忽略大小写 + 非法值回退不抛。字符串层承载者（`PolicyMode`）统一 ignoreCase；Agent 枚举层如需 JSON 大小写容错需全局配置 `JsonStringEnumConverter(ignoreCase)`（本次未改全局）。
 10. **MCP server/tool 名不得含 `__`**：id 归一 `mcp__{server}__{tool}` 的双下划线为分隔约定；若 server 或 tool 名本身含 `__`，`DeriveNamespace` 按首个 `__` 切分会归错命名空间。应由连接配置侧校验拒收含 `__` 的命名。
-11. **分层依赖检索入口的安全钳制**：若本轮可用集不含 `tool_search`（模块未挂载，或被 Agent 白名单/会话禁用排除），分层会降级为全内联并记 Debug（避免无检索入口宿主刷屏），防止"工具被藏进目录却无检索手段"的静默能力损伤。全量能力集宿主均已挂载 `tool-discovery`（WebUI、Cli、Tui、Embed.Demo）；`Gateway.Server` 为精简工具集宿主、未挂，靠钳制兜底；自定义宿主接全量工具集时应自行挂载。
+11. **分层依赖检索入口的安全钳制**：若本轮可用集不含 `tool_search`（模块未挂载，或被 Agent 白名单/会话禁用排除），分层会降级为全内联并记 Debug（避免无检索入口宿主刷屏），防止"工具被藏进目录却无检索手段"的静默能力损伤。四个内置宿主（WebUI、Cli、Tui、Gateway.Server）现均经共享组合根挂载 `tool-discovery`；自定义宿主接全量工具集时应自行挂载。
 12. **仅非执行器宿主会重算结算**：执行器路径的检索语料来自冻结快照，不再重复结算；只有未透传 `IExecutionToolScope` 的宿主才回退 `ResolveAsync`（该路径仍可能重写 `CachedSchemaTokens/CatalogTokens` 与 `ExposureEscalated`，同 session/agent/配置下幂等）。
 13. **目录签名与检索语料分离**：展示行仍是 `id(参数摘要): 截断描述`，参数摘要最多列 4 个（第 5 个起以 `…` 表示，必填不加 `?`），描述按 `CatalogLineMaxChars` 截断；而 `tool_search` 的**排序语料**改用完整描述 + 参数名（`ToolSearchTool.BuildCorpus`），不受截断影响。`detail=summary` 输出 `id(参数摘要): 描述`，描述上限 300 字符（`SummaryMaxChars`）；完整参数 schema 仍由 `detail=full` 获取。
 14. **`tool_search` 空查询返回按 id 排序的全部条目**（而非"命名空间+计数概览"）；有 query 时零分过滤、命名空间计数在未命中时给出。0-shown 命名空间仍以标题行 `### ns (N tools, 0 shown)` 出现（见 §6.7 与目录命名空间契约）。

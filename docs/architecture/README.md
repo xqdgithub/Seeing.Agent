@@ -62,9 +62,9 @@ src/
   gateway/         Seeing.Gateway*, Seeing.Agent.Gateway
 tests/
   primitives|spine|hosting|capabilities|gateway/   # 与 src 镜像
-  apps/            WebUI.Tests, Cli.Tests, Tui.Tests
+  apps/            WebUI.Tests, Cli.Tests, Tui.Tests, HostComposition.Tests
   plugs/           Provider.*Tests
-samples/           WebUI, Tui, Gateway.Server, Cli, Embed.Demo, …
+samples/           WebUI, Tui, Gateway.Server, Cli, HostComposition, ChannelHost
 plugs/providers/   DeepSeek, MiMo, OpenCodeZen, SiliconFlow
 ```
 

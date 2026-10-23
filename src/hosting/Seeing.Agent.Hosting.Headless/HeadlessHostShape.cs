@@ -1,3 +1,5 @@
+using Seeing.Agent.Core.CapabilitySets;
+
 namespace Seeing.Agent.Hosting.Headless;
 
 /// <summary>
@@ -20,23 +22,7 @@ public static class HeadlessHostShape
     /// <summary>
     /// 无 UI 形态可承载的模块类型（不含 ui 贡献）。实际启用集由 sample 引用 + Scenario 结算决定。
     /// </summary>
-    public static readonly IReadOnlyList<string> CarriableModuleTypes =
-    [
-        "tools.basic",
-        "tools.filesystem",
-        "tools.shell",
-        "tools.web",
-        "tools.git",
-        "llm.openai",
-        "llm.anthropic",
-        "skills",
-        "mcp",
-        "memory",
-        "scheduler",
-        "acp",
-        "token-budget",
-        "gateway",
-    ];
+    public static readonly IReadOnlyList<string> CarriableModuleTypes = BuiltInCapabilitySets.Full;
 
     public static HostShapeDescriptor Descriptor { get; } = new()
     {

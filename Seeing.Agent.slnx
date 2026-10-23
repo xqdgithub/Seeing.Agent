@@ -1,14 +1,12 @@
 <Solution>
   <Folder Name="/samples/">
     <Project Path="samples/Seeing.Agent.Cli/Seeing.Agent.Cli.csproj" />
-    <Project Path="samples/Seeing.Agent.Embed.Demo/Seeing.Agent.Embed.Demo.csproj" />
+    <Project Path="samples/Seeing.Agent.HostComposition/Seeing.Agent.HostComposition.csproj" />
     <Project Path="samples/Seeing.Agent.Tui/Seeing.Agent.Tui.csproj" />
     <Project Path="samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj" />
     <Project Path="samples/Seeing.Agent.WebUI.Files/Seeing.Agent.WebUI.Files.csproj" />
     <Project Path="samples/Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj" />
-    <Project Path="samples/Seeing.Gateway.Console.Demo/Seeing.Gateway.Console.Demo.csproj" />
     <Project Path="samples/Seeing.Gateway.Server/Seeing.Gateway.Server.csproj" />
-    <Project Path="samples/Seeing.Gateway.WeCom.Demo/Seeing.Gateway.WeCom.Demo.csproj" />
   </Folder>
   <Folder Name="/plugs/" />
   <Folder Name="/plugs/providers/">
@@ -133,6 +131,7 @@
   </Folder>
   <Folder Name="/tests/apps/">
     <Project Path="tests/apps/Seeing.Agent.Cli.Tests/Seeing.Agent.Cli.Tests.csproj" />
+    <Project Path="tests/apps/Seeing.Agent.HostComposition.Tests/Seeing.Agent.HostComposition.Tests.csproj" />
     <Project Path="tests/apps/Seeing.Agent.Tui.Tests/Seeing.Agent.Tui.Tests.csproj" />
     <Project Path="tests/apps/Seeing.Agent.WebUI.Tests/Seeing.Agent.WebUI.Tests.csproj" />
     <Project Path="tests/apps/Seeing.Agent.WebUI.Files.Tests/Seeing.Agent.WebUI.Files.Tests.csproj" />

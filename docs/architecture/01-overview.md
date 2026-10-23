@@ -36,7 +36,7 @@ Seeing.Agent 是可组合的 AI Agent 运行时：
 Host Shape Hosting.Web / Headless / Embed / Gateway / Tui   （UI 表面；不决定能力集）
            磁盘: src/hosting/
    ↑
-Sample     WebUI / Tui / Gateway.Server / Cli / Embed.Demo  （自己 ProjectReference 能力包）
+Sample     WebUI / Tui / Gateway.Server / Cli / HostComposition  （自己 ProjectReference 能力包）
 ```
 
 | 层 | 允许引用 | 禁止 |

@@ -1,3 +1,5 @@
+using Seeing.Agent.Core.CapabilitySets;
+
 namespace Seeing.Agent.Hosting.Gateway;
 
 /// <summary>
@@ -20,23 +22,7 @@ public static class GatewayHostShape
     /// <summary>
     /// Gateway 服务端形态可承载的模块类型（无 Blazor UI 贡献）。
     /// </summary>
-    public static readonly IReadOnlyList<string> CarriableModuleTypes =
-    [
-        "tools.basic",
-        "tools.filesystem",
-        "tools.shell",
-        "tools.web",
-        "tools.git",
-        "llm.openai",
-        "llm.anthropic",
-        "skills",
-        "mcp",
-        "memory",
-        "scheduler",
-        "acp",
-        "token-budget",
-        "gateway",
-    ];
+    public static readonly IReadOnlyList<string> CarriableModuleTypes = BuiltInCapabilitySets.Full;
 
     public static HostShapeDescriptor Descriptor { get; } = new()
     {

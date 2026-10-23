@@ -104,7 +104,7 @@
 3. **审批可呈现性是硬门槛**：仅实现 `IPermissionChannel` 不够，**必须注册 `ISurfaceProvider`**；`PermissionService` 在 `CanSurface(sessionId)==false` 时立即 `Deny(NoChannel)`（`PermissionService.cs`），且**不创建在途请求**（因此 `PendingChanged` 也补不回来）。
 4. **文档漂移**：`AGENTS.md` / `docs/architecture` 中的 `IPermissionPresenter` / `IPermissionPresentationStore` / `PermissionPresentationStore` **在当前代码中已不存在**；权威契约为 `src/abstractions/Seeing.Agent.Abstractions/Interactions/{ISurfaceProvider,ISurfaceRegistry,IPendingRequestManager}.cs` 与 `src/spine/Seeing.Agent.Core/Core/Interactions/SurfaceRegistry.cs`。
 5. **会话存储路径是 `<workspace>/.seeing/sessions`**：`AddSeeingCore` 用 `Path.Combine(workspace.ProjectSeeingDirectory, "sessions")`（`ProjectSeeingDirectory` = `<workspace>/.seeing`）。`~/.seeing/sessions` 只是 `FileSessionStore` 无显式目录时的兜底。**因此「与 WebUI 共享会话」的前提是同一 workspace。**
-6. **无现成交互式终端对话代码**：`samples/Seeing.Agent.Cli` 是只读管理命令（Headless 宿主）；`samples/Seeing.Gateway.Console.Demo` 是最小「提交 + 订阅事件流」范式（跨进程客户端）。
+6. **无现成交互式终端对话代码**：`samples/Seeing.Agent.Cli` 是只读管理命令（Headless 宿主）；跨进程客户端可参考 `Seeing.Gateway.Client` 的「提交 + 订阅事件流」用法（仓库内已无独立 Console demo）。
 
 ---
 

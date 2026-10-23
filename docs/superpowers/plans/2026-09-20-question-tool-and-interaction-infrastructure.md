@@ -52,7 +52,7 @@ Wave 5（主控）
 | `WebUI/Rendering/MessageRenderPipeline.cs`、`Rendering/RenderingServiceExtensions.cs` | W1-C | 独占 |
 | `Core/Permission/**`、`Abstractions/Permissions/**`、`src/gateway/Seeing.Agent.Gateway/Core/GatewayOrchestratorV2.cs`、`src/gateway/Seeing.Agent.Gateway/Permission/GatewaySubscriptionPresenter.cs`、`WebUI/Services/WebUiSurfacePresenter.cs` | W2-A | 独占 |
 | `Core/Questions/QuestionRequestManager.cs`、`Core/Questions/QuestionServiceExtensions.cs`、`Abstractions/Questions/IQuestionRequestManager.cs`、`Core/Extensions/ServiceCollectionExtensions.cs`（加 1 行） | W2-B | 独占 |
-| `Seeing.Agent.slnx`、`Core/CapabilitySets/BuiltInCapabilitySets.cs`、`Core/Scenarios/BuiltInScenarios.cs`、`src/capabilities/Seeing.Agent.Tools.Question/**`、CLI/Gateway.Server/Embed.Demo 接线、`tests/capabilities/Seeing.Agent.Tools.Question.Tests/**` | W3-A | 独占 |
+| `Seeing.Agent.slnx`、`Core/CapabilitySets/BuiltInCapabilitySets.cs`、`Core/Scenarios/BuiltInScenarios.cs`、`src/capabilities/Seeing.Agent.Tools.Question/**`、CLI/Gateway.Server 接线、`tests/capabilities/Seeing.Agent.Tools.Question.Tests/**` | W3-A | 独占 |
 | `WebUI/Models/QuestionCardModel.cs`、`WebUI/Services/Question*.cs`、`WebUI/Components/Messaging/Question*.razor`、`WebUI/Rendering/Providers/QuestionToolCallSlotProvider.cs` | W3-B1 | 独占 |
 | `WebUI/Program.cs`、`WebUI/Seeing.Agent.WebUI.csproj`、`WebUI/Components/AppSidebar.razor` | W2-A（presenter 行）→ W3-B2（接线行） | **跨波次串行**，不并发 |
 | `tests/spine/Seeing.Agent.Tests/Permission/**` | W4-A | 权限回归 |
@@ -282,7 +282,7 @@ public interface IToolCallSlotProvider {
 - Create: `.../QuestionToolsModule.cs`（`Id="question.tools"`，`ProvidedTools=["question"]`）
 - Create: `.../QuestionTool.cs`（`: BuiltInToolBase`，`Id="question"`）
 - Modify: `Seeing.Agent.slnx`（`/src/capabilities/` 加项目；`/tests/capabilities/` 加测试项目）
-- Modify: CLI `samples/Seeing.Agent.Cli/Infrastructure/CliServiceBootstrap.cs`、`samples/Seeing.Gateway.Server/Program.cs`、`samples/Seeing.Agent.Embed.Demo/Program.cs`（`AddSeeingModule<QuestionToolsModule>` + 各自 csproj `ProjectReference`）
+- Modify: CLI `samples/Seeing.Agent.Cli/Infrastructure/CliServiceBootstrap.cs`、`samples/Seeing.Gateway.Server/Program.cs`（`AddSeeingModule<QuestionToolsModule>` + 各自 csproj `ProjectReference`）
 - Modify: `src/spine/Seeing.Agent.Core/CapabilitySets/BuiltInCapabilitySets.cs`（相关集合 `Modules` 加 `question.tools`）、`src/spine/Seeing.Agent.Core/Scenarios/BuiltInScenarios.cs`、`BuiltInScenariosTests.cs`
 - Create: `tests/capabilities/Seeing.Agent.Tools.Question.Tests/`（csproj + `QuestionToolTests.cs`）
 

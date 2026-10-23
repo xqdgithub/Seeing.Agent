@@ -172,9 +172,7 @@ Seeing.Agent/
 │   ├── Seeing.Agent.WebUI/        # Blazor Web 界面示例
 │   ├── Seeing.Agent.Cli/          # 命令行管理工具
 │   ├── Seeing.Gateway.Server/     # Gateway 服务端
-│   ├── Seeing.Gateway.ChannelHost/ # 通道宿主
-│   ├── Seeing.Gateway.Console.Demo/ # 控制台演示
-│   └── Seeing.Gateway.WeCom.Demo/ # 企业微信演示
+│   └── Seeing.Gateway.ChannelHost/ # 通道宿主
 │
 ├── docs/superpowers/
 │   ├── plans/                     # 实施计划（15+ 个历史计划）

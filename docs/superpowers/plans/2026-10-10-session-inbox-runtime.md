@@ -1052,7 +1052,6 @@ git commit -m "refactor(inbox): migrate Hosting callers, rewire DI, delete legac
 - Modify: `samples/Seeing.Agent.Tui/Services/TuiChatEngine.cs`（`:56,132,2130` `IExecutionSubmitter`；`:66,142,1919` `IExecutionStatusProvider`）
 - Modify: `samples/Seeing.Agent.Tui/Services/TuiSessionController.cs`（`:15,21,26` 注入；`:92` 返回类型；`:107` `QueuePosition`→`PendingInputCount`；`:120,127` `CancelAsync`/`CancelBySessionAsync`→`StopAsync`）
 - Modify: `samples/Seeing.Agent.Tui/Services/TuiEventPump.cs`、`TuiViewState.cs:55`、`StatusBarView.cs:123-124`、`Program.cs:136`
-- Modify: `samples/Seeing.Agent.Embed.Demo/Program.cs`（`IChatOrchestrator` → `ISessionRuntime`/`ISessionDirectory`）
 
 - [ ] **Step 1: 按 spec §12 迁移 WebUI/TUI 源码**
   - `IChatOrchestrator.SubmitAsync` → `ISessionRuntime.DeliverAsync`
