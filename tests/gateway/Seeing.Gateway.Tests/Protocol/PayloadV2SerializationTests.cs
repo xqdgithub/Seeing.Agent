@@ -67,6 +67,38 @@ public class PayloadV2SerializationTests
     }
 
     [Fact]
+    public void OutboundPayload_ShouldSerializeContentShape()
+    {
+        var payload = new GatewayChannelOutboundPayload
+        {
+            Channel = "qq",
+            CorrelationSessionId = "sess-1",
+            Content = new()
+            {
+                Text = "hi",
+                Attachments =
+                [
+                    new()
+                    {
+                        Kind = OutboundAttachmentKind.File,
+                        LocalPath = "/w/a.pdf",
+                        SizeBytes = 3,
+                        FileName = "a.pdf"
+                    }
+                ]
+            }
+        };
+
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(payload, GatewayWsFrameSerializer.JsonOptions));
+        var content = doc.RootElement.GetProperty("content");
+
+        content.GetProperty("text").GetString().Should().Be("hi");
+        var attachment = content.GetProperty("attachments")[0];
+        attachment.GetProperty("kind").GetString().Should().Be("file");
+        attachment.GetProperty("sizeBytes").GetInt64().Should().Be(3);
+    }
+
+    [Fact]
     public void CancelPayload_SerializesMode()
     {
         var payload = new GatewayCancelPayload

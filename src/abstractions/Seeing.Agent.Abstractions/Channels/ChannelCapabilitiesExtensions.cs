@@ -7,7 +7,9 @@ public static class ChannelCapabilitiesExtensions
     public static bool Supports(this ChannelAttachmentCapabilities capabilities, OutboundAttachmentKind kind)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
-        return capabilities.Kinds.Contains(kind);
+
+        // Kinds 是 required，但 required 只保证字段出现、不保证非 null（远程注册帧可显式传 null）
+        return capabilities.Kinds?.Contains(kind) == true;
     }
 
     /// <summary>按对话种类解析附件能力；通道不支持附件时返回 null。</summary>
@@ -21,6 +23,10 @@ public static class ChannelCapabilitiesExtensions
         {
             foreach (var entry in overrides)
             {
+                // 反序列化产生的残缺条目（Capabilities 为 null）跳过，继续回落默认能力
+                if (entry is null || entry.Capabilities is null)
+                    continue;
+
                 if (entry.Kind == kind)
                     return entry.Capabilities;
             }

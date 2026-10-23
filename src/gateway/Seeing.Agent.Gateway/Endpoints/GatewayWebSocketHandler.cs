@@ -195,11 +195,38 @@ public sealed class GatewayWebSocketHandler
             return;
         }
 
+        if (!HasValidCapabilityStructure(payload.Capabilities))
+        {
+            await SendErrorAsync(connection, "invalid channel capabilities structure", "invalid_capabilities");
+            return;
+        }
+
         _connectionManager.RegisterChannel(connection.ConnectionId, payload.Channel, payload.Capabilities);
         _logger.LogInformation(
             "Channel registered: {Channel} connection={ConnectionId}",
             payload.Channel,
             connection.ConnectionId);
+    }
+
+    /// <summary>
+    /// 注册帧信任边界：<c>required</c> 只保证字段出现、不保证非 null，
+    /// 这里只做 null 结构校验，拒绝残缺能力（不引入新类型）。
+    /// </summary>
+    private static bool HasValidCapabilityStructure(ChannelCapabilities capabilities)
+    {
+        if (capabilities.Attachments is { Kinds: null })
+            return false;
+
+        if (capabilities.AttachmentsByConversationKind is { } overrides)
+        {
+            foreach (var entry in overrides)
+            {
+                if (entry is null || entry.Capabilities is null || entry.Capabilities.Kinds is null)
+                    return false;
+            }
+        }
+
+        return true;
     }
 
     private async Task HandleSubmitAsync(
