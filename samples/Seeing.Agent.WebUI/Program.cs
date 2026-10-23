@@ -10,7 +10,9 @@ using Seeing.Agent.HostComposition;
 using Seeing.Agent.Hosting;
 using Seeing.Agent.Hosting.Web;
 using Seeing.Agent.Hosting.Web.Circuits;
+using Seeing.Agent.Tools.Support;
 using Seeing.Agent.TokenBudget.Extensions;
+using Seeing.Agent.WebUI.Endpoints;
 using Seeing.Agent.WebUI.Rendering;
 using Seeing.Agent.WebUI.Rendering.Providers;
 using Seeing.Agent.WebUI.Services;
@@ -27,6 +29,8 @@ var builder = WebApplication.CreateBuilder(args);
 // _framework/blazor.server.js 全部 404，破坏 13 处 JS 互操作（'isMobileBrowser is not a function'）。
 // 在 builder 上调用 UseStaticWebAssets() 让中间件从清单路由文件，适用于所有环境。
 builder.WebHost.UseStaticWebAssets();
+builder.WebHost.ConfigureKestrel(options =>
+    options.Limits.MaxRequestBodySize = PastedFileLayout.MaxUploadRequestBytes);
 
 // Add services to the container.
 builder.Services.AddRazorPages();
@@ -54,6 +58,7 @@ builder.Services.AddSingleton<IUiContributionRegistry>(sp => sp.GetRequiredServi
 
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<SessionState>();
+builder.Services.AddScoped<UploadedFileService>();
 builder.Services.AddScoped<MessageTimelineStore>();
 
 // 会话事件流路由（Singleton）：按会话统一订阅 + 按 circuit 关联 Scoped 消费者。
@@ -218,6 +223,7 @@ app.UseStaticFiles();
 app.UseRouting();
 
 app.MapBlazorHub();
+app.MapUploadEndpoints();
 app.MapFallbackToPage("/_Host");
 
 app.Run();
