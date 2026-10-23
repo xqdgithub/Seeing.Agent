@@ -1,10 +1,32 @@
 namespace Seeing.Agent.WebUI.Models;
 
+/// <summary>附件投递方式。</summary>
+public enum AttachmentDeliveryKind
+{
+    /// <summary>图片等二进制附件，提交时进入 ChatAttachment。</summary>
+    BinaryAttachment = 0,
+
+    /// <summary>普通文件，提交时把路径写入消息正文。</summary>
+    PathReference = 1
+}
+
 /// <summary>
 /// 文件附件视图模型
 /// </summary>
 public class AttachmentViewModel
 {
+    /// <summary>投递方式。</summary>
+    public AttachmentDeliveryKind Kind { get; set; } = AttachmentDeliveryKind.BinaryAttachment;
+
+    /// <summary>提交时写入正文的路径（项目根相对或绝对）。</summary>
+    public string? PromptPath { get; set; }
+
+    /// <summary>相对会话有效根的路径，用于删除/定位。</summary>
+    public string? SessionRelativePath { get; set; }
+
+    /// <summary>是否路径引用。</summary>
+    public bool IsPathReference => Kind == AttachmentDeliveryKind.PathReference;
+
     /// <summary>
     /// 附件唯一标识
     /// </summary>

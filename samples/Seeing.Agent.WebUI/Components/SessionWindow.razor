@@ -1393,24 +1393,13 @@
             }
         }
 
-        // 构建输入
-        var input = new ChatInput { Text = args.Text };
-
-        if (args.Attachments != null && args.Attachments.Count > 0)
+        // 构建输入：图片进附件，普通文件路径进正文
+        var routed = Services.PromptAttachmentRouter.Route(args.Text, args.Attachments);
+        var input = new ChatInput
         {
-            input = new ChatInput
-            {
-                Text = args.Text,
-                Attachments = args.Attachments
-                    .Where(a => a.Status == AttachmentUploadStatus.Completed)
-                    .Select(a => new ChatAttachment
-                    {
-                        Base64Data = ExtractBase64Data(a.Base64Content),
-                        MimeType = a.FileType,
-                        FileName = a.FileName
-                    }).ToList()
-            };
-        }
+            Text = routed.Text,
+            Attachments = routed.Attachments.Count > 0 ? routed.Attachments : null
+        };
 
         var options = new ChatOptions
         {
@@ -2042,25 +2031,6 @@
     /// <summary>
     /// 从 Base64 字符串中提取纯 Base64 数据（去除 data: 前缀）
     /// </summary>
-    private static string ExtractBase64Data(string? base64Content)
-    {
-        if (string.IsNullOrEmpty(base64Content))
-            return string.Empty;
-
-        // 检查是否有 data: URL 前缀
-        const string dataPrefix = "data:";
-        if (base64Content.StartsWith(dataPrefix))
-        {
-            // 找到 base64, 的位置
-            var base64Index = base64Content.IndexOf(";base64,", StringComparison.Ordinal);
-            if (base64Index >= 0)
-            {
-                return base64Content.Substring(base64Index + 8);
-            }
-        }
-
-        return base64Content;
-    }
 
     /// <summary>
     /// 释放资源（导航离开 / 电路断开）
