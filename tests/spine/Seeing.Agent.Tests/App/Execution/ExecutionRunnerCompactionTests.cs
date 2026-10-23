@@ -173,6 +173,7 @@ public class ExecutionRunnerCompactionTests
         services.AddSingleton(Mock.Of<IWorkspaceProvider>(w => w.ProjectSeeingDirectory == Path.Combine("workspace-root", ".seeing")));
         services.AddSingleton(Mock.Of<IExecutionWorld>(w => w.Cwd == "workspace-root"));
         services.AddSingleton(Mock.Of<ICommandRegistry>());
+        services.AddSingleton<ISessionToolExposureWriter>(new SessionToolExposureWriter(sessionManager.Object));
         var provider = services.BuildServiceProvider();
 
         return new ExecutionRunner(

@@ -444,11 +444,13 @@ internal sealed class ExecutionRunner : IExecutionRunner
 
         // 工具视图唯一出口：轮首先把上一轮登记的发现提升为生效，再结算本轮视图，
         // 最后把结算增量提交回会话（发现集裁剪、升级粘滞位、每轮度量）。
-        // 提交只在这里发生，Scheduler 旁路与 tool_search 都只读。
-        session.ToolExposure.PromotePending();
+        // 写入统一经 ISessionToolExposureWriter（主链与 Scheduler 旁路共用同一实现）。
+        var exposureWriter = services.GetRequiredService<ISessionToolExposureWriter>();
+        exposureWriter.PromotePending(session);
         var schemaSettlement = await _schemaResolver.ResolveAsync(
             session, agentDef).ConfigureAwait(false);
-        session.ToolExposure.Commit(
+        exposureWriter.Commit(
+            session,
             schemaSettlement.Discovered,
             schemaSettlement.IsEscalated,
             schemaSettlement.SchemaTokens,

@@ -93,7 +93,7 @@ public class ToolViewSingleSourceTests
         var allowed = new[]
         {
             Path.Combine("src", "primitives", "Seeing.Session", "Core", "SessionToolExposureState.cs"),
-            Path.Combine("src", "hosting", "Seeing.Agent.Hosting", "Execution", "ExecutionRunner.cs"),
+            Path.Combine("src", "hosting", "Seeing.Agent.Hosting", "Execution", "SessionToolExposureWriter.cs"),
             Path.Combine("src", "hosting", "Seeing.Agent.Hosting", "Execution", "ToolExposure", "SessionToolDiscoveryStore.cs"),
             Path.Combine("src", "primitives", "Seeing.Session", "Core", "SessionData.cs"),
             Path.Combine("src", "primitives", "Seeing.Session", "Management", "SessionForker.cs"),
@@ -126,6 +126,21 @@ public class ToolViewSingleSourceTests
             text.Should().NotContain(".ToolExposure.Commit(",
                 "Scheduler 是旁路执行，只读视图并提升发现，不得提交度量与升级位");
         }
+    }
+
+    [Fact]
+    public void Execution_Visibility_Gate_Should_Not_Read_Session_Exposure_State()
+    {
+        // 可调用性是执行期状态（IExecutionToolScope），执行器不得回读会话暴露态；
+        // 否则判定分裂为“冻结快照 + 可变会话”两个真相源，并会跨执行/跨会话泄漏。
+        var root = FindRepoRoot();
+        var agentExecutor = Path.Combine(
+            root, "src", "spine", "Seeing.Agent.Core", "Core", "AgentExecutor.cs");
+
+        var text = File.ReadAllText(agentExecutor);
+
+        text.Should().NotContain(".ToolExposure.");
+        text.Should().NotContain("SessionData");
     }
 
     private static IEnumerable<string> EnumerateSourceFiles(string root)

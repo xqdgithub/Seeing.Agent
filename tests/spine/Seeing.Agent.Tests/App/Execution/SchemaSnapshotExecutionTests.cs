@@ -239,6 +239,7 @@ public class SchemaSnapshotExecutionTests
         services.AddSingleton<IScenarioCatalog>(new DelegatingScenarioCatalog(NarrowingScenarios.Resolve));
         services.AddSingleton(new ProcessSettlementOptions { HostDefaultScenario = "full" });
         services.AddSingleton<IPromptSectionContributor>(section);
+        services.AddSingleton<ISessionToolExposureWriter>(new SessionToolExposureWriter(sessionManager.Object));
         var provider = services.BuildServiceProvider();
 
         var configStore = new Mock<IConfigSectionStore>();

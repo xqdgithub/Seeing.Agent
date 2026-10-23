@@ -360,6 +360,7 @@ public class ExecutionRunnerCommandShortCircuitTests
         services.AddSingleton(Mock.Of<IWorkspaceProvider>(w => w.ProjectSeeingDirectory == Path.Combine("workspace-root", ".seeing")));
         services.AddSingleton(Mock.Of<IExecutionWorld>(w => w.Cwd == "workspace-root"));
         services.AddSingleton(commandRegistry);
+        services.AddSingleton<ISessionToolExposureWriter>(new SessionToolExposureWriter(sessionManager.Object));
         var provider = services.BuildServiceProvider();
 
         var configStore = new Mock<IConfigSectionStore>();

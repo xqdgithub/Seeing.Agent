@@ -390,6 +390,12 @@ public class AgentJob : IJob
         ILogger logger,
         CancellationToken cancellationToken)
     {
+        // 轮首提升：cron 会话里 tool_search 的发现必须在下一次执行内联（与主链同语义）。
+        // 会话不存在/加载失败时端口返回 false 且不抛，保持“旁路不阻断任务”。
+        var exposureWriter = services.GetService<Seeing.Agent.Abstractions.Execution.ISessionToolExposureWriter>();
+        if (exposureWriter is not null)
+            await exposureWriter.PromotePendingAsync(sessionId, cancellationToken).ConfigureAwait(false);
+
         var resolver = services.GetService<ISessionToolSchemaResolver>();
         if (resolver is null)
         {

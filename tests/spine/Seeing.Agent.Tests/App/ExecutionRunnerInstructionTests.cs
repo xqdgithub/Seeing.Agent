@@ -181,6 +181,7 @@ public class ExecutionRunnerInstructionTests
             workspace => workspace.ProjectSeeingDirectory == Path.Combine(workspaceRoot, ".seeing")));
         services.AddSingleton(Mock.Of<IExecutionWorld>(world => world.Cwd == workspaceRoot));
         services.AddSingleton(Mock.Of<ICommandRegistry>());
+        services.AddSingleton<ISessionToolExposureWriter>(new SessionToolExposureWriter(sessionManager.Object));
         var provider = services.BuildServiceProvider();
 
         var configStore = new Mock<IConfigSectionStore>();

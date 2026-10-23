@@ -114,6 +114,67 @@ public class AgentJobToolSchemasTests
         capturedContext!.ToolSettlement.Should().BeNull();
     }
 
+    [Fact]
+    public async Task Execute_AgentTask_ShouldPromotePendingDiscoveryBeforeResolve()
+    {
+        // Arrange：旁路必须在结算前提升上一轮登记的发现，否则 cron 会话永远不内联。
+        var writer = new RecordingExposureWriter();
+        var resolver = new Mock<ISessionToolSchemaResolver>();
+        resolver
+            .Setup(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<AgentDefinition>(), It.IsAny<CancellationToken>()))
+            .Callback(() => writer.Promoted.Should().BeTrue("提升必须发生在结算之前"))
+            .ReturnsAsync(SessionToolSchemaResolution.Empty);
+
+        var executor = new Mock<IAgentExecutor>();
+        executor
+            .Setup(e => e.ExecuteAsync(
+                It.IsAny<AgentDefinition>(),
+                It.IsAny<IReadOnlyList<ChatMessage>>(),
+                It.IsAny<AgentContext>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(() => OneEvent(new StreamCompleteEvent
+            {
+                SessionId = "s-cron",
+                Message = new ChatMessage { Role = ChatRole.Assistant, Content = "done" }
+            }));
+
+        var services = new ServiceCollection()
+            .AddSingleton(resolver.Object)
+            .AddSingleton<ISessionToolExposureWriter>(writer)
+            .BuildServiceProvider();
+
+        var jobContextMock = CreateJobContextMock();
+        var job = CreateJob(executor.Object, services);
+
+        // Act
+        await job.Execute(jobContextMock.Object);
+
+        // Assert
+        writer.Promoted.Should().BeTrue();
+    }
+
+    private sealed class RecordingExposureWriter : ISessionToolExposureWriter
+    {
+        public bool Promoted { get; private set; }
+
+        public void PromotePending(Seeing.Session.Core.SessionData session) => Promoted = true;
+
+        public Task<bool> PromotePendingAsync(string sessionId, CancellationToken cancellationToken = default)
+        {
+            Promoted = true;
+            return Task.FromResult(true);
+        }
+
+        public void Commit(
+            Seeing.Session.Core.SessionData session,
+            IReadOnlyList<string>? discovered,
+            bool escalated,
+            int schemaTokens,
+            int catalogTokens)
+        {
+        }
+    }
+
     private static AgentJob CreateJob(IAgentExecutor executor, IServiceProvider services)
     {
         var agentRegistry = new Mock<IAgentRegistry>();

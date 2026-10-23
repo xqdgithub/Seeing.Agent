@@ -445,6 +445,7 @@ public class SchemaScenarioTests
         if (lifecycle is not null)
             services.AddSingleton(lifecycle);
 
+        services.AddSingleton<ISessionToolExposureWriter>(new SessionToolExposureWriter(sessionManager.Object));
         var provider = services.BuildServiceProvider();
 
         var configStore = new Mock<IConfigSectionStore>();

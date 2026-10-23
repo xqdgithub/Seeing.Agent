@@ -90,6 +90,9 @@ public static class HostingServiceCollectionExtensions
         services.TryAddSingleton<Seeing.TokenEstimation.ITokenCounter, Seeing.TokenEstimation.CharBasedTokenCounter>();
         services.AddSingleton<ToolExposureConfigResolver>();
         services.AddSingleton<IToolDiscoveryStore, SessionToolDiscoveryStore>();
+        // 会话暴露状态唯一写出口（主链轮首提升/提交、Scheduler 旁路提升共用）
+        services.AddSingleton<Seeing.Agent.Abstractions.Execution.ISessionToolExposureWriter,
+            Seeing.Agent.Hosting.Execution.SessionToolExposureWriter>();
         // 目录分节贡献者（透传结算产出的目录正文进系统提示）
         services.AddSingleton<Seeing.Agent.Abstractions.Prompts.IPromptSectionContributor, Seeing.Agent.Hosting.Prompts.ToolCatalogSectionContributor>();
         services.AddSingleton<SessionRuntime>(sp => new SessionRuntime(
