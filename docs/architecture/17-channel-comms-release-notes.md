@@ -49,14 +49,14 @@ WebUI 出站绑定改为读写 `ChannelRoute`（工具栏、会话窗、会话�
 
 ---
 
-## 2026-10-23 出站附件（文件 / 图片 / 音视频）
+## 6. 出站附件增量（2026-10-23）
 
 **设计规格：** [`2026-10-23-channel-attachments-design.md`](../superpowers/specs/2026-10-23-channel-attachments-design.md)
-**覆盖模块：** `Seeing.Agent.Abstractions`（`Channels`）、`Seeing.Agent.Comms`、`Seeing.Gateway` / `Seeing.Gateway.Client`、`Seeing.Agent.Gateway`、`Seeing.Gateway.QQ` / `Seeing.Gateway.WeCom`、`Seeing.Agent.Tools.ChannelMessaging`、`Seeing.IO.Local`、`samples/Seeing.Gateway.Server` / `ChannelHost`
+**相关模块：** `Seeing.Agent.Abstractions`（`Channels`、`Execution`、`Permissions`）、`Seeing.Agent.Core`、`Seeing.Agent.Comms`、`Seeing.Gateway` / `Seeing.Gateway.Client`、`Seeing.Agent.Gateway`、`Seeing.Gateway.QQ` / `Seeing.Gateway.WeCom`、`Seeing.Agent.Tools.ChannelMessaging`、`Seeing.IO.Local`、`samples/Seeing.Gateway.Server` / `ChannelHost`
 
 出站从「只有文本」扩为「文本 + 附件」：渠道用能力声明回答支持范围，附件只走一条结构化路径，不再依赖文本媒体标记。一期只实现 QQ，WeCom 显式声明不支持附件。
 
-### 1. 内容模型（`Abstractions/Channels/ChannelAttachments.cs`）
+### 6.1 内容模型（`Abstractions/Channels/ChannelAttachments.cs`）
 
 | 类型 | 字段 | 说明 |
 |---|---|---|
@@ -66,7 +66,7 @@ WebUI 出站绑定改为读写 `ChannelRoute`（工具栏、会话窗、会话�
 
 入站 `ChatAttachment`（Base64，喂给 LLM）与出站 `OutboundAttachment`（本地路径，交给平台）是相反方向的两个概念，不合并。
 
-### 2. 能力模型（`Abstractions/Channels/ChannelCapabilities.cs`）
+### 6.2 能力模型（`Abstractions/Channels/ChannelCapabilities.cs`）
 
 | 类型 | 字段 |
 |---|---|
@@ -74,24 +74,30 @@ WebUI 出站绑定改为读写 `ChannelRoute`（工具栏、会话窗、会话�
 | `ConversationAttachmentCapabilities` | `Kind`、`Capabilities`（均 `required`）；用有序条目而非字典 |
 | `ChannelCapabilities` | `SupportsReplyAnchor`（`required`）、`Attachments`（`null` = 该通道不支持附件）、`AttachmentsByConversationKind`（未命中回落到 `Attachments`） |
 
-- 派生查询集中在纯函数扩展 `ChannelCapabilitiesExtensions`（`Supports` / `ResolveAttachments`），DTO 保持纯数据；已登记 `docs/architecture/06` 的纯函数豁免清单。重复 `Kind` 取**首个命中**；反序列化产生的残缺条目（`Capabilities` / `Kinds` 为 null）跳过，不抛错。
+- 派生查询集中在纯函数扩展 `ChannelCapabilitiesExtensions`（`Supports` / `ResolveAttachments`），DTO 保持纯数据；已登记 `docs/architecture/06` 的纯函数豁免清单。重复 `Kind` 取**首个命中**；反序列化产生的残缺条目（条目本身或 `Capabilities` 为 null）跳过并继续回落；`Kinds` 为 null 视为不支持任何类型（`Supports` 返回 `false`，结果该对话种类的附件被 `AttachmentUnsupported` 拒绝），不抛错。
 - `SupportsReplyAnchor` 为 `required`：新渠道必须显式回答，不允许静默获得「不填锚点」。QQ = `true`，WeCom 一期 = `false`。
 - 不保留 `ConversationKinds` / `SupportsStreaming`：当前没有消费方，不预埋。
 
-### 3. 协议与投递链路
+### 6.3 协议
 
 - **注册帧**：`GatewayChannelRegisterPayload.Capabilities` 为 `required ChannelCapabilities`，`ChannelRegisterCapabilities` 删除。反序列化失败或 `capabilities: null` → 回 `error`（`code = invalid_capabilities`）、不注册、**不断开连接**；重连重发同一份能力。
 - **连接签名**：`IGatewayConnection.ConnectAsync` / `IGatewayChannelHostClient.ConnectAsync` 改为 `ConnectAsync(string channelId, ChannelCapabilities capabilities, CancellationToken ct = default)`；`IChannelBridge.Capabilities` 暴露桥能力。
 - **出站帧**：`GatewayChannelOutboundPayload.Text` → `required OutboundContent Content`；`GatewayConnectedPayload` 不变（无消费方不预埋能力清单）。
-- **投递裁决（Comms）**：准入通过后解析适配器 → 补入锚点 → 有附件时按能力裁决 → 交给适配器。
+
+### 6.4 Comms 投递
+
+- **投递裁决**：准入通过后解析适配器 → 补入锚点 → 有附件时按能力裁决 → 交给适配器。
   - 锚点仅在 `DeliveryKind == Reply`、`adapter.Capabilities.SupportsReplyAnchor` 且 `Target.ReplyToMsgId` 为空时取 `IChannelDirectory.ResolveReplyAnchor`；调度推送 `SystemNotice` 不取锚点，有效性由适配器判定。
   - 拒绝矩阵（**原子拒绝**：不调适配器、也不发文本）：通道不支持附件 / 类型不支持 / 超单条数量 → `AttachmentUnsupported`；`SizeBytes <= 0` → `AttachmentUnavailable`；超单文件上限 → `AttachmentTooLarge`。
   - **无附件时跳过能力解析**：`Attachments = null` 的通道纯文本投递不受影响；Comms 不做文件 I/O（大小由生产端写入 `SizeBytes`）。
 - **目标解析**：会话 → 目标解析独立成 `IChannelTargetResolver`（`ChannelTargetResolution`）；子会话沿父链回溯（最多 8 层）；`NoopChannelTargetResolver` 返回 `ChannelUnavailable`「通道投递未配置」，真实实现返回 `NotInDirectory`「当前会话及父会话均未绑定通道」。
+
+### 6.5 通道与工具
+
 - **QQ 适配器**：能力构造时固化——`SupportsReplyAnchor = true`；四类附件、`MaxBytes = QQOptions.MaxMediaBytes`（默认 10 MB）、`MaxPerMessage = 5`；`Guild` 频道按对话种类覆盖为**仅图片**。文本与附件共用逐条被动计数；纯附件消息跳过文本分支；部分失败返回 `PlatformError` 并注明已发送数与失败项，无回滚。
 - **工具**：扩展 `send_channel_message`（不新增兄弟工具）新增 `attachments` 参数；目标三选一（`targetUserId` / `conversationExternalId + conversationKind` / 缺省发到当前会话绑定对话），只给 `channelId` 而不给目标属参数错误；附件路径经 `IWorkspacePathGate.EnsureWithinWorkspace` 做**严格工作区包含**校验（不看 `RestrictToWorkspace`、不查权限白名单），类型缺省按扩展名推断。
 
-### 4. 破坏性变更（无兼容层）
+### 6.6 破坏性变更（无兼容层）
 
 | 项 | 变更 |
 |---|---|
@@ -99,12 +105,18 @@ WebUI 出站绑定改为读写 `ChannelRoute`（工具栏、会话窗、会话�
 | `IChannelMessageSink` | 两个方法改为接收 `OutboundContent`；会话解析移出到 `IChannelTargetResolver` |
 | `IChannelAdapter.Capabilities` | 新增抽象成员（无默认实现）；测试替身与 Moq 必须显式设置（`SupportsReplyAnchor` 为 `required`） |
 | `IGatewayConnection.ConnectAsync` | 增加 `channelId` / `capabilities` 参数；`IGatewayChannelHostClient` 同步 |
+| `GatewayChannelOutboundPayload.Content` | 出站帧 `Text` → `required OutboundContent Content`（纯附件消息 `Text` 为 null） |
 | 注册能力 | `ChannelRegisterCapabilities` 删除；注册帧改为 `required ChannelCapabilities` 并校验显式 null |
+| `IChannelBridge` | 新增 `Capabilities`；删除 `GatewayConnection => null` 默认实现（QQ / WeCom 桥均须显式提供） |
+| `RemoteChannelAdapterProxy` | public 构造签名改为 `(string channelId, ChannelCapabilities capabilities, Func<GatewayChannelOutboundPayload, bool> push)`；`GatewayConnectionManager` 传入注册帧能力 |
 | QQ 文本媒体标记 | 删除 `QQOutboundComposer` 整文件与 `QQTextSanitizer.ExtractImages`；`[Image:…]` / `[File:…]` / `![]()` 按普通文本发送；删除 `SendReplyAsync` / `SendImagesAsync` / `SendMediaItemsAsync` / `SendGuildImageAsync` / `UploadMediaAsync`，新增 `SendAttachmentAsync` |
+| QQ 内部签名 | `SendGuildImageFileAsync` 去掉 `msgId` 形参（改用 `target.MsgId`）；删除 `QQChannelAdapter.Translate`（与 `ToParsed` 等价） |
 | `QQOptions.PassiveReplyLimitPerMsg` | 默认值 2 → 5；同一 `msg_id` 的 ack、文本块、附件、权限卡片、终态回复逐条计数，额度耗尽降级为主动消息 |
+| 插件 DI 死注册 | 删除 `QQChannelPlugin` / `WeComChannelPlugin` 中的 `IChannelAdapter` 单例注册（无消费方，桥依赖具体适配器类型） |
+| 宿主 / 样例 | `samples/Seeing.Gateway.Server` 挂载 ChannelMessaging 模块并新增项目引用；`ChannelHost` 调用 `ConnectAsync(_bridge.ChannelId, _bridge.Capabilities, ct)` |
 | 其他契约 | `IChannelDirectory.ResolveReplyAnchor`（锚点并入目录）；`OutboundFailureKind` 新增 `AttachmentUnsupported` / `AttachmentTooLarge` / `AttachmentUnavailable`；`IWorkspacePathGate.EnsureWithinWorkspace`；`IFileSystem.GetFileLength` / `IsDirectory` |
 
-### 5. 已知边界
+### 6.7 已知边界
 
 - **WeCom 无附件、无锚点**：`Attachments = null`（附件在 Comms 层被拒），`SupportsReplyAnchor = false`（适配器 `_inboundFrames` 无失效判定，无法安全消费外部传入的陈旧 `msg_id`）；补上「未知/过期 msgid → 主动发送」后才考虑开放锚点。
 - **进程外无投递回执**：工具返回「已提交发送」只表示出站帧已交给 ChannelHost，不代表平台已送达；平台侧失败只记录在 ChannelHost 日志。
