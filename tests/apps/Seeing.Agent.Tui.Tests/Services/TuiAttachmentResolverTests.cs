@@ -140,6 +140,14 @@ public sealed class TuiAttachmentResolverTests : IDisposable
     public void FormatSize_ShouldRenderHumanReadable(long bytes, string expected)
         => TuiAttachmentResolver.FormatSize(bytes).Should().Be(expected);
 
+    [Theory]
+    [InlineData("a.png", true)]
+    [InlineData("a.JPG", true)]
+    [InlineData("a.txt", false)]
+    [InlineData("a.pdf", false)]
+    public void IsImagePath_ShouldUseExtension(string path, bool expected)
+        => TuiAttachmentResolver.IsImagePath(path).Should().Be(expected);
+
     public void Dispose()
     {
         foreach (var file in _tempFiles)

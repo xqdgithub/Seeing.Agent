@@ -100,6 +100,9 @@ static void AddTuiServices(IServiceCollection services)
     services.AddSingleton<TuiPermissionQueue>();
     services.AddSingleton<TuiQuestionQueue>();
     services.AddSingleton<TuiAttachmentResolver>();
+    services.AddSingleton<IClipboardReader>(_ => OperatingSystem.IsWindows()
+        ? new WindowsClipboardReader()
+        : new UnsupportedClipboardReader());
     services.AddSingleton<TuiCompletionProvider>();
     services.AddSingleton<TuiChatEngine>();
 }

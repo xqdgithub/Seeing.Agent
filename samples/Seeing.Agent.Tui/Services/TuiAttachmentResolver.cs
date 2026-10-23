@@ -97,6 +97,20 @@ public sealed class TuiAttachmentResolver
         => !string.IsNullOrEmpty(mimeType)
            && mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>按扩展名解析 MIME（不读取内容）。</summary>
+    public static string ResolveMimeType(string path)
+    {
+        var extension = Path.GetExtension(path);
+        if (SupplementalMimeTypes.TryGetValue(extension, out var supplemental))
+            return supplemental;
+
+        return FileSystemHelper.GetMimeType(path);
+    }
+
+    /// <summary>按扩展名判断是否图片路径。</summary>
+    public static bool IsImagePath(string path)
+        => IsImage(ResolveMimeType(path));
+
     /// <summary>附件体积（人类可读，1024 进制）。</summary>
     public static string FormatSize(long bytes)
     {
