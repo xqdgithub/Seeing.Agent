@@ -23,10 +23,11 @@ public sealed class EditorCommandTool : BuiltInToolBase
 
     /// <inheritdoc />
     public override string Description =>
-        "在用户 WebUI 的 Monaco 编辑器中执行一条命令（透传 commandId）。" +
-        "commandId 为 Monaco 命令标识（如 editor.action.formatDocument、editor.foldAll）；" +
-        "args 为命令参数（可选）；path 用于在当前面板内切换文件（可选）。" +
-        "仅当用户打开了文件面板时可用；命令修改内容后不会自动保存，需用户手动保存。";
+        "在用户 Monaco 编辑器中执行命令；改完不会自动保存。\n\n" +
+        "- commandId 如 editor.action.formatDocument、editor.foldAll。\n" +
+        "- args 为命令参数，path 可在当前面板内切换文件，均可选。\n" +
+        "- 不确定 commandId 时先用 `editor_list_commands`。\n" +
+        "- 修改需用户手动保存；要落盘改文件用 `edit`。";
 
     /// <inheritdoc />
     public override ToolCategory Category => ToolCategory.General;

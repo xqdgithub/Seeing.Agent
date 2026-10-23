@@ -27,8 +27,10 @@ public sealed class EditorListCommandsTool : BuiltInToolBase
 
     /// <inheritdoc />
     public override string Description =>
-        "列出用户 WebUI 中 Monaco 编辑器当前支持的全部命令（id/label）。" +
-        "用于在不确定 commandId 时动态探测。仅当用户打开了文件面板时可用。";
+        "列出用户 Monaco 编辑器支持的命令 id；不确定时先查。\n\n" +
+        "- 返回每条命令的 id 与 label。\n" +
+        "- 前置：需 WebUI 文件面板。\n" +
+        "- 确认后用 `editor_command` 执行。";
 
     /// <inheritdoc />
     public override ToolCategory Category => ToolCategory.General;

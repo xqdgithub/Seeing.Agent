@@ -25,7 +25,10 @@ public sealed class MemoryWriteTool : ToolBase
     public override string Id => "memory_write";
 
     public override string Description =>
-        "将重要信息写入长期记忆（最高优先级，立即持久化并可被检索）。用于用户明确要求记住、偏好、决策、关键事实等。";
+        "把用户偏好、决策与关键事实写入长期记忆，立即持久化可检索。\n\n" +
+        "- 时机：用户明确要求记住，或出现关键决策与配置事实。\n" +
+        "- 参数：title 为简短标题，content 为完整内容，tags 可选。\n" +
+        "- 写入后即可被 `memory_search` 检索到。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
     {

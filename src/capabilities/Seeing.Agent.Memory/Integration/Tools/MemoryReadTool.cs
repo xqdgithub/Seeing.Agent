@@ -25,7 +25,9 @@ public sealed class MemoryReadTool : ToolBase
     public override string Id => "memory_read";
 
     public override string Description =>
-        "读取一条长期记忆的完整内容。path 为 memory_search 返回的相对路径（如 daily/2026-07-18/xxx.md）。不要用文件系统 read，也不要猜测 ~/.agents 等绝对路径。";
+        "读取一条长期记忆全文；path 取 `memory_search` 返回的相对路径。\n\n" +
+        "- path 为记忆库相对路径，如 daily/2026-07-18/xxx.md。\n" +
+        "- 不要猜测绝对路径，也不要用 `read` 打开记忆。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
     {

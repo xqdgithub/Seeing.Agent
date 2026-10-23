@@ -39,6 +39,11 @@ public class ToolMetadataTests
         ["session_handoff"] = ["session_trim"],
         ["session_takeover"] = ["session_release"],
         ["session_release"] = ["session_takeover"],
+        ["memory_search"] = ["memory_read"],
+        ["memory_read"] = ["memory_search"],
+        ["editor_query"] = ["open_file"],
+        ["editor_list_commands"] = ["editor_command"],
+        ["editor_command"] = ["editor_list_commands"],
     };
 
     private static IReadOnlyList<string> Routing(string id) =>

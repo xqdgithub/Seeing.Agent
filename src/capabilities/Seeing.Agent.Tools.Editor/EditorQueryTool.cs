@@ -30,10 +30,10 @@ public sealed class EditorQueryTool : BuiltInToolBase
 
     /// <inheritdoc />
     public override string Description =>
-        "读取用户 WebUI 中 Monaco 编辑器的状态（只读）。" +
-        "kind 取值：selection（当前选区）、cursor（光标位置）、diagnostics（诊断信息）、" +
-        "visibleRanges（可见范围）、value（当前文件内容）。path 用于指定文件（可选）。" +
-        "仅当用户打开了文件面板时可用。";
+        "读取用户 Monaco 编辑器的选区、光标、诊断或内容（只读）。\n\n" +
+        "- kind：selection、cursor、diagnostics、visibleRanges、value。\n" +
+        "- 前置：需 WebUI 打开文件面板；未打开时可先用 `open_file` 打开目标文件。\n" +
+        "- 读取磁盘文件内容请用 `read`。";
 
     /// <inheritdoc />
     public override ToolCategory Category => ToolCategory.General;

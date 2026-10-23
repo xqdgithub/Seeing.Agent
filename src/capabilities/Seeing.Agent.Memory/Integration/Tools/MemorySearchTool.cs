@@ -20,7 +20,9 @@ public sealed class MemorySearchTool : ToolBase
     public override string Id => "memory_search";
 
     public override string Description =>
-        "搜索长期记忆（daily/digest）。返回相对 path、标题与内容摘要；需要全文时用 memory_read(path)。不要用文件系统 read 打开记忆。";
+        "搜索长期记忆（daily、digest），返回相对路径与内容摘要。\n\n" +
+        "- 结果：条数由记忆配置 TopK 决定（默认 5）。\n" +
+        "- 取全文用 `memory_read`；不要用文件系统 `read` 打开记忆。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
     {

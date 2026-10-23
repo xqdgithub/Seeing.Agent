@@ -2,6 +2,8 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Hosting.Tools;
+using Seeing.Agent.Memory.Integration.Tools;
+using Seeing.Agent.Tools.Editor;
 using Seeing.Agent.Tools.FileSystem;
 using Seeing.Agent.Tools.Session;
 using Seeing.Agent.Tools.Shell;
@@ -39,6 +41,12 @@ internal static class BuiltInToolCatalog
         Auto<SessionInboxSendTool>(),
         Auto<SessionTakeoverTool>(),
         Auto<SessionReleaseTool>(),
+        Auto<MemorySearchTool>(),
+        Auto<MemoryReadTool>(),
+        Auto<MemoryWriteTool>(),
+        Auto<EditorQueryTool>(),
+        Auto<EditorListCommandsTool>(),
+        Auto<EditorCommandTool>(),
     ];
 
     /// <summary>用最少参数的构造函数创建实例。</summary>
