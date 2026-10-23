@@ -50,8 +50,8 @@ public class SessionToolExposureWriterTests
     public async Task PromotePendingAsync_MissingSession_ShouldReturnFalse_NotThrow()
     {
         var manager = new Mock<ISessionManager>();
-        manager.Setup(m => m.Get(It.IsAny<string>())).Returns((SessionData?)null);
-        manager.Setup(m => m.LoadAsync(It.IsAny<string>())).ReturnsAsync((SessionData?)null);
+        manager.Setup(m => m.TryGetOrLoadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SessionData?)null);
         var writer = new SessionToolExposureWriter(
             manager.Object, NullLogger<SessionToolExposureWriter>.Instance);
 
@@ -67,8 +67,8 @@ public class SessionToolExposureWriterTests
         var session = SessionData.Create();
         session.ToolExposure.AddPending(["tool_a"]);
         var manager = new Mock<ISessionManager>();
-        manager.Setup(m => m.Get(session.Id)).Returns((SessionData?)null);
-        manager.Setup(m => m.LoadAsync(session.Id)).ReturnsAsync(session);
+        manager.Setup(m => m.TryGetOrLoadAsync(session.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
         var writer = new SessionToolExposureWriter(
             manager.Object, NullLogger<SessionToolExposureWriter>.Instance);
 

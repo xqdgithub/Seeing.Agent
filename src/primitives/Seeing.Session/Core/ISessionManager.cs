@@ -53,8 +53,21 @@ namespace Seeing.Session.Core
         /// </summary>
         Task FlushAsync(string id, CancellationToken ct = default);
 
-        /// <summary>从存储加载会话</summary>
+        /// <summary>
+        /// 从存储加载会话，并<b>覆盖</b>内存缓存中的同名实例。
+        /// <para>⚠️ 这是一个「读 + 替换缓存」的操作：对正在执行的会话调用会把执行循环持有的实例替换成磁盘旧副本，
+        /// 导致后续消息丢失或状态回退。</para>
+        /// <para>执行期只读当前会话请用 <see cref="Get"/>；需要「内存优先、缺失再加载」请用
+        /// <see cref="TryGetOrLoadAsync"/> 或 <see cref="GetOrLoadAsync"/>。</para>
+        /// </summary>
         Task<SessionData?> LoadAsync(string id);
+
+        /// <summary>
+        /// 获取会话：优先返回内存缓存中的<b>活实例</b>；内存缺失时才从存储加载并缓存；
+        /// 两者都没有时返回 <see langword="null"/>（不创建、不抛异常）。
+        /// <para>这是「只读查询 + 缺失加载」的推荐入口，绝不会替换已存在的内存实例。</para>
+        /// </summary>
+        Task<SessionData?> TryGetOrLoadAsync(string sessionId, CancellationToken ct = default);
 
         // === 新增方法 ===
 

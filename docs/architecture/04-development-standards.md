@@ -104,6 +104,7 @@ Core 程序集内命名空间须为 `Seeing.Agent.Core.*`（契约仍可在 Abst
 | 宿主（WebUI/TUI/Gateway）直接写 `SessionData` 消息内容 | 只读投影；写入统一由 Hosting 权威路径（`ChatEventTracker`）完成 |
 | 把 exposure/deferred（分层暴露、目录）当权限门 | exposure 只控制本轮 `tools[]`/目录可见性；调用许可恒走 `IPermissionAuthorizer` 决策链；目录正文不得含允许/拒绝裁决 |
 | 为新增 prompt 分节改 `PromptBuilder` 硬编码锚点 | 贡献者自述 `Heading`+`Placement`；builder 不认识具体分节名 |
+| 执行期用 `ISessionManager.LoadAsync` 读取当前会话 | 用 `Get`（内存活实例）或 `TryGetOrLoadAsync`/`GetOrLoadAsync`（内存优先）；裸 `LoadAsync` 会覆盖缓存 |
 
 ### 5.0 Code Mode（未来项）前置约束
 
@@ -131,6 +132,13 @@ Core 程序集内命名空间须为 `Seeing.Agent.Core.*`（契约仍可在 Abst
 5. **例外**：宿主在**非执行期**注入的会话级系统消息（如 Gateway 取消/错误横幅 `AddMessage`、会话重置）与 `SelectedModel/SelectedAcpMode` 用户显式选择不属执行期投影，仍由宿主负责。
 
 详见 [`2026-10-09-single-writer-eventstream-design.md`](../superpowers/specs/2026-10-09-single-writer-eventstream-design.md)。
+
+### 5.3 会话读取契约（内存优先）
+
+- `Get(id)`：只读内存缓存，返回执行中的**活实例**；执行期读取当前会话的唯一安全入口。
+- `TryGetOrLoadAsync(id, ct)`：内存优先；缺失时才从存储加载；都不存在返回 `null`（不创建、不抛）。
+- `GetOrLoadAsync(id, ct)`：同上，但缺失时抛异常。
+- **禁止用 `LoadAsync` 读取执行中的会话**：它会把磁盘副本写回 `_sessionDataCache`，替换执行循环持有的活实例；而 `SaveAsync` 从缓存取对象落盘，导致后续消息与工具终态丢失（典型表现：UI 工具卡片永久停在「等待」）。仅在确认目标不在内存、或确实需要显式重载时使用。
 
 ## 6. 常见错误 PR 对照
 

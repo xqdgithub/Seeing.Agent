@@ -524,7 +524,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         if (string.IsNullOrWhiteSpace(sessionId) || job.Dispatch.Target.Conversation is { IsComplete: true })
             return false;
 
-        var session = _sessions.Get(sessionId) ?? await _sessions.LoadAsync(sessionId).ConfigureAwait(false);
+        var session = await _sessions.TryGetOrLoadAsync(sessionId).ConfigureAwait(false);
         return ConversationSpec.TryCopyFromRoute(job.Dispatch.Target, session?.ChannelRoute);
     }
 

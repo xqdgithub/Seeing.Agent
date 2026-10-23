@@ -112,7 +112,8 @@ public class TaskToolAutoApproveInheritanceTests
             SessionManager.Setup(s => s.GetOrLoadAsync(ParentId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Parent);
             SessionManager.Setup(s => s.Get(Child.Id)).Returns(Child);
-            SessionManager.Setup(s => s.LoadAsync(It.IsAny<string>())).ReturnsAsync((SessionData?)null);
+            SessionManager.Setup(s => s.TryGetOrLoadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((string id, CancellationToken _) => id == Child.Id ? Child : null);
             SessionManager.Setup(s => s.AddMessageAsync(
                     It.IsAny<string>(),
                     It.IsAny<SessionMessage>(),

@@ -119,7 +119,7 @@ public sealed class SessionDirectory : ISessionDirectory
     /// <inheritdoc/>
     public async Task RenameAsync(string sessionId, string newTitle, CancellationToken ct = default)
     {
-        var session = _sessionManager.Get(sessionId) ?? await _sessionManager.LoadAsync(sessionId);
+        var session = await _sessionManager.TryGetOrLoadAsync(sessionId);
         if (session == null)
             return;
 
@@ -131,7 +131,7 @@ public sealed class SessionDirectory : ISessionDirectory
     /// <inheritdoc/>
     public async Task<SessionData> BranchAsync(string sessionId, string? title = null, CancellationToken ct = default)
     {
-        var sourceSession = _sessionManager.Get(sessionId) ?? await _sessionManager.LoadAsync(sessionId);
+        var sourceSession = await _sessionManager.TryGetOrLoadAsync(sessionId);
         if (sourceSession == null)
         {
             throw new InvalidOperationException($"Session '{sessionId}' not found");

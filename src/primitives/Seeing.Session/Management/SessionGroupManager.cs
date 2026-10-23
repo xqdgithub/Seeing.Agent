@@ -55,8 +55,7 @@ namespace Seeing.Session.Management
                 if (existing != null)
                     return existing.Clone();
 
-                var session = _sessions.Get(sessionId)
-                    ?? await _sessions.LoadAsync(sessionId).ConfigureAwait(false)
+                var session = await _sessions.TryGetOrLoadAsync(sessionId).ConfigureAwait(false)
                     ?? throw new InvalidOperationException($"Session not found: {sessionId}");
 
                 var group = NewSingleMemberGroup(session);
@@ -413,7 +412,7 @@ namespace Seeing.Session.Management
             var result = new List<SessionData>();
             foreach (var id in childIds.Distinct())
             {
-                var session = _sessions.Get(id) ?? await _sessions.LoadAsync(id).ConfigureAwait(false);
+                var session = await _sessions.TryGetOrLoadAsync(id).ConfigureAwait(false);
                 if (session != null)
                     result.Add(session);
             }
@@ -627,8 +626,7 @@ namespace Seeing.Session.Management
             CancellationToken ct = default)
         {
             var parentGroup = await EnsureForSessionAsync(parentId, ct).ConfigureAwait(false);
-            var parent = _sessions.Get(parentId)
-                ?? await _sessions.LoadAsync(parentId).ConfigureAwait(false)
+            var parent = await _sessions.TryGetOrLoadAsync(parentId).ConfigureAwait(false)
                 ?? throw new InvalidOperationException($"Session not found: {parentId}");
 
             var child = _sessions.Create(parent.PartitionId, agentName, scenario);
@@ -674,8 +672,7 @@ namespace Seeing.Session.Management
         /// <inheritdoc/>
         public async Task<SessionData> ForkSessionAsync(string sessionId, string? title, CancellationToken ct = default)
         {
-            var source = _sessions.Get(sessionId)
-                ?? await _sessions.LoadAsync(sessionId).ConfigureAwait(false)
+            var source = await _sessions.TryGetOrLoadAsync(sessionId).ConfigureAwait(false)
                 ?? throw new InvalidOperationException($"Session not found: {sessionId}");
 
             var forked = await _forker.ForkAsync(sessionId, title, ct).ConfigureAwait(false);
@@ -720,8 +717,7 @@ namespace Seeing.Session.Management
         /// <inheritdoc/>
         public async Task<SessionData> CreateBackupForkAsync(string sessionId, string label, CancellationToken ct = default)
         {
-            var source = _sessions.Get(sessionId)
-                ?? await _sessions.LoadAsync(sessionId).ConfigureAwait(false)
+            var source = await _sessions.TryGetOrLoadAsync(sessionId).ConfigureAwait(false)
                 ?? throw new InvalidOperationException($"Session not found: {sessionId}");
 
             var forked = await _forker.ForkAsync(sessionId, label, ct).ConfigureAwait(false);
@@ -756,8 +752,7 @@ namespace Seeing.Session.Management
             string sourceSessionId, string? agent, string? title, string? scenario,
             CancellationToken ct = default)
         {
-            var source = _sessions.Get(sourceSessionId)
-                ?? await _sessions.LoadAsync(sourceSessionId).ConfigureAwait(false)
+            var source = await _sessions.TryGetOrLoadAsync(sourceSessionId).ConfigureAwait(false)
                 ?? throw new InvalidOperationException($"Session not found: {sourceSessionId}");
 
             var successor = _sessions.Create(

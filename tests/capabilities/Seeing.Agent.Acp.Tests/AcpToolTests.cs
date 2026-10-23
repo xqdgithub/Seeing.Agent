@@ -341,6 +341,9 @@ public sealed class FakeSessionManager : ISessionManager
     public Task<SessionData?> LoadAsync(string id) =>
         Task.FromResult(Get(id));
 
+    public Task<SessionData?> TryGetOrLoadAsync(string sessionId, CancellationToken ct = default) =>
+        Task.FromResult(Get(sessionId));
+
     public Task AddMessageAsync(string sessionId, SessionMessage message, CancellationToken ct = default) =>
         Task.CompletedTask;
 

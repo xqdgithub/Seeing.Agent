@@ -87,8 +87,7 @@ public sealed class SessionHandoffTool : SessionToolBase
             && source.Metadata.TryGetValue(inflightKey, out var inflightTarget)
             && !string.IsNullOrEmpty(inflightTarget))
         {
-            var existing = Sessions.Get(inflightTarget)
-                ?? await Sessions.LoadAsync(inflightTarget).ConfigureAwait(false);
+            var existing = await Sessions.TryGetOrLoadAsync(inflightTarget).ConfigureAwait(false);
             if (existing is not null)
             {
                 var replay = Success(

@@ -63,8 +63,7 @@ public sealed class SessionToolSchemaResolver : ISessionToolSchemaResolver
         using var scope = _rootProvider.CreateScope();
         var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
         // 只读：会话不存在时返回空视图，绝不新建会话。
-        var session = sessionManager.Get(sessionId)
-            ?? await sessionManager.LoadAsync(sessionId).ConfigureAwait(false);
+        var session = await sessionManager.TryGetOrLoadAsync(sessionId).ConfigureAwait(false);
         if (session is null)
             return SessionToolSchemaResolution.Empty;
 

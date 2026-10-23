@@ -767,6 +767,24 @@ namespace Seeing.Session.Management
         // === 原子操作方法（确保缓存一致性） ===
 
         /// <summary>
+        /// 获取会话：优先内存活实例，缺失时才从存储加载；都没有返回 null（不创建、不抛）。
+        /// <para>执行期只读请用本方法，不要直接调用 <see cref="LoadAsync"/>（后者会覆盖缓存）。</para>
+        /// </summary>
+        public async Task<SessionData?> TryGetOrLoadAsync(string sessionId, CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(sessionId))
+                return null;
+
+            ct.ThrowIfCancellationRequested();
+
+            var cached = Get(sessionId);
+            if (cached != null)
+                return cached;
+
+            return await LoadAsync(sessionId).ConfigureAwait(false);
+        }
+
+        /// <summary>
         /// 获取或加载会话（原子操作）
         /// <para>优先从内存缓存获取，若不存在则从存储加载。</para>
         /// <para>这是获取 Session 的推荐方法，确保所有组件使用同一实例。</para>

@@ -104,7 +104,7 @@ public class TaskStatusTool : ToolBase
         sb.AppendLine($"task_id: {taskId}");
         sb.AppendLine($"state: {state}");
 
-        var session = _sessionManager.Get(taskId) ?? await _sessionManager.LoadAsync(taskId);
+        var session = await _sessionManager.TryGetOrLoadAsync(taskId);
         var allAssistants = session?.GetActiveMessages()
             .Where(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase)
                         && !m.IsSummary)
@@ -136,7 +136,7 @@ public class TaskStatusTool : ToolBase
 
     private async Task<ToolResult> FallbackFromSessionAsync(string taskId)
     {
-        var session = _sessionManager.Get(taskId) ?? await _sessionManager.LoadAsync(taskId);
+        var session = await _sessionManager.TryGetOrLoadAsync(taskId);
         if (session == null || session.Kind != SessionKind.SubAgent)
             return Success("not_found", $"task_id: {taskId}\nstate: not_found");
 

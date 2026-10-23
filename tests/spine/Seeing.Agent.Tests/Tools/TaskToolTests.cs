@@ -267,7 +267,8 @@ public class TaskToolTests
             SessionManager.Setup(s => s.GetOrLoadAsync(ParentId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new SessionData { Id = ParentId, Kind = SessionKind.Root });
             SessionManager.Setup(s => s.Get(Child.Id)).Returns(Child);
-            SessionManager.Setup(s => s.LoadAsync(It.IsAny<string>())).ReturnsAsync((SessionData?)null);
+            SessionManager.Setup(s => s.TryGetOrLoadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((string id, CancellationToken _) => id == Child.Id ? Child : null);
 
             GroupManager = new Mock<ISessionGroupManager>();
             GroupManager.Setup(g => g.CreateChildAsync(
@@ -488,7 +489,7 @@ public class TaskStatusToolTests
             var runtime = new StubRuntime(this);
             var sessions = new Mock<ISessionManager>();
             sessions.Setup(s => s.Get(Child.Id)).Returns(Child);
-            sessions.Setup(s => s.LoadAsync(Child.Id)).ReturnsAsync(Child);
+            sessions.Setup(s => s.TryGetOrLoadAsync(Child.Id, It.IsAny<CancellationToken>())).ReturnsAsync(Child);
             var groups = new Mock<ISessionGroupManager>();
             groups.Setup(g => g.ListChildrenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new List<SessionData> { Child });

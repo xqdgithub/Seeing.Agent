@@ -37,8 +37,7 @@ public sealed class SessionToolExposureWriter : ISessionToolExposureWriter
 
         try
         {
-            var session = _sessionManager.Get(sessionId)
-                ?? await _sessionManager.LoadAsync(sessionId).ConfigureAwait(false);
+            var session = await _sessionManager.TryGetOrLoadAsync(sessionId).ConfigureAwait(false);
             if (session is null)
             {
                 _logger?.LogDebug("提升待生效发现：会话不可用，跳过: {SessionId}", sessionId);

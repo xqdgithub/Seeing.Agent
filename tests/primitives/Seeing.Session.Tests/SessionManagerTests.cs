@@ -464,6 +464,66 @@ namespace Seeing.Session.Tests
             result.Should().BeNull();
         }
 
+        // === TryGetOrLoadAsync 测试 ===
+
+        [Fact]
+        public async Task TryGetOrLoadAsync_ShouldReturnCachedInstance_WithoutTouchingStore()
+        {
+            // Arrange
+            var session = SessionData.Create();
+            _sessionManager.Register(session);
+
+            // Act
+            var result = await _sessionManager.TryGetOrLoadAsync(session.Id);
+
+            // Assert
+            result.Should().BeSameAs(session);
+            _mockStore.Verify(s => s.LoadAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task TryGetOrLoadAsync_ShouldLoadAndCache_WhenMissingInMemory()
+        {
+            // Arrange
+            var stored = SessionData.Create();
+            stored.Id = "load-once";
+            _mockStore.Setup(s => s.LoadAsync("load-once")).ReturnsAsync(stored);
+
+            // Act
+            var first = await _sessionManager.TryGetOrLoadAsync("load-once");
+            var second = await _sessionManager.TryGetOrLoadAsync("load-once");
+
+            // Assert
+            first.Should().BeSameAs(stored);
+            second.Should().BeSameAs(first);
+            _sessionManager.Get("load-once").Should().BeSameAs(stored);
+            _mockStore.Verify(s => s.LoadAsync("load-once"), Times.Once);
+        }
+
+        [Fact]
+        public async Task TryGetOrLoadAsync_WhenMissingEverywhere_ShouldReturnNull()
+        {
+            // Arrange
+            _mockStore.Setup(s => s.LoadAsync("absent")).ReturnsAsync((SessionData?)null);
+
+            // Act
+            var result = await _sessionManager.TryGetOrLoadAsync("absent");
+
+            // Assert
+            result.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task TryGetOrLoadAsync_WithEmptyId_ShouldReturnNull()
+        {
+            // Act
+            var result = await _sessionManager.TryGetOrLoadAsync("");
+
+            // Assert
+            result.Should().BeNull();
+            _mockStore.Verify(s => s.LoadAsync(It.IsAny<string>()), Times.Never);
+        }
+
         [Fact]
         public void SessionManager_WithNullDependencies_ShouldWorkForBasicOperations()
         {

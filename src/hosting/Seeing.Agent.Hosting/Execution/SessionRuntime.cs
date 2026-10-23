@@ -632,8 +632,7 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         {
             using var scope = _services.CreateScope();
             var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
-            var session = sessionManager.Get(sessionId)
-                ?? await sessionManager.LoadAsync(sessionId).ConfigureAwait(false);
+            var session = await sessionManager.TryGetOrLoadAsync(sessionId).ConfigureAwait(false);
             if (session is null)
                 return 0;
 
@@ -683,7 +682,7 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     {
                         try
                         {
-                            var child = sessionManager.Get(childId) ?? await sessionManager.LoadAsync(childId).ConfigureAwait(false);
+                            var child = await sessionManager.TryGetOrLoadAsync(childId).ConfigureAwait(false);
                             if (child is null)
                                 continue;
 
@@ -878,7 +877,7 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         using var scope = _services.CreateScope();
         var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
 
-        var session = sessionManager.Get(sessionId) ?? await sessionManager.LoadAsync(sessionId).ConfigureAwait(false);
+        var session = await sessionManager.TryGetOrLoadAsync(sessionId).ConfigureAwait(false);
         if (session?.Messages == null)
             return 0;
 

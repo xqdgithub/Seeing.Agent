@@ -111,8 +111,7 @@ public class TaskTool : ToolBase
                 if (string.IsNullOrEmpty(taskId))
                     return Failure("task_id 参数不能为空字符串，不传此参数以创建新任务");
 
-                session = _sessionManager.Get(taskId)
-                    ?? await _sessionManager.LoadAsync(taskId)
+                session = await _sessionManager.TryGetOrLoadAsync(taskId)
                     ?? throw new InvalidOperationException($"未找到 task_id: {taskId}");
 
                 if (session.Kind != SessionKind.SubAgent)
@@ -213,7 +212,7 @@ public class TaskTool : ToolBase
                     {
                         // 投递判据 = 子自身终止原因：仅当子因父停止级联停止时不投递；
                         // 其它终态（完成/失败/被 interrupt 等）一律投递。
-                        var child = _sessionManager.Get(childId) ?? await _sessionManager.LoadAsync(childId);
+                        var child = await _sessionManager.TryGetOrLoadAsync(childId);
                         if (child == null)
                             return;
 

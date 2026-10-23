@@ -144,16 +144,17 @@ public class SessionChannelTargetResolverTests
     public async Task ResolveSessionTargetAsync_ShouldPreferInMemorySession_WithoutReloading()
     {
         var sessions = new Mock<ISessionManager>();
-        sessions.Setup(s => s.Get("s1")).Returns(new SessionData
-        {
-            Id = "s1",
-            ChannelRoute = new SessionChannelRoute
+        sessions.Setup(s => s.TryGetOrLoadAsync("s1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SessionData
             {
-                ChannelId = "qq",
-                Kind = "group",
-                ExternalId = "g1",
-            },
-        });
+                Id = "s1",
+                ChannelRoute = new SessionChannelRoute
+                {
+                    ChannelId = "qq",
+                    Kind = "group",
+                    ExternalId = "g1",
+                },
+            });
         var groups = new Mock<ISessionGroupManager>();
         var resolver = new SessionChannelTargetResolver(sessions.Object, groups.Object);
 
@@ -161,7 +162,8 @@ public class SessionChannelTargetResolverTests
 
         result.Target.Should().NotBeNull();
         result.Target!.Conversation.ExternalId.Should().Be("g1");
-        // 正在执行的会话必须来自内存，不能被 LoadAsync 的磁盘副本覆盖
+        // 只走「内存优先」入口，绝不触发会覆盖缓存的 LoadAsync
+        sessions.Verify(s => s.TryGetOrLoadAsync("s1", It.IsAny<CancellationToken>()), Times.Once);
         sessions.Verify(s => s.LoadAsync(It.IsAny<string>()), Times.Never);
     }
 
@@ -170,8 +172,8 @@ public class SessionChannelTargetResolverTests
         Dictionary<string, string?> parents)
     {
         var sessions = new Mock<ISessionManager>();
-        sessions.Setup(s => s.LoadAsync(It.IsAny<string>()))
-            .ReturnsAsync((string id) =>
+        sessions.Setup(s => s.TryGetOrLoadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string id, CancellationToken _) =>
                 routes.TryGetValue(id, out var route)
                     ? new SessionData { Id = id, ChannelRoute = route }
                     : parents.ContainsKey(id) ? new SessionData { Id = id } : null);

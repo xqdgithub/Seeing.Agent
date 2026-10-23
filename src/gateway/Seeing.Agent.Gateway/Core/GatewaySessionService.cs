@@ -41,7 +41,7 @@ public sealed class GatewaySessionService
         if (string.IsNullOrWhiteSpace(sessionId))
             return null;
 
-        var session = _sessionManager.Get(sessionId) ?? await _sessionManager.LoadAsync(sessionId).ConfigureAwait(false);
+        var session = await _sessionManager.TryGetOrLoadAsync(sessionId).ConfigureAwait(false);
         if (session == null)
             return null;
 

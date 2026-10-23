@@ -246,7 +246,7 @@ public class SessionToolSchemaResolverExposureTests
         catalog.ReplaceEnabled(["git", "memory", "filesystem", "basic"]);
 
         var sessionManager = new Mock<ISessionManager>();
-        sessionManager.Setup(m => m.Get(session.Id)).Returns(session);
+        sessionManager.Setup(m => m.TryGetOrLoadAsync(session.Id, It.IsAny<CancellationToken>())).ReturnsAsync(session);
 
         var services = new ServiceCollection();
         services.AddSingleton(sessionManager.Object);

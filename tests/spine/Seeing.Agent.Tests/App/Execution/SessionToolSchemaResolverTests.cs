@@ -94,8 +94,8 @@ public class SessionToolSchemaResolverTests
         // 端口只读：会话不存在时返回空视图，绝不新建会话。
         var session = SessionData.Create(scenario: "code");
         var sessionManager = new Mock<ISessionManager>();
-        sessionManager.Setup(m => m.Get(It.IsAny<string>())).Returns((SessionData?)null);
-        sessionManager.Setup(m => m.LoadAsync(It.IsAny<string>())).ReturnsAsync((SessionData?)null);
+        sessionManager.Setup(m => m.TryGetOrLoadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SessionData?)null);
 
         var services = await BuildServicesAsync(sessionManager: sessionManager, withCatalog: true);
         var resolver = CreateResolver(services);
@@ -111,7 +111,7 @@ public class SessionToolSchemaResolverTests
     private static Mock<ISessionManager> MockSessionManager(SessionData session)
     {
         var sessionManager = new Mock<ISessionManager>();
-        sessionManager.Setup(m => m.Get(session.Id)).Returns(session);
+        sessionManager.Setup(m => m.TryGetOrLoadAsync(session.Id, It.IsAny<CancellationToken>())).ReturnsAsync(session);
         return sessionManager;
     }
 
