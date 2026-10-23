@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Gateway.Models;
 using Seeing.Gateway.WeCom.Connection;
@@ -8,6 +9,17 @@ namespace Seeing.Gateway.WeCom.Tests;
 
 public class WeComChannelAdapterTests
 {
+    [Fact]
+    public void Capabilities_ShouldDeclareNoAttachmentsAndNoReplyAnchor()
+    {
+        var adapter = CreateAdapter();
+
+        // 一期不声明附件能力（null = 不支持），入站帧无失效判定故不声明回复锚点。
+        adapter.Capabilities.Attachments.Should().BeNull();
+        adapter.Capabilities.AttachmentsByConversationKind.Should().BeNull();
+        adapter.Capabilities.SupportsReplyAnchor.Should().BeFalse();
+    }
+
     [Theory]
     [InlineData("single", ConversationKind.Direct, "user_001", "user_001")]
     [InlineData("group", ConversationKind.Group, "member_1", "group_1")]
@@ -110,6 +122,16 @@ public class WeComChannelAdapterTests
         request.Conversation.ExternalId.Should().Be("group_1");
         request.ReplyToMsgId.Should().Be("msg_1");
         request.SessionId.Should().Be("wecom_group_group_1");
+    }
+
+    private static WeComChannelAdapter CreateAdapter()
+    {
+        var governor = new WeComOutboundGovernor();
+        var outbound = new WeComOutboundChannel(governor, NullLogger<WeComOutboundChannel>.Instance);
+        var session = new WeComAibotSession(NullLogger<WeComAibotSession>.Instance);
+        var connection = new WeComConnectionManager(session, outbound, NullLogger<WeComConnectionManager>.Instance);
+        var client = new WeComAibotWsClient(connection);
+        return new WeComChannelAdapter(outbound, client, NullLogger<WeComChannelAdapter>.Instance);
     }
 
     private static DeliveryTarget Target(ConversationKind kind, string? replyTo, string? recipient = "member1")
