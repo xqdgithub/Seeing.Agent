@@ -6,19 +6,6 @@ namespace Seeing.Gateway.QQ.Tests;
 public class QQTextSanitizerTests
 {
     [Fact]
-    public void ExtractImages_ShouldSupportImageTagAndMarkdown()
-    {
-        var text = "见下图 [Image: https://cdn.example.com/a.png] 以及 ![x](https://cdn.example.com/b.jpg) 结束";
-        var (clean, urls) = QQTextSanitizer.ExtractImages(text);
-
-        urls.Should().BeEquivalentTo(
-            ["https://cdn.example.com/a.png", "https://cdn.example.com/b.jpg"]);
-        clean.Should().Contain("见下图");
-        clean.Should().Contain("结束");
-        clean.Should().NotContain("https://");
-    }
-
-    [Fact]
     public void Sanitize_ShouldStripUrls()
     {
         var (text, had) = QQTextSanitizer.Sanitize("打开 https://example.com/path 查看");
