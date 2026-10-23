@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Quartz;
@@ -175,7 +176,68 @@ public class AgentJobToolSchemasTests
         }
     }
 
-    private static AgentJob CreateJob(IAgentExecutor executor, IServiceProvider services)
+    [Fact]
+    public async Task Execute_AgentTask_WithoutExposureWriter_ShouldWarn()
+    {
+        // Arrange：未注册写出口（自定义宿主只组合 Scheduler）→ 发现永远不提升，必须留下可见告警。
+        var resolver = new Mock<ISessionToolSchemaResolver>();
+        resolver
+            .Setup(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<AgentDefinition>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SessionToolSchemaResolution.Empty);
+
+        var executor = new Mock<IAgentExecutor>();
+        executor
+            .Setup(e => e.ExecuteAsync(
+                It.IsAny<AgentDefinition>(),
+                It.IsAny<IReadOnlyList<ChatMessage>>(),
+                It.IsAny<AgentContext>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(() => OneEvent(new StreamCompleteEvent
+            {
+                SessionId = "s-cron",
+                Message = new ChatMessage { Role = ChatRole.Assistant, Content = "done" }
+            }));
+
+        var services = new ServiceCollection()
+            .AddSingleton(resolver.Object)
+            .BuildServiceProvider();
+
+        var logger = new RecordingLogger<AgentJob>();
+        var jobContextMock = CreateJobContextMock();
+        var job = CreateJob(executor.Object, services, logger);
+
+        // Act
+        await job.Execute(jobContextMock.Object);
+
+        // Assert
+        logger.Warnings.Should().Contain(m => m.Contains("ISessionToolExposureWriter"));
+    }
+
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+
+        public IEnumerable<string> Warnings =>
+            Entries.Where(e => e.Level == LogLevel.Warning).Select(e => e.Message);
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+            where TState : notnull
+            => Entries.Add((logLevel, formatter(state, exception)));
+    }
+
+    private static AgentJob CreateJob(
+        IAgentExecutor executor,
+        IServiceProvider services,
+        ILogger<AgentJob>? logger = null)
     {
         var agentRegistry = new Mock<IAgentRegistry>();
         agentRegistry
@@ -227,7 +289,7 @@ public class AgentJobToolSchemasTests
             reminders.Object,
             dispatcher.Object,
             [],
-            NullLogger<AgentJob>.Instance);
+            logger ?? NullLogger<AgentJob>.Instance);
     }
 
     private static Mock<IJobExecutionContext> CreateJobContextMock()

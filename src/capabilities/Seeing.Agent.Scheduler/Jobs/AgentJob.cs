@@ -383,7 +383,7 @@ public class AgentJob : IJob
     /// 否则 cron 会话里 tool_search 的发现永远不会生效。
     /// </para>
     /// </summary>
-    internal static async Task<Seeing.Agent.Abstractions.Execution.SessionToolSchemaResolution?> ResolveToolSchemasAsync(
+    internal static async Task<SessionToolSchemaResolution?> ResolveToolSchemasAsync(
         IServiceProvider services,
         string sessionId,
         AgentDefinition agent,
@@ -392,9 +392,17 @@ public class AgentJob : IJob
     {
         // 轮首提升：cron 会话里 tool_search 的发现必须在下一次执行内联（与主链同语义）。
         // 会话不存在/加载失败时端口返回 false 且不抛，保持“旁路不阻断任务”。
-        var exposureWriter = services.GetService<Seeing.Agent.Abstractions.Execution.ISessionToolExposureWriter>();
-        if (exposureWriter is not null)
+        var exposureWriter = services.GetService<ISessionToolExposureWriter>();
+        if (exposureWriter is null)
+        {
+            logger.LogWarning(
+                "ISessionToolExposureWriter 未注册：Scheduler 旁路的发现不会被提升，tool_search 命中将无法在下次执行内联: SessionId={SessionId}",
+                sessionId);
+        }
+        else
+        {
             await exposureWriter.PromotePendingAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        }
 
         var resolver = services.GetService<ISessionToolSchemaResolver>();
         if (resolver is null)
