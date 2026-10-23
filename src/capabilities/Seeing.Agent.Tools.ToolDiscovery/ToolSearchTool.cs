@@ -111,10 +111,16 @@ public sealed class ToolSearchTool : ToolBase
         if (context.Agent is null)
             return Failure("需要 Agent 上下文才能确定本会话的工具视图");
 
-        // 工具视图唯一来源：结算端口（只读）。语料 = 本轮未内联的工具。
-        var settlement = await _resolver
-            .ResolveAsync(context.SessionId, context.Agent, ct).ConfigureAwait(false);
-        var corpus = settlement.DeferredTools;
+        // 工具视图唯一来源：优先执行级冻结快照（能搜到 == 能调），
+        // 仅非执行器宿主（未透传作用域）才回退现场结算。
+        SessionToolSchemaResolution? settlement = null;
+        if (context.ToolScope is null)
+        {
+            settlement = await _resolver
+                .ResolveAsync(context.SessionId, context.Agent, ct).ConfigureAwait(false);
+        }
+
+        var corpus = context.ToolScope?.DeferredTools ?? settlement!.DeferredTools;
 
         if (corpus is null || corpus.Count == 0)
         {
@@ -196,7 +202,7 @@ public sealed class ToolSearchTool : ToolBase
                     ? "\n   已加载：本次执行内可直接调用；下一次执行起自动内联:"
                     : "\n   已登记：下一次执行起可直接调用（本次执行内暂不可调用）:"
                 : "\n   警告：发现态登记失败（会话不可用），该工具本次及后续请求均不可直接调用:");
-            var schemaText = GetFullDefinition(entry.Id, settlement);
+            var schemaText = GetFullDefinition(entry);
             sb.Append('\n').Append(schemaText);
         }
 
@@ -220,15 +226,10 @@ public sealed class ToolSearchTool : ToolBase
         return result;
     }
 
-    private static string GetFullDefinition(string toolId, SessionToolSchemaResolution settlement)
+    private static string GetFullDefinition(ExposedTool entry)
     {
-        // full 定义直接取自本轮视图，不再回头查注册表（避免第二条 schema 路径）
-        var hit = settlement.Tools.FirstOrDefault(t =>
-            string.Equals(t.Id, toolId, StringComparison.OrdinalIgnoreCase));
-        if (hit is null)
-            return "   (本轮视图中未找到该工具定义)";
-
-        return "   " + JsonSerializer.Serialize(hit.Schema);
+        // full 定义直接取自本执行快照，不再回头查注册表或重新结算（避免第二条 schema 路径）。
+        return "   " + JsonSerializer.Serialize(entry.Schema);
     }
 
     private static Dictionary<string, object> BuildMetadata(

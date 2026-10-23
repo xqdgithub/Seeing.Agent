@@ -36,6 +36,9 @@ public class ToolSearchToolTests
                 It.IsAny<string>(), It.IsAny<AgentDefinition>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(settlement);
 
+        // 执行器会把同一份结算冻结进作用域；测试夹具同步注入，保证语料与真实链路一致。
+        _scope.Deferred = deferred;
+
         _store
             .Setup(s => s.Add(It.IsAny<string>(), It.IsAny<IEnumerable<string>>()))
             .Returns(true);
@@ -300,7 +303,25 @@ public class ToolSearchToolTests
     }
 
     [Fact]
-    public async Task FullDetail_WithoutExecutionScope_ShouldPromiseOnlyLaterExecutions()
+    public async Task Corpus_ShouldPreferExecutionScopeSnapshot()
+    {
+        // 执行作用域存在时，检索语料必须取本轮冻结快照，而不是现场重新结算。
+        var scope = new FakeScopeWithDeferred(Entry("from_scope"));
+        var context = new ToolContext
+        {
+            SessionId = "s1",
+            Agent = new AgentDefinition { Name = "build" },
+            ToolScope = scope
+        };
+        var tool = CreateTool(Entry("from_resolver"));
+
+        var result = await tool.ExecuteAsync(Args(new { }), context);
+
+        result.Output.Should().Contain("from_scope").And.NotContain("from_resolver");
+    }
+
+    [Fact]
+    public async Task DetailFull_WithoutExecutionScope_ShouldPromiseOnlyLaterExecutions()
     {
         // 非执行器路径（未透传作用域）不得承诺"本次执行可用"，否则就是假消息。
         var tool = CreateTool(Entry("file_read"));
@@ -343,7 +364,11 @@ public class ToolSearchToolTests
     {
         private readonly List<string> _loaded = new();
 
+        public ExposedTool[] Deferred { get; set; } = [];
+
         public IReadOnlyList<string> LoadedIds => _loaded;
+
+        public IReadOnlyList<ExposedTool> DeferredTools => Deferred;
 
         public bool IsCallable(string toolId) =>
             _loaded.Contains(toolId, StringComparer.OrdinalIgnoreCase);
@@ -364,5 +389,19 @@ public class ToolSearchToolTests
 
             return added;
         }
+    }
+
+    /// <summary>带冻结语料的执行级作用域替身。</summary>
+    private sealed class FakeScopeWithDeferred(params ExposedTool[] deferred) : IExecutionToolScope
+    {
+        public IReadOnlyList<string> LoadedIds => [];
+
+        public IReadOnlyList<ExposedTool> DeferredTools => deferred;
+
+        public bool IsCallable(string toolId) => false;
+
+        public bool IsDeferred(string toolId) => true;
+
+        public int TryLoad(IEnumerable<string> toolIds) => 0;
     }
 }
