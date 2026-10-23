@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Seeing.Agent.HostComposition\Seeing.Agent.HostComposition.csproj" />
+    <ProjectReference Include="..\..\src\support\Seeing.Agent.Tools.Support\Seeing.Agent.Tools.Support.csproj" />
     <ProjectReference Include="..\..\src\hosting\Seeing.Agent.Hosting\Seeing.Agent.Hosting.csproj" />
     <ProjectReference Include="..\..\src\hosting\Seeing.Agent.Hosting.Tui\Seeing.Agent.Hosting.Tui.csproj" />
     <ProjectReference Include="..\..\src\spine\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
