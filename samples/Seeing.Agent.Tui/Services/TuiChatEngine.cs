@@ -13,6 +13,7 @@ using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Tools.Support;
 using Seeing.Agent.Tui.Input;
 using Seeing.Agent.Tui.Rendering;
 using Seeing.Agent.Tui.Rendering.Prompts;
@@ -78,6 +79,9 @@ public sealed class TuiChatEngine
     private readonly TuiCommitLedger _ledger = new();
     private readonly HashSet<string> _dismissedPermissionRequests = new(StringComparer.Ordinal);
     private readonly List<PendingAttachment> _pendingAttachments = [];
+    private readonly IClipboardReader _clipboard;
+    private readonly System.Text.StringBuilder _pasteBuffer = new();
+    private bool _pasteActive;
 
     // 渲染选项与渲染器可热替换：/reasoning 切换时按新选项重建渲染器。
     private TuiRenderOptions _renderOptions;
@@ -143,7 +147,8 @@ public sealed class TuiChatEngine
         ILogger<TuiChatEngine>? logger = null,
         IWorkspaceProvider? workspace = null,
         Seeing.Agent.TokenBudget.IBudgetStatusNotifier? budgetNotifier = null,
-        IOptionsMonitor<SeeingAgentOptions>? seeingOptions = null)
+        IOptionsMonitor<SeeingAgentOptions>? seeingOptions = null,
+        IClipboardReader? clipboard = null)
     {
         _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
         _commands = commands ?? throw new ArgumentNullException(nameof(commands));
@@ -171,6 +176,7 @@ public sealed class TuiChatEngine
         _workspace = workspace;
         _budgetNotifier = budgetNotifier;
         _seeingOptions = seeingOptions;
+        _clipboard = clipboard ?? new UnsupportedClipboardReader();
         _hostLifetime = hostLifetime;
         _logger = logger;
     }
@@ -416,6 +422,52 @@ public sealed class TuiChatEngine
 
     private async Task<bool> HandleInputAsync(TuiKeyInput key, CancellationToken ct)
     {
+        if (key.Action == TuiInputAction.PasteStart)
+        {
+            _pasteBuffer.Clear();
+            _pasteActive = true;
+            _editor.SetPasteActive(true);
+            return false;
+        }
+
+        if (key.Action == TuiInputAction.PasteEnd)
+        {
+            _pasteActive = false;
+            _editor.SetPasteActive(false);
+            var pasted = _pasteBuffer.ToString();
+            _pasteBuffer.Clear();
+            await HandleClipboardPasteAsync(pasted, ct).ConfigureAwait(false);
+            return false;
+        }
+
+        if (_pasteActive)
+        {
+            if (key.Action == TuiInputAction.InsertText)
+            {
+                _pasteBuffer.Append(key.Text);
+                return false;
+            }
+
+            if (key.Action == TuiInputAction.InsertNewline)
+            {
+                _pasteBuffer.Append('\n');
+                return false;
+            }
+
+            if (key.Action == TuiInputAction.Cancel)
+            {
+                _pasteActive = false;
+                _pasteBuffer.Clear();
+                _editor.SetPasteActive(false);
+            }
+        }
+
+        if (key.Action == TuiInputAction.PasteFromClipboard)
+        {
+            await HandleClipboardPasteAsync(null, ct).ConfigureAwait(false);
+            return false;
+        }
+
         // 下拉优先路由（spec §6.2）：前置于 _editor.Apply，被拦键一律不 Apply（防 ↑/↓ 翻历史、Esc 清空、Enter 误推历史）。
         var dropdownVisible = _completionSelector is { Count: > 0 };
         switch (DecideCompletionRoute(dropdownVisible, key.Action))
@@ -517,20 +569,101 @@ public sealed class TuiChatEngine
         }
     }
 
+    private async Task HandleClipboardPasteAsync(string? terminalText, CancellationToken ct)
+    {
+        ForceRender();
+
+        IReadOnlyList<ClipboardFile> files;
+        try
+        {
+            files = _clipboard.ReadFiles();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "读取剪贴板文件失败");
+            return;
+        }
+
+        string? clipboardText = null;
+        ClipboardImage? image = null;
+        if (files.Count == 0 && string.IsNullOrEmpty(terminalText))
+        {
+            try
+            {
+                clipboardText = _clipboard.ReadText();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "读取剪贴板文本失败");
+            }
+
+            if (string.IsNullOrEmpty(clipboardText))
+            {
+                try
+                {
+                    image = await _clipboard.ReadImageAsync(ct).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "读取剪贴板图片失败");
+                }
+            }
+        }
+
+        var plan = TuiPastePlanner.Plan(
+            terminalText,
+            files,
+            clipboardText,
+            image,
+            ResolveWorkspaceRoot(_workspace));
+
+        foreach (var path in plan.ImageFilePaths)
+            await StageAttachmentAsync(path, ct).ConfigureAwait(false);
+
+        if (plan.Screenshot is { } shot)
+        {
+            if (shot.Size > PastedFileLayout.MaxImageBytes)
+            {
+                await CommitNoticeAsync("剪贴板图片超过 10MB，未附加", ct).ConfigureAwait(false);
+            }
+            else
+            {
+                var name = PastedFileLayout.BuildStoredFileName(
+                    "screenshot.png", DateTimeOffset.Now, Guid.NewGuid().ToString("N")[..4]);
+                await StageAttachmentAsync(
+                    new TuiAttachment(name, "image/png", Convert.ToBase64String(shot.PngBytes), shot.Size),
+                    ct).ConfigureAwait(false);
+            }
+        }
+
+        if (!string.IsNullOrEmpty(plan.Text))
+            _editor.AppendText(plan.Text);
+
+        if (plan.PromptPaths.Count > 0)
+        {
+            var block = PastedFileLayout.FormatPromptBlock(plan.PromptPaths);
+            _editor.AppendText((string.IsNullOrWhiteSpace(_editor.Text) ? string.Empty : "\n") + block);
+            await CommitNoticeAsync($"已插入 {plan.PromptPaths.Count} 个文件路径", ct).ConfigureAwait(false);
+        }
+
+        ForceRender();
+    }
+
     private async Task<bool> SubmitAsync(string text, CancellationToken ct)
     {
         // 本地附件/会话命令先于路由器拦截。
         if (await TryHandleLocalInteractiveAsync(text, ct).ConfigureAwait(false))
             return false;
 
-        var remaining = text;
-        if (_attachmentResolver.TryParseInline(text, out var parsed, out var paths))
-        {
-            foreach (var path in paths)
-                await StageAttachmentAsync(path, ct).ConfigureAwait(false);
+        var inline = TuiInlineAttachmentParser.ParseInline(
+            _attachmentResolver,
+            text,
+            ResolveWorkspaceRoot(_workspace));
 
-            remaining = parsed;
-        }
+        foreach (var imagePath in inline.ImagePaths)
+            await StageAttachmentAsync(imagePath, ct).ConfigureAwait(false);
+
+        var remaining = PastedFileLayout.AppendPromptPaths(inline.RemainingText, inline.PromptPaths);
 
         if (_commands.IsLocal(remaining))
         {
@@ -796,8 +929,20 @@ public sealed class TuiChatEngine
             return;
         }
 
-        foreach (var path in paths)
-            await StageAttachmentAsync(path, ct).ConfigureAwait(false);
+        var plan = TuiInlineAttachmentParser.Classify(
+            _attachmentResolver,
+            paths,
+            ResolveWorkspaceRoot(_workspace));
+
+        foreach (var imagePath in plan.ImagePaths)
+            await StageAttachmentAsync(imagePath, ct).ConfigureAwait(false);
+
+        if (plan.PromptPaths.Count > 0)
+        {
+            var block = PastedFileLayout.FormatPromptBlock(plan.PromptPaths);
+            _editor.AppendText((string.IsNullOrWhiteSpace(_editor.Text) ? string.Empty : "\n") + block);
+            await CommitNoticeAsync($"已插入 {plan.PromptPaths.Count} 个文件路径", ct).ConfigureAwait(false);
+        }
     }
 
     private async Task StageAttachmentAsync(string path, CancellationToken ct)
@@ -805,10 +950,7 @@ public sealed class TuiChatEngine
         try
         {
             var attachment = await _attachmentResolver.LoadAsync(path, ct).ConfigureAwait(false);
-            var display = $"{attachment.FileName} ({TuiAttachmentResolver.FormatSize(attachment.Size)})";
-            _pendingAttachments.Add(new PendingAttachment(attachment, display));
-            _editor.AddAttachment(display);
-            await CommitNoticeAsync($"已附加：{display}", ct).ConfigureAwait(false);
+            await StageAttachmentAsync(attachment, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -819,6 +961,14 @@ public sealed class TuiChatEngine
             _logger?.LogWarning(ex, "读取附件失败: {Path}", path);
             await CommitNoticeAsync($"附件读取失败：{path}（{ex.Message}）", ct).ConfigureAwait(false);
         }
+    }
+
+    private async Task StageAttachmentAsync(TuiAttachment attachment, CancellationToken ct)
+    {
+        var display = $"{attachment.FileName} ({TuiAttachmentResolver.FormatSize(attachment.Size)})";
+        _pendingAttachments.Add(new PendingAttachment(attachment, display));
+        _editor.AddAttachment(display);
+        await CommitNoticeAsync($"已附加：{display}", ct).ConfigureAwait(false);
     }
 
     private async Task HandleDetachAsync(string args, CancellationToken ct)
