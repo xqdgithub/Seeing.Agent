@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Mvc;
 using Seeing.Agent.Tools.Support;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.Services;
