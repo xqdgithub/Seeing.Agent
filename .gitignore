@@ -410,3 +410,6 @@ samples/*/plugins/*.dll
 /test-screenshots
 /deploy
 /.github
+
+# SDD 工作区（本地 scratch，不入库）
+.superpowers/
