@@ -1,7 +1,9 @@
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Tools;
 
 namespace Seeing.Agent.Abstractions.Tools;
 
@@ -59,5 +61,7 @@ public interface IToolManager
         string sessionId = "",
         CancellationToken cancellationToken = default,
         Func<IMessageEvent, ValueTask>? emitAsync = null,
-        IPermissionAuthorizer? permissionAuthorizer = null);
+        IPermissionAuthorizer? permissionAuthorizer = null,
+        AgentDefinition? agent = null,
+        IExecutionToolScope? toolScope = null);
 }

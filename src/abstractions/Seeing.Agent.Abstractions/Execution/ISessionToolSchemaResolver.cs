@@ -80,10 +80,13 @@ public sealed record SessionToolSchemaResolution(
         Tools.Any(t => string.Equals(t.Id, toolId, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// 该工具本轮是否**可直接调用**：schema 已随本视图下发（<see cref="ToolExposureMode.Inline"/>）。
-    /// <para>执行层据此做可见集校验；未下发 schema 的调用一律拒绝。</para>
+    /// 该工具的 schema 是否随本视图下发（<see cref="ToolExposureMode.Inline"/>）。
+    /// <para>
+    /// <b>注意</b>：本成员只回答“schema 是否已下发”，不等于“能否调用”。
+    /// 执行层的可调用判定以 <c>IExecutionToolScope</c> 为准（内联 ∪ 本执行已加载）。
+    /// </para>
     /// </summary>
-    public bool IsCallable(string toolId) =>
+    public bool SendsSchema(string toolId) =>
         Tools.Any(t => string.Equals(t.Id, toolId, StringComparison.OrdinalIgnoreCase)
                        && t.Mode == ToolExposureMode.Inline);
 

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
@@ -602,32 +603,19 @@ namespace Seeing.Agent.Core.Tools
         }
 
         /// <summary>
-        /// 执行工具调用（带重试支持）
-        /// <para>
-        /// 注意：权限检查由 AgentExecutor.EvaluatePermissionAsync() 统一处理，
-        /// 调用此方法前应确保权限已通过验证。
-        /// </para>
+        /// 执行工具调用（带重试支持）。
+        /// <paramref name="agent"/> 为当前执行所属 Agent，用于资源门 Agent 规则（spec §5.1 步骤 3）
+        /// 及 <see cref="ToolContext.Agent"/> 透传。
+        /// <paramref name="toolScope"/> 为执行级可见性作用域（可空）；缺失时工具拿不到“同执行放行”能力。
         /// </summary>
-        public Task<ToolResult> ExecuteAsync(
+        public async Task<ToolResult> ExecuteAsync(
             ToolCall toolCall,
             string sessionId = "",
             CancellationToken cancellationToken = default,
             Func<Seeing.Agent.Abstractions.Events.IMessageEvent, ValueTask>? emitAsync = null,
-            IPermissionAuthorizer? permissionAuthorizer = null)
-            => ExecuteAsync(toolCall, sessionId, cancellationToken, emitAsync, permissionAuthorizer, agent: null);
-
-        /// <summary>
-        /// 执行工具调用（带重试支持）。
-        /// <paramref name="agent"/> 为当前执行所属 Agent，用于资源门 Agent 规则（spec §5.1 步骤 3）
-        /// 及 <see cref="ToolContext.Agent"/> 透传。
-        /// </summary>
-        public async Task<ToolResult> ExecuteAsync(
-            ToolCall toolCall,
-            string sessionId,
-            CancellationToken cancellationToken,
-            Func<Seeing.Agent.Abstractions.Events.IMessageEvent, ValueTask>? emitAsync,
-            IPermissionAuthorizer? permissionAuthorizer,
-            AgentDefinition? agent)
+            IPermissionAuthorizer? permissionAuthorizer = null,
+            AgentDefinition? agent = null,
+            IExecutionToolScope? toolScope = null)
         {
             var toolId = toolCall.Name;
             var agentName = agent?.Name;
@@ -737,7 +725,8 @@ namespace Seeing.Agent.Core.Tools
                     EventSink = sink,
                     MetadataSink = sink,
                     Services = _serviceProvider,
-                    PermissionAuthorizer = permissionAuthorizer
+                    PermissionAuthorizer = permissionAuthorizer,
+                    ToolScope = toolScope
                 };
 
                 var toolResult = await tool.ExecuteAsync(resolvedArgs, context).ConfigureAwait(false);
