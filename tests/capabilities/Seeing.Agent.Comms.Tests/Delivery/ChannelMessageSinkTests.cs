@@ -35,7 +35,7 @@ public class ChannelMessageSinkTests
         var delivery = new OutboundDeliveryService(directory.Object, registry, new NoopDeliveryNotifier());
         var sink = new ChannelMessageSink(directory.Object, delivery);
 
-        var result = await sink.SendToUserAsync("qq", "u1", "hi");
+        var result = await sink.SendToUserAsync("qq", "u1", new OutboundContent { Text = "hi" });
 
         result.Delivered.Should().BeTrue();
         seen.Should().NotBeNull();
@@ -43,7 +43,7 @@ public class ChannelMessageSinkTests
         seen.Target.Conversation.ChannelId.Should().Be("qq");
         seen.Target.Conversation.ExternalId.Should().Be("u1");
         seen.Target.Conversation.Title.Should().Be("Ada");
-        seen.Text.Should().Be("hi");
+        seen.Content.Text.Should().Be("hi");
         seen.Source.Should().Be("tool.send_message");
     }
 
@@ -86,10 +86,10 @@ public class ChannelMessageSinkTests
             RecipientUserId = "u1",
         };
 
-        var result = await sink.SendToConversationAsync(target, "ping");
+        var result = await sink.SendToConversationAsync(target, new OutboundContent { Text = "ping" });
 
         result.Delivered.Should().BeTrue();
         seen!.Target.Should().BeSameAs(target);
-        seen.Text.Should().Be("ping");
+        seen.Content.Text.Should().Be("ping");
     }
 }

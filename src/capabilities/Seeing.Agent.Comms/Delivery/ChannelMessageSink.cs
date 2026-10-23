@@ -15,7 +15,7 @@ public sealed class ChannelMessageSink : IChannelMessageSink
     }
 
     public async Task<OutboundDeliveryResult> SendToUserAsync(
-        string channelId, string userExternalId, string text, CancellationToken ct = default)
+        string channelId, string userExternalId, OutboundContent content, CancellationToken ct = default)
     {
         var user = await _directory.FindUserAsync(channelId, userExternalId, ct).ConfigureAwait(false);
         var message = new OutboundMessage
@@ -31,20 +31,20 @@ public sealed class ChannelMessageSink : IChannelMessageSink
                 },
             },
             DeliveryKind = OutboundDeliveryKind.Push,
-            Text = text,
+            Content = content,
             Source = "tool.send_message",
         };
         return await _delivery.DeliverAsync(message, ct).ConfigureAwait(false);
     }
 
     public Task<OutboundDeliveryResult> SendToConversationAsync(
-        DeliveryTarget target, string text, CancellationToken ct = default)
+        DeliveryTarget target, OutboundContent content, CancellationToken ct = default)
     {
         var message = new OutboundMessage
         {
             Target = target,
             DeliveryKind = OutboundDeliveryKind.Push,
-            Text = text,
+            Content = content,
             Source = "tool.send_message",
         };
         return _delivery.DeliverAsync(message, ct);

@@ -37,6 +37,7 @@ public static class QQServiceCollectionExtensions
         services.AddSingleton(sp => new QQChannelAdapter(
             sp.GetRequiredService<QQHttpApiClient>(),
             sp.GetRequiredService<QQPassiveWindowTracker>(),
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<QQOptions>>(),
             sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<QQChannelAdapter>>(),
             sp.GetService<IChannelDirectory>()));
         services.AddSingleton<QQAccessTokenProvider>();

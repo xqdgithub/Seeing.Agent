@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Gateway.Protocol;
 using Xunit;
 
@@ -52,7 +53,7 @@ public class GatewayInboundParserTests
             {
                 Channel = "qq",
                 CorrelationSessionId = "qq_group_ABC",
-                Text = "hello",
+                Content = new OutboundContent { Text = "hello" },
                 Source = "scheduler.cron"
             });
 
@@ -61,6 +62,6 @@ public class GatewayInboundParserTests
         inbound.Type.Should().Be(GatewayWsFrameType.ChannelOutbound);
         inbound.ChannelOutbound!.Channel.Should().Be("qq");
         inbound.ChannelOutbound.CorrelationSessionId.Should().Be("qq_group_ABC");
-        inbound.ChannelOutbound.Text.Should().Be("hello");
+        inbound.ChannelOutbound.Content.Text.Should().Be("hello");
     }
 }

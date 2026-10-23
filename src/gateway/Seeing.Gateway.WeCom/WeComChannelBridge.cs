@@ -72,6 +72,9 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 
     public string ChannelId => WeComChannelAdapter.Channel;
 
+    /// <inheritdoc />
+    public ChannelCapabilities Capabilities => _adapter.Capabilities;
+
     IGatewayConnection IChannelBridge.GatewayConnection =>
         _hostClient as IGatewayConnection
         ?? throw new InvalidOperationException("WeCom 通道宿主客户端必须同时实现 IGatewayConnection");
@@ -523,7 +526,7 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         if (!string.Equals(payload.Channel, ChannelId, StringComparison.OrdinalIgnoreCase))
             return;
 
-        if (string.IsNullOrWhiteSpace(payload.Text))
+        if (string.IsNullOrWhiteSpace(payload.Content.Text))
         {
             _logger.LogWarning(
                 "WeCom channel outbound ignored: empty text session={SessionId}",
@@ -548,7 +551,7 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
                 ReplyToMsgId = payload.ReplyToMsgId
             },
             DeliveryKind = payload.DeliveryKind ?? OutboundDeliveryKind.Push,
-            Text = payload.Text,
+            Content = payload.Content,
             Source = payload.Source,
             CorrelationSessionId = payload.CorrelationSessionId,
             JobId = payload.JobId
@@ -560,7 +563,7 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
                 "WeCom channel outbound → {Kind} session={SessionId} len={Length} source={Source}",
                 message.Target.Conversation.Kind,
                 payload.CorrelationSessionId,
-                payload.Text.Length,
+                payload.Content.Text?.Length ?? 0,
                 payload.Source);
             var result = await _adapter.SendAsync(message, cancellationToken).ConfigureAwait(false);
             if (!result.Delivered)

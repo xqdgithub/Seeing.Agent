@@ -36,7 +36,7 @@ public sealed class GatewayDeliveryNotifier : IChannelDeliveryNotifier
             Data = new GatewayEventData
             {
                 Role = "assistant",
-                Text = message.Text
+                Text = message.Content.Text
             }
         });
 

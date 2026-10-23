@@ -40,7 +40,10 @@ public sealed class RemoteSessionClientSequentialExchangeTests
                 WebSocketPath = "/ws",
                 Timeout = TimeSpan.FromSeconds(30)
             }));
-        await connection.ConnectAsync("qq-test", ct);
+        await connection.ConnectAsync(
+            "qq-test",
+            new Seeing.Agent.Abstractions.Channels.ChannelCapabilities { SupportsReplyAnchor = true },
+            ct);
         var client = new RemoteSessionClient(connection);
 
         var first = await CollectReplyAsync(client, "ses", "你是谁", ct);

@@ -23,7 +23,7 @@ public class PayloadV2SerializationTests
             },
             DeliveryKind = OutboundDeliveryKind.Push,
             CorrelationSessionId = "sess-1",
-            Text = "hi"
+            Content = new OutboundContent { Text = "hi" }
         };
 
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(payload, GatewayWsFrameSerializer.JsonOptions));
@@ -37,6 +37,33 @@ public class PayloadV2SerializationTests
         var conversation = root.GetProperty("conversation");
         conversation.GetProperty("kind").GetString().Should().Be("group");
         conversation.GetProperty("externalId").GetString().Should().Be("g-1");
+    }
+
+    [Fact]
+    public void ChannelRegisterPayload_ShouldRoundTripCapabilities()
+    {
+        var payload = new GatewayChannelRegisterPayload
+        {
+            Channel = "qq",
+            Capabilities = new ChannelCapabilities
+            {
+                SupportsReplyAnchor = true,
+                Attachments = new() { Kinds = [OutboundAttachmentKind.File], MaxBytes = 1024, MaxPerMessage = 5 }
+            }
+        };
+
+        var json = JsonSerializer.Serialize(payload, GatewayWsFrameSerializer.JsonOptions);
+        var back = JsonSerializer.Deserialize<GatewayChannelRegisterPayload>(json, GatewayWsFrameSerializer.JsonOptions)!;
+        back.Capabilities.SupportsReplyAnchor.Should().BeTrue();
+        back.Capabilities.Attachments!.MaxPerMessage.Should().Be(5);
+    }
+
+    [Fact]
+    public void ChannelRegisterPayload_WithoutCapabilities_ShouldFailDeserialization()
+    {
+        const string json = """{"channel":"qq"}""";
+        Action act = () => JsonSerializer.Deserialize<GatewayChannelRegisterPayload>(json, GatewayWsFrameSerializer.JsonOptions);
+        act.Should().Throw<JsonException>();   // 服务端据此回 invalid_capabilities，不注册、不断连
     }
 
     [Fact]

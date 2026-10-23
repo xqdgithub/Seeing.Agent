@@ -259,7 +259,7 @@ internal sealed class ChannelBridgeHostedService : IHostedService
         var connection = _bridge.GatewayConnection;
         if (connection != null)
         {
-            await connection.ConnectAsync(_bridge.ChannelId, cancellationToken).ConfigureAwait(false);
+            await connection.ConnectAsync(_bridge.ChannelId, _bridge.Capabilities, cancellationToken).ConfigureAwait(false);
             _logger.LogInformation("Gateway 连接探测已启动，连接成功后将注册 Channel: {ChannelId}", _bridge.ChannelId);
         }
 

@@ -10,10 +10,10 @@ public sealed class NoopChannelMessageSink : IChannelMessageSink
     public const string UnavailableDetail = "通道投递未配置";
 
     public Task<OutboundDeliveryResult> SendToUserAsync(
-        string channelId, string userExternalId, string text, CancellationToken ct = default)
+        string channelId, string userExternalId, OutboundContent content, CancellationToken ct = default)
         => Task.FromResult(OutboundDeliveryResult.Fail(OutboundFailureKind.ChannelUnavailable, UnavailableDetail));
 
     public Task<OutboundDeliveryResult> SendToConversationAsync(
-        DeliveryTarget target, string text, CancellationToken ct = default)
+        DeliveryTarget target, OutboundContent content, CancellationToken ct = default)
         => Task.FromResult(OutboundDeliveryResult.Fail(OutboundFailureKind.ChannelUnavailable, UnavailableDetail));
 }

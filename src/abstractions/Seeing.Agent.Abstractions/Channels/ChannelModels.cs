@@ -31,13 +31,29 @@ public sealed record OutboundMessage
 {
     public required DeliveryTarget Target { get; init; }
     public required OutboundDeliveryKind DeliveryKind { get; init; }
-    public required string Text { get; init; }
+    public required OutboundContent Content { get; init; }
     public string? Source { get; init; }                   // "scheduler.cron" / "tool.send_message"
     public string? CorrelationSessionId { get; init; }
     public string? JobId { get; init; }
 }
 
-public enum OutboundFailureKind { NotInDirectory, OptedOut, RateLimited, ChannelUnavailable, PlatformError }
+public enum OutboundFailureKind
+{
+    NotInDirectory,
+    OptedOut,
+    RateLimited,
+    ChannelUnavailable,
+    PlatformError,
+
+    /// <summary>通道不支持附件 / 该类型 / 超过单条数量。</summary>
+    AttachmentUnsupported,
+
+    /// <summary>超过通道单文件上限。</summary>
+    AttachmentTooLarge,
+
+    /// <summary>路径不存在 / 是目录 / 空文件 / 不可读。</summary>
+    AttachmentUnavailable
+}
 
 public sealed record OutboundDeliveryResult
 {

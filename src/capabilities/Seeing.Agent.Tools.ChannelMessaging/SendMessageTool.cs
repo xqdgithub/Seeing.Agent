@@ -65,10 +65,11 @@ public sealed class SendMessageTool : ITool
             return Fail("targetUserId 与 conversationExternalId+conversationKind 必须二选一");
 
         var ct = context.CancellationToken;
+        var content = new OutboundContent { Text = text };
         OutboundDeliveryResult result;
         if (hasUser)
         {
-            result = await _sink.SendToUserAsync(channelId, targetUserId!, text, ct).ConfigureAwait(false);
+            result = await _sink.SendToUserAsync(channelId, targetUserId!, content, ct).ConfigureAwait(false);
         }
         else
         {
@@ -85,7 +86,7 @@ public sealed class SendMessageTool : ITool
                     ExternalId = conversationExternalId
                 }
             };
-            result = await _sink.SendToConversationAsync(target, text, ct).ConfigureAwait(false);
+            result = await _sink.SendToConversationAsync(target, content, ct).ConfigureAwait(false);
         }
 
         var message = ChannelDeliveryMessages.For(result);

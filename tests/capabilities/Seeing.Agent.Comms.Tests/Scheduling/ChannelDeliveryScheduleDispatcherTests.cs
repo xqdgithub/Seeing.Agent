@@ -65,7 +65,7 @@ public class ChannelDeliveryScheduleDispatcherTests
         captured.Should().NotBeNull();
         captured!.DeliveryKind.Should().Be(OutboundDeliveryKind.SystemNotice);
         captured.CorrelationSessionId.Should().Be("sess-1");
-        captured.Text.Should().Be("hello");
+        captured.Content.Text.Should().Be("hello");
         captured.JobId.Should().Be("job-9");
         captured.Target.Conversation.ChannelId.Should().Be("qq");
         captured.Target.Conversation.Kind.Should().Be(ConversationKind.Group);

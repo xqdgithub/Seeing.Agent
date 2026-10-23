@@ -6,4 +6,5 @@ internal sealed class AllowAllPathGate : IWorkspacePathGate
 {
     public static AllowAllPathGate Instance { get; } = new();
     public string? EnsureAllowed(string sessionId, string path) => null;
+    public string? EnsureWithinWorkspace(string sessionId, string path) => null;
 }

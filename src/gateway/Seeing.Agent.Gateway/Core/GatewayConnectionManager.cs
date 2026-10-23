@@ -97,14 +97,14 @@ public sealed class GatewayConnectionManager
 
     /// <summary>
     /// Channel Host 声明负责的 channelId。同 channel 后注册者生效，出站只发给当前连接。
-    /// <paramref name="capabilities"/> 可空；未知字段在帧反序列化时已忽略。
+    /// 能力随注册帧透传，出站代理按同一份能力回复。
     /// </summary>
     public void RegisterChannel(
         string connectionId,
         string channelId,
-        ChannelRegisterCapabilities? capabilities = null)
+        ChannelCapabilities capabilities)
     {
-        _ = capabilities;
+        ArgumentNullException.ThrowIfNull(capabilities);
         if (string.IsNullOrWhiteSpace(channelId) || string.IsNullOrWhiteSpace(connectionId))
             return;
 
@@ -118,7 +118,7 @@ public sealed class GatewayConnectionManager
         if (_adapterRegistry is null)
             return;
 
-        _adapterRegistry.Register(new RemoteChannelAdapterProxy(key, PushChannelOutbound));
+        _adapterRegistry.Register(new RemoteChannelAdapterProxy(key, capabilities, PushChannelOutbound));
         _logger.LogDebug("Channel adapter registered: {Channel} connection={ConnectionId}", key, connectionId);
     }
 

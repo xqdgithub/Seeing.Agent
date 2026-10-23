@@ -16,7 +16,10 @@ public sealed class WebSocketGatewayClientTests
                 WebSocketPath = "/api/gateway/ws"
             }));
 
-        await client.ConnectAsync("wecom", TestContext.Current.CancellationToken);
+        await client.ConnectAsync(
+            "wecom",
+            new Seeing.Agent.Abstractions.Channels.ChannelCapabilities { SupportsReplyAnchor = false },
+            TestContext.Current.CancellationToken);
 
         client.IsConnected.Should().BeFalse();
     }

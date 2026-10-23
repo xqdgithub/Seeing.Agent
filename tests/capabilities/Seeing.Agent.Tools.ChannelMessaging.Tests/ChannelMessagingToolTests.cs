@@ -18,7 +18,10 @@ public class SendMessageToolTests
         OutboundFailureKind kind, string expected)
     {
         var sink = new Mock<IChannelMessageSink>();
-        sink.Setup(s => s.SendToUserAsync("qq", "u1", "hi", It.IsAny<CancellationToken>()))
+        sink.Setup(s => s.SendToUserAsync(
+                "qq", "u1",
+                It.Is<OutboundContent>(c => c.Text == "hi"),
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync(OutboundDeliveryResult.Fail(kind));
         var tool = new SendMessageTool(sink.Object);
 
@@ -38,7 +41,10 @@ public class SendMessageToolTests
     public async Task ExecuteAsync_PlatformError_ShouldIncludeDetail()
     {
         var sink = new Mock<IChannelMessageSink>();
-        sink.Setup(s => s.SendToConversationAsync(It.IsAny<DeliveryTarget>(), "hi", It.IsAny<CancellationToken>()))
+        sink.Setup(s => s.SendToConversationAsync(
+                It.IsAny<DeliveryTarget>(),
+                It.Is<OutboundContent>(c => c.Text == "hi"),
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync(OutboundDeliveryResult.Fail(OutboundFailureKind.PlatformError, "timeout"));
         var tool = new SendMessageTool(sink.Object);
 
@@ -57,7 +63,7 @@ public class SendMessageToolTests
                 t.Conversation.ChannelId == "qq"
                 && t.Conversation.Kind == ConversationKind.Group
                 && t.Conversation.ExternalId == "g1"),
-            "hi",
+            It.Is<OutboundContent>(c => c.Text == "hi"),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -71,7 +77,8 @@ public class NoopChannelMessageSinkTests
     {
         var sink = new NoopChannelMessageSink();
 
-        var result = await sink.SendToUserAsync("qq", "u1", "hi", TestContext.Current.CancellationToken);
+        var result = await sink.SendToUserAsync(
+            "qq", "u1", new OutboundContent { Text = "hi" }, TestContext.Current.CancellationToken);
 
         result.Delivered.Should().BeFalse();
         result.FailureKind.Should().Be(OutboundFailureKind.ChannelUnavailable);
@@ -92,7 +99,8 @@ public class NoopChannelMessageSinkTests
             }
         };
 
-        var result = await sink.SendToConversationAsync(target, "hi", TestContext.Current.CancellationToken);
+        var result = await sink.SendToConversationAsync(
+            target, new OutboundContent { Text = "hi" }, TestContext.Current.CancellationToken);
 
         result.Delivered.Should().BeFalse();
         result.FailureKind.Should().Be(OutboundFailureKind.ChannelUnavailable);

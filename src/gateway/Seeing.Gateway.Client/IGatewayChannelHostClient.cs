@@ -1,3 +1,4 @@
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Gateway.Models;
 using Seeing.Gateway.Protocol;
 
@@ -14,8 +15,8 @@ public interface IGatewayChannelHostClient
 
     event Func<GatewayChannelOutboundPayload, CancellationToken, Task>? OnChannelOutbound;
 
-    /// <summary>连接即 channel.register v2（capabilities 由实现方提供）。</summary>
-    Task ConnectAsync(string channelId, CancellationToken ct = default);
+    /// <summary>连接即 channel.register v2（注册帧携带调用方提供的能力）。</summary>
+    Task ConnectAsync(string channelId, ChannelCapabilities capabilities, CancellationToken ct = default);
 
     Task<GatewaySessionResetResult> ResetSessionAsync(string sessionId, CancellationToken ct = default);
 

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Gateway.QQ.Connection;
 using Seeing.Gateway.QQ.Delivery;
@@ -19,10 +20,12 @@ public sealed class QQChannelAdapter : IChannelAdapter
     private readonly IChannelDirectory? _directory;
     private readonly ILogger<QQChannelAdapter> _logger;
     private readonly QQCommandInterceptor _commands = new();
+    private readonly ChannelCapabilities _capabilities;
 
     public QQChannelAdapter(
         QQHttpApiClient http,
         QQPassiveWindowTracker passiveWindow,
+        IOptions<QQOptions> options,
         ILogger<QQChannelAdapter> logger,
         IChannelDirectory? directory = null)
     {
@@ -30,9 +33,44 @@ public sealed class QQChannelAdapter : IChannelAdapter
         _passiveWindow = passiveWindow;
         _logger = logger;
         _directory = directory;
+
+        // 能力构造时固化：Guild 频道只接受图片，其余对话四类附件共用同一大小上限
+        var maxMediaBytes = options.Value.MaxMediaBytes;
+        _capabilities = new ChannelCapabilities
+        {
+            SupportsReplyAnchor = true,
+            Attachments = new()
+            {
+                Kinds =
+                [
+                    OutboundAttachmentKind.Image,
+                    OutboundAttachmentKind.Video,
+                    OutboundAttachmentKind.Audio,
+                    OutboundAttachmentKind.File,
+                ],
+                MaxBytes = maxMediaBytes,
+                MaxPerMessage = 5,
+            },
+            AttachmentsByConversationKind =
+            [
+                new()
+                {
+                    Kind = ConversationKind.Guild,
+                    Capabilities = new()
+                    {
+                        Kinds = [OutboundAttachmentKind.Image],
+                        MaxBytes = maxMediaBytes,
+                        MaxPerMessage = 5,
+                    },
+                },
+            ],
+        };
     }
 
     public string ChannelId => Channel;
+
+    /// <inheritdoc />
+    public ChannelCapabilities Capabilities => _capabilities;
 
     public bool HasDirectory => _directory != null;
 
@@ -57,7 +95,7 @@ public sealed class QQChannelAdapter : IChannelAdapter
     {
         ArgumentNullException.ThrowIfNull(message);
         var parsed = Translate(message.Target, _passiveWindow);
-        return await SendParsedAsync(parsed, message.Text, ct, alreadyPrepared: true).ConfigureAwait(false);
+        return await SendParsedAsync(parsed, message.Content.Text ?? "", ct, alreadyPrepared: true).ConfigureAwait(false);
     }
 
     public Task<OutboundDeliveryResult> SendParsedAsync(

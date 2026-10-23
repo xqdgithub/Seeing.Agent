@@ -40,7 +40,7 @@ public class ChannelModelsTests
         {
             Target = target,
             DeliveryKind = OutboundDeliveryKind.Reply,
-            Text = "hello",
+            Content = new OutboundContent { Text = "hello" },
             Source = "tool.send_message",
             CorrelationSessionId = "sess-1",
             JobId = "job-1"

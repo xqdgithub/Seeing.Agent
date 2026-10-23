@@ -153,7 +153,7 @@ public sealed class GatewayWebSocketHandler
                 break;
 
             case GatewayWsFrameType.ChannelRegister:
-                await HandleChannelRegisterAsync(connection, frame, cancellationToken);
+                await HandleChannelRegisterAsync(connection, frame);
                 break;
 
             default:
@@ -162,24 +162,44 @@ public sealed class GatewayWebSocketHandler
         }
     }
 
-    private Task HandleChannelRegisterAsync(
-        GatewayWsConnection connection,
-        GatewayWsFrame frame,
-        CancellationToken cancellationToken)
+    private async Task HandleChannelRegisterAsync(GatewayWsConnection connection, GatewayWsFrame frame)
     {
         if (frame.Payload == null)
-            return SendErrorAsync(connection, "channelRegister frame requires payload", "invalid_payload");
+        {
+            await SendErrorAsync(connection, "channelRegister frame requires payload", "invalid_payload");
+            return;
+        }
 
-        var payload = frame.Payload.Value.Deserialize<GatewayChannelRegisterPayload>(GatewayWsFrameSerializer.JsonOptions);
+        GatewayChannelRegisterPayload? payload;
+        try
+        {
+            payload = frame.Payload.Value.Deserialize<GatewayChannelRegisterPayload>(
+                GatewayWsFrameSerializer.JsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            // 能力缺失/结构非法：回错但不注册、不断连
+            await SendErrorAsync(connection, $"invalid channel capabilities: {ex.Message}", "invalid_capabilities");
+            return;
+        }
+
         if (payload == null || string.IsNullOrWhiteSpace(payload.Channel))
-            return SendErrorAsync(connection, "channel is required", "invalid_payload");
+        {
+            await SendErrorAsync(connection, "channel is required", "invalid_payload");
+            return;
+        }
+
+        if (payload.Capabilities is null)
+        {
+            await SendErrorAsync(connection, "capabilities is required", "invalid_capabilities");
+            return;
+        }
 
         _connectionManager.RegisterChannel(connection.ConnectionId, payload.Channel, payload.Capabilities);
         _logger.LogInformation(
             "Channel registered: {Channel} connection={ConnectionId}",
             payload.Channel,
             connection.ConnectionId);
-        return Task.CompletedTask;
     }
 
     private async Task HandleSubmitAsync(

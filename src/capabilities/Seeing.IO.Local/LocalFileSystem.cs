@@ -81,5 +81,18 @@ public sealed class LocalFileSystem : IFileSystem
     }
 
     /// <inheritdoc />
+    public long GetFileLength(string path)
+    {
+        if (Directory.Exists(path))
+            throw new IOException($"路径是目录而非文件: {path}");
+
+        // 缺失文件抛 FileNotFoundException（IOException 派生），由调用方统一映射为不可用
+        return new FileInfo(path).Length;
+    }
+
+    /// <inheritdoc />
+    public bool IsDirectory(string path) => Directory.Exists(path);
+
+    /// <inheritdoc />
     public string GetFullPath(string path) => Path.GetFullPath(path);
 }

@@ -11,15 +11,22 @@ public sealed class RemoteChannelAdapterProxy : IChannelAdapter
 {
     private readonly Func<GatewayChannelOutboundPayload, bool> _push;
 
-    public RemoteChannelAdapterProxy(string channelId, Func<GatewayChannelOutboundPayload, bool> push)
+    public RemoteChannelAdapterProxy(
+        string channelId,
+        ChannelCapabilities capabilities,
+        Func<GatewayChannelOutboundPayload, bool> push)
     {
         if (string.IsNullOrWhiteSpace(channelId))
             throw new ArgumentException("channelId is required", nameof(channelId));
         ChannelId = channelId.Trim();
+        Capabilities = capabilities ?? throw new ArgumentNullException(nameof(capabilities));
         _push = push ?? throw new ArgumentNullException(nameof(push));
     }
 
     public string ChannelId { get; }
+
+    /// <summary>注册帧声明的能力；出站裁决与进程内适配器同源。</summary>
+    public ChannelCapabilities Capabilities { get; }
 
     public Task<OutboundDeliveryResult> SendAsync(OutboundMessage message, CancellationToken ct = default)
     {
@@ -35,7 +42,7 @@ public sealed class RemoteChannelAdapterProxy : IChannelAdapter
             DeliveryKind = message.DeliveryKind,
             ReplyToMsgId = message.Target.ReplyToMsgId,
             CorrelationSessionId = message.CorrelationSessionId ?? string.Empty,
-            Text = message.Text,
+            Content = message.Content,
             Source = message.Source,
             JobId = message.JobId,
             UserId = message.Target.RecipientUserId ?? conversation.ExternalId

@@ -192,7 +192,7 @@ public class OutboundDeliveryServiceTests
                 },
             },
             DeliveryKind = OutboundDeliveryKind.Push,
-            Text = "hello",
+            Content = new OutboundContent { Text = "hello" },
         };
 
     private static ChannelInboundMessage Inbound(string channelId, string userId)

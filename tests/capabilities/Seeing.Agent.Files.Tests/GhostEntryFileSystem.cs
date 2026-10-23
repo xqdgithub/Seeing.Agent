@@ -47,5 +47,9 @@ internal sealed class GhostEntryFileSystem : IFileSystem
     /// <inheritdoc />
     public IEnumerable<string> EnumerateDirectories(string directory, string pattern, bool recursive) => _inner.EnumerateDirectories(directory, pattern, recursive);
     /// <inheritdoc />
+    public long GetFileLength(string path) => _inner.GetFileLength(path);
+    /// <inheritdoc />
+    public bool IsDirectory(string path) => _inner.IsDirectory(path);
+    /// <inheritdoc />
     public string GetFullPath(string path) => _inner.GetFullPath(path);
 }

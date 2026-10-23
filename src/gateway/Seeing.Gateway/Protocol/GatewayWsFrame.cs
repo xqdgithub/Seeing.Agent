@@ -4,14 +4,6 @@ using Seeing.Agent.Abstractions.Channels;
 
 namespace Seeing.Gateway.Protocol;
 
-/// <summary>channel.register v2 能力声明。T1 的适配器能力类型未落地时使用本协议记录。</summary>
-public sealed record ChannelRegisterCapabilities
-{
-    public IReadOnlyList<string>? ConversationKinds { get; init; }
-
-    public bool SupportsStreaming { get; init; }
-}
-
 /// <summary>
 /// Gateway WebSocket JSON Text Frame 信封
 /// </summary>
@@ -106,7 +98,7 @@ public record GatewayChannelRegisterPayload
 {
     public required string Channel { get; init; }
 
-    public ChannelRegisterCapabilities? Capabilities { get; init; }
+    public required ChannelCapabilities Capabilities { get; init; }
 }
 
 /// <summary>
@@ -126,7 +118,7 @@ public record GatewayChannelOutboundPayload
 
     public required string CorrelationSessionId { get; init; }
 
-    public required string Text { get; init; }
+    public required OutboundContent Content { get; init; }
 
     public string? Source { get; init; }
 

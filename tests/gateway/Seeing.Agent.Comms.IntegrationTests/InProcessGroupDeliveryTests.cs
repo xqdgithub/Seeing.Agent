@@ -27,7 +27,7 @@ public class InProcessGroupDeliveryTests
                 }
             },
             DeliveryKind = OutboundDeliveryKind.Push,
-            Text = "hello group"
+            Content = new OutboundContent { Text = "hello group" }
         }, TestContext.Current.CancellationToken);
 
         result.Delivered.Should().BeTrue();
