@@ -26,9 +26,10 @@ public sealed class SessionListTool : SessionToolBase
 
     /// <inheritdoc />
     public override string Description =>
-        "列出会话。scope=related（默认）返回当前会话所在组的成员；" +
-        "scope=all 返回同分区全部会话（需权限审批）。" +
-        "支持 limit（默认 30，上限 100）与 offset 分页。";
+        "列出当前会话组内的会话；同分区全部会话用 scope=all（需审批）。\n\n" +
+        "- 分页：默认 30 条、上限 100，offset 指定起点。\n" +
+        "- 范围：related 为当前会话组；all 为同分区全部（需审批）。\n" +
+        "- 查看消息用 `session_read`。";
 
     /// <inheritdoc />
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new

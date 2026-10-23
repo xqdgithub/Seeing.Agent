@@ -28,8 +28,9 @@ public sealed class SessionInboxSendTool : SessionToolBase
 
     /// <inheritdoc />
     public override string Description =>
-        "向目标会话投递一条入站消息（人类身份）。delivery=wake（默认）落盘并激活消费，" +
-        "inject 仅落盘不激活。目标范围默认同组 + 父链；跨组需权限审批。";
+        "向目标会话投递一条人类身份消息；需要驱动消费时用 wake。\n\n" +
+        "- delivery：wake 落盘并激活消费；inject 仅落盘不激活。\n" +
+        "- 范围：默认同组与父链；跨组需审批。";
 
     /// <inheritdoc />
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new

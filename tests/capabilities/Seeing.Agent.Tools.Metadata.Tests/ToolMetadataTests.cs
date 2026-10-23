@@ -32,6 +32,13 @@ public class ToolMetadataTests
         ["bash"] = ["read", "grep"],
         ["task"] = ["task_status"],
         ["task_status"] = ["task"],
+        ["session_list"] = ["session_read"],
+        ["session_read"] = ["session_search"],
+        ["session_search"] = ["session_read"],
+        ["session_trim"] = ["session_handoff"],
+        ["session_handoff"] = ["session_trim"],
+        ["session_takeover"] = ["session_release"],
+        ["session_release"] = ["session_takeover"],
     };
 
     private static IReadOnlyList<string> Routing(string id) =>

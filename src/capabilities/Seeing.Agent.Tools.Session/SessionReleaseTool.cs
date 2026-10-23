@@ -24,8 +24,10 @@ public sealed class SessionReleaseTool : SessionToolBase
 
     /// <inheritdoc />
     public override string Description =>
-        "交还目标会话：置归属为父会话（Owner=Parent），父 agent 可继续驱动该会话。" +
-        "目标范围默认同组 + 父链；跨组需权限审批。";
+        "交还目标会话（归属改回父会话）以便代理继续驱动；只改归属。\n\n" +
+        "- 不触发立即执行。\n" +
+        "- 范围：默认同组与父链；跨组需审批。\n" +
+        "- 接管用 `session_takeover`。";
 
     /// <inheritdoc />
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new

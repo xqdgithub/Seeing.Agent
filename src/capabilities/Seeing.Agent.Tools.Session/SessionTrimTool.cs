@@ -24,9 +24,10 @@ public sealed class SessionTrimTool : SessionToolBase
 
     /// <inheritdoc />
     public override string Description =>
-        "裁剪当前会话的早期消息。mode=before/range/after 配合 message_id 或 from_id/to_id 指定范围。" +
-        "最后一条摘要、最后一条 user 消息及其之后永不裁剪；已压缩历史保留。" +
-        "裁剪前自动创建备份（备份失败则取消裁剪）。";
+        "裁剪当前会话早期消息并自动备份；不会切换会话。\n\n" +
+        "- 模式：before/after 配合 message_id；range 配合 from_id 与 to_id。\n" +
+        "- 保护：最后一条摘要、最后一条 user 消息及其之后永不裁剪；已压缩历史保留。\n" +
+        "- 备份失败则取消裁剪；需要换会话用 `session_handoff`。";
 
     /// <inheritdoc />
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new

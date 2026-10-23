@@ -33,9 +33,10 @@ public sealed class SessionSearchTool : SessionToolBase
 
     /// <inheritdoc />
     public override string Description =>
-        "在会话消息中按正则表达式搜索。session_id 缺省为当前会话；" +
-        "搜索其他会话需权限审批。支持 role 过滤、context 上下文行（上限 3）、" +
-        "limit（默认 30，上限 100）与 offset 分页。不返回思考内容。";
+        "按正则搜索会话消息；只找关键词，不要整段翻页用 `session_read`。\n\n" +
+        "- 范围：session_id 缺省为当前会话；搜索其他会话需审批。\n" +
+        "- 过滤：role 可限定 system、user、assistant、tool；context 附带上下文行，上限 3。\n" +
+        "- 分页：limit 默认 30、上限 100；不返回思考内容。";
 
     /// <inheritdoc />
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
@@ -49,7 +50,7 @@ public sealed class SessionSearchTool : SessionToolBase
             {
                 type = "string",
                 @enum = new[] { "system", "user", "assistant", "tool" },
-                description = "仅搜索指定角色"
+                description = "仅搜索指定角色：system=系统、user=用户、assistant=助手、tool=工具"
             },
             context = new
             {

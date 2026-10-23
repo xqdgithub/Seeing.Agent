@@ -30,8 +30,11 @@ public sealed class SessionHandoffTool : SessionToolBase
 
     /// <inheritdoc />
     public override string Description =>
-        "将会话交接给新的后继会话：创建 Clean Root 后继、继承工作目录/模型/思考强度，" +
-        "以 prompt 作为首条用户消息并提交执行。需权限审批；提交失败将回滚（删除后继并还原活跃会话）。";
+        "把当前会话交接给新会话继续；上下文过长时用它保持精简。\n\n" +
+        "- 行为：创建 Clean Root 后继，继承工作目录、模型与思考强度。\n" +
+        "- 入参：prompt 作为后继首条用户消息并立即提交执行。\n" +
+        "- 权限：需审批；提交失败会回滚（删除后继并还原活跃会话）。\n" +
+        "- 只想裁剪当前会话用 `session_trim`。";
 
     /// <inheritdoc />
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new

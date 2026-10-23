@@ -29,9 +29,11 @@ public sealed class SessionReadTool : SessionToolBase
 
     /// <inheritdoc />
     public override string Description =>
-        "读取会话消息。支持五种方式：from_id[+limit]（从该消息向后读）、to_id[+limit]（读到该消息为止）、" +
-        "from_id+to_id（闭区间）、message_id+before/after（中心窗口）、offset+limit（分页）。" +
-        "默认只读活跃消息（不含已压缩历史），默认隐藏工具输出；include_compacted=true 可读完整历史。绝不返回思考内容。";
+        "读取会话消息（按 id、区间或分页）；查看子代理过程用它。\n\n" +
+        "- 五种读法：from_id、to_id、from_id+to_id 闭区间、message_id+before/after 中心窗口、offset+limit 分页。\n" +
+        "- 分页：默认 20 条、上限 50；max_chars 默认 2000。\n" +
+        "- 默认只读活跃消息、隐藏工具输出；include_compacted=true 可读已压缩历史。\n" +
+        "- 只找关键词用 `session_search`；不返回思考内容。";
 
     /// <inheritdoc />
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
