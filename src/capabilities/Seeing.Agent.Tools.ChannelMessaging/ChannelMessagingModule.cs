@@ -7,7 +7,8 @@ using Seeing.Agent.Abstractions.Tools;
 namespace Seeing.Agent.Tools.ChannelMessaging;
 
 /// <summary>
-/// 通道消息工具模块。缺省注册 <see cref="NoopChannelMessageSink"/>，已有 Sink 时不覆盖。
+/// 通道消息工具模块。缺省注册 <see cref="NoopChannelMessageSink"/> 与
+/// <see cref="NoopChannelTargetResolver"/>，已有实现时不覆盖（<c>AddSeeingComms</c> 后注册覆盖）。
 /// </summary>
 public sealed class ChannelMessagingModule : ISeeingModule
 {
@@ -28,12 +29,13 @@ public sealed class ChannelMessagingModule : ISeeingModule
     public IReadOnlyList<string> ProvidedSeams { get; } = [];
 
     /// <inheritdoc />
-    public IReadOnlyList<string> DependsOn { get; } = [];
+    public IReadOnlyList<string> DependsOn { get; } = ["io.local"];
 
     /// <inheritdoc />
     public void ConfigureServices(IServiceCollection services)
     {
         services.TryAddSingleton<IChannelMessageSink, NoopChannelMessageSink>();
+        services.TryAddSingleton<IChannelTargetResolver, NoopChannelTargetResolver>();
         services.AddSingleton<SendMessageTool>();
         services.AddSingleton<ListChannelUsersTool>();
         services.AddSingleton<ListConversationsTool>();
