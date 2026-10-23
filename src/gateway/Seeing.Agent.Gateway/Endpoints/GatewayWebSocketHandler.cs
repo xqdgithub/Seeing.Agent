@@ -247,7 +247,11 @@ public sealed class GatewayWebSocketHandler
             //    桥侧 GatewayAssistantReplyCollector 轮次门控会忽略上一轮仍在途的尾流。
             using var replyStream = _orchestrator.BeginReplyStream(request.SessionId);
 
-            // ② 投递并唤醒消费循环
+            // ② 先登记入站（刷新该对话的回复锚点），再投递唤醒消费循环：
+            //    消费循环可能立刻出站被动回复，锚点必须先可读。
+            RegisterInbound(request);
+
+            // ③ 投递并唤醒消费循环
             var submit = await _orchestrator.SubmitAsync(request, cancellationToken).ConfigureAwait(false);
 
             await connection.SendFrameAsync(
@@ -268,10 +272,9 @@ public sealed class GatewayWebSocketHandler
             if (!submit.Success)
                 return;
 
-            RegisterInbound(request);
             _connectionManager.SubscribeSession(connection.ConnectionId, request.SessionId);
 
-            // ③ 枚举实时流：事件已在实时订阅通道缓冲，投递前后到达均不丢
+            // ④ 枚举实时流：事件已在实时订阅通道缓冲，投递前后到达均不丢
             string? loopId = null;
             await foreach (var gatewayEvent in replyStream.StreamAsync(cancellationToken))
             {
