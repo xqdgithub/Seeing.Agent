@@ -72,10 +72,7 @@ public sealed class ToolExposureConfigResolver
         "todowrite",
         "webfetch",
         "websearch",
-        "codesearch",
-        "memory_search",
-        "memory_read",
-        "memory_write"
+        "codesearch"
     ];
 
     /// <summary>

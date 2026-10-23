@@ -121,16 +121,15 @@ DisabledTools 永远优先（被禁用的工具不内联）
 - tool-state.json + 逐工具开关 + 三层合并：用户明确判定过度设计，弃用。
 - `PinCoreTools` / `UnpinnedTools`：同上，弃用。
 
-### D2 默认集内容（19 个，顺序即内联顺序）
+### D2 默认集内容（16 个，顺序即内联顺序）
 
 ```
 read, write, edit, glob, grep, bash, delete, open_file, add_workspace_path,
 question, skill, task, todowrite,
-webfetch, websearch, codesearch,
-memory_search, memory_read, memory_write
+webfetch, websearch, codesearch
 ```
 
-`tool_search` 恒内联，不进默认集。
+`tool_search` 恒内联，不进默认集；`memory_*` 不默认钉选（按需检索）。
 
 ### D3 声明式"加载"上报（I2）
 
@@ -248,13 +247,13 @@ Task<ToolResult> ExecuteAsync(
 ### D9 收益数字
 
 - 删除文档中未验证的"降幅 ≥60%"。
-- 增加确定性估算测试：默认集 19 项 vs 全量工具，`CharBasedTokenCounter` 计算 `SchemaTokens` 对照；真实降幅不写承诺。
+- 增加确定性估算测试：默认集 16 项 vs 全量工具，`CharBasedTokenCounter` 计算 `SchemaTokens` 对照；真实降幅不写承诺。
 
 ### D10 破坏性清单
 
 | 变更 | 处理 |
 |---|---|
-| 删除 `Tools.Exposure.PinnedTools` 的"默认 19 项"（改为默认 `[]` + 代码默认集） | 文档更新；旧配置若写了非空列表则成为显式覆盖（行为兼容） |
+| 删除 `Tools.Exposure.PinnedTools` 的"默认 16 项"（改为默认 `[]` + 代码默认集） | 文档更新；旧配置若写了非空列表则成为显式覆盖（行为兼容） |
 | `IToolManager.ExecuteAsync` 追加可选参数 | 破坏性清单 |
 | `IToolSchemaResolution.IsCallable` 删除（保留 `SendsSchema`） | 破坏性清单；不做兼容别名 |
 | `IExecutionToolScope` 新增 `DeferredTools` | 破坏性清单（接口成员） |
@@ -287,7 +286,7 @@ ExecutionRunner（或 Scheduler helper）
 
 | 场景 | 结果 |
 |---|---|
-| 无任何配置 | 默认集（19 项）钉住 |
+| 无任何配置 | 默认集（16 项）钉住 |
 | `config.PinnedTools` 非空 | 整体替换默认集 |
 | `Agent.PinnedTools` 非空 | 整体覆盖以上（空数组 = 不钉） |
 | 工具被禁用 | 不内联（禁用优先） |
@@ -300,7 +299,7 @@ ExecutionRunner（或 Scheduler helper）
 
 **钉选**
 
-- 默认集：19 项、顺序稳定、无 `tool_search`。
+- 默认集：16 项、顺序稳定、无 `tool_search`。
 - `config.PinnedTools` 非空 → 替换；空 → 默认集。
 - Agent 非空（含空数组）→ 整体覆盖。
 - 禁用优先于钉选。
@@ -337,7 +336,7 @@ ExecutionRunner（或 Scheduler helper）
 
 1. **provider 兼容性（中风险）**：模型调用"未在 `tools[]` 内"的函数名，部分 OpenAI 兼容网关/本地模板可能拒绝，或模型不服从。本次不做真实联调，只交付手工验证清单；失败时的 Plan B 是"轮内重算 schema"（需放弃单轮 schema 不变并接受缓存失效）。
 2. **Scheduler 与用户轮并发**：以"同会话串行"为前提；并发执行同会话属既有边界。
-3. **默认集 token 成本**：19 项估算（含 `bash`/`edit`/`task`/`todowrite` 等大 schema）约 6–8k；相对全量 15–35k 仍有收益，但不承诺具体百分比。
+3. **默认集 token 成本**：16 项估算（含 `bash`/`edit`/`task`/`todowrite` 等大 schema）约 6–8k；相对全量 15–35k 仍有收益，但不承诺具体百分比。
 4. **不钉选的全局关闭**：`seeing.json` 的空 `PinnedTools` == 未设置，无法全局关闭默认集；需在 Agent 上配 `PinnedTools: []`。这是刻意取舍（避免再引入开关层）。
 5. **钉选与 EscalateSchemaTokens**：阈值按全部候选工具估算，与钉选数量无直接交互（维持现状）。
 

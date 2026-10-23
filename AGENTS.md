@@ -30,7 +30,7 @@
 
 设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
 
-**硬规则摘要：** Core 瘦脊柱（零工具）；能力经 `AddSeeingModule`；`InitializeSeeingAsync` 在 Host.Start 前；schema 只在 `SessionToolSchemaResolver`（Hosting）计算（主执行链与 Scheduler 直连共用出口）；能力包目标只依赖 Abstractions；会话驱动唯一入口 `ISessionRuntime.DeliverAsync`。
+**硬规则摘要：** Core 瘦脊柱（零工具）；能力经 `AddSeeingModule`；`InitializeSeeingAsync` 在 Host.Start 前；schema 只在 `SessionToolSchemaResolver`（Hosting）计算（主执行链与 Scheduler 直连共用出口）；能力包目标只依赖 Abstractions；会话驱动唯一入口 `ISessionRuntime.DeliverAsync`；**可调用性只由执行级 `IExecutionToolScope` 判定**（内联 ∪ 本执行已加载；执行器不读会话暴露态）。
 
 ## 概述
 
@@ -82,7 +82,9 @@ Seeing.Agent/
 | Agent 执行入口 | `src/abstractions/Seeing.Agent.Abstractions/Agents/IAgentExecutor.cs` | Native / ACP 分流 |
 | 会话运行时（唯一驱动入口） | `src/hosting/Seeing.Agent.Hosting/Execution/SessionRuntime.cs` | `ISessionRuntime.DeliverAsync` + 消费循环；契约在 `src/abstractions/.../Runtime/ISessionRuntime.cs`；见 `docs/architecture/14` |
 | 编排 / schema 单点 | `src/hosting/Seeing.Agent.Hosting/Execution/ExecutionRunner.cs` + `src/hosting/Seeing.Agent.Hosting/Execution/SessionToolSchemaResolver.cs` + `src/hosting/Seeing.Agent.Hosting/Execution/SessionToolSchemaResolver.cs` | 跑一轮执行；工具 schema 唯一计算在 `SessionToolSchemaResolver`（契约 `src/abstractions/.../Execution/ISessionToolSchemaResolver.cs`）；见 `docs/architecture/18` |
-| 工具分层暴露 / 目录 / tool_search | `src/hosting/Seeing.Agent.Hosting/Execution/ToolExposure/`（策略/目录构建/升级/配置解析/发现存储/检索 provider）+ `src/abstractions/.../Tools/{ToolExposure*,IToolExposurePolicy,IToolDiscoveryStore,IToolSearchProvider}.cs` + `src/capabilities/Seeing.Agent.Tools.ToolDiscovery/` | 默认 auto 升级分层；exposure≠permission；发现下一轮生效；见 `docs/architecture/19` |
+| 工具分层暴露 / 目录 / tool_search | `src/hosting/Seeing.Agent.Hosting/Execution/ToolExposure/`（策略/目录构建/升级/配置解析/发现存储）+ `src/abstractions/.../Tools/{ToolExposure*,IToolExposurePolicy,IToolDiscoveryStore}.cs` + `src/capabilities/Seeing.Agent.Tools.ToolDiscovery/` | 默认 auto 升级分层；exposure≠permission；检索命中后同一执行内可调用、下一次执行起内联；见 `docs/architecture/19` |
+| 执行级可调用集（检索即可调） | 契约 `src/abstractions/Seeing.Agent.Abstractions/Execution/IExecutionToolScope.cs`；实现 `src/spine/Seeing.Agent.Core/Core/Execution/ExecutionToolScope.cs`；接线 `AgentExecutor`（创建/门闸/应用 LoadedToolIds）+ `ToolManager`（ToolContext 透传）+ `ToolSearchTool`（声明 LoadedToolIds） | 可调用 = 内联 ∪ 本执行已加载；加载靠 `ToolResult.LoadedToolIds` + `exposure.load` 能力键；**不改 schema、不读会话** |
+| 会话暴露状态写入 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Execution/ISessionToolExposureWriter.cs`；实现 `src/hosting/Seeing.Agent.Hosting/Execution/SessionToolExposureWriter.cs` | 提升/提交唯一出口；主链轮首 + Scheduler 旁路共用；见 `docs/architecture/19` |
 | Todo 存取 | `src/abstractions/.../Todo/` + Hosting 适配器 | 端口-适配器 |
 | 模块生命周期 | `src/abstractions/.../Modules/` + `src/spine/.../SettlementEngine` | 结算 / Activate / Deactivate |
 | 契约类型总览 | `src/abstractions/Seeing.Agent.Abstractions/` | Events/Hooks/Tools/Agents/… |

@@ -76,7 +76,7 @@ public sealed class ToolSearchTool : ToolBase
             {
                 type = "string",
                 @enum = new[] { "name", "summary", "full" },
-                description = "详情档位：name=仅 id；summary=id+签名/摘要（默认）；full=写入发现态+完整定义（下一轮生效，每页最多 3 条）"
+                description = "详情档位：name=仅 id；summary=id+签名/摘要（默认）；full=登记本次执行内可调用并返回完整定义（下一次执行起自动内联，每页最多 3 条）"
             },
             limit = new
             {

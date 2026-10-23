@@ -89,7 +89,7 @@ Scenario       = { Name, Modules[], DefaultAgent, Seams?, Tools.Disabled? }
              · 模块层：sessionModules = scenario.Modules ∩ bootEnabled
              · 工具层：settledToolIds = ⋃ ProvidedTools − Tools.Disabled*
         → 唯一计算 ToolSchemas + SchemaSnapshotEvent（ExecutionRunner）
-             → 工具暴露裁剪（SessionToolSchemaResolver 单点）：auto 阈值+粘滞升级 → inline schema + deferred 目录（单轮执行内 schema 不变；发现下一轮生效）
+             → 工具暴露裁剪（SessionToolSchemaResolver 单点）：auto 阈值+粘滞升级 → inline schema + deferred 目录（单轮执行内 schema 不变；检索命中后同一执行内可调、下一次请求起内联）
         → IAgentExecutor（Router → Native | ACP）
         → 工具经权限 / Hook / 装饰器
         → 事件 → SessionEventStreamRouter → UI

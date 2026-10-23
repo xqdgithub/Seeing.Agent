@@ -296,8 +296,8 @@ internal static class ToolExposureEngine
             .ToList();
 
         var intro = searchAvailable
-            ? "以下工具当前未内联进本轮 schema，不可直接调用。先用 tool_search 检索（可按 namespace、关键词与 detail 收窄），检索命中的工具将自下一轮起变为可直接调用。"
-            : "以下工具当前未内联进本轮 schema，不可直接调用；本轮未启用工具检索入口，如需调用请由宿主启用工具检索能力。";
+            ? "以下工具当前未内联进本次请求的 schema，未加载前不能直接调用。先调用 tool_search 检索（可按 namespace、关键词与 detail 收窄）；命中后本次执行内即可直接调用，下一次执行起自动进入 tools[]。目录只展示部分条目，未展示的工具同样存在、同样可检索，不代表缺失。"
+            : "以下工具当前未内联进本次请求的 schema，未加载前不能直接调用；本次未启用工具检索入口，如需调用请由宿主启用工具检索能力。";
 
         // 预算从开场白与各分组标题开始累计，标题恒保留。
         var headers = groups

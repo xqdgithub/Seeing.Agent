@@ -874,7 +874,7 @@ public class AgentExecutor : IAgentExecutor
             && !toolScope.IsCallable(name))
         {
             var reason = toolScope.IsDeferred(name)
-                ? $"工具 '{name}' 尚未加载。请先用 {ToolIdConventions.SearchToolId} 检索该工具；命中后本次请求内即可直接调用。"
+                ? $"工具 '{name}' 尚未加载。请先用 {ToolIdConventions.SearchToolId} 检索该工具；命中后本次执行内即可直接调用。"
                 : $"工具 '{name}' 在本会话当前上下文中不可用。";
             _logger.LogWarning(
                 "[AgentExecutor] 拒绝了本轮不可见工具的调用: {ToolName} (deferred={IsDeferred})",

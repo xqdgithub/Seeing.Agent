@@ -152,6 +152,24 @@ public class ToolExposureEngineTests
     }
 
     [Fact]
+    public void Catalog_ShouldStateSameRequestCallabilityAndCompleteness()
+    {
+        var tools = new[] { Schema("read"), Schema("tool_search") };
+
+        var result = ToolExposureEngine.Compute(
+            Input(tools, Config(ToolExposurePolicyMode.Tiered)), Counter);
+
+        result.CatalogText.Should().NotBeNull();
+        // 目录承诺必须与执行层一致：命中后本次执行内可调用，而非“下一轮”。
+        result.CatalogText!.Should().Contain("本次执行内即可直接调用");
+        result.CatalogText.Should().Contain("未加载前");
+        result.CatalogText.Should().NotContain("下一轮");
+        result.CatalogText.Should().NotContain("本次请求内");
+        // 未展示的条目必须显式说明仍然存在、仍可检索，避免“以为工具缺失”。
+        result.CatalogText.Should().Contain("未展示");
+    }
+
+    [Fact]
     public void Signature_ShouldBeSingleLineWithParameterSummary()
     {
         var tools = new[] { Schema("read", desc: "line one\n\nline two"), Schema("tool_search") };

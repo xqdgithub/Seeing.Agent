@@ -275,6 +275,22 @@ public class ToolSearchToolTests
     }
 
     [Fact]
+    public void ParameterDescription_ShouldUseSameExecutionTerminology()
+    {
+        // 参数描述是模型实际读到的 schema，不能再说“下一轮生效”。
+        var tool = CreateTool(Entry("file_read"));
+        var detailDescription = tool.ParametersSchema
+            .GetProperty("properties")
+            .GetProperty("detail")
+            .GetProperty("description")
+            .GetString();
+
+        detailDescription.Should().NotContain("下一轮");
+        detailDescription.Should().Contain("本次执行内");
+        tool.Description.Should().NotContain("下一轮");
+    }
+
+    [Fact]
     public async Task FullDetail_ShouldStateSameExecutionCallability()
     {
         var tool = CreateTool(Entry("file_read"));

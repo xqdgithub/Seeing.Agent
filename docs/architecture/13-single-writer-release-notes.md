@@ -65,5 +65,5 @@
 - **例外**：宿主在**非执行期**注入的会话级系统消息（Gateway 取消/错误横幅 `AddMessage`、会话重置）与 `SelectedModel/SelectedAcpMode` 用户显式选择，不属执行期投影，仍由宿主负责。
 - **例外（工具暴露状态）**：`SessionData.ToolExposure`（`Discovered`/`Pending`/`Escalated`/`SchemaTokens`/`CatalogTokens`）有独立写入契约，不受本节"消息内容单一写入者"约束——它不写消息内容。写入点为：
   - `ExecutionRunner` 轮首唯一提交（`PromotePending` → `ResolveAsync` → `Commit`）；
-  - `SessionToolDiscoveryStore.Add`（经 `IToolDiscoveryStore`）写 `Pending`，只登记"下一轮生效"，当轮视图不变；
+  - `SessionToolDiscoveryStore.Add`（经 `IToolDiscoveryStore`）写 `Pending`，登记"下一次请求起内联"；当轮 `tools[]` 不变，但执行级 `IExecutionToolScope` 会放行本次执行内的命中工具（不改 schema、不写会话）；
   - `SessionToolSchemaResolver` **只读**，不写会话状态。

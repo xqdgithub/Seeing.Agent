@@ -33,7 +33,7 @@
 | 字段 | 默认 | 说明 |
 |------|------|------|
 | `PolicyMode` | `Auto` | `All` / `Auto` / `Tiered`（字符串，非法值 Warning 后回落下一级） |
-| `PinnedTools` | `[]` | 始终内联的工具 id（单调保留） |
+| `PinnedTools` | `[]` | 恒内联工具 id；**空 = 使用代码默认集（16 个常用工具）**，非空则整体替换默认集 |
 | `CatalogBudgetChars` | 2000 | 目录正文预算（**字符**，非 token） |
 | `CatalogLineMaxChars` | 120 | 目录单行最大字符 |
 | `EscalateToolCount` | 30 | `Auto` 升级阈值：会话结算工具数 ≥ 此值 |
