@@ -395,6 +395,100 @@ public class OutboundDeliveryServiceTests
     }
 
     [Fact]
+    public async Task DeliverAsync_ShouldRejectAttachment_WhenKindNotSupported()
+    {
+        // 通道只接受图片；File 附件属「类型不支持」分支（矩阵中唯一未覆盖的拒绝路径）
+        var adapter = new Mock<IChannelAdapter>();
+        adapter.SetupGet(a => a.ChannelId).Returns("qq");
+        adapter.SetupGet(a => a.Capabilities).Returns(new ChannelCapabilities
+        {
+            SupportsReplyAnchor = false,
+            Attachments = new ChannelAttachmentCapabilities
+            {
+                Kinds = [OutboundAttachmentKind.Image],
+                MaxBytes = 1024,
+                MaxPerMessage = 4,
+            },
+        });
+        adapter.Setup(a => a.SendAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OutboundDeliveryResult.Ok());
+        var delivery = BuildDeliveryService(adapter.Object, DirectoryWith("qq", "u1"));
+
+        var result = await delivery.DeliverAsync(AttachmentMessage("qq", "u1", FileAttachment(10)));
+
+        result.FailureKind.Should().Be(OutboundFailureKind.AttachmentUnsupported);
+        result.Detail.Should().Contain(nameof(OutboundAttachmentKind.File));
+        adapter.Verify(a => a.SendAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeliverAsync_ShouldUseConversationKindOverride_ForGuild()
+    {
+        // 默认能力图片+文件；Guild 覆盖为仅图片（QQ 频道）
+        var directory = new Mock<IChannelDirectory>();
+        directory.Setup(d => d.FindConversationAsync("qq", ConversationKind.Guild, "c1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ConversationEntry
+            {
+                Conversation = new ConversationInfo
+                {
+                    ChannelId = "qq",
+                    Kind = ConversationKind.Guild,
+                    ExternalId = "c1",
+                },
+                FirstSeenAt = DateTimeOffset.UtcNow,
+                LastSeenAt = DateTimeOffset.UtcNow,
+                MemberExternalIds = ["u1"],
+            });
+        directory.Setup(d => d.IsRateLimited("qq", "c1")).Returns(false);
+        directory.Setup(d => d.FindUserAsync("qq", "u1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(User("qq", "u1"));
+        directory.Setup(d => d.IsRateLimited("qq", "u1")).Returns(false);
+
+        var adapter = new Mock<IChannelAdapter>();
+        adapter.SetupGet(a => a.ChannelId).Returns("qq");
+        adapter.SetupGet(a => a.Capabilities).Returns(new ChannelCapabilities
+        {
+            SupportsReplyAnchor = false,
+            Attachments = new ChannelAttachmentCapabilities
+            {
+                Kinds = [OutboundAttachmentKind.Image, OutboundAttachmentKind.File],
+                MaxBytes = 1024,
+                MaxPerMessage = 4,
+            },
+            AttachmentsByConversationKind =
+            [
+                new ConversationAttachmentCapabilities
+                {
+                    Kind = ConversationKind.Guild,
+                    Capabilities = new ChannelAttachmentCapabilities
+                    {
+                        Kinds = [OutboundAttachmentKind.Image],
+                        MaxBytes = 1024,
+                        MaxPerMessage = 4,
+                    },
+                },
+            ],
+        });
+        adapter.Setup(a => a.SendAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OutboundDeliveryResult.Ok());
+        var delivery = BuildDeliveryService(adapter.Object, directory.Object);
+
+        // Guild：命中覆盖能力（仅图片），File 被拒
+        var guildResult = await delivery.DeliverAsync(
+            GuildAttachmentMessage("qq", "c1", FileAttachment(10)));
+
+        guildResult.FailureKind.Should().Be(OutboundFailureKind.AttachmentUnsupported);
+        adapter.Verify(a => a.SendAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // Direct：未命中覆盖，回落默认能力（图片+文件），File 正常发送
+        var directResult = await delivery.DeliverAsync(
+            AttachmentMessage("qq", "u1", FileAttachment(10)));
+
+        directResult.Delivered.Should().BeTrue();
+        adapter.Verify(a => a.SendAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task DeliverAsync_ShouldThrow_WhenContentHasNeitherTextNorAttachments()
     {
         // Spec 5.5 不变式：文本与附件至少一个非空，否则属于生产端缺陷（fail fast）
@@ -464,6 +558,25 @@ public class OutboundDeliveryServiceTests
                     ChannelId = channelId,
                     Kind = ConversationKind.Direct,
                     ExternalId = userId,
+                },
+            },
+            DeliveryKind = OutboundDeliveryKind.Push,
+            Content = new OutboundContent { Attachments = attachments },
+        };
+
+    private static OutboundMessage GuildAttachmentMessage(
+        string channelId,
+        string externalId,
+        params OutboundAttachment[] attachments)
+        => new()
+        {
+            Target = new DeliveryTarget
+            {
+                Conversation = new ConversationInfo
+                {
+                    ChannelId = channelId,
+                    Kind = ConversationKind.Guild,
+                    ExternalId = externalId,
                 },
             },
             DeliveryKind = OutboundDeliveryKind.Push,
