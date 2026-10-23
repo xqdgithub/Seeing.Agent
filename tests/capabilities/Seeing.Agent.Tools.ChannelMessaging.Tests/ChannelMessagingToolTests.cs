@@ -314,6 +314,78 @@ public class SendMessageToolTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_ShouldAcceptJsonArrayString_ForAttachments()
+    {
+        var h = new ToolHarness();
+        h.SetupFile("/ws/report.pdf", 100);
+        h.Sink.Setup(s => s.SendToConversationAsync(
+                It.IsAny<DeliveryTarget>(), It.IsAny<OutboundContent>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OutboundDeliveryResult.Ok());
+        var tool = h.Create();
+
+        var result = await tool.ExecuteAsync(Args(new
+        {
+            channelId = "qq",
+            conversationExternalId = "g1",
+            conversationKind = "group",
+            attachments = "[{\"path\":\"report.pdf\",\"kind\":\"file\",\"name\":\"report.pdf\"}]"
+        }), new ToolContext { SessionId = "s1" });
+
+        result.Success.Should().BeTrue();
+        h.Sink.Verify(s => s.SendToConversationAsync(
+            It.Is<DeliveryTarget>(t => t.Conversation.ExternalId == "g1"),
+            It.Is<OutboundContent>(c =>
+                c.Attachments.Count == 1
+                && c.Attachments[0].LocalPath == "/ws/report.pdf"
+                && c.Attachments[0].Kind == OutboundAttachmentKind.File
+                && c.Attachments[0].SizeBytes == 100),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ShouldReject_WhenAttachmentsStringIsNotJsonArray()
+    {
+        var h = new ToolHarness();
+        var tool = h.Create();
+
+        var result = await tool.ExecuteAsync(Args(new
+        {
+            channelId = "qq",
+            conversationExternalId = "g1",
+            conversationKind = "group",
+            text = "hi",
+            attachments = "{\"path\":\"report.pdf\"}"
+        }), new ToolContext { SessionId = "s1" });
+
+        result.Success.Should().BeFalse();
+        result.Title.Should().Be("参数错误");
+        result.Error.Should().Contain("不是 JSON 数组");
+        h.Sink.Verify(s => s.SendToConversationAsync(
+            It.IsAny<DeliveryTarget>(), It.IsAny<OutboundContent>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ShouldReject_WhenAttachmentsStringIsInvalidJson()
+    {
+        var h = new ToolHarness();
+        var tool = h.Create();
+
+        var result = await tool.ExecuteAsync(Args(new
+        {
+            channelId = "qq",
+            conversationExternalId = "g1",
+            conversationKind = "group",
+            text = "hi",
+            attachments = "[{"
+        }), new ToolContext { SessionId = "s1" });
+
+        result.Success.Should().BeFalse();
+        result.Title.Should().Be("参数错误");
+        result.Error.Should().Contain("不是合法 JSON");
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ShouldTreatExplicitNullAttachments_AsAbsent()
     {
         var h = new ToolHarness();

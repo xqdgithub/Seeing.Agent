@@ -140,6 +140,31 @@ public class SessionChannelTargetResolverTests
         groups.Verify(g => g.GetParentAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Fact]
+    public async Task ResolveSessionTargetAsync_ShouldPreferInMemorySession_WithoutReloading()
+    {
+        var sessions = new Mock<ISessionManager>();
+        sessions.Setup(s => s.Get("s1")).Returns(new SessionData
+        {
+            Id = "s1",
+            ChannelRoute = new SessionChannelRoute
+            {
+                ChannelId = "qq",
+                Kind = "group",
+                ExternalId = "g1",
+            },
+        });
+        var groups = new Mock<ISessionGroupManager>();
+        var resolver = new SessionChannelTargetResolver(sessions.Object, groups.Object);
+
+        var result = await resolver.ResolveSessionTargetAsync("s1");
+
+        result.Target.Should().NotBeNull();
+        result.Target!.Conversation.ExternalId.Should().Be("g1");
+        // 正在执行的会话必须来自内存，不能被 LoadAsync 的磁盘副本覆盖
+        sessions.Verify(s => s.LoadAsync(It.IsAny<string>()), Times.Never);
+    }
+
     private static SessionChannelTargetResolver NewResolver(
         Dictionary<string, SessionChannelRoute> routes,
         Dictionary<string, string?> parents)

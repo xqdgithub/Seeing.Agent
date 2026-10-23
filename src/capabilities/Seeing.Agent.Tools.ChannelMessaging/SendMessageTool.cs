@@ -41,7 +41,7 @@ public sealed class SendMessageTool : ITool
         },
         "attachments": {
           "type": "array",
-          "description": "附件列表。每项必须是工作区内的文件；类型由 kind 或扩展名判定，数量与大小上限由目标通道能力决定",
+          "description": "附件列表（JSON 数组，不要序列化成字符串）。每项必须是工作区内的文件；类型由 kind 或扩展名判定，数量与大小上限由目标通道能力决定",
           "items": {
             "type": "object",
             "description": "单个附件：本地路径，以及可选的类型与展示名",
@@ -89,6 +89,7 @@ public sealed class SendMessageTool : ITool
         "- 目标三选一：targetUserId；conversationExternalId + conversationKind；都省略时发到当前会话绑定的对话。\n" +
         "- 只给 channelId 而不给目标会报参数错误；要发到当前会话就省略 channelId。\n" +
         "- 附件只接受工作区内的文件；path 写绝对路径，或相对当前工作目录的路径。\n" +
+        "- attachments 直接给数组，不要把数组序列化成字符串。\n" +
         "- 支持的类型、单文件上限与单条数量由目标通道能力决定，超出时返回明确失败原因。\n" +
         "- 查目标用 `list_channel_users` / `list_channel_conversations`。";
 
@@ -285,6 +286,7 @@ public sealed class SendMessageTool : ITool
 
     /// <summary>
     /// 读取 <c>attachments</c> 参数：属性缺失或显式 <c>null</c> 视为未提供；
+    /// 数组形态直接使用；字符串形态尝试按 JSON 数组解析（模型/工具协议常把嵌套数组序列化成字符串）；
     /// 其余畸形形状一律返回参数错误，不让 JSON 结构问题延迟到归一化阶段抛异常。
     /// </summary>
     private static bool TryReadAttachments(
@@ -299,13 +301,51 @@ public sealed class SendMessageTool : ITool
             || property.ValueKind == JsonValueKind.Null)
             return true;
 
+        if (property.ValueKind == JsonValueKind.String)
+        {
+            var raw = property.GetString();
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                error = "attachments 必须是数组";
+                return false;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(raw);
+                if (document.RootElement.ValueKind != JsonValueKind.Array)
+                {
+                    error = "attachments 必须是数组（收到字符串，但内容不是 JSON 数组）";
+                    return false;
+                }
+
+                return TryReadAttachmentItems(document.RootElement, out items, out error);
+            }
+            catch (JsonException)
+            {
+                error = "attachments 必须是数组（收到字符串，但内容不是合法 JSON）";
+                return false;
+            }
+        }
+
         if (property.ValueKind != JsonValueKind.Array)
         {
             error = "attachments 必须是数组";
             return false;
         }
 
-        foreach (var item in property.EnumerateArray())
+        return TryReadAttachmentItems(property, out items, out error);
+    }
+
+    private static bool TryReadAttachmentItems(
+        JsonElement array,
+        out List<JsonElement> items,
+        out string? error)
+    {
+        items = [];
+        error = null;
+
+        foreach (var item in array.EnumerateArray())
         {
             if (item.ValueKind != JsonValueKind.Object)
             {
@@ -323,7 +363,7 @@ public sealed class SendMessageTool : ITool
                 }
             }
 
-            items.Add(item);
+            items.Add(item.Clone());
         }
 
         return true;

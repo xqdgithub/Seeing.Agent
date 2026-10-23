@@ -35,8 +35,11 @@ public sealed class SessionChannelTargetResolver : IChannelTargetResolver
         {
             ct.ThrowIfCancellationRequested();
 
-            // 不存在的会话（含父链中断）直接判定未绑定：不创建会话、不继续猜测关系
-            var session = await _sessions.LoadAsync(currentId).ConfigureAwait(false);
+            // 不存在的会话（含父链中断）直接判定未绑定：不创建会话、不继续猜测关系。
+            // 优先取内存中的活对象：对正在执行的会话调用 LoadAsync 会用磁盘副本覆盖缓存，
+            // 使执行循环持有的会话实例与缓存分家，导致工具消息/终态写不回同一条会话。
+            var session = _sessions.Get(currentId)
+                ?? await _sessions.LoadAsync(currentId).ConfigureAwait(false);
             if (session is null)
                 break;
 
