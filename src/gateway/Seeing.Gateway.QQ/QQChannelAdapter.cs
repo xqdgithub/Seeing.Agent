@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Gateway.QQ.Connection;
@@ -374,4 +374,3 @@ public sealed class QQChannelAdapter : IChannelAdapter
     private static string? FirstNonEmpty(string? primary, string? fallback) =>
         !string.IsNullOrWhiteSpace(primary) ? primary : fallback;
 }
-

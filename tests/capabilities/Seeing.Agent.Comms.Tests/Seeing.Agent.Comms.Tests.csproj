@@ -25,10 +25,12 @@
     <PackageReference Include="Moq" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Comms\Seeing.Agent.Comms.csproj" />
+    <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Tools.ChannelMessaging\Seeing.Agent.Tools.ChannelMessaging.csproj" />
   </ItemGroup>
 
 </Project>

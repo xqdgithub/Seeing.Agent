@@ -74,7 +74,7 @@ WebUI 出站绑定改为读写 `ChannelRoute`（工具栏、会话窗、会话�
 | `ConversationAttachmentCapabilities` | `Kind`、`Capabilities`（均 `required`）；用有序条目而非字典 |
 | `ChannelCapabilities` | `SupportsReplyAnchor`（`required`）、`Attachments`（`null` = 该通道不支持附件）、`AttachmentsByConversationKind`（未命中回落到 `Attachments`） |
 
-- 派生查询集中在纯函数扩展 `ChannelCapabilitiesExtensions`（`Supports` / `ResolveAttachments`），DTO 保持纯数据；已登记 `docs/architecture/06` 的纯函数豁免清单。重复 `Kind` 取**首个命中**；反序列化产生的残缺条目（条目本身或 `Capabilities` 为 null）跳过并继续回落；`Kinds` 为 null 视为不支持任何类型（`Supports` 返回 `false`，结果该对话种类的附件被 `AttachmentUnsupported` 拒绝），不抛错。
+- 派生查询集中在纯函数扩展 `ChannelCapabilitiesExtensions`（`Supports` / `ResolveAttachments`），DTO 保持纯数据；已登记 `docs/architecture/06` 的纯函数豁免清单。重复 `Kind` 取**首个命中**；反序列化产生的残缺条目（条目本身或 `Capabilities` 为 null）跳过并继续回落；`Kinds` 为 null 视为不支持任何类型（`Supports` 返回 `false`，结果该对话种类的附件被 `AttachmentUnsupported` 拒绝），不抛错。注册帧会先做结构校验，残缺能力在边界即被 `invalid_capabilities` 拒绝；扩展方法对任意 DTO 仍容错。
 - `SupportsReplyAnchor` 为 `required`：新渠道必须显式回答，不允许静默获得「不填锚点」。QQ = `true`，WeCom 一期 = `false`。
 - 不保留 `ConversationKinds` / `SupportsStreaming`：当前没有消费方，不预埋。
 
@@ -114,11 +114,16 @@ WebUI 出站绑定改为读写 `ChannelRoute`（工具栏、会话窗、会话�
 | `QQOptions.PassiveReplyLimitPerMsg` | 默认值 2 → 5；同一 `msg_id` 的 ack、文本块、附件、权限卡片、终态回复逐条计数，额度耗尽降级为主动消息 |
 | 插件 DI 死注册 | 删除 `QQChannelPlugin` / `WeComChannelPlugin` 中的 `IChannelAdapter` 单例注册（无消费方，桥依赖具体适配器类型） |
 | 宿主 / 样例 | `samples/Seeing.Gateway.Server` 挂载 ChannelMessaging 模块并新增项目引用；`ChannelHost` 调用 `ConnectAsync(_bridge.ChannelId, _bridge.Capabilities, ct)` |
+| 模块依赖 | `ChannelMessagingModule.DependsOn = ["io.local"]`：未启用 `io.local` 的宿主在结算期抛 `SettlementException` 拒绝启动 |
+| 工具必需依赖 | `SendMessageTool` 的 `IWorkspacePathGate` / `ISessionWorkspaceResolver` / `IWorkspaceProvider` / `IFileSystem` 均为必需依赖（缺失即 DI 失败，无「缺依赖就跳过校验」降级） |
+| 调度内容为空 | 调度出站内容为空现在视为缺陷：抛 `ArgumentException` → job 失败并记 Warning（不再静默跳过） |
 | 其他契约 | `IChannelDirectory.ResolveReplyAnchor`（锚点并入目录）；`OutboundFailureKind` 新增 `AttachmentUnsupported` / `AttachmentTooLarge` / `AttachmentUnavailable`；`IWorkspacePathGate.EnsureWithinWorkspace`；`IFileSystem.GetFileLength` / `IsDirectory` |
 
 ### 6.7 已知边界
 
 - **WeCom 无附件、无锚点**：`Attachments = null`（附件在 Comms 层被拒），`SupportsReplyAnchor = false`（适配器 `_inboundFrames` 无失效判定，无法安全消费外部传入的陈旧 `msg_id`）；补上「未知/过期 msgid → 主动发送」后才考虑开放锚点。
+- **启用前置**：启用 `channel-messaging` 必须同时启用 `io.local`（模块 `DependsOn` 硬依赖），否则结算失败、宿主拒绝启动。
+- **版本同构**：Server 与所有 ChannelHost 必须同版本升级；旧 `text` 帧与 `content` 不兼容，表现为反序列化失败或丢帧（无兼容层）。
 - **进程外无投递回执**：工具返回「已提交发送」只表示出站帧已交给 ChannelHost，不代表平台已送达；平台侧失败只记录在 ChannelHost 日志。
 - **同机文件假设**：`LocalPath` 由适配器进程直接读取，跨机 ChannelHost 不在本期范围。
 - 不做附件级权限审批（主场景是把本次任务产物发给正在对话的用户）；普通终态回复只发文本，附件只能由工具显式发送；无 WebUI 附件发送 UI、无附件重试队列与审计。

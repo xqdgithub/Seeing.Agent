@@ -488,9 +488,11 @@ public sealed class WebSocketGatewayClient : IGatewayConnection, IGatewayChannel
                             {
                                 await handler(payload, CancellationToken.None).ConfigureAwait(false);
                             }
-                            catch
+                            catch (Exception ex)
                             {
                                 // Channel outbound handler failures must not kill receive loop
+                                System.Diagnostics.Debug.WriteLine(
+                                    $"Gateway channel outbound handler failed: {ex}");
                             }
                         }, CancellationToken.None);
                     }

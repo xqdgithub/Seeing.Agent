@@ -361,7 +361,6 @@ public sealed class QQHttpApiClient
         {
             "group" => target.GroupOpenId,
             "guild" => target.ChannelId,
-            "dm" => target.GuildId,
             _ => target.SenderOpenId
         };
         return $"{mt}:{openId}";

@@ -105,7 +105,8 @@ public sealed class SendMessageTool : ITool
         var conversationExternalId = ToolJson.ReadString(arguments, "conversationExternalId");
         var conversationKindText = ToolJson.ReadString(arguments, "conversationKind");
         var text = ToolJson.ReadString(arguments, "text");
-        var attachments = ReadAttachments(arguments);
+        if (!TryReadAttachments(arguments, out var attachments, out var attachmentsError))
+            return ParameterError(attachmentsError!);
 
         var hasUser = targetUserId != null;
         var hasConversation = conversationExternalId != null || conversationKindText != null;
@@ -282,16 +283,52 @@ public sealed class SendMessageTool : ITool
         };
     }
 
-    private static List<JsonElement> ReadAttachments(JsonElement arguments)
+    /// <summary>
+    /// 读取 <c>attachments</c> 参数：属性缺失或显式 <c>null</c> 视为未提供；
+    /// 其余畸形形状一律返回参数错误，不让 JSON 结构问题延迟到归一化阶段抛异常。
+    /// </summary>
+    private static bool TryReadAttachments(
+        JsonElement arguments,
+        out List<JsonElement> items,
+        out string? error)
     {
-        var items = new List<JsonElement>();
+        items = [];
+        error = null;
+
         if (!arguments.TryGetProperty("attachments", out var property)
-            || property.ValueKind != JsonValueKind.Array)
-            return items;
+            || property.ValueKind == JsonValueKind.Null)
+            return true;
+
+        if (property.ValueKind != JsonValueKind.Array)
+        {
+            error = "attachments 必须是数组";
+            return false;
+        }
 
         foreach (var item in property.EnumerateArray())
-            items.Add(item);
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                error = "attachments 的每一项必须是对象";
+                return false;
+            }
 
-        return items;
+            foreach (var name in s_attachmentStringProperties)
+            {
+                if (item.TryGetProperty(name, out var value)
+                    && value.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+                {
+                    error = $"attachments[].{name} 必须是字符串";
+                    return false;
+                }
+            }
+
+            items.Add(item);
+        }
+
+        return true;
     }
+
+    /// <summary>附件对象里只允许字符串（或显式 null）的字段。</summary>
+    private static readonly string[] s_attachmentStringProperties = ["path", "kind", "name"];
 }

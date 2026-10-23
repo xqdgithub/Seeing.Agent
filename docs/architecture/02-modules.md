@@ -45,7 +45,7 @@
 | `Seeing.Agent.Agents.BuiltIn` | `agents.builtin` | build/plan/explore/general… |
 | `Seeing.Agent.Scheduler` | `scheduler` | cron / heartbeat；`SessionScheduleDispatcher` 负责 Inject 写回 |
 | `Seeing.Agent.Comms` | `comms` | 渠道目录、出站投递、适配器注册表；`ChannelDeliveryScheduleDispatcher` 只按 `SessionData.ChannelRoute` 出站 |
-| `Seeing.Agent.Tools.ChannelMessaging` | `channel-messaging` | `send_message` / 列用户 / 列对话；无宿主时 no-op sink |
+| `Seeing.Agent.Tools.ChannelMessaging` | `channel-messaging` | `send_channel_message`（文本 + 工作区附件）/ 列用户 / 列对话；`DependsOn: io.local`；无宿主时 no-op sink |
 | `Seeing.Agent.Memory` | `memory` | 记忆 |
 | `Seeing.Agent.SystemOne` | `systemone` | SystemOne 集成（ReloadHandler 挂接式；provider owner=systemone） |
 | `Seeing.Agent.Tools.SystemOne` | `systemone.tools` | SystemOne 工具；`DependsOn: systemone` |

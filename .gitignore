@@ -411,5 +411,5 @@ samples/*/plugins/*.dll
 /deploy
 /.github
 
-# SDD 工作区（本地 scratch，不入库）
+# SDD worktree scratch (not committed)
 .superpowers/

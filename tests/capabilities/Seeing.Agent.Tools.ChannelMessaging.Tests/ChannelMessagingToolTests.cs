@@ -291,6 +291,98 @@ public class SendMessageToolTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_ShouldReject_WhenAttachmentsIsObject()
+    {
+        var h = new ToolHarness();
+        var tool = h.Create();
+
+        var result = await tool.ExecuteAsync(Args(new
+        {
+            channelId = "qq",
+            conversationExternalId = "g1",
+            conversationKind = "group",
+            text = "hi",
+            attachments = new { path = "report.pdf" }
+        }), new ToolContext { SessionId = "s1" });
+
+        result.Success.Should().BeFalse();
+        result.Title.Should().Be("参数错误");
+        result.Error.Should().Be("attachments 必须是数组");
+        h.Sink.Verify(s => s.SendToConversationAsync(
+            It.IsAny<DeliveryTarget>(), It.IsAny<OutboundContent>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ShouldTreatExplicitNullAttachments_AsAbsent()
+    {
+        var h = new ToolHarness();
+        h.Sink.Setup(s => s.SendToConversationAsync(
+                It.IsAny<DeliveryTarget>(), It.IsAny<OutboundContent>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OutboundDeliveryResult.Ok());
+        var tool = h.Create();
+
+        var result = await tool.ExecuteAsync(Args(new
+        {
+            channelId = "qq",
+            conversationExternalId = "g1",
+            conversationKind = "group",
+            text = "hi",
+            attachments = (object?)null
+        }), new ToolContext { SessionId = "s1" });
+
+        result.Success.Should().BeTrue();
+        h.Sink.Verify(s => s.SendToConversationAsync(
+            It.IsAny<DeliveryTarget>(),
+            It.Is<OutboundContent>(c => c.Text == "hi" && c.Attachments.Count == 0),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ShouldReject_WhenAttachmentPathIsNotString()
+    {
+        var h = new ToolHarness();
+        var tool = h.Create();
+
+        var result = await tool.ExecuteAsync(Args(new
+        {
+            channelId = "qq",
+            conversationExternalId = "g1",
+            conversationKind = "group",
+            attachments = new object[] { new { path = 123 } }
+        }), new ToolContext { SessionId = "s1" });
+
+        result.Success.Should().BeFalse();
+        result.Title.Should().Be("参数错误");
+        result.Error.Should().Be("attachments[].path 必须是字符串");
+        h.Sink.Verify(s => s.SendToConversationAsync(
+            It.IsAny<DeliveryTarget>(), It.IsAny<OutboundContent>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ShouldReject_WhenAttachmentItemIsNotObject()
+    {
+        var h = new ToolHarness();
+        var tool = h.Create();
+
+        var result = await tool.ExecuteAsync(Args(new
+        {
+            channelId = "qq",
+            conversationExternalId = "g1",
+            conversationKind = "group",
+            attachments = new object[] { "report.pdf" }
+        }), new ToolContext { SessionId = "s1" });
+
+        result.Success.Should().BeFalse();
+        result.Title.Should().Be("参数错误");
+        result.Error.Should().Be("attachments 的每一项必须是对象");
+        h.Sink.Verify(s => s.SendToConversationAsync(
+            It.IsAny<DeliveryTarget>(), It.IsAny<OutboundContent>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public void ParametersSchema_ShouldAllowEmptyRequired_AndDescribeNestedItems()
     {
         var schema = new ToolHarness().Create().ParametersSchema;

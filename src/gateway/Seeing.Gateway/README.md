@@ -95,7 +95,7 @@ public interface IGatewayClient
 
 public interface IGatewayConnection : IAsyncDisposable
 {
-    Task ConnectAsync(CancellationToken ct = default);
+    Task ConnectAsync(string channelId, ChannelCapabilities capabilities, CancellationToken ct = default);
     Task<GatewaySubmitResult> SubmitAsync(GatewayRequest request, CancellationToken ct = default);
     IAsyncEnumerable<GatewayInbound> ReceiveAsync(CancellationToken ct = default);
     Task<GatewayCancelAckPayload> CancelAsync(string executionId, CancellationToken ct = default);
@@ -105,6 +105,7 @@ public interface IGatewayConnection : IAsyncDisposable
 public interface IChannelBridge
 {
     string ChannelId { get; }
+    ChannelCapabilities Capabilities { get; }
     Task StartAsync(CancellationToken ct = default);
     Task StopAsync(CancellationToken ct = default);
 }
