@@ -38,10 +38,11 @@ namespace Seeing.Agent.Tools.FileSystem
         public override string Id => "read";
 
         public override string Description =>
-            "读取文件或目录内容。\n\n" +
-            "可以读取文件或目录。返回带行号的文件内容，或目录中的条目列表。\n" +
-            "使用 offset 和 limit 参数分页读取大文件。\n" +
-            "自动检测二进制文件、图片、PDF 文件并返回附件而非文本内容。";
+            "读取文件或目录内容，返回带行号的文本；查看文件原文用此工具。\n\n" +
+            "- 内容：文件返回带行号的文本；目录返回条目列表。\n" +
+            "- 分页：offset 从 1 开始，limit 默认 2000 行；超长单行按 2000 字符截断，输出上限 50KB。\n" +
+            "- 特殊文件：二进制、图片、PDF 自动识别并作为附件返回，不作为文本。\n" +
+            "- 不用于：把文件呈现给用户（用 `open_file`）；修改文件用 `edit`。";
 
         public override ToolCategory Category => ToolCategory.FileSystem;
 
@@ -57,7 +58,7 @@ namespace Seeing.Agent.Tools.FileSystem
                     path = new
                     {
                         type = "string",
-                        description = "要读取的文件或目录的绝对路径"
+                        description = "要读取的文件或目录：绝对路径，或相对当前工作目录的路径"
                     },
                     offset = new
                     {

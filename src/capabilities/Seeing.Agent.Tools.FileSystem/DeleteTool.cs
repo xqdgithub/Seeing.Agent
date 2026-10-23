@@ -30,8 +30,9 @@ public class DeleteTool : BuiltInToolBase
     public override string Id => "delete";
 
     public override string Description =>
-        "删除文件或目录。\n\n" +
-        "删除指定路径的文件，或递归删除整个目录（含所有子项）。";
+        "删除文件或整个目录，递归且不可恢复；仅用于确需移除的路径。\n\n" +
+        "- 目录：递归删除全部子项，不可恢复。\n" +
+        "- 路径：绝对路径，或相对当前工作目录的路径。";
 
     public override ToolCategory Category => ToolCategory.FileSystem;
 
@@ -47,7 +48,7 @@ public class DeleteTool : BuiltInToolBase
                 path = new
                 {
                     type = "string",
-                    description = "要删除的文件或目录的绝对路径"
+                    description = "要删除的文件或目录：绝对路径，或相对当前工作目录的路径"
                 }
             },
             required = new[] { "path" }

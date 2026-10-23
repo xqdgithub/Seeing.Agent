@@ -37,10 +37,10 @@ namespace Seeing.Agent.Tools.FileSystem
         public override string Id => "write";
 
         public override string Description =>
-            "将内容写入文件。\n\n" +
-            "将提供的文本内容写入指定的文件路径。路径必须是绝对路径。\n" +
-            "如果文件已存在，会覆盖原有内容。\n" +
-            "如果文件不存在，会创建新文件（包括必要的目录）。";
+            "新建文件或整体重写；只改现有文件的一小段请用 `edit`。\n\n" +
+            "- 路径：绝对路径，或相对当前工作目录的路径；父目录不存在会自动创建。\n" +
+            "- 覆盖：目标已存在时整文件替换，原有内容不保留。\n" +
+            "- 不用于：读取内容（用 `read`）；把文件呈现给用户（用 `open_file`）。";
 
         public override ToolCategory Category => ToolCategory.FileSystem;
 
@@ -56,7 +56,7 @@ namespace Seeing.Agent.Tools.FileSystem
                     path = new
                     {
                         type = "string",
-                        description = "要写入的文件的绝对路径（必须是绝对路径，不能是相对路径）"
+                        description = "要写入的文件：绝对路径，或相对当前工作目录的路径（父目录会自动创建）"
                     },
                     content = new
                     {

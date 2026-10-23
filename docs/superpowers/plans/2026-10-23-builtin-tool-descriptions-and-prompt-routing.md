@@ -1,4 +1,4 @@
-# 内置工具描述与提示词路由优化 实施计划
+﻿# 内置工具描述与提示词路由优化 实施计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -86,7 +86,7 @@
 
 **Interfaces:**
 - Produces: `BuiltInToolCatalog.All()` → `IReadOnlyList<ITool>`（后续任务往列表里追加条目）；`ToolMetadataTests` 的 `[Theory]` 数据源 `ToolCases()` → `(string Id, string Description, JsonElement Parameters)`；静态字典 `RoutingExpectations`（`toolId → 必须被点名的兄弟 id`）。
-- Consumes: `ITool`（`Seeing.Agent.Abstractions.Tools`）、`SeeingAgentOptions.ToolExposureOptions`（`Seeing.Agent.Core.Configuration`）。
+- Consumes: `ITool`（`Seeing.Agent.Abstractions.Tools`）、`ToolExposureOptions`（`Seeing.Agent.Core.Configuration`，命名空间下的顶层类型）。
 
 - [ ] **Step 1: 建测试项目并登记到解决方案**
 
@@ -191,7 +191,7 @@ public class ToolMetadataTests
     [Theory, MemberData(nameof(ToolIds))]
     public void CatalogLine_ShouldKeepFirstTwentyChars(string id)
     {
-        var options = new SeeingAgentOptions.ToolExposureOptions();
+        var options = new ToolExposureOptions();
         var tool = BuiltInToolCatalog.All().Single(t => t.Id == id);
         var firstLine = tool.Description.Split('\n')[0].Trim();
         var head = firstLine[..Math.Min(20, firstLine.Length)];
@@ -702,7 +702,7 @@ public void DefaultCatalogBudget_ShouldShowEveryDeferredTool()
         .Select(i => Schema($"tool_{i:00}", desc: desc))
         .Append(Schema("tool_search"))
         .ToArray();
-    var options = new SeeingAgentOptions.ToolExposureOptions();
+    var options = new ToolExposureOptions();
     var config = new EffectiveExposureConfig(
         ToolExposurePolicyMode.Tiered,
         Array.Empty<string>(),
@@ -722,7 +722,7 @@ public void DefaultCatalogBudget_ShouldShowEveryDeferredTool()
 [Fact]
 public void ExposureDefaults_ShouldMatchDesignedValues()
 {
-    var options = new SeeingAgentOptions.ToolExposureOptions();
+    var options = new ToolExposureOptions();
     options.CatalogLineMaxChars.Should().Be(200);
     options.CatalogBudgetChars.Should().Be(8000);
 }

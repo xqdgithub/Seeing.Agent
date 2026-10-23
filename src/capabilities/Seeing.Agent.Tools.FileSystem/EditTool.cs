@@ -37,10 +37,11 @@ namespace Seeing.Agent.Tools.FileSystem
         public override string Id => "edit";
 
         public override string Description =>
-            "对文件进行精确的字符串替换编辑。\n\n" +
-            "使用此工具对现有文件进行精确编辑。工具会尝试多种匹配策略来找到要替换的内容。\n" +
-            "必须先使用 Read 工具读取文件，确保了解要编辑的内容。\n" +
-            "oldString 和 newString 必须完全匹配，包括空白和缩进。";
+            "对现有文件做精确字符串替换；改代码片段用此工具，不要整文件覆盖。\n\n" +
+            "- 前置：先用 `read` 读取目标文件，确认上下文与缩进。\n" +
+            "- 匹配：oldString 必须唯一；文件中有多处相同文本时提供更多上下文，或设 replaceAll=true。\n" +
+            "- 严格性：空白、缩进、行尾必须一致；匹配失败会报错且不写入。\n" +
+            "- 新建：仅当 oldString 为空串时新建文件，通常直接用 `write` 更清晰。";
 
         public override ToolCategory Category => ToolCategory.FileSystem;
 
@@ -56,12 +57,12 @@ namespace Seeing.Agent.Tools.FileSystem
                     path = new
                     {
                         type = "string",
-                        description = "要修改的文件的绝对路径"
+                        description = "要修改的文件：绝对路径，或相对当前工作目录的路径"
                     },
                     oldString = new
                     {
                         type = "string",
-                        description = "要替换的文本"
+                        description = "要替换的原文本（必须与文件内容完全一致；为空串时新建文件）"
                     },
                     newString = new
                     {
@@ -71,7 +72,7 @@ namespace Seeing.Agent.Tools.FileSystem
                     replaceAll = new
                     {
                         type = "boolean",
-                        description = "替换所有匹配项（默认为 false）"
+                        description = "是否替换所有匹配项；默认 false，此时要求 oldString 在文件中唯一"
                     }
                 },
                 required = new[] { "path", "oldString", "newString" }

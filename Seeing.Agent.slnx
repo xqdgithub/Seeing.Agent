@@ -109,6 +109,7 @@
     <Project Path="tests/capabilities/Seeing.Agent.Tools.ChannelMessaging.Tests/Seeing.Agent.Tools.ChannelMessaging.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.FileSystem.Tests/Seeing.Agent.Tools.FileSystem.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Git.Tests/Seeing.Agent.Tools.Git.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Tools.Metadata.Tests/Seeing.Agent.Tools.Metadata.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Question.Tests/Seeing.Agent.Tools.Question.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Editor.Tests/Seeing.Agent.Tools.Editor.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Session.Tests/Seeing.Agent.Tools.Session.Tests.csproj" />
