@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Prompts;
-using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Hosting.Prompts;
 using Xunit;
 

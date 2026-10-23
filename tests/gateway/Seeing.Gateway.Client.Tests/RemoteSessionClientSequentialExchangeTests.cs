@@ -1,6 +1,3 @@
-using System.Net.WebSockets;
-using System.Text;
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -11,10 +8,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Gateway.Channels;
-using Seeing.Gateway.Client;
 using Seeing.Gateway.Mapping;
 using Seeing.Gateway.Models;
 using Seeing.Gateway.Protocol;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Gateway.Client.Tests;
@@ -166,15 +165,21 @@ public sealed class RemoteSessionClientSequentialExchangeTests
             await Task.Delay(80, ct);
             await SendChatEventAsync(ws, frame.Id, new LoopStartEvent
             {
-                SessionId = sessionId, LoopId = loopId, UserInput = "input"
+                SessionId = sessionId,
+                LoopId = loopId,
+                UserInput = "input"
             }, ct);
             await SendChatEventAsync(ws, frame.Id, new StreamDeltaEvent
             {
-                SessionId = sessionId, LoopId = loopId, ContentDelta = $"reply-{n}"
+                SessionId = sessionId,
+                LoopId = loopId,
+                ContentDelta = $"reply-{n}"
             }, ct);
             await SendChatEventAsync(ws, frame.Id, new LoopCompleteEvent
             {
-                SessionId = sessionId, LoopId = loopId, Success = true
+                SessionId = sessionId,
+                LoopId = loopId,
+                Success = true
             }, ct);
 
             // ③ 流收口 → execution.complete（桥已提前 return，本帧滞留客户端共享队列）

@@ -1,9 +1,9 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Seeing.Agent.Comms.Directories;
 

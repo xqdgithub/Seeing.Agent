@@ -1,8 +1,8 @@
 using FluentAssertions;
-using Xunit;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Comms.Directories;
+using Xunit;
 
 namespace Seeing.Agent.Comms.Tests.Directories;
 

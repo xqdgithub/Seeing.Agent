@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Abstractions.Channels;

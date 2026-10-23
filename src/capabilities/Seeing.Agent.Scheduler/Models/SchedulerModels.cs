@@ -1,5 +1,5 @@
-using System.Text.Json.Serialization;
 using Seeing.Session.Core;
+using System.Text.Json.Serialization;
 
 namespace Seeing.Agent.Scheduler.Models;
 

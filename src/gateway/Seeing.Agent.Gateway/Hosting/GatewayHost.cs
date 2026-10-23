@@ -16,8 +16,8 @@ using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Endpoints;
 using Seeing.Agent.Gateway.Permission;
-using Seeing.Gateway.Client;
 using Seeing.Agent.Llm;
+using Seeing.Gateway.Client;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Gateway.Hosting;

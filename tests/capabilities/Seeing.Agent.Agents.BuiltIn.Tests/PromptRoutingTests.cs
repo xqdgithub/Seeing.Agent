@@ -1,7 +1,7 @@
-using System.Text.RegularExpressions;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Permissions;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace Seeing.Agent.Agents.BuiltIn.Tests;

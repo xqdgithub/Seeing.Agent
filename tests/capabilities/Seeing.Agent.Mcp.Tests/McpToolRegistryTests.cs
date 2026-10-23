@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Mcp;
 using Seeing.Agent.Mcp.Management;
 using System.Text.Json;
 using Xunit;

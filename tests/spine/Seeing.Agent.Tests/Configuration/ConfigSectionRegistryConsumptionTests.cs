@@ -162,7 +162,8 @@ public class ConfigSectionRegistryConsumptionTests
     }
 
     [Fact]
-    public void AddSeeingCore_Factory_Should_Not_Sync_Load()    {
+    public void AddSeeingCore_Factory_Should_Not_Sync_Load()
+    {
         var workspace = new Mock<IWorkspaceProvider>();
         workspace.Setup(w => w.UserSeeingDirectory).Returns(Path.GetTempPath());
         workspace.Setup(w => w.ProjectSeeingDirectory).Returns(Path.GetTempPath());

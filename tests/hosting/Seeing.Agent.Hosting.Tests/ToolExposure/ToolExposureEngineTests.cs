@@ -1,10 +1,10 @@
-using System.Text.Json;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Hosting.Execution.ToolExposure;
 using Seeing.TokenEstimation;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Hosting.Tests.ToolExposure;

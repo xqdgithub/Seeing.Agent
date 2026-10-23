@@ -6,7 +6,6 @@ using Moq;
 using Quartz;
 using Quartz.Impl;
 using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Hooks;

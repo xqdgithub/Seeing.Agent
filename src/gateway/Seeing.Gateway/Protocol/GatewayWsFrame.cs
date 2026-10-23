@@ -1,6 +1,6 @@
+using Seeing.Agent.Abstractions.Channels;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Seeing.Agent.Abstractions.Channels;
 
 namespace Seeing.Gateway.Protocol;
 

@@ -1,9 +1,9 @@
 using FluentAssertions;
-using Xunit;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Comms.Delivery;
+using Xunit;
 
 namespace Seeing.Agent.Comms.Tests.Delivery;
 

@@ -1,8 +1,8 @@
-using System.Text.RegularExpressions;
 using FluentAssertions;
 using Moq;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Hosting.Tools;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace Seeing.Agent.Tools.Metadata.Tests;

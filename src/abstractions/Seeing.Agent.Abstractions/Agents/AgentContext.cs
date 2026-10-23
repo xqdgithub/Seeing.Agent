@@ -1,4 +1,3 @@
-using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
 
 namespace Seeing.Agent.Abstractions.Agents;

@@ -1,10 +1,10 @@
 using FluentAssertions;
-using Xunit;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Comms.Delivery;
 using Seeing.Agent.Comms.Directories;
+using Xunit;
 
 namespace Seeing.Agent.Comms.Tests.Delivery;
 

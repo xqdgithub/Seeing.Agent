@@ -1,4 +1,3 @@
-using System.Text.Json;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;

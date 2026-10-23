@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -6,18 +5,16 @@ using Moq;
 using Quartz;
 using Quartz.Impl;
 using Seeing.Agent.Abstractions.Agents;
-using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Reminders;
 using Seeing.Agent.Abstractions.Scheduling;
-using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Scheduler.Jobs;
-using Seeing.Agent.Scheduler.Models;
 using Seeing.Session.Core;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace Seeing.Agent.Scheduler.Tests;

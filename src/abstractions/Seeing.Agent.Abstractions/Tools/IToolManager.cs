@@ -3,7 +3,6 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Abstractions.Tools;
 
 namespace Seeing.Agent.Abstractions.Tools;
 

@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Interactions;
-using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Gateway.Models;
 using System.Threading.Channels;

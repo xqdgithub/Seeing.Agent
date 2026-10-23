@@ -1,8 +1,8 @@
-using System.Text.Json;
-using System.Text.RegularExpressions;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Configuration;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace Seeing.Agent.Tools.Metadata.Tests;

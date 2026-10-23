@@ -8,7 +8,6 @@ using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Modules;
@@ -185,13 +184,13 @@ public class SessionToolSchemaResolverExposureTests
         ToolExposurePolicyMode mode,
         IReadOnlyList<string>? pinned = null,
         IReadOnlyList<string>? denied = null) => new()
-    {
-        Name = "build",
-        Runtime = AgentRuntime.Native,
-        Exposure = mode,
-        PinnedTools = pinned?.ToList(),
-        DeniedTools = denied?.ToList()
-    };
+        {
+            Name = "build",
+            Runtime = AgentRuntime.Native,
+            Exposure = mode,
+            PinnedTools = pinned?.ToList(),
+            DeniedTools = denied?.ToList()
+        };
 
     private static SessionToolSchemaResolver CreateResolver(IServiceProvider services) =>
         new(services,

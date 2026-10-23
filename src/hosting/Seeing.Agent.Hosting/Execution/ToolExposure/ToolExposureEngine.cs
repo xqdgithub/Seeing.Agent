@@ -1,11 +1,8 @@
-using System.Text;
-using System.Text.Json;
-using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Configuration;
-using Seeing.Session.Core;
 using Seeing.TokenEstimation;
+using System.Text;
+using System.Text.Json;
 
 namespace Seeing.Agent.Hosting.Execution.ToolExposure;
 

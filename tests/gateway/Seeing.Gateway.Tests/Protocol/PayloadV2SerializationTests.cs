@@ -1,8 +1,8 @@
-using System.Text.Json;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Gateway.Models;
 using Seeing.Gateway.Protocol;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Gateway.Tests.Protocol;

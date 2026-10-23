@@ -466,7 +466,7 @@ public class TaskTool : ToolBase
     private static string Truncate(string text, int max) =>
         text.Length <= max ? text : text[..(max - 1)] + "…";
 
-    private static bool HasConfiguredModel(AgentDefinition agent) =>        agent.Model != null && !string.IsNullOrWhiteSpace(agent.Model.ModelId);
+    private static bool HasConfiguredModel(AgentDefinition agent) => agent.Model != null && !string.IsNullOrWhiteSpace(agent.Model.ModelId);
 
     /// <summary>
     /// 获取执行状态概览

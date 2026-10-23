@@ -2,7 +2,6 @@ using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Hosting.Execution;

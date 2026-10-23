@@ -4,7 +4,6 @@ using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Tools;
 using Seeing.Agent.Hosting.Commands;
-using Seeing.Agent.Mcp;
 using System.Text.Json;
 using Xunit;
 

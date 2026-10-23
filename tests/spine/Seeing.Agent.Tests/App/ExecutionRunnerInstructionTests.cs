@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Commands;
@@ -13,7 +12,6 @@ using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Compression;
-using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Llm;
