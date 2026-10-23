@@ -1,7 +1,8 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Hosting.Execution.ToolExposure;
 using Seeing.TokenEstimation;
 using Xunit;
@@ -27,6 +28,41 @@ public class ToolExposureEngineTests
         {
             Function = new FunctionSchema { Name = id, Description = desc, Parameters = parameters }
         };
+    }
+
+    [Fact]
+    public void DefaultCatalogBudget_ShouldShowEveryDeferredTool()
+    {
+        // 最坏情况：每条签名都顶到行宽上限（200）；35 个延迟工具必须全部出现在目录里。
+        var desc = new string('描', 300);
+        var tools = Enumerable.Range(0, 35)
+            .Select(i => Schema($"tool_{i:00}", desc: desc))
+            .Append(Schema("tool_search"))
+            .ToArray();
+        var options = new ToolExposureOptions();
+        var config = new EffectiveExposureConfig(
+            ToolExposurePolicyMode.Tiered,
+            Array.Empty<string>(),
+            options.CatalogBudgetChars,
+            options.CatalogLineMaxChars,
+            9999,
+            999999);
+
+        var result = ToolExposureEngine.Compute(Input(tools, config), Counter);
+
+        result.CatalogText.Should().NotBeNull();
+        for (var i = 0; i < 35; i++)
+            result.CatalogText!.Should().Contain($"tool_{i:00}(");
+        result.CatalogText!.Length.Should().BeLessThanOrEqualTo(options.CatalogBudgetChars);
+    }
+
+    [Fact]
+    public void ExposureDefaults_ShouldMatchDesignedValues()
+    {
+        var options = new ToolExposureOptions();
+
+        options.CatalogLineMaxChars.Should().Be(200);
+        options.CatalogBudgetChars.Should().Be(8000);
     }
 
     private static EffectiveExposureConfig Config(

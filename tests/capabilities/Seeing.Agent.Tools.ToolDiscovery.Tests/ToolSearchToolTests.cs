@@ -65,6 +65,69 @@ public class ToolSearchToolTests
 
     private static int GetMetaInt(ToolResult result, string key) => Convert.ToInt32(result.Metadata[key]);
 
+    /// <summary>构造"签名被截断、完整描述很长"的延迟工具，用于验证检索与 summary 不依赖截断签名。</summary>
+    private static ExposedTool LongEntry(string id, string desc)
+    {
+        var signature = $"{id}(path): {desc[..Math.Min(120, desc.Length)]}";
+        return new ExposedTool(
+            id,
+            string.Empty,
+            signature,
+            new FunctionToolSchema
+            {
+                Function = new FunctionSchema
+                {
+                    Name = id,
+                    Description = desc,
+                    Parameters = JsonSerializer.SerializeToElement(new
+                    {
+                        type = "object",
+                        properties = new { path = new { type = "string", description = "路径" } },
+                        required = new[] { "path" }
+                    })
+                }
+            },
+            10,
+            ToolExposureMode.Deferred);
+    }
+
+    [Fact]
+    public async Task Summary_ShouldUseDescriptionBeyondSignatureTruncation()
+    {
+        var desc = "开头说明" + new string('中', 240) + "尾部关键词甲";
+        var tool = CreateTool(LongEntry("deep_tool", desc));
+
+        var result = await tool.ExecuteAsync(Args(new { }), _context);
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Contain("尾部关键词甲");
+    }
+
+    [Fact]
+    public async Task Summary_ShouldTruncateDescriptionAtThreeHundredChars()
+    {
+        var desc = new string('甲', 320) + "尾部标记乙";
+        var tool = CreateTool(LongEntry("deep_tool", desc));
+
+        var result = await tool.ExecuteAsync(Args(new { }), _context);
+
+        result.Output.Should().NotContain("尾部标记乙");
+        result.Output.Should().Contain(new string('甲', 50));
+    }
+
+    [Fact]
+    public async Task Search_ShouldMatchKeywordFromDescriptionTail()
+    {
+        var desc = "开头说明" + new string('中', 240) + "尾部关键词甲";
+        var tool = CreateTool(LongEntry("deep_tool", desc));
+
+        var result = await tool.ExecuteAsync(Args(new { query = "尾部关键词甲" }), _context);
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Contain("deep_tool");
+        GetMetaInt(result, "total").Should().Be(1);
+    }
+
     [Fact]
     public async Task DetailName_ShouldReturnOnlyIds()
     {
@@ -80,14 +143,14 @@ public class ToolSearchToolTests
     }
 
     [Fact]
-    public async Task DetailSummary_ShouldIncludeSignatureAndSummary()
+    public async Task DetailSummary_ShouldIncludeIdAndDescription()
     {
         var tool = CreateTool(Entry("file_read", signature: "read(path)", summary: "读文件"));
 
         var result = await tool.ExecuteAsync(Args(new { }), _context);
 
         result.Success.Should().BeTrue();
-        result.Output.Should().Contain("file_read").And.Contain("read(path)").And.Contain("读文件");
+        result.Output.Should().Contain("file_read").And.Contain("读文件");
     }
 
     [Fact]

@@ -195,11 +195,11 @@ namespace Seeing.Agent.Core.Configuration
         /// </summary>
         public List<string> PinnedTools { get; set; } = [];
 
-        /// <summary>目录预算（字符）：内联工具目录的字符上限。</summary>
-        public int CatalogBudgetChars { get; set; } = 2000;
+        /// <summary>目录预算（字符）：内联工具目录的字符上限。默认按 35 个延迟工具全量可见取值（35 × 203 + 开场白/分组标题 ≈ 7.3k，留余量）。</summary>
+        public int CatalogBudgetChars { get; set; } = 8000;
 
-        /// <summary>目录单条目最大字符数。</summary>
-        public int CatalogLineMaxChars { get; set; } = 120;
+        /// <summary>目录单条目最大字符数（整行：id(参数摘要): 描述）。</summary>
+        public int CatalogLineMaxChars { get; set; } = 200;
 
         /// <summary>升级阈值：可用工具数超过此值触发降档（All→Auto 类启发）。</summary>
         public int EscalateToolCount { get; set; } = 30;

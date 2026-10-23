@@ -22,6 +22,9 @@ public sealed class ToolSearchTool : ToolBase
     private const int MaxLimit = 30;
     private const int FullPageHardCap = 3;
 
+    /// <summary>summary 档位返回的描述上限（字符）。检索命中后才付这份 token，因此可长于目录行。</summary>
+    private const int SummaryMaxChars = 300;
+
     private const int ScoreExactId = 20;
     private const int ScoreIdWord = 12;
     private const int ScoreIdSubstring = 8;
@@ -186,15 +189,22 @@ public sealed class ToolSearchTool : ToolBase
         for (var i = 0; i < page.Count; i++)
         {
             var entry = page[i].Entry;
-            sb.Append('\n').Append(i + 1).Append(". ").Append(entry.Id);
+            sb.Append('\n').Append(i + 1).Append(". ");
             if (detail == "name")
+            {
+                sb.Append(entry.Id);
                 continue;
+            }
+
+            // summary：用完整描述（截 300）而非目录行签名；full 保持签名 + 完整 schema。
+            if (detail == "summary")
+            {
+                sb.Append(BuildSummaryLine(entry));
+                continue;
+            }
 
             if (!string.IsNullOrWhiteSpace(entry.Signature))
-                sb.Append(" | ").Append(entry.Signature);
-
-            if (detail != "full")
-                continue;
+                sb.Append(entry.Signature);
 
             sb.Append(discovered
                 ? context.ToolScope is not null
@@ -246,6 +256,96 @@ public sealed class ToolSearchTool : ToolBase
         return meta;
     }
 
+    /// <summary>summary 行：id(参数摘要): 完整描述（折叠空白、截断到 <see cref="SummaryMaxChars"/>）。</summary>
+    private static string BuildSummaryLine(ExposedTool entry)
+    {
+        var function = entry.Schema.Function;
+        var description = NormalizeWhitespace(function?.Description);
+        if (description.Length > SummaryMaxChars)
+            description = description[..(SummaryMaxChars - 1)] + "…";
+
+        var parameters = DescribeParameters(function?.Parameters);
+        return string.IsNullOrEmpty(parameters)
+            ? $"{entry.Id}: {description}"
+            : $"{entry.Id}({parameters}): {description}";
+    }
+
+    /// <summary>检索语料：id + 命名空间 + 完整描述 + 参数名（小写）。只用截断签名会让描述中段无法命中。</summary>
+    private static string BuildCorpus(ExposedTool entry)
+    {
+        var function = entry.Schema.Function;
+        var sb = new StringBuilder()
+            .Append(entry.Id).Append(' ')
+            .Append(entry.Namespace ?? string.Empty).Append(' ')
+            .Append(function?.Description ?? string.Empty).Append(' ');
+
+        if (function?.Parameters is { ValueKind: JsonValueKind.Object } parameters
+            && parameters.TryGetProperty("properties", out var properties)
+            && properties.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in properties.EnumerateObject())
+                sb.Append(property.Name).Append(' ');
+        }
+
+        return sb.ToString().ToLowerInvariant();
+    }
+
+    /// <summary>单行参数摘要，形如 <c>path, offset?, limit?</c>（与目录行同构，最多 4 个）。</summary>
+    private static string DescribeParameters(JsonElement? parameters)
+    {
+        if (parameters is not { ValueKind: JsonValueKind.Object } root
+            || !root.TryGetProperty("properties", out var properties)
+            || properties.ValueKind != JsonValueKind.Object)
+            return string.Empty;
+
+        var required = new HashSet<string>(StringComparer.Ordinal);
+        if (root.TryGetProperty("required", out var requiredNode) && requiredNode.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in requiredNode.EnumerateArray())
+            {
+                if (item.GetString() is { } name)
+                    required.Add(name);
+            }
+        }
+
+        var names = new List<string>();
+        foreach (var property in properties.EnumerateObject())
+        {
+            names.Add(required.Contains(property.Name) ? property.Name : property.Name + "?");
+            if (names.Count == 4)
+                break;
+        }
+
+        return names.Count == 4 ? string.Join(", ", names) + ", …" : string.Join(", ", names);
+    }
+
+    private static string NormalizeWhitespace(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return string.Empty;
+
+        var builder = new StringBuilder(text.Length);
+        var pendingSpace = false;
+        foreach (var ch in text)
+        {
+            if (char.IsWhiteSpace(ch))
+            {
+                pendingSpace = builder.Length > 0;
+                continue;
+            }
+
+            if (pendingSpace)
+            {
+                builder.Append(' ');
+                pendingSpace = false;
+            }
+
+            builder.Append(ch);
+        }
+
+        return builder.ToString();
+    }
+
     private static List<(ExposedTool Entry, int Score)> Rank(
         IReadOnlyList<ExposedTool> entries, string? query)
     {
@@ -264,10 +364,8 @@ public sealed class ToolSearchTool : ToolBase
         foreach (var entry in entries)
         {
             var idLower = entry.Id.ToLowerInvariant();
-            var summaryLower = entry.Signature.ToLowerInvariant();
+            var corpus = BuildCorpus(entry);
             var nsLower = (entry.Namespace ?? string.Empty).ToLowerInvariant();
-            var fullText = string.Join(' ', entry.Id, entry.Namespace ?? "", entry.Signature)
-                .ToLowerInvariant();
             var idWords = SplitWords(entry.Id).Select(Stem).ToHashSet(StringComparer.Ordinal);
 
             var score = 0;
@@ -280,9 +378,9 @@ public sealed class ToolSearchTool : ToolBase
                     score += ScoreIdWord;
                 else if (idLower.Contains(token))
                     score += ScoreIdSubstring;
-                else if (summaryLower.Contains(token))
+                else if (corpus.Contains(token))
                     score += ScoreSummarySubstring;
-                else if (nsLower.Contains(token) || fullText.Contains(token))
+                else if (nsLower.Contains(token))
                     score += ScoreTextSubstring;
             }
 
