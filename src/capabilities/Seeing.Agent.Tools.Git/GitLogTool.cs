@@ -41,12 +41,12 @@ public class GitLogTool : ITool
                 type = "integer",
                 minimum = 1,
                 maximum = MaxMaxCount,
-                description = $"Maximum number of commits to return (max {MaxMaxCount})"
+                description = $"返回的提交条数上限（默认 {DefaultMaxCount}，上限 {MaxMaxCount}）"
             },
             since = new
             {
                 type = "string",
-                description = "Show commits since date (e.g., '2 weeks ago')"
+                description = "只看该时间之后的提交（如 '2 weeks ago'）"
             }
         }
     });

@@ -52,7 +52,7 @@ public sealed class CronCreateTool : ToolBase
                 description = "调度配置：type=cron|interval|once；时间均为 timezone 墙钟（非 UTC）",
                 properties = new
                 {
-                    type = new { type = "string", description = "cron | interval | once" },
+                    type = new { type = "string", description = "调度类型：cron | interval | once" },
                     cron = new { type = "string", description = "Cron 表达式（type=cron）" },
                     every = new { type = "string", description = "间隔，如 6h、30m（type=interval）" },
                     runAt = new { type = "string", description = "一次性执行时间 ISO8601 本地墙钟（type=once）" },
@@ -64,6 +64,7 @@ public sealed class CronCreateTool : ToolBase
                         items = new
                         {
                             type = "object",
+                            description = "单个生效时段：start 与 end 均为 timezone 墙钟时间",
                             properties = new
                             {
                                 start = new { type = "string", description = "HH:mm 或 HH:mm:ss" },

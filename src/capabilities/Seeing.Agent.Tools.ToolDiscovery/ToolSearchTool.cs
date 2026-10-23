@@ -29,7 +29,6 @@ public sealed class ToolSearchTool : ToolBase
     private const int ScoreIdWord = 12;
     private const int ScoreIdSubstring = 8;
     private const int ScoreSummarySubstring = 4;
-    private const int ScoreTextSubstring = 2;
 
     private readonly ISessionToolSchemaResolver _resolver;
     private readonly IToolDiscoveryStore _discoveryStore;
@@ -365,7 +364,6 @@ public sealed class ToolSearchTool : ToolBase
         {
             var idLower = entry.Id.ToLowerInvariant();
             var corpus = BuildCorpus(entry);
-            var nsLower = (entry.Namespace ?? string.Empty).ToLowerInvariant();
             var idWords = SplitWords(entry.Id).Select(Stem).ToHashSet(StringComparer.Ordinal);
 
             var score = 0;
@@ -380,8 +378,6 @@ public sealed class ToolSearchTool : ToolBase
                     score += ScoreIdSubstring;
                 else if (corpus.Contains(token))
                     score += ScoreSummarySubstring;
-                else if (nsLower.Contains(token))
-                    score += ScoreTextSubstring;
             }
 
             if (score > 0)

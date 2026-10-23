@@ -21,7 +21,7 @@ public sealed class CronListTool : ToolBase
 
     public override string Description =>
         "列出全部定时任务及下次触发时间；无需参数。\n\n" +
-        "- 返回 intent、调度表达式与下次触发时间。";
+        "- 返回 intent、任务类型、Agent 与下次触发时间。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
     {

@@ -64,7 +64,7 @@ namespace Seeing.Agent.Skills
                     name = new
                     {
                         type = "string",
-                        description = "The name of the skill to load (see '## Skills' section in the system prompt)."
+                        description = "要加载的技能名称（取自系统提示词的「## Skills」节）"
                     }
                 },
                 required = new[] { "name" }

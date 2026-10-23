@@ -33,7 +33,7 @@ namespace Seeing.Agent.Tools.FileSystem
 
         public override string Description =>
             "按正则搜索文件内容，返回路径与行号；按文件名找文件用 `glob`。\n\n" +
-            "- 范围：默认递归搜索当前工作目录；path 可指定文件或目录。\n" +
+            "- 范围：默认递归搜索当前工作目录；path 只能是目录。\n" +
             "- 过滤：include 支持 '*.cs'、'*.{ts,tsx}' 等模式。\n" +
             "- 结果：默认最多 100 条；pattern 是 .NET 正则，语法错误会直接报错。";
 
@@ -52,7 +52,7 @@ namespace Seeing.Agent.Tools.FileSystem
                 path = new
                 {
                     type = "string",
-                    description = "搜索目录或文件：绝对路径，或相对当前工作目录的路径（默认当前工作目录）"
+                    description = "搜索目录：绝对路径，或相对当前工作目录的路径（默认当前工作目录；不支持传单个文件）"
                 },
                 include = new
                 {

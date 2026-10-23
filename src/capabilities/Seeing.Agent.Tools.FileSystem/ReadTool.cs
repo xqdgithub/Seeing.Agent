@@ -41,7 +41,7 @@ namespace Seeing.Agent.Tools.FileSystem
             "读取文件或目录内容，返回带行号的文本；查看文件原文用此工具。\n\n" +
             "- 内容：文件返回带行号的文本；目录返回条目列表。\n" +
             "- 分页：offset 从 1 开始，limit 默认 2000 行；超长单行按 2000 字符截断，输出上限 50KB。\n" +
-            "- 特殊文件：二进制、图片、PDF 自动识别并作为附件返回，不作为文本。\n" +
+            "- 特殊文件：图片与 PDF 作为附件返回；其他二进制文件会报错无法读取。\n" +
             "- 不用于：把文件呈现给用户（用 `open_file`）；修改文件用 `edit`。";
 
         public override ToolCategory Category => ToolCategory.FileSystem;

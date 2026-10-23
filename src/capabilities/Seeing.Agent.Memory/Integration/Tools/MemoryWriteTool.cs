@@ -40,7 +40,7 @@ public sealed class MemoryWriteTool : ToolBase
             tags = new
             {
                 type = "array",
-                items = new { type = "string" },
+                items = new { type = "string", description = "标签文本" },
                 description = "可选标签"
             }
         },

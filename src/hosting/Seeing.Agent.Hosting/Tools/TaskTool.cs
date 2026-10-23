@@ -446,9 +446,12 @@ public class TaskTool : ToolBase
         try
         {
             var taskable = await _agentRegistry.GetTaskableAgentsAsync().ConfigureAwait(false);
+            // 列表必须有上限：子代理数量不可控，无界追加会让描述突破 R3 的 700 字预算。
+            const int maxListed = 8;
             var agentListText = taskable.Count > 0
-                ? string.Join("\n", taskable.Select(a =>
-                    $"- {a.Name}: {a.Description ?? "此子代理应仅由用户手动调用"}"))
+                ? string.Join("\n", taskable.Take(maxListed).Select(a =>
+                    $"- {a.Name}: {Truncate(a.Description ?? "此子代理应仅由用户手动调用", 40)}"))
+                  + (taskable.Count > maxListed ? $"\n- …共 {taskable.Count} 个可用子代理" : string.Empty)
                 : "- 无可用子代理（需 Native 运行时，且非 Primary）";
 
             return
@@ -461,8 +464,10 @@ public class TaskTool : ToolBase
         }
     }
 
-    private static bool HasConfiguredModel(AgentDefinition agent) =>
-        agent.Model != null && !string.IsNullOrWhiteSpace(agent.Model.ModelId);
+    private static string Truncate(string text, int max) =>
+        text.Length <= max ? text : text[..(max - 1)] + "…";
+
+    private static bool HasConfiguredModel(AgentDefinition agent) =>        agent.Model != null && !string.IsNullOrWhiteSpace(agent.Model.ModelId);
 
     /// <summary>
     /// 获取执行状态概览

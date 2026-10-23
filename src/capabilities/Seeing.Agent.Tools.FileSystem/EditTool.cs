@@ -40,7 +40,7 @@ namespace Seeing.Agent.Tools.FileSystem
             "对现有文件做精确字符串替换；改代码片段用此工具，不要整文件覆盖。\n\n" +
             "- 前置：先用 `read` 读取目标文件，确认上下文与缩进。\n" +
             "- 匹配：oldString 必须唯一；文件中有多处相同文本时提供更多上下文，或设 replaceAll=true。\n" +
-            "- 严格性：空白、缩进、行尾必须一致；匹配失败会报错且不写入。\n" +
+            "- 匹配：先按精确文本匹配；失败后按去缩进、空白归一化等方式重试；仍失败则报错且不写入。\n" +
             "- 新建：仅当 oldString 为空串时新建文件，通常直接用 `write` 更清晰。";
 
         public override ToolCategory Category => ToolCategory.FileSystem;

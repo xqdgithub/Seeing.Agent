@@ -166,6 +166,7 @@ namespace Seeing.Agent.Hosting.Tools
                     prop["items"] = new Dictionary<string, object>
                     {
                         ["type"] = "object",
+                        ["description"] = "单个任务项：content 必填，status 与 priority 为枚举",
                         ["properties"] = new Dictionary<string, object>
                         {
                             ["content"] = new Dictionary<string, object>

@@ -118,6 +118,45 @@ public class ToolMetadataTests
     }
 
     [Fact]
+    public void AcpStatus_ShouldNotAdvertiseParametersItDoesNotHave()
+    {
+        // 实现只有必填 task_id：没有 wait / timeout_ms，也不支持不传时列出全部。
+        var tool = BuiltInToolCatalog.All().Single(t => t.Id == "acp_status");
+
+        tool.Description.Should().NotContain("wait");
+        tool.Description.Should().NotContain("timeout_ms");
+        tool.Description.Should().NotContain("不传则");
+    }
+
+    [Fact]
+    public void Bash_ShouldNotClaimDangerousCommandsAreRejectedByDefault()
+    {
+        // ShellOptions.EnableCommandGuard 默认 false，不能给模型一个假的"已被拦截"保证。
+        var tool = BuiltInToolCatalog.All().Single(t => t.Id == "bash");
+
+        tool.Description.Should().NotContain("危险命令会被拒绝执行");
+    }
+
+    [Fact]
+    public void Grep_ShouldOnlyAdvertiseDirectoryPaths()
+    {
+        // 传文件路径会让 rg 的 WorkingDirectory 失效并退化为空结果，属静默误报。
+        var tool = BuiltInToolCatalog.All().Single(t => t.Id == "grep");
+        var path = tool.ParametersSchema.GetProperty("properties").GetProperty("path")
+            .GetProperty("description").GetString();
+
+        path.Should().Contain("目录").And.NotContain("或文件");
+    }
+
+    [Fact]
+    public void Read_ShouldNotClaimArbitraryBinariesBecomeAttachments()
+    {
+        var tool = BuiltInToolCatalog.All().Single(t => t.Id == "read");
+
+        tool.Description.Should().NotContain("二进制、图片、PDF");
+    }
+
+    [Fact]
     public void TodoWrite_ShouldDescribeItemShape()
     {
         var tool = BuiltInToolCatalog.All().Single(t => t.Id == "todowrite");
@@ -130,8 +169,19 @@ public class ToolMetadataTests
     }
 
     [Fact]
-    public void Catalog_ShouldCoverEveryBuiltInToolExactly()
+    public void Catalog_ShouldCoverEveryBuiltInToolTypeAndId()
     {
+        // 1) 工厂登记的类型必须等于能力包程序集里实际存在的 ITool 实现（防"新增工具漏登记"）。
+        var actualTypes = BuiltInToolCatalog.Assemblies()
+            .Select(a => a.Assembly)
+            .Distinct()
+            .SelectMany(a => a.GetTypes())
+            .Where(t => typeof(ITool).IsAssignableFrom(t) && !t.IsAbstract && !t.IsInterface)
+            .ToHashSet();
+
+        actualTypes.Should().BeEquivalentTo(BuiltInToolCatalog.Types());
+
+        // 2) id 集合仍按产品事实锁定（SystemOneTool 一个类型 → 4 个 id）。
         var ids = BuiltInToolCatalog.All().Select(t => t.Id).ToArray();
 
         ids.Should().HaveCount(52);
@@ -154,6 +204,52 @@ public class ToolMetadataTests
         });
     }
 
+    [Theory, MemberData(nameof(ToolIds))]
+    public void Description_ShouldOnlyBacktickToolIdsParametersOrAgentNames(string id)
+    {
+        var tool = BuiltInToolCatalog.All().Single(t => t.Id == id);
+        var ownParameters = CollectParameterNames(tool.ParametersSchema);
+        var allIds = BuiltInToolCatalog.All().Select(t => t.Id).ToHashSet(StringComparer.Ordinal);
+        var agentNames = new[] { "build", "plan", "explore", "general" };
+
+        foreach (Match match in Regex.Matches(tool.Description, "`([^`]+)`"))
+        {
+            var token = match.Groups[1].Value;
+            if (token.Contains('=') || token.Contains('/') || token.Contains('.') || token.Contains(' '))
+                continue; // 参数值、路径、命令行片段
+
+            var valid = allIds.Contains(token)
+                || ownParameters.Contains(token)
+                || agentNames.Contains(token);
+            valid.Should().BeTrue($"{id} 的反引号片段 `{token}` 既不是工具 id、参数名，也不是 Agent 名");
+        }
+    }
+
+    private static HashSet<string> CollectParameterNames(JsonElement schema)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        if (schema.ValueKind != JsonValueKind.Object)
+            return names;
+
+        if (schema.TryGetProperty("properties", out var properties) && properties.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in properties.EnumerateObject())
+            {
+                names.Add(property.Name);
+                foreach (var nested in CollectParameterNames(property.Value))
+                    names.Add(nested);
+            }
+        }
+
+        if (schema.TryGetProperty("items", out var items))
+        {
+            foreach (var nested in CollectParameterNames(items))
+                names.Add(nested);
+        }
+
+        return names;
+    }
+
     private static void AssertDescribed(JsonElement schema, string id, string path)
     {
         if (schema.ValueKind != JsonValueKind.Object)
@@ -171,13 +267,24 @@ public class ToolMetadataTests
                     d.ValueKind == JsonValueKind.String &&
                     !string.IsNullOrWhiteSpace(d.GetString());
                 described.Should().BeTrue($"{id} 的属性 {path}{prop.Name} 缺少非空 description");
+                Regex.IsMatch(d.GetString()!, "[\u4e00-\u9fff]").Should().BeTrue(
+                    $"{id} 的属性 {path}{prop.Name} 描述必须是中文");
 
                 AssertDescribed(prop.Value, id, $"{path}{prop.Name}.");
             }
         }
 
         if (schema.TryGetProperty("items", out var items))
+        {
+            var itemsDescribed =
+                items.ValueKind == JsonValueKind.Object &&
+                items.TryGetProperty("description", out var itemDescription) &&
+                itemDescription.ValueKind == JsonValueKind.String &&
+                !string.IsNullOrWhiteSpace(itemDescription.GetString());
+            itemsDescribed.Should().BeTrue($"{id} 的 {path}[] 缺少非空 description");
+
             AssertDescribed(items, id, $"{path}[]");
+        }
 
         if (schema.TryGetProperty("enum", out var values) && values.ValueKind == JsonValueKind.Array)
         {
@@ -214,9 +321,15 @@ public class ToolMetadataTests
             }
         }
 
-        var prefix = names.Count == 0
+        var parameterSummary = names.Count switch
+        {
+            0 => string.Empty,
+            4 => string.Join(", ", names) + ", …",
+            _ => string.Join(", ", names),
+        };
+        var prefix = parameterSummary.Length == 0
             ? $"{tool.Id}: "
-            : $"{tool.Id}({string.Join(", ", names)}): ";
+            : $"{tool.Id}({parameterSummary}): ";
         var desc = Regex.Replace(tool.Description.Replace("\r", string.Empty), @"\s+", " ");
         var line = prefix + desc;
         return line.Length <= lineMax ? line : line[..(lineMax - 1)] + "…";

@@ -33,7 +33,6 @@ public class BashTool : ToolBase
         "- 优先：文件读写与搜索用 `read`/`write`/`edit`/`grep`/`glob`，不要用 shell 代替。\n" +
         "- 超时：默认 120000 毫秒，可用 timeout 覆盖；超时会终止进程。\n" +
         "- 工作目录：workdir 默认当前工作目录。\n" +
-        "- 危险命令会被拒绝执行。\n" +
         $"当前环境：{BuildPlatformHint()}；请使用与当前 Shell 语法匹配的命令。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new

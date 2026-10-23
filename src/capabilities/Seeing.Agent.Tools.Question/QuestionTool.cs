@@ -55,6 +55,7 @@ public sealed class QuestionTool : BuiltInToolBase
                 items = new
                 {
                     type = "object",
+                    description = "单个问题：id/header/question 必填，kind 与 options 决定题型",
                     properties = new
                     {
                         id = new { type = "string", description = "问题唯一标识" },
@@ -69,6 +70,7 @@ public sealed class QuestionTool : BuiltInToolBase
                             items = new
                             {
                                 type = "object",
+                                description = "单个选项：label 必填，description 为选项说明",
                                 properties = new
                                 {
                                     label = new { type = "string", description = "选项显示文本" },
@@ -93,7 +95,7 @@ public sealed class QuestionTool : BuiltInToolBase
                         defaultSelectedLabels = new
                         {
                             type = "array",
-                            items = new { type = "string" },
+                            items = new { type = "string", description = "选项标签文本" },
                             description = "默认选中的选项标签"
                         },
                         defaultCustomAnswer = new { type = "string", description = "默认的自定义答案" }

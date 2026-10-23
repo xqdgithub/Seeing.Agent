@@ -659,7 +659,7 @@ Run: `dotnet vstest ...Metadata.Tests.dll` → FAIL。
 | `list_channel_conversations` | `分页列出通道目录中的对话。` | `skip` 默认 0、`take` 默认 50；发送用 `send_channel_message` |
 | `list_channel_users` | `分页列出通道目录中的用户。` | 同上 |
 | `acp` | `把任务委派给已注册的 ACP 后端代理；Native 子代理用 task。` | `backend` 取已注册 ACP 后端；`task_id` 续跑；`run_in_background` 后台；`cwd` 默认工作目录；后台状态用 `acp_status` |
-| `acp_status` | `查询 ACP 后台任务状态；Native 任务用 task_status。` | 传 `task_id` 查单个；不传列全部；等待用 `wait` |
+| `acp_status` | `查询 ACP 后台任务状态；Native 任务用 task_status。` | 必填 `task_id`；返回状态/后端/描述/错误；不支持列出全部或阻塞等待（与 `task_status` 的真实差异） |
 | `systemone_ask` | `用 SystemOne 对同一 state 做混合题型判别（是否、选择、打分）。` | 每项带 `type`（noul/choice/score）；只有一种题型时优先单一题型工具；长链推理用主模型 |
 | `systemone_noul` | `用 SystemOne 对 state 做是或否的概率判别。` | `instructions` 可带 `criteriaTrue`/`criteriaFalse`；不要带 `type`/`options`/`levels`；可多题并行；混合题型用 `systemone_ask` |
 | `systemone_choice` | `用 SystemOne 在多个选项中判别一个。` | `options` 2–50；不要带 `type`/`levels`；混合题型用 `systemone_ask` |
