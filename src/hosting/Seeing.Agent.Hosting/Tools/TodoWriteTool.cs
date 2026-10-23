@@ -26,32 +26,16 @@ namespace Seeing.Agent.Hosting.Tools
 
         /// <inheritdoc/>
         public override string Description =>
-            "使用此工具创建和管理结构化任务列表，帮助跟踪进度、组织复杂任务。" +
-            "## 何时使用" +
-            "- 复杂多步任务（3 步以上）" +
-            "- 用户提供多个任务（编号或逗号分隔）" +
-            "- 收到新指令后立即捕获为 todo" +
-            "## 何时不用" +
-            "- 单个简单任务" +
-            "- 纯问答 / 信息性请求" +
-            "- 可在 3 步内完成的小任务" +
-            "## 任务状态" +
-            "- pending: 未开始" +
-            "- in_progress: 当前进行中（一次只能一个）" +
-            "- completed: 已完成" +
-            "- cancelled: 不需要了" +
-            "- paused: 等待用户回复，暂停执行" +
-            "## 规则" +
-            "- 完成后立即标记 completed，不要批量" +
-            "- 一次只保持一个 in_progress" +
-            "- 需要等待用户时标记 paused" +
-            "- 发现新任务立即添加" +
-            "有疑问时，使用此工具。主动管理任务体现你的专注度。";
+            "维护当前会话的结构化任务列表，跟踪多步任务进度。\n\n" +
+            "- 何时用：3 步以上的多步任务；用户一次给出多个任务；收到新指令需要登记时。\n" +
+            "- 何时不用：单步任务、纯问答、3 步内可完成的小事。\n" +
+            "- 状态：pending 未开始；in_progress 进行中（一次只保留一个）；completed 已完成；cancelled 不需要了；paused 等待用户。\n" +
+            "- 规则：完成立即标 completed，不要批量；发现新任务立即追加。";
 
         /// <inheritdoc/>
         public override JsonElement ParametersSchema => BuildObjectSchema(new Dictionary<string, (string, string, bool, string[]?)>
         {
-            ["todos"] = ("array", "更新的 Todo 列表", true, null)
+            ["todos"] = ("array", "完整任务列表（整体替换旧列表，不是增量更新）", true, null)
         });
 
         /// <inheritdoc/>
@@ -193,13 +177,13 @@ namespace Seeing.Agent.Hosting.Tools
                             {
                                 ["type"] = "string",
                                 ["enum"] = new[] { "pending", "in_progress", "completed", "cancelled", "paused" },
-                                ["description"] = "任务状态"
+                                ["description"] = "任务状态：pending=未开始；in_progress=进行中；completed=已完成；cancelled=不需要了；paused=等待用户"
                             },
                             ["priority"] = new Dictionary<string, object>
                             {
                                 ["type"] = "string",
                                 ["enum"] = new[] { "low", "medium", "high" },
-                                ["description"] = "任务优先级"
+                                ["description"] = "优先级：low=低；medium=中（默认）；high=高"
                             }
                         },
                         ["required"] = new[] { "content" }

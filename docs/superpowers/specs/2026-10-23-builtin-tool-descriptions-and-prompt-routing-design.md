@@ -27,7 +27,7 @@
 | 6 | `write` 诱导覆盖 | 描述强调“已存在会覆盖”，未引导改现有文件用 `edit` |
 | 7 | 工具名大小写不一致 | `edit` 描述写“必须先使用 Read 工具”，实际 id 为 `read`（`EditTool.cs:42`） |
 | 8 | 首句不带区分度 | `todowrite`、`cron_create`、`question`、`session_read`、`task` 等首句过长，目录行截断后丢失关键信息 |
-| 9 | 参数 schema 信息缺失 | `todowrite` 的 `todos` 只有 `type=array` 无 `items`；`task.subagent_type` 无候选来源提示；`memory_search` 无 TopK 说明；`git_*` 无路径语义；部分数值无默认/边界 |
+| 9 | 参数 schema 信息缺失 | `todowrite` 的 `items` 已存在但 `status`/`priority` 的枚举描述未列出取值；`task.subagent_type` 无候选来源提示；`memory_search` 无 TopK 说明；`git_*` 无路径语义；部分数值无默认/边界 |
 | 10 | 无防回退约束 | 无任何测试约束描述语言、首句长度、参数描述完整性 |
 
 提示词侧：内置 Agent 的 `SystemPrompt` 只有零星工具提示（build 的「## 工具使用」、general 的一段），`explore`/`plan` 几乎没有；且模板刻意不含 `## Tools` 锚点（`ToolsPromptSectionContributor` 只在有锚点时注入全量工具清单），跨工具的路由规则当前**无处安放**。
@@ -193,7 +193,7 @@ oldString 和 newString 必须完全匹配，包括空白和缩进。
 | 工具 | 改动 |
 |------|------|
 | `bash` | `required` 改为 `["command"]`；`timeout` 注明默认 120000 毫秒；`workdir` 注明默认工作目录 |
-| `todowrite` | `todos` 补 `items` 对象：`content`(必填)、`status`(enum: pending/in_progress/completed/cancelled/paused)、`priority`(enum: low/medium/high)。该工具改为手写 schema，不动共享 helper |
+| `todowrite` | `todos` 的 `items` 已存在（content/status/priority）；补 `status`/`priority` 的枚举取值说明、`todos` 的整体替换语义。不改 scheme 结构 |
 | `task` | `subagent_type` 描述指向动态列出的可用子代理；`task_id` 说明“传入即续跑” |
 | `memory_search` | 说明返回条数上限由记忆配置 `TopK`（默认 5）决定 |
 | `git_status`/`git_diff`/`git_log`/`git_commit` | 参数说明改中文；`path`/`files` 语义明确 |
@@ -208,7 +208,7 @@ oldString 和 newString 必须完全匹配，包括空白和缩进。
 |----|------|----------|
 | 文件系统（8） | `read` `write` `edit` `delete` `grep` `glob` `open_file` `add_workspace_path` | 首句重写；补 R4 路由；路径语义修正；`read` 补分页/截断/图片 PDF 附件行为；`grep` 补默认 100 条与 include 语法；`glob` 补默认 100；`delete` 补递归删除不可恢复；`add_workspace_path` 补“仅当前会话、需审批” |
 | Shell（1） | `bash` | 首句“仅在专用工具无法完成时使用”；`description` 改可选；补超时/工作目录/危险命令拒绝 |
-| 宿主（3） | `task` `task_status` `todowrite` | 动态描述收紧首句；`task_status` 补 wait/timeout 语义；`todowrite` 修换行、压缩首句、补 items schema |
+| 宿主（3） | `task` `task_status` `todowrite` | 动态描述收紧首句；`task_status` 补 wait/timeout 语义；`todowrite` 修换行、压缩首句、补枚举描述 |
 | 会话（8） | `session_list` `session_read` `session_search` `session_trim` `session_handoff` `session_inbox_send` `session_takeover` `session_release` | 每个补“与兄弟工具的边界”；`session_read` 首句压缩并补默认 20/上限 50/max_chars 2000；`session_trim` 补“不换会话”；`takeover`/`release` 补“仅改归属，不终止执行” |
 | 记忆（3） | `memory_search` `memory_read` `memory_write` | 已有交叉指引，改为统一格式；补 TopK、路径为 memory 相对路径、写入即持久化 |
 | 调度（6） | `cron_create` `cron_list` `cron_disable` `cron_resume` `cron_run` `cron_delete` | `cron_create` 首句压缩、`schedule` 结构说明保留；其余补“何时用/幂等/不可恢复”；统一“当前会话”术语 |

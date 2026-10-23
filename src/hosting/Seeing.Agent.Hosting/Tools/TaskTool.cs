@@ -48,8 +48,11 @@ public class TaskTool : ToolBase
     public override string Id => "task";
 
     /// <summary>同步契约回退描述；异步温暖缓存完成前返回。</summary>
-    private const string FallbackDescription =
-        "创建子任务并使用专用 Native Agent 执行。支持传递 task_id 以继续之前的子任务。";
+    private const string Headline = "创建或续跑子代理任务；需要并行推进时放后台执行。";
+
+    private const string Body = "传 task_id 续跑已有子任务，不传则新建；等待结果用 `task_status`。";
+
+    private const string FallbackDescription = Headline + "\n\n" + Body;
 
     public override string Description => _cachedDescription ?? FallbackDescription;
 
@@ -57,11 +60,11 @@ public class TaskTool : ToolBase
     {
         ["description"] = ("string", "任务简短描述（3-5 个词）", true, null),
         ["prompt"] = ("string", "Agent 要执行的任务内容", true, null),
-        ["subagent_type"] = ("string", "专用 Agent 类型", true, null),
+        ["subagent_type"] = ("string", "子代理类型，取描述末尾动态列出的可用值（如 explore、general）", true, null),
         ["task_id"] = ("string", "【重要】不传此参数 = 创建新任务；传入任务ID = 继续该任务。请勿传空字符串。", false, null),
         ["command"] = ("string", "触发此任务的命令（可选）", false, null),
-        ["background"] = ("boolean", "是否在后台运行（可选，默认 false）", false, null),
-        ["run_in_background"] = ("boolean", "background 的别名（一期兼容，后续移除）", false, null)
+        ["background"] = ("boolean", "是否在后台运行（可选，默认 false）；需要并行推进时设为 true", false, null),
+        ["run_in_background"] = ("boolean", "background 的兼容别名，后续移除", false, null)
     });
 
     public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
@@ -449,9 +452,8 @@ public class TaskTool : ToolBase
                 : "- 无可用子代理（需 Native 运行时，且非 Primary）";
 
             return
-                "创建子任务并使用专用 Native Agent 执行。" +
-                "支持传递 task_id 以继续之前的子任务。" +
-                "\n\n可用的子代理类型：\n" + agentListText;
+                Headline + "\n\n" + Body +
+                "\n\n可用子代理类型：\n" + agentListText;
         }
         catch
         {

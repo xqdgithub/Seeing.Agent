@@ -432,7 +432,7 @@ Expected: FAIL — `bash.required` 含 `description`、`todos` 缺 `items`。
 | `bash` | `执行 Shell 命令（构建、测试、脚本）；文件读写搜索优先用专用工具。` | 文件与搜索用 `read`/`write`/`edit`/`grep`/`glob` 而非 shell；超时默认 120000 毫秒；`workdir` 默认工作目录；危险命令会被拒绝；平台与 Shell 语法已在描述中动态给出 | `required` 改为 `["command"]`；`description` 标为可选「命令用途（5–10 字），缺省时自动取命令前 50 字符」；`timeout` 注明默认值与单位；`workdir` 注明默认 |
 | `task` | `创建或续跑子代理任务；需要并行推进时放后台执行。` | `subagent_type` 取自下方动态列表；`task_id` 传入即续跑、不传即新建；前台默认、`background=true` 并行；仅 Native 子代理；查看过程用 `session_read`；等待结果用 `task_status` | `subagent_type` 描述指向动态列表；`task_id` 说明不传≠传空串；`run_in_background` 标注为兼容别名 |
 | `task_status` | `查询子代理任务状态；需要等结果时用 wait 阻塞等待。` | 不传 `task_id` 返回当前会话全部子任务；`wait=true` 仅对单个任务有效；`timeout_ms` 默认 600000；继续某任务用 `task` 传 `task_id` | 各参数补默认值与单位 |
-| `todowrite` | `维护当前会话的结构化任务列表，跟踪多步任务进度。` | 3 步以上用；一次只保留一个 `in_progress`；完成立即标 `completed`；等待用户时标 `paused`；状态枚举含义 | `todos` 改为手写 schema，含 `items`：`content`(必填)、`status`(enum 5)、`priority`(enum 3) |
+| `todowrite` | `维护当前会话的结构化任务列表，跟踪多步任务进度。` | 3 步以上用；一次只保留一个 `in_progress`；完成立即标 `completed`；等待用户时标 `paused`；状态枚举含义 | 已有 `items`（content/status/priority）；补 `status`/`priority` 枚举取值说明与“整体替换”语义，不改结构 |
 
 `TaskTool.BuildDescriptionAsync` 改为「首句复用 `FallbackDescription` 的第一行 + 换行 + 可用子代理列表」，保证 warm 前后首句一致。
 

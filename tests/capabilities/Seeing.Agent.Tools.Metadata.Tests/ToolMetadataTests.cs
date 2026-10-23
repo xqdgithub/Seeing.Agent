@@ -29,6 +29,9 @@ public class ToolMetadataTests
         ["glob"] = ["grep"],
         ["grep"] = ["glob"],
         ["open_file"] = ["read"],
+        ["bash"] = ["read", "grep"],
+        ["task"] = ["task_status"],
+        ["task_status"] = ["task"],
     };
 
     private static IReadOnlyList<string> Routing(string id) =>
@@ -72,6 +75,28 @@ public class ToolMetadataTests
         var head = firstLine[..Math.Min(20, firstLine.Length)];
 
         BuildCatalogLine(tool, options.CatalogLineMaxChars).Should().Contain(head);
+    }
+
+    [Fact]
+    public void Bash_ShouldOnlyRequireCommand()
+    {
+        var bash = BuiltInToolCatalog.All().Single(t => t.Id == "bash");
+        var required = bash.ParametersSchema.GetProperty("required")
+            .EnumerateArray().Select(e => e.GetString()).ToArray();
+
+        required.Should().Equal("command");
+    }
+
+    [Fact]
+    public void TodoWrite_ShouldDescribeItemShape()
+    {
+        var tool = BuiltInToolCatalog.All().Single(t => t.Id == "todowrite");
+        var items = tool.ParametersSchema.GetProperty("properties").GetProperty("todos").GetProperty("items");
+        var props = items.GetProperty("properties");
+
+        props.TryGetProperty("content", out _).Should().BeTrue();
+        props.GetProperty("status").GetProperty("enum").GetArrayLength().Should().Be(5);
+        props.GetProperty("priority").GetProperty("enum").GetArrayLength().Should().Be(3);
     }
 
     private static void AssertDescribed(JsonElement schema, string id, string path)

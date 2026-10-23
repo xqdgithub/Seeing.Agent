@@ -1,5 +1,7 @@
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Hosting.Tools;
 using Seeing.Agent.Tools.FileSystem;
+using Seeing.Agent.Tools.Shell;
 
 namespace Seeing.Agent.Tools.Metadata.Tests;
 
@@ -22,6 +24,10 @@ internal static class BuiltInToolCatalog
         Auto<GlobTool>(),
         Auto<OpenFileTool>(),
         Auto<AddWorkspacePathTool>(),
+        Auto<BashTool>(),
+        Auto<TaskTool>(),
+        Auto<TaskStatusTool>(),
+        Auto<TodoWriteTool>(),
     ];
 
     /// <summary>用最少参数的构造函数创建实例。</summary>

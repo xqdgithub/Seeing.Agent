@@ -29,9 +29,12 @@ public class BashTool : ToolBase
     public override string Id => "bash";
 
     public override string Description =>
-        "执行 Shell 命令。支持跨平台执行，提供超时控制和取消支持。" +
-        $"当前运行环境：{BuildPlatformHint()}。" +
-        "请使用与当前 Shell 语法匹配的命令。";
+        "执行 Shell 命令（构建、测试、脚本）；文件读写搜索优先用专用工具。\n\n" +
+        "- 优先：文件读写与搜索用 `read`/`write`/`edit`/`grep`/`glob`，不要用 shell 代替。\n" +
+        "- 超时：默认 120000 毫秒，可用 timeout 覆盖；超时会终止进程。\n" +
+        "- 工作目录：workdir 默认当前工作目录。\n" +
+        "- 危险命令会被拒绝执行。\n" +
+        $"当前环境：{BuildPlatformHint()}；请使用与当前 Shell 语法匹配的命令。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
     {
@@ -39,11 +42,11 @@ public class BashTool : ToolBase
         properties = new
         {
             command = new { type = "string", description = "要执行的命令。" + $"当前环境：{BuildPlatformHint()}" },
-            timeout = new { type = "number", description = "可选超时时间（正整数毫秒），默认 120000（2 分钟）" },
-            workdir = new { type = "string", description = "工作目录。默认使用当前工作目录。" },
-            description = new { type = "string", description = "命令用途的简明描述（5-10 字）。" }
+            timeout = new { type = "number", minimum = 1, description = "超时时间（毫秒），默认 120000（2 分钟）" },
+            workdir = new { type = "string", description = "工作目录，默认当前工作目录" },
+            description = new { type = "string", description = "命令用途的简明描述（5-10 字）；可省略，缺省时自动取命令前 50 字符" }
         },
-        required = new[] { "command", "description" }
+        required = new[] { "command" }
     });
 
     public override ToolCategory Category => ToolCategory.ExternalService;

@@ -35,16 +35,20 @@ public class TaskStatusTool : ToolBase
     public override string Id => "task_status";
 
     public override string Description =>
-        "查询后台子任务状态。传入 task_id 查询单个任务；不传则返回当前会话所有子任务状态。wait=true 时可阻塞等待完成（仅对单个任务有效）。";
+        "查询子代理任务状态；需要等结果时用 wait 阻塞等待。\n\n" +
+        "- 单个：传 task_id 查看该任务；不传则列出当前会话全部子任务。\n" +
+        "- 等待：wait=true 仅对单个任务有效。\n" +
+        "- 超时：timeout_ms 默认 600000 毫秒。\n" +
+        "- 续跑：继续某个子任务用 `task` 并传 task_id。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
     {
         type = "object",
         properties = new
         {
-            task_id = new { type = "string", description = "任务 ID（可选，不传则返回当前会话所有子任务状态）" },
+            task_id = new { type = "string", description = "任务 ID；不传则返回当前会话所有子任务状态" },
             wait = new { type = "boolean", description = "是否阻塞等待完成（默认 false，仅对单个任务有效）" },
-            timeout_ms = new { type = "integer", description = "等待超时毫秒（默认 600000，正整数）" }
+            timeout_ms = new { type = "integer", minimum = 1, description = "等待超时毫秒（默认 600000）" }
         },
         required = Array.Empty<string>()
     });
