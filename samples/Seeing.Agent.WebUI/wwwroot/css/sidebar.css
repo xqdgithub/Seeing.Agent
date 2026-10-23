@@ -21,6 +21,11 @@ aside.app-sider.ant-layout-sider {
     overflow: hidden !important;
 }
 
+/* 已用自定义底栏替代内置 Trigger，清掉 Ant 为其预留的 48px 内边距 */
+.app-sider.ant-layout-sider-has-trigger {
+    padding-bottom: 0 !important;
+}
+
 /* ========== Header ========== */
 .sider-header {
     height: 56px;
@@ -80,12 +85,22 @@ aside.app-sider.ant-layout-sider {
 }
 
 /* ========== Menu ========== */
+/* 菜单是侧栏唯一的滚动容器：隐藏滚动条，但保留滚轮/触屏滚动能力 */
 .sider-menu {
     flex: 1;
     min-height: 0;
     overflow-y: auto !important;
     overflow-x: hidden !important;
     border-right: none !important;
+    scrollbar-width: none;      /* Firefox */
+    -ms-overflow-style: none;   /* 旧版 Edge */
+}
+
+/* 隐藏菜单区滚动条（Chrome / Edge / Safari） */
+.sider-menu::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
 }
 
 .sider-menu .ant-menu-item {
@@ -96,6 +111,38 @@ aside.app-sider.ant-layout-sider {
 .sider-menu .ant-menu-submenu-title {
     margin: 4px 8px !important;
     border-radius: 6px !important;
+}
+
+/* ========== 折叠态：图标水平居中 ========== */
+/* Ant 的折叠菜单按整栏宽度计算内边距，叠加自定义外边距后会偏心，这里改为显式 flex 居中 */
+.app-sider.ant-layout-sider-collapsed .sider-menu .ant-menu-item,
+.app-sider.ant-layout-sider-collapsed .sider-menu .ant-menu-submenu-title {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    padding: 0 !important;
+    margin: 4px 8px !important;
+}
+
+.app-sider.ant-layout-sider-collapsed .sider-menu .ant-menu-item .anticon,
+.app-sider.ant-layout-sider-collapsed .sider-menu .ant-menu-submenu-title .anticon {
+    margin: 0 !important;
+    font-size: 16px;
+    line-height: 1;
+}
+
+/* AntDesign 把图标和文字都放在 .ant-menu-title-content 里，折叠时文字仍占宽度导致图标偏心，
+   这里隐藏文字并让容器占满、单独居中图标 */
+.app-sider.ant-layout-sider-collapsed .sider-menu .ant-menu-title-content {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 100% !important;
+    overflow: hidden;
+}
+
+.app-sider.ant-layout-sider-collapsed .sider-menu .ant-menu-title-content > span:not(.anticon) {
+    display: none !important;
 }
 
 /* ========== Responsive ========== */
@@ -122,33 +169,64 @@ aside.app-sider.ant-layout-sider {
     }
 }
 
-/* ========== 快速关闭 ========== */
-.sider-shutdown {
+/* ========== 底部工具条（关闭 / 折叠） ========== */
+.sider-footer {
     flex-shrink: 0;
-    /* AntDesign Sider 的折叠触发条位于底部，预留其高度避免覆盖关闭按钮 */
-    margin-bottom: 48px;
-    padding: 10px 8px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    height: 44px;
+    padding: 0 8px;
     border-top: 1px solid #e8e8e8;
 }
 
-.sider-shutdown-button {
-    text-align: left;
-    color: #ff4d4f !important;
+/* 移动端没有折叠按钮，关闭入口居中 */
+.sider-footer--centered {
+    justify-content: center;
 }
 
-.sider-shutdown-button:hover:not(:disabled) {
+.sider-footer-close {
+    color: #ff4d4f !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+}
+
+.sider-footer-close:hover:not(:disabled) {
     background: #fff1f0 !important;
     color: #cf1322 !important;
 }
 
-.app-sider.ant-layout-sider-collapsed .sider-shutdown-button {
-    text-align: center;
-    padding-left: 0;
-    padding-right: 0;
+.sider-footer-collapse {
+    flex-shrink: 0;
 }
 
-.app-sider.ant-layout-sider-collapsed .sider-shutdown-label {
+/* 折叠时只显示图标，隐藏文字 */
+.app-sider.ant-layout-sider-collapsed .sider-footer-label {
     display: none;
+}
+
+.app-sider.ant-layout-sider-collapsed .sider-footer {
+    justify-content: center;
+    gap: 12px;
+    padding: 0;
+}
+
+.app-sider.ant-layout-sider-collapsed .sider-footer-close,
+.app-sider.ant-layout-sider-collapsed .sider-footer-collapse {
+    width: 28px;
+    height: 28px;
+    padding: 0 !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ========== 深色模式：底部工具条 ========== */
+@media (prefers-color-scheme: dark) {
+    .sider-footer {
+        border-top-color: #303030;
+    }
 }
 
 /* ========== 移动端侧边栏 ========== */

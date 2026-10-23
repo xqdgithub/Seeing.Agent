@@ -26,6 +26,7 @@
        Collapsed="@EffectiveCollapsed"
        CollapsedChanged="@OnCollapsedChanged"
        Collapsible="@(!AppState.IsMobile)"
+       NoTrigger="true"
        Theme="@SiderTheme.Light"
        Style="@GetSiderStyle()">
     <a href="/" class="sider-header" style="cursor: pointer; text-decoration: none;">
@@ -95,20 +96,32 @@
         }
     </Menu>
 
-    <div class="sider-shutdown">
+    <div class="@GetFooterClass()">
         <Popconfirm Title="确定关闭当前 WebUI 程序？关闭后需要重新启动程序才能再次访问。"
                     OkText="关闭程序"
                     CancelText="取消"
                     OnConfirm="RequestShutdown">
             <Button Type="@ButtonType.Text"
                     Danger="true"
-                    Block
-                    Class="sider-shutdown-button"
+                    Class="sider-footer-close"
                     Disabled="@_shutdownRequested">
                 <Icon Type="@IconType.Outline.CloseCircle" />
-                <span class="sider-shutdown-label">@(_shutdownRequested ? "正在关闭..." : "关闭 WebUI")</span>
+                <span class="sider-footer-label">@(_shutdownRequested ? "正在关闭..." : "关闭 WebUI")</span>
             </Button>
         </Popconfirm>
+
+        @if (!AppState.IsMobile)
+        {
+            <Tooltip Title="@(EffectiveCollapsed ? "展开侧栏" : "折叠侧栏")" Placement="@Placement.Left">
+                <Button Type="@ButtonType.Text"
+                        Shape="@ButtonShape.Circle"
+                        Size="@ButtonSize.Small"
+                        Class="sider-footer-collapse"
+                        OnClick="ToggleCollapse">
+                    <Icon Type="@(EffectiveCollapsed ? IconType.Outline.MenuUnfold : IconType.Outline.MenuFold)" />
+                </Button>
+            </Tooltip>
+        }
     </div>
 </Sider>
 
@@ -122,9 +135,8 @@
     private string[] _selectedKeys = Array.Empty<string>();
     private string[] _openKeys =
     [
+        // 默认只展开「控制中心」，其余分组保持折叠，避免侧栏过长出现滚动
         NavGroups.Control,
-        NavGroups.Workspace,
-        NavGroups.Settings,
     ];
     private IReadOnlyList<NavContribution> _visibleNav = Array.Empty<NavContribution>();
     private IReadOnlyList<NavContribution> _ungroupedNav = Array.Empty<NavContribution>();
@@ -156,11 +168,19 @@
     /// <summary>根据设备和 overlay 状态返回不同内联样式</summary>
     private string GetSiderStyle()
     {
-        var baseStyle = "overflow: auto; height: 100vh; position: fixed; left: 0; top: 0;";
+        // 侧栏自身不滚动：滚动职责只交给菜单区，避免出现两层滚动条
+        var baseStyle = "overflow: hidden; height: 100vh; position: fixed; left: 0; top: 0;";
         if (AppState.IsMobile && AppState.MobileSidebarOpen)
             return baseStyle + " z-index: 200;";
         return baseStyle + " z-index: 100;";
     }
+
+    /// <summary>底部工具条 CSS class：移动端无折叠按钮，关闭按钮居中</summary>
+    private string GetFooterClass() =>
+        AppState.IsMobile ? "sider-footer sider-footer--centered" : "sider-footer";
+
+    /// <summary>自定义折叠按钮（已关闭 Sider 内置 Trigger）</summary>
+    private Task ToggleCollapse() => OnCollapsedChanged(!EffectiveCollapsed);
 
     /// <summary>打开移动端侧边栏 overlay</summary>
     public void OpenMobileSidebar()
