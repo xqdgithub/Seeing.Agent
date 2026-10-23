@@ -7,6 +7,7 @@ using Seeing.Agent.Scheduler.Tools;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Tools.Editor;
 using Seeing.Agent.Tools.FileSystem;
+using Seeing.Agent.Tools.Git;
 using Seeing.Agent.Tools.Session;
 using Seeing.Agent.Tools.Shell;
 using Seeing.Agent.Tools.ToolDiscovery;
@@ -62,6 +63,10 @@ internal static class BuiltInToolCatalog
         Auto<CodeSearchTool>(),
         Auto<SkillTool>(),
         Auto<ToolSearchTool>(),
+        Auto<GitStatusTool>(),
+        Auto<GitDiffTool>(),
+        Auto<GitLogTool>(),
+        Auto<GitCommitTool>(),
     ];
 
     /// <summary>用最少参数的构造函数创建实例。</summary>

@@ -50,6 +50,9 @@ public class ToolMetadataTests
         ["websearch"] = ["webfetch"],
         ["webfetch"] = ["websearch"],
         ["codesearch"] = ["websearch"],
+        ["git_status"] = ["git_diff"],
+        ["git_diff"] = ["git_status"],
+        ["git_commit"] = ["git_status", "git_diff"],
     };
 
     private static IReadOnlyList<string> Routing(string id) =>

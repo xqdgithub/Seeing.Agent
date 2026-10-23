@@ -10,7 +10,10 @@ namespace Seeing.Agent.Tools.Git;
 public class GitCommitTool : ITool
 {
     public string Id => "git_commit";
-    public string Description => "Commit changes to the repository";
+    public string Description =>
+        "暂存并提交 Git 变更；提交前先用 `git_status` 与 `git_diff` 确认。\n\n" +
+        "- files 指定要暂存的文件；all=true 暂存全部变更。\n" +
+        "- 提交失败时返回 git stderr，不会回滚已暂存内容。";
 
     /// <summary>工具标签（用于分类和过滤）</summary>
     public IReadOnlyList<string> Tags => Array.Empty<string>();
@@ -26,18 +29,18 @@ public class GitCommitTool : ITool
             message = new
             {
                 type = "string",
-                description = "Commit message"
+                description = "提交信息（必填）"
             },
             files = new
             {
                 type = "array",
-                items = new { type = "string" },
-                description = "Files to stage and commit (optional, defaults to all)"
+                items = new { type = "string", description = "文件路径" },
+                description = "要暂存并提交的文件列表（可选，缺省配合 all 的行为）"
             },
             all = new
             {
                 type = "boolean",
-                description = "Stage all changes before commit"
+                description = "提交前暂存全部变更（默认 false）"
             }
         },
         required = new[] { "message" }

@@ -9,7 +9,9 @@ namespace Seeing.Agent.Tools.Git;
 public class GitDiffTool : ITool
 {
     public string Id => "git_diff";
-    public string Description => "Get the diff of changes in the repository";
+    public string Description =>
+        "查看 Git 工作区或暂存区的差异。\n\n" +
+        "- 返回统一 diff 文本；先看变更清单用 `git_status`。";
 
     /// <summary>工具标签（用于分类和过滤）</summary>
     public IReadOnlyList<string> Tags => Array.Empty<string>();
@@ -25,12 +27,12 @@ public class GitDiffTool : ITool
             path = new
             {
                 type = "string",
-                description = "Optional path to get diff for"
+                description = "限定差异的文件或目录路径，默认整个仓库"
             },
             staged = new
             {
                 type = "boolean",
-                description = "Show staged changes only"
+                description = "只显示已暂存的变更（默认 false，显示工作区变更）"
             }
         }
     });

@@ -16,7 +16,9 @@ public class GitLogTool : ITool
     private const int MaxMaxCount = 500;
 
     public string Id => "git_log";
-    public string Description => "Get the commit history of the repository";
+    public string Description =>
+        "查看 Git 提交历史。\n\n" +
+        "- 返回按时间倒序的提交记录；查看具体改动用 `git_diff`。";
 
     /// <summary>工具标签（用于分类和过滤）</summary>
     public IReadOnlyList<string> Tags => Array.Empty<string>();
@@ -32,7 +34,7 @@ public class GitLogTool : ITool
             path = new
             {
                 type = "string",
-                description = "Optional path to get history for"
+                description = "仓库或子目录路径，默认当前工作目录"
             },
             maxCount = new
             {

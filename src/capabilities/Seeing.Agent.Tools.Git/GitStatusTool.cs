@@ -9,7 +9,10 @@ namespace Seeing.Agent.Tools.Git;
 public class GitStatusTool : ITool
 {
     public string Id => "git_status";
-    public string Description => "Get the status of the git repository";
+    public string Description =>
+        "查看 Git 仓库状态（分支、领先落后、变更文件）。\n\n" +
+        "- 返回分支、是否干净与变更文件列表（含暂存标记）。\n" +
+        "- 查看具体差异用 `git_diff`。";
 
     /// <summary>工具标签（用于分类和过滤）</summary>
     public IReadOnlyList<string> Tags => Array.Empty<string>();
@@ -25,7 +28,7 @@ public class GitStatusTool : ITool
             path = new
             {
                 type = "string",
-                description = "Optional path to check status for"
+                description = "仓库或子目录路径，默认当前工作目录"
             }
         }
     });
