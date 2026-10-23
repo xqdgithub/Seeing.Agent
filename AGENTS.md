@@ -102,6 +102,7 @@ Seeing.Agent/
 | 会话管理 | `src/primitives/Seeing.Session/` | 独立包 |
 | ACP | `src/capabilities/Seeing.Agent.Acp/` | 能力模块 |
 | 通联 / 出站投递 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Channels/`；能力包 `src/capabilities/Seeing.Agent.Comms/`；适配器 `src/gateway/Seeing.Gateway.QQ` 与 `.WeCom`；工具 `src/capabilities/Seeing.Agent.Tools.ChannelMessaging/` | 目录登记即准入；`ChannelRoute` 出站；调度 Inject 在 Scheduler、出站在 Comms；见 `docs/architecture/17` |
+| 出站附件 / 渠道能力 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Channels/ChannelAttachments.cs` + `ChannelCapabilities.cs`（派生查询 `ChannelCapabilitiesExtensions.cs`）；裁决 `src/capabilities/Seeing.Agent.Comms/Delivery/`；QQ `SendAttachmentAsync`（`src/gateway/Seeing.Gateway.QQ/`） | 内容（文本 + 附件）与能力（`SupportsReplyAnchor`、类型/大小/条数上限）在契约层；Comms 唯一裁决；工具 `send_channel_message` 经 `IWorkspacePathGate.EnsureWithinWorkspace` 校验；见 `docs/architecture/17` |
 
 ## CONVENTIONS（仅非标准）
 
