@@ -19,7 +19,8 @@ public sealed class CronResumeTool : ToolBase
     public override string Id => "cron_resume";
 
     public override string Description =>
-        "重新启用定时任务（将 Intent 设为 Active）。参数 id 为任务 ID。";
+        "重新启用已禁用的定时任务。\n\n" +
+        "- 恢复为 Active；需要停止调度用 `cron_disable`。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
     {

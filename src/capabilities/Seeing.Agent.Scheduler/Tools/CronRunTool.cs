@@ -20,7 +20,8 @@ public sealed class CronRunTool : ToolBase
     public override string Id => "cron_run";
 
     public override string Description =>
-        "立即执行一次指定定时任务。参数 id 为任务 ID。";
+        "立即执行一次指定定时任务，不影响后续调度。\n\n" +
+        "- 一次性触发，不改变计划时间。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
     {

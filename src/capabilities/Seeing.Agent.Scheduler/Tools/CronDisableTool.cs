@@ -19,7 +19,8 @@ public sealed class CronDisableTool : ToolBase
     public override string Id => "cron_disable";
 
     public override string Description =>
-        "禁用指定定时任务（Intent=Disabled，从调度中移除；可用 cron_resume 重新启用）。参数 id 为任务 ID。";
+        "禁用定时任务并从调度中移除；之后可用 `cron_resume` 恢复。\n\n" +
+        "- 任务会保留，不会删除。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
     {

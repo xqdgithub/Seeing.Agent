@@ -19,7 +19,8 @@ public sealed class CronDeleteTool : ToolBase
     public override string Id => "cron_delete";
 
     public override string Description =>
-        "删除指定定时任务。参数 id 为任务 ID。此操作不可恢复。";
+        "删除定时任务且不可恢复；只想暂停请用 `cron_disable`。\n\n" +
+        "- 删除后无法恢复。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
     {

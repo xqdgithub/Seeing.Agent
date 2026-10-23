@@ -44,6 +44,9 @@ public class ToolMetadataTests
         ["editor_query"] = ["open_file"],
         ["editor_list_commands"] = ["editor_command"],
         ["editor_command"] = ["editor_list_commands"],
+        ["cron_disable"] = ["cron_resume"],
+        ["cron_resume"] = ["cron_disable"],
+        ["cron_delete"] = ["cron_disable"],
     };
 
     private static IReadOnlyList<string> Routing(string id) =>

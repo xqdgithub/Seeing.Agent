@@ -20,10 +20,11 @@ public sealed class CronCreateTool : ToolBase
     public override string Id => "cron_create";
 
     public override string Description =>
-        "创建或替换定时任务。必填：taskType（text|agent）、prompt、schedule（cron/interval/once）；可选 id/name/agent/model/mode。" +
-        " interval 可带 windows 生效时段（本地墙钟，空=全天，起点对齐间隔）。" +
-        " text=到点投递固定文案；agent=到点运行 Agent。SessionId 自动取自当前会话；该会话已有出站绑定时，conversation 会一并快照到任务上（会话归档后仍可推送）。" +
-        " model（仅 agent）：Native agent 用 modelId；ACP agent 用 provider/model。mode（仅 agent 且 ACP）：build/ask 等 ACP 会话模式。";
+        "创建或替换定时任务（cron、interval、once）；会话取自当前会话。\n\n" +
+        "- taskType：text 到点投递固定文案；agent 到点运行 Agent。\n" +
+        "- schedule：type 选 cron、interval 或 once；interval 用 every（如 6h、30m），once 用 runAt；timezone 默认本地。\n" +
+        "- windows（仅 interval）：生效时段，空表示全天，允许跨午夜、禁止交叠。\n" +
+        "- model（仅 agent）：Native 用 modelId，ACP 用 provider/model；mode 仅 ACP。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
     {
