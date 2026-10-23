@@ -21,7 +21,9 @@ public sealed class AcpStatusTool : ToolBase
     public override string Id => "acp_status";
 
     public override string Description =>
-        "查询后台 ACP 任务状态。传入 acp 工具返回的 task_id。";
+        "查询 ACP 后台任务状态；Native 任务用 `task_status`。\n\n" +
+        "- 传 task_id 查询单个任务，不传则返回当前会话全部 ACP 子任务。\n" +
+        "- 需要等待完成时用 wait，并可用 timeout_ms 控制上限。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
     {

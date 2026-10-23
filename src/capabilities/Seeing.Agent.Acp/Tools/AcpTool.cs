@@ -254,6 +254,12 @@ public sealed class AcpTool : ToolBase
 
     private string BuildDescription()
     {
+        const string headline = "把任务委派给已注册的 ACP 后端代理；Native 子代理用 `task`。";
+        const string body =
+            "\n\n- backend 取下方列出的已注册后端；task_id 用于续跑已有 ACP 子任务。\n" +
+            "- run_in_background=true 时后台运行，状态用 `acp_status` 查询。\n" +
+            "- cwd 默认当前工作目录。";
+
         try
         {
             var backends = _backendRegistry.GetEnabledBackends();
@@ -261,11 +267,11 @@ public sealed class AcpTool : ToolBase
                 ? string.Join("\n", backends.Select(b => $"- {b.Id}: {b.Command}"))
                 : "- 无可用 ACP 后端";
 
-            return "委派任务给外部 ACP Agent 执行。支持 task_id 续接任务。\n\n可用后端：\n" + list;
+            return headline + body + "\n\n可用后端：\n" + list;
         }
         catch
         {
-            return "委派任务给外部 ACP Agent 执行。支持 task_id 续接任务。";
+            return headline + body;
         }
     }
 

@@ -39,16 +39,23 @@ public sealed class SystemOneTool : BuiltInToolBase
     public override string Description => _kind switch
     {
         SystemOneToolKind.Ask =>
-            "用 SystemOne(Jev) 对同一份 state 做混合多题型判别：questions 为对象数组（也接受该数组的 JSON 字符串），每项带 type（noul/choice/score），一次请求合并评估。" +
-            "仅用于同一份 state 上混合多题型；若只用一种题型，优先用 systemone_noul/systemone_choice/systemone_score。" +
-            "适合快速、可被代码直接消费的判断；需要长链推理的任务应改用主模型。",
+            "用 SystemOne 对同一 state 做混合题型判别（是否、选择、打分）。\n\n" +
+            "- questions 为对象数组（也接受该数组的 JSON 字符串），每项带 type：noul、choice、score。\n" +
+            "- 仅用于同一 state 上的混合题型；只有一种题型时优先 `systemone_noul`、`systemone_choice`、`systemone_score`。\n" +
+            "- 适合快速、可被代码直接消费的判断；需要长链推理的任务改用主模型。",
         SystemOneToolKind.Noul =>
-            "用 SystemOne(Jev) 对 state 做「是/否」概率判别。questions 为同类对象数组（也接受该数组的 JSON 字符串），每项含 instructions（可选 criteriaTrue/criteriaFalse）；" +
-            "不要传 type/options/levels。一次可提交多题，并行评估。",
+            "用 SystemOne 对 state 做是或否的概率判别。\n\n" +
+            "- questions 每项含 instructions，可选 criteriaTrue、criteriaFalse。\n" +
+            "- 不要传 type、options、levels；可一次提交多题并行评估。\n" +
+            "- 混合题型用 `systemone_ask`。",
         SystemOneToolKind.Choice =>
-            "用 SystemOne(Jev) 对 state 做「多选一」判别。questions 为同类对象数组（也接受该数组的 JSON 字符串），每项含 instructions 与 options（2-50）；不要传 type/levels。",
+            "用 SystemOne 在多个选项中判别一个。\n\n" +
+            "- questions 每项含 instructions 与 options（2-50 项）。\n" +
+            "- 不要传 type、levels；混合题型用 `systemone_ask`。",
         SystemOneToolKind.Score =>
-            "用 SystemOne(Jev) 对 state 做「有序分级打分」。questions 为同类对象数组（也接受该数组的 JSON 字符串），每项含 instructions 与 levels（2-10，低→高）；不要传 type/options。",
+            "用 SystemOne 对 state 做有序分级打分。\n\n" +
+            "- questions 每项含 instructions 与 levels（2-10 级，低到高）。\n" +
+            "- 不要传 type、options；混合题型用 `systemone_ask`。",
         _ => string.Empty
     };
 

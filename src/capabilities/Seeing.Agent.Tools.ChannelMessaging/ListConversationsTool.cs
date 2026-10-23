@@ -19,7 +19,10 @@ public sealed class ListConversationsTool : ITool
 
     public string Id => "list_channel_conversations";
 
-    public string Description => "分页列出通道目录中的对话。";
+    public string Description =>
+        "分页列出通道目录中的对话。\n\n" +
+        "- skip 默认 0，take 默认 50。\n" +
+        "- 发送消息用 `send_channel_message`。";
 
     public IReadOnlyList<string> Tags => [];
 

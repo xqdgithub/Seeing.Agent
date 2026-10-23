@@ -22,8 +22,9 @@ public class CurrentTimeTool : ToolBase
 
     /// <inheritdoc/>
     public override string Description =>
-        "获取当前时间。可选指定 IANA 时区（如 Asia/Shanghai、UTC、America/New_York）；" +
-        "省略则使用本机本地时区。返回 ISO 8601 格式（含偏移）。";
+        "获取当前时间，可指定 IANA 时区。\n\n" +
+        "- timezone 省略时用本机本地时区，示例：Asia/Shanghai、UTC、America/New_York。\n" +
+        "- 返回 ISO 8601 格式（含偏移）。";
 
     /// <inheritdoc/>
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new

@@ -53,6 +53,15 @@ public class ToolMetadataTests
         ["git_status"] = ["git_diff"],
         ["git_diff"] = ["git_status"],
         ["git_commit"] = ["git_status", "git_diff"],
+        ["send_channel_message"] = ["list_channel_conversations", "list_channel_users"],
+        ["list_channel_conversations"] = ["send_channel_message"],
+        ["list_channel_users"] = ["send_channel_message"],
+        ["acp"] = ["task"],
+        ["acp_status"] = ["task_status"],
+        ["systemone_ask"] = ["systemone_noul", "systemone_choice", "systemone_score"],
+        ["systemone_noul"] = ["systemone_ask"],
+        ["systemone_choice"] = ["systemone_ask"],
+        ["systemone_score"] = ["systemone_ask"],
     };
 
     private static IReadOnlyList<string> Routing(string id) =>

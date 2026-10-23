@@ -1,15 +1,20 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Acp.Tools;
 using Seeing.Agent.Hosting.Tools;
 using Seeing.Agent.Memory.Integration.Tools;
 using Seeing.Agent.Scheduler.Tools;
 using Seeing.Agent.Skills;
+using Seeing.Agent.Tools.Basic;
+using Seeing.Agent.Tools.ChannelMessaging;
 using Seeing.Agent.Tools.Editor;
 using Seeing.Agent.Tools.FileSystem;
 using Seeing.Agent.Tools.Git;
+using Seeing.Agent.Tools.Question;
 using Seeing.Agent.Tools.Session;
 using Seeing.Agent.Tools.Shell;
+using Seeing.Agent.Tools.SystemOne;
 using Seeing.Agent.Tools.ToolDiscovery;
 using Seeing.Agent.Tools.Web;
 
@@ -67,6 +72,17 @@ internal static class BuiltInToolCatalog
         Auto<GitDiffTool>(),
         Auto<GitLogTool>(),
         Auto<GitCommitTool>(),
+        Auto<SendMessageTool>(),
+        Auto<ListConversationsTool>(),
+        Auto<ListChannelUsersTool>(),
+        Auto<AcpTool>(),
+        Auto<AcpStatusTool>(),
+        new SystemOneTool(SystemOneToolKind.Ask, Mock.Of<Microsoft.Extensions.Logging.ILogger<SystemOneTool>>()),
+        new SystemOneTool(SystemOneToolKind.Noul, Mock.Of<Microsoft.Extensions.Logging.ILogger<SystemOneTool>>()),
+        new SystemOneTool(SystemOneToolKind.Choice, Mock.Of<Microsoft.Extensions.Logging.ILogger<SystemOneTool>>()),
+        new SystemOneTool(SystemOneToolKind.Score, Mock.Of<Microsoft.Extensions.Logging.ILogger<SystemOneTool>>()),
+        Auto<CurrentTimeTool>(),
+        Auto<QuestionTool>(),
     ];
 
     /// <summary>用最少参数的构造函数创建实例。</summary>

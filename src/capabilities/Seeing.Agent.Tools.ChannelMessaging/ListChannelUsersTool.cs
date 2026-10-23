@@ -19,7 +19,10 @@ public sealed class ListChannelUsersTool : ITool
 
     public string Id => "list_channel_users";
 
-    public string Description => "分页列出通道目录中的用户。";
+    public string Description =>
+        "分页列出通道目录中的用户。\n\n" +
+        "- skip 默认 0，take 默认 50。\n" +
+        "- 发送消息用 `send_channel_message`。";
 
     public IReadOnlyList<string> Tags => [];
 

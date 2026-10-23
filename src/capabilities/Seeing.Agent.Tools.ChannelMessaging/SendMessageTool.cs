@@ -18,7 +18,10 @@ public sealed class SendMessageTool : ITool
 
     public string Id => "send_channel_message";
 
-    public string Description => "向通道用户或指定对话发送文本。targetUserId 与 conversationExternalId+conversationKind 二选一。";
+    public string Description =>
+        "向已登记通道的用户或对话发送文本消息。\n\n" +
+        "- 目标二选一：targetUserId，或 conversationExternalId + conversationKind。\n" +
+        "- channelId 如 qq、wecom；先查目录用 `list_channel_conversations` 或 `list_channel_users`。";
 
     public IReadOnlyList<string> Tags => [];
 

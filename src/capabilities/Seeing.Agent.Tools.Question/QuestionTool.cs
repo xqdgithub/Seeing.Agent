@@ -32,13 +32,11 @@ public sealed class QuestionTool : BuiltInToolBase
 
     /// <inheritdoc />
     public override string Description =>
-        "向用户提出一个或多个结构化问题并等待作答。一次可包含多个问题；" +
-        "每题可选单选（single）、多选（multiple）或文本（text）；" +
-        "选项题可通过 custom 允许\"其他\"自由输入，required 控制是否必填，" +
-        "defaultSelectedLabels/defaultCustomAnswer 可预选默认值。" +
-        "需要「给出候选选项 + 仍允许用户自由输入」时用 single（custom 默认为 true，已含「其他」）；" +
-        "text 仅用于纯自由文本作答，且不要传 options——text 与 options 同时出现属非法参数。" +
-        "无交互界面的环境会降级返回，此时请改用文本提问。";
+        "需要用户选择、确认或补充信息时用它提问，而不是在正文追问。\n\n" +
+        "- kind：single 单选、multiple 多选、text 纯文本。\n" +
+        "- single 默认允许「其他」自由输入；text 不得带 options。\n" +
+        "- required 默认 true；可用 defaultSelectedLabels、defaultCustomAnswer 预填。\n" +
+        "- 无交互界面的环境会降级返回，此时改用文本提问。";
 
     /// <inheritdoc />
     public override ToolCategory Category => ToolCategory.General;
