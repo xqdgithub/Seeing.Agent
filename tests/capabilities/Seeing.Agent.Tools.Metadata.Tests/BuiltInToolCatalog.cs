@@ -18,6 +18,10 @@ internal static class BuiltInToolCatalog
         Auto<WriteTool>(),
         Auto<EditTool>(),
         Auto<DeleteTool>(),
+        Auto<GrepTool>(),
+        Auto<GlobTool>(),
+        Auto<OpenFileTool>(),
+        Auto<AddWorkspacePathTool>(),
     ];
 
     /// <summary>用最少参数的构造函数创建实例。</summary>

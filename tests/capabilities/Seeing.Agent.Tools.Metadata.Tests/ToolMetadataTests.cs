@@ -26,6 +26,9 @@ public class ToolMetadataTests
         ["read"] = ["open_file"],
         ["write"] = ["edit"],
         ["edit"] = ["read", "write"],
+        ["glob"] = ["grep"],
+        ["grep"] = ["glob"],
+        ["open_file"] = ["read"],
     };
 
     private static IReadOnlyList<string> Routing(string id) =>

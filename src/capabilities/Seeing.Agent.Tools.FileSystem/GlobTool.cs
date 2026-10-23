@@ -38,10 +38,10 @@ namespace Seeing.Agent.Tools.FileSystem
         public override string Id => "glob";
 
         public override string Description =>
-            "使用 glob 模式快速匹配文件。\n\n" +
-            "支持 glob 模式匹配，如 \"**/*.js\" 或 \"src/**/*.ts\"。\n" +
-            "返回匹配的文件路径列表，按修改时间排序（最近的在前）。\n" +
-            "默认限制返回 100 个结果，可通过更具体的模式或路径来获取更多结果。";
+            "按文件名或路径模式查找文件；按内容搜索用 `grep`。\n\n" +
+            "- 模式：支持 * 与 **，如 **/*.cs、src/**/*.ts。\n" +
+            "- 结果：按修改时间倒序，默认最多 100 个；被截断时会提示。\n" +
+            "- 范围：path 缺省为当前工作目录。";
 
         public override ToolCategory Category => ToolCategory.FileSystem;
 
@@ -57,12 +57,12 @@ namespace Seeing.Agent.Tools.FileSystem
                     pattern = new
                     {
                         type = "string",
-                        description = "用于匹配文件的 glob 模式"
+                        description = "用于匹配文件的 glob 模式（支持 * 与 **，如 **/*.cs）"
                     },
                     path = new
                     {
                         type = "string",
-                        description = "搜索的目录路径。如果未指定，使用当前工作目录。必须是有效的目录路径。"
+                        description = "搜索的目录：绝对路径，或相对当前工作目录的路径（默认当前工作目录）"
                     }
                 },
                 required = new[] { "pattern" }

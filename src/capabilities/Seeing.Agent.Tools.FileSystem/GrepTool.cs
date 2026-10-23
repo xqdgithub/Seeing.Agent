@@ -32,9 +32,10 @@ namespace Seeing.Agent.Tools.FileSystem
         public override string Id => "grep";
 
         public override string Description =>
-            "在文件内容中搜索正则表达式模式。\n\n" +
-            "支持在指定目录中递归搜索，可通过 include 参数过滤文件类型。\n" +
-            "返回匹配的文件路径、行号和行内容。";
+            "按正则搜索文件内容，返回路径与行号；按文件名找文件用 `glob`。\n\n" +
+            "- 范围：默认递归搜索当前工作目录；path 可指定文件或目录。\n" +
+            "- 过滤：include 支持 '*.cs'、'*.{ts,tsx}' 等模式。\n" +
+            "- 结果：默认最多 100 条；pattern 是 .NET 正则，语法错误会直接报错。";
 
         public override ToolCategory Category => ToolCategory.FileSystem;
 
@@ -46,12 +47,12 @@ namespace Seeing.Agent.Tools.FileSystem
                 pattern = new
                 {
                     type = "string",
-                    description = "要搜索的正则表达式模式"
+                    description = "要搜索的正则表达式（.NET 语法）"
                 },
                 path = new
                 {
                     type = "string",
-                    description = "搜索目录。默认使用当前工作目录。"
+                    description = "搜索目录或文件：绝对路径，或相对当前工作目录的路径（默认当前工作目录）"
                 },
                 include = new
                 {

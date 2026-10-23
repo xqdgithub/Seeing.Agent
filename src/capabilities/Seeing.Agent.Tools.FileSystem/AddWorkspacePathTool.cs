@@ -22,7 +22,7 @@ public class AddWorkspacePathTool : BuiltInToolBase
             ["path"] = new Dictionary<string, object>
             {
                 ["type"] = "string",
-                ["description"] = "要添加到工作区白名单的目录路径"
+                ["description"] = "要加入白名单的目录：绝对路径，或相对当前工作目录的路径"
             }
         },
         ["required"] = new[] { "path" }
@@ -43,7 +43,10 @@ public class AddWorkspacePathTool : BuiltInToolBase
 
     public override string Id => "add_workspace_path";
 
-    public override string Description => "请求将指定目录加入当前会话的工作区白名单，获批准后该目录下所有文件操作自动免询问";
+    public override string Description =>
+        "请求把目录加入当前会话工作区白名单，批准后该目录免询问。\n\n" +
+        "- 范围：仅当前会话生效，需用户批准。\n" +
+        "- 重复：已在白名单内的路径无需再次添加。";
 
     public override ToolCategory Category => ToolCategory.FileSystem;
 

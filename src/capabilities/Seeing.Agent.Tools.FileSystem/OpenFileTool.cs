@@ -34,10 +34,10 @@ public class OpenFileTool : BuiltInToolBase
 
     /// <inheritdoc />
     public override string Description =>
-        "在用户的文件编辑器中打开指定文件，可选跳转到某行某列。\n\n" +
-        "用于把某个文件（如刚生成的报告、需用户查看的配置）直接呈现到用户界面。\n" +
-        "路径必须是绝对路径。若文件已在编辑器中打开则切换到它，若是当前文件则从磁盘刷新内容。\n" +
-        "提供 line（可选 column）时，编辑器会定位到该位置（行/列均从 1 开始）。";
+        "在用户编辑器中打开文件并定位；只用于呈现，不读取内容（用 `read`）。\n\n" +
+        "- 行为：已打开则切换，当前文件则从磁盘刷新；无磁盘副作用。\n" +
+        "- 定位：line 与 column 均从 1 开始，column 需同时给 line。\n" +
+        "- 前置：需要宿主提供文件编辑器面板；纯文本读取请用 `read`。";
 
     /// <inheritdoc />
     public override ToolCategory Category => ToolCategory.FileSystem;
@@ -55,7 +55,7 @@ public class OpenFileTool : BuiltInToolBase
                 path = new
                 {
                     type = "string",
-                    description = "要打开的文件绝对路径（必须是绝对路径）"
+                    description = "要打开的文件：绝对路径，或相对当前工作目录的路径"
                 },
                 line = new
                 {
