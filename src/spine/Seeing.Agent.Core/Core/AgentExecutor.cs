@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
@@ -10,6 +11,7 @@ using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Detection;
+using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Prompts;
@@ -149,6 +151,10 @@ public class AgentExecutor : IAgentExecutor
 
         // 执行级权限授权器（能力门 / 资源门共用）；缺失时能力门 NeedsConfirmation 按拒绝处理
         var permissionAuthorizer = context.PermissionAuthorizer;
+
+        // 执行级工具可见性作用域：种子来自本轮结算视图，生命周期与本 Loop 相同。
+        // 只放宽执行层放行判定（tool_search 命中即可调用），不改变本轮 tools[]。
+        var toolScope = new ExecutionToolScope(context.ToolSettlement);
 
         // SubAgent：合并 Session PermissionSnapshot 作为本 Loop 权限真相源
         context.PermissionContext = PermissionIntegrity.FromAgentContext(
@@ -454,7 +460,8 @@ public class AgentExecutor : IAgentExecutor
                     writer,
                     history,
                     effectiveToken,
-                    state);
+                    state,
+                    toolScope);
 
                 // 循环检测终止：优先于 EndTurn，发出失败终态 + 循环检测原因
                 if (state.TerminateRequested)
@@ -644,7 +651,8 @@ public class AgentExecutor : IAgentExecutor
         ChannelWriter<IMessageEvent> writer,
         List<ChatMessage> history,
         CancellationToken cancellationToken,
-        LoopExecutionState state)
+        LoopExecutionState state,
+        IExecutionToolScope toolScope)
     {
         // ========== Doom Loop 检测（单一入口：Check 同时记录并返回判定）==========
         // 以 (toolId, SHA256(参数 JSON)) 为键，连续 3 次警告、≥5 次终止本 Loop。
@@ -695,7 +703,7 @@ public class AgentExecutor : IAgentExecutor
             new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
         var runTasks = toolCalls.Select(tc => RunToolCallWithEventsAsync(
-            tc, agent, context, permissionAuthorizer, loopId, channel.Writer, cancellationToken)).ToList();
+            tc, agent, context, permissionAuthorizer, loopId, channel.Writer, toolScope, cancellationToken)).ToList();
 
         var allDone = Task.WhenAll(runTasks).ContinueWith(
             t =>
@@ -779,6 +787,7 @@ public class AgentExecutor : IAgentExecutor
         IPermissionAuthorizer? permissionAuthorizer,
         string loopId,
         ChannelWriter<IMessageEvent> writer,
+        IExecutionToolScope toolScope,
         CancellationToken cancellationToken)
     {
         var name = tc.Function?.Name ?? "";
@@ -800,7 +809,7 @@ public class AgentExecutor : IAgentExecutor
         try
         {
             complete = await ExecuteSingleToolCallAsync(
-                tc, agent, context, permissionAuthorizer, loopId, EmitAsync, cancellationToken)
+                tc, agent, context, permissionAuthorizer, loopId, toolScope, EmitAsync, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -847,6 +856,7 @@ public class AgentExecutor : IAgentExecutor
         AgentContext context,
         IPermissionAuthorizer? permissionAuthorizer,
         string loopId,
+        IExecutionToolScope toolScope,
         Func<IMessageEvent, ValueTask>? emitAsync,
         CancellationToken cancellationToken)
     {
@@ -857,14 +867,14 @@ public class AgentExecutor : IAgentExecutor
         // Session-first：task 走正常 ToolManager 路径（TaskTool），不再旁路
 
         // ========== 可见集校验 ==========
-        // 本会话本轮未下发给模型的工具（延迟暴露 / 被 Agent 或模块过滤）不得被调用。
-        // 这是执行层对"模型凭空调用未加载工具"的确定性拦截，位于权限判定之前：
-        // 不可见的工具不应进入审批流程，也不应因历史授权而意外放行。
+        // 本执行内可直接调用 = 本轮已下发 schema（inline）∪ 本执行内经 tool_search 已加载。
+        // 未下发的工具（延迟暴露且未检索 / 被 Agent 或模块过滤）不得被调用：
+        // 这是执行层对"模型凭空调用未加载工具"的确定性拦截，位于权限判定之前。
         if (context.ToolSettlement is { } settlement
-            && !settlement.IsCallable(name))
+            && !toolScope.IsCallable(name))
         {
-            var reason = settlement.IsDeferred(name)
-                ? $"工具 '{name}' 尚未加载。请先用 {ToolIdConventions.SearchToolId} 检索该工具，再于下一轮调用。"
+            var reason = toolScope.IsDeferred(name)
+                ? $"工具 '{name}' 尚未加载。请先用 {ToolIdConventions.SearchToolId} 检索该工具；命中后本次请求内即可直接调用。"
                 : $"工具 '{name}' 在本会话当前上下文中不可用。";
             _logger.LogWarning(
                 "[AgentExecutor] 拒绝了本轮不可见工具的调用: {ToolName} (deferred={IsDeferred})",
@@ -897,7 +907,12 @@ public class AgentExecutor : IAgentExecutor
         try
         {
             result = await _tools.ExecuteAsync(
-                tc, context.SessionId, cancellationToken, emitAsync, permissionAuthorizer, agent).ConfigureAwait(false);
+                tc, context.SessionId, cancellationToken, emitAsync, permissionAuthorizer, agent, toolScope)
+                .ConfigureAwait(false);
+
+            // 工具声明的"本执行内已加载"由执行器统一应用（能力键门控 + 审计）。
+            if (result.Success)
+                ApplyDeclaredToolLoads(name, result, toolScope);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -995,6 +1010,35 @@ public class AgentExecutor : IAgentExecutor
 
     private static IReadOnlyDictionary<string, object>? CopyMetadata(Dictionary<string, object>? metadata)
         => metadata is { Count: > 0 } ? new Dictionary<string, object>(metadata) : null;
+
+    /// <summary>
+    /// 应用工具声明的“本执行内已加载”。只有声明了 <see cref="ToolCapabilityKeys.ExposureLoad"/>
+    /// 能力的工具才会被采纳；成功应用后写入 <c>exposure.loaded</c> 元数据供审计。
+    /// </summary>
+    private void ApplyDeclaredToolLoads(string toolName, ToolResult result, IExecutionToolScope toolScope)
+    {
+        if (result.LoadedToolIds is not { Count: > 0 })
+            return;
+
+        var tool = _tools.GetTool(toolName);
+        if (tool?.Capabilities is null ||
+            !tool.Capabilities.ContainsKey(ToolCapabilityKeys.ExposureLoad))
+        {
+            _logger.LogWarning(
+                "[AgentExecutor] 工具声明加载但未声明 {Key} 能力，已忽略: {ToolName}",
+                ToolCapabilityKeys.ExposureLoad, toolName);
+            return;
+        }
+
+        var added = toolScope.TryLoad(result.LoadedToolIds);
+        if (added <= 0)
+            return;
+
+        result.Metadata["exposure.loaded"] = result.LoadedToolIds.ToArray();
+        _logger.LogInformation(
+            "[AgentExecutor] 工具声明加载已生效: {ToolName}, Count={Count}, Loaded={Loaded}",
+            toolName, added, result.LoadedToolIds);
+    }
 
     /// <summary>
     /// 评估权限

@@ -13,12 +13,18 @@ public class ToolSearchToolTests
 {
     private readonly Mock<ISessionToolSchemaResolver> _resolver = new();
     private readonly Mock<IToolDiscoveryStore> _store = new();
+    private readonly FakeScope _scope = new();
 
     private readonly ToolContext _context = new()
     {
         SessionId = "s1",
         Agent = new AgentDefinition { Name = "build" },
     };
+
+    public ToolSearchToolTests()
+    {
+        _context.ToolScope = _scope;
+    }
 
     private ToolSearchTool CreateTool(params ExposedTool[] deferred)
     {
@@ -90,7 +96,8 @@ public class ToolSearchToolTests
 
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("file_read");
-        result.Output.Should().Contain("下一轮");
+        result.Output.Should().Contain("本次执行内可直接调用");
+        result.LoadedToolIds.Should().Equal("file_read");
         _store.Verify(
             s => s.Add("s1", It.Is<IEnumerable<string>>(ids => ids.Contains("file_read"))),
             Times.Once);
@@ -265,14 +272,50 @@ public class ToolSearchToolTests
     }
 
     [Fact]
-    public async Task FullDetail_ShouldStateNextTurnEffect()
+    public async Task FullDetail_ShouldStateSameExecutionCallability()
     {
         var tool = CreateTool(Entry("file_read"));
 
         var result = await tool.ExecuteAsync(Args(new { query = "file_read", detail = "full" }), _context);
 
         result.Success.Should().BeTrue();
-        result.Output.Should().Contain("下一轮");
+        result.Output.Should().Contain("本次执行内可直接调用");
+        result.LoadedToolIds.Should().Equal("file_read");
+        // 加载由执行器统一应用，能力包不得直接写作用域
+        _scope.LoadedIds.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task DetailFull_WhenDiscoveryStoreFails_ShouldNotDeclareLoaded()
+    {
+        var tool = CreateTool(Entry("file_read"));
+        _store
+            .Setup(s => s.Add(It.IsAny<string>(), It.IsAny<IEnumerable<string>>()))
+            .Returns(false);
+
+        var result = await tool.ExecuteAsync(Args(new { query = "file_read", detail = "full" }), _context);
+
+        result.LoadedToolIds.Should().BeNull();
+        result.Output.Should().Contain("登记失败");
+    }
+
+    [Fact]
+    public async Task FullDetail_WithoutExecutionScope_ShouldPromiseOnlyLaterExecutions()
+    {
+        // 非执行器路径（未透传作用域）不得承诺"本次执行可用"，否则就是假消息。
+        var tool = CreateTool(Entry("file_read"));
+        var context = new ToolContext
+        {
+            SessionId = "s1",
+            Agent = new AgentDefinition { Name = "build" }
+        };
+
+        var result = await tool.ExecuteAsync(Args(new { query = "file_read", detail = "full" }), context);
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Contain("下一次执行起");
+        result.Output.Should().NotContain("本次执行内可直接调用");
+        result.LoadedToolIds.Should().Equal("file_read");
     }
 
     [Fact]
@@ -293,5 +336,33 @@ public class ToolSearchToolTests
             k.Contains("quota", StringComparison.OrdinalIgnoreCase) ||
             k.Contains("剩余次数", StringComparison.Ordinal) ||
             k.Contains("searches", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>执行级作用域测试替身：记录加载顺序，可调性只看加载集。</summary>
+    private sealed class FakeScope : IExecutionToolScope
+    {
+        private readonly List<string> _loaded = new();
+
+        public IReadOnlyList<string> LoadedIds => _loaded;
+
+        public bool IsCallable(string toolId) =>
+            _loaded.Contains(toolId, StringComparer.OrdinalIgnoreCase);
+
+        public bool IsDeferred(string toolId) => true;
+
+        public int TryLoad(IEnumerable<string> toolIds)
+        {
+            var added = 0;
+            foreach (var id in toolIds)
+            {
+                if (!_loaded.Contains(id, StringComparer.OrdinalIgnoreCase))
+                {
+                    _loaded.Add(id);
+                    added++;
+                }
+            }
+
+            return added;
+        }
     }
 }

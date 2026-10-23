@@ -14,6 +14,7 @@ using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Core.Tools;
 using Seeing.Agent.Llm;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Core;
@@ -51,6 +52,57 @@ public class AgentExecutorToolVisibilityTests
             .Single(e => e.Type == MessageEventType.ToolCallComplete);
         complete.Status.Should().Be(ToolCallStatus.Rejected);
         complete.Error.Should().Contain(ToolIdConventions.SearchToolId);
+        complete.Error.Should().Contain("本次请求");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DeferredToolDeclaredLoadedInSameExecution_ShouldBeAllowed()
+    {
+        // 同一执行内 tool_search 声明加载的工具：schema 已随工具结果进入对话，
+        // 执行器应用声明后必须放行，否则模型只能重复检索或等用户再发消息。
+        var llm = CreateScriptedLlm(ToolIdConventions.SearchToolId, "hidden_tool");
+        var executor = await CreateExecutorWithToolsAsync(
+            llm, new DeclaringSearchTool(), new NamedTool("hidden_tool"));
+        var settlement = BuildSettlement(
+            (ToolIdConventions.SearchToolId, ToolExposureMode.Inline),
+            ("hidden_tool", ToolExposureMode.Deferred));
+
+        var events = await RunAsync(executor, settlement, maxSteps: 3);
+
+        var completes = events.OfType<ToolCallEvent>()
+            .Where(e => e.Type == MessageEventType.ToolCallComplete)
+            .ToList();
+
+        var searchComplete = completes.Single(e => e.ToolName == ToolIdConventions.SearchToolId);
+        searchComplete.Status.Should().NotBe(ToolCallStatus.Rejected);
+        searchComplete.Metadata.Should().NotBeNull();
+        searchComplete.Metadata!["exposure.loaded"].Should().BeEquivalentTo(new[] { "hidden_tool" });
+
+        completes.Single(e => e.ToolName == "hidden_tool")
+            .Status.Should().NotBe(ToolCallStatus.Rejected);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_LoadDeclaredWithoutCapability_ShouldBeIgnored()
+    {
+        // 未声明 exposure.load 的工具不得解锁其他工具（防止第三方工具绕过“先检索”约定）。
+        var llm = CreateScriptedLlm(ToolIdConventions.SearchToolId, "hidden_tool");
+        var executor = await CreateExecutorWithToolsAsync(
+            llm, new UndeclaredSearchTool(), new NamedTool("hidden_tool"));
+        var settlement = BuildSettlement(
+            (ToolIdConventions.SearchToolId, ToolExposureMode.Inline),
+            ("hidden_tool", ToolExposureMode.Deferred));
+
+        var events = await RunAsync(executor, settlement, maxSteps: 3);
+
+        var completes = events.OfType<ToolCallEvent>()
+            .Where(e => e.Type == MessageEventType.ToolCallComplete)
+            .ToList();
+
+        completes.Single(e => e.ToolName == ToolIdConventions.SearchToolId)
+            .Status.Should().NotBe(ToolCallStatus.Rejected);
+        completes.Single(e => e.ToolName == "hidden_tool")
+            .Status.Should().Be(ToolCallStatus.Rejected);
     }
 
     [Fact]
@@ -108,14 +160,15 @@ public class AgentExecutorToolVisibilityTests
 
     private static async Task<List<IMessageEvent>> RunAsync(
         AgentExecutor executor,
-        SessionToolSchemaResolution? settlement)
+        SessionToolSchemaResolution? settlement,
+        int maxSteps = 1)
     {
         var agent = new AgentDefinition
         {
             Name = "visibility-agent",
             Runtime = AgentRuntime.Native,
             Mode = AgentMode.All,
-            MaxSteps = 1
+            MaxSteps = maxSteps
         };
         var context = new AgentContext
         {
@@ -145,7 +198,23 @@ public class AgentExecutorToolVisibilityTests
 
         var hookManager = new HookManager(NullLogger<HookManager>.Instance);
         var toolManager = new ToolManager(NullLogger<ToolManager>.Instance, hookManager);
+        return CreateExecutorCore(llm.Object, toolManager, hookManager);
+    }
 
+    private static async Task<AgentExecutor> CreateExecutorWithToolsAsync(
+        ILlmService llm, params ITool[] tools)
+    {
+        var hookManager = new HookManager(NullLogger<HookManager>.Instance);
+        var toolManager = new ToolManager(NullLogger<ToolManager>.Instance, hookManager);
+        foreach (var tool in tools)
+            await toolManager.RegisterToolAsync(tool);
+
+        return CreateExecutorCore(llm, toolManager, hookManager);
+    }
+
+    private static AgentExecutor CreateExecutorCore(
+        ILlmService llm, ToolManager toolManager, HookManager hookManager)
+    {
         var permission = new Mock<IPermissionService>();
         permission.Setup(p => p.EvaluateToolAsync(
                 It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<PermissionContext>(), It.IsAny<CancellationToken>()))
@@ -156,7 +225,7 @@ public class AgentExecutorToolVisibilityTests
             .Returns("test-model");
 
         return new AgentExecutor(
-            llm.Object,
+            llm,
             toolManager,
             permission.Object,
             hookManager,
@@ -166,8 +235,27 @@ public class AgentExecutorToolVisibilityTests
             NullLogger<AgentExecutor>.Instance);
     }
 
+    /// <summary>按步骤返回工具调用的脚本化 LLM：脚本用尽后返回普通文本完成。</summary>
+    private static ILlmService CreateScriptedLlm(params string[] toolNames)
+    {
+        var step = 0;
+        var llm = new Mock<ILlmService>();
+        llm.Setup(s => s.CompleteStreamAsync(
+                It.IsAny<string>(), It.IsAny<ChatRequest>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                var index = Interlocked.Increment(ref step) - 1;
+                return index < toolNames.Length
+                    ? StreamToolCallCompletion(toolNames[index])
+                    : StreamTextCompletion();
+            });
+
+        return llm.Object;
+    }
+
     private static async IAsyncEnumerable<StreamUpdate> StreamToolCallCompletion(string toolName)
     {
+        await Task.Yield();
         yield return new StreamUpdate
         {
             IsComplete = true,
@@ -182,5 +270,64 @@ public class AgentExecutorToolVisibilityTests
                 }
             }
         };
+    }
+
+    private static async IAsyncEnumerable<StreamUpdate> StreamTextCompletion()
+    {
+        await Task.Yield();
+        yield return new StreamUpdate
+        {
+            IsComplete = true,
+            FinishReason = "stop",
+            ContentDelta = "done"
+        };
+    }
+
+    /// <summary>模拟声明式检索工具：声明 exposure.load 并通过 LoadedToolIds 上报。</summary>
+    [ToolCapability(ToolCapabilityKeys.ExposureLoad, "true")]
+    private sealed class DeclaringSearchTool : ITool
+    {
+        public string Id => ToolIdConventions.SearchToolId;
+        public string Description => "search";
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+        public ToolCategory Category => ToolCategory.General;
+        public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new { type = "object" });
+
+        public Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
+        {
+            context.ToolScope.Should().NotBeNull("执行器必须向工具透传执行级作用域");
+            var result = ToolResult.Succeeded("loaded");
+            result.LoadedToolIds = ["hidden_tool"];
+            return Task.FromResult(result);
+        }
+    }
+
+    /// <summary>同形工具但未声明 exposure.load：其加载声明必须被忽略。</summary>
+    private sealed class UndeclaredSearchTool : ITool
+    {
+        public string Id => ToolIdConventions.SearchToolId;
+        public string Description => "search";
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+        public ToolCategory Category => ToolCategory.General;
+        public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new { type = "object" });
+
+        public Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
+        {
+            var result = ToolResult.Succeeded("loaded");
+            result.LoadedToolIds = ["hidden_tool"];
+            return Task.FromResult(result);
+        }
+    }
+
+    private sealed class NamedTool(string id) : ITool
+    {
+        public string Id { get; } = id;
+        public string Description => id;
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+        public ToolCategory Category => ToolCategory.General;
+        public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new { type = "object" });
+
+        public Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context) =>
+            Task.FromResult(ToolResult.Succeeded("ok"));
     }
 }

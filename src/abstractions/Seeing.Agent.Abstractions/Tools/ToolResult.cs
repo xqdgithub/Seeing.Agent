@@ -68,6 +68,15 @@ public class ToolResult
     /// <summary>文件附件</summary>
     public List<FileAttachment>? Attachments { get; set; }
 
+    /// <summary>
+    /// 工具声明"本执行内已加载"的工具 id。
+    /// <para>
+    /// 仅当工具声明了 <see cref="ToolCapabilityKeys.ExposureLoad"/> 能力时才会被执行器采纳；
+    /// 执行器据此放宽本次执行的可调用集（不改变 <c>tools[]</c>）。
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string>? LoadedToolIds { get; set; }
+
     /// <summary>执行耗时</summary>
     public TimeSpan? Duration { get; set; }
 

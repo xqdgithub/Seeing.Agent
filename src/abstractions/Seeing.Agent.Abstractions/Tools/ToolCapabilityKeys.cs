@@ -28,6 +28,12 @@ namespace Seeing.Agent.Abstractions.Tools
         /// <summary>是否允许该工具的 schema 进入 schema 缓存（"true"/"false"，默认 true）。</summary>
         public const string Cacheable = "cacheable";
 
+        /// <summary>
+        /// 允许工具通过 <see cref="ToolResult.LoadedToolIds"/> 声明"本执行内已加载"（"true"/"false"，默认不可）。
+        /// 仅检索类工具应声明；未声明时执行器会忽略其加载声明。
+        /// </summary>
+        public const string ExposureLoad = "exposure.load";
+
         // === 输出限制能力键（ToolOutputLimiterDecorator 消费）===
 
         /// <summary>豁免工具输出限制（"true"/"false"，默认 false）。工具自身已控制输出（如内置分页工具）时声明。</summary>

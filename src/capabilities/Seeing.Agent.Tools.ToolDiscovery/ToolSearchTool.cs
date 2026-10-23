@@ -10,10 +10,12 @@ namespace Seeing.Agent.Tools.ToolDiscovery;
 
 /// <summary>
 /// 工具检索 — 在"可发现但未内联"的目录（deferred 集合）中检索工具，
-/// 按 name/summary/full 三档返回；full 命中项写入发现态并取权威全量定义（下一轮生效）。
+/// 按 name/summary/full 三档返回；full 命中项登记为本执行内可调用并返回权威全量定义，
+/// 下一次执行起自动内联。
 /// <para>只依赖 Abstractions + Seeing.Session + Tools.Support；经注入端口获取能力，不引用 Core。</para>
 /// <para>默认值（limit/offset/分页上限/full 硬上限）为工具内常量：能力包不读 Core options。</para>
 /// </summary>
+[ToolCapability(ToolCapabilityKeys.ExposureLoad, "true")]
 public sealed class ToolSearchTool : ToolBase
 {
     private const int DefaultLimit = 10;
@@ -47,7 +49,8 @@ public sealed class ToolSearchTool : ToolBase
     public override string Description =>
         "检索当前会话可发现但尚未内联的工具目录（延迟暴露集合）。" +
         "query 省略时浏览全部；可经 namespace 限定范围；" +
-        "detail=name/summary/full（默认 summary）：full 将命中项写入发现态并返回完整定义，该工具将在下一轮变为可直接调用，每页最多 3 条。" +
+        "detail=name/summary/full（默认 summary）：full 将命中项登记为本执行内可调用并返回完整定义，" +
+        "命中后本次执行内即可直接调用，下一次执行起自动内联，每页最多 3 条。" +
         $"支持 limit（默认 {DefaultLimit}，上限 {MaxLimit}）与 offset 分页。";
 
     /// <inheritdoc />
@@ -163,6 +166,11 @@ public sealed class ToolSearchTool : ToolBase
 
         var discovered = detail != "full" || hitIds.Count == 0 || _discoveryStore.Add(context.SessionId, hitIds);
 
+        // 只声明"本执行内已加载"，由执行器统一应用（能力键门控 + 审计），能力包不直接写作用域。
+        IReadOnlyList<string>? loadedToolIds = null;
+        if (detail == "full" && discovered && hitIds.Count > 0)
+            loadedToolIds = hitIds;
+
         var sb = new StringBuilder();
         sb.Append($"工具检索结果（detail={detail}, total={total}, returned={page.Count}, remaining={remaining}）:");
         if (detail == "full" && limit > FullPageHardCap)
@@ -184,8 +192,10 @@ public sealed class ToolSearchTool : ToolBase
                 continue;
 
             sb.Append(discovered
-                ? "\n   该工具将在下一轮变为可直接调用（已登记待生效发现）:"
-                : "\n   警告：发现态登记失败（会话不可用），该工具本轮及下一轮均不可直接调用:");
+                ? context.ToolScope is not null
+                    ? "\n   已加载：本次执行内可直接调用；下一次执行起自动内联:"
+                    : "\n   已登记：下一次执行起可直接调用（本次执行内暂不可调用）:"
+                : "\n   警告：发现态登记失败（会话不可用），该工具本次及后续请求均不可直接调用:");
             var schemaText = GetFullDefinition(entry.Id, settlement);
             sb.Append('\n').Append(schemaText);
         }
@@ -205,7 +215,9 @@ public sealed class ToolSearchTool : ToolBase
         }
 
         var resultMeta = BuildMetadata(detail, total, page.Count, remaining, remaining > 0 ? nextOffset : null);
-        return Success(sb.ToString(), resultMeta);
+        var result = Success(sb.ToString(), resultMeta);
+        result.LoadedToolIds = loadedToolIds;
+        return result;
     }
 
     private static string GetFullDefinition(string toolId, SessionToolSchemaResolution settlement)
