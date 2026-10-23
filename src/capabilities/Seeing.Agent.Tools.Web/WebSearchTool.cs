@@ -31,9 +31,9 @@ public class WebSearchTool : ToolBase
 
     /// <inheritdoc/>
     public override string Description =>
-        "使用 Exa 搜索引擎进行网络搜索，返回高质量的搜索结果。" +
-        "支持实时抓取模式，可以获取最新的网页内容。" +
-        "适合用于查找信息、新闻、文档等。";
+        "联网搜索网页与新闻，返回多来源结果。\n\n" +
+        "- 参数：query 为检索词；numResults 默认 8；livecrawl 取 fallback 或 preferred；searchType 取 auto、fast、deep。\n" +
+        "- 已知 URL 用 `webfetch`；找代码示例用 `codesearch`。";
 
     /// <inheritdoc/>
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new

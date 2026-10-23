@@ -45,9 +45,10 @@ namespace Seeing.Agent.Skills
         /// </summary>
         private string BuildDescription()
         {
-            return "Load a specialized skill that provides domain-specific instructions and workflows. " +
-                   "The available skill names are listed in the system prompt's '## Skills' section. " +
-                   "Call this tool with a skill 'name' to load its full instructions into the context.";
+            return "按名称加载技能全文；技能名见系统提示词的 Skills 节。\n\n" +
+                   "- 技能名必须来自系统提示词「## Skills」节列出的名称。\n" +
+                   "- 加载后按技能内的工作流与约定执行。\n" +
+                   "- 不用于一般知识问答或代码搜索（用 `codesearch`）。";
         }
 
         /// <summary>

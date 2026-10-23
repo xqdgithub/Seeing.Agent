@@ -47,6 +47,9 @@ public class ToolMetadataTests
         ["cron_disable"] = ["cron_resume"],
         ["cron_resume"] = ["cron_disable"],
         ["cron_delete"] = ["cron_disable"],
+        ["websearch"] = ["webfetch"],
+        ["webfetch"] = ["websearch"],
+        ["codesearch"] = ["websearch"],
     };
 
     private static IReadOnlyList<string> Routing(string id) =>

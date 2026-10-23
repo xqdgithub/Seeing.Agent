@@ -47,11 +47,10 @@ public sealed class ToolSearchTool : ToolBase
 
     /// <inheritdoc />
     public override string Description =>
-        "检索当前会话可发现但尚未内联的工具目录（延迟暴露集合）。" +
-        "query 省略时浏览全部；可经 namespace 限定范围；" +
-        "detail=name/summary/full（默认 summary）：full 将命中项登记为本执行内可调用并返回完整定义，" +
-        "命中后本次执行内即可直接调用，下一次执行起自动内联，每页最多 3 条。" +
-        $"支持 limit（默认 {DefaultLimit}，上限 {MaxLimit}）与 offset 分页。";
+        "检索未内联的工具目录；需要的工具不在 tools 中时先用它。\n\n" +
+        "- detail：name 仅 id、summary 默认、full 返回完整定义并登记为本次执行内可调用。\n" +
+        "- full 命中后下一次执行起自动内联，每页最多 3 条。\n" +
+        "- 分页：limit 与 offset；query 省略则浏览全部目录。";
 
     /// <inheritdoc />
     public override IReadOnlyList<string> Tags => ["discovery", "tools"];

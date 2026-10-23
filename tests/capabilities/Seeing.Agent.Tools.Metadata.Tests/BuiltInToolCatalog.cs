@@ -4,10 +4,13 @@ using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Hosting.Tools;
 using Seeing.Agent.Memory.Integration.Tools;
 using Seeing.Agent.Scheduler.Tools;
+using Seeing.Agent.Skills;
 using Seeing.Agent.Tools.Editor;
 using Seeing.Agent.Tools.FileSystem;
 using Seeing.Agent.Tools.Session;
 using Seeing.Agent.Tools.Shell;
+using Seeing.Agent.Tools.ToolDiscovery;
+using Seeing.Agent.Tools.Web;
 
 namespace Seeing.Agent.Tools.Metadata.Tests;
 
@@ -54,6 +57,11 @@ internal static class BuiltInToolCatalog
         Auto<CronResumeTool>(),
         Auto<CronRunTool>(),
         Auto<CronDeleteTool>(),
+        Auto<WebSearchTool>(),
+        Auto<WebFetchTool>(),
+        Auto<CodeSearchTool>(),
+        Auto<SkillTool>(),
+        Auto<ToolSearchTool>(),
     ];
 
     /// <summary>用最少参数的构造函数创建实例。</summary>

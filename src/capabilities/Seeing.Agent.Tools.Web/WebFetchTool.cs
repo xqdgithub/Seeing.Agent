@@ -38,9 +38,9 @@ public class WebFetchTool : ToolBase
 
     /// <inheritdoc/>
     public override string Description =>
-        "从指定 URL 获取内容，支持返回文本、Markdown 或 HTML 格式。" +
-        "可用于获取网页内容、API 响应或在线文档。" +
-        "自动将 HTML 转换为 Markdown 或纯文本格式。";
+        "抓取指定 URL 的内容；已知地址用它，未知地址用 `websearch`。\n\n" +
+        "- format：text、markdown（默认）、html。\n" +
+        "- timeout 单位为秒、最大 120；仅支持 http/https；内网地址会被拒绝。";
 
     /// <inheritdoc/>
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new

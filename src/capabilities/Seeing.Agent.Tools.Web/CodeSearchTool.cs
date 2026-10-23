@@ -33,9 +33,9 @@ public class CodeSearchTool : ToolBase
 
     /// <inheritdoc/>
     public override string Description =>
-        "使用 Exa 搜索引擎搜索代码示例、API 文档和 SDK 使用方法。" +
-        "适合查找特定库或框架的代码示例、最佳实践和文档。" +
-        "例如：'React useState hook examples'、'Python pandas dataframe filtering'等。";
+        "搜索代码示例、API 文档与库用法；找网页新闻用 `websearch`。\n\n" +
+        "- 适合查库或框架的用法、最佳实践与官方文档。\n" +
+        "- 示例 query：React useState hook examples、Python pandas dataframe filtering。";
 
     /// <inheritdoc/>
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
