@@ -29,6 +29,9 @@ public interface IFileSystem
     /// <summary>异步写入文件全部文本。</summary>
     Task WriteAllTextAsync(string path, string contents, CancellationToken cancellationToken = default);
 
+    /// <summary>异步写入文件全部字节。</summary>
+    Task WriteAllBytesAsync(string path, ReadOnlyMemory<byte> content, CancellationToken cancellationToken = default);
+
     /// <summary>创建目录（含中间路径）。</summary>
     void CreateDirectory(string path);
 

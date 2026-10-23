@@ -33,6 +33,9 @@ public interface IFileWorkspace
     /// <summary>全量写入；expectedRevision 非空时做乐观并发检查。</summary>
     Task<FileWriteResult> WriteAsync(string path, string content, FileRevision? expectedRevision = null, CancellationToken ct = default);
 
+    /// <summary>二进制全量写入；不做可编辑性检查，持路径写锁。</summary>
+    Task WriteBytesAsync(string path, ReadOnlyMemory<byte> content, CancellationToken ct = default);
+
     /// <summary>字符串替换写入（语义同 EditTool）。</summary>
     Task<FileWriteResult> EditAsync(string path, string oldString, string newString, bool replaceAll = false, FileRevision? expectedRevision = null, CancellationToken ct = default);
 

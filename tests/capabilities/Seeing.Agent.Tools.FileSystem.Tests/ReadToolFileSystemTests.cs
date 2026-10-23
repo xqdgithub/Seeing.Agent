@@ -264,6 +264,12 @@ public class ReadToolFileSystemTests
             return Task.CompletedTask;
         }
 
+        public Task WriteAllBytesAsync(string path, ReadOnlyMemory<byte> content, CancellationToken cancellationToken = default)
+        {
+            AddBinaryFile(path, content.ToArray());
+            return Task.CompletedTask;
+        }
+
         public void CreateDirectory(string path) => _directories.Add(Normalize(path));
 
         public bool Exists(string path)

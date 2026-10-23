@@ -37,6 +37,8 @@ internal sealed class GhostEntryFileSystem : IFileSystem
     /// <inheritdoc />
     public Task WriteAllTextAsync(string path, string contents, CancellationToken cancellationToken = default) => _inner.WriteAllTextAsync(path, contents, cancellationToken);
     /// <inheritdoc />
+    public Task WriteAllBytesAsync(string path, ReadOnlyMemory<byte> content, CancellationToken cancellationToken = default) => _inner.WriteAllBytesAsync(path, content, cancellationToken);
+    /// <inheritdoc />
     public void CreateDirectory(string path) => _inner.CreateDirectory(path);
     /// <inheritdoc />
     public bool Exists(string path) => _inner.Exists(path);

@@ -43,6 +43,10 @@ public sealed class LocalFileSystem : IFileSystem
         File.WriteAllTextAsync(path, contents, cancellationToken);
 
     /// <inheritdoc />
+    public Task WriteAllBytesAsync(string path, ReadOnlyMemory<byte> content, CancellationToken cancellationToken = default) =>
+        File.WriteAllBytesAsync(path, content.ToArray(), cancellationToken);
+
+    /// <inheritdoc />
     public void CreateDirectory(string path) => Directory.CreateDirectory(path);
 
     /// <inheritdoc />

@@ -202,6 +202,20 @@ internal sealed class FileWorkspace : IFileWorkspace
         return await WriteCoreAsync(full, content, expectedRevision, ct).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
+    public async Task WriteBytesAsync(string path, ReadOnlyMemory<byte> content, CancellationToken ct = default)
+    {
+        var full = Path.GetFullPath(path);
+        EnsureAllowed(full);
+
+        var directory = Path.GetDirectoryName(full);
+        if (!string.IsNullOrEmpty(directory))
+            _fs.CreateDirectory(directory);
+
+        using var _ = await _locks.AcquireAsync(full, ct).ConfigureAwait(false);
+        await _fs.WriteAllBytesAsync(full, content, ct).ConfigureAwait(false);
+    }
+
     /// <summary>持锁前提下的写入核心（调用方已持有该路径写锁）。</summary>
     private async Task<FileWriteResult> WriteCoreAsync(string full, string content, FileRevision? expectedRevision, CancellationToken ct)
     {
