@@ -19,7 +19,7 @@
 @inject SkillManager SkillManager
 @inject Seeing.Agent.WebUI.Services.UploadedFileService UploadedFileService
 
-<div Class="prompt-input-container" data-session-id="@SessionState?.CurrentSession?.Id" @ref="@ContainerRef">
+<div Class="prompt-input-container" id="@ContainerId" data-session-id="@SessionState?.CurrentSession?.Id">
     <!-- 附件预览 -->
     @if (Attachments.Count > 0)
     {
@@ -316,11 +316,11 @@
     /// Textarea 元素 ID
     /// </summary>
     private string TextareaId { get; set; } = $"textarea-{Guid.NewGuid():N}";
+    private string ContainerId { get; set; } = $"prompt-input-{Guid.NewGuid():N}";
 
     /// <summary>
     /// 元素引用
     /// </summary>
-    private ElementReference ContainerRef { get; set; }
     private ElementReference TextareaRef { get; set; }
     private InputFile? FileInputRef { get; set; }
     private DotNetObjectReference<PromptInput>? _pasteRef;
@@ -1153,8 +1153,8 @@
     {
         try
         {
-            await JSRuntime.InvokeVoidAsync("disposePasteHandler", ContainerRef.Id);
-            await JSRuntime.InvokeVoidAsync("disposeDropZone", ContainerRef.Id);
+            await JSRuntime.InvokeVoidAsync("disposePasteHandler", ContainerId);
+            await JSRuntime.InvokeVoidAsync("disposeDropZone", ContainerId);
         }
         catch
         {
@@ -1198,8 +1198,8 @@
             try
             {
                 _pasteRef ??= DotNetObjectReference.Create(this);
-                await JSRuntime.InvokeVoidAsync("setupDropZone", ContainerRef.Id, _pasteRef);
-                await JSRuntime.InvokeVoidAsync("setupPasteHandler", ContainerRef.Id, _pasteRef);
+                await JSRuntime.InvokeVoidAsync("setupDropZone", ContainerId, _pasteRef);
+                await JSRuntime.InvokeVoidAsync("setupPasteHandler", ContainerId, _pasteRef);
                 await JSRuntime.InvokeVoidAsync("setupTextareaAutoResize", TextareaId);
                 
                 // 自动聚焦输入框
