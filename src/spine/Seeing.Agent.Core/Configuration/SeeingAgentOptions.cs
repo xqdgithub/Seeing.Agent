@@ -186,7 +186,13 @@ namespace Seeing.Agent.Core.Configuration
         /// </summary>
         public string? PolicyMode { get; set; } = "Auto";
 
-        /// <summary>钉选工具 id 列表（Tiered 层级优先内联）。</summary>
+        /// <summary>
+        /// 钉选工具 id 列表（Tiered 层级优先内联）。
+        /// <para>
+        /// 非空时**整体替换**代码默认集；空数组表示未设置（使用默认集）。
+        /// 默认必须保持空：非空默认值会被 <c>MergeDeep</c> 当成"项目级已设置"而覆盖用户配置。
+        /// </para>
+        /// </summary>
         public List<string> PinnedTools { get; set; } = [];
 
         /// <summary>目录预算（字符）：内联工具目录的字符上限。</summary>

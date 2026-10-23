@@ -48,6 +48,37 @@ public sealed class ToolExposureConfigResolver
     }
 
     /// <summary>
+    /// 默认钉选的核心工具（分层暴露下恒内联）。
+    /// <para>
+    /// 放在 Hosting 组合层而非 Core 配置初值：既避免"能力策略落进瘦脊柱"，
+    /// 也避免非空默认值被 <c>MergeDeep</c> 当作"项目级已设置"而覆盖用户配置。
+    /// 用户经 <c>Tools.Exposure.PinnedTools</c> 非空时整体替换；Agent 级同义且优先级更高。
+    /// </para>
+    /// </summary>
+    public static readonly IReadOnlyList<string> DefaultPinnedTools =
+    [
+        "read",
+        "write",
+        "edit",
+        "glob",
+        "grep",
+        "bash",
+        "delete",
+        "open_file",
+        "add_workspace_path",
+        "question",
+        "skill",
+        "task",
+        "todowrite",
+        "webfetch",
+        "websearch",
+        "codesearch",
+        "memory_search",
+        "memory_read",
+        "memory_write"
+    ];
+
+    /// <summary>
     /// 解析四级优先级的有效暴露配置。
     /// </summary>
     /// <param name="sessionOverride">会话级覆盖（最高优先级）。</param>
@@ -68,11 +99,10 @@ public sealed class ToolExposureConfigResolver
 
         var mode = ResolveMode(sessionOverride, agent, scenario, exposure);
 
-        // PinnedTools：仅 Agent（覆盖）→ 全局两级；null = 未覆盖，逐级回退。
-        // exposure.PinnedTools 声明非空，显式转可空以合法保留 [] 兜底（防配置层显式 null）。
+        // PinnedTools 三级：Agent（整体覆盖）→ 配置（非空整体替换默认集）→ 默认集。
+        // 默认集放代码而非选项初始化器，避免 MergeDeep 把"未设置"误判为"项目级已设置"。
         IReadOnlyList<string> pinned = agent?.PinnedTools
-            ?? (IReadOnlyList<string>?)exposure.PinnedTools
-            ?? [];
+            ?? (exposure.PinnedTools is { Count: > 0 } ? exposure.PinnedTools : DefaultPinnedTools);
 
         return new EffectiveExposureConfig(
             mode,

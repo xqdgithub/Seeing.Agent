@@ -91,6 +91,65 @@ public class ToolExposureConfigResolverTests
         logger.Entries.Should().BeEmpty("命中 Agent 枚举后不应解析低优先级层");
     }
 
+    [Fact]
+    public void Resolve_NoOverrides_ShouldUseDefaultPinnedTools()
+    {
+        var result = Create().Resolve(
+            sessionOverride: null,
+            agent: null,
+            scenario: null,
+            globalOptions: new SeeingAgentOptions());
+
+        result.PinnedTools.Should().Equal(ToolExposureConfigResolver.DefaultPinnedTools);
+    }
+
+    [Fact]
+    public void Resolve_NonEmptyConfigPinned_ShouldReplaceDefaults()
+    {
+        var options = new SeeingAgentOptions();
+        options.Tools.Exposure.PinnedTools = ["custom_a", "custom_b"];
+
+        var result = Create().Resolve(
+            sessionOverride: null,
+            agent: null,
+            scenario: null,
+            globalOptions: options);
+
+        result.PinnedTools.Should().Equal("custom_a", "custom_b");
+    }
+
+    [Fact]
+    public void Resolve_AgentPinnedEmpty_ShouldPinNothing()
+    {
+        var options = new SeeingAgentOptions();
+        options.Tools.Exposure.PinnedTools = ["custom_a"];
+        var agent = new AgentDefinition { Name = "a", PinnedTools = [] };
+
+        var result = Create().Resolve(
+            sessionOverride: null,
+            agent: agent,
+            scenario: null,
+            globalOptions: options);
+
+        result.PinnedTools.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Resolve_AgentPinnedNonEmpty_ShouldOverrideConfig()
+    {
+        var options = new SeeingAgentOptions();
+        options.Tools.Exposure.PinnedTools = ["custom_a"];
+        var agent = new AgentDefinition { Name = "a", PinnedTools = ["agent_tool"] };
+
+        var result = Create().Resolve(
+            sessionOverride: null,
+            agent: agent,
+            scenario: null,
+            globalOptions: options);
+
+        result.PinnedTools.Should().Equal("agent_tool");
+    }
+
     // === helpers ===
 
     private static ToolExposureConfigResolver Create(ILogger<ToolExposureConfigResolver>? logger = null)
