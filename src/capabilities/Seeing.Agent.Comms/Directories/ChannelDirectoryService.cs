@@ -15,6 +15,7 @@ public sealed class ChannelDirectoryService : IChannelDirectory
     private readonly object _gate = new();
     private readonly Dictionary<string, ChannelUserEntry> _users = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ConversationEntry> _conversations = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _replyAnchors = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Queue<DateTimeOffset>> _deliveries = new(StringComparer.Ordinal);
 
     public ChannelDirectoryService(IChannelDirectoryStore store, IOptions<CommsOptions> options)
@@ -34,10 +35,26 @@ public sealed class ChannelDirectoryService : IChannelDirectory
         {
             user = UpsertUser(message, now);
             conversation = UpsertConversation(message, now);
+
+            // 锚点属于「入站登记」的自然产物：每对话只保留最后一条，不做 TTL
+            if (!string.IsNullOrWhiteSpace(message.ReplyToMsgId))
+                _replyAnchors[ChannelKeys.Conversation(message.Conversation)] = message.ReplyToMsgId;
         }
 
         _store.SaveUserAsync(user).GetAwaiter().GetResult();
         _store.SaveConversationAsync(conversation).GetAwaiter().GetResult();
+    }
+
+    /// <inheritdoc />
+    public string? ResolveReplyAnchor(ConversationInfo conversation)
+    {
+        ArgumentNullException.ThrowIfNull(conversation);
+        lock (_gate)
+        {
+            return _replyAnchors.TryGetValue(ChannelKeys.Conversation(conversation), out var msgId)
+                ? msgId
+                : null;
+        }
     }
 
     public Task<IReadOnlyList<ChannelUserEntry>> ListUsersAsync(

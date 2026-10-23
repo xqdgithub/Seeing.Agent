@@ -44,6 +44,8 @@ public static class CommsServiceCollectionExtensions
         services.AddSingleton<OutboundDeliveryService>();
         services.AddSingleton<ChannelMessageSink>();
         services.AddSingleton<IChannelMessageSink>(sp => sp.GetRequiredService<ChannelMessageSink>());
+        // 后注册覆盖：工具模块的 Noop 目标解析器被真实实现替换（不用 TryAdd）
+        services.AddSingleton<IChannelTargetResolver, SessionChannelTargetResolver>();
         services.AddSingleton<NoopDeliveryNotifier>();
         services.AddSingleton<IChannelDeliveryNotifier>(sp => sp.GetRequiredService<NoopDeliveryNotifier>());
         services.AddSingleton<ChannelDeliveryScheduleDispatcher>();

@@ -72,6 +72,9 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 
     public string ChannelId => WeComChannelAdapter.Channel;
 
+    /// <inheritdoc />
+    public ChannelCapabilities Capabilities => _adapter.Capabilities;
+
     IGatewayConnection IChannelBridge.GatewayConnection =>
         _hostClient as IGatewayConnection
         ?? throw new InvalidOperationException("WeCom 通道宿主客户端必须同时实现 IGatewayConnection");
@@ -523,44 +526,66 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
         if (!string.Equals(payload.Channel, ChannelId, StringComparison.OrdinalIgnoreCase))
             return;
 
-        if (string.IsNullOrWhiteSpace(payload.Text))
-        {
-            _logger.LogWarning(
-                "WeCom channel outbound ignored: empty text session={SessionId}",
-                payload.CorrelationSessionId);
-            return;
-        }
-
-        if (payload.Conversation == null)
-        {
-            _logger.LogError(
-                "WeCom channel outbound missing conversation session={SessionId}",
-                payload.CorrelationSessionId);
-            return;
-        }
-
-        var message = new OutboundMessage
-        {
-            Target = new DeliveryTarget
-            {
-                Conversation = payload.Conversation,
-                RecipientUserId = payload.RecipientUserId,
-                ReplyToMsgId = payload.ReplyToMsgId
-            },
-            DeliveryKind = payload.DeliveryKind ?? OutboundDeliveryKind.Push,
-            Text = payload.Text,
-            Source = payload.Source,
-            CorrelationSessionId = payload.CorrelationSessionId,
-            JobId = payload.JobId
-        };
-
         try
         {
+            // 出站帧可能显式带 content: null（旧版/外部客户端），必须在解引用前拦截；
+            // 内容解构统一放进 try，避免异常逃逸到客户端的空 catch 里被静默吞掉。
+            var content = NormalizeOutboundContent(payload.Content);
+            if (content is null)
+            {
+                _logger.LogError(
+                    "WeCom channel outbound missing content session={SessionId}",
+                    payload.CorrelationSessionId);
+                return;
+            }
+
+            // 与 QQ 桥同一条件：文本与附件都为空才忽略
+            if (string.IsNullOrWhiteSpace(content.Text) && content.Attachments.Count == 0)
+            {
+                _logger.LogWarning(
+                    "WeCom channel outbound ignored: empty content session={SessionId}",
+                    payload.CorrelationSessionId);
+                return;
+            }
+
+            if (content.Attachments.Count > 0)
+            {
+                // 防御：Comms 会先按能力拒绝附件，这里兜底丢弃并留下可排查日志
+                _logger.LogWarning(
+                    "WeCom channel outbound attachments dropped: wecom does not support attachments session={SessionId} count={Count}",
+                    payload.CorrelationSessionId,
+                    content.Attachments.Count);
+            }
+
+            if (payload.Conversation == null)
+            {
+                _logger.LogError(
+                    "WeCom channel outbound missing conversation session={SessionId}",
+                    payload.CorrelationSessionId);
+                return;
+            }
+
+            var message = new OutboundMessage
+            {
+                Target = new DeliveryTarget
+                {
+                    Conversation = payload.Conversation,
+                    RecipientUserId = payload.RecipientUserId,
+                    ReplyToMsgId = payload.ReplyToMsgId
+                },
+                DeliveryKind = payload.DeliveryKind ?? OutboundDeliveryKind.Push,
+                Content = content,
+                Source = payload.Source,
+                CorrelationSessionId = payload.CorrelationSessionId,
+                JobId = payload.JobId
+            };
+
             _logger.LogInformation(
-                "WeCom channel outbound → {Kind} session={SessionId} len={Length} source={Source}",
+                "WeCom channel outbound → {Kind} session={SessionId} len={Length} attachments={Attachments} source={Source}",
                 message.Target.Conversation.Kind,
                 payload.CorrelationSessionId,
-                payload.Text.Length,
+                content.Text?.Length ?? 0,
+                content.Attachments.Count,
                 payload.Source);
             var result = await _adapter.SendAsync(message, cancellationToken).ConfigureAwait(false);
             if (!result.Delivered)
@@ -577,6 +602,13 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
             _logger.LogError(ex, "WeCom channel outbound send failed session={SessionId}", payload.CorrelationSessionId);
         }
     }
+
+    /// <summary>
+    /// 防御性解构出站内容：<paramref name="content"/> 缺失返回 null；
+    /// 显式 null 附件（JSON <c>"attachments": null</c>）统一按空列表处理。
+    /// </summary>
+    internal static OutboundContent? NormalizeOutboundContent(OutboundContent? content) =>
+        content is null ? null : content with { Attachments = content.Attachments ?? [] };
 
     private bool IsDuplicate(string messageId)
     {

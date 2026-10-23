@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Gateway.Models;
 using Seeing.Gateway.Protocol;
 using System.Collections.Concurrent;
@@ -22,6 +23,7 @@ public sealed class WebSocketGatewayClient : IGatewayConnection, IGatewayChannel
     private Task? _receiveTask;
     private Task? _reconnectTask;
     private string? _registeredChannelId;
+    private ChannelCapabilities? _registeredCapabilities;
     private readonly ConcurrentQueue<GatewayInbound> _inboundQueue = new();
     private readonly SemaphoreSlim _inboundSignal = new(0);
     private readonly ConcurrentDictionary<string, TaskCompletionSource<GatewayPermissionRespondResult>> _permissionAckWaiters = new();
@@ -41,10 +43,15 @@ public sealed class WebSocketGatewayClient : IGatewayConnection, IGatewayChannel
     /// <inheritdoc />
     public string ChannelId => _registeredChannelId ?? string.Empty;
 
-    public async Task ConnectAsync(string channelId, CancellationToken cancellationToken = default)
+    public async Task ConnectAsync(
+        string channelId,
+        ChannelCapabilities capabilities,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(channelId);
+        ArgumentNullException.ThrowIfNull(capabilities);
         _registeredChannelId = channelId.Trim();
+        _registeredCapabilities = capabilities;
 
         await _connectLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -308,6 +315,7 @@ public sealed class WebSocketGatewayClient : IGatewayConnection, IGatewayChannel
         _lifecycleCts?.Dispose();
         _lifecycleCts = null;
         _registeredChannelId = null;
+        _registeredCapabilities = null;
     }
 
     private async Task EnsureConnectedAsync(CancellationToken cancellationToken)
@@ -315,10 +323,10 @@ public sealed class WebSocketGatewayClient : IGatewayConnection, IGatewayChannel
         if (IsConnected)
             return;
 
-        if (_registeredChannelId == null)
+        if (_registeredChannelId == null || _registeredCapabilities == null)
             throw new InvalidOperationException("必须先调用 ConnectAsync 注册 channel");
 
-        await ConnectAsync(_registeredChannelId, cancellationToken).ConfigureAwait(false);
+        await ConnectAsync(_registeredChannelId, _registeredCapabilities, cancellationToken).ConfigureAwait(false);
     }
 
     private void EnsureLifecycleCts(CancellationToken cancellationToken)
@@ -343,12 +351,18 @@ public sealed class WebSocketGatewayClient : IGatewayConnection, IGatewayChannel
 
     private async Task TrySendChannelRegisterAsync(CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(_registeredChannelId) || !IsConnected)
+        if (string.IsNullOrWhiteSpace(_registeredChannelId)
+            || _registeredCapabilities == null
+            || !IsConnected)
             return;
 
         var frame = GatewayWsFrameSerializer.Create(
             GatewayWsFrameType.ChannelRegister,
-            payload: new GatewayChannelRegisterPayload { Channel = _registeredChannelId });
+            payload: new GatewayChannelRegisterPayload
+            {
+                Channel = _registeredChannelId,
+                Capabilities = _registeredCapabilities
+            });
         await SendFrameAsync(frame, cancellationToken).ConfigureAwait(false);
     }
 
@@ -474,9 +488,11 @@ public sealed class WebSocketGatewayClient : IGatewayConnection, IGatewayChannel
                             {
                                 await handler(payload, CancellationToken.None).ConfigureAwait(false);
                             }
-                            catch
+                            catch (Exception ex)
                             {
                                 // Channel outbound handler failures must not kill receive loop
+                                System.Diagnostics.Debug.WriteLine(
+                                    $"Gateway channel outbound handler failed: {ex}");
                             }
                         }, CancellationToken.None);
                     }

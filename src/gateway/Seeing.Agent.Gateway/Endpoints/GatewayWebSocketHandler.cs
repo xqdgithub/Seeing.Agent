@@ -153,7 +153,7 @@ public sealed class GatewayWebSocketHandler
                 break;
 
             case GatewayWsFrameType.ChannelRegister:
-                await HandleChannelRegisterAsync(connection, frame, cancellationToken);
+                await HandleChannelRegisterAsync(connection, frame);
                 break;
 
             default:
@@ -162,24 +162,50 @@ public sealed class GatewayWebSocketHandler
         }
     }
 
-    private Task HandleChannelRegisterAsync(
-        GatewayWsConnection connection,
-        GatewayWsFrame frame,
-        CancellationToken cancellationToken)
+    private async Task HandleChannelRegisterAsync(GatewayWsConnection connection, GatewayWsFrame frame)
     {
         if (frame.Payload == null)
-            return SendErrorAsync(connection, "channelRegister frame requires payload", "invalid_payload");
+        {
+            await SendErrorAsync(connection, "channelRegister frame requires payload", "invalid_payload");
+            return;
+        }
 
-        var payload = frame.Payload.Value.Deserialize<GatewayChannelRegisterPayload>(GatewayWsFrameSerializer.JsonOptions);
+        GatewayChannelRegisterPayload? payload;
+        try
+        {
+            payload = frame.Payload.Value.Deserialize<GatewayChannelRegisterPayload>(
+                GatewayWsFrameSerializer.JsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            // 能力缺失/结构非法：回错但不注册、不断连
+            await SendErrorAsync(connection, $"invalid channel capabilities: {ex.Message}", "invalid_capabilities");
+            return;
+        }
+
         if (payload == null || string.IsNullOrWhiteSpace(payload.Channel))
-            return SendErrorAsync(connection, "channel is required", "invalid_payload");
+        {
+            await SendErrorAsync(connection, "channel is required", "invalid_payload");
+            return;
+        }
+
+        if (payload.Capabilities is null)
+        {
+            await SendErrorAsync(connection, "capabilities is required", "invalid_capabilities");
+            return;
+        }
+
+        if (!ChannelRegisterValidation.IsValid(payload.Capabilities))
+        {
+            await SendErrorAsync(connection, "invalid channel capabilities structure", "invalid_capabilities");
+            return;
+        }
 
         _connectionManager.RegisterChannel(connection.ConnectionId, payload.Channel, payload.Capabilities);
         _logger.LogInformation(
             "Channel registered: {Channel} connection={ConnectionId}",
             payload.Channel,
             connection.ConnectionId);
-        return Task.CompletedTask;
     }
 
     private async Task HandleSubmitAsync(
@@ -200,7 +226,11 @@ public sealed class GatewayWebSocketHandler
             //    桥侧 GatewayAssistantReplyCollector 轮次门控会忽略上一轮仍在途的尾流。
             using var replyStream = _orchestrator.BeginReplyStream(request.SessionId);
 
-            // ② 投递并唤醒消费循环
+            // ② 先登记入站（刷新该对话的回复锚点），再投递唤醒消费循环：
+            //    消费循环可能立刻出站被动回复，锚点必须先可读。
+            RegisterInbound(request);
+
+            // ③ 投递并唤醒消费循环
             var submit = await _orchestrator.SubmitAsync(request, cancellationToken).ConfigureAwait(false);
 
             await connection.SendFrameAsync(
@@ -221,10 +251,9 @@ public sealed class GatewayWebSocketHandler
             if (!submit.Success)
                 return;
 
-            RegisterInbound(request);
             _connectionManager.SubscribeSession(connection.ConnectionId, request.SessionId);
 
-            // ③ 枚举实时流：事件已在实时订阅通道缓冲，投递前后到达均不丢
+            // ④ 枚举实时流：事件已在实时订阅通道缓冲，投递前后到达均不丢
             string? loopId = null;
             await foreach (var gatewayEvent in replyStream.StreamAsync(cancellationToken))
             {

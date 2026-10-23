@@ -35,6 +35,9 @@ public sealed class WeComChannelAdapter : IChannelAdapter
 
     public string ChannelId => Channel;
 
+    /// <summary>企微一期不声明附件能力，也不声明回复锚点（入站帧无失效判定，见设计 §10）。</summary>
+    public ChannelCapabilities Capabilities => new() { SupportsReplyAnchor = false };
+
     public bool HasDirectory => _directory != null;
 
     public void RegisterDirectoryInbound(ChannelInboundMessage message)
@@ -61,7 +64,8 @@ public sealed class WeComChannelAdapter : IChannelAdapter
     public async Task<OutboundDeliveryResult> SendAsync(OutboundMessage message, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(message);
-        var body = ToOutboundBody(message.Target, message.Text);
+        var text = message.Content.Text ?? "";
+        var body = ToOutboundBody(message.Target, text);
         try
         {
             if (!string.IsNullOrEmpty(body.MsgId) && _inboundFrames.TryGetValue(body.MsgId, out var frame))
@@ -69,7 +73,7 @@ public sealed class WeComChannelAdapter : IChannelAdapter
                 await DeliverTerminalAsync(
                     frame,
                     WeComAibotWsClient.GenerateStreamId(),
-                    message.Text,
+                    text,
                     _client.ConnectionEpoch,
                     ct).ConfigureAwait(false);
                 return OutboundDeliveryResult.Ok();

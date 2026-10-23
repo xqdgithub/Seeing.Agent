@@ -7,4 +7,7 @@ internal sealed class AllowAllGate : IWorkspacePathGate
 {
     /// <inheritdoc />
     public string? EnsureAllowed(string sessionId, string path) => null;
+
+    /// <inheritdoc />
+    public string? EnsureWithinWorkspace(string sessionId, string path) => null;
 }

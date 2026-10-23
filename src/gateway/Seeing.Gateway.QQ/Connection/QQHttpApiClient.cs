@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Channels;
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text;
@@ -8,7 +9,7 @@ using System.Text.Json;
 namespace Seeing.Gateway.QQ.Connection;
 
 /// <summary>
-/// QQ OpenAPI HTTP 客户端（文本 fallback + 富媒体出站）。
+/// QQ OpenAPI HTTP 客户端（文本 + 结构化附件出站）。
 /// </summary>
 public sealed class QQHttpApiClient
 {
@@ -38,64 +39,164 @@ public sealed class QQHttpApiClient
     }
 
     /// <summary>
-    /// 发送最终回复：Composer 提取媒体 → 文本 fallback → C2C/群 upload / 频道图。
+    /// 发送单个结构化附件：c2c/群 走「上传 → <c>msg_type=7</c>」，频道/DM 仅接受图片文件。
+    /// <c>msg_id</c> 只取 <paramref name="target"/>.MsgId（由适配器逐条 acquire 被动额度后写入）。
     /// </summary>
-    public async Task SendReplyAsync(
+    public async Task<OutboundDeliveryResult> SendAttachmentAsync(
         ParsedQQMessage target,
-        string text,
-        object? keyboard = null,
-        CancellationToken cancellationToken = default)
+        OutboundAttachment attachment,
+        CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(text) && keyboard == null)
-            text = "(空回复)";
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(attachment);
 
-        var payload = QQOutboundComposer.Compose(text ?? "");
-        var mt = target.MessageType.ToLowerInvariant();
-        var media = new List<QQOutboundMediaItem>();
-        var guildUnsupportedNotes = new List<string>();
-
-        foreach (var item in payload.Media)
+        try
         {
-            if (mt is "guild" or "dm")
+            var messageType = target.MessageType.ToLowerInvariant();
+            if (messageType is "guild" or "dm")
             {
-                if (item.Kind == QQOutboundMediaKind.Image)
-                    media.Add(item);
-                else
-                    guildUnsupportedNotes.Add($"[未发送 {item.Kind}: {item.FileName ?? Truncate(item.Source, 80)}]");
+                // 频道/DM 只支持图片；在读取文件前原子拒绝
+                if (attachment.Kind != OutboundAttachmentKind.Image)
+                {
+                    return OutboundDeliveryResult.Fail(
+                        OutboundFailureKind.AttachmentUnsupported,
+                        $"频道/DM 仅支持图片附件，收到 {attachment.Kind}");
+                }
+
+                if (ValidateLocalFile(attachment.LocalPath) is { } invalidGuild)
+                    return invalidGuild;
+
+                await SendGuildImageFileAsync(target, attachment.LocalPath, ct).ConfigureAwait(false);
+                return OutboundDeliveryResult.Ok();
             }
-            else
+
+            if (messageType is not ("c2c" or "group"))
             {
-                media.Add(item);
+                return OutboundDeliveryResult.Fail(
+                    OutboundFailureKind.AttachmentUnsupported,
+                    $"不支持的消息类型 {target.MessageType}");
             }
-        }
 
-        var cleanText = payload.CleanText;
-        if (guildUnsupportedNotes.Count > 0)
-            cleanText = string.IsNullOrWhiteSpace(cleanText)
-                ? string.Join("\n", guildUnsupportedNotes)
-                : cleanText + "\n" + string.Join("\n", guildUnsupportedNotes);
-
-        var textSent = false;
-        if (!string.IsNullOrWhiteSpace(cleanText) || keyboard != null)
-        {
-            var bodyText = string.IsNullOrWhiteSpace(cleanText) ? " " : cleanText;
-            foreach (var chunk in QQTextSanitizer.SplitChunks(bodyText))
+            var openId = messageType == "c2c" ? target.SenderOpenId : target.GroupOpenId;
+            if (string.IsNullOrEmpty(openId))
             {
-                if (string.IsNullOrWhiteSpace(chunk) && keyboard == null)
-                    continue;
-                textSent |= await SendTextWithFallbackAsync(target, chunk, keyboard, cancellationToken)
-                    .ConfigureAwait(false);
-                keyboard = null;
+                return OutboundDeliveryResult.Fail(
+                    OutboundFailureKind.AttachmentUnsupported,
+                    "目标会话缺少 openid");
             }
-        }
 
-        if (media.Count > 0)
-            await SendMediaItemsAsync(target, media, msgId: textSent ? null : target.MsgId, cancellationToken)
+            // 读取前预检：避免把缺失/超限文件读入内存
+            if (ValidateLocalFile(attachment.LocalPath) is { } invalid)
+                return invalid;
+
+            var fileName = attachment.FileName ?? Path.GetFileName(attachment.LocalPath);
+            var mediaType = ResolveMediaType(attachment.Kind, fileName);
+            var bytes = await File.ReadAllBytesAsync(attachment.LocalPath, ct).ConfigureAwait(false);
+            // 读取期安全断言：预检后文件可能被替换/增长（TOCTOU）
+            if (bytes.Length > _options.MaxMediaBytes)
+            {
+                return OutboundDeliveryResult.Fail(
+                    OutboundFailureKind.AttachmentTooLarge,
+                    $"{bytes.Length} 字节超出上限 {_options.MaxMediaBytes} 字节");
+            }
+
+            var uploadPath = ResolveMediaPath(messageType, openId, "files")
+                ?? throw new InvalidOperationException($"Cannot resolve QQ upload path for {target.MessageType}");
+            var uploadBody = BuildUploadMediaBody(
+                mediaType, url: null, fileData: Convert.ToBase64String(bytes), fileName);
+            var uploadResponse = await SendJsonAsync(HttpMethod.Post, uploadPath, uploadBody, ct)
                 .ConfigureAwait(false);
+
+            var fileInfo = ParseFileInfo(uploadResponse);
+            if (string.IsNullOrEmpty(fileInfo))
+            {
+                return OutboundDeliveryResult.Fail(
+                    OutboundFailureKind.PlatformError, "上传响应缺少 file_info");
+            }
+
+            await SendMediaMessageAsync(messageType, openId, fileInfo, target.MsgId, ct, fileName)
+                .ConfigureAwait(false);
+            return OutboundDeliveryResult.Ok();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // 用户取消必须传播
+            throw;
+        }
+        catch (QQApiException ex)
+        {
+            ct.ThrowIfCancellationRequested();
+            var kind = QQFailureMapper.MapApiFailure(ex);
+            _logger.LogWarning(ex, "QQ attachment send failed kind={Kind}", kind);
+            return OutboundDeliveryResult.Fail(kind, ex.Message);
+        }
+        catch (IOException ex)
+        {
+            ct.ThrowIfCancellationRequested();
+            return OutboundDeliveryResult.Fail(OutboundFailureKind.AttachmentUnavailable, ex.Message);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            ct.ThrowIfCancellationRequested();
+            return OutboundDeliveryResult.Fail(OutboundFailureKind.AttachmentUnavailable, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            ct.ThrowIfCancellationRequested();
+            _logger.LogWarning(ex, "QQ attachment send failed");
+            return OutboundDeliveryResult.Fail(OutboundFailureKind.PlatformError, ex.Message);
+        }
     }
 
-    private static string Truncate(string s, int max) =>
-        s.Length <= max ? s : s[..max] + "…";
+    /// <summary>本地文件预检：不存在/不可读/空文件 → <see cref="OutboundFailureKind.AttachmentUnavailable"/>；超限 → <see cref="OutboundFailureKind.AttachmentTooLarge"/>。</summary>
+    private OutboundDeliveryResult? ValidateLocalFile(string path)
+    {
+        var fileInfo = new FileInfo(path);
+        if (!fileInfo.Exists)
+            return OutboundDeliveryResult.Fail(OutboundFailureKind.AttachmentUnavailable, "文件不存在或不可读");
+        if (fileInfo.Length == 0)
+            return OutboundDeliveryResult.Fail(OutboundFailureKind.AttachmentUnavailable, "文件为空");
+        if (fileInfo.Length > _options.MaxMediaBytes)
+        {
+            return OutboundDeliveryResult.Fail(
+                OutboundFailureKind.AttachmentTooLarge,
+                $"{fileInfo.Length} 字节超出上限 {_options.MaxMediaBytes} 字节");
+        }
+
+        return null;
+    }
+
+    private static string? ParseFileInfo(string responseBody)
+    {
+        if (string.IsNullOrWhiteSpace(responseBody))
+            return null;
+
+        using var doc = JsonDocument.Parse(responseBody);
+        return doc.RootElement.TryGetProperty("file_info", out var fileInfo)
+               && fileInfo.ValueKind == JsonValueKind.String
+            ? fileInfo.GetString()
+            : null;
+    }
+
+    private static readonly HashSet<string> s_voiceExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".amr", ".silk"
+    };
+
+    /// <summary>结构化附件种类 → QQ <c>file_type</c>；语音扩展名（.silk/.amr）强制为 3。</summary>
+    internal static int ResolveMediaType(OutboundAttachmentKind kind, string? fileName)
+    {
+        if (s_voiceExtensions.Contains(Path.GetExtension(fileName ?? "")))
+            return MediaTypeAudio;
+
+        return kind switch
+        {
+            OutboundAttachmentKind.Image => MediaTypeImage,
+            OutboundAttachmentKind.Video => MediaTypeVideo,
+            OutboundAttachmentKind.Audio => MediaTypeAudio,
+            _ => MediaTypeFile
+        };
+    }
 
     public Task SendTextAsync(
         ParsedQQMessage target,
@@ -260,7 +361,6 @@ public sealed class QQHttpApiClient
         {
             "group" => target.GroupOpenId,
             "guild" => target.ChannelId,
-            "dm" => target.GuildId,
             _ => target.SenderOpenId
         };
         return $"{mt}:{openId}";
@@ -275,79 +375,6 @@ public sealed class QQHttpApiClient
 
     private int NextMsgSeq(string key) =>
         _msgSeqByKey.AddOrUpdate(key, 1, static (_, n) => n + 1);
-
-    public async Task SendImagesAsync(
-        ParsedQQMessage target,
-        IReadOnlyList<string> imageUrls,
-        string? msgId,
-        CancellationToken cancellationToken = default)
-    {
-        var items = imageUrls
-            .Select(u => new QQOutboundMediaItem(QQOutboundMediaKind.Image, u))
-            .ToList();
-        await SendMediaItemsAsync(target, items, msgId, cancellationToken).ConfigureAwait(false);
-    }
-
-    public async Task SendMediaItemsAsync(
-        ParsedQQMessage target,
-        IReadOnlyList<QQOutboundMediaItem> items,
-        string? msgId,
-        CancellationToken cancellationToken = default)
-    {
-        var mt = target.MessageType.ToLowerInvariant();
-        if (mt is "guild" or "dm")
-        {
-            foreach (var item in items.Where(i => i.Kind == QQOutboundMediaKind.Image))
-            {
-                try
-                {
-                    if (QQOutboundComposer.IsLocalFile(item.Source))
-                        await SendGuildImageFileAsync(target, item.Source, msgId, cancellationToken).ConfigureAwait(false);
-                    else if (QQOutboundComposer.IsHttpUrl(item.Source))
-                        await SendGuildImageAsync(target, item.Source, msgId, cancellationToken).ConfigureAwait(false);
-                    else
-                        _logger.LogWarning("Guild image source not supported: {Source}", Truncate(item.Source, 80));
-                    msgId = null;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to send guild/dm image: {Source}", item.Source);
-                }
-            }
-            return;
-        }
-
-        if (mt is not ("c2c" or "group"))
-            return;
-
-        var openId = mt == "c2c" ? target.SenderOpenId : target.GroupOpenId;
-        if (string.IsNullOrEmpty(openId))
-            return;
-
-        foreach (var item in items)
-        {
-            try
-            {
-                var fileType = QQOutboundComposer.ResolveMediaType(item.Kind, item.FileName ?? item.Source);
-                var fileInfo = await UploadMediaFromSourceAsync(mt, openId!, fileType, item, cancellationToken)
-                    .ConfigureAwait(false);
-                if (string.IsNullOrEmpty(fileInfo))
-                {
-                    _logger.LogWarning("Failed to upload media, skipping: {Source}", item.Source);
-                    continue;
-                }
-
-                await SendMediaMessageAsync(mt, openId!, fileInfo!, msgId, cancellationToken, item.FileName)
-                    .ConfigureAwait(false);
-                msgId = null;
-                _logger.LogInformation("Successfully sent media {Kind}: {Source}", item.Kind, Truncate(item.Source, 120));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to send media: {Source}", item.Source);
-            }
-        }
-    }
 
     internal static Dictionary<string, object?> BuildUploadMediaBody(
         int fileType,
@@ -378,91 +405,6 @@ public sealed class QQHttpApiClient
         return body;
     }
 
-    public async Task<string?> UploadMediaAsync(
-        string messageType,
-        string openId,
-        int mediaType,
-        string url,
-        CancellationToken cancellationToken = default) =>
-        await UploadMediaFromSourceAsync(
-            messageType,
-            openId,
-            mediaType,
-            new QQOutboundMediaItem(QQOutboundMediaKind.Image, url),
-            cancellationToken).ConfigureAwait(false);
-
-    private async Task<string?> UploadMediaFromSourceAsync(
-        string messageType,
-        string openId,
-        int mediaType,
-        QQOutboundMediaItem item,
-        CancellationToken cancellationToken)
-    {
-        var path = ResolveMediaPath(messageType, openId, "files");
-        if (path == null)
-            return null;
-
-        try
-        {
-            Dictionary<string, object?> body;
-            if (QQOutboundComposer.IsHttpUrl(item.Source))
-            {
-                body = BuildUploadMediaBody(mediaType, item.Source, null, item.FileName);
-            }
-            else
-            {
-                var (data, name) = await ReadSourceAsBase64Async(item, cancellationToken).ConfigureAwait(false);
-                if (data == null)
-                    return null;
-                body = BuildUploadMediaBody(mediaType, null, data, name ?? item.FileName);
-            }
-
-            var responseBody = await SendJsonAsync(HttpMethod.Post, path, body, cancellationToken).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(responseBody) ? "{}" : responseBody);
-            if (doc.RootElement.TryGetProperty("file_info", out var fi) && fi.ValueKind == JsonValueKind.String)
-                return fi.GetString();
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to upload media: {Source}", Truncate(item.Source, 120));
-            return null;
-        }
-    }
-
-    private async Task<(string? Data, string? FileName)> ReadSourceAsBase64Async(
-        QQOutboundMediaItem item,
-        CancellationToken cancellationToken)
-    {
-        if (QQOutboundComposer.IsDataUrl(item.Source))
-        {
-            var comma = item.Source.IndexOf(',');
-            if (comma < 0)
-                return (null, null);
-            var meta = item.Source[..comma];
-            var b64 = item.Source[(comma + 1)..];
-            string? name = item.FileName;
-            if (name == null && meta.Contains("image/png", StringComparison.OrdinalIgnoreCase))
-                name = "image.png";
-            return (b64, name);
-        }
-
-        if (!QQOutboundComposer.IsLocalFile(item.Source))
-        {
-            _logger.LogWarning("Media source not found: {Source}", item.Source);
-            return (null, null);
-        }
-
-        var bytes = await File.ReadAllBytesAsync(item.Source, cancellationToken).ConfigureAwait(false);
-        if (bytes.Length > _options.MaxMediaBytes)
-        {
-            _logger.LogWarning("Media too large for upload: {Bytes}", bytes.Length);
-            return (null, null);
-        }
-
-        return (Convert.ToBase64String(bytes), item.FileName ?? Path.GetFileName(item.Source));
-    }
-
     public async Task SendMediaMessageAsync(
         string messageType,
         string openId,
@@ -489,23 +431,10 @@ public sealed class QQHttpApiClient
         await SendJsonAsync(HttpMethod.Post, path, body, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task SendGuildImageAsync(
-        ParsedQQMessage target,
-        string imageUrl,
-        string? msgId,
-        CancellationToken cancellationToken = default)
-    {
-        var body = new Dictionary<string, object?> { ["image"] = imageUrl };
-        if (!string.IsNullOrEmpty(msgId))
-            body["msg_id"] = msgId;
-
-        await SendJsonAsync(HttpMethod.Post, ResolveSendPath(target), body, cancellationToken).ConfigureAwait(false);
-    }
-
+    /// <summary>频道/DM 图片文件上传；<c>msg_id</c> 取自 <paramref name="target"/>.MsgId。</summary>
     public async Task SendGuildImageFileAsync(
         ParsedQQMessage target,
         string filePath,
-        string? msgId,
         CancellationToken cancellationToken = default)
     {
         if (!File.Exists(filePath))
@@ -521,8 +450,8 @@ public sealed class QQHttpApiClient
 
         var path = ResolveSendPath(target).TrimStart('/');
         using var content = new MultipartFormDataContent();
-        if (!string.IsNullOrEmpty(msgId))
-            content.Add(new StringContent(msgId), "msg_id");
+        if (!string.IsNullOrEmpty(target.MsgId))
+            content.Add(new StringContent(target.MsgId), "msg_id");
         var fileContent = new ByteArrayContent(bytes);
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
         content.Add(fileContent, "file_image", Path.GetFileName(filePath));

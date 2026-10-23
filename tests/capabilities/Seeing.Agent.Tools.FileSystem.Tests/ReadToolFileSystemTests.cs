@@ -318,6 +318,19 @@ public class ReadToolFileSystemTests
                 .Where(path => MatchesPattern(Path.GetFileName(path.TrimEnd('/')), pattern));
         }
 
+        public long GetFileLength(string path)
+        {
+            var normalized = Normalize(path);
+            if (_directories.Contains(normalized))
+                throw new IOException($"路径是目录而非文件: {path}");
+
+            return _files.TryGetValue(normalized, out var contents)
+                ? contents.LongLength
+                : throw new FileNotFoundException(path);
+        }
+
+        public bool IsDirectory(string path) => _directories.Contains(Normalize(path));
+
         public string GetFullPath(string path) => Normalize(path);
 
         private static string Normalize(string path) => path.Replace('\\', '/').TrimEnd('/');

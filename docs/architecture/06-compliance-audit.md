@@ -187,7 +187,7 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 
 ### Abstractions 纯函数豁免清单（显式）
 
-`Abstractions` 允许保留的 4 处无状态纯函数/静态解析（不属「零实现纪律」违规；「上提 PathSafety 到 Abstractions」已决策放弃，避免契约层纯函数膨胀）：
+`Abstractions` 允许保留的 5 处无状态纯函数/静态解析（不属「零实现纪律」违规；「上提 PathSafety 到 Abstractions」已决策放弃，避免契约层纯函数膨胀）：
 
 | 类型 | 位置 | 说明 |
 |------|------|------|
@@ -195,6 +195,7 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 | `ModelCapabilityFillEmpty` | `Abstractions/Llm/ModelCapabilities/ModelCapabilityFillEmpty.cs` | 能力缺省填充（纯函数） |
 | `SystemOneClientFactoryResolver` | `Abstractions/SystemOne/SystemOneClientFactoryResolver.cs` | 工厂解析（无状态） |
 | `LlmClientFactoryResolver` | `Abstractions/Llm/LlmClientFactoryResolver.cs` | 工厂解析（无状态） |
+| `ChannelCapabilitiesExtensions` | `Abstractions/Channels/ChannelCapabilitiesExtensions.cs` | 渠道附件能力派生查询：类型支持判定与对话种类覆盖回落（纯函数） |
 
 > `PermissionRuleEntry` 匹配算法（~140 行）与 `ConfigSectionOptionsMonitor` 为已知契约层实现，维持现状（下沉需单独评估，不在本轮范围）。
 

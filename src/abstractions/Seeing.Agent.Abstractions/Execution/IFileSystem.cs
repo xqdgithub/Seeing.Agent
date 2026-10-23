@@ -47,6 +47,14 @@ public interface IFileSystem
     /// <summary>枚举目录下匹配模式的子目录。</summary>
     IEnumerable<string> EnumerateDirectories(string directory, string pattern, bool recursive);
 
+    /// <summary>
+    /// 文件字节数。对目录或缺失文件抛 <see cref="IOException"/>（工具统一映射为不可用）。
+    /// </summary>
+    long GetFileLength(string path);
+
+    /// <summary>路径是否为目录；缺失路径返回 <see langword="false"/>。</summary>
+    bool IsDirectory(string path);
+
     /// <summary>解析为绝对路径。</summary>
     string GetFullPath(string path);
 }

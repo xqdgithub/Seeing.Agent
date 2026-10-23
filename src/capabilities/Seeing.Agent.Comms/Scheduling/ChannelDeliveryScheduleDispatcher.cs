@@ -85,7 +85,7 @@ public sealed class ChannelDeliveryScheduleDispatcher : IScheduledJobDispatcher
                     RecipientUserId = conversationKind == ConversationKind.Direct ? route.ExternalId : null
                 },
                 DeliveryKind = OutboundDeliveryKind.SystemNotice,
-                Text = request.Content,
+                Content = new OutboundContent { Text = request.Content },
                 Source = $"scheduler.{request.Source}",
                 CorrelationSessionId = request.SessionId,
                 JobId = ReadJobId(request)

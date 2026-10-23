@@ -14,7 +14,12 @@ public interface IChannelDirectoryStore          // Store：纯存取
 
 public interface IChannelDirectory              // Manager：登记/查询/退订/频控
 {
-    void RegisterInbound(ChannelInboundMessage message);   // 提交方显式调用；入站登记不清除 OptedOut
+    /// <summary>登记入站；消息带 ReplyToMsgId 时同时刷新该对话的回复锚点。登记不清除 OptedOut。</summary>
+    void RegisterInbound(ChannelInboundMessage message);
+
+    /// <summary>该对话最近一条入站消息 ID；从未登记返回 null。有效性由适配器判定。</summary>
+    string? ResolveReplyAnchor(ConversationInfo conversation);
+
     Task<IReadOnlyList<ChannelUserEntry>> ListUsersAsync(string channelId, int skip = 0, int take = 50, CancellationToken ct = default);
     Task<IReadOnlyList<ConversationEntry>> ListConversationsAsync(string channelId, int skip = 0, int take = 50, CancellationToken ct = default);
 
@@ -30,13 +35,38 @@ public interface IChannelDirectory              // Manager：登记/查询/退�
 
 public interface IChannelMessageSink            // Sink：agent 工具唯一单向出口
 {
-    Task<OutboundDeliveryResult> SendToUserAsync(string channelId, string userExternalId, string text, CancellationToken ct = default);
-    Task<OutboundDeliveryResult> SendToConversationAsync(DeliveryTarget target, string text, CancellationToken ct = default);
+    Task<OutboundDeliveryResult> SendToUserAsync(
+        string channelId, string userExternalId, OutboundContent content, CancellationToken ct = default);
+
+    Task<OutboundDeliveryResult> SendToConversationAsync(
+        DeliveryTarget target, OutboundContent content, CancellationToken ct = default);
+}
+
+/// <summary>会话 → 出站目标解析（Sink 不承担路由职责）。</summary>
+public interface IChannelTargetResolver
+{
+    Task<ChannelTargetResolution> ResolveSessionTargetAsync(string sessionId, CancellationToken ct = default);
+}
+
+public sealed record ChannelTargetResolution
+{
+    public DeliveryTarget? Target { get; init; }
+    public OutboundFailureKind? FailureKind { get; init; }
+    public string? Detail { get; init; }
+
+    public static ChannelTargetResolution Ok(DeliveryTarget target) => new() { Target = target };
+
+    public static ChannelTargetResolution Fail(OutboundFailureKind kind, string detail) =>
+        new() { FailureKind = kind, Detail = detail };
 }
 
 public interface IChannelAdapter                // Provider：通道适配器
 {
     string ChannelId { get; }
+
+    /// <summary>能力声明；所有实现必须显式提供（不支持附件时 Attachments = null）。</summary>
+    ChannelCapabilities Capabilities { get; }
+
     Task<OutboundDeliveryResult> SendAsync(OutboundMessage message, CancellationToken ct = default);
 }
 

@@ -61,6 +61,8 @@ internal sealed class MemoryChannelAdapter(string channelId) : IChannelAdapter
 {
     public string ChannelId { get; } = channelId;
 
+    public ChannelCapabilities Capabilities { get; } = new() { SupportsReplyAnchor = true };
+
     public List<OutboundMessage> Sent { get; } = [];
 
     public Task<OutboundDeliveryResult> SendAsync(OutboundMessage message, CancellationToken ct = default)

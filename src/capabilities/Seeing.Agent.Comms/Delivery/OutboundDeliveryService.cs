@@ -29,6 +29,12 @@ public class OutboundDeliveryService
     public virtual async Task<OutboundDeliveryResult> DeliverAsync(OutboundMessage message, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(message);
+
+        // 不变式（Spec 5.5）：文本与附件至少一个非空；违反属于生产端缺陷，fail fast。
+        var content = message.Content;
+        if (content is null || (string.IsNullOrEmpty(content.Text) && content.Attachments is not { Count: > 0 }))
+            throw new ArgumentException("出站内容必须至少包含文本或附件", nameof(message));
+
         var conversation = message.Target.Conversation;
         var userId = ResolveSubjectUserId(message);
 
@@ -63,10 +69,33 @@ public class OutboundDeliveryService
         if (!_registry.TryGet(conversation.ChannelId, out var adapter) || adapter is null)
             return OutboundDeliveryResult.Fail(OutboundFailureKind.ChannelUnavailable, "通道适配器未注册");
 
+        // 能力是派生属性（部分适配器每次新建），一次投递只读一次
+        var capabilities = adapter.Capabilities;
+
+        // 锚点：仅被动回复、通道声明支持、且消息未显式携带时，补齐目录中该对话最后一条入站消息 ID。
+        var prepared = message;
+        if (message.DeliveryKind == OutboundDeliveryKind.Reply
+            && capabilities.SupportsReplyAnchor
+            && string.IsNullOrEmpty(message.Target.ReplyToMsgId))
+        {
+            var anchor = _directory.ResolveReplyAnchor(conversation);
+            if (!string.IsNullOrEmpty(anchor))
+                prepared = message with { Target = message.Target with { ReplyToMsgId = anchor } };
+        }
+
+        // 附件能力校验：只在带附件时执行，纯文本消息不受通道附件能力限制。
+        if (content.Attachments is { Count: > 0 } attachments)
+        {
+            var rejection = ValidateAttachments(
+                capabilities, conversation.ChannelId, conversation.Kind, attachments);
+            if (rejection is not null)
+                return rejection;
+        }
+
         OutboundDeliveryResult sent;
         try
         {
-            sent = await adapter.SendAsync(message, ct).ConfigureAwait(false);
+            sent = await adapter.SendAsync(prepared, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -86,8 +115,57 @@ public class OutboundDeliveryService
         }
 
         _directory.RecordDelivery(conversation.ChannelId, userId ?? conversation.ExternalId);
-        await _notifier.NotifyDeliveredAsync(message, sent, ct).ConfigureAwait(false);
+        await _notifier.NotifyDeliveredAsync(prepared, sent, ct).ConfigureAwait(false);
         return sent;
+    }
+
+    /// <summary>按通道能力裁决附件；通过返回 null。</summary>
+    private static OutboundDeliveryResult? ValidateAttachments(
+        ChannelCapabilities capabilities,
+        string channelId,
+        ConversationKind kind,
+        IReadOnlyList<OutboundAttachment> attachments)
+    {
+        var limits = capabilities.ResolveAttachments(kind);
+        if (limits is null)
+        {
+            return OutboundDeliveryResult.Fail(
+                OutboundFailureKind.AttachmentUnsupported,
+                $"通道 {channelId} 不支持附件（{kind} 对话）");
+        }
+
+        if (attachments.Count > limits.MaxPerMessage)
+        {
+            return OutboundDeliveryResult.Fail(
+                OutboundFailureKind.AttachmentUnsupported,
+                $"附件数量 {attachments.Count} 超过通道单条上限 {limits.MaxPerMessage}");
+        }
+
+        foreach (var attachment in attachments)
+        {
+            if (!limits.Supports(attachment.Kind))
+            {
+                return OutboundDeliveryResult.Fail(
+                    OutboundFailureKind.AttachmentUnsupported,
+                    $"通道 {channelId} 不支持 {attachment.Kind} 附件");
+            }
+
+            if (attachment.SizeBytes <= 0)
+            {
+                return OutboundDeliveryResult.Fail(
+                    OutboundFailureKind.AttachmentUnavailable,
+                    $"附件不可用：{attachment.LocalPath}");
+            }
+
+            if (attachment.SizeBytes > limits.MaxBytes)
+            {
+                return OutboundDeliveryResult.Fail(
+                    OutboundFailureKind.AttachmentTooLarge,
+                    $"附件 {attachment.LocalPath} 大小 {attachment.SizeBytes} 字节超过通道上限 {limits.MaxBytes} 字节");
+            }
+        }
+
+        return null;
     }
 
     private static string? ResolveSubjectUserId(OutboundMessage message)

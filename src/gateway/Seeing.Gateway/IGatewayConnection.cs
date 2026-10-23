@@ -1,3 +1,4 @@
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Gateway.Models;
 using Seeing.Gateway.Protocol;
 
@@ -9,9 +10,9 @@ namespace Seeing.Gateway;
 public interface IGatewayConnection : IAsyncDisposable
 {
     /// <summary>
-    /// 连接到 Gateway Server 并注册为指定 channel（连接即注册）
+    /// 连接到 Gateway Server 并注册为指定 channel（连接即注册，注册帧携带能力声明）
     /// </summary>
-    Task ConnectAsync(string channelId, CancellationToken cancellationToken = default);
+    Task ConnectAsync(string channelId, ChannelCapabilities capabilities, CancellationToken cancellationToken = default);
 
     Task<GatewaySubmitResult> SubmitAsync(GatewayRequest request, CancellationToken cancellationToken = default);
 

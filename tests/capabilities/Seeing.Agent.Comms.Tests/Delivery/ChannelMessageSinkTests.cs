@@ -26,6 +26,7 @@ public class ChannelMessageSinkTests
             });
         var adapter = new Mock<IChannelAdapter>();
         adapter.Setup(a => a.ChannelId).Returns("qq");
+        adapter.SetupGet(a => a.Capabilities).Returns(new ChannelCapabilities { SupportsReplyAnchor = true });
         OutboundMessage? seen = null;
         adapter.Setup(a => a.SendAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()))
             .Callback<OutboundMessage, CancellationToken>((m, _) => seen = m)
@@ -35,15 +36,16 @@ public class ChannelMessageSinkTests
         var delivery = new OutboundDeliveryService(directory.Object, registry, new NoopDeliveryNotifier());
         var sink = new ChannelMessageSink(directory.Object, delivery);
 
-        var result = await sink.SendToUserAsync("qq", "u1", "hi");
+        var result = await sink.SendToUserAsync("qq", "u1", new OutboundContent { Text = "hi" });
 
         result.Delivered.Should().BeTrue();
         seen.Should().NotBeNull();
+        seen!.DeliveryKind.Should().Be(OutboundDeliveryKind.Reply);
         seen!.Target.Conversation.Kind.Should().Be(ConversationKind.Direct);
         seen.Target.Conversation.ChannelId.Should().Be("qq");
         seen.Target.Conversation.ExternalId.Should().Be("u1");
         seen.Target.Conversation.Title.Should().Be("Ada");
-        seen.Text.Should().Be("hi");
+        seen.Content.Text.Should().Be("hi");
         seen.Source.Should().Be("tool.send_message");
     }
 
@@ -67,6 +69,7 @@ public class ChannelMessageSinkTests
         });
         var adapter = new Mock<IChannelAdapter>();
         adapter.Setup(a => a.ChannelId).Returns("qq");
+        adapter.SetupGet(a => a.Capabilities).Returns(new ChannelCapabilities { SupportsReplyAnchor = true });
         OutboundMessage? seen = null;
         adapter.Setup(a => a.SendAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()))
             .Callback<OutboundMessage, CancellationToken>((m, _) => seen = m)
@@ -86,10 +89,11 @@ public class ChannelMessageSinkTests
             RecipientUserId = "u1",
         };
 
-        var result = await sink.SendToConversationAsync(target, "ping");
+        var result = await sink.SendToConversationAsync(target, new OutboundContent { Text = "ping" });
 
         result.Delivered.Should().BeTrue();
-        seen!.Target.Should().BeSameAs(target);
-        seen.Text.Should().Be("ping");
+        seen!.DeliveryKind.Should().Be(OutboundDeliveryKind.Reply);
+        seen.Target.Should().BeSameAs(target);
+        seen.Content.Text.Should().Be("ping");
     }
 }

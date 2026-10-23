@@ -20,12 +20,14 @@ public class GatewayChannelRoutingTests
         var first = manager.Register(firstSocket.Object);
         var second = manager.Register(secondSocket.Object);
 
-        manager.RegisterChannel(first.ConnectionId, "qq", new ChannelRegisterCapabilities
+        manager.RegisterChannel(first.ConnectionId, "qq", new ChannelCapabilities
         {
-            ConversationKinds = ["group"],
-            SupportsStreaming = true
+            SupportsReplyAnchor = true
         });
-        manager.RegisterChannel(second.ConnectionId, "qq");
+        manager.RegisterChannel(second.ConnectionId, "qq", new ChannelCapabilities
+        {
+            SupportsReplyAnchor = true
+        });
 
         registry.Adapters.Should().ContainSingle();
         registry.ReplacementCount.Should().Be(1);
@@ -37,7 +39,7 @@ public class GatewayChannelRoutingTests
         {
             Channel = "qq",
             CorrelationSessionId = "sess",
-            Text = "hi"
+            Content = new OutboundContent { Text = "hi" }
         });
 
         pushed.Should().BeTrue();
@@ -53,20 +55,31 @@ public class GatewayChannelRoutingTests
         {
             Channel = "qq",
             CorrelationSessionId = "sess",
-            Text = "again"
+            Content = new OutboundContent { Text = "again" }
         }).Should().BeFalse();
         manager.GetRegisteredChannels().Should().BeEmpty();
+    }
+
+    [Fact]
+    public void RemoteProxy_ShouldExposeCapabilitiesFromRegister()
+    {
+        var caps = new ChannelCapabilities { SupportsReplyAnchor = true };
+        var proxy = new RemoteChannelAdapterProxy("qq", caps, _ => true);
+        proxy.Capabilities.Should().BeSameAs(caps);
     }
 
     [Fact]
     public async Task RemoteProxy_SendAsync_DeliveredMeansFrameHandedToConnection()
     {
         GatewayChannelOutboundPayload? captured = null;
-        var proxy = new RemoteChannelAdapterProxy("qq", payload =>
-        {
-            captured = payload;
-            return true;
-        });
+        var proxy = new RemoteChannelAdapterProxy(
+            "qq",
+            new ChannelCapabilities { SupportsReplyAnchor = true },
+            payload =>
+            {
+                captured = payload;
+                return true;
+            });
 
         var result = await proxy.SendAsync(new OutboundMessage
         {
@@ -82,7 +95,7 @@ public class GatewayChannelRoutingTests
                 ReplyToMsgId = "m1"
             },
             DeliveryKind = OutboundDeliveryKind.SystemNotice,
-            Text = "hello",
+            Content = new OutboundContent { Text = "hello" },
             Source = "scheduler.cron",
             CorrelationSessionId = "sess-1",
             JobId = "job-1"
@@ -121,7 +134,7 @@ public class GatewayChannelRoutingTests
                     }
                 },
                 DeliveryKind = OutboundDeliveryKind.SystemNotice,
-                Text = "hello",
+                Content = new OutboundContent { Text = "hello" },
                 Source = "scheduler.cron",
                 CorrelationSessionId = "sess-1"
             },

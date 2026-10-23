@@ -23,7 +23,7 @@ public class PayloadV2SerializationTests
             },
             DeliveryKind = OutboundDeliveryKind.Push,
             CorrelationSessionId = "sess-1",
-            Text = "hi"
+            Content = new OutboundContent { Text = "hi" }
         };
 
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(payload, GatewayWsFrameSerializer.JsonOptions));
@@ -37,6 +37,123 @@ public class PayloadV2SerializationTests
         var conversation = root.GetProperty("conversation");
         conversation.GetProperty("kind").GetString().Should().Be("group");
         conversation.GetProperty("externalId").GetString().Should().Be("g-1");
+    }
+
+    [Fact]
+    public void ChannelRegisterPayload_ShouldRoundTripCapabilities()
+    {
+        var payload = new GatewayChannelRegisterPayload
+        {
+            Channel = "qq",
+            Capabilities = new ChannelCapabilities
+            {
+                SupportsReplyAnchor = true,
+                Attachments = new() { Kinds = [OutboundAttachmentKind.File], MaxBytes = 1024, MaxPerMessage = 5 }
+            }
+        };
+
+        var json = JsonSerializer.Serialize(payload, GatewayWsFrameSerializer.JsonOptions);
+        var back = JsonSerializer.Deserialize<GatewayChannelRegisterPayload>(json, GatewayWsFrameSerializer.JsonOptions)!;
+        back.Capabilities.SupportsReplyAnchor.Should().BeTrue();
+        back.Capabilities.Attachments!.MaxPerMessage.Should().Be(5);
+    }
+
+    [Fact]
+    public void ChannelRegisterPayload_WithoutCapabilities_ShouldFailDeserialization()
+    {
+        const string json = """{"channel":"qq"}""";
+        Action act = () => JsonSerializer.Deserialize<GatewayChannelRegisterPayload>(json, GatewayWsFrameSerializer.JsonOptions);
+        act.Should().Throw<JsonException>();   // 服务端据此回 invalid_capabilities，不注册、不断连
+    }
+
+    [Fact]
+    public void ChannelRegisterPayload_ShouldRoundTripAttachmentsByConversationKind()
+    {
+        var payload = new GatewayChannelRegisterPayload
+        {
+            Channel = "qq",
+            Capabilities = new ChannelCapabilities
+            {
+                SupportsReplyAnchor = true,
+                Attachments = new() { Kinds = [OutboundAttachmentKind.File], MaxBytes = 1024, MaxPerMessage = 5 },
+                AttachmentsByConversationKind =
+                [
+                    new()
+                    {
+                        Kind = ConversationKind.Guild,
+                        Capabilities = new()
+                        {
+                            Kinds = [OutboundAttachmentKind.Image],
+                            MaxBytes = 2048,
+                            MaxPerMessage = 1
+                        }
+                    }
+                ]
+            }
+        };
+
+        var json = JsonSerializer.Serialize(payload, GatewayWsFrameSerializer.JsonOptions);
+
+        using (var doc = JsonDocument.Parse(json))
+        {
+            var entry = doc.RootElement.GetProperty("capabilities").GetProperty("attachmentsByConversationKind")[0];
+            entry.GetProperty("kind").GetString().Should().Be("guild");
+            entry.GetProperty("capabilities").GetProperty("kinds")[0].GetString().Should().Be("image");
+        }
+
+        var back = JsonSerializer.Deserialize<GatewayChannelRegisterPayload>(json, GatewayWsFrameSerializer.JsonOptions)!;
+        back.Capabilities.AttachmentsByConversationKind.Should().ContainSingle();
+        var backEntry = back.Capabilities.AttachmentsByConversationKind![0];
+        backEntry.Kind.Should().Be(ConversationKind.Guild);
+        backEntry.Capabilities.Kinds.Should().Equal(OutboundAttachmentKind.Image);
+        backEntry.Capabilities.MaxBytes.Should().Be(2048);
+        backEntry.Capabilities.MaxPerMessage.Should().Be(1);
+    }
+
+    [Fact]
+    public void ChannelRegisterPayload_WithoutSupportsReplyAnchor_ShouldFailDeserialization()
+    {
+        // SupportsReplyAnchor 为 required：缺失即 JsonException（服务端回 invalid_capabilities，不注册、不断连）
+        const string json = """
+            {"channel":"qq","capabilities":{"attachments":null}}
+            """;
+
+        Action act = () => JsonSerializer.Deserialize<GatewayChannelRegisterPayload>(
+            json, GatewayWsFrameSerializer.JsonOptions);
+
+        act.Should().Throw<JsonException>();
+    }
+
+    [Fact]
+    public void OutboundPayload_ShouldSerializeContentShape()
+    {
+        var payload = new GatewayChannelOutboundPayload
+        {
+            Channel = "qq",
+            CorrelationSessionId = "sess-1",
+            Content = new()
+            {
+                Text = "hi",
+                Attachments =
+                [
+                    new()
+                    {
+                        Kind = OutboundAttachmentKind.File,
+                        LocalPath = "/w/a.pdf",
+                        SizeBytes = 3,
+                        FileName = "a.pdf"
+                    }
+                ]
+            }
+        };
+
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(payload, GatewayWsFrameSerializer.JsonOptions));
+        var content = doc.RootElement.GetProperty("content");
+
+        content.GetProperty("text").GetString().Should().Be("hi");
+        var attachment = content.GetProperty("attachments")[0];
+        attachment.GetProperty("kind").GetString().Should().Be("file");
+        attachment.GetProperty("sizeBytes").GetInt64().Should().Be(3);
     }
 
     [Fact]
