@@ -1,9 +1,8 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Gateway.QQ.Connection;
 using Seeing.Gateway.QQ.Delivery;
-using System.Net;
 using System.Text.Json;
 
 namespace Seeing.Gateway.QQ;
@@ -94,15 +93,23 @@ public sealed class QQChannelAdapter : IChannelAdapter
     public async Task<OutboundDeliveryResult> SendAsync(OutboundMessage message, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(message);
-        var parsed = Translate(message.Target, _passiveWindow);
-        return await SendParsedAsync(parsed, message.Content.Text ?? "", ct, alreadyPrepared: true).ConfigureAwait(false);
+        return await SendContentAsync(ToParsed(message.Target), message.Content, ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// 发送纯文本终态回复。空文本视为已处理、不发送（桥的 <c>SendVisibleAsync</c> 已在上层兜底「(空回复)」）。
+    /// </summary>
     public Task<OutboundDeliveryResult> SendParsedAsync(
         ParsedQQMessage target,
         string text,
-        CancellationToken cancellationToken = default) =>
-        SendParsedAsync(target, text, cancellationToken, alreadyPrepared: false);
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        if (string.IsNullOrEmpty(text))
+            return Task.FromResult(OutboundDeliveryResult.Ok());
+
+        return SendContentAsync(target, new OutboundContent { Text = text }, cancellationToken);
+    }
 
     public ParsedQQMessage ApplyPassiveWindow(ParsedQQMessage target) =>
         Prepare(target, _passiveWindow);
@@ -143,9 +150,6 @@ public sealed class QQChannelAdapter : IChannelAdapter
         return true;
     }
 
-    internal static ParsedQQMessage Translate(DeliveryTarget target, QQPassiveWindowTracker tracker) =>
-        Prepare(ToParsed(target), tracker);
-
     internal static ParsedQQMessage ToParsed(DeliveryTarget target)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -179,37 +183,136 @@ public sealed class QQChannelAdapter : IChannelAdapter
         };
     }
 
-    internal static OutboundFailureKind MapApiFailure(QQApiException exception)
+    /// <summary>
+    /// 出站编排：文本逐块、附件逐项，各自独立消耗被动额度后发送。
+    /// 全部成功返回 <see cref="OutboundDeliveryResult.Ok"/>；部分失败聚合为 <see cref="OutboundFailureKind.PlatformError"/>。
+    /// </summary>
+    private async Task<OutboundDeliveryResult> SendContentAsync(
+        ParsedQQMessage target,
+        OutboundContent content,
+        CancellationToken ct)
     {
-        if ((int)exception.StatusCode == (int)HttpStatusCode.TooManyRequests)
-            return OutboundFailureKind.RateLimited;
+        ArgumentNullException.ThrowIfNull(content);
 
-        return OutboundFailureKind.PlatformError;
+        var failures = new List<(string? Label, OutboundDeliveryResult Result)>();
+        var total = 0;
+        var sent = 0;
+
+        if (!string.IsNullOrWhiteSpace(content.Text))
+        {
+            foreach (var chunk in QQTextSanitizer.SplitChunks(content.Text))
+            {
+                if (string.IsNullOrWhiteSpace(chunk))
+                    continue;
+
+                ct.ThrowIfCancellationRequested();
+                total++;
+                var chunkResult = await SendTextChunkAsync(target, chunk, ct).ConfigureAwait(false);
+                if (chunkResult.Delivered)
+                    sent++;
+                else
+                    failures.Add((null, chunkResult));
+            }
+        }
+
+        foreach (var attachment in content.Attachments)
+        {
+            ct.ThrowIfCancellationRequested();
+            total++;
+            var attachmentResult = await SendAttachmentItemAsync(target, attachment, ct).ConfigureAwait(false);
+            if (attachmentResult.Delivered)
+                sent++;
+            else
+                failures.Add((attachment.FileName ?? attachment.LocalPath, attachmentResult));
+        }
+
+        if (failures.Count == 0)
+            return OutboundDeliveryResult.Ok();
+
+        // 一条都没送达：原样返回首个失败结果
+        if (sent == 0)
+            return failures[0].Result;
+
+        var detail = string.Join(
+            "；",
+            failures.Select(f => f.Label == null
+                ? f.Result.Detail ?? "未知错误"
+                : $"{f.Label}: {f.Result.Detail ?? "未知错误"}"));
+        return OutboundDeliveryResult.Fail(
+            OutboundFailureKind.PlatformError,
+            $"已发送 {sent}/{total}；失败项：{detail}");
     }
 
-    private async Task<OutboundDeliveryResult> SendParsedAsync(
+    private async Task<OutboundDeliveryResult> SendTextChunkAsync(
         ParsedQQMessage target,
-        string text,
-        CancellationToken cancellationToken,
-        bool alreadyPrepared)
+        string chunk,
+        CancellationToken ct)
     {
-        var prepared = alreadyPrepared ? target : Prepare(target, _passiveWindow);
+        var prepared = ApplyPassiveWindow(target);
         try
         {
-            await _http.SendReplyAsync(prepared, text, cancellationToken: cancellationToken).ConfigureAwait(false);
+            await _http.SendTextAsync(prepared, chunk, keyboard: null, cancellationToken: ct)
+                .ConfigureAwait(false);
             return OutboundDeliveryResult.Ok();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // 用户取消必须传播且停止后续项
+            throw;
         }
         catch (QQApiException ex)
         {
-            var kind = MapApiFailure(ex);
-            _logger.LogWarning(ex, "QQ adapter send failed kind={Kind}", kind);
+            ct.ThrowIfCancellationRequested();
+            var kind = QQFailureMapper.MapApiFailure(ex);
+            _logger.LogWarning(ex, "QQ adapter send text failed kind={Kind}", kind);
             return OutboundDeliveryResult.Fail(kind, ex.Message);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "QQ adapter send failed");
+            // 取消期间抛出的非 OCE 异常统一归一为取消；超时等非用户取消的 OCE 走失败聚合
+            ct.ThrowIfCancellationRequested();
+            _logger.LogWarning(ex, "QQ adapter send text failed");
             return OutboundDeliveryResult.Fail(OutboundFailureKind.PlatformError, ex.Message);
         }
+    }
+
+    private async Task<OutboundDeliveryResult> SendAttachmentItemAsync(
+        ParsedQQMessage target,
+        OutboundAttachment attachment,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(attachment);
+
+        // 能力解析：按目标对话种类覆盖 → 回落默认；null 表示该通道不支持附件
+        var conversationKind = ToConversation(target).Kind;
+        var capabilities = _capabilities.ResolveAttachments(conversationKind);
+        if (capabilities == null)
+        {
+            return OutboundDeliveryResult.Fail(
+                OutboundFailureKind.AttachmentUnsupported, "通道不支持附件");
+        }
+
+        if (!capabilities.Supports(attachment.Kind))
+        {
+            return OutboundDeliveryResult.Fail(
+                OutboundFailureKind.AttachmentUnsupported, $"不支持 {attachment.Kind} 附件");
+        }
+
+        // 能力预检在适配器完成：读取文件前按目标对话种类拒绝缺失/超限
+        var file = new FileInfo(attachment.LocalPath);
+        if (!file.Exists)
+            return OutboundDeliveryResult.Fail(OutboundFailureKind.AttachmentUnavailable, "文件不存在或不可读");
+        if (file.Length == 0)
+            return OutboundDeliveryResult.Fail(OutboundFailureKind.AttachmentUnavailable, "文件为空");
+        if (file.Length > capabilities.MaxBytes)
+        {
+            return OutboundDeliveryResult.Fail(
+                OutboundFailureKind.AttachmentTooLarge,
+                $"{file.Length} 字节超出上限 {capabilities.MaxBytes} 字节");
+        }
+
+        var prepared = ApplyPassiveWindow(target);
+        return await _http.SendAttachmentAsync(prepared, attachment, ct).ConfigureAwait(false);
     }
 
     private static ParsedQQMessage Prepare(ParsedQQMessage target, QQPassiveWindowTracker tracker)
@@ -271,3 +374,4 @@ public sealed class QQChannelAdapter : IChannelAdapter
     private static string? FirstNonEmpty(string? primary, string? fallback) =>
         !string.IsNullOrWhiteSpace(primary) ? primary : fallback;
 }
+

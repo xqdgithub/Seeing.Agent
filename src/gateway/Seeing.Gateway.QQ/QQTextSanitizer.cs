@@ -25,20 +25,6 @@ public static partial class QQTextSanitizer
         return (sanitized, !string.Equals(sanitized, text, StringComparison.Ordinal));
     }
 
-    /// <summary>
-    /// 从回复文本中提取可出站图片 URL，并返回去掉图片标记后的正文。
-    /// 委托 <see cref="QQOutboundComposer"/>（兼容旧调用）。
-    /// </summary>
-    public static (string CleanText, IReadOnlyList<string> ImageUrls) ExtractImages(string text)
-    {
-        var payload = QQOutboundComposer.Compose(text);
-        var urls = payload.Media
-            .Where(m => m.Kind == QQOutboundMediaKind.Image)
-            .Select(m => m.Source)
-            .ToList();
-        return (payload.CleanText, urls);
-    }
-
     public static IEnumerable<string> SplitChunks(string text, int maxLen = 1800)
     {
         if (string.IsNullOrWhiteSpace(text))

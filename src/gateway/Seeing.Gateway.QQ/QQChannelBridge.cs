@@ -119,10 +119,10 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
         if (!string.Equals(payload.Channel, ChannelId, StringComparison.OrdinalIgnoreCase))
             return;
 
-        if (string.IsNullOrWhiteSpace(payload.Content.Text))
+        if (string.IsNullOrWhiteSpace(payload.Content.Text) && payload.Content.Attachments.Count == 0)
         {
             _logger.LogWarning(
-                "QQ channel outbound ignored: empty text session={SessionId}",
+                "QQ channel outbound ignored: empty content session={SessionId}",
                 payload.CorrelationSessionId);
             return;
         }
@@ -153,10 +153,11 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
         try
         {
             _logger.LogInformation(
-                "QQ channel outbound → {Kind} session={SessionId} len={Length} source={Source}",
+                "QQ channel outbound → {Kind} session={SessionId} len={Length} attachments={Attachments} source={Source}",
                 message.Target.Conversation.Kind,
                 payload.CorrelationSessionId,
                 payload.Content.Text?.Length ?? 0,
+                payload.Content.Attachments.Count,
                 payload.Source);
             var result = await _adapter.SendAsync(message, cancellationToken).ConfigureAwait(false);
             if (!result.Delivered)
