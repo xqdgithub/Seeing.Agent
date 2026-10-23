@@ -432,8 +432,10 @@ public sealed class TuiChatEngine
 
         if (key.Action == TuiInputAction.PasteEnd)
         {
-            _pasteActive = false;
-            _editor.SetPasteActive(false);
+            if (!_pasteActive)
+                return false;
+
+            ResetPasteState();
             var pasted = _pasteBuffer.ToString();
             _pasteBuffer.Clear();
             await HandleClipboardPasteAsync(pasted, ct).ConfigureAwait(false);
@@ -456,10 +458,13 @@ public sealed class TuiChatEngine
 
             if (key.Action == TuiInputAction.Cancel)
             {
-                _pasteActive = false;
-                _pasteBuffer.Clear();
-                _editor.SetPasteActive(false);
+                ResetPasteState();
+                ForceRender();
+                return false;
             }
+
+            // 任何非粘贴键都结束异常残留的粘贴态，避免提示通道丢失 PasteEnd 后永久吞键。
+            ResetPasteState();
         }
 
         if (key.Action == TuiInputAction.PasteFromClipboard)
@@ -569,6 +574,28 @@ public sealed class TuiChatEngine
         }
     }
 
+    private void ResetPasteState()
+    {
+        _pasteActive = false;
+        _pasteBuffer.Clear();
+        _editor.SetPasteActive(false);
+    }
+
+    private static bool PromptPathExists(string promptPath)
+    {
+        try
+        {
+            var absolute = Path.IsPathRooted(promptPath)
+                ? promptPath
+                : Path.GetFullPath(promptPath);
+            return File.Exists(absolute) || Directory.Exists(absolute);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private async Task HandleClipboardPasteAsync(string? terminalText, CancellationToken ct)
     {
         ForceRender();
@@ -617,6 +644,15 @@ public sealed class TuiChatEngine
             image,
             ResolveWorkspaceRoot(_workspace));
 
+        if (!_clipboard.IsSupported
+            && plan.Text is null
+            && plan.ImageFilePaths.Count == 0
+            && plan.PromptPaths.Count == 0)
+        {
+            await CommitNoticeAsync("当前平台暂不支持剪贴板附件", ct).ConfigureAwait(false);
+            return;
+        }
+
         foreach (var path in plan.ImageFilePaths)
             await StageAttachmentAsync(path, ct).ConfigureAwait(false);
 
@@ -663,7 +699,16 @@ public sealed class TuiChatEngine
         foreach (var imagePath in inline.ImagePaths)
             await StageAttachmentAsync(imagePath, ct).ConfigureAwait(false);
 
-        var remaining = PastedFileLayout.AppendPromptPaths(inline.RemainingText, inline.PromptPaths);
+        var promptPaths = new List<string>();
+        foreach (var promptPath in inline.PromptPaths)
+        {
+            if (PromptPathExists(promptPath))
+                promptPaths.Add(promptPath);
+            else
+                await CommitNoticeAsync($"路径不存在，已跳过：{promptPath}", ct).ConfigureAwait(false);
+        }
+
+        var remaining = PastedFileLayout.AppendPromptPaths(inline.RemainingText, promptPaths);
 
         if (_commands.IsLocal(remaining))
         {
@@ -671,7 +716,7 @@ public sealed class TuiChatEngine
             // 本地命令（/agent、/model、/scenario、/thinking、/sessions、/resume 无参等）会经
             // ctx.Surface.PromptAsync 弹选择器，必须包裹提示输入模式；否则按键被路由到引擎通道，
             // 提示永远读不到键 → 主循环永久 await（Ctrl+C 也失效）。relay 为嵌套计数，包裹式用法安全。
-            _inputRelay.BeginPrompt();
+            ResetPasteState(); _inputRelay.BeginPrompt();
             try
             {
                 result = await _commands.ExecuteAsync(remaining, BuildCommandContext(), ct).ConfigureAwait(false);
@@ -931,8 +976,13 @@ public sealed class TuiChatEngine
 
         var plan = TuiInlineAttachmentParser.Classify(
             _attachmentResolver,
-            paths,
+            paths.Where(path => File.Exists(path) || Directory.Exists(path)),
             ResolveWorkspaceRoot(_workspace));
+
+        var existing = paths.Where(path => File.Exists(path) || Directory.Exists(path)).ToList();
+        var missing = paths.Except(existing, StringComparer.OrdinalIgnoreCase).ToList();
+        foreach (var path in missing)
+            await CommitNoticeAsync($"路径不存在，已跳过：{path}", ct).ConfigureAwait(false);
 
         foreach (var imagePath in plan.ImagePaths)
             await StageAttachmentAsync(imagePath, ct).ConfigureAwait(false);
@@ -1122,7 +1172,7 @@ public sealed class TuiChatEngine
 
     private async Task<string?> PromptTextAsync(string title, CancellationToken ct)
     {
-        _inputRelay.BeginPrompt();
+        ResetPasteState(); _inputRelay.BeginPrompt();
         try
         {
             return await _surface
@@ -1143,7 +1193,7 @@ public sealed class TuiChatEngine
 
     private async Task<bool> PromptConfirmAsync(string title, CancellationToken ct)
     {
-        _inputRelay.BeginPrompt();
+        ResetPasteState(); _inputRelay.BeginPrompt();
         try
         {
             return await _surface
@@ -1547,7 +1597,7 @@ public sealed class TuiChatEngine
         var permission = _permissions.Pending.FirstOrDefault();
         if (permission is not null && !IsDismissed(permission))
         {
-            _inputRelay.BeginPrompt();
+            ResetPasteState(); _inputRelay.BeginPrompt();
             PermissionPromptResult? decision;
             try
             {
@@ -1594,7 +1644,7 @@ public sealed class TuiChatEngine
         var question = _questions.Pending.FirstOrDefault();
         if (question is not null)
         {
-            _inputRelay.BeginPrompt();
+            ResetPasteState(); _inputRelay.BeginPrompt();
             QuestionResult? result;
             try
             {

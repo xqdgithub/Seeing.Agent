@@ -19,6 +19,18 @@ public class PastedFileLayoutTests
             .Should().Be("my report-20261023-153012-a1b2.pdf");
 
     [Fact]
+    public void BuildStoredFileName_ShouldSanitizeExtension()
+    {
+        var name = PastedFileLayout.BuildStoredFileName(
+            "a.b:c",
+            new DateTimeOffset(2026, 10, 23, 15, 30, 12, TimeSpan.Zero),
+            "a1b2");
+
+        name.Should().NotContain(":");
+        name.Should().EndWith(".bc");
+    }
+
+    [Fact]
     public void TryGetProjectRelativePath_Inside_ShouldUseForwardSlashes()
     {
         var root = Path.Combine(Path.GetTempPath(), "seeing-layout");

@@ -1093,11 +1093,26 @@
         }
 
         _uploadError = null;
-        foreach (var item in items ?? [])
+        var pending = items ?? [];
+        for (var index = 0; index < pending.Length; index++)
         {
+            var item = pending[index];
             if (Attachments.Count >= MaxAttachments)
             {
                 _uploadError = $"最多添加 {MaxAttachments} 个附件";
+                for (var rest = index; rest < pending.Length; rest++)
+                {
+                    if (pending[rest].Kind != "image")
+                        continue;
+                    try
+                    {
+                        await UploadedFileService.DeleteAsync(sessionId, pending[rest].SessionRelativePath);
+                    }
+                    catch
+                    {
+                        // 清理失败不阻断 UI
+                    }
+                }
                 break;
             }
 

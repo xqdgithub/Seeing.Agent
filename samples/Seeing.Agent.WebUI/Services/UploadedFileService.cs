@@ -49,6 +49,15 @@ public sealed class UploadedFileService
             var storedName = PastedFileLayout.BuildStoredFileName(fileName, DateTimeOffset.Now, suffix);
             var absolute = PastedFileLayout.BuildAbsolutePath(workspace.RootPath, sessionId, storedName);
 
+            for (var attempt = 0; File.Exists(absolute) || Directory.Exists(absolute); attempt++)
+            {
+                if (attempt >= 20)
+                    throw new InvalidOperationException("无法生成不重复的上传文件名");
+                suffix = Guid.NewGuid().ToString("N")[..4];
+                storedName = PastedFileLayout.BuildStoredFileName(fileName, DateTimeOffset.Now, suffix);
+                absolute = PastedFileLayout.BuildAbsolutePath(workspace.RootPath, sessionId, storedName);
+            }
+
             await workspace.WriteBytesAsync(absolute, content, ct).ConfigureAwait(false);
 
             var relative = Path.GetRelativePath(workspace.RootPath, absolute).Replace('\\', '/');
@@ -78,6 +87,7 @@ public sealed class UploadedFileService
         try
         {
             var absolute = ResolveUploadPath(workspace.RootPath, sessionId, item.SessionRelativePath);
+            await workspace.StatAsync(absolute, ct).ConfigureAwait(false);
             return new AttachmentViewModel
             {
                 Kind = AttachmentDeliveryKind.PathReference,

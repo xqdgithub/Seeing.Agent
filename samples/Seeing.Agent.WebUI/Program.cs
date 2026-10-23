@@ -29,8 +29,6 @@ var builder = WebApplication.CreateBuilder(args);
 // _framework/blazor.server.js 全部 404，破坏 13 处 JS 互操作（'isMobileBrowser is not a function'）。
 // 在 builder 上调用 UseStaticWebAssets() 让中间件从清单路由文件，适用于所有环境。
 builder.WebHost.UseStaticWebAssets();
-builder.WebHost.ConfigureKestrel(options =>
-    options.Limits.MaxRequestBodySize = PastedFileLayout.MaxUploadRequestBytes);
 
 // Add services to the container.
 builder.Services.AddRazorPages();

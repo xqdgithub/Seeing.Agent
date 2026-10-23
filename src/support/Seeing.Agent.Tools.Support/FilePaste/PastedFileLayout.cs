@@ -58,7 +58,7 @@ public static class PastedFileLayout
     public static string BuildStoredFileName(string originalName, DateTimeOffset now, string suffix)
     {
         var name = Path.GetFileName(originalName ?? string.Empty);
-        var extension = Path.GetExtension(name);
+        var extension = SanitizeExtension(Path.GetExtension(name));
         var baseName = SanitizeBaseName(Path.GetFileNameWithoutExtension(name));
         var safeSuffix = SanitizeSuffix(suffix);
 
@@ -162,6 +162,23 @@ public static class PastedFileLayout
         }
 
         return builder.Length == 0 ? "0000" : builder.ToString();
+    }
+
+    private static string SanitizeExtension(string extension)
+    {
+        if (string.IsNullOrEmpty(extension))
+            return string.Empty;
+
+        var builder = new StringBuilder(extension.Length);
+        foreach (var ch in extension)
+        {
+            if (builder.Length == 16)
+                break;
+            if (ch == '.' || char.IsAsciiLetterOrDigit(ch))
+                builder.Append(ch);
+        }
+
+        return builder.Length <= 1 ? string.Empty : builder.ToString();
     }
 
     private static string TrimEndSeparators(string path)

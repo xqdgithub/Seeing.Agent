@@ -153,6 +153,7 @@ async function uploadFiles(files, sessionId, dotNetRef) {
     try {
         const response = await fetch('/api/uploads?sessionId=' + encodeURIComponent(sessionId), {
             method: 'POST',
+            headers: { 'X-Seeing-Upload': '1' },
             body: form
         });
 
@@ -181,6 +182,9 @@ function setupPasteHandler(containerId, dotNetRef) {
     const handler = async (e) => {
         const files = collectClipboardFiles(e.clipboardData);
         if (files.length === 0) return; // 保留普通文本粘贴
+
+        // Word/Excel/网页的富文本常同时带 file（内嵌图片）；不要吞掉正文。
+        if (e.clipboardData && e.clipboardData.getData('text/html')) return;
 
         e.preventDefault();
         await uploadFiles(files, container.dataset.sessionId, dotNetRef);

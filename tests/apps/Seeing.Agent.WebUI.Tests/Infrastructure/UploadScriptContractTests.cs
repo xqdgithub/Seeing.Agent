@@ -38,5 +38,6 @@ public class UploadScriptContractTests
         AppJs.Should().NotContain("fileToBase64(file)");
         AppJs.Should().Contain("/api/uploads");
         AppJs.Should().Contain("FormData");
+        AppJs.Should().Contain("X-Seeing-Upload");
     }
 }

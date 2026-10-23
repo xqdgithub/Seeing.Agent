@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using Seeing.Agent.Tools.Support;
 using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.Services;
@@ -14,7 +15,8 @@ public static class UploadEndpoints
     /// <summary>映射上传端点。</summary>
     public static IEndpointRouteBuilder MapUploadEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost(Route, HandleAsync);
+        endpoints.MapPost(Route, HandleAsync)
+            .WithMetadata(new RequestSizeLimitAttribute(PastedFileLayout.MaxUploadRequestBytes));
         return endpoints;
     }
 
@@ -30,6 +32,10 @@ public static class UploadEndpoints
 
         if (!request.HasFormContentType)
             return Results.BadRequest(new { error = "multipart form required" });
+
+        if (!request.Headers.TryGetValue("X-Seeing-Upload", out var uploadHeader)
+            || !string.Equals(uploadHeader.ToString(), "1", StringComparison.Ordinal))
+            return Results.BadRequest(new { error = "invalid upload request" });
 
         var form = await request.ReadFormAsync(ct);
         if (form.Files.Count == 0 || form.Files.Count > PastedFileLayout.MaxFilesPerRequest)
