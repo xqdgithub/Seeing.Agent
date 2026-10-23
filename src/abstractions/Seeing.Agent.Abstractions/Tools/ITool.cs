@@ -1,4 +1,5 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Permissions;
 namespace Seeing.Agent.Abstractions.Tools
 {
@@ -28,6 +29,12 @@ namespace Seeing.Agent.Abstractions.Tools
         /// 执行级授权器（由 ToolManager 从执行链注入；工具须优先使用，缺失时回退工厂）。
         /// </summary>
         public IPermissionAuthorizer? PermissionAuthorizer { get; set; }
+
+        /// <summary>
+        /// 执行级工具可见性**只读视图**（由执行器按执行创建并透传；可空）。
+        /// 检索类工具据此读取语料与判定能力；写入（加载）只能由执行器应用 ToolResult 声明完成。
+        /// </summary>
+        public IExecutionToolScopeView? ToolScope { get; set; }
 
         /// <summary>
         /// 克隆本上下文并替换取消令牌（供装饰器透视执行使用）。

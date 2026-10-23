@@ -12,6 +12,7 @@ using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Detection;
 using Seeing.Agent.Core.Execution;
+using Seeing.Agent.Core.Helpers;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Prompts;
@@ -154,7 +155,10 @@ public class AgentExecutor : IAgentExecutor
 
         // 执行级工具可见性作用域：种子来自本轮结算视图，生命周期与本 Loop 相同。
         // 只放宽执行层放行判定（tool_search 命中即可调用），不改变本轮 tools[]。
-        var toolScope = new ExecutionToolScope(context.ToolSettlement);
+        // 无结算 = 无执行级放行能力，对工具必须表现为"无作用域"（否则检索工具会误判支持）。
+        var toolScope = context.ToolSettlement is null
+            ? null
+            : new ExecutionToolScope(context.ToolSettlement);
 
         // SubAgent：合并 Session PermissionSnapshot 作为本 Loop 权限真相源
         context.PermissionContext = PermissionIntegrity.FromAgentContext(
@@ -871,9 +875,10 @@ public class AgentExecutor : IAgentExecutor
         // 未下发的工具（延迟暴露且未检索 / 被 Agent 或模块过滤）不得被调用：
         // 这是执行层对"模型凭空调用未加载工具"的确定性拦截，位于权限判定之前。
         if (context.ToolSettlement is { } settlement
-            && !toolScope.IsCallable(name))
+            && !(toolScope?.IsCallable(name) ?? settlement.SendsSchema(name)))
         {
-            var reason = toolScope.IsDeferred(name)
+            var deferred = toolScope?.IsDeferred(name) ?? settlement.IsDeferred(name);
+            var reason = deferred
                 ? $"工具 '{name}' 尚未加载。请先用 {ToolIdConventions.SearchToolId} 检索该工具；命中后本次执行内即可直接调用。"
                 : $"工具 '{name}' 在本会话当前上下文中不可用。";
             _logger.LogWarning(
@@ -1015,17 +1020,16 @@ public class AgentExecutor : IAgentExecutor
     /// 应用工具声明的“本执行内已加载”。只有声明了 <see cref="ToolCapabilityKeys.ExposureLoad"/>
     /// 能力的工具才会被采纳；成功应用后写入 <c>exposure.loaded</c> 元数据供审计。
     /// </summary>
-    private void ApplyDeclaredToolLoads(string toolName, ToolResult result, IExecutionToolScope toolScope)
+    private void ApplyDeclaredToolLoads(string toolName, ToolResult result, IExecutionToolScope? toolScope)
     {
-        if (result.LoadedToolIds is not { Count: > 0 })
+        if (toolScope is null || result.LoadedToolIds is not { Count: > 0 })
             return;
 
-        var tool = _tools.GetTool(toolName);
-        if (tool?.Capabilities is null ||
-            !tool.Capabilities.ContainsKey(ToolCapabilityKeys.ExposureLoad))
+        // 统一能力读取：只认 exposure.load="true"（fail-closed），并解包装饰器到最内层。
+        if (!ToolCapabilityReader.GetBool(_tools.GetTool(toolName), ToolCapabilityKeys.ExposureLoad))
         {
             _logger.LogWarning(
-                "[AgentExecutor] 工具声明加载但未声明 {Key} 能力，已忽略: {ToolName}",
+                "[AgentExecutor] 工具声明加载但未启用 {Key} 能力，已忽略: {ToolName}",
                 ToolCapabilityKeys.ExposureLoad, toolName);
             return;
         }
@@ -1034,6 +1038,8 @@ public class AgentExecutor : IAgentExecutor
         if (added <= 0)
             return;
 
+        // 第三方工具可能把 Metadata 置 null；审计写入不得把成功调用翻成失败。
+        result.Metadata ??= new Dictionary<string, object>();
         result.Metadata["exposure.loaded"] = result.LoadedToolIds.ToArray();
         _logger.LogInformation(
             "[AgentExecutor] 工具声明加载已生效: {ToolName}, Count={Count}, Loaded={Loaded}",

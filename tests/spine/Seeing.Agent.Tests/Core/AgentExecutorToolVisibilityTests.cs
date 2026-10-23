@@ -122,6 +122,60 @@ public class AgentExecutorToolVisibilityTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_NullSettlement_ShouldExposeNullToolScope()
+    {
+        // 无结算 = 无执行级放行能力：工具必须看到 null 作用域，
+        // 否则检索工具会误判"支持同执行放行"并把语料当成空集。
+        var executor = await CreateExecutorWithToolsAsync(
+            CreateScriptedLlm("probe_tool"), new ScopeProbeTool());
+
+        var events = await RunAsync(executor, settlement: null, maxSteps: 1);
+
+        events.OfType<ToolCallEvent>()
+            .Single(e => e.Type == MessageEventType.ToolCallComplete)
+            .Status.Should().NotBe(ToolCallStatus.Rejected);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_LoadDeclaredWithExplicitFalseCapability_ShouldBeIgnored()
+    {
+        // 能力值写 "false" 也必须视为不可（fail-closed），不能因为“键存在”就放行。
+        var llm = CreateScriptedLlm(ToolIdConventions.SearchToolId, "hidden_tool");
+        var executor = await CreateExecutorWithToolsAsync(
+            llm, new FalseCapabilitySearchTool(), new NamedTool("hidden_tool"));
+        var settlement = BuildSettlement(
+            (ToolIdConventions.SearchToolId, ToolExposureMode.Inline),
+            ("hidden_tool", ToolExposureMode.Deferred));
+
+        var events = await RunAsync(executor, settlement, maxSteps: 3);
+
+        events.OfType<ToolCallEvent>()
+            .Where(e => e.Type == MessageEventType.ToolCallComplete)
+            .Single(e => e.ToolName == "hidden_tool")
+            .Status.Should().Be(ToolCallStatus.Rejected);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_NullMetadataFromTool_ShouldNotFailSuccessfulCall()
+    {
+        // 第三方工具把 Metadata 置 null 时，审计写入不得把成功调用翻成失败。
+        var llm = CreateScriptedLlm(ToolIdConventions.SearchToolId, "hidden_tool");
+        var executor = await CreateExecutorWithToolsAsync(
+            llm, new NullMetadataSearchTool(), new NamedTool("hidden_tool"));
+        var settlement = BuildSettlement(
+            (ToolIdConventions.SearchToolId, ToolExposureMode.Inline),
+            ("hidden_tool", ToolExposureMode.Deferred));
+
+        var events = await RunAsync(executor, settlement, maxSteps: 3);
+
+        var searchComplete = events.OfType<ToolCallEvent>()
+            .Where(e => e.Type == MessageEventType.ToolCallComplete)
+            .Single(e => e.ToolName == ToolIdConventions.SearchToolId);
+        searchComplete.Status.Should().Be(ToolCallStatus.Success);
+        searchComplete.Metadata!["exposure.loaded"].Should().BeEquivalentTo(new[] { "hidden_tool" });
+    }
+
+    [Fact]
     public async Task ExecuteAsync_NullSettlement_ShouldNotGate()
     {
         var executor = CreateExecutor("any_tool");
@@ -314,6 +368,59 @@ public class AgentExecutorToolVisibilityTests
         public Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
             var result = ToolResult.Succeeded("loaded");
+            result.LoadedToolIds = ["hidden_tool"];
+            return Task.FromResult(result);
+        }
+    }
+
+    /// <summary>探针：断言无结算时执行器不得向工具暴露作用域。</summary>
+    private sealed class ScopeProbeTool : ITool
+    {
+        public string Id => "probe_tool";
+        public string Description => "probe";
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+        public ToolCategory Category => ToolCategory.General;
+        public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new { type = "object" });
+
+        public Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
+        {
+            context.ToolScope.Should().BeNull("无结算时不存在执行级作用域");
+            return Task.FromResult(ToolResult.Succeeded("probe"));
+        }
+    }
+
+    /// <summary>显式声明 exposure.load=false：加载声明必须被忽略（fail-closed）。</summary>
+    [ToolCapability(ToolCapabilityKeys.ExposureLoad, "false")]
+    private sealed class FalseCapabilitySearchTool : ITool
+    {
+        public string Id => ToolIdConventions.SearchToolId;
+        public string Description => "search";
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+        public ToolCategory Category => ToolCategory.General;
+        public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new { type = "object" });
+
+        public Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
+        {
+            var result = ToolResult.Succeeded("loaded");
+            result.LoadedToolIds = ["hidden_tool"];
+            return Task.FromResult(result);
+        }
+    }
+
+    /// <summary>声明能力但把 Metadata 置 null：审计写入不得抛异常。</summary>
+    [ToolCapability(ToolCapabilityKeys.ExposureLoad, "true")]
+    private sealed class NullMetadataSearchTool : ITool
+    {
+        public string Id => ToolIdConventions.SearchToolId;
+        public string Description => "search";
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+        public ToolCategory Category => ToolCategory.General;
+        public JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new { type = "object" });
+
+        public Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
+        {
+            var result = ToolResult.Succeeded("loaded");
+            result.Metadata = null!;
             result.LoadedToolIds = ["hidden_tool"];
             return Task.FromResult(result);
         }
