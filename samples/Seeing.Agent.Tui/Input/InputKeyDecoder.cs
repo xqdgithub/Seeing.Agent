@@ -10,7 +10,8 @@ public static class InputKeyDecoder
         TuiRawText text => text.Value.Length == 0
             ? new TuiKeyInput(TuiInputAction.None)
             : new TuiKeyInput(TuiInputAction.InsertText, text.Value),
-        TuiRawPasteStart or TuiRawPasteEnd => new TuiKeyInput(TuiInputAction.None),
+        TuiRawPasteStart => new TuiKeyInput(TuiInputAction.PasteStart),
+        TuiRawPasteEnd => new TuiKeyInput(TuiInputAction.PasteEnd),
         TuiRawMouse mouse => new TuiKeyInput(TuiInputAction.Mouse, Mouse: mouse),
         TuiRawEscape escape => DecodeEscape(escape.Sequence),
         TuiRawKey key => DecodeKey(key, pasteActive),
@@ -36,6 +37,9 @@ public static class InputKeyDecoder
 
         if (key.Ctrl && key.Key == ConsoleKey.D)
             return new TuiKeyInput(TuiInputAction.ExitRequested);
+
+        if (key.Ctrl && key.Key == ConsoleKey.V)
+            return new TuiKeyInput(TuiInputAction.PasteFromClipboard);
 
         if (key.KeyChar == '\r')
             return pasteActive

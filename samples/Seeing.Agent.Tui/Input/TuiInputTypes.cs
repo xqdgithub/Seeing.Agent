@@ -18,6 +18,9 @@ public enum TuiInputAction
     Cancel,
     ExitRequested,
     Mouse,
+    PasteStart,
+    PasteEnd,
+    PasteFromClipboard,
 }
 
 /// <summary>鼠标按键（低 3 位语义；滚轮单列）。</summary>

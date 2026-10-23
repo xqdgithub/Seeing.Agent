@@ -93,6 +93,16 @@ public sealed class TuiInputEditorState
         _historyIndex = _history.Count;
     }
 
+    /// <summary>在光标处插入文本并推进光标。</summary>
+    public void AppendText(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return;
+
+        Text = Text.Insert(Cursor, text);
+        Cursor += text.Length;
+    }
+
     public void Clear()
     {
         Text = string.Empty;

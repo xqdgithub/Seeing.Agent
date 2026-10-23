@@ -25,8 +25,9 @@ public class InputKeyDecoderTests
         ("粘贴多字符 原样插入", new TuiRawText("abc"), false, TuiInputAction.InsertText, "abc"),
         ("粘贴含换行 原样插入", new TuiRawText("多行\n内容"), false, TuiInputAction.InsertText, "多行\n内容"),
         ("空文本 无动作", new TuiRawText(""), false, TuiInputAction.None, ""),
-        ("粘贴开始 无动作", new TuiRawPasteStart(), false, TuiInputAction.None, ""),
-        ("粘贴结束 无动作", new TuiRawPasteEnd(), false, TuiInputAction.None, ""),
+        ("粘贴开始 → PasteStart", new TuiRawPasteStart(), false, TuiInputAction.PasteStart, ""),
+        ("粘贴结束 → PasteEnd", new TuiRawPasteEnd(), false, TuiInputAction.PasteEnd, ""),
+        ("Ctrl+V → 读剪贴板", new TuiRawKey(ConsoleKey.V, 'v', true, false, false), false, TuiInputAction.PasteFromClipboard, ""),
         ("未知转义 无动作", new TuiRawEscape("\x1b[99z"), false, TuiInputAction.None, ""),
     ];
 

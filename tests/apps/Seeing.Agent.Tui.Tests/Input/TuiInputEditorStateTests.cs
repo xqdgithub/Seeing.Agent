@@ -191,4 +191,16 @@ public class TuiInputEditorStateTests
         state.ClearAttachments();
         state.Attachments.Should().BeEmpty();
     }
+
+    [Fact]
+    public void AppendText_ShouldInsertAtCursorAndAdvance()
+    {
+        var state = new TuiInputEditorState();
+        state.SetTextAndCursor("ab", 1);
+
+        state.AppendText("-x");
+
+        state.Text.Should().Be("a-xb");
+        state.Cursor.Should().Be(3);
+    }
 }
