@@ -52,7 +52,7 @@ public class AgentExecutorToolVisibilityTests
             .Single(e => e.Type == MessageEventType.ToolCallComplete);
         complete.Status.Should().Be(ToolCallStatus.Rejected);
         complete.Error.Should().Contain(ToolIdConventions.SearchToolId);
-        complete.Error.Should().Contain("本次请求");
+        complete.Error.Should().Contain("本次执行");
     }
 
     [Fact]
