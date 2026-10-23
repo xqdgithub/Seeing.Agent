@@ -12,11 +12,13 @@
 @using System.Text
 @using Seeing.Agent.TokenBudget.Api.Responses
 @using Seeing.Session.Core
+@implements IAsyncDisposable
 @inject IJSRuntime JSRuntime
 @inject AppState AppState
 @inject SkillManager SkillManager
+@inject Seeing.Agent.WebUI.Services.UploadedFileService UploadedFileService
 
-<div Class="prompt-input-container" @ref="@ContainerRef">
+<div Class="prompt-input-container" data-session-id="@SessionState?.CurrentSession?.Id" @ref="@ContainerRef">
     <!-- 附件预览 -->
     @if (Attachments.Count > 0)
     {
@@ -24,6 +26,10 @@
                            MaxAttachments="@MaxAttachments"
                            MaxFileSize="@MaxFileSize"
                            OnRemove="@OnAttachmentRemoved" />
+    }
+    @if (!string.IsNullOrEmpty(_uploadError))
+    {
+        <div class="prompt-upload-error">@_uploadError</div>
     }
 
     <div Class="@GetDropZoneClass()">
@@ -316,6 +322,8 @@
     private ElementReference ContainerRef { get; set; }
     private ElementReference TextareaRef { get; set; }
     private InputFile? FileInputRef { get; set; }
+    private DotNetObjectReference<PromptInput>? _pasteRef;
+    private string? _uploadError;
 
     /// <summary>
     /// 是否正在拖拽
@@ -1005,6 +1013,78 @@
     }
 
     /// <summary>
+    /// 粘贴/拖拽上传完成回调。
+    /// </summary>
+    [JSInvokable]
+    public async Task HandleUploadedFiles(UploadedFileItem[] items)
+    {
+        var sessionId = SessionState?.CurrentSession?.Id;
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            _uploadError = "当前会话未就绪，无法上传附件";
+            StateHasChanged();
+            return;
+        }
+
+        _uploadError = null;
+        foreach (var item in items ?? [])
+        {
+            if (Attachments.Count >= MaxAttachments)
+            {
+                _uploadError = $"最多添加 {MaxAttachments} 个附件";
+                break;
+            }
+
+            try
+            {
+                var attachment = item.Kind == "image"
+                    ? await UploadedFileService.CreateImageAttachmentAsync(sessionId, item)
+                    : await UploadedFileService.CreatePathReferenceAsync(sessionId, item);
+                Attachments.Add(attachment);
+            }
+            catch (Exception ex)
+            {
+                Attachments.Add(new AttachmentViewModel
+                {
+                    FileName = item.FileName,
+                    FileSize = item.Size,
+                    FileType = item.MimeType,
+                    Status = AttachmentUploadStatus.Failed,
+                    ErrorMessage = ex.Message
+                });
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>上传失败回调。</summary>
+    [JSInvokable]
+    public Task HandleUploadFailed(string message)
+    {
+        _uploadError = message;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>释放 JS 粘贴/拖拽监听。</summary>
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("disposePasteHandler", ContainerRef.Id);
+            await JSRuntime.InvokeVoidAsync("disposeDropZone", ContainerRef.Id);
+        }
+        catch
+        {
+            // circuit 可能已断开
+        }
+
+        _pasteRef?.Dispose();
+        _pasteRef = null;
+    }
+
+    /// <summary>
     /// 组件初始化后设置 JSInterop
     /// </summary>
     protected override void OnParametersSet()
@@ -1033,11 +1113,12 @@
 
         if (firstRender)
         {
-            // 设置拖放处理
+            // 设置拖放/粘贴处理
             try
             {
-                await JSRuntime.InvokeVoidAsync("setupDropZone", ContainerRef.Id, DotNetObjectReference.Create(this));
-                await JSRuntime.InvokeVoidAsync("setupPasteHandler", ContainerRef.Id, DotNetObjectReference.Create(this));
+                _pasteRef ??= DotNetObjectReference.Create(this);
+                await JSRuntime.InvokeVoidAsync("setupDropZone", ContainerRef.Id, _pasteRef);
+                await JSRuntime.InvokeVoidAsync("setupPasteHandler", ContainerRef.Id, _pasteRef);
                 await JSRuntime.InvokeVoidAsync("setupTextareaAutoResize", TextareaId);
                 
                 // 自动聚焦输入框

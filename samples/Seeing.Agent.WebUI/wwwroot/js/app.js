@@ -99,81 +99,139 @@ function triggerFileInputByRef(dotnetRef) {
     }
 }
 
-// 获取文件信息
-function getFileInfo(file) {
-    return {
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        lastModified: new Date(file.lastModified).toISOString()
+// 从剪贴板事件收集文件（含截图）
+function collectClipboardFiles(data) {
+    if (!data) return [];
+    if (data.files && data.files.length > 0)
+        return Array.from(data.files);
+
+    const files = [];
+    for (const item of data.items || []) {
+        if (item.kind === 'file') {
+            const file = item.getAsFile();
+            if (file) files.push(file);
+        }
+    }
+    return files;
+}
+
+// 粘贴/拖拽共用：上传文件并只把元数据回传 C#
+async function uploadFiles(files, sessionId, dotNetRef) {
+    if (!files || files.length === 0) return;
+
+    const fail = async (message) => {
+        try {
+            await dotNetRef.invokeMethodAsync('HandleUploadFailed', message);
+        } catch (err) {
+            console.error('HandleUploadFailed failed', err);
+        }
     };
-}
 
-// 将文件转换为 Base64
-async function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = (error) => reject(error);
-        reader.readAsDataURL(file);
-    });
-}
+    if (!sessionId) {
+        await fail('当前会话未就绪，无法上传附件');
+        return;
+    }
+    if (files.length > 10) {
+        await fail('单次最多上传 10 个文件');
+        return;
+    }
 
-// 处理拖放文件
-function setupDropZone(dropZoneId, onDropCallback) {
-    const dropZone = document.getElementById(dropZoneId);
-    if (!dropZone) return;
-    
-    dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropZone.classList.add('drag-over');
-    });
-    
-    dropZone.addEventListener('dragleave', () => {
-        dropZone.classList.remove('drag-over');
-    });
-    
-    dropZone.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('drag-over');
-        
-        const files = e.dataTransfer.files;
-        if (files.length > 0 && onDropCallback) {
-            const fileInfos = [];
-            for (const file of files) {
-                const base64 = await fileToBase64(file);
-                fileInfos.push({
-                    info: getFileInfo(file),
-                    base64: base64
-                });
-            }
-            onDropCallback.invokeMethodAsync('HandleFilesDrop', fileInfos);
+    const maxImage = 10 * 1024 * 1024;
+    const maxFile = 50 * 1024 * 1024;
+    for (const file of files) {
+        const limit = file.type && file.type.startsWith('image/') ? maxImage : maxFile;
+        if (file.size > limit) {
+            await fail(`文件超过大小限制：${file.name}`);
+            return;
         }
-    });
+    }
+
+    const form = new FormData();
+    for (const file of files)
+        form.append('files', file, file.name || 'pasted');
+
+    try {
+        const response = await fetch('/api/uploads?sessionId=' + encodeURIComponent(sessionId), {
+            method: 'POST',
+            body: form
+        });
+
+        if (!response.ok) {
+            let message = `上传失败（HTTP ${response.status}）`;
+            try {
+                const body = await response.json();
+                if (body && body.error) message = body.error;
+            } catch { /* 非 JSON 错误体 */ }
+            await fail(message);
+            return;
+        }
+
+        const result = await response.json();
+        await dotNetRef.invokeMethodAsync('HandleUploadedFiles', result.items || []);
+    } catch (err) {
+        await fail(`上传失败：${err}`);
+    }
 }
 
-// 处理粘贴图片
-function setupPasteHandler(targetId, onPasteCallback) {
-    const target = document.getElementById(targetId);
-    if (!target) return;
-    
-    document.addEventListener('paste', async (e) => {
-        const items = e.clipboardData.items;
-        for (const item of items) {
-            if (item.type.startsWith('image/')) {
-                const file = item.getAsFile();
-                if (file && onPasteCallback) {
-                    const base64 = await fileToBase64(file);
-                    const fileInfo = {
-                        info: getFileInfo(file),
-                        base64: base64
-                    };
-                    onPasteCallback.invokeMethodAsync('HandlePasteImage', fileInfo);
-                }
-            }
-        }
-    });
+// 处理粘贴文件/截图（绑定 prompt 容器，不绑 document）
+function setupPasteHandler(containerId, dotNetRef) {
+    const container = document.getElementById(containerId);
+    if (!container || container.__seeingPasteHandler) return;
+
+    const handler = async (e) => {
+        const files = collectClipboardFiles(e.clipboardData);
+        if (files.length === 0) return; // 保留普通文本粘贴
+
+        e.preventDefault();
+        await uploadFiles(files, container.dataset.sessionId, dotNetRef);
+    };
+
+    container.__seeingPasteHandler = handler;
+    container.addEventListener('paste', handler);
 }
+
+function disposePasteHandler(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container || !container.__seeingPasteHandler) return;
+    container.removeEventListener('paste', container.__seeingPasteHandler);
+    delete container.__seeingPasteHandler;
+}
+
+// 处理拖放文件（与粘贴共用上传）
+function setupDropZone(containerId, dotNetRef) {
+    const container = document.getElementById(containerId);
+    if (!container || container.__seeingDropHandlers) return;
+
+    const over = (e) => {
+        e.preventDefault();
+        container.classList.add('drag-over');
+    };
+    const leave = () => container.classList.remove('drag-over');
+    const drop = async (e) => {
+        e.preventDefault();
+        container.classList.remove('drag-over');
+        const files = e.dataTransfer && e.dataTransfer.files
+            ? Array.from(e.dataTransfer.files)
+            : [];
+        await uploadFiles(files, container.dataset.sessionId, dotNetRef);
+    };
+
+    container.__seeingDropHandlers = { over, leave, drop };
+    container.addEventListener('dragover', over);
+    container.addEventListener('dragleave', leave);
+    container.addEventListener('drop', drop);
+}
+
+function disposeDropZone(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container || !container.__seeingDropHandlers) return;
+    const handlers = container.__seeingDropHandlers;
+    container.removeEventListener('dragover', handlers.over);
+    container.removeEventListener('dragleave', handlers.leave);
+    container.removeEventListener('drop', handlers.drop);
+    delete container.__seeingDropHandlers;
+}
+
 
 // ========== Textarea 自动高度调整 ==========
 
