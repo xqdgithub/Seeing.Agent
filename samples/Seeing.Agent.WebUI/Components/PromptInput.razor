@@ -12,6 +12,7 @@
 @using System.Text
 @using Seeing.Agent.TokenBudget.Api.Responses
 @using Seeing.Session.Core
+@using Seeing.Agent.Tools.Support
 @implements IAsyncDisposable
 @inject IJSRuntime JSRuntime
 @inject AppState AppState
@@ -779,11 +780,35 @@
     /// <summary>
     /// 清空输入
     /// </summary>
-    private void OnClear()
+    private async Task OnClear()
     {
+        await DeletePathReferencesAsync();
         InputText = "";
         Attachments.Clear();
         StateHasChanged();
+    }
+
+    /// <summary>删除尚未发送的路径引用上传文件。</summary>
+    private async Task DeletePathReferencesAsync()
+    {
+        var sessionId = SessionState?.CurrentSession?.Id;
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return;
+
+        foreach (var attachment in Attachments.Where(a => a.IsPathReference).ToList())
+        {
+            if (string.IsNullOrWhiteSpace(attachment.SessionRelativePath))
+                continue;
+
+            try
+            {
+                await UploadedFileService.DeleteAsync(sessionId, attachment.SessionRelativePath!);
+            }
+            catch
+            {
+                // best-effort：删除失败不阻塞清空
+            }
+        }
     }
 
     /// <summary>
@@ -837,63 +862,88 @@
     private async Task OnInputFileChange(InputFileChangeEventArgs e)
     {
         var files = e.GetMultipleFiles(MaxAttachments);
-        
+        var sessionId = SessionState?.CurrentSession?.Id;
+
         foreach (var file in files)
         {
             if (Attachments.Count >= MaxAttachments)
                 break;
 
-            // 验证文件大小
-            if (file.Size > MaxFileSize)
+            var isImage = AttachmentClassifier.IsImage(file.ContentType, file.Name);
+            var limit = isImage ? MaxFileSize : PastedFileLayout.MaxFileBytes;
+
+            if (file.Size > limit)
             {
-                var failedAttachment = new AttachmentViewModel
+                Attachments.Add(new AttachmentViewModel
                 {
                     FileName = file.Name,
                     FileSize = file.Size,
                     FileType = file.ContentType,
                     Status = AttachmentUploadStatus.Failed,
-                    ErrorMessage = $"文件大小超过限制（最大 {MaxFileSize / (1024 * 1024)}MB）"
-                };
-                Attachments.Add(failedAttachment);
+                    ErrorMessage = $"文件大小超过限制（最大 {limit / (1024 * 1024)}MB）"
+                });
                 continue;
             }
 
             try
             {
-                // 读取文件内容为 Base64
-                using var stream = file.OpenReadStream(MaxFileSize);
-                using var ms = new System.IO.MemoryStream();
+                using var stream = file.OpenReadStream(limit);
+                using var ms = new MemoryStream();
                 await stream.CopyToAsync(ms);
-                var base64 = Convert.ToBase64String(ms.ToArray());
-                
-                // 根据文件类型添加前缀
-                var mimeType = file.ContentType;
-                var base64Content = !string.IsNullOrEmpty(mimeType) && mimeType.StartsWith("image/")
-                    ? $"data:{mimeType};base64,{base64}"
-                    : $"data:application/octet-stream;base64,{base64}";
 
-                var attachment = new AttachmentViewModel
+                if (isImage)
                 {
-                    FileName = file.Name,
-                    FileSize = file.Size,
-                    FileType = file.ContentType,
-                    Base64Content = base64Content,
-                    Status = AttachmentUploadStatus.Completed
-                };
+                    var mimeType = string.IsNullOrWhiteSpace(file.ContentType)
+                        ? FileContentSupport.GetMimeType(file.Name)
+                        : file.ContentType;
+                    Attachments.Add(new AttachmentViewModel
+                    {
+                        Kind = AttachmentDeliveryKind.BinaryAttachment,
+                        FileName = file.Name,
+                        FileSize = file.Size,
+                        FileType = mimeType,
+                        Base64Content = $"data:{mimeType};base64,{Convert.ToBase64String(ms.ToArray())}",
+                        Status = AttachmentUploadStatus.Completed
+                    });
+                    continue;
+                }
 
-                Attachments.Add(attachment);
+                if (string.IsNullOrWhiteSpace(sessionId))
+                {
+                    Attachments.Add(new AttachmentViewModel
+                    {
+                        FileName = file.Name,
+                        FileSize = file.Size,
+                        FileType = file.ContentType,
+                        Status = AttachmentUploadStatus.Failed,
+                        ErrorMessage = "当前会话未就绪，无法上传附件"
+                    });
+                    continue;
+                }
+
+                var stored = await UploadedFileService.StoreAsync(
+                    sessionId, file.Name, file.ContentType, ms.ToArray());
+                Attachments.Add(new AttachmentViewModel
+                {
+                    Kind = AttachmentDeliveryKind.PathReference,
+                    FileName = stored.FileName,
+                    FileSize = stored.Size,
+                    FileType = stored.MimeType,
+                    PromptPath = stored.PromptPath,
+                    SessionRelativePath = stored.SessionRelativePath,
+                    Status = AttachmentUploadStatus.Completed
+                });
             }
             catch (Exception ex)
             {
-                var failedAttachment = new AttachmentViewModel
+                Attachments.Add(new AttachmentViewModel
                 {
                     FileName = file.Name,
                     FileSize = file.Size,
                     FileType = file.ContentType,
                     Status = AttachmentUploadStatus.Failed,
                     ErrorMessage = $"读取文件失败: {ex.Message}"
-                };
-                Attachments.Add(failedAttachment);
+                });
             }
         }
 
@@ -920,6 +970,22 @@
     /// </summary>
     private async Task OnAttachmentRemoved(AttachmentViewModel attachment)
     {
+        if (attachment.IsPathReference
+            && !string.IsNullOrWhiteSpace(attachment.SessionRelativePath)
+            && !string.IsNullOrWhiteSpace(SessionState?.CurrentSession?.Id))
+        {
+            try
+            {
+                await UploadedFileService.DeleteAsync(
+                    SessionState!.CurrentSession!.Id,
+                    attachment.SessionRelativePath!);
+            }
+            catch
+            {
+                // best-effort：删除失败不阻塞移除
+            }
+        }
+
         Attachments.Remove(attachment);
         StateHasChanged();
     }

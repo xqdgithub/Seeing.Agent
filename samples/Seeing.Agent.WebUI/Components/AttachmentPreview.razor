@@ -7,7 +7,7 @@
     {
         var currentAttachment = attachment; // 捕获 foreach 变量
         <div Class="@GetAttachmentClass(currentAttachment)"
-             Title="@currentAttachment.FileName">
+             Title="@(currentAttachment.PromptPath ?? currentAttachment.FileName)">
             <!-- 图片预览 -->
             @if (currentAttachment.IsImage && !string.IsNullOrEmpty(currentAttachment.Base64Content))
             {
@@ -30,6 +30,10 @@
             <div Class="attachment-info">
                 <div Class="attachment-name">@currentAttachment.FileName</div>
                 <div Class="attachment-size">@currentAttachment.GetFormattedSize()</div>
+                @if (currentAttachment.IsPathReference)
+                {
+                    <div Class="attachment-path-badge">路径</div>
+                }
             </div>
 
             <!-- 状态指示 -->
@@ -96,6 +100,8 @@
         var baseClass = "attachment-item";
         if (attachment.IsImage)
             baseClass += " attachment-item-image";
+        if (attachment.IsPathReference)
+            baseClass += " attachment-item-path";
         if (attachment.Status == AttachmentUploadStatus.Failed)
             baseClass += " attachment-item-error";
         return baseClass;
@@ -144,7 +150,7 @@
         if (Attachments.Count >= MaxAttachments)
             return false;
 
-        if (attachment.FileSize > MaxFileSize)
+        if (!attachment.IsPathReference && attachment.FileSize > MaxFileSize)
         {
             attachment.Status = AttachmentUploadStatus.Failed;
             attachment.ErrorMessage = $"文件大小超过限制（最大 {MaxFileSize / (1024 * 1024)}MB）";

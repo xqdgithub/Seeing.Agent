@@ -224,3 +224,23 @@
         max-width: 100px;
     }
 }
+
+/* 路径引用附件 */
+.attachment-item-path {
+    border-style: dashed;
+}
+
+.attachment-path-badge {
+    align-self: flex-start;
+    padding: 0 4px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    color: var(--color-text-tertiary);
+    font-size: 10px;
+}
+
+.prompt-upload-error {
+    padding: 4px 8px;
+    color: var(--color-error);
+    font-size: 12px;
+}
