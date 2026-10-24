@@ -1,6 +1,7 @@
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Skills;
+using Seeing.Agent.Skills.Catalog;
 using Seeing.Session.Core;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -12,12 +13,12 @@ namespace Seeing.Agent.Skills.Commands;
 /// </summary>
 public sealed class SkillLoadCommand : ICommand
 {
-    private readonly ISkillManager _skillManager;
+    private readonly ISkillCatalog _catalog;
     private readonly ISessionManager _sessionManager;
 
-    public SkillLoadCommand(ISkillManager skillManager, ISessionManager sessionManager)
+    public SkillLoadCommand(ISkillCatalog catalog, ISessionManager sessionManager)
     {
-        _skillManager = skillManager;
+        _catalog = catalog;
         _sessionManager = sessionManager;
     }
 
@@ -35,33 +36,27 @@ public sealed class SkillLoadCommand : ICommand
     {
         if (string.IsNullOrWhiteSpace(context.Arguments))
         {
-            var skills = _skillManager.GetAllSkillInfos().Values.ToList();
-            if (skills.Count == 0)
-            {
-                return CommandResult.Ok("No skills available. Add skills to .agents/skills/ or ~/.agents/skills/");
-            }
-
-            var list = "**Available Skills**\n\n";
-            foreach (var skill in skills.OrderBy(s => s.Name))
-            {
-                list += $"- **{skill.Name}**: {skill.Description}\n";
-            }
-            list += "\nUse `/skill <name>` to load a skill.";
-
-            return CommandResult.Ok(list);
+            // 清单文本只有 SkillCatalogFormatter 一个出口（与基线 / 工具提示共用）
+            return CommandResult.Ok(SkillCatalogFormatter.RenderList(SkillCommandCatalogView.EnabledEntries(_catalog)));
         }
 
         var parts = context.Arguments.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         var skillName = parts[0];
         var skillArgs = parts.Length > 1 ? parts[1] : "";
 
-        var skillInfo = _skillManager.GetSkillInfo(skillName);
-        if (skillInfo == null)
+        var entry = _catalog.Find(skillName);
+        if (entry is null)
         {
-            return CommandResult.Fail($"Skill not found: {skillName}");
+            return CommandResult.Fail(
+                $"Skill not found: {skillName}\n\n{SkillCatalogFormatter.RenderList(SkillCommandCatalogView.EnabledEntries(_catalog))}");
         }
 
-        var content = skillInfo.Content;
+        if (!_catalog.IsEnabled(entry.Info.Name))
+        {
+            return CommandResult.Fail($"Skill '{entry.Info.Name}' is disabled. Enable it in the Skills settings.");
+        }
+
+        var content = entry.Info.Content;
         if (string.IsNullOrEmpty(content))
         {
             return CommandResult.Fail($"Skill content is empty: {skillName}");
@@ -101,11 +96,11 @@ public sealed class SkillLoadCommand : ICommand
 /// </summary>
 public sealed class SkillsListCommand : ICommand
 {
-    private readonly ISkillManager _skillManager;
+    private readonly ISkillCatalog _catalog;
 
-    public SkillsListCommand(ISkillManager skillManager)
+    public SkillsListCommand(ISkillCatalog catalog)
     {
-        _skillManager = skillManager;
+        _catalog = catalog;
     }
 
     public CommandMetadata Metadata { get; } = new()
@@ -120,20 +115,19 @@ public sealed class SkillsListCommand : ICommand
     };
 
     public Task<CommandResult> ExecuteAsync(CommandContext context, CancellationToken cancellationToken = default)
+        => Task.FromResult(CommandResult.Ok(SkillCatalogFormatter.RenderList(SkillCommandCatalogView.EnabledEntries(_catalog))));
+}
+
+/// <summary>命令侧读取「当前可调用技能」的唯一方式（禁用项不进入清单）。</summary>
+internal static class SkillCommandCatalogView
+{
+    /// <summary>启用中的技能条目（按名 ordinal 排序由格式化器保证）。</summary>
+    public static IReadOnlyList<SkillCatalogEntry> EnabledEntries(ISkillCatalog catalog)
     {
-        var skills = _skillManager.GetAllSkillInfos().Values.ToList();
-        if (skills.Count == 0)
-        {
-            return Task.FromResult(CommandResult.Ok("No skills available."));
-        }
-
-        var list = "**Available Skills**\n\n";
-        foreach (var skill in skills.OrderBy(s => s.Name))
-        {
-            list += $"- **{skill.Name}**: {skill.Description}\n";
-        }
-
-        return Task.FromResult(CommandResult.Ok(list));
+        var snapshot = catalog.Current;
+        return snapshot.Entries
+            .Where(entry => !snapshot.DisabledNames.Contains(entry.Info.Name))
+            .ToList();
     }
 }
 

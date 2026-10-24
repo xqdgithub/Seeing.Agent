@@ -16,13 +16,11 @@ namespace Seeing.Agent.Tests.Commands;
 /// </summary>
 public class SkillCommandsTests
 {
-    private static SkillManager CreateSkillManager(SkillInfo skill)
+    private static SkillCatalogCore CreateCatalog(SkillInfo skill)
     {
-        var manager = new SkillManager(
-            NullLogger<SkillManager>.Instance,
-            new SkillCatalogCore(NullLogger<SkillCatalogCore>.Instance));
-        manager.RegisterSkill(skill);
-        return manager;
+        var catalog = new SkillCatalogCore(NullLogger<SkillCatalogCore>.Instance);
+        catalog.RegisterAsync(skill, "test").GetAwaiter().GetResult().Should().BeTrue();
+        return catalog;
     }
 
     private static Mock<ISessionManager> CreateSessionManager(SessionData session)
@@ -52,9 +50,9 @@ public class SkillCommandsTests
             Description = "d",
             Content = "skill $1 content"
         };
-        var skillManager = CreateSkillManager(skill);
+        var catalog = CreateCatalog(skill);
         var sessionManager = CreateSessionManager(session);
-        var command = new SkillLoadCommand(skillManager, sessionManager.Object);
+        var command = new SkillLoadCommand(catalog, sessionManager.Object);
 
         // Act
         var result = await command.ExecuteAsync(
@@ -78,9 +76,9 @@ public class SkillCommandsTests
         session.AddMessage(SessionMessage.UserMessage("<project-instructions>...</project-instructions>"));
 
         var skill = new SkillInfo { Name = "demo", Description = "d", Content = "skill $1 content" };
-        var skillManager = CreateSkillManager(skill);
+        var catalog = CreateCatalog(skill);
         var sessionManager = CreateSessionManager(session);
-        var command = new SkillLoadCommand(skillManager, sessionManager.Object);
+        var command = new SkillLoadCommand(catalog, sessionManager.Object);
 
         // Act
         var result = await command.ExecuteAsync(
@@ -104,9 +102,9 @@ public class SkillCommandsTests
         var session = new SessionData { Id = "s1" };
         session.AddMessage(SessionMessage.AssistantMessage("old"));
         var skill = new SkillInfo { Name = "demo", Description = "d", Content = "content" };
-        var skillManager = CreateSkillManager(skill);
+        var catalog = CreateCatalog(skill);
         var sessionManager = CreateSessionManager(session);
-        var command = new SkillLoadCommand(skillManager, sessionManager.Object);
+        var command = new SkillLoadCommand(catalog, sessionManager.Object);
 
         // Act
         var result = await command.ExecuteAsync(
@@ -167,9 +165,9 @@ public class SkillCommandsTests
         // Arrange
         var session = new SessionData { Id = "s1" };
         var skill = new SkillInfo { Name = "demo", Description = "d", Content = "content" };
-        var skillManager = CreateSkillManager(skill);
+        var catalog = CreateCatalog(skill);
         var sessionManager = CreateSessionManager(session);
-        var command = new SkillLoadCommand(skillManager, sessionManager.Object);
+        var command = new SkillLoadCommand(catalog, sessionManager.Object);
 
         // Act
         var result = await command.ExecuteAsync(

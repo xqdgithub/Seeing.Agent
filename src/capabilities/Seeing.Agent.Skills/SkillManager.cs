@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Skills.Catalog;
 using System.Text;
@@ -15,13 +14,11 @@ namespace Seeing.Agent.Skills
     /// 技能是上下文提供者，不是可执行单元。技能内容通过 SkillTool 注入到 LLM 上下文中。
     /// </para>
     /// <para>
-    /// 写面成员（<see cref="AddSearchDirectory"/> / <see cref="DiscoverSkillsAsync"/> /
-    /// <see cref="RegisterEmbeddedSkill"/> / <see cref="Unregister"/>）本期保留签名以不打断现有消费者：
-    /// 能安全转发到目录的一律转发，无法安全转发的明确抛 <see cref="NotSupportedException"/>。
-    /// 移除 / 标注 <c>[Obsolete]</c> 与内嵌技能的异步迁移留给 Task 10（见计划）。
+    /// 本类**不再**实现 <c>IPromptSectionContributor</c>：<c>## Skills</c> 区块由上下文源
+    /// <c>SkillsContextSource</c> 的基线整体拥有，避免同名标题出现两次。
     /// </para>
     /// </summary>
-    public class SkillManager : ISkillManager, IPromptSectionContributor
+    public class SkillManager : ISkillManager
     {
         /// <summary>技能禁用状态文件名（沿用既有落盘格式）。</summary>
         private const string SkillStateFileName = "skill-state.json";
@@ -32,18 +29,6 @@ namespace Seeing.Agent.Skills
 
         /// <summary>禁用状态落盘闸：同一时刻只允许一次读-改-写（避免并发写互相覆盖）。</summary>
         private readonly SemaphoreSlim _stateWriteGate = new(1, 1);
-
-        /// <inheritdoc />
-        public string SectionName => PromptSectionNames.Skills;
-
-        /// <inheritdoc />
-        public string Heading => "## Skills";
-
-        /// <inheritdoc />
-        public PromptSectionPlacement Placement => PromptSectionPlacement.AtEnd;
-
-        /// <inheritdoc />
-        public int Order => 200;
 
         /// <summary>
         /// 创建门面。
@@ -59,33 +44,6 @@ namespace Seeing.Agent.Skills
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
             _directories = directories;
-        }
-
-        // ===== 提示词分节（Task 9 起由技能上下文源接管整块） =====
-
-        /// <inheritdoc />
-        public Task<string?> BuildAsync(PromptContext context, CancellationToken cancellationToken = default)
-        {
-            var skills = GetAllSkillInfos().Values.ToList();
-            if (skills.Count == 0)
-                return Task.FromResult<string?>("暂无可用技能。");
-
-            var sb = new StringBuilder();
-            sb.AppendLine("以下技能可供使用：");
-            sb.AppendLine();
-
-            foreach (var skill in skills)
-            {
-                sb.AppendLine($"### {skill.Name}");
-                sb.AppendLine(skill.Description);
-
-                if (skill.Tags.Count > 0)
-                    sb.AppendLine($"**标签**: {string.Join(", ", skill.Tags)}");
-
-                sb.AppendLine();
-            }
-
-            return Task.FromResult<string?>(sb.ToString().TrimEnd());
         }
 
         // ===== 只读投影 =====
@@ -132,8 +90,19 @@ namespace Seeing.Agent.Skills
         public List<string> GetSkillFiles(string skillName, int limit = 10)
         {
             var entry = _catalog.Find(skillName);
-            if (entry is null
-                || entry.Source == SkillSource.Registered
+            return entry is null ? [] : GetSkillFiles(entry, limit);
+        }
+
+        /// <summary>
+        /// 按目录条目取技能目录下的相关文件（排除 SKILL.md）。
+        /// <para>目录来自 <see cref="SkillCatalogEntry.DirectoryPath"/>（构建快照时写入的数据字段），
+        /// 因此执行级钉住的旧条目同样可用，不依赖 <see cref="SkillInfo.Location"/>。</para>
+        /// </summary>
+        public List<string> GetSkillFiles(SkillCatalogEntry entry, int limit = 10)
+        {
+            ArgumentNullException.ThrowIfNull(entry);
+
+            if (entry.Source == SkillSource.Registered
                 || string.IsNullOrWhiteSpace(entry.DirectoryPath)
                 || !Directory.Exists(entry.DirectoryPath))
             {
@@ -149,7 +118,7 @@ namespace Seeing.Agent.Skills
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                _logger.LogWarning(ex, "获取技能文件列表失败：{Skill} 目录={Directory}", skillName, entry.DirectoryPath);
+                _logger.LogWarning(ex, "获取技能文件列表失败：{Skill} 目录={Directory}", entry.Info.Name, entry.DirectoryPath);
                 return [];
             }
         }

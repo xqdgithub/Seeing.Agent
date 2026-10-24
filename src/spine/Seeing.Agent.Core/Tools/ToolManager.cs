@@ -607,6 +607,7 @@ namespace Seeing.Agent.Core.Tools
         /// <paramref name="agent"/> 为当前执行所属 Agent，用于资源门 Agent 规则（spec §5.1 步骤 3）
         /// 及 <see cref="ToolContext.Agent"/> 透传。
         /// <paramref name="toolScope"/> 为执行级可见性作用域（可空）；缺失时工具拿不到“同执行放行”能力。
+        /// <paramref name="skillSnapshot"/> 为本轮执行钉住的技能快照（可空），透传到 <see cref="ToolContext.SkillSnapshot"/>。
         /// </summary>
         public async Task<ToolResult> ExecuteAsync(
             ToolCall toolCall,
@@ -615,7 +616,8 @@ namespace Seeing.Agent.Core.Tools
             Func<Seeing.Agent.Abstractions.Events.IMessageEvent, ValueTask>? emitAsync = null,
             IPermissionAuthorizer? permissionAuthorizer = null,
             AgentDefinition? agent = null,
-            IExecutionToolScope? toolScope = null)
+            IExecutionToolScope? toolScope = null,
+            Seeing.Agent.Abstractions.Skills.SkillCatalogSnapshot? skillSnapshot = null)
         {
             var toolId = toolCall.Name;
             var agentName = agent?.Name;
@@ -726,7 +728,8 @@ namespace Seeing.Agent.Core.Tools
                     MetadataSink = sink,
                     Services = _serviceProvider,
                     PermissionAuthorizer = permissionAuthorizer,
-                    ToolScope = toolScope
+                    ToolScope = toolScope,
+                    SkillSnapshot = skillSnapshot
                 };
 
                 var toolResult = await tool.ExecuteAsync(resolvedArgs, context).ConfigureAwait(false);

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Abstractions.Skills;
@@ -15,6 +16,7 @@ using Seeing.Agent.Skills.Catalog;
 using Seeing.Agent.Skills.Commands;
 using Seeing.Agent.Skills.Configuration;
 using Seeing.Agent.Skills.OnlineParsers;
+using Seeing.Agent.Skills.Sources;
 using Seeing.Agent.Skills.Watching;
 
 namespace Seeing.Agent.Skills;
@@ -89,9 +91,14 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
             sp.GetRequiredService<SkillCatalogCore>(),
             sp.GetService<ISeeingDirectories>()));
         services.TryAddSingleton<ISkillManager>(sp => sp.GetRequiredService<SkillManager>());
-        services.AddSingleton<IPromptSectionContributor>(sp => sp.GetRequiredService<SkillManager>());
         services.AddSingleton<SkillTool>();
         services.AddSingleton<IComponentLoader, SkillLoader>();
+
+        // 技能上下文源：读执行级钉住快照（Source 只依赖 ISkillCatalogPin，绝不读目录当前态）。
+        // 兜底钉住实现保证宿主尚未接线执行级作用域时源仍可解析；执行级实现由宿主覆盖。
+        services.TryAddSingleton<ISkillCatalogPin>(sp =>
+            new CatalogSnapshotPin(sp.GetRequiredService<ISkillCatalog>()));
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IContextSource, SkillsContextSource>());
 
         // 静态斜杠命令（W1-4 InitializeCommands 扫描 GetServices<ICommand>）
         services.AddSingleton<ICommand, SkillLoadCommand>();
