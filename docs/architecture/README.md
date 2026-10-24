@@ -2,7 +2,7 @@
 
 > **权威规格：** [模块化架构设计](../superpowers/specs/2026-09-08-modular-architecture-design.md)  
 > **本文档集：** 日常开发落地规范；与规格冲突时以规格为准，并应提 PR 同步两边。  
-> **更新日期：** 2026-10-17（Gateway 请求/应答实时订阅与会话 schema 解析端口，见 18）  
+> **更新日期：** 2026-10-24（上下文源管道 + 技能单一真相源，见 21）  
 > **深化说明：** [architecture-docs-deepen-design](../superpowers/specs/2026-09-08-architecture-docs-deepen-design.md)
 
 ## 新人 5 分钟
@@ -36,6 +36,8 @@
 | [17 通联子系统 Release Notes](17-channel-comms-release-notes.md) | 渠道目录与出站投递、协议 v2、`ChannelRoute`、调度只出站、破坏性变更 |
 | [18 Gateway 实时订阅与 schema 解析端口 Release Notes](18-gateway-live-subscription-and-schema-resolver-release-notes.md) | 请求/应答实时订阅三件套、Collector 轮次门控、`ISessionToolSchemaResolver` 共享结算出口、已知边界 |
 | [19 工具上下文预算与分层暴露 Release Notes](19-tool-context-budgeting-release-notes.md) | MCP id 零兼容、默认 auto 分层、检索命中同一执行内可调/下一次请求内联、默认钉选核心工具、token 归属单源、`Tools.Exposure`、破坏性清单与回退 |
+| [20 tool_search 真实 Provider 联调清单](20-tool-search-provider-smoke-checklist.md) | 检索命中后同一执行内可调的真实 Provider 冒烟步骤与判据 |
+| [21 上下文源管道 Release Notes](21-context-source-pipeline-release-notes.md) | 基线 + 增量 + epoch、两个内置源（项目指令 / 技能清单）、运行时矩阵、技能单一真相源、行为变更、删除清单与已知边界 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 

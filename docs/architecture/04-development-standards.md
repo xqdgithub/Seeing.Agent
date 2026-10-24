@@ -105,6 +105,9 @@ Core 程序集内命名空间须为 `Seeing.Agent.Core.*`（契约仍可在 Abst
 | 把 exposure/deferred（分层暴露、目录）当权限门 | exposure 只控制本轮 `tools[]`/目录可见性；调用许可恒走 `IPermissionAuthorizer` 决策链；目录正文不得含允许/拒绝裁决 |
 | 为新增 prompt 分节改 `PromptBuilder` 硬编码锚点 | 贡献者自述 `Heading`+`Placement`；builder 不认识具体分节名 |
 | 执行期用 `ISessionManager.LoadAsync` 读取当前会话 | 用 `Get`（内存活实例）或 `TryGetOrLoadAsync`/`GetOrLoadAsync`（内存优先）；裸 `LoadAsync` 会覆盖缓存 |
+| 在多个位置各自渲染同一上下文清单（提示词基线、`/skill` 列表、工具错误提示各拼一份） | 只走源的 `RenderInitial`/`Render` 与 `SkillCatalogFormatter` 等**唯一格式化入口**；同一值重复渲染必须逐字节相等（前缀缓存前提） |
+| 用路径前缀 / 字符串嗅探判定来源（如 `embedded://`、`StartsWith("skills")`） | 用强类型事实：`SkillCatalogEntry.Source` / `ProviderId`、`ContextSourceKey`；嗅探会在路径布局变化时静默错判 |
+| 绕过 `ISkillCatalog` 直接修改技能状态（写 `skill-state.json`、自己维护字典/列表缓存、`Directory.CreateDirectory` 建技能目录） | 写走 `ISkillWriter`（唯一写入口，写完 `RefreshAsync`），读走 `ISkillCatalog.Current`/`Subscribe`；`ISkillManager` 写面为 `[Obsolete(error: true)]`，类型系统必须拦住第二条写路径 |
 
 ### 5.0 Code Mode（未来项）前置约束
 
