@@ -24,6 +24,7 @@ using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Tests.Context;
 using Seeing.Agent.Tests.Scenarios;
 using Seeing.Session.Core;
 using System.Collections.Concurrent;
@@ -446,6 +447,8 @@ public class SchemaScenarioTests
             services.AddSingleton(lifecycle);
 
         services.AddSingleton<ISessionToolExposureWriter>(new SessionToolExposureWriter(sessionManager.Object));
+        // 执行级上下文装配（scoped 装配器 + 执行作用域）：与生产接线同形
+        services.AddStubContextPipeline();
         var provider = services.BuildServiceProvider();
 
         var configStore = new Mock<IConfigSectionStore>();

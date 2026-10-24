@@ -3,6 +3,7 @@ using System.Text;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Context;
+using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Core.Context.Sources;
 using Seeing.Agent.Core.Instructions;
 using Xunit;
@@ -227,7 +228,7 @@ public sealed class ProjectInstructionsContextSourceTests
 
             var source = new ProjectInstructionsContextSource(
                 CreateReader(userProfile),
-                new FakeRootsProvider(new InstructionRoots(root, root)),
+                new FakeExecutionScope(root, root),
                 NullLogger<ProjectInstructionsContextSource>.Instance);
 
             var previous = await source.ReadAsync(TestContext.Current.CancellationToken);
@@ -316,7 +317,7 @@ public sealed class ProjectInstructionsContextSourceTests
 
     private static ProjectInstructionsContextSource CreateSource(IInstructionFileReader reader) =>
         new(reader,
-            new FakeRootsProvider(new InstructionRoots(Cwd, WorkspaceRoot)),
+            new FakeExecutionScope(Cwd, WorkspaceRoot),
             NullLogger<ProjectInstructionsContextSource>.Instance);
 
     private static string NormalizeNewlines(string text) => text.Replace("\r\n", "\n");
@@ -343,17 +344,15 @@ public sealed class ProjectInstructionsContextSourceTests
             CancellationToken ct = default) => Task.FromResult(Results);
     }
 
-    private sealed class FakeRootsProvider(InstructionRoots roots) : IInstructionRootsProvider
+    /// <summary>测试用执行作用域：扫描根即构造时给定的事实。</summary>
+    private sealed class FakeExecutionScope(string cwd, string workspaceRoot) : IContextExecutionScope
     {
-        public InstructionRoots GetRoots() => roots;
+        public string SessionId { get; set; } = string.Empty;
 
-        public IDisposable Push(InstructionRoots pushed) => new NoopScope();
+        public string Cwd { get; set; } = cwd;
 
-        private sealed class NoopScope : IDisposable
-        {
-            public void Dispose()
-            {
-            }
-        }
+        public string WorkspaceRoot { get; set; } = workspaceRoot;
+
+        public SkillCatalogSnapshot? SkillSnapshot { get; set; }
     }
 }

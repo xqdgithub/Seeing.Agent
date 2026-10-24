@@ -37,6 +37,7 @@
     <ProjectReference Include="..\..\..\src\hosting\Seeing.Agent.Hosting\Seeing.Agent.Hosting.csproj" />
     <ProjectReference Include="..\..\..\src\gateway\Seeing.Agent.Gateway\Seeing.Agent.Gateway.csproj" />
     <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.TokenBudget\Seeing.Agent.TokenBudget.csproj" />
+    <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Scheduler\Seeing.Agent.Scheduler.csproj" />
     <ProjectReference Include="..\..\..\src\capabilities\Seeing.IO.Local\Seeing.IO.Local.csproj" />
     <ProjectReference Include="..\..\..\src\primitives\Seeing.Session\Seeing.Session.csproj" />
   </ItemGroup>

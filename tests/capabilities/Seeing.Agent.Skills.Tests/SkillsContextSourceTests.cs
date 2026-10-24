@@ -247,7 +247,7 @@ public sealed class SkillsContextSourceTests : IDisposable
             []);
 
     private static SkillsContextSource CreateSource(params SkillCatalogEntry[] entries) =>
-        new(new FakePin(Snapshot(entries)));
+        new(new FakeExecutionScope(Snapshot(entries)));
 
     private static async Task<ContextSourceValue> ReadAsync(params SkillCatalogEntry[] entries)
     {
@@ -258,10 +258,16 @@ public sealed class SkillsContextSourceTests : IDisposable
     private static JsonElement Arguments(string name) =>
         JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["name"] = name });
 
-    /// <summary>测试用钉住端口：快照即构造时给定的事实。</summary>
-    private sealed class FakePin(SkillCatalogSnapshot snapshot) : ISkillCatalogPin
+    /// <summary>测试用执行作用域：钉住快照即构造时给定的事实。</summary>
+    private sealed class FakeExecutionScope(SkillCatalogSnapshot snapshot) : IContextExecutionScope
     {
-        public SkillCatalogSnapshot Snapshot { get; } = snapshot;
+        public string SessionId { get; set; } = string.Empty;
+
+        public string Cwd { get; set; } = string.Empty;
+
+        public string WorkspaceRoot { get; set; } = string.Empty;
+
+        public SkillCatalogSnapshot? SkillSnapshot { get; set; } = snapshot;
     }
 
 }

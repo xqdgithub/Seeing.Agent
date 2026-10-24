@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Context;
@@ -179,26 +180,28 @@ public sealed class InstructionManagerTests : IDisposable
         SessionData session,
         IInstructionFileReader reader)
     {
-        // 同一提供者实例：管理器压入根，源读取根（生产 DI 中同样是单例）
-        var rootsProvider = new InstructionRootsProvider();
-        var source = new ProjectInstructionsContextSource(
-            reader,
-            rootsProvider,
-            NullLogger<ProjectInstructionsContextSource>.Instance);
-
         var sessionManager = new Mock<ISessionManager>();
         sessionManager
             .Setup(manager => manager.GetOrLoadAsync(session.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(session);
 
-        var assembler = new ContextAssembler(
-            [source],
-            sessionManager.Object,
-            NullLogger<ContextAssembler>.Instance);
+        // scoped 管道：InstructionManager 每次调用创建短生命周期作用域（单例不得捕获 scoped 装配器）
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<ISessionManager>(sessionManager.Object);
+        services.AddScoped<ContextExecutionScope>();
+        services.AddScoped<IContextExecutionScope>(sp => sp.GetRequiredService<ContextExecutionScope>());
+        services.AddSingleton(reader);
+        services.AddScoped<IContextSource, ProjectInstructionsContextSource>();
+        services.AddScoped<IContextAssembler>(sp => new ContextAssembler(
+            sp.GetServices<IContextSource>(),
+            sp.GetRequiredService<ISessionManager>(),
+            NullLogger<ContextAssembler>.Instance));
+
+        var provider = services.BuildServiceProvider();
 
         return new InstructionManager(
-            assembler,
-            rootsProvider,
+            provider.GetRequiredService<IServiceScopeFactory>(),
             NullLogger<InstructionManager>.Instance);
     }
 
