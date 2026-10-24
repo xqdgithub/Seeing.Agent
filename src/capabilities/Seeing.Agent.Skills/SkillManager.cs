@@ -50,14 +50,11 @@ namespace Seeing.Agent.Skills
 
         /// <summary>获取所有技能信息（只返回启用的技能）。</summary>
         public IReadOnlyDictionary<string, SkillInfo> GetAllSkillInfos() =>
-            Project(snapshot => snapshot.Entries.Where(entry => !snapshot.DisabledNames.Contains(entry.Info.Name)));
+            Project(_catalog.EnabledEntries);
 
         /// <summary>获取所有技能信息（包括禁用的，供 UI 使用）。</summary>
         public IReadOnlyDictionary<string, SkillInfo> GetAllSkillInfosIncludingDisabled() =>
-            Project(snapshot => snapshot.Entries);
-
-        /// <summary>合并后的禁用技能集合（用户级 ∪ 项目级），直接读目录快照。</summary>
-        public IReadOnlySet<string> DisabledSkills => _catalog.Current.DisabledNames;
+            Project(_catalog.Current.Entries);
 
         /// <summary>检查技能是否启用（未登记的技能按「未禁用」处理，保持既有语义）。</summary>
         public bool IsSkillEnabled(string skillName)
@@ -144,13 +141,11 @@ namespace Seeing.Agent.Skills
 
         // ===== 内部 =====
 
-        /// <summary>把当前快照投影成名称 → 技能信息字典。</summary>
-        private IReadOnlyDictionary<string, SkillInfo> Project(
-            Func<SkillCatalogSnapshot, IEnumerable<SkillCatalogEntry>> selector)
+        /// <summary>把给定条目集合投影成名称 → 技能信息字典。</summary>
+        private static IReadOnlyDictionary<string, SkillInfo> Project(IEnumerable<SkillCatalogEntry> entries)
         {
-            var snapshot = _catalog.Current;
             var result = new Dictionary<string, SkillInfo>(StringComparer.OrdinalIgnoreCase);
-            foreach (var entry in selector(snapshot))
+            foreach (var entry in entries)
                 result[entry.Info.Name] = entry.Info;
 
             return result;

@@ -266,6 +266,12 @@ public class AcpModuleLifecycleTests
             new(0, [], new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 new Dictionary<string, ConfigLevel>(StringComparer.OrdinalIgnoreCase), [], []);
 
+        public IReadOnlyList<string> Roots => [];
+
+        public IReadOnlyList<SkillCatalogEntry> EnabledEntries => Current.Entries;
+
+        public IReadOnlyList<SkillCatalogEntry> GetEnabledEntries(SkillCatalogSnapshot snapshot) => snapshot.Entries;
+
         public IDisposable Subscribe(Action<SkillCatalogSnapshot> onChanged)
         {
             lock (_handlers)

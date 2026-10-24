@@ -65,9 +65,8 @@ public sealed class SkillsContextSource : IContextSource
         }
 
         // 禁用技能不进入清单：禁用即「不可再调用」，走 Removed/移除叙述
-        var entries = snapshot.Entries
-            .Where(entry => !snapshot.DisabledNames.Contains(entry.Info.Name))
-            .ToList();
+        // 可用条目投影只有 SkillCatalogProjection 一份实现（漏一次禁用判断就是一次可见性回归）
+        var entries = SkillCatalogProjection.EnabledEntries(snapshot);
 
         if (entries.Count == 0)
             return Task.FromResult(new ContextSourceValue(ContextValueState.Removed, null, null));

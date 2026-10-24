@@ -364,40 +364,111 @@ public sealed class SkillWriterTests : IDisposable
     }
 
     [Fact]
-    public async Task RefreshWhileWriteGateHeld_ShouldNotDeadlock()
+    public async Task NestedAcquire_ShouldWaitInsteadOfBypassingGate()
     {
-        // N1：写入方持写闸时，另一条独立流程的目录刷新不得「持目录闸等写闸」——
-        // 旧实现（写闸内调目录刷新 + 读侧闸内取写闸）在此必然互等。
-        var (catalog, _, gate) = CreateWriterWithSharedGate();
+        // P5：闸不重入。旧实现用 AsyncLocal 静默放行嵌套取闸——它会流入闸内启动的子任务，
+        // 让子任务继承「已持闸」并绕过信号量，在临界区内并发改状态文件。
+        // 现在的契约是：嵌套取闸必须等外层释放（宁可等待，也不静默放行）。
+        var (_, _, gate) = CreateWriterWithSharedGate();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var ct = cts.Token;
 
-        WriteSkillFile(ProjectSkillsRoot, "alpha", "锁序");
-        await catalog.RefreshAsync(ct);
+        var innerEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task? inner = null;
 
-        var holding = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        // 写入方：持写闸期间刷新目录（旧实现即在此处取目录闸）
-        var writerFlow = Task.Run(async () => await gate.RunAsync(async token =>
+        var outer = await gate.RunAsync(async token =>
         {
-            holding.SetResult();
-            await release.Task.WaitAsync(token);
-            await catalog.RefreshAsync(token);
+            // 闸内启动一条独立流程再次取闸：必须被挡在外面
+            inner = Task.Run(
+                () => gate.RunAsync(_ =>
+                {
+                    innerEntered.SetResult();
+                    return Task.FromResult(true);
+                }, token),
+                token);
+
+            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+            innerEntered.Task.IsCompleted.Should().BeFalse("闸不得重入（嵌套取闸必须等外层释放）");
             return true;
-        }, ct), ct);
+        }, ct);
 
-        await holding.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        outer.Should().BeTrue();
 
-        // 另一条独立流程（watcher / 执行链路）：同时刷新目录
-        var refreshFlow = Task.Run(async () => await catalog.RefreshAsync(ct), ct);
+        // 外层释放后，嵌套取闸才得以进入
+        await innerEntered.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+        await inner!.WaitAsync(TimeSpan.FromSeconds(10), ct);
+    }
 
-        // 给刷新流程足够时间进入「等写闸」的旧状态，再让写入方继续
-        await Task.Delay(TimeSpan.FromMilliseconds(300), ct);
-        release.SetResult();
+    // ===== 根（唯一来源：目录） =====
 
-        (await writerFlow.WaitAsync(TimeSpan.FromSeconds(10))).Should().BeTrue();
-        await refreshFlow.WaitAsync(TimeSpan.FromSeconds(10));
+    [Fact]
+    public async Task Create_WithNonDefaultProjectRoot_ShouldWriteIntoRegisteredRoot()
+    {
+        // B2：可写根由目录的根列表决定。旧实现永远写 <seeing>/skills，
+        // 当目录只登记 .agents/skills 时，写出去的技能根本不被目录看到。
+        var agentRoot = Path.Combine(_workspace, ".agents", "skills");
+        var (catalog, writer) = CreateWriterWithRoots(agentRoot, UserSkillsRoot);
+        var ct = TestContext.Current.CancellationToken;
+
+        var result = await writer.CreateAsync(
+            new SkillDraft("agent-skill", "非默认根", "正文"),
+            ConfigLevel.Project,
+            overwrite: false,
+            ct);
+
+        result.Success.Should().BeTrue(result.Error ?? "写入应成功");
+        File.Exists(Path.Combine(agentRoot, "agent-skill", "SKILL.md"))
+            .Should().BeTrue("写必须落在目录已登记的可写根");
+        Directory.Exists(Path.Combine(ProjectSkillsRoot, "agent-skill"))
+            .Should().BeFalse("不得自造未登记的第二份写根");
+        catalog.Find("agent-skill").Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Delete_UnderNonDefaultRoot_ShouldSucceed()
+    {
+        // B2：删除的「根内」判定必须用目录的根列表。旧实现只认 .seeing/skills，
+        // 于是 .agents/skills 下的技能能列出、能编辑，却删不掉。
+        var agentRoot = Path.Combine(_workspace, ".agents", "skills");
+        var (catalog, writer) = CreateWriterWithRoots(ProjectSkillsRoot, agentRoot, UserSkillsRoot);
+        var ct = TestContext.Current.CancellationToken;
+
+        WriteSkillFile(agentRoot, "agent-skill", "非默认根删除");
+        await catalog.RefreshAsync(ct);
+        catalog.Find("agent-skill").Should().NotBeNull();
+
+        var result = await writer.DeleteAsync("agent-skill", ct);
+
+        result.Success.Should().BeTrue(result.Error ?? "非默认根下的技能必须可删除");
+        Directory.Exists(Path.Combine(agentRoot, "agent-skill")).Should().BeFalse();
+        catalog.Find("agent-skill").Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Delete_OutsideAllRoots_ShouldBeRefused()
+    {
+        // 越界保护仍然生效：目录条目的文件夹不在任何已登记根之内 → 拒绝删除
+        var outside = Path.Combine(_root, "outside", "escape-skill");
+        WriteSkillFile(Path.Combine(_root, "outside"), "escape-skill", "越界");
+
+        var catalog = new StubCatalog(
+            new SkillCatalogEntry(
+                new SkillInfo { Name = "escape-skill", Description = "越界" },
+                SkillSource.ProjectFile,
+                null,
+                outside),
+            [ProjectSkillsRoot]);
+        var writer = new SkillWriter(
+            NullLogger<SkillWriter>.Instance,
+            catalog,
+            new FakeDirectories(UserSeeingDirectory, ProjectSeeingDirectory),
+            new SkillWriteGate());
+
+        var result = await writer.DeleteAsync("escape-skill", TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("技能根之外");
+        Directory.Exists(outside).Should().BeTrue("越界目录不得被删除");
     }
 
     // ===== 失败清理 =====
@@ -509,6 +580,23 @@ public sealed class SkillWriterTests : IDisposable
         return (catalog, writer, gate);
     }
 
+    /// <summary>按给定根列表创建目录与写者（用于验证「可写根由目录决定」）。</summary>
+    private (SkillCatalogCore Catalog, SkillWriter Writer) CreateWriterWithRoots(params string[] roots)
+    {
+        var directories = new FakeDirectories(UserSeeingDirectory, ProjectSeeingDirectory);
+        var gate = new SkillWriteGate();
+        var catalog = new SkillCatalogCore(NullLogger<SkillCatalogCore>.Instance, directories, gate);
+        catalog.SetRoots(roots);
+
+        var writer = new SkillWriter(
+            NullLogger<SkillWriter>.Instance,
+            catalog,
+            directories,
+            gate);
+
+        return (catalog, writer);
+    }
+
     /// <summary>写一个合法技能目录（frontmatter + 正文）。</summary>
     private static void WriteSkillFile(string root, string name, string description)
     {
@@ -578,5 +666,61 @@ public sealed class SkillWriterTests : IDisposable
         public string UserSeeingDirectory { get; } = userSeeing;
 
         public string ProjectSeeingDirectory { get; } = projectSeeing;
+    }
+
+    /// <summary>
+    /// 极简目录桩：只回答「一个条目 + 一组根」，用于验证写服务的越界保护
+    /// （真实目录不会扫出根之外的条目，因此必须用桩构造这个非法输入）。
+    /// </summary>
+    private sealed class StubCatalog : ISkillCatalog
+    {
+        private readonly SkillCatalogSnapshot _snapshot;
+
+        public StubCatalog(SkillCatalogEntry entry, IReadOnlyList<string> roots)
+        {
+            _snapshot = new SkillCatalogSnapshot(
+                1,
+                [entry],
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                new Dictionary<string, ConfigLevel>(StringComparer.OrdinalIgnoreCase),
+                [],
+                []);
+            Roots = roots;
+        }
+
+        public SkillCatalogSnapshot Current => _snapshot;
+
+        public IReadOnlyList<string> Roots { get; }
+
+        public IReadOnlyList<SkillCatalogEntry> EnabledEntries => _snapshot.Entries;
+
+        public IReadOnlyList<SkillCatalogEntry> GetEnabledEntries(SkillCatalogSnapshot snapshot) => snapshot.Entries;
+
+        public IDisposable Subscribe(Action<SkillCatalogSnapshot> onChanged) => new NoopSubscription();
+
+        public SkillCatalogEntry? Find(string name) =>
+            _snapshot.Entries.FirstOrDefault(entry =>
+                string.Equals(entry.Info.Name, name, StringComparison.OrdinalIgnoreCase));
+
+        public bool IsEnabled(string name) => Find(name) is not null;
+
+        public Task<SkillCatalogSnapshot> EnsureFreshAsync(CancellationToken ct = default)
+            => Task.FromResult(_snapshot);
+
+        public Task<SkillCatalogSnapshot> RefreshAsync(CancellationToken ct = default)
+            => Task.FromResult(_snapshot);
+
+        public Task<bool> RegisterAsync(SkillInfo info, string providerId, CancellationToken ct = default)
+            => Task.FromResult(false);
+
+        public Task<bool> UnregisterAsync(string name, CancellationToken ct = default)
+            => Task.FromResult(false);
+
+        private sealed class NoopSubscription : IDisposable
+        {
+            public void Dispose()
+            {
+            }
+        }
     }
 }

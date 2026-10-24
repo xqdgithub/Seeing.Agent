@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Skills;
+using Seeing.Agent.Skills.Catalog;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Skills.Commands;
@@ -81,11 +82,8 @@ internal sealed class DynamicSkillCommandSync : IDisposable
                 return;
 
             var desired = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var entry in snapshot.Entries)
-            {
-                if (!snapshot.DisabledNames.Contains(entry.Info.Name))
-                    desired.Add(entry.Info.Name);
-            }
+            foreach (var entry in SkillCatalogProjection.EnabledEntries(snapshot))
+                desired.Add(entry.Info.Name);
 
             foreach (var name in _registered.Where(name => !desired.Contains(name)).ToList())
             {

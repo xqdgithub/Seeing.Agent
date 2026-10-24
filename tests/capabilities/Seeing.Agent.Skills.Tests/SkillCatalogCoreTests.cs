@@ -334,6 +334,26 @@ public sealed class SkillCatalogCoreTests : IDisposable
     }
 
     [Fact]
+    public async Task EnabledEntries_ShouldBeTheSingleProjectionUsedByAllConsumers()
+    {
+        // F6：可用条目只有一份投影（条目 − 禁用集合），目录接口与钉住快照共用同一实现
+        var root = ProjectSkillRoot(0);
+        WriteSkill(root, "alpha", "alpha", "启用");
+        WriteSkill(root, "beta", "beta", "被禁用");
+        WriteDisabledState(Path.Combine(_workspace, ".seeing"), ["beta"]);
+
+        var catalog = CreateCatalog(root);
+        var snapshot = await catalog.RefreshAsync(TestContext.Current.CancellationToken);
+
+        catalog.EnabledEntries.Select(entry => entry.Info.Name).Should().BeEquivalentTo("alpha");
+        catalog.GetEnabledEntries(snapshot).Select(entry => entry.Info.Name).Should().BeEquivalentTo("alpha");
+
+        // 陈旧快照（执行级钉住）同样按该快照的禁用集合投影，不受目录当前态影响
+        snapshot.Entries.Select(entry => entry.Info.Name).Should().BeEquivalentTo("alpha", "beta");
+        catalog.GetEnabledEntries(snapshot).Should().HaveCount(1);
+    }
+
+    [Fact]
     public async Task CorruptStateFile_ShouldKeepPreviousDisabledSet()
     {
         // I3：损坏 / 撕裂的状态文件不得把「所有技能」重新视为启用（否则管道会叙述假的「新增技能」增量）

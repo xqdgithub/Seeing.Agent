@@ -523,7 +523,14 @@ public sealed class SkillWriter : ISkillWriter
         return Failure($"{PluginReadOnlyError}：{name}");
     }
 
-    /// <summary>解析层级对应的技能根（{levelSeeing}/skills）。</summary>
+    /// <summary>
+    /// 解析层级的可写根：<b>根列表的唯一来源是目录</b>（<see cref="ISkillCatalog.Roots"/>）。
+    /// <para>每层级的可写根按优先级取「该层级归属范围内的第一个已登记根」：
+    /// 项目级 = 工作区根之下；用户级 = 工作区之外（与目录的来源分类同一判据）。
+    /// 因此 <c>.seeing/skills</c>、<c>.agents/skills</c>、<c>&lt;ws&gt;/skills</c>、<c>SkillsOptions.Paths</c>
+    /// 都不会出现「读得到而写不进」的分裂——根在哪，写就在哪。</para>
+    /// <para>目录尚未算出根（加载器未运行）时拒绝写入，而不是自造一个第三份根定义。</para>
+    /// </summary>
     private bool TryResolveRoot(ConfigLevel level, out string root, out string error)
     {
         root = string.Empty;
@@ -542,8 +549,44 @@ public sealed class SkillWriter : ISkillWriter
             return false;
         }
 
-        root = Path.Combine(seeingDirectory, "skills");
-        return true;
+        var roots = _catalog.Roots;
+        if (roots.Count == 0)
+        {
+            error = "技能目录尚未登记任何技能根，无法写入（请先完成技能加载）";
+            return false;
+        }
+
+        var projectAnchor = ProjectAnchor();
+        foreach (var candidate in roots)
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+                continue;
+
+            var belongsToLevel = level == ConfigLevel.Project
+                ? projectAnchor is not null && IsUnderOrEqual(candidate, projectAnchor)
+                : projectAnchor is null || !IsUnderOrEqual(candidate, projectAnchor);
+
+            if (!belongsToLevel)
+                continue;
+
+            root = candidate;
+            return true;
+        }
+
+        error = $"技能根列表中没有 {level} 级可写根（已登记根：{string.Join(", ", roots)}）";
+        return false;
+    }
+
+    /// <summary>项目根（<c>{root}/.seeing</c> 的父目录）；无目录契约时为 null。</summary>
+    private string? ProjectAnchor()
+    {
+        if (_directories is null || string.IsNullOrWhiteSpace(_directories.ProjectSeeingDirectory))
+            return null;
+
+        var seeing = _directories.ProjectSeeingDirectory.TrimEnd(
+            Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var parent = Path.GetDirectoryName(seeing);
+        return string.IsNullOrEmpty(parent) ? seeing : parent;
     }
 
     private string SeeingDirectoryOf(ConfigLevel level) =>
@@ -748,14 +791,44 @@ public sealed class SkillWriter : ISkillWriter
         return normalized.EndsWith('/') ? normalized : normalized + "/";
     }
 
-    /// <summary>目录是否位于任一级技能根之下（删除操作的越界保护）。</summary>
+    /// <summary>
+    /// 目录是否位于**已登记技能根**之内（删除操作的越界保护）。
+    /// <para>根的唯一来源是目录（<see cref="ISkillCatalog.Roots"/>）：不得在此重新推导
+    /// 「只有 <c>.seeing/skills</c> 才算根」，否则 <c>.agents/skills</c> / <c>&lt;ws&gt;/skills</c> /
+    /// <c>SkillsOptions.Paths</c> 下的技能会出现「能列出、能编辑、删不掉」的分裂。</para>
+    /// </summary>
     private bool IsUnderAnySkillRoot(string directory)
     {
-        if (_directories is null)
-            return false;
+        foreach (var root in _catalog.Roots)
+        {
+            if (!string.IsNullOrWhiteSpace(root) && IsUnder(directory, root))
+                return true;
+        }
 
-        return IsUnder(directory, Path.Combine(_directories.UserSeeingDirectory, "skills"))
-            || IsUnder(directory, Path.Combine(_directories.ProjectSeeingDirectory, "skills"));
+        return false;
+    }
+
+    /// <summary>规范化后判断 <paramref name="path"/> 是否位于 <paramref name="root"/> 之内或其自身。</summary>
+    private static bool IsUnderOrEqual(string path, string root)
+        => IsSamePath(path, root) || IsUnder(path, root);
+
+    /// <summary>规范化后判断两个路径是否指向同一位置（忽略大小写与尾部分隔符）。</summary>
+    private static bool IsSamePath(string left, string right)
+    {
+        try
+        {
+            var normalizedLeft = Path.GetFullPath(left)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var normalizedRight = Path.GetFullPath(right)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            return string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            // 非法路径按「不是同一位置」处理
+            return false;
+        }
     }
 
     /// <summary>规范化后判断 <paramref name="path"/> 是否严格位于 <paramref name="root"/> 之内。</summary>

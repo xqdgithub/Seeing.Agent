@@ -79,6 +79,22 @@ public interface ISkillCatalog
     /// <summary>当前快照（无空窗：替换是原子的）。</summary>
     SkillCatalogSnapshot Current { get; }
 
+    /// <summary>
+    /// 当前生效的技能根（优先级从高到低，已展开为绝对路径）。
+    /// <para>这是「技能根」的<b>唯一</b>定义：加载器写入根、写入服务的根内判定都必须读它，
+    /// 不得在别处重新推导（否则会出现「能列出、能编辑、删不掉」的读写根分裂）。</para>
+    /// </summary>
+    IReadOnlyList<string> Roots { get; }
+
+    /// <summary>当前快照中的可用条目（条目 − 禁用集合；「什么算可用技能」的唯一投影）。</summary>
+    IReadOnlyList<SkillCatalogEntry> EnabledEntries { get; }
+
+    /// <summary>
+    /// 按给定快照计算可用条目投影：执行级钉住的旧快照也复用同一实现，
+    /// 避免「可用技能」出现第二份判断（漏一次禁用判断就是一次可见性回归）。
+    /// </summary>
+    IReadOnlyList<SkillCatalogEntry> GetEnabledEntries(SkillCatalogSnapshot snapshot);
+
     /// <summary>订阅快照变更；返回的 <see cref="IDisposable"/> 用于退订。</summary>
     IDisposable Subscribe(Action<SkillCatalogSnapshot> onChanged);
 

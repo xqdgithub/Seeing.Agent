@@ -37,8 +37,7 @@ public sealed class SkillLoader : IComponentLoader
         var snapshot = await catalog.RefreshAsync(cancellationToken).ConfigureAwait(false);
 
         // 动态技能命令由 SkillsModule 订阅目录事件同步（此处只负责触发一次目录重建）
-        var enabledNames = snapshot.Entries
-            .Where(entry => !snapshot.DisabledNames.Contains(entry.Info.Name))
+        var enabledNames = catalog.GetEnabledEntries(snapshot)
             .Select(entry => entry.Info.Name)
             .ToList();
 

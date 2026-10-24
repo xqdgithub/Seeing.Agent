@@ -94,6 +94,17 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
     /// <inheritdoc />
     public SkillCatalogSnapshot Current => Volatile.Read(ref _snapshot);
 
+    /// <inheritdoc />
+    public IReadOnlyList<string> Roots =>
+        Volatile.Read(ref _roots).Select(root => root.Directory).ToArray();
+
+    /// <inheritdoc />
+    public IReadOnlyList<SkillCatalogEntry> EnabledEntries => SkillCatalogProjection.EnabledEntries(Current);
+
+    /// <inheritdoc />
+    public IReadOnlyList<SkillCatalogEntry> GetEnabledEntries(SkillCatalogSnapshot snapshot) =>
+        SkillCatalogProjection.EnabledEntries(snapshot);
+
     /// <summary>
     /// 默认根目录（优先级从高到低）：<c>{ws}/.seeing/skills</c>、<c>{ws}/.agents/skills</c>、
     /// <c>{ws}/skills</c>、<c>~/.seeing/skills</c>、<c>~/.agents/skills</c>。
@@ -101,10 +112,6 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
     /// </summary>
     public IReadOnlyList<string> DefaultRoots =>
         BuildDefaultRoots().Select(root => root.Directory).ToArray();
-
-    /// <summary>当前生效的根目录（优先级从高到低）。</summary>
-    public IReadOnlyList<string> Roots =>
-        Volatile.Read(ref _roots).Select(root => root.Directory).ToArray();
 
     /// <inheritdoc />
     public IDisposable Subscribe(Action<SkillCatalogSnapshot> onChanged)

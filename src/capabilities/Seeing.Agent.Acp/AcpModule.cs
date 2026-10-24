@@ -263,8 +263,8 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
                 _skillCommandSyncEnabled = true;
             }
 
-            _skillCatalogSubscription = catalog.Subscribe(snapshot => SyncSkillCommands(registry, snapshot, logger));
-            SyncSkillCommands(registry, catalog.Current, logger);
+            _skillCatalogSubscription = catalog.Subscribe(snapshot => SyncSkillCommands(registry, snapshot, catalog, logger));
+            SyncSkillCommands(registry, catalog.Current, catalog, logger);
         }
     }
 
@@ -273,7 +273,11 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
     /// <para>整段集合读写都在 <see cref="_commandGate"/> 内：目录事件可能并发投递，且与
     /// <see cref="UnregisterCommands"/> 竞争（否则丢命令 / 集合被并发修改）。</para>
     /// </summary>
-    private void SyncSkillCommands(ICommandRegistry registry, SkillCatalogSnapshot snapshot, ILogger logger)
+    private void SyncSkillCommands(
+        ICommandRegistry registry,
+        SkillCatalogSnapshot snapshot,
+        ISkillCatalog catalog,
+        ILogger logger)
     {
         lock (_commandGate)
         {
@@ -281,12 +285,11 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
             if (!_skillCommandSyncEnabled)
                 return;
 
+            // 可用条目投影只有目录一份实现（禁用项必须同时撤销命令）
+            var enabled = catalog.GetEnabledEntries(snapshot);
             var desired = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var entry in snapshot.Entries)
-            {
-                if (!snapshot.DisabledNames.Contains(entry.Info.Name))
-                    desired.Add(entry.Info.Name);
-            }
+            foreach (var entry in enabled)
+                desired.Add(entry.Info.Name);
 
             foreach (var name in _registeredSkillCommandNames.Where(name => !desired.Contains(name)).ToList())
             {
@@ -303,7 +306,7 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
             {
                 try
                 {
-                    var description = snapshot.Entries
+                    var description = enabled
                         .FirstOrDefault(entry => string.Equals(entry.Info.Name, name, StringComparison.OrdinalIgnoreCase))
                         ?.Info.Description;
 

@@ -224,9 +224,7 @@ namespace Seeing.Agent.Skills
                 ? _skillManager.GetAllSkillInfos().Values
                     .Select(info => new SkillCatalogEntry(info, SkillSource.Registered, null, string.Empty))
                     .ToList()
-                : snapshot.Entries
-                    .Where(entry => !snapshot.DisabledNames.Contains(entry.Info.Name))
-                    .ToList();
+                : SkillCatalogProjection.EnabledEntries(snapshot);
 
             return Failure(
                 $"Skill \"{skillName}\" not found.\n\n{SkillCatalogFormatter.RenderList(available)}");
