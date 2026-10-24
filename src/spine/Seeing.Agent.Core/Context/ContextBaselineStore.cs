@@ -1,6 +1,6 @@
-using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Core.Context;
@@ -8,8 +8,9 @@ namespace Seeing.Agent.Core.Context;
 /// <summary>
 /// 上下文基线状态的读写端口（<see cref="SessionMetadataKeys.ContextBaseline"/>）。
 /// <para>状态损坏或版本不匹配时返回空状态并记录 Debug 日志，不返回 null、不静默吞掉。</para>
+/// <para>实例化以便注入 <see cref="ILogger{TCategoryName}"/>；装配器通过构造函数接收（见 <c>ContextAssembler</c>）。</para>
 /// </summary>
-internal static class ContextBaselineStore
+internal sealed class ContextBaselineStore
 {
     private static readonly JsonSerializerOptions s_options = new()
     {
@@ -20,10 +21,17 @@ internal static class ContextBaselineStore
         Converters = { new JsonStringEnumConverter() }
     };
 
+    private readonly ILogger<ContextBaselineStore> _logger;
+
+    public ContextBaselineStore(ILogger<ContextBaselineStore> logger)
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
     /// <summary>
     /// 读取会话基线状态；无状态、损坏或版本不匹配时返回空状态。
     /// </summary>
-    public static ContextBaselineState Load(SessionData session)
+    public ContextBaselineState Load(SessionData session)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -41,31 +49,36 @@ internal static class ContextBaselineStore
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
-            Debug.WriteLine(
-                $"[ContextBaselineStore] 上下文基线状态解析失败，按空状态重建：{ex.GetType().Name}: {ex.Message}");
+            _logger.LogDebug(
+                ex,
+                "上下文基线状态解析失败，按空状态重建：{SessionId}",
+                session.Id);
             return new ContextBaselineState();
         }
 
         if (state is null)
         {
-            Debug.WriteLine("[ContextBaselineStore] 上下文基线状态为 null，按空状态重建。");
+            _logger.LogDebug("上下文基线状态为 null，按空状态重建：{SessionId}", session.Id);
             return new ContextBaselineState();
         }
 
         if (state.StateVersion != ContextBaselineState.CurrentStateVersion)
         {
-            Debug.WriteLine(
-                $"[ContextBaselineStore] 上下文基线状态版本不匹配（{state.StateVersion} != {ContextBaselineState.CurrentStateVersion}），按空状态重建。");
+            _logger.LogDebug(
+                "上下文基线状态版本不匹配，按空状态重建：{SessionId} 期望={Expected} 实际={Actual}",
+                session.Id,
+                ContextBaselineState.CurrentStateVersion,
+                state.StateVersion);
             return new ContextBaselineState();
         }
 
-        return Normalize(state);
+        return Normalize(session, state);
     }
 
     /// <summary>
     /// 写入会话基线状态。
     /// </summary>
-    public static void Save(SessionData session, ContextBaselineState state)
+    public void Save(SessionData session, ContextBaselineState state)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(state);
@@ -77,7 +90,7 @@ internal static class ContextBaselineStore
     /// <summary>
     /// 移除会话基线状态（清空消息时使用）。
     /// </summary>
-    public static void Clear(SessionData session)
+    public void Clear(SessionData session)
     {
         ArgumentNullException.ThrowIfNull(session);
         session.Metadata?.Remove(SessionMetadataKeys.ContextBaseline);
@@ -86,7 +99,7 @@ internal static class ContextBaselineStore
     /// <summary>
     /// 修正反序列化可绕过的非空约束（JSON 显式 null）并丢弃无法使用的损坏条目。
     /// </summary>
-    private static ContextBaselineState Normalize(ContextBaselineState state)
+    private ContextBaselineState Normalize(SessionData session, ContextBaselineState state)
     {
         state.Sources ??= new Dictionary<string, ContextSourceState>(StringComparer.Ordinal);
 
@@ -116,8 +129,11 @@ internal static class ContextBaselineStore
 
         if (droppedSources > 0 || droppedLedgerEntries > 0)
         {
-            Debug.WriteLine(
-                $"[ContextBaselineStore] 丢弃损坏的基线条目：源 {droppedSources} 个，增量账本 {droppedLedgerEntries} 条。");
+            _logger.LogDebug(
+                "丢弃损坏的上下文基线条目：{SessionId} 源={DroppedSources} 增量账本={DroppedLedgerEntries}",
+                session.Id,
+                droppedSources,
+                droppedLedgerEntries);
         }
 
         state.Sources = sources;

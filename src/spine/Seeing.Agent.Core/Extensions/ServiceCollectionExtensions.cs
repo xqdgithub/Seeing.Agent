@@ -26,6 +26,7 @@ using Seeing.Agent.Core.Commands;
 using Seeing.Agent.Core.Commands.Discovery;
 using Seeing.Agent.Core.Compression;
 using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Core.Context;
 using Seeing.Agent.Core.Decorators;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Hooks;
@@ -570,6 +571,10 @@ namespace Seeing.Agent.Core.Extensions
             services.AddSingleton<CompressionService>();
             services.AddSingleton<ICompressionService>(sp => sp.GetRequiredService<CompressionService>());
             services.AddSingleton<CompressionOptions>();
+
+            // 上下文基线状态存储（无状态，注入 ILogger）：供压缩生命周期接线（Task 6）
+            // 与 Hosting 侧装配器注册（Task 12）复用；装配器当前自建实例并使用同一 ILoggerFactory。
+            services.TryAddSingleton<ContextBaselineStore>();
 
             // 能力包工具 / Skills / MCP / LLM / Agents.BuiltIn — 由宿主 AddSeeingModule<T> 登记
 

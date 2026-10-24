@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Core.Context;
 using Seeing.Session.Core;
 using Xunit;
@@ -8,16 +9,21 @@ namespace Seeing.Agent.Tests.Context;
 
 public sealed class ContextBaselineStoreTests
 {
+    /// <summary>注入式存储：测试直接用 NullLogger，不引入日志实现依赖。</summary>
+    private static ContextBaselineStore CreateStore() =>
+        new(NullLogger<ContextBaselineStore>.Instance);
+
     [Fact]
     public void SaveThenLoad_ShouldRoundTrip()
     {
+        var store = CreateStore();
         var s = new SessionData { Id = "s1" };
         var state = new ContextBaselineState();
         state.Pending = PendingBaselineReset.Compaction;
         state.Sources["k"] = new ContextSourceState { ValueSchemaVersion = 3, BaselineText = "X" };
-        ContextBaselineStore.Save(s, state);
+        store.Save(s, state);
 
-        var loaded = ContextBaselineStore.Load(s);
+        var loaded = store.Load(s);
         loaded.Pending.Should().HaveFlag(PendingBaselineReset.Compaction);
         loaded.Sources["k"].ValueSchemaVersion.Should().Be(3);
         loaded.Sources["k"].BaselineText.Should().Be("X");
@@ -29,7 +35,7 @@ public sealed class ContextBaselineStoreTests
         var s = new SessionData { Id = "s1" };
         s.Metadata[SessionMetadataKeys.ContextBaseline] = """{"stateVersion":999,"sources":{}}""";
 
-        ContextBaselineStore.Load(s).Sources.Should().BeEmpty();
+        CreateStore().Load(s).Sources.Should().BeEmpty();
     }
 
     [Fact]
@@ -38,12 +44,13 @@ public sealed class ContextBaselineStoreTests
         var s = new SessionData { Id = "s1" };
         s.Metadata[SessionMetadataKeys.ContextBaseline] = "{not json";
 
-        ContextBaselineStore.Load(s).Sources.Should().BeEmpty();
+        CreateStore().Load(s).Sources.Should().BeEmpty();
     }
 
     [Fact]
     public void SaveThenLoad_ShouldRoundTripCombinedFlagsAndJsonValues()
     {
+        var store = CreateStore();
         var s = new SessionData { Id = "s1" };
         var state = new ContextBaselineState
         {
@@ -60,8 +67,8 @@ public sealed class ContextBaselineStoreTests
             DeltaLedger = { new DeltaLedgerEntry("msg_2", JsonNode.Parse("""{"x":"y"}""")!.AsObject()) }
         };
 
-        ContextBaselineStore.Save(s, state);
-        var loaded = ContextBaselineStore.Load(s);
+        store.Save(s, state);
+        var loaded = store.Load(s);
 
         loaded.Pending.Should().Be(PendingBaselineReset.Compaction | PendingBaselineReset.WorkspaceChanged);
         loaded.Sources["k"].BaselineValues!["b"]!.GetValue<int>().Should().Be(1);
@@ -79,7 +86,7 @@ public sealed class ContextBaselineStoreTests
         var s = new SessionData { Id = "s1" };
         s.Metadata[SessionMetadataKeys.ContextBaseline] = "{}";
 
-        ContextBaselineStore.Clear(s);
+        CreateStore().Clear(s);
 
         s.Metadata.Should().NotContainKey(SessionMetadataKeys.ContextBaseline);
     }
