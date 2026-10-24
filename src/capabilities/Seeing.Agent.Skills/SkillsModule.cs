@@ -89,10 +89,17 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
             sp.GetService<ISeeingDirectories>()));
         services.TryAddSingleton<ISkillCatalog>(sp => sp.GetRequiredService<SkillCatalogCore>());
 
+        // 写入收口：文件通道唯一写入口（注册通道技能只读），skill-state.json 写闸串行化
+        services.AddSingleton<SkillWriteGate>();
+        services.TryAddSingleton<ISkillWriter>(sp => new SkillWriter(
+            sp.GetRequiredService<ILogger<SkillWriter>>(),
+            sp.GetRequiredService<ISkillCatalog>(),
+            sp.GetService<ISeeingDirectories>(),
+            sp.GetRequiredService<SkillWriteGate>()));
+
         services.AddSingleton<SkillManager>(sp => new SkillManager(
             sp.GetRequiredService<ILogger<SkillManager>>(),
-            sp.GetRequiredService<SkillCatalogCore>(),
-            sp.GetService<ISeeingDirectories>()));
+            sp.GetRequiredService<SkillCatalogCore>()));
         services.TryAddSingleton<ISkillManager>(sp => sp.GetRequiredService<SkillManager>());
         services.AddSingleton<SkillTool>();
         services.AddSingleton<IComponentLoader, SkillLoader>();

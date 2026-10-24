@@ -17,8 +17,11 @@ namespace Seeing.Agent.Skills.Catalog;
 /// </summary>
 public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
 {
-    /// <summary>状态文件名（沿用既有 <c>skill-state.json</c>）。</summary>
-    private const string SkillStateFileName = "skill-state.json";
+    /// <summary>
+    /// 状态文件名（沿用既有 <c>skill-state.json</c>）。
+    /// <para>公开常量：状态文件由 <c>SkillWriter</c>（唯一写者）与目录（只读）共用同一名字，避免出现第二份字面量。</para>
+    /// </summary>
+    public const string SkillStateFileName = "skill-state.json";
 
     private readonly ILogger<SkillCatalogCore> _logger;
     private readonly ISeeingDirectories? _directories;

@@ -1,14 +1,12 @@
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Skills.Catalog;
-using System.Text.Json;
 
 namespace Seeing.Agent.Skills
 {
     /// <summary>
     /// 技能只读门面 — 全部答案来自 <see cref="ISkillCatalog"/> 的当前快照，自身不持有技能字典、
-    /// 不扫盘、不解析 frontmatter。
+    /// 不扫盘、不解析 frontmatter、不写 <c>skill-state.json</c>。
     /// <para>
     /// 技能是上下文提供者，不是可执行单元。技能内容通过 SkillTool 注入到 LLM 上下文中。
     /// </para>
@@ -19,30 +17,20 @@ namespace Seeing.Agent.Skills
     /// </summary>
     public class SkillManager : ISkillManager
     {
-        /// <summary>技能禁用状态文件名（沿用既有落盘格式）。</summary>
-        private const string SkillStateFileName = "skill-state.json";
-
         private readonly ILogger<SkillManager> _logger;
         private readonly SkillCatalogCore _catalog;
-        private readonly ISeeingDirectories? _directories;
-
-        /// <summary>禁用状态落盘闸：同一时刻只允许一次读-改-写（避免并发写互相覆盖）。</summary>
-        private readonly SemaphoreSlim _stateWriteGate = new(1, 1);
 
         /// <summary>
         /// 创建门面。
         /// </summary>
         /// <param name="logger">门面日志。</param>
         /// <param name="catalog">技能目录（唯一真相源）。</param>
-        /// <param name="directories">配置目录契约（用于禁用状态落盘；为空时禁用操作只影响目录内存态）。</param>
         public SkillManager(
             ILogger<SkillManager> logger,
-            SkillCatalogCore catalog,
-            ISeeingDirectories? directories = null)
+            SkillCatalogCore catalog)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
-            _directories = directories;
         }
 
         // ===== 只读投影 =====
@@ -70,9 +58,6 @@ namespace Seeing.Agent.Skills
 
         /// <summary>合并后的禁用技能集合（用户级 ∪ 项目级），直接读目录快照。</summary>
         public IReadOnlySet<string> DisabledSkills => _catalog.Current.DisabledNames;
-
-        /// <summary>状态变更事件（写盘并重扫目录后触发）。</summary>
-        public event Action? OnSkillStateChanged;
 
         /// <summary>检查技能是否启用（未登记的技能按「未禁用」处理，保持既有语义）。</summary>
         public bool IsSkillEnabled(string skillName)
@@ -157,39 +142,6 @@ namespace Seeing.Agent.Skills
         public bool Unregister(string name)
             => throw new NotSupportedException("请改用 ISkillCatalog.UnregisterAsync(name)。");
 
-        // ===== 禁用状态（写盘 + 让目录重扫；Task 11 迁移到 SkillWriteGate） =====
-
-        /// <summary>
-        /// 加载技能禁用状态。
-        /// <para>目录每次重建快照都会自读两级 <c>skill-state.json</c>，故这里只需让目录重扫一次。</para>
-        /// </summary>
-        public async Task LoadSkillStateAsync(CancellationToken ct = default)
-            => await _catalog.RefreshAsync(ct).ConfigureAwait(false);
-
-        /// <summary>设置技能启用/禁用状态：写盘后让目录重扫，确保门面与目录同时生效。</summary>
-        public async Task SetSkillEnabledAsync(string skillName, bool enabled, CancellationToken ct = default)
-        {
-            if (string.IsNullOrWhiteSpace(skillName))
-                return;
-
-            if (_directories is not null)
-            {
-                // 层级沿用目录上报的结果（项目级优先于用户级）
-                var level = _catalog.Current.DisabledScopes.TryGetValue(skillName, out var scope)
-                    ? scope
-                    : ConfigLevel.User;
-
-                var filePath = level == ConfigLevel.User
-                    ? Path.Combine(_directories.UserSeeingDirectory, SkillStateFileName)
-                    : Path.Combine(_directories.ProjectSeeingDirectory, SkillStateFileName);
-
-                await WriteDisabledStateAsync(filePath, skillName, enabled, ct).ConfigureAwait(false);
-            }
-
-            await _catalog.RefreshAsync(ct).ConfigureAwait(false);
-            OnSkillStateChanged?.Invoke();
-        }
-
         // ===== 内部 =====
 
         /// <summary>把当前快照投影成名称 → 技能信息字典。</summary>
@@ -202,83 +154,6 @@ namespace Seeing.Agent.Skills
                 result[entry.Info.Name] = entry.Info;
 
             return result;
-        }
-
-        /// <summary>读-改-写某一级的禁用集合（串行化，避免并发写覆盖）。</summary>
-        private async Task WriteDisabledStateAsync(
-            string filePath,
-            string skillName,
-            bool enabled,
-            CancellationToken ct)
-        {
-            await _stateWriteGate.WaitAsync(ct).ConfigureAwait(false);
-            try
-            {
-                var disabled = await LoadDisabledSetAsync(filePath, ct).ConfigureAwait(false);
-                if (enabled)
-                    disabled.Remove(skillName);
-                else
-                    disabled.Add(skillName);
-
-                await SaveDisabledSetAsync(filePath, disabled, ct).ConfigureAwait(false);
-            }
-            finally
-            {
-                _stateWriteGate.Release();
-            }
-        }
-
-        /// <summary>从文件加载禁用名称集合。</summary>
-        private async Task<HashSet<string>> LoadDisabledSetAsync(string filePath, CancellationToken ct)
-        {
-            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (!File.Exists(filePath))
-                return result;
-
-            try
-            {
-                var json = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
-                var data = JsonSerializer.Deserialize<DisabledSkillsData>(
-                    json,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-                foreach (var name in data?.DisabledSkills ?? [])
-                {
-                    if (!string.IsNullOrWhiteSpace(name))
-                        result.Add(name);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
-            {
-                // 状态文件损坏 / 不可读：按「无禁用项」处理，但必须可观测
-                _logger.LogWarning(ex, "读取技能禁用状态失败，按空集合处理：{Path}", filePath);
-            }
-
-            return result;
-        }
-
-        /// <summary>保存禁用名称集合到文件。</summary>
-        private async Task SaveDisabledSetAsync(string filePath, HashSet<string> disabledSkills, CancellationToken ct)
-        {
-            var directory = Path.GetDirectoryName(filePath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-                Directory.CreateDirectory(directory);
-
-            var data = new DisabledSkillsData { DisabledSkills = disabledSkills.ToList() };
-            var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
-
-            await File.WriteAllTextAsync(filePath, json, ct).ConfigureAwait(false);
-            _logger.LogInformation("技能禁用状态已保存：{Path} 数量={Count}", filePath, disabledSkills.Count);
-        }
-
-        /// <summary>禁用技能数据模型（沿用既有落盘格式）。</summary>
-        private sealed class DisabledSkillsData
-        {
-            public List<string>? DisabledSkills { get; set; }
         }
     }
 }
