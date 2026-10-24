@@ -206,6 +206,51 @@ public sealed class SkillRootWatcherTests : IDisposable
         Volatile.Read(ref hits).Should().Be(afterDispose, "Dispose 之后必须停止全部回调");
     }
 
+    // ===== 加载器幂等路径 =====
+
+    [Fact]
+    public async Task WorkspaceSwitch_ShouldDropOldRoots()
+    {
+        // Arrange：两个工作区各有一个技能，加载路径必须只重算根、不保留旧根
+        var workspaceA = Path.Combine(_root, "ws-a");
+        var workspaceB = Path.Combine(_root, "ws-b");
+        WriteSkill(Path.Combine(workspaceA, "skills"), "alpha");
+        WriteSkill(Path.Combine(workspaceB, "skills"), "beta");
+
+        var catalog = new SkillCatalogCore(NullLogger<SkillCatalogCore>.Instance);
+        var monitor = new MutableOptionsMonitor();
+        monitor.Current = new SkillsOptions { Paths = ["skills"] };
+
+        var provider = new StubServiceProvider(new Dictionary<Type, object>
+        {
+            [typeof(SkillCatalogCore)] = catalog,
+            [typeof(ISkillCatalog)] = catalog,
+            [typeof(IOptionsMonitor<SkillsOptions>)] = monitor,
+            [typeof(ISeeingDirectories)] = new FakeDirectories(
+                userSeeing: Path.Combine(_root, "home", ".seeing"),
+                projectSeeing: Path.Combine(_root, "proj", ".seeing")),
+        });
+
+        var loader = new SkillLoader();
+
+        // Act 1：工作区 A
+        var first = await loader.LoadAsync(provider, workspaceA, Ct);
+
+        // Assert 1
+        first.Success.Should().BeTrue();
+        first.Details.Should().Contain("alpha");
+        catalog.Find("alpha").Should().NotBeNull();
+
+        // Act 2：切到工作区 B（ReloadAsync 与 LoadAsync 同一幂等路径）
+        var second = await loader.ReloadAsync(provider, workspaceB, Ct);
+
+        // Assert 2：旧根被丢弃，新根生效
+        second.Success.Should().BeTrue();
+        second.Details.Should().Contain("beta").And.NotContain("alpha");
+        catalog.Find("beta").Should().NotBeNull();
+        catalog.Find("alpha").Should().BeNull("切换工作区后旧根技能不得残留");
+    }
+
     // ===== 环境 =====
 
     /// <summary>轮询等待条件成立（超时即返回 false，由断言给出可读失败信息）。</summary>

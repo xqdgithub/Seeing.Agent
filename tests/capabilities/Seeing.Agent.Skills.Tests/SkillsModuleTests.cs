@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Prompts;
+using Seeing.Agent.Skills.Catalog;
 using Xunit;
 
 namespace Seeing.Agent.Skills.Tests;
@@ -38,10 +39,14 @@ public class SkillsModuleTests
 
 public class SkillManagerPromptSectionTests
 {
+    private static SkillManager CreateManager() => new(
+        NullLogger<SkillManager>.Instance,
+        new SkillCatalogCore(NullLogger<SkillCatalogCore>.Instance));
+
     [Fact]
     public void SkillManager_IsAssignableTo_IPromptSectionContributor()
     {
-        IPromptSectionContributor contributor = new SkillManager(NullLogger<SkillManager>.Instance);
+        IPromptSectionContributor contributor = CreateManager();
         contributor.SectionName.Should().Be(PromptSectionNames.Skills);
         contributor.Order.Should().Be(200);
     }
@@ -49,7 +54,7 @@ public class SkillManagerPromptSectionTests
     [Fact]
     public async Task BuildAsync_WithNoSkills_ReturnsPlaceholder()
     {
-        var manager = new SkillManager(NullLogger<SkillManager>.Instance);
+        var manager = CreateManager();
         var result = await manager.BuildAsync(new PromptContext(), TestContext.Current.CancellationToken);
         result.Should().Be("暂无可用技能。");
     }

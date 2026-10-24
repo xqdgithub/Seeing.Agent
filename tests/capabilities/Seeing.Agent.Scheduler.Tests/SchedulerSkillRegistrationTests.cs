@@ -5,6 +5,7 @@ using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Hosting;
 using Seeing.Agent.Skills;
+using Seeing.Agent.Skills.Catalog;
 using Xunit;
 
 namespace Seeing.Agent.Scheduler.Tests;
@@ -24,6 +25,8 @@ public class SchedulerSkillRegistrationTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddSingleton(sp => new SkillCatalogCore(
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<SkillCatalogCore>.Instance));
         services.AddSingleton<SkillManager>();
         services.AddSingleton<ISkillManager>(sp => sp.GetRequiredService<SkillManager>());
         return services.BuildServiceProvider();

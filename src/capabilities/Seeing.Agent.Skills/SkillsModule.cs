@@ -84,12 +84,10 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
             sp.GetService<ISeeingDirectories>()));
         services.TryAddSingleton<ISkillCatalog>(sp => sp.GetRequiredService<SkillCatalogCore>());
 
-        services.AddSingleton<SkillManager>(sp =>
-        {
-            var logger = sp.GetRequiredService<ILogger<SkillManager>>();
-            var directories = sp.GetService<ISeeingDirectories>();
-            return new SkillManager(logger, directories);
-        });
+        services.AddSingleton<SkillManager>(sp => new SkillManager(
+            sp.GetRequiredService<ILogger<SkillManager>>(),
+            sp.GetRequiredService<SkillCatalogCore>(),
+            sp.GetService<ISeeingDirectories>()));
         services.TryAddSingleton<ISkillManager>(sp => sp.GetRequiredService<SkillManager>());
         services.AddSingleton<IPromptSectionContributor>(sp => sp.GetRequiredService<SkillManager>());
         services.AddSingleton<SkillTool>();

@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Components;
@@ -16,6 +17,7 @@ using Seeing.Agent.Mcp.Configuration;
 using Seeing.Agent.Mcp.Factory;
 using Seeing.Agent.Mcp.Policy;
 using Seeing.Agent.Skills;
+using Seeing.Agent.Skills.Catalog;
 using Seeing.Agent.Skills.Configuration;
 using Xunit;
 
@@ -162,11 +164,14 @@ public class ComponentManagerReloadTests
         await File.WriteAllTextAsync(Path.Combine(alphaDir, "SKILL.md"), "技能 Alpha 内容", TestContext.Current.CancellationToken);
 
         var loggerFactory = LoggerFactory.Create(b => b.SetMinimumLevel(LogLevel.Warning));
-        var skillManager = new SkillManager(loggerFactory.CreateLogger<SkillManager>());
+        var catalog = new SkillCatalogCore(NullLogger<SkillCatalogCore>.Instance);
+        var skillManager = new SkillManager(loggerFactory.CreateLogger<SkillManager>(), catalog);
         var options = Options.Create(new SkillsOptions { Paths = new List<string> { skillsDir } });
         var services = new ServiceCollection()
             .AddSingleton(skillManager)
             .AddSingleton<ISkillManager>(skillManager)
+            .AddSingleton(catalog)
+            .AddSingleton<ISkillCatalog>(catalog)
             .AddSingleton<IOptions<SkillsOptions>>(options)
             .AddSingleton<IOptionsMonitor<SkillsOptions>>(
                 Mock.Of<IOptionsMonitor<SkillsOptions>>(m => m.CurrentValue == options.Value))
