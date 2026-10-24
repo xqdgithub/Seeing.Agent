@@ -86,6 +86,16 @@ internal class ChatExecutionContext
     /// <summary>本轮提示词分节 id（写入 SchemaSnapshotEvent）。</summary>
     public IReadOnlyList<string> SectionIds { get; init; } = Array.Empty<string>();
 
+    /// <summary>
+    /// 本轮上下文基线文本（上下文管道装配产出；命令处理之后、历史构建之前填充）。
+    /// </summary>
+    public string? ContextBaseline { get; set; }
+
+    /// <summary>
+    /// 本轮执行钉住的技能目录快照（与装配器读到的同一对象；透传到 <see cref="AgentContext.SkillSnapshot"/>）。
+    /// </summary>
+    public Seeing.Agent.Abstractions.Skills.SkillCatalogSnapshot? SkillSnapshot { get; set; }
+
     // ========== 元数据 ==========
 
     /// <summary>附加元数据</summary>

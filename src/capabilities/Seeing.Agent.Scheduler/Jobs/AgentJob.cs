@@ -331,6 +331,11 @@ public class AgentJob : IJob
         var resolution = await ResolveToolSchemasAsync(_services, sessionId, agentDefinition, _logger, ct)
             .ConfigureAwait(false);
 
+        // 旁路只读上下文装配：填充执行作用域（cwd / 工作区根 / 钉住快照）后装配，
+        // 不插入消息、不写会话状态、不保存会话——执行未经由会话运行时，不得改变主链事实。
+        var assembly = await SchedulerContextAssembly.TryAssembleAsync(
+            _services, sessionId, cwd, projectRoot, _logger, ct).ConfigureAwait(false);
+
         var context = new AgentContext
         {
             SessionId = sessionId,
@@ -340,6 +345,8 @@ public class AgentJob : IJob
             WorkspaceRoot = projectRoot,
             IsBackground = true,
             ToolSettlement = resolution,
+            ContextBaseline = assembly.SystemBaseline,
+            SkillSnapshot = assembly.SkillSnapshot,
             Metadata = metadata
         };
 

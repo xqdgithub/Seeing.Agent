@@ -17,6 +17,7 @@ using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Prompts;
+using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Summarization;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Tools;
@@ -794,9 +795,10 @@ namespace Seeing.Agent.Core.Extensions
         }
 
         /// <summary>
-        /// 注册上下文源管道：源、逐路径读取端口与装配器。
-        /// <para>源可继续由能力模块追加（<c>IContextSource</c> 多注册）；本方法只登记 Core 自带的内置源。
-        /// 装配器用 <c>TryAdd</c>：宿主若提供专用装配实现，后注册者覆盖。</para>
+        /// 注册上下文源管道：执行作用域、源、逐路径读取端口与装配器。
+        /// <para>生命周期是本管的硬约束：<b>作用域与装配器都是 scoped</b>，源也随之 scoped——
+        /// 单例源捕获 scoped 作用域会让某次执行的事实（cwd / 钉住快照）泄漏到后续执行。
+        /// 源可继续由能力模块追加（<c>IContextSource</c> 多注册，须同为 scoped）。</para>
         /// </summary>
         public static IServiceCollection AddContextPipeline(this IServiceCollection services)
         {
@@ -806,14 +808,16 @@ namespace Seeing.Agent.Core.Extensions
             services.TryAddSingleton<IInstructionFileReader>(sp => new InstructionFileReader(
                 sp.GetRequiredService<InstructionDiscovery>(),
                 sp.GetRequiredService<ILogger<InstructionFileReader>>()));
-            // 执行作用域事实（会话 cwd + 工作区根）经端口提供；Task 12 由 ExecutionRunner 按执行注入
-            services.TryAddSingleton<IInstructionRootsProvider>(sp => new InstructionRootsProvider(
-                sp.GetService<IWorkspaceProvider>(),
-                sp.GetService<IExecutionWorld>(),
-                sp.GetService<ILogger<InstructionRootsProvider>>()));
+
+            // 执行级事实（会话 cwd + 工作区根 + 钉住快照）：每次执行一个实例，由宿主在装配前填充。
+            // ISkillCatalogPin 是它的语义别名，必须解析到同一个实例（不另建只看快照的第二份对象）。
+            services.TryAddScoped<ContextExecutionScope>();
+            services.TryAddScoped<IContextExecutionScope>(sp => sp.GetRequiredService<ContextExecutionScope>());
+            services.TryAddScoped<ISkillCatalogPin>(sp => sp.GetRequiredService<ContextExecutionScope>());
+
             services.TryAddEnumerable(
-                ServiceDescriptor.Singleton<IContextSource, ProjectInstructionsContextSource>());
-            services.TryAddSingleton<IContextAssembler>(sp => new ContextAssembler(
+                ServiceDescriptor.Scoped<IContextSource, ProjectInstructionsContextSource>());
+            services.TryAddScoped<IContextAssembler>(sp => new ContextAssembler(
                 sp.GetServices<IContextSource>(),
                 sp.GetRequiredService<ISessionManager>(),
                 sp.GetRequiredService<ILogger<ContextAssembler>>(),

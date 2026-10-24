@@ -308,6 +308,11 @@ public class HeartbeatJob : IJob
         // schema 单点纪律：直连执行必须携带会话级结算后的真实工具 schema；目录正文同源注入旁路。
         var hbResolution = await AgentJob.ResolveToolSchemasAsync(_services, sessionId, agentDefinition, _logger, ct)
             .ConfigureAwait(false);
+
+        // 旁路只读上下文装配：不插入消息、不写状态、不保存会话（详见 SchedulerContextAssembly）。
+        var assembly = await SchedulerContextAssembly.TryAssembleAsync(
+            _services, sessionId, cwd, projectRoot, _logger, ct).ConfigureAwait(false);
+
         var context = new AgentContext
         {
             SessionId = sessionId,
@@ -317,6 +322,8 @@ public class HeartbeatJob : IJob
             WorkspaceRoot = projectRoot,
             IsBackground = true,
             ToolSettlement = hbResolution,
+            ContextBaseline = assembly.SystemBaseline,
+            SkillSnapshot = assembly.SkillSnapshot,
             Metadata = new Dictionary<string, object>
             {
                 ["source"] = ScheduleSources.Heartbeat

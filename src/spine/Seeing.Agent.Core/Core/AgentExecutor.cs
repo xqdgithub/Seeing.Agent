@@ -912,7 +912,8 @@ public class AgentExecutor : IAgentExecutor
         try
         {
             result = await _tools.ExecuteAsync(
-                tc, context.SessionId, cancellationToken, emitAsync, permissionAuthorizer, agent, toolScope)
+                tc, context.SessionId, cancellationToken, emitAsync, permissionAuthorizer, agent, toolScope,
+                context.SkillSnapshot)
                 .ConfigureAwait(false);
 
             // 工具声明的"本执行内已加载"由执行器统一应用（能力键门控 + 审计）。

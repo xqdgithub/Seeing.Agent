@@ -15,39 +15,45 @@ namespace Seeing.Agent.Core.Context.Sources;
 /// <see cref="ContextValueState.Unavailable"/>**（宁可保留上次已叙述内容，绝不把「被占用」叙述成「已删除」）。
 /// <c>Canonical</c> 只放 <c>{"files":[{"path","sha256"}]}</c>（按 path ordinal 排序）；
 /// 正文经 <c>Payload</c> 仅在本次渲染使用、不落盘。</para>
-/// <para>扫描根（cwd / workspaceRoot）来自执行作用域端口 <see cref="IInstructionRootsProvider"/>：
-/// 源不得读进程当前目录（那会让子会话 / 指定 WorkingDirectory 的执行看不到项目指令）。</para>
+/// <para>扫描根（cwd / workspaceRoot）来自执行作用域 <see cref="IContextExecutionScope"/>：
+/// 源不得读进程当前目录（那会让子会话 / 指定 WorkingDirectory 的执行看不到项目指令），
+/// 也不得自持可变的「当前根」单例（并发执行会互相覆盖）。</para>
 /// </summary>
 public sealed class ProjectInstructionsContextSource : IContextSource, IContextSourceMessageMetadata
 {
+    /// <summary>
+    /// 本源稳定键：调用方按此键决定本轮是否跳过本源（强类型，禁止字符串比较）。
+    /// </summary>
+    public static ContextSourceKey SourceKey { get; } = new(typeof(ProjectInstructionsContextSource).FullName!);
+
     private const string TruncatedSuffix = "\n…（项目指令内容已按上下文基线上限截断）";
 
     private readonly IInstructionFileReader _reader;
-    private readonly IInstructionRootsProvider _rootsProvider;
+    private readonly IContextExecutionScope _executionScope;
     private readonly ILogger<ProjectInstructionsContextSource> _logger;
 
     /// <summary>
     /// 创建项目指令源。
     /// </summary>
     /// <param name="reader">逐路径读取端口（区分缺失与不可读）。</param>
-    /// <param name="rootsProvider">执行作用域扫描根端口（会话 cwd + 工作区根）。</param>
+    /// <param name="executionScope">执行作用域（会话 cwd + 工作区根；由宿主在装配前填充）。</param>
     /// <param name="logger">源日志。</param>
     public ProjectInstructionsContextSource(
         IInstructionFileReader reader,
-        IInstructionRootsProvider rootsProvider,
+        IContextExecutionScope executionScope,
         ILogger<ProjectInstructionsContextSource> logger)
     {
         ArgumentNullException.ThrowIfNull(reader);
-        ArgumentNullException.ThrowIfNull(rootsProvider);
+        ArgumentNullException.ThrowIfNull(executionScope);
         ArgumentNullException.ThrowIfNull(logger);
 
         _reader = reader;
-        _rootsProvider = rootsProvider;
+        _executionScope = executionScope;
         _logger = logger;
     }
 
     /// <inheritdoc />
-    public ContextSourceKey Key => new(typeof(ProjectInstructionsContextSource).FullName!);
+    public ContextSourceKey Key => SourceKey;
 
     /// <inheritdoc />
     public ContextSourceScope Scope => ContextSourceScope.Project;
@@ -64,9 +70,8 @@ public sealed class ProjectInstructionsContextSource : IContextSource, IContextS
     /// <inheritdoc />
     public async Task<ContextSourceValue> ReadAsync(CancellationToken ct = default)
     {
-        var roots = _rootsProvider.GetRoots();
-        var cwd = roots.Cwd;
-        var workspaceRoot = roots.WorkspaceRoot;
+        var cwd = _executionScope.Cwd;
+        var workspaceRoot = _executionScope.WorkspaceRoot;
 
         if (string.IsNullOrWhiteSpace(cwd) || string.IsNullOrWhiteSpace(workspaceRoot))
         {
@@ -153,7 +158,7 @@ public sealed class ProjectInstructionsContextSource : IContextSource, IContextS
     {
         var payload = value.Payload as ProjectInstructionsPayload;
         IReadOnlyList<InstructionFile> files = payload?.Files ?? [];
-        var cwd = payload?.Cwd ?? _rootsProvider.GetRoots().Cwd;
+        var cwd = payload?.Cwd ?? _executionScope.Cwd;
 
         // 截断在渲染内部完成：截断后的文本才是存库基线文本（装配器只观测、不再二次裁剪）
         return RenderEnvelope(cwd, ProjectInstructions.Reasons.Initial, files);

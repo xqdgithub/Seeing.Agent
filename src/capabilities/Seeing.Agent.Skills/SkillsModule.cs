@@ -104,11 +104,10 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
         services.AddSingleton<SkillTool>();
         services.AddSingleton<IComponentLoader, SkillLoader>();
 
-        // 技能上下文源：读执行级钉住快照（Source 只依赖 ISkillCatalogPin，绝不读目录当前态）。
-        // 兜底钉住实现保证宿主尚未接线执行级作用域时源仍可解析；执行级实现由宿主覆盖。
-        services.TryAddSingleton<ISkillCatalogPin>(sp =>
-            new CatalogSnapshotPin(sp.GetRequiredService<ISkillCatalog>()));
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IContextSource, SkillsContextSource>());
+        // 技能上下文源：读执行作用域的钉住快照（Source 只依赖 IContextExecutionScope，绝不读目录当前态）。
+        // 作用域与钉住实现由 Core 的 AddContextPipeline 以 scoped 注册（同一实例）；
+        // 此处只登记源本身，且必须同为 scoped——否则单例会捕获某次执行的作用域（钉住静默失效）。
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IContextSource, SkillsContextSource>());
 
         // 静态斜杠命令（W1-4 InitializeCommands 扫描 GetServices<ICommand>）
         services.AddSingleton<ICommand, SkillLoadCommand>();

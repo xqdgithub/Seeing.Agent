@@ -71,4 +71,11 @@ public class AgentContext
     /// <para>与 <see cref="ToolSettlement"/> 一样由上游结算/装配产出，执行器不得自行读源或计算。</para>
     /// </summary>
     public string? ContextBaseline { get; set; }
+
+    /// <summary>
+    /// 本轮执行钉住的技能目录快照（执行开始时固化；执行器透传给工具的
+    /// <see cref="Tools.ToolContext.SkillSnapshot"/>）。
+    /// <para>null 表示宿主未组合技能模块或未接线执行作用域：工具按不可用处理，不得回落到目录当前态。</para>
+    /// </summary>
+    public Skills.SkillCatalogSnapshot? SkillSnapshot { get; set; }
 }

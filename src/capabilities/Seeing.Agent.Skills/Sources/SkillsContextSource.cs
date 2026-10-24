@@ -9,8 +9,9 @@ namespace Seeing.Agent.Skills.Sources;
 
 /// <summary>
 /// 技能清单源：<c>Target = System</c>、<c>Scope = Project</c>。
-/// <para>只读 <see cref="ISkillCatalogPin.Snapshot"/>（执行级钉住），**不读** <see cref="ISkillCatalog.Current"/>：
-/// 同一次执行内源与 <c>skill</c> 工具看到的是同一个快照，不会因安装/删除中途漂移。</para>
+/// <para>只读执行作用域的 <see cref="IContextExecutionScope.SkillSnapshot"/>（执行级钉住），
+/// **不读** <see cref="ISkillCatalog.Current"/>：同一次执行内源与 <c>skill</c> 工具看到的是同一个快照，
+/// 不会因安装/删除中途漂移。</para>
 /// <para><c>Canonical</c> = <c>{"skills":[{"id","name","description"}]}</c>（按 id ordinal 排序，不含正文）；
 /// <c>Payload</c> 携带本次读取的目录条目，仅供本次渲染使用、不落盘。</para>
 /// </summary>
@@ -21,17 +22,17 @@ public sealed class SkillsContextSource : IContextSource
 
     private const string TruncatedSuffix = "\n…（技能清单已按上下文基线上限截断）";
 
-    private readonly ISkillCatalogPin _pin;
+    private readonly IContextExecutionScope _executionScope;
     private readonly ILogger<SkillsContextSource> _logger;
 
     /// <summary>
     /// 创建技能清单源。
     /// </summary>
-    /// <param name="pin">执行级钉住端口（本轮固定快照的唯一来源）。</param>
+    /// <param name="executionScope">执行级作用域（钉住快照的唯一来源）。</param>
     /// <param name="logger">可选日志（缺省为空日志，便于测试直接构造）。</param>
-    public SkillsContextSource(ISkillCatalogPin pin, ILogger<SkillsContextSource>? logger = null)
+    public SkillsContextSource(IContextExecutionScope executionScope, ILogger<SkillsContextSource>? logger = null)
     {
-        _pin = pin ?? throw new ArgumentNullException(nameof(pin));
+        _executionScope = executionScope ?? throw new ArgumentNullException(nameof(executionScope));
         _logger = logger ?? NullLogger<SkillsContextSource>.Instance;
     }
 
@@ -55,7 +56,7 @@ public sealed class SkillsContextSource : IContextSource
     {
         ct.ThrowIfCancellationRequested();
 
-        var snapshot = _pin.Snapshot;
+        var snapshot = _executionScope.SkillSnapshot;
         if (snapshot is null)
         {
             // 钉住快照缺失属宿主接线错误：按不可用处理（保留上次已叙述内容），不得当作「技能已删除」
