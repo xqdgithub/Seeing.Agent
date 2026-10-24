@@ -1,6 +1,7 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Skills;
 namespace Seeing.Agent.Abstractions.Tools
 {
     /// <summary>
@@ -16,6 +17,13 @@ namespace Seeing.Agent.Abstractions.Tools
 
         /// <summary>元数据出口（由 AgentExecutor 接线，可空）</summary>
         public IToolMetadataSink? MetadataSink { get; set; }
+
+        /// <summary>
+        /// 本轮执行钉住的技能快照（由执行器透传；工具须优先使用，缺失时才回退目录当前态）。
+        /// <para>与执行级作用域（<c>IContextExecutionScope.SkillSnapshot</c>）是同一对象，
+        /// 保证「装配看到的清单」与「工具能加载的技能」一致。</para>
+        /// </summary>
+        public SkillCatalogSnapshot? SkillSnapshot { get; set; }
 
         /// <summary>
         /// 事件出口（子任务投影等）。由 AgentExecutor 在执行工具时接线。

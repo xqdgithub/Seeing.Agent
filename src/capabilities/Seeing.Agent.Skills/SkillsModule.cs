@@ -1,23 +1,28 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Ui;
+using Seeing.Agent.Skills.Catalog;
 using Seeing.Agent.Skills.Commands;
 using Seeing.Agent.Skills.Configuration;
 using Seeing.Agent.Skills.OnlineParsers;
+using Seeing.Agent.Skills.Sources;
+using Seeing.Agent.Skills.Watching;
+using Seeing.Session.Core;
 
 namespace Seeing.Agent.Skills;
 
 /// <summary>
-/// 技能模块 — 提供 SkillManager、在线解析器与 skill 工具。
+/// 技能模块 — 提供技能目录、只读门面、在线解析器与 skill 工具，并拥有技能根 watcher 的生命周期。
 /// </summary>
 public sealed class SkillsModule : ISeeingModule, IUiContribution
 {
@@ -26,6 +31,15 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
     private static readonly IReadOnlyList<string> s_providedSeams = ["skills"];
 
     private readonly IUiContributionRegistry? _ui;
+
+    /// <summary>技能根监听器（模块独占：加载器不得持有或释放）。</summary>
+    private SkillRootWatcher? _watcher;
+
+    /// <summary>目录快照订阅（根列表可能在加载器切工作区后变化，需同步监听范围）。</summary>
+    private IDisposable? _catalogSubscription;
+
+    /// <summary>动态技能命令同步器（目录事件驱动，模块独占其生命周期）。</summary>
+    private DynamicSkillCommandSync? _commandSync;
 
     /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
     public SkillsModule()
@@ -69,16 +83,34 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
 
         services.AddSingleton<OnlineSkillParserAggregator>();
 
-        services.AddSingleton<SkillManager>(sp =>
-        {
-            var logger = sp.GetRequiredService<ILogger<SkillManager>>();
-            var directories = sp.GetService<ISeeingDirectories>();
-            return new SkillManager(logger, directories);
-        });
+        // 状态文件写闸：先于目录登记，使目录读侧与写入侧共用同一把闸（I3：读不得看到写了一半的文件）
+        services.AddSingleton<SkillWriteGate>();
+
+        // 技能目录：可见性的唯一真相源（单例，全局共享同一快照序列）
+        services.AddSingleton<SkillCatalogCore>(sp => new SkillCatalogCore(
+            sp.GetRequiredService<ILogger<SkillCatalogCore>>(),
+            sp.GetService<ISeeingDirectories>(),
+            sp.GetRequiredService<SkillWriteGate>()));
+        services.TryAddSingleton<ISkillCatalog>(sp => sp.GetRequiredService<SkillCatalogCore>());
+
+        // 写入收口：文件通道唯一写入口（注册通道技能只读），skill-state.json 写闸串行化
+        services.TryAddSingleton<ISkillWriter>(sp => new SkillWriter(
+            sp.GetRequiredService<ILogger<SkillWriter>>(),
+            sp.GetRequiredService<ISkillCatalog>(),
+            sp.GetService<ISeeingDirectories>(),
+            sp.GetRequiredService<SkillWriteGate>()));
+
+        services.AddSingleton<SkillManager>(sp => new SkillManager(
+            sp.GetRequiredService<ILogger<SkillManager>>(),
+            sp.GetRequiredService<ISkillCatalog>()));
         services.TryAddSingleton<ISkillManager>(sp => sp.GetRequiredService<SkillManager>());
-        services.AddSingleton<IPromptSectionContributor>(sp => sp.GetRequiredService<SkillManager>());
         services.AddSingleton<SkillTool>();
         services.AddSingleton<IComponentLoader, SkillLoader>();
+
+        // 技能上下文源：读执行作用域的钉住快照（Source 只依赖 IContextExecutionScope，绝不读目录当前态）。
+        // 作用域与钉住实现由 Core 的 AddContextPipeline 以 scoped 注册（同一实例）；
+        // 此处只登记源本身，且必须同为 scoped——否则单例会捕获某次执行的作用域（钉住静默失效）。
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IContextSource, SkillsContextSource>());
 
         // 静态斜杠命令（W1-4 InitializeCommands 扫描 GetServices<ICommand>）
         services.AddSingleton<ICommand, SkillLoadCommand>();
@@ -97,6 +129,9 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
     {
         cancellationToken.ThrowIfCancellationRequested();
         _ui?.Register(this);
+
+        StartWatcher(services);
+        StartCommandSync(services);
 
         var tm = services.GetService<IToolManager>();
         var tool = services.GetService<SkillTool>();
@@ -118,6 +153,16 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
     /// <inheritdoc />
     public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
+        // watcher 先停：停掉回调后目录不会再被 FS 事件驱动
+        _catalogSubscription?.Dispose();
+        _catalogSubscription = null;
+        _watcher?.Dispose();
+        _watcher = null;
+
+        // 动态技能命令：撤销本模块登记过的全部命令（含已禁用 / 已删除的技能名）
+        _commandSync?.Dispose();
+        _commandSync = null;
+
         var tm = services.GetService<IToolManager>();
         if (tm is not null)
         {
@@ -130,15 +175,69 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
         {
             registry.Unregister("skill");
             registry.Unregister("skills");
-            var skillManager = services.GetService<ISkillManager>();
-            if (skillManager is not null)
-            {
-                foreach (var name in skillManager.GetAllSkillInfos().Keys)
-                    registry.Unregister(name);
-            }
         }
 
         _ui?.Unregister(Id);
+    }
+
+    /// <summary>
+    /// 启动技能根监听：回调只做「目录重扫」（watcher 已表示确有变化，无需再做指纹校验）。
+    /// </summary>
+    private void StartWatcher(IServiceProvider services)
+    {
+        if (_watcher is not null)
+            return;
+
+        if (services.GetService<SkillCatalogCore>() is not { } catalog)
+        {
+            // 极简宿主可能没有目录（例如只做命令注册的测试）：不监听即可
+            return;
+        }
+
+        var logger = services.GetService<ILogger<SkillsModule>>() ?? NullLogger<SkillsModule>.Instance;
+
+        _watcher = new SkillRootWatcher(
+            catalog.Roots,
+            cancellationToken => catalog.RefreshAsync(cancellationToken),
+            logger);
+
+        // 加载器切换工作区后会 SetRoots：目录发布新快照时校正监听范围
+        _catalogSubscription = catalog.Subscribe(_ =>
+        {
+            try
+            {
+                _watcher?.SyncRoots(catalog.Roots);
+            }
+            catch (Exception ex)
+            {
+                // 同步监听范围失败不得影响目录发布，但必须可观测
+                logger.LogWarning(ex, "同步技能根监听范围失败");
+            }
+        });
+
+        logger.LogInformation("技能根监听已启用：根数={RootCount}", catalog.Roots.Count);
+    }
+
+    /// <summary>
+    /// 启动动态技能命令同步：以目录为唯一真相源，技能出现/消失/禁用即登记/撤销命令。
+    /// </summary>
+    private void StartCommandSync(IServiceProvider services)
+    {
+        if (_commandSync is not null)
+            return;
+
+        if (services.GetService<ISkillCatalog>() is not { } catalog
+            || services.GetService<ICommandRegistry>() is not { } registry
+            || services.GetService<ISessionManager>() is not { } sessionManager)
+        {
+            // 极简宿主可能没有命令注册表 / 会话管理器：不登记动态命令即可
+            return;
+        }
+
+        var logger = services.GetService<ILogger<SkillsModule>>() ?? NullLogger<SkillsModule>.Instance;
+
+        _commandSync = new DynamicSkillCommandSync(catalog, registry, sessionManager, logger);
+        _commandSync.Start();
     }
 
     private static void TryRegisterConfigSection(IServiceCollection services)

@@ -10,12 +10,14 @@ using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Compression;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Prompts;
+using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Summarization;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Tools;
@@ -26,6 +28,8 @@ using Seeing.Agent.Core.Commands;
 using Seeing.Agent.Core.Commands.Discovery;
 using Seeing.Agent.Core.Compression;
 using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Core.Context;
+using Seeing.Agent.Core.Context.Sources;
 using Seeing.Agent.Core.Decorators;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Hooks;
@@ -401,6 +405,9 @@ namespace Seeing.Agent.Core.Extensions
             services.AddSingleton<Seeing.Session.Hooks.IHookManager>(sp =>
                 new Seeing.Agent.Core.Services.HookManagerAdapter(sp.GetRequiredService<HookManager>()));
 
+            // 上下文源管道（内置源 + 装配器）：须先于提示词构建注册（提示词构建读取装配结果）
+            services.AddContextPipeline();
+
             // 提示词构建服务
             services.AddPromptBuilder();
 
@@ -570,6 +577,10 @@ namespace Seeing.Agent.Core.Extensions
             services.AddSingleton<CompressionService>();
             services.AddSingleton<ICompressionService>(sp => sp.GetRequiredService<CompressionService>());
             services.AddSingleton<CompressionOptions>();
+
+            // 上下文基线状态存储（无状态，注入 ILogger）：供压缩生命周期接线（Task 6）
+            // 与 Hosting 侧装配器注册（Task 12）复用；装配器当前自建实例并使用同一 ILoggerFactory。
+            services.TryAddSingleton<ContextBaselineStore>();
 
             // 能力包工具 / Skills / MCP / LLM / Agents.BuiltIn — 由宿主 AddSeeingModule<T> 登记
 
@@ -784,11 +795,40 @@ namespace Seeing.Agent.Core.Extensions
         }
 
         /// <summary>
+        /// 注册上下文源管道：执行作用域、源、逐路径读取端口与装配器。
+        /// <para>生命周期是本管的硬约束：<b>作用域与装配器都是 scoped</b>，源也随之 scoped——
+        /// 单例源捕获 scoped 作用域会让某次执行的事实（cwd / 钉住快照）泄漏到后续执行。
+        /// 源可继续由能力模块追加（<c>IContextSource</c> 多注册，须同为 scoped）。</para>
+        /// </summary>
+        public static IServiceCollection AddContextPipeline(this IServiceCollection services)
+        {
+            // 搜索根规则的唯一实现（单例）：读取器与旧发现接口共用，不在读取器内 new 第二份
+            services.TryAddSingleton<InstructionDiscovery>(sp => new InstructionDiscovery(
+                sp.GetRequiredService<ILogger<InstructionDiscovery>>()));
+            services.TryAddSingleton<IInstructionFileReader>(sp => new InstructionFileReader(
+                sp.GetRequiredService<InstructionDiscovery>(),
+                sp.GetRequiredService<ILogger<InstructionFileReader>>()));
+
+            // 执行级事实（会话 cwd + 工作区根 + 钉住快照）：每次执行一个实例，由宿主在命令/装配之前填充。
+            services.TryAddScoped<ContextExecutionScope>();
+            services.TryAddScoped<IContextExecutionScope>(sp => sp.GetRequiredService<ContextExecutionScope>());
+
+            services.TryAddEnumerable(
+                ServiceDescriptor.Scoped<IContextSource, ProjectInstructionsContextSource>());
+            services.TryAddScoped<IContextAssembler>(sp => new ContextAssembler(
+                sp.GetServices<IContextSource>(),
+                sp.GetRequiredService<ISessionManager>(),
+                sp.GetRequiredService<ILogger<ContextAssembler>>(),
+                sp.GetService<ILoggerFactory>()));
+
+            return services;
+        }
+
+        /// <summary>
         /// 添加提示词构建服务
         /// </summary>
         public static IServiceCollection AddPromptBuilder(this IServiceCollection services)
         {
-            services.AddSingleton<IInstructionManager, InstructionManager>();
             services.AddSingleton<IPromptSectionContributor, ToolsPromptSectionContributor>();
             services.AddSingleton<IPromptSectionContributor, AgentsPromptSectionContributor>();
             services.AddSingleton<IPromptSectionContributor, EnvironmentPromptSectionContributor>();

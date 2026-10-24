@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Skills.Catalog;
 using System.Text.Json;
 
 namespace Seeing.Agent.Skills
@@ -10,6 +11,11 @@ namespace Seeing.Agent.Skills
     /// <para>
     /// 技能是上下文提供者，不是可执行单元。LLM 通过此工具加载技能内容，
     /// 然后遵循技能中的指令执行任务。
+    /// </para>
+    /// <para>
+    /// 解析<b>只</b>读执行级钉住快照（<see cref="ToolContext.SkillSnapshot"/>）：同一次执行内
+    /// 「装配看到的清单」与「工具能加载的技能」是同一份事实，安装/删除中途也不会漂移。
+    /// 快照缺失视为宿主接线错误——直接失败，绝不回退目录当前态（否则一次执行内出现两个真相）。
     /// </para>
     /// </summary>
     public class SkillTool : ITool
@@ -40,7 +46,7 @@ namespace Seeing.Agent.Skills
         public JsonElement ParametersSchema => BuildParametersSchema();
 
         /// <summary>
-        /// 构建工具描述 — 纯加载器：技能目录由系统提示词 <c>## Skills</c> 节承载（含兜底注入），
+        /// 构建工具描述 — 纯加载器：技能清单由系统提示词 <c>## Skills</c> 区块（上下文基线）承载，
         /// 本工具只负责按名加载技能全文，避免重复维护列表导致描述膨胀。
         /// </summary>
         private string BuildDescription()
@@ -87,28 +93,43 @@ namespace Seeing.Agent.Skills
                 return Task.FromResult(Failure("Parameter 'name' must be a non-empty string. See '## Skills' section in the system prompt for available skill names."));
             }
 
-            // 检查技能是否启用
-            if (!_skillManager.IsSkillEnabled(skillName))
+            SkillInfo skill;
+            string directory;
+            List<string> skillFiles;
+
+            // 执行级钉住快照是本工具的唯一事实源：缺失即宿主未接线，失败并告警；
+            // 不得读取 ISkillCatalog / SkillManager 的目录当前态（会与提示词清单分叉）。
+            if (context.SkillSnapshot is not { } snapshot)
             {
-                _logger.LogWarning("尝试加载已禁用的技能: {SkillName}", skillName);
-                return Task.FromResult(Failure($"Skill '{skillName}' is disabled. Enable it in the Skills settings."));
+                _logger.LogWarning(
+                    "技能钉住快照缺失，skill 工具不可用: SessionId={SessionId}",
+                    context.SessionId);
+                return Task.FromResult(Failure(
+                    "Skill catalog is not available in this execution; retry the request."));
             }
 
-            // 获取技能信息
-            var skill = _skillManager.GetSkillInfo(skillName);
-            if (skill == null)
+            // 解析与文件列表都以本轮快照为准
+            var entry = snapshot.Entries.FirstOrDefault(
+                candidate => string.Equals(candidate.Info.Name, skillName, StringComparison.OrdinalIgnoreCase));
+
+            if (entry is null)
             {
-                var available = string.Join(", ", _skillManager.GetAllSkillInfos().Keys);
-                return Task.FromResult(Failure($"Skill \"{skillName}\" not found. Available skills: {(string.IsNullOrEmpty(available) ? "none" : available)}"));
+                if (snapshot.DisabledNames.Contains(skillName))
+                    return Task.FromResult(Disabled(skillName));
+
+                return Task.FromResult(NotFound(skillName, snapshot));
             }
+
+            if (snapshot.DisabledNames.Contains(entry.Info.Name))
+                return Task.FromResult(Disabled(skillName));
+
+            skill = entry.Info;
+            directory = entry.DirectoryPath;
+            skillFiles = _skillManager.GetSkillFiles(entry, MaxSkillFiles);
 
             _logger.LogInformation("Loading skill: {Name}", skillName);
 
-            // 获取技能文件列表
-            var skillFiles = _skillManager.GetSkillFiles(skillName, MaxSkillFiles);
-
-            // 构建技能内容输出
-            var output = BuildSkillContent(skill, skillFiles);
+            var output = BuildSkillContent(skill, directory, skillFiles);
 
             return Task.FromResult(new ToolResult
             {
@@ -118,7 +139,7 @@ namespace Seeing.Agent.Skills
                 Metadata = new Dictionary<string, object>
                 {
                     ["name"] = skill.Name,
-                    ["dir"] = skill.DirectoryPath,
+                    ["dir"] = directory,
                     ["fileCount"] = skillFiles.Count
                 }
             });
@@ -127,7 +148,7 @@ namespace Seeing.Agent.Skills
         /// <summary>
         /// 构建技能内容输出（注入到 LLM 上下文）
         /// </summary>
-        private string BuildSkillContent(SkillInfo skill, List<string> skillFiles)
+        private string BuildSkillContent(SkillInfo skill, string directory, List<string> skillFiles)
         {
             var lines = new List<string>
             {
@@ -168,7 +189,7 @@ namespace Seeing.Agent.Skills
             // 添加技能内容
             lines.Add(skill.Content);
             lines.Add("");
-            lines.Add($"Base directory for this skill: file:///{skill.DirectoryPath.Replace("\\", "/")}");
+            lines.Add($"Base directory for this skill: file:///{directory.Replace("\\", "/")}");
             lines.Add("Relative paths in this skill (e.g., scripts/, references/) are relative to this base directory.");
 
             // 添加技能文件列表
@@ -188,6 +209,22 @@ namespace Seeing.Agent.Skills
             lines.Add("</skill_content>");
 
             return string.Join("\n", lines);
+        }
+
+        /// <summary>「技能不存在」提示：清单文本复用 <see cref="SkillCatalogFormatter"/>（唯一出口）。</summary>
+        private ToolResult NotFound(string skillName, SkillCatalogSnapshot snapshot)
+        {
+            var available = SkillCatalogProjection.EnabledEntries(snapshot);
+
+            return Failure(
+                $"Skill \"{skillName}\" not found.\n\n{SkillCatalogFormatter.RenderList(available)}");
+        }
+
+        /// <summary>「技能已禁用」提示。</summary>
+        private ToolResult Disabled(string skillName)
+        {
+            _logger.LogWarning("尝试加载已禁用的技能: {SkillName}", skillName);
+            return Failure($"Skill '{skillName}' is disabled. Enable it in the Skills settings.");
         }
 
         /// <summary>

@@ -1,14 +1,10 @@
 @using AntDesign
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.Extensions.Logging
-@using Seeing.Agent.Core.Configuration
-@using Seeing.Agent.Configuration
-@using Seeing.Agent.Skills
 @using Seeing.Agent.Skills.OnlineParsers
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
-@inject IWorkspaceProvider WorkspaceProvider
-@inject SkillManager SkillManager
+@inject ISkillWriter SkillWriter
 @inject HttpClient HttpClient
 @inject OnlineSkillParserAggregator ParserAggregator
 @inject ILogger<SkillCreatePage> Logger
@@ -351,23 +347,30 @@
             return;
         }
 
-        string baseDir = _form.Level == "user"
-            ? WorkspaceProvider.UserSeeingDirectory
-            : WorkspaceProvider.ProjectSeeingDirectory;
-        
-        var skillDir = Path.Combine(baseDir, "skills", _form.Name);
-
-        if (Directory.Exists(skillDir))
-        {
-            MessageService.Warning($"技能目录已存在");
-            return;
-        }
-
         try
         {
-            CreateSkillFile(skillDir);
-            await SkillManager.RefreshSkillsAsync();
-            
+            // 写入由 ISkillWriter 收口：页面不再碰文件系统
+            var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(_form.Author))
+                metadata["author"] = _form.Author;
+            if (!string.IsNullOrEmpty(_form.Version))
+                metadata["version"] = _form.Version;
+            if (!string.IsNullOrEmpty(_form.Tags))
+                metadata["tags"] = _form.Tags;
+
+            var draft = new SkillDraft(
+                _form.Name,
+                _form.Description,
+                _form.Content ?? "# 技能说明\n\n在此编写技能内容...",
+                metadata.Count > 0 ? metadata : null);
+
+            var result = await SkillWriter.CreateAsync(draft, ToLevel(_form.Level), overwrite: false);
+            if (!result.Success)
+            {
+                MessageService.Error($"创建失败: {result.Error}");
+                return;
+            }
+
             MessageService.Success("技能创建成功");
             NavigationManager.NavigateTo($"/skills/{_form.Name}");
         }
@@ -397,63 +400,25 @@
             return;
         }
 
-        string baseDir = _uploadLevel == "user"
-            ? WorkspaceProvider.UserSeeingDirectory
-            : WorkspaceProvider.ProjectSeeingDirectory;
-        
-        var skillDir = Path.Combine(baseDir, "skills", _uploadSkillName);
-
-        if (Directory.Exists(skillDir))
-        {
-            MessageService.Warning($"技能目录已存在");
-            return;
-        }
-
         try
         {
-            Directory.CreateDirectory(skillDir);
+            // ZIP 若带单一仓库根目录，剥掉它再落盘（与在线安装分支保持一致）
+            var prefix = DetectSingleRootPrefix(_uploadedFileData);
 
-            using var zipStream = new System.IO.MemoryStream(_uploadedFileData);
-            using var archive = new System.IO.Compression.ZipArchive(zipStream);
-            
-            // 检测 ZIP 是否有单一根目录
-            string? rootPrefix = null;
-            var entries = archive.Entries.Where(e => !string.IsNullOrEmpty(e.Name)).ToList();
-            
-            if (entries.Count > 0)
+            using var zipStream = new MemoryStream(_uploadedFileData);
+            var result = await SkillWriter.InstallZipAsync(
+                _uploadSkillName,
+                zipStream,
+                ToLevel(_uploadLevel),
+                overwrite: false,
+                subdirectoryPrefix: prefix);
+
+            if (!result.Success)
             {
-                var firstPath = entries[0].FullName.Split('/');
-                if (firstPath.Length > 1)
-                {
-                    var potentialRoot = firstPath[0] + "/";
-                    if (entries.All(e => e.FullName.StartsWith(potentialRoot)))
-                    {
-                        rootPrefix = potentialRoot;
-                    }
-                }
-            }
-            
-            foreach (var entry in entries)
-            {
-                var relativePath = rootPrefix != null 
-                    ? entry.FullName.Substring(rootPrefix.Length) 
-                    : entry.FullName;
-                
-                if (string.IsNullOrEmpty(relativePath)) continue;
-
-                var entryPath = Path.Combine(skillDir, relativePath);
-                var entryDir = Path.GetDirectoryName(entryPath);
-                
-                if (!string.IsNullOrEmpty(entryDir))
-                    Directory.CreateDirectory(entryDir);
-
-                using var entryStream = entry.Open();
-                using var fileStream = File.Create(entryPath);
-                await entryStream.CopyToAsync(fileStream);
+                MessageService.Error($"创建失败: {result.Error}");
+                return;
             }
 
-            await SkillManager.RefreshSkillsAsync();
-            
             MessageService.Success("技能创建成功");
             NavigationManager.NavigateTo($"/skills/{_uploadSkillName}");
         }
@@ -461,28 +426,6 @@
         {
             MessageService.Error($"创建失败: {ex.Message}");
         }
-    }
-
-    private void CreateSkillFile(string skillDir)
-    {
-        Directory.CreateDirectory(skillDir);
-        
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("---");
-        sb.AppendLine($"name: {_form.Name}");
-        sb.AppendLine($"description: {_form.Description}");
-        if (!string.IsNullOrEmpty(_form.Author))
-            sb.AppendLine($"author: {_form.Author}");
-        if (!string.IsNullOrEmpty(_form.Version))
-            sb.AppendLine($"version: {_form.Version}");
-        if (!string.IsNullOrEmpty(_form.Tags))
-            sb.AppendLine($"tags: {_form.Tags}");
-        sb.AppendLine("---");
-        sb.AppendLine();
-        sb.AppendLine(_form.Content ?? "# 技能说明\n\n在此编写技能内容...");
-
-        var skillPath = Path.Combine(skillDir, "SKILL.md");
-        File.WriteAllText(skillPath, sb.ToString());
     }
 
     private async Task ParseOnlineSkill()
@@ -649,89 +592,39 @@
             return;
         }
 
-        string baseDir = _onlineLevel == "user"
-            ? WorkspaceProvider.UserSeeingDirectory
-            : WorkspaceProvider.ProjectSeeingDirectory;
-
-        var skillDir = Path.Combine(baseDir, "skills", _onlinePreview.Name);
-
-        if (Directory.Exists(skillDir))
-        {
-            MessageService.Warning($"技能目录已存在: {_onlinePreview.Name}");
-            return;
-        }
-
         try
         {
-            Directory.CreateDirectory(skillDir);
-            
-            // 如果有 ZIP 数据，解压文件
+            // 写入由 ISkillWriter 收口：有 ZIP 走解压安装，否则原样写入 SKILL.md
+            ConfigLevel level = ToLevel(_onlineLevel);
+            SkillWriteResult result;
+
             if (_onlineZipData != null && _onlineFiles.Count > 0)
             {
-                using var zipStream = new System.IO.MemoryStream(_onlineZipData);
-                using var archive = new System.IO.Compression.ZipArchive(zipStream);
-                
-                var entries = archive.Entries.Where(e => !string.IsNullOrEmpty(e.Name)).ToList();
-                
-                // 检测 ZIP 根目录（GitHub 仓库格式: repo-branch/）
-                string? repoRoot = null;
-                if (entries.Count > 0)
-                {
-                    var firstPath = entries[0].FullName.Split('/');
-                    if (firstPath.Length > 1)
-                    {
-                        var potentialRoot = firstPath[0] + "/";
-                        if (entries.All(e => e.FullName.StartsWith(potentialRoot)))
-                        {
-                            repoRoot = potentialRoot;
-                        }
-                    }
-                }
-                
-                foreach (var entry in entries)
-                {
-                    var relativePath = repoRoot != null 
-                        ? entry.FullName.Substring(repoRoot.Length) 
-                        : entry.FullName;
-                    
-                    if (string.IsNullOrEmpty(relativePath)) continue;
-                    
-                    // 如果是 skills.sh 的仓库 ZIP，只提取目标技能目录
-                    if (!string.IsNullOrEmpty(_onlineSkillDirInZip) && !relativePath.StartsWith(_onlineSkillDirInZip + "/"))
-                    {
-                        continue;
-                    }
-                    
-                    // 去除技能目录前缀
-                    if (!string.IsNullOrEmpty(_onlineSkillDirInZip) && relativePath.StartsWith(_onlineSkillDirInZip + "/"))
-                    {
-                        relativePath = relativePath.Substring(_onlineSkillDirInZip.Length + 1);
-                    }
-                    
-                    if (string.IsNullOrEmpty(relativePath)) continue;
-
-                    var entryPath = Path.Combine(skillDir, relativePath);
-                    var entryDir = Path.GetDirectoryName(entryPath);
-                    
-                    if (!string.IsNullOrEmpty(entryDir))
-                        Directory.CreateDirectory(entryDir);
-
-                    using var entryStream = entry.Open();
-                    using var fileStream = File.Create(entryPath);
-                    await entryStream.CopyToAsync(fileStream);
-                }
-                
-                Logger.LogInformation("解压技能 ZIP 成功: {Name}, 文件数: {Count}", _onlinePreview.Name, _onlineFiles.Count);
+                using var zipStream = new MemoryStream(_onlineZipData);
+                result = await SkillWriter.InstallZipAsync(
+                    _onlinePreview.Name,
+                    zipStream,
+                    level,
+                    overwrite: false,
+                    subdirectoryPrefix: ResolveZipPrefix());
             }
             else
             {
-                // 只保存 SKILL.md
-                var skillPath = Path.Combine(skillDir, "SKILL.md");
-                await File.WriteAllTextAsync(skillPath, _onlineSkillContent);
+                result = await SkillWriter.WriteMarkdownAsync(
+                    _onlinePreview.Name,
+                    _onlineSkillContent,
+                    level,
+                    overwrite: false);
             }
 
-            await SkillManager.RefreshSkillsAsync();
+            if (!result.Success)
+            {
+                Logger.LogWarning("保存技能失败: {Name}, 原因: {Error}", _onlinePreview.Name, result.Error);
+                MessageService.Error($"保存失败: {result.Error}");
+                return;
+            }
 
+            Logger.LogInformation("技能已保存: {Name}, 文件数: {Count}", _onlinePreview.Name, _onlineFiles.Count);
             MessageService.Success("技能保存成功");
             NavigationManager.NavigateTo($"/skills/{_onlinePreview.Name}");
         }
@@ -741,6 +634,50 @@
             MessageService.Error($"保存失败: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// 计算 ZIP 内需要剥离的前缀：仓库根（<c>repo-branch/</c>）+ 技能目录（如 <c>skills/find-skills</c>）。
+    /// </summary>
+    private string? ResolveZipPrefix()
+    {
+        if (_onlineZipData == null)
+            return _onlineSkillDirInZip;
+
+        var repoRoot = DetectSingleRootPrefix(_onlineZipData);
+        if (string.IsNullOrEmpty(_onlineSkillDirInZip))
+            return repoRoot;
+
+        var skillDirectory = _onlineSkillDirInZip.Replace('\\', '/').Trim('/');
+        return string.IsNullOrEmpty(repoRoot)
+            ? skillDirectory
+            : repoRoot.TrimEnd('/') + "/" + skillDirectory;
+    }
+
+    /// <summary>检测 ZIP 是否只有一个公共根目录（GitHub 仓库导出的 <c>repo-branch/</c>）。</summary>
+    private static string? DetectSingleRootPrefix(byte[] zipData)
+    {
+        using var stream = new MemoryStream(zipData);
+        using var archive = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Read);
+
+        var entries = archive.Entries.Where(e => !string.IsNullOrEmpty(e.Name)).ToList();
+        if (entries.Count == 0)
+            return null;
+
+        var firstSegment = entries[0].FullName.Split('/');
+        if (firstSegment.Length <= 1)
+            return null;
+
+        var potentialRoot = firstSegment[0] + "/";
+        return entries.All(e => e.FullName.StartsWith(potentialRoot, StringComparison.Ordinal))
+            ? potentialRoot
+            : null;
+    }
+
+    /// <summary>UI 层级字符串 → 配置层级。</summary>
+    private static ConfigLevel ToLevel(string level) =>
+        string.Equals(level, "user", StringComparison.OrdinalIgnoreCase)
+            ? ConfigLevel.User
+            : ConfigLevel.Project;
 
     private sealed class CreateForm
     {

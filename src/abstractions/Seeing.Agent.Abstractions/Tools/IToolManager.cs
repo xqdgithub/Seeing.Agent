@@ -3,6 +3,7 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Skills;
 
 namespace Seeing.Agent.Abstractions.Tools;
 
@@ -54,6 +55,14 @@ public interface IToolManager
 
     /// <summary>
     /// 执行工具调用（权限检查由 AgentExecutor 统一处理）
+    /// <param name="toolCall">工具调用。</param>
+    /// <param name="sessionId">会话 ID。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <param name="emitAsync">事件出口（可空）。</param>
+    /// <param name="permissionAuthorizer">执行级授权器（可空）。</param>
+    /// <param name="agent">当前执行所属 Agent（可空）。</param>
+    /// <param name="toolScope">执行级工具可见性作用域（可空）。</param>
+    /// <param name="skillSnapshot">本轮执行钉住的技能快照（可空；透传到 <see cref="ToolContext.SkillSnapshot"/>）。</param>
     /// </summary>
     Task<ToolResult> ExecuteAsync(
         ToolCall toolCall,
@@ -62,5 +71,6 @@ public interface IToolManager
         Func<IMessageEvent, ValueTask>? emitAsync = null,
         IPermissionAuthorizer? permissionAuthorizer = null,
         AgentDefinition? agent = null,
-        IExecutionToolScope? toolScope = null);
+        IExecutionToolScope? toolScope = null,
+        SkillCatalogSnapshot? skillSnapshot = null);
 }

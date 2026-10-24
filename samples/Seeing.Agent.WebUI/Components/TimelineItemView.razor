@@ -16,6 +16,10 @@ else if (Item.Message != null)
     {
         <ProjectInstructionsMessageItem Message="@Item.Message" />
     }
+    else if (Item.Kind == TimelineModel.TimelineItemKind.ContextUpdate)
+    {
+        <ContextUpdateMessageItem Message="@Item.Message" />
+    }
     else if (Item.Kind == TimelineModel.TimelineItemKind.Compaction)
     {
         <CompactionSummaryItem Message="@Item.Message" />

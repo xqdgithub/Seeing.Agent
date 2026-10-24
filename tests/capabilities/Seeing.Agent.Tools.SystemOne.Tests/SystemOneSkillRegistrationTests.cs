@@ -6,13 +6,13 @@ using Xunit;
 
 namespace Seeing.Agent.Tools.SystemOne.Tests;
 
-/// <summary>SystemOne 内嵌 Skill 随模块 Activate/Deactivate 注册与注销。</summary>
+/// <summary>SystemOne 内嵌 Skill 随模块 Activate/Deactivate 注册与注销（写入口为 ISkillCatalog）。</summary>
 public class SystemOneSkillRegistrationTests
 {
-    private static ServiceProvider BuildProvider(ISkillManager skillManager)
+    private static ServiceProvider BuildProvider(ISkillCatalog catalog)
     {
         var services = new ServiceCollection();
-        services.AddSingleton(skillManager);
+        services.AddSingleton(catalog);
         return services.BuildServiceProvider();
     }
 
@@ -20,13 +20,20 @@ public class SystemOneSkillRegistrationTests
     public async Task Activate_应注册内嵌技能_Deactivate_应注销()
     {
         SkillInfo? captured = null;
-        var skillManager = new Mock<ISkillManager>();
-        skillManager
-            .Setup(m => m.RegisterEmbeddedSkill(It.IsAny<SkillInfo>()))
-            .Callback<SkillInfo>(s => captured = s);
+        var providerId = string.Empty;
+
+        var catalog = new Mock<ISkillCatalog>();
+        catalog
+            .Setup(c => c.RegisterAsync(It.IsAny<SkillInfo>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<SkillInfo, string, CancellationToken>((skill, provider, _) =>
+            {
+                captured = skill;
+                providerId = provider;
+            })
+            .ReturnsAsync(true);
 
         var module = new SystemOneToolsModule();
-        await using var provider = BuildProvider(skillManager.Object);
+        await using var provider = BuildProvider(catalog.Object);
 
         await module.ActivateAsync(provider);
 
@@ -36,14 +43,17 @@ public class SystemOneSkillRegistrationTests
         captured.Content.Should().Contain("systemone_ask");
         captured.Content.Should().Contain("systemone_noul");
         captured.Location.Should().StartWith("systemone/");
+        providerId.Should().Be("systemone.tools");
 
         await module.DeactivateAsync(provider);
 
-        skillManager.Verify(m => m.Unregister("systemone-judgment"), Times.Once);
+        catalog.Verify(
+            c => c.UnregisterAsync("systemone-judgment", It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
-    public async Task Activate_无技能管理器_不应抛()
+    public async Task Activate_无技能目录_不应抛()
     {
         var services = new ServiceCollection();
         await using var provider = services.BuildServiceProvider();

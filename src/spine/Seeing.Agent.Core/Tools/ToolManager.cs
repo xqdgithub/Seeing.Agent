@@ -607,6 +607,7 @@ namespace Seeing.Agent.Core.Tools
         /// <paramref name="agent"/> 为当前执行所属 Agent，用于资源门 Agent 规则（spec §5.1 步骤 3）
         /// 及 <see cref="ToolContext.Agent"/> 透传。
         /// <paramref name="toolScope"/> 为执行级可见性作用域（可空）；缺失时工具拿不到“同执行放行”能力。
+        /// <paramref name="skillSnapshot"/> 为本轮执行钉住的技能快照（可空），透传到 <see cref="ToolContext.SkillSnapshot"/>。
         /// </summary>
         public async Task<ToolResult> ExecuteAsync(
             ToolCall toolCall,
@@ -615,7 +616,8 @@ namespace Seeing.Agent.Core.Tools
             Func<Seeing.Agent.Abstractions.Events.IMessageEvent, ValueTask>? emitAsync = null,
             IPermissionAuthorizer? permissionAuthorizer = null,
             AgentDefinition? agent = null,
-            IExecutionToolScope? toolScope = null)
+            IExecutionToolScope? toolScope = null,
+            Seeing.Agent.Abstractions.Skills.SkillCatalogSnapshot? skillSnapshot = null)
         {
             var toolId = toolCall.Name;
             var agentName = agent?.Name;
@@ -726,7 +728,8 @@ namespace Seeing.Agent.Core.Tools
                     MetadataSink = sink,
                     Services = _serviceProvider,
                     PermissionAuthorizer = permissionAuthorizer,
-                    ToolScope = toolScope
+                    ToolScope = toolScope,
+                    SkillSnapshot = skillSnapshot
                 };
 
                 var toolResult = await tool.ExecuteAsync(resolvedArgs, context).ConfigureAwait(false);
@@ -771,94 +774,6 @@ namespace Seeing.Agent.Core.Tools
 
                 throw;
             }
-        }
-
-        /// <summary>
-        /// 批量执行工具调用
-        /// </summary>
-        public async Task<List<ToolResult>> ExecuteAsync(
-            List<ToolCall> toolCalls,
-            string sessionId = "",
-            CancellationToken cancellationToken = default)
-        {
-            // ========== Hook: tool.batch.before ==========
-            var batchMutable = new Dictionary<string, object?>
-            {
-                ["toolCalls"] = toolCalls.Select(tc => tc.Name).ToList()
-            };
-
-            var beforeResult = await _hookManager.TriggerBlockingAsync(
-                HookRegistry.ToolBatchBefore,
-                sessionId,
-                new Dictionary<string, object?>
-                {
-                    ["count"] = toolCalls.Count,
-                    ["toolIds"] = toolCalls.Select(tc => tc.Name).Distinct().ToList()
-                },
-                batchMutable,
-                cancellationToken).ConfigureAwait(false);
-
-            if (!beforeResult.Continue)
-            {
-                _logger.LogWarning("批量工具调用被 Hook 中断");
-                return toolCalls.Select(tc => new ToolResult
-                {
-                    Success = false,
-                    ToolCallId = tc.Id,
-                    Error = "批量工具调用被 Hook 中断"
-                }).ToList();
-            }
-
-            var results = new List<ToolResult>();
-
-            foreach (var toolCall in toolCalls)
-            {
-                var result = await ExecuteAsync(toolCall, sessionId, cancellationToken).ConfigureAwait(false);
-                results.Add(result);
-            }
-
-            // ========== Hook: tool.batch.after ==========
-            _hookManager.TriggerFireAndForget(
-                HookRegistry.ToolBatchAfter,
-                sessionId,
-                new Dictionary<string, object?>
-                {
-                    ["count"] = toolCalls.Count
-                },
-                new Dictionary<string, object?>
-                {
-                    ["results"] = results.Select(r => new Dictionary<string, object?>
-                    {
-                        ["toolCallId"] = r.ToolCallId,
-                        ["success"] = r.Success,
-                        ["error"] = r.Error
-                    }).ToList()
-                });
-
-            return results;
-        }
-
-        /// <summary>
-        /// 通过字典参数执行工具
-        /// </summary>
-        public async Task<ToolResult> ExecuteAsync(
-            string toolId,
-            Dictionary<string, object?> args,
-            string sessionId = "",
-            CancellationToken cancellationToken = default)
-        {
-            var toolCall = new ToolCall
-            {
-                Id = Guid.NewGuid().ToString("N"),
-                Type = "function",
-                Function = new FunctionCall
-                {
-                    Name = toolId,
-                    Arguments = JsonSerializer.Serialize(args)
-                }
-            };
-
-            return await ExecuteAsync(toolCall, sessionId, cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>

@@ -95,14 +95,24 @@ namespace Seeing.Agent.Tests.Tools
         }
 
         [Fact]
-        public async Task ExecuteAsync_WithDictionaryArgs_ShouldWork()
+        public async Task ExecuteAsync_WithArgs_ShouldWork()
         {
             var invoker = new ToolManager(_loggerMock.Object, _hookManager);
             await invoker.RegisterToolsFromTypeAsync(typeof(TestToolClass));
 
-            var result = await invoker.ExecuteAsync("Add", new Dictionary<string, object?> { ["a"] = 10, ["b"] = 20 }, cancellationToken: TestContext.Current.CancellationToken);
+            var result = await invoker.ExecuteAsync(
+                new ToolCall
+                {
+                    Id = "call-add",
+                    Function = new FunctionCall
+                    {
+                        Name = "Add",
+                        Arguments = """{"a":10,"b":20}"""
+                    }
+                },
+                cancellationToken: TestContext.Current.CancellationToken);
 
-            result.Success.Should().BeTrue();
+            result.Success.Should().BeTrue(result.Error);
         }
 
         [Fact]

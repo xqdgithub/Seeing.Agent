@@ -37,8 +37,5 @@
 
         /// <summary>自定义元数据（可选）</summary>
         public Dictionary<string, string> Metadata { get; set; } = new();
-
-        /// <summary>技能目录路径（Location 的目录部分）</summary>
-        public string DirectoryPath => Path.GetDirectoryName(Location) ?? string.Empty;
     }
 }

@@ -6,10 +6,23 @@ namespace Seeing.Session.Core;
 public static class SessionMetadataKeys
 {
     /// <summary>
-    /// 项目指令渐进加载的指纹快照（JSON：cwd + files）。
-    /// 清空消息时应移除；Fork / Branch 时应随消息一并复制。
+    /// 上下文源基线（JSON：状态版本 + 待处理重置位 + 各源已渲染文本与规范化值）。
+    /// 清空消息时移除；Fork 不复制（分支属新 epoch）。
     /// </summary>
-    public const string InstructionFingerprints = "instruction.fingerprints";
+    public const string ContextBaseline = "context.baseline";
+
+    /// <summary>
+    /// 上下文管道增量消息的标记键（<c>bool</c>，恒为 true）：唯一判据「这是机器注入的上下文增量，不是用户输入」。
+    /// <para>消费方（标题计数 / UI 折叠）只认本键与 <see cref="ContextUpdateSources"/>，
+    /// <b>禁止</b>按消息内容前缀嗅探（字符串嗅探是反模式，且会让内容渲染与语义判定耦合）。</para>
+    /// </summary>
+    public const string ContextUpdate = "context.update";
+
+    /// <summary>
+    /// 上下文管道增量消息的元数据键：本次叙述涉及的源键（<c>string[]</c>，稳定顺序）。
+    /// 消费方据它判定「机器注入而非用户输入」（标题计数、UI 折叠），并据此显示来源。
+    /// </summary>
+    public const string ContextUpdateSources = "context.update.sources";
 
     /// <summary>
     /// 子代理会话关联的父会话工具调用 ID（task 工具写入，UI 据此精确匹配父子关联）。

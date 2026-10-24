@@ -10,7 +10,9 @@
             <span class="project-instructions__icon" aria-hidden="true">
                 <Icon Type="@IconType.Outline.FileText" Theme="IconThemeType.Outline" />
             </span>
-            <span class="project-instructions__label">已加载 @FileCount 个项目指令</span>
+            <span class="project-instructions__label">
+                @($"已加载 {FileCount} 个项目指令")
+            </span>
             @if (!string.IsNullOrEmpty(ReasonLabel))
             {
                 <span class="project-instructions__reason">@ReasonLabel</span>

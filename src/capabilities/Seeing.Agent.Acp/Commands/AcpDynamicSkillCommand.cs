@@ -4,6 +4,8 @@ namespace Seeing.Agent.Acp.Commands;
 
 /// <summary>
 /// ACP 动态 Skill 命令 - 透传给 ACP 后端
+/// <para>只持有技能名：描述等元数据由注册方（目录快照）在登记时提供，
+/// 技能正文随本轮请求原样透传后端，ACP 侧不需要第二份副本。</para>
 /// </summary>
 public sealed class AcpDynamicSkillCommand : ICommand
 {
@@ -11,6 +13,8 @@ public sealed class AcpDynamicSkillCommand : ICommand
 
     public AcpDynamicSkillCommand(string skillName, string? description = null)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(skillName);
+
         Metadata = new CommandMetadata
         {
             Name = skillName,

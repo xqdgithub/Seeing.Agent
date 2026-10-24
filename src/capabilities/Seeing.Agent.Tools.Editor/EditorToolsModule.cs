@@ -45,7 +45,7 @@ public sealed class EditorToolsModule : ISeeingModule
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        RegisterEmbeddedSkills(services);
+        await RegisterEmbeddedSkillsAsync(services, cancellationToken).ConfigureAwait(false);
 
         var tm = services.GetService<IToolManager>();
         if (tm is null)
@@ -62,7 +62,7 @@ public sealed class EditorToolsModule : ISeeingModule
     /// <inheritdoc />
     public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
-        UnregisterEmbeddedSkills(services);
+        await UnregisterEmbeddedSkillsAsync(services, cancellationToken).ConfigureAwait(false);
 
         var tm = services.GetService<IToolManager>();
         if (tm is null)
@@ -72,24 +72,32 @@ public sealed class EditorToolsModule : ISeeingModule
             await tm.UnregisterToolAsync(id, cancellationToken).ConfigureAwait(false);
     }
 
-    private void RegisterEmbeddedSkills(IServiceProvider services)
+    private async Task RegisterEmbeddedSkillsAsync(IServiceProvider services, CancellationToken cancellationToken)
     {
-        if (services.GetService<ISkillManager>() is not { } skillManager)
+        if (services.GetService<ISkillCatalog>() is not { } catalog)
             return;
 
         var logger = services.GetService<ILogger<EditorToolsModule>>()
                      ?? NullLogger<EditorToolsModule>.Instance;
         _registeredSkillNames.Clear();
-        _registeredSkillNames.AddRange(EditorSkillRegistrar.Register(skillManager, logger));
+        _registeredSkillNames.AddRange(
+            await EditorSkillRegistrar.RegisterAsync(catalog, logger, cancellationToken)
+                .ConfigureAwait(false));
     }
 
-    private void UnregisterEmbeddedSkills(IServiceProvider services)
+    private async Task UnregisterEmbeddedSkillsAsync(IServiceProvider services, CancellationToken cancellationToken)
     {
         if (_registeredSkillNames.Count == 0)
             return;
 
-        if (services.GetService<ISkillManager>() is { } skillManager)
-            EditorSkillRegistrar.Unregister(skillManager, _registeredSkillNames);
+        if (services.GetService<ISkillCatalog>() is { } catalog)
+        {
+            var logger = services.GetService<ILogger<EditorToolsModule>>()
+                         ?? NullLogger<EditorToolsModule>.Instance;
+            await EditorSkillRegistrar
+                .UnregisterAsync(catalog, _registeredSkillNames, logger, cancellationToken)
+                .ConfigureAwait(false);
+        }
         _registeredSkillNames.Clear();
     }
 }

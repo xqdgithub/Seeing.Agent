@@ -1,0 +1,726 @@
+using System.IO.Compression;
+using System.Text;
+using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Skills;
+using Seeing.Agent.Skills.Catalog;
+using Xunit;
+
+namespace Seeing.Agent.Skills.Tests;
+
+/// <summary>
+/// 写入收口锁定：只写文件通道 / 路径安全 / 原子写 / 原样写 Markdown / ZIP 前缀剥离 /
+/// 启用清所有层级 / skill-state 写闸串行化 / 失败不留临时目录。
+/// </summary>
+public sealed class SkillWriterTests : IDisposable
+{
+    private readonly string _root =
+        Path.Combine(Path.GetTempPath(), $"seeing-skill-writer-{Guid.NewGuid():N}");
+
+    /// <summary>模拟工作区根。</summary>
+    private readonly string _workspace;
+
+    /// <summary>模拟用户主目录。</summary>
+    private readonly string _userHome;
+
+    public SkillWriterTests()
+    {
+        _workspace = Path.Combine(_root, "ws");
+        _userHome = Path.Combine(_root, "home");
+        Directory.CreateDirectory(_workspace);
+        Directory.CreateDirectory(_userHome);
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            if (Directory.Exists(_root))
+                Directory.Delete(_root, recursive: true);
+        }
+        catch (IOException)
+        {
+            // 临时目录清理失败不影响测试结论
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // 同上
+        }
+    }
+
+    // ===== 创建 =====
+
+    [Fact]
+    public async Task Create_ShouldWriteAtomicallyAndRefresh()
+    {
+        var (catalog, writer) = CreateWriter();
+        var ct = TestContext.Current.CancellationToken;
+
+        var result = await writer.CreateAsync(
+            new SkillDraft("demo-skill", "演示技能", "# 正文\n\n内容"),
+            ConfigLevel.Project,
+            overwrite: false,
+            ct);
+
+        result.Success.Should().BeTrue(result.Error ?? "创建应成功");
+        result.Entry.Should().NotBeNull();
+        result.Entry!.Source.Should().Be(SkillSource.ProjectFile);
+        result.Entry.Info.Description.Should().Be("演示技能");
+
+        // 返回时快照已包含新技能（写方法返回即一致）
+        catalog.Current.Entries.Should().ContainSingle(e => e.Info.Name == "demo-skill");
+
+        var skillFile = Path.Combine(ProjectSkillsRoot, "demo-skill", "SKILL.md");
+        File.Exists(skillFile).Should().BeTrue();
+        var written = await File.ReadAllTextAsync(skillFile, ct);
+        written.Should().StartWith("---");
+        written.Should().Contain("name: demo-skill");
+        written.Should().Contain("description: 演示技能");
+        written.Should().Contain("# 正文");
+
+        // 原子写：临时目录不得残留
+        Directory.GetDirectories(ProjectSkillsRoot, "*.tmp-*").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Create_OnRegisteredSkill_ShouldFail()
+    {
+        var (catalog, writer) = CreateWriter();
+        var ct = TestContext.Current.CancellationToken;
+
+        (await catalog.RegisterAsync(
+            new SkillInfo { Name = "plugin-skill", Description = "插件技能" },
+            "plugin-x",
+            ct)).Should().BeTrue();
+
+        var result = await writer.CreateAsync(
+            new SkillDraft("plugin-skill", "覆盖尝试", "正文"),
+            ConfigLevel.Project,
+            overwrite: true,
+            ct);
+
+        result.Success.Should().BeFalse();
+        result.Entry.Should().BeNull();
+        result.Error.Should().Contain("该技能由插件提供");
+        Directory.Exists(Path.Combine(ProjectSkillsRoot, "plugin-skill")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Create_WithPathTraversalName_ShouldFail()
+    {
+        var (_, writer) = CreateWriter();
+        var ct = TestContext.Current.CancellationToken;
+
+        string[] illegalNames =
+        [
+            "../escape",
+            "..",
+            "../..",
+            "..\\escape",
+            "/abs",
+            "C:\\abs",
+            "a/b",
+            "Bad_Name"
+        ];
+
+        foreach (var name in illegalNames)
+        {
+            var result = await writer.CreateAsync(
+                new SkillDraft(name, "非法名称", "正文"),
+                ConfigLevel.Project,
+                overwrite: true,
+                ct);
+
+            result.Success.Should().BeFalse($"名称 {name} 必须被拒绝");
+            result.Error.Should().NotBeNullOrWhiteSpace();
+        }
+
+        // 任何非法名称都不得在根外产生目录
+        Directory.Exists(Path.Combine(_workspace, "escape")).Should().BeFalse();
+        Directory.Exists(Path.Combine(_workspace, ".seeing", "skills", "escape")).Should().BeFalse();
+        Directory.Exists(Path.Combine(_root, "escape")).Should().BeFalse();
+    }
+
+    // ===== 原样写 Markdown（在线安装"仅 SKILL.md"分支）=====
+
+    [Fact]
+    public async Task WriteMarkdown_ShouldPreserveUnknownFrontmatter()
+    {
+        var (_, writer) = CreateWriter();
+        var ct = TestContext.Current.CancellationToken;
+
+        // 含未知 frontmatter 字段：必须逐字节保留，不得重建 frontmatter
+        var raw = """
+                  ---
+                  name: online-skill
+                  description: 在线安装的技能
+                  x-custom-field: 必须保留
+                  tags: a, b
+                  ---
+
+                  正文内容 {{timestamp}} 字面量
+                  """;
+
+        var result = await writer.WriteMarkdownAsync(
+            "online-skill",
+            raw,
+            ConfigLevel.User,
+            overwrite: false,
+            ct);
+
+        result.Success.Should().BeTrue(result.Error ?? "写入应成功");
+        result.Entry.Should().NotBeNull();
+        result.Entry!.Source.Should().Be(SkillSource.UserFile);
+
+        var path = Path.Combine(UserSkillsRoot, "online-skill", "SKILL.md");
+        var written = await File.ReadAllTextAsync(path, ct);
+        written.Should().Be(raw);
+        written.Should().Contain("x-custom-field: 必须保留");
+    }
+
+    // ===== ZIP 安装 =====
+
+    [Fact]
+    public async Task InstallZip_WithSubdirectoryPrefix_ShouldStripRepoRoot()
+    {
+        var (catalog, writer) = CreateWriter();
+        var ct = TestContext.Current.CancellationToken;
+
+        using var zip = BuildZip(
+            ("repo-main/README.md", "仓库说明"),
+            ("repo-main/skills/zip-skill/SKILL.md",
+                "---\nname: zip-skill\ndescription: 压缩包技能\n---\n\n正文"),
+            ("repo-main/skills/zip-skill/reference.md", "# 参考"),
+            ("repo-main/skills/other/SKILL.md",
+                "---\nname: other\ndescription: 不应安装\n---\n\n正文"));
+
+        var result = await writer.InstallZipAsync(
+            "zip-skill",
+            zip,
+            ConfigLevel.Project,
+            overwrite: false,
+            subdirectoryPrefix: "repo-main/skills/zip-skill",
+            ct);
+
+        result.Success.Should().BeTrue(result.Error ?? "安装应成功");
+        result.Entry.Should().NotBeNull();
+        result.Entry!.Source.Should().Be(SkillSource.ProjectFile);
+
+        var directory = Path.Combine(ProjectSkillsRoot, "zip-skill");
+        File.Exists(Path.Combine(directory, "SKILL.md")).Should().BeTrue();
+        File.Exists(Path.Combine(directory, "reference.md")).Should().BeTrue();
+
+        // 前缀之外的文件（README / 其它技能）不得落入目标目录
+        Directory.GetFiles(directory, "*", SearchOption.AllDirectories).Should().HaveCount(2);
+        catalog.Find("zip-skill").Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task InstallZip_WithZipSlipEntry_ShouldFailAndWriteNothing()
+    {
+        var (catalog, writer) = CreateWriter();
+        var ct = TestContext.Current.CancellationToken;
+
+        using var zip = BuildZip(
+            ("skill/SKILL.md", "---\nname: slip-skill\ndescription: 路径穿越\n---\n\n正文"),
+            ("skill/../../evil.txt", "逃逸"));
+
+        var result = await writer.InstallZipAsync(
+            "slip-skill",
+            zip,
+            ConfigLevel.Project,
+            overwrite: false,
+            subdirectoryPrefix: "skill",
+            ct);
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("非法路径");
+        Directory.Exists(Path.Combine(ProjectSkillsRoot, "slip-skill")).Should().BeFalse();
+        Directory.GetDirectories(ProjectSkillsRoot, "*.tmp-*").Should().BeEmpty();
+        catalog.Find("slip-skill").Should().BeNull();
+    }
+
+    // ===== 启用 / 禁用 =====
+
+    [Fact]
+    public async Task SetEnabled_ShouldClearAllLevels()
+    {
+        var (catalog, writer) = CreateWriter();
+        var ct = TestContext.Current.CancellationToken;
+
+        WriteSkillFile(ProjectSkillsRoot, "alpha", "跨层禁用");
+        WriteDisabledState(ProjectSeeingDirectory, "alpha");
+        WriteDisabledState(UserSeeingDirectory, "alpha");
+        await catalog.RefreshAsync(ct);
+
+        catalog.IsEnabled("alpha").Should().BeFalse();
+        catalog.Current.DisabledScopes["alpha"].Should().Be(ConfigLevel.Project);
+
+        // 启用：必须清除两个层级的禁用项（否则"双层级禁用"永远启用不了）
+        var enabled = await writer.SetEnabledAsync("alpha", enabled: true, ConfigLevel.Project, ct);
+
+        enabled.Success.Should().BeTrue(enabled.Error ?? "启用应成功");
+        enabled.Entry.Should().NotBeNull();
+        catalog.IsEnabled("alpha").Should().BeTrue();
+        catalog.Current.DisabledNames.Should().BeEmpty();
+        ReadDisabledState(ProjectSeeingDirectory).Should().BeEmpty();
+        ReadDisabledState(UserSeeingDirectory).Should().BeEmpty();
+
+        // 禁用：只写调用方指定的层级
+        var disabled = await writer.SetEnabledAsync("alpha", enabled: false, ConfigLevel.User, ct);
+
+        disabled.Success.Should().BeTrue(disabled.Error ?? "禁用应成功");
+        catalog.IsEnabled("alpha").Should().BeFalse();
+        catalog.Current.DisabledScopes["alpha"].Should().Be(ConfigLevel.User);
+        ReadDisabledState(UserSeeingDirectory).Should().BeEquivalentTo("alpha");
+        ReadDisabledState(ProjectSeeingDirectory).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ConcurrentToggles_ShouldSerialize()
+    {
+        var (catalog, writer) = CreateWriter();
+        var ct = TestContext.Current.CancellationToken;
+
+        var names = Enumerable.Range(0, 8).Select(i => $"skill-{i}").ToArray();
+        foreach (var name in names)
+            WriteSkillFile(UserSkillsRoot, name, $"并发禁用 {name}");
+
+        await catalog.RefreshAsync(ct);
+
+        // 并发禁用不同技能：读-改-写必须串行，否则后写者覆盖前写者（丢更新）
+        var results = await Task.WhenAll(names.Select(name =>
+            Task.Run(() => writer.SetEnabledAsync(name, enabled: false, ConfigLevel.User, ct), ct)));
+
+        results.Should().OnlyContain(r => r.Success);
+        ReadDisabledState(UserSeeingDirectory).Should().BeEquivalentTo(names);
+        catalog.Current.DisabledNames.Should().BeEquivalentTo(names);
+        catalog.IsEnabled(names[0]).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SetEnabled_WithCorruptStateFile_ShouldFailWithoutDestroyingIt()
+    {
+        // I3：损坏 / 撕裂的状态文件不得被当成「没有禁用项」覆盖写（那会清空用户已有禁用项）
+        var (catalog, writer) = CreateWriter();
+        var ct = TestContext.Current.CancellationToken;
+
+        WriteSkillFile(ProjectSkillsRoot, "alpha", "损坏保护");
+        await catalog.RefreshAsync(ct);
+
+        Directory.CreateDirectory(ProjectSeeingDirectory);
+        var statePath = Path.Combine(ProjectSeeingDirectory, "skill-state.json");
+        const string corrupt = "{ \"DisabledSkills\": [\"broken";
+        await File.WriteAllTextAsync(statePath, corrupt, ct);
+
+        var result = await writer.SetEnabledAsync("alpha", enabled: false, ConfigLevel.Project, ct);
+
+        result.Success.Should().BeFalse("损坏状态文件必须拒绝覆盖写，而不是当作「全部启用」");
+        result.Error.Should().Contain("不可读");
+        (await File.ReadAllTextAsync(statePath, ct)).Should().Be(corrupt, "损坏文件须原样保留以待人工修复");
+    }
+
+    [Fact]
+    public async Task SetEnabled_ShouldWriteStateFileAtomically()
+    {
+        // I3：临时文件 + Move 覆盖，避免并发读者看到半截 JSON
+        var (catalog, writer) = CreateWriter();
+        var ct = TestContext.Current.CancellationToken;
+
+        WriteSkillFile(ProjectSkillsRoot, "alpha", "原子状态");
+        await catalog.RefreshAsync(ct);
+
+        var result = await writer.SetEnabledAsync("alpha", enabled: false, ConfigLevel.Project, ct);
+
+        result.Success.Should().BeTrue(result.Error ?? "禁用应成功");
+        ReadDisabledState(ProjectSeeingDirectory).Should().BeEquivalentTo("alpha");
+        Directory.GetFiles(ProjectSeeingDirectory, "*.tmp-*").Should().BeEmpty("原子写不得残留临时文件");
+    }
+
+    [Fact]
+    public async Task SetEnabledAndRefresh_Repeatedly_ShouldNotDeadlock()
+    {
+        // N1：连续多次「写状态 → 刷新目录」必须全部完成（锁序为 写闸 →（释放）→ 目录闸）
+        var (catalog, writer, _) = CreateWriterWithSharedGate();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var ct = cts.Token;
+
+        WriteSkillFile(ProjectSkillsRoot, "alpha", "锁序");
+        WriteSkillFile(ProjectSkillsRoot, "beta", "锁序");
+        await catalog.RefreshAsync(ct);
+
+        for (var round = 0; round < 3; round++)
+        {
+            (await writer.SetEnabledAsync("alpha", enabled: false, ConfigLevel.Project, ct))
+                .Success.Should().BeTrue();
+            (await writer.SetEnabledAsync("beta", enabled: false, ConfigLevel.Project, ct))
+                .Success.Should().BeTrue();
+            await catalog.RefreshAsync(ct);
+        }
+
+        catalog.IsEnabled("alpha").Should().BeFalse();
+        catalog.IsEnabled("beta").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task NestedAcquire_ShouldWaitInsteadOfBypassingGate()
+    {
+        // P5：闸不重入。旧实现用 AsyncLocal 静默放行嵌套取闸——它会流入闸内启动的子任务，
+        // 让子任务继承「已持闸」并绕过信号量，在临界区内并发改状态文件。
+        // 现在的契约是：嵌套取闸必须等外层释放（宁可等待，也不静默放行）。
+        var (_, _, gate) = CreateWriterWithSharedGate();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var ct = cts.Token;
+
+        var innerEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task? inner = null;
+
+        var outer = await gate.RunAsync(async token =>
+        {
+            // 闸内启动一条独立流程再次取闸：必须被挡在外面
+            inner = Task.Run(
+                () => gate.RunAsync(_ =>
+                {
+                    innerEntered.SetResult();
+                    return Task.FromResult(true);
+                }, token),
+                token);
+
+            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+            innerEntered.Task.IsCompleted.Should().BeFalse("闸不得重入（嵌套取闸必须等外层释放）");
+            return true;
+        }, ct);
+
+        outer.Should().BeTrue();
+
+        // 外层释放后，嵌套取闸才得以进入
+        await innerEntered.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+        await inner!.WaitAsync(TimeSpan.FromSeconds(10), ct);
+    }
+
+    // ===== 根（唯一来源：目录） =====
+
+    [Fact]
+    public async Task Create_WithNonDefaultProjectRoot_ShouldWriteIntoRegisteredRoot()
+    {
+        // B2：可写根由目录的根列表决定。旧实现永远写 <seeing>/skills，
+        // 当目录只登记 .agents/skills 时，写出去的技能根本不被目录看到。
+        var agentRoot = Path.Combine(_workspace, ".agents", "skills");
+        var (catalog, writer) = CreateWriterWithRoots(agentRoot, UserSkillsRoot);
+        var ct = TestContext.Current.CancellationToken;
+
+        var result = await writer.CreateAsync(
+            new SkillDraft("agent-skill", "非默认根", "正文"),
+            ConfigLevel.Project,
+            overwrite: false,
+            ct);
+
+        result.Success.Should().BeTrue(result.Error ?? "写入应成功");
+        File.Exists(Path.Combine(agentRoot, "agent-skill", "SKILL.md"))
+            .Should().BeTrue("写必须落在目录已登记的可写根");
+        Directory.Exists(Path.Combine(ProjectSkillsRoot, "agent-skill"))
+            .Should().BeFalse("不得自造未登记的第二份写根");
+        catalog.Find("agent-skill").Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Delete_UnderNonDefaultRoot_ShouldSucceed()
+    {
+        // B2：删除的「根内」判定必须用目录的根列表。旧实现只认 .seeing/skills，
+        // 于是 .agents/skills 下的技能能列出、能编辑，却删不掉。
+        var agentRoot = Path.Combine(_workspace, ".agents", "skills");
+        var (catalog, writer) = CreateWriterWithRoots(ProjectSkillsRoot, agentRoot, UserSkillsRoot);
+        var ct = TestContext.Current.CancellationToken;
+
+        WriteSkillFile(agentRoot, "agent-skill", "非默认根删除");
+        await catalog.RefreshAsync(ct);
+        catalog.Find("agent-skill").Should().NotBeNull();
+
+        var result = await writer.DeleteAsync("agent-skill", ct);
+
+        result.Success.Should().BeTrue(result.Error ?? "非默认根下的技能必须可删除");
+        Directory.Exists(Path.Combine(agentRoot, "agent-skill")).Should().BeFalse();
+        catalog.Find("agent-skill").Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Delete_OutsideAllRoots_ShouldBeRefused()
+    {
+        // 越界保护仍然生效：目录条目的文件夹不在任何已登记根之内 → 拒绝删除
+        var outside = Path.Combine(_root, "outside", "escape-skill");
+        WriteSkillFile(Path.Combine(_root, "outside"), "escape-skill", "越界");
+
+        var catalog = new StubCatalog(
+            new SkillCatalogEntry(
+                new SkillInfo { Name = "escape-skill", Description = "越界" },
+                SkillSource.ProjectFile,
+                null,
+                outside),
+            [ProjectSkillsRoot]);
+        var writer = new SkillWriter(
+            NullLogger<SkillWriter>.Instance,
+            catalog,
+            new FakeDirectories(UserSeeingDirectory, ProjectSeeingDirectory),
+            new SkillWriteGate());
+
+        var result = await writer.DeleteAsync("escape-skill", TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("技能根之外");
+        Directory.Exists(outside).Should().BeTrue("越界目录不得被删除");
+    }
+
+    // ===== 失败清理 =====
+
+    [Fact]
+    public async Task FailedWrite_ShouldNotLeaveTempDirectory()
+    {
+        var (_, writer) = CreateWriter();
+        var ct = TestContext.Current.CancellationToken;
+
+        // 目标路径被同名「文件」占用：临时目录写完后的 Directory.Move 必然失败
+        Directory.CreateDirectory(ProjectSkillsRoot);
+        var blocker = Path.Combine(ProjectSkillsRoot, "blocked-skill");
+        await File.WriteAllTextAsync(blocker, "占位文件", ct);
+
+        var result = await writer.CreateAsync(
+            new SkillDraft("blocked-skill", "无法落位", "正文"),
+            ConfigLevel.Project,
+            overwrite: false,
+            ct);
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().NotBeNullOrWhiteSpace();
+        File.Exists(blocker).Should().BeTrue("占位文件不得被破坏");
+        Directory.GetDirectories(ProjectSkillsRoot, "*.tmp-*").Should().BeEmpty();
+        Directory.GetDirectories(ProjectSkillsRoot, "*.bak-*").Should().BeEmpty();
+    }
+
+    // ===== UI 投影（仓库无 bUnit：锁定页面渲染所依赖的目录事件 / Source 投影） =====
+
+    [Fact]
+    public async Task CatalogEvent_ShouldExposeSourceProjectionForUi()
+    {
+        var (catalog, writer) = CreateWriter();
+        var ct = TestContext.Current.CancellationToken;
+
+        var published = new List<SkillCatalogSnapshot>();
+        using var subscription = catalog.Subscribe(snapshot =>
+        {
+            lock (published)
+                published.Add(snapshot);
+        });
+
+        await writer.CreateAsync(
+            new SkillDraft("ui-skill", "UI 投影", "正文"),
+            ConfigLevel.Project,
+            overwrite: false,
+            ct);
+
+        (await catalog.RegisterAsync(
+            new SkillInfo { Name = "ui-builtin", Description = "内置技能" },
+            "plugin-x",
+            ct)).Should().BeTrue();
+
+        // 禁用后事件快照必须带禁用集合：页面直接渲染快照，不做本地缓存
+        await writer.SetEnabledAsync("ui-skill", enabled: false, ConfigLevel.Project, ct);
+
+        SkillCatalogSnapshot last;
+        lock (published)
+            last = published[^1];
+
+        last.Entries.Select(entry => (entry.Info.Name, entry.Source)).Should().BeEquivalentTo(
+            [
+                ("ui-skill", SkillSource.ProjectFile),
+                ("ui-builtin", SkillSource.Registered)
+            ]);
+        last.DisabledNames.Should().Contain("ui-skill");
+        last.DisabledScopes["ui-skill"].Should().Be(ConfigLevel.Project);
+
+        lock (published)
+            published.Count.Should().BeGreaterThanOrEqualTo(3);
+    }
+
+    // ===== 环境 =====
+
+    private string ProjectSkillsRoot => Path.Combine(ProjectSeeingDirectory, "skills");
+
+    private string UserSkillsRoot => Path.Combine(UserSeeingDirectory, "skills");
+
+    private string ProjectSeeingDirectory => Path.Combine(_workspace, ".seeing");
+
+    private string UserSeeingDirectory => Path.Combine(_userHome, ".seeing");
+
+    private (SkillCatalogCore Catalog, SkillWriter Writer) CreateWriter()
+    {
+        var (catalog, writer, _) = CreateWriterWithSharedGate();
+        return (catalog, writer);
+    }
+
+    /// <summary>
+    /// 按生产装配创建目录与写者：目录读侧与写入侧共用**同一** <see cref="SkillWriteGate"/>
+    /// （<c>SkillsModule</c> 的登记方式），锁序回归测试必须使用该装配。
+    /// </summary>
+    private (SkillCatalogCore Catalog, SkillWriter Writer, SkillWriteGate Gate) CreateWriterWithSharedGate()
+    {
+        var directories = new FakeDirectories(UserSeeingDirectory, ProjectSeeingDirectory);
+        var gate = new SkillWriteGate();
+        var catalog = new SkillCatalogCore(NullLogger<SkillCatalogCore>.Instance, directories, gate);
+
+        // 显式设置根：避免默认根（真实用户主目录）污染测试
+        catalog.SetRoots([ProjectSkillsRoot, UserSkillsRoot]);
+
+        var writer = new SkillWriter(
+            NullLogger<SkillWriter>.Instance,
+            catalog,
+            directories,
+            gate);
+
+        return (catalog, writer, gate);
+    }
+
+    /// <summary>按给定根列表创建目录与写者（用于验证「可写根由目录决定」）。</summary>
+    private (SkillCatalogCore Catalog, SkillWriter Writer) CreateWriterWithRoots(params string[] roots)
+    {
+        var directories = new FakeDirectories(UserSeeingDirectory, ProjectSeeingDirectory);
+        var gate = new SkillWriteGate();
+        var catalog = new SkillCatalogCore(NullLogger<SkillCatalogCore>.Instance, directories, gate);
+        catalog.SetRoots(roots);
+
+        var writer = new SkillWriter(
+            NullLogger<SkillWriter>.Instance,
+            catalog,
+            directories,
+            gate);
+
+        return (catalog, writer);
+    }
+
+    /// <summary>写一个合法技能目录（frontmatter + 正文）。</summary>
+    private static void WriteSkillFile(string root, string name, string description)
+    {
+        var directory = Path.Combine(root, name);
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(
+            Path.Combine(directory, "SKILL.md"),
+            $"""
+             ---
+             name: {name}
+             description: {description}
+             ---
+
+             正文 {name}
+             """);
+    }
+
+    /// <summary>写 skill-state.json（沿用既有落盘格式）。</summary>
+    private static void WriteDisabledState(string seeingDirectory, params string[] names)
+    {
+        Directory.CreateDirectory(seeingDirectory);
+        var json = """{"DisabledSkills":["""
+            + string.Join(",", names.Select(n => $"\"{n}\""))
+            + "]}";
+        File.WriteAllText(Path.Combine(seeingDirectory, "skill-state.json"), json);
+    }
+
+    /// <summary>读出 skill-state.json 的禁用名称集合。</summary>
+    private static IReadOnlyList<string> ReadDisabledState(string seeingDirectory)
+    {
+        var path = Path.Combine(seeingDirectory, "skill-state.json");
+        if (!File.Exists(path))
+            return [];
+
+        using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+        if (!document.RootElement.TryGetProperty("DisabledSkills", out var array))
+            return [];
+
+        return array.EnumerateArray()
+            .Select(item => item.GetString())
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name!)
+            .ToArray();
+    }
+
+    /// <summary>构造内存 ZIP（路径使用 / 分隔，模拟 GitHub 仓库布局）。</summary>
+    private static MemoryStream BuildZip(params (string Path, string Content)[] entries)
+    {
+        var stream = new MemoryStream();
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (path, content) in entries)
+            {
+                var entry = archive.CreateEntry(path);
+                using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false));
+                writer.Write(content);
+            }
+        }
+
+        stream.Position = 0;
+        return stream;
+    }
+
+    /// <summary>测试用目录契约。</summary>
+    private sealed class FakeDirectories(string userSeeing, string projectSeeing) : ISeeingDirectories
+    {
+        public string UserSeeingDirectory { get; } = userSeeing;
+
+        public string ProjectSeeingDirectory { get; } = projectSeeing;
+    }
+
+    /// <summary>
+    /// 极简目录桩：只回答「一个条目 + 一组根」，用于验证写服务的越界保护
+    /// （真实目录不会扫出根之外的条目，因此必须用桩构造这个非法输入）。
+    /// </summary>
+    private sealed class StubCatalog : ISkillCatalog
+    {
+        private readonly SkillCatalogSnapshot _snapshot;
+
+        public StubCatalog(SkillCatalogEntry entry, IReadOnlyList<string> roots)
+        {
+            _snapshot = new SkillCatalogSnapshot(
+                1,
+                [entry],
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                new Dictionary<string, ConfigLevel>(StringComparer.OrdinalIgnoreCase),
+                [],
+                []);
+            Roots = roots;
+        }
+
+        public SkillCatalogSnapshot Current => _snapshot;
+
+        public IReadOnlyList<string> Roots { get; }
+
+        public IReadOnlyList<SkillCatalogEntry> EnabledEntries => _snapshot.Entries;
+
+        public IReadOnlyList<SkillCatalogEntry> GetEnabledEntries(SkillCatalogSnapshot snapshot) => snapshot.Entries;
+
+        public IDisposable Subscribe(Action<SkillCatalogSnapshot> onChanged) => new NoopSubscription();
+
+        public SkillCatalogEntry? Find(string name) =>
+            _snapshot.Entries.FirstOrDefault(entry =>
+                string.Equals(entry.Info.Name, name, StringComparison.OrdinalIgnoreCase));
+
+        public bool IsEnabled(string name) => Find(name) is not null;
+
+        public Task<SkillCatalogSnapshot> EnsureFreshAsync(CancellationToken ct = default)
+            => Task.FromResult(_snapshot);
+
+        public Task<SkillCatalogSnapshot> RefreshAsync(CancellationToken ct = default)
+            => Task.FromResult(_snapshot);
+
+        public Task<bool> RegisterAsync(SkillInfo info, string providerId, CancellationToken ct = default)
+            => Task.FromResult(false);
+
+        public Task<bool> UnregisterAsync(string name, CancellationToken ct = default)
+            => Task.FromResult(false);
+
+        private sealed class NoopSubscription : IDisposable
+        {
+            public void Dispose()
+            {
+            }
+        }
+    }
+}

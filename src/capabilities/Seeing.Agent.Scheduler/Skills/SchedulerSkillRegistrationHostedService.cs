@@ -4,15 +4,21 @@ using System.Text.RegularExpressions;
 
 namespace Seeing.Agent.Scheduler.Skills;
 
-/// <summary>Scheduler 内嵌 cron Skill 注册器 — 供模块 Activate/Deactivate 对称调用。</summary>
+/// <summary>Scheduler 内嵌 cron Skill 注册器 — 供模块 Activate/Deactivate 对称调用（写入口为 ISkillCatalog）。</summary>
 internal static class SchedulerSkillRegistrar
 {
+    /// <summary>注册通道的提供方标识。</summary>
+    public const string ProviderId = "scheduler";
+
     private static readonly Regex FrontmatterRegex = new(
         @"^---[\r]?[\n](.*?)[\r]?[\n]---[\r]?[\n]?",
         RegexOptions.Multiline | RegexOptions.Singleline | RegexOptions.Compiled);
 
     /// <summary>扫描程序集内嵌 SKILL.md 并注册，返回已注册技能名列表。</summary>
-    public static IReadOnlyList<string> Register(ISkillManager skillManager, ILogger logger)
+    public static async Task<IReadOnlyList<string>> RegisterAsync(
+        ISkillCatalog catalog,
+        ILogger logger,
+        CancellationToken cancellationToken = default)
     {
         var assembly = typeof(SchedulerSkillRegistrar).Assembly;
         var registered = new List<string>();
@@ -43,8 +49,14 @@ internal static class SchedulerSkillRegistrar
                 }
 
                 skill.Location = $"scheduler/{skill.Name}";
-                skillManager.RegisterEmbeddedSkill(skill);
-                registered.Add(skill.Name);
+                if (await catalog.RegisterAsync(skill, ProviderId, cancellationToken).ConfigureAwait(false))
+                    registered.Add(skill.Name);
+                else
+                    logger.LogWarning("Embedded skill rejected (duplicate name): {Name} 来源={Resource}", skill.Name, resourceName);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -57,10 +69,17 @@ internal static class SchedulerSkillRegistrar
     }
 
     /// <summary>注销先前注册的内嵌技能。</summary>
-    public static void Unregister(ISkillManager skillManager, IEnumerable<string> names)
+    public static async Task UnregisterAsync(
+        ISkillCatalog catalog,
+        IEnumerable<string> names,
+        ILogger logger,
+        CancellationToken cancellationToken = default)
     {
         foreach (var name in names)
-            skillManager.Unregister(name);
+        {
+            if (!await catalog.UnregisterAsync(name, cancellationToken).ConfigureAwait(false))
+                logger.LogDebug("Unregister embedded skill missed the registration channel: {Name}", name);
+        }
     }
 
     private static SkillInfo? ParseSkill(string content)

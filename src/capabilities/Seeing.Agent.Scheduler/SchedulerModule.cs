@@ -94,7 +94,7 @@ public sealed class SchedulerModule : ISeeingModule, IUiContribution
         _activity.MarkActive();
         _ui?.Register(this);
 
-        RegisterEmbeddedSkills(services);
+        await RegisterEmbeddedSkillsAsync(services, cancellationToken).ConfigureAwait(false);
         RegisterCommands(services, cancellationToken);
 
         var tm = services.GetService<IToolManager>();
@@ -115,15 +115,17 @@ public sealed class SchedulerModule : ISeeingModule, IUiContribution
             await tm.RegisterToolAsync(run, cancellationToken).ConfigureAwait(false);
     }
 
-    private void RegisterEmbeddedSkills(IServiceProvider services)
+    private async Task RegisterEmbeddedSkillsAsync(IServiceProvider services, CancellationToken cancellationToken)
     {
-        if (services.GetService<ISkillManager>() is not { } skillManager)
+        if (services.GetService<ISkillCatalog>() is not { } catalog)
             return;
 
         var logger = services.GetService<ILogger<SchedulerModule>>()
                      ?? NullLogger<SchedulerModule>.Instance;
         _registeredSkillNames.Clear();
-        _registeredSkillNames.AddRange(SchedulerSkillRegistrar.Register(skillManager, logger));
+        _registeredSkillNames.AddRange(
+            await SchedulerSkillRegistrar.RegisterAsync(catalog, logger, cancellationToken)
+                .ConfigureAwait(false));
     }
 
     private void RegisterCommands(IServiceProvider services, CancellationToken cancellationToken)
@@ -155,7 +157,7 @@ public sealed class SchedulerModule : ISeeingModule, IUiContribution
     public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         UnregisterCommands(services);
-        UnregisterEmbeddedSkills(services);
+        await UnregisterEmbeddedSkillsAsync(services, cancellationToken).ConfigureAwait(false);
 
         var tm = services.GetService<IToolManager>();
         if (tm is not null)
@@ -187,13 +189,19 @@ public sealed class SchedulerModule : ISeeingModule, IUiContribution
         _registeredCommandNames.Clear();
     }
 
-    private void UnregisterEmbeddedSkills(IServiceProvider services)
+    private async Task UnregisterEmbeddedSkillsAsync(IServiceProvider services, CancellationToken cancellationToken)
     {
         if (_registeredSkillNames.Count == 0)
             return;
 
-        if (services.GetService<ISkillManager>() is { } skillManager)
-            SchedulerSkillRegistrar.Unregister(skillManager, _registeredSkillNames);
+        if (services.GetService<ISkillCatalog>() is { } catalog)
+        {
+            var logger = services.GetService<ILogger<SchedulerModule>>()
+                         ?? NullLogger<SchedulerModule>.Instance;
+            await SchedulerSkillRegistrar
+                .UnregisterAsync(catalog, _registeredSkillNames, logger, cancellationToken)
+                .ConfigureAwait(false);
+        }
         _registeredSkillNames.Clear();
     }
 }

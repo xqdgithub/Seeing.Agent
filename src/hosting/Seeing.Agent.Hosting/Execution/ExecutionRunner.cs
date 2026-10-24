@@ -3,19 +3,21 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Runtime;
+using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Commands;
+using Seeing.Agent.Core.Context.Sources;
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Execution;
-using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Services;
 using Seeing.Agent.Llm;
 using Seeing.Session.Core;
@@ -90,7 +92,6 @@ internal sealed class ExecutionRunner : IExecutionRunner
         var workspaceProvider = scope.ServiceProvider.GetRequiredService<IWorkspaceProvider>();
         var executionWorld = scope.ServiceProvider.GetRequiredService<IExecutionWorld>();
         var commandRegistry = scope.ServiceProvider.GetRequiredService<ICommandRegistry>();
-        var instructionManager = scope.ServiceProvider.GetRequiredService<IInstructionManager>();
 
         try
         {
@@ -122,25 +123,8 @@ internal sealed class ExecutionRunner : IExecutionRunner
                     session.WorkingDirectory = cwd;
                 }
 
-                if (record.Options?.SkipInstructionInject != true)
-                {
-                    try
-                    {
-                        await instructionManager.InjectIfNeededAsync(
-                            session,
-                            cwd,
-                            workspaceProvider.GetProjectRoot(),
-                            CancellationToken.None,
-                            batch.FirstUserMessageId);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(
-                            ex,
-                            "Failed to inject project instructions for execution {ExecutionId}",
-                            record.ExecutionId);
-                    }
-                }
+                // 上下文装配不在此处：本轮命令可能短路、工具视图结算可能失败，
+                // 那时执行没有发生，就不能叙述「已告知模型」（见下方命令之后、历史之前的装配点）。
 
                 await sessionManager.SaveAsync(record.SessionId);
             }
@@ -205,11 +189,23 @@ internal sealed class ExecutionRunner : IExecutionRunner
             // 命令要求结束本轮（shouldContinue=false / shouldExit）时短路，不再执行 Agent：
             // 避免把命令文本作为普通消息发送给大模型（如 /compact 后仍发起 LLM 请求导致失败）
             var commandConsumedExecution = false;
+
+            // 执行级事实（cwd / 工作区根 / 钉住技能快照）必须在**命令之前**填充：
+            // /skill 与 /<技能名> 按名解析技能，必须与随后的系统提示词清单、skill 工具看到同一份快照，
+            // 否则同一次执行内会出现「清单/工具一个版本、命令另一个版本」的两个真相。
+            var executionScope = scope.ServiceProvider.GetRequiredService<IContextExecutionScope>();
+            executionScope.SessionId = record.SessionId;
+            executionScope.Cwd = context.WorkingDirectory ?? context.WorkspaceRoot ?? executionWorld.Cwd;
+            executionScope.WorkspaceRoot = context.WorkspaceRoot ?? workspaceProvider.GetProjectRoot();
+            executionScope.SkillSnapshot = await ResolveSkillSnapshotAsync(
+                scope.ServiceProvider, record.ExecutionId, executionToken);
+
             if (IsCommandInput(inputText))
             {
                 CommandResultEvent? lastCommandEvent = null;
                 await foreach (var cmdEvent in ProcessCommandAsync(
-                    record.SessionId, inputText, session, context, commandRegistry, executionToken))
+                    record.SessionId, inputText, session, context, commandRegistry, scope.ServiceProvider,
+                    executionToken))
                 {
                     if (cmdEvent != null)
                     {
@@ -226,7 +222,55 @@ internal sealed class ExecutionRunner : IExecutionRunner
 
             if (!commandConsumedExecution)
             {
-                // Build history
+                // === 上下文装配点：命令处理之后、历史构建之前 ===
+                // 1) 命令短路（/clear、/compact 等）上面已跳过整块：本轮不执行 Agent，不装配、不叙述。
+                // 2) 结算（工具视图）在上面已成功：结算失败会在 BuildExecutionContextAsync 抛出并进入失败路径。
+                // 3) 执行作用域已在命令之前填充（见上），此处不再重复填充：源与命令共用同一份钉住快照。
+                var assembler = scope.ServiceProvider.GetRequiredService<IContextAssembler>();
+
+                // 跳过集强类型：只排除项目指令源，其余源照常装配。
+                IReadOnlySet<ContextSourceKey>? skip = record.Options?.SkipInstructionInject == true
+                    ? new HashSet<ContextSourceKey> { ProjectInstructionsContextSource.SourceKey }
+                    : null;
+
+                try
+                {
+                    var assembly = await assembler.EnsureFreshAsync(
+                        session,
+                        ContextAssemblyMode.Persist,
+                        batch.FirstUserMessageId,
+                        skip,
+                        executionToken);
+
+                    // 非致命问题（读取失败 / 渲染不确定 / 超限）不得只在装配器内部逐条记录：
+                    // 调用方必须看到「本轮是否降级」，汇总成一条告警（禁止静默吞掉）。
+                    if (assembly.Issues.Count > 0)
+                    {
+                        _logger.LogWarning(
+                            "上下文装配存在非致命问题（本轮已降级）: ExecutionId={ExecutionId}, SessionId={SessionId}, Issues={Issues}",
+                            record.ExecutionId,
+                            record.SessionId,
+                            string.Join(" | ", assembly.Issues));
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    // 装配失败不阻断对话：记录可诊断事实，本轮仍带已存基线执行
+                    _logger.LogError(
+                        ex,
+                        "上下文装配失败，本轮沿用已存基线: ExecutionId={ExecutionId}, SessionId={SessionId}",
+                        record.ExecutionId,
+                        record.SessionId);
+                }
+
+                context.ContextBaseline = assembler.BuildSystemBaseline(session);
+                context.SkillSnapshot = executionScope.SkillSnapshot;
+
+                // Build history（含装配刚插入的增量叙述消息）
                 var messages = BuildHistoryFromSession(session);
 
                 // 服务端负责将事件投影到 Session 并落盘；UI 只订阅展示
@@ -496,6 +540,39 @@ internal sealed class ExecutionRunner : IExecutionRunner
         }
 
         return factory.Create(sessionId, autoApprove);
+    }
+
+    /// <summary>
+    /// 解析本轮执行钉住的技能快照：执行开始时固化一次，随后装配器与工具看到同一个对象。
+    /// <para>未组合技能模块时返回 null（技能源按不可用处理）；目录刷新失败时告警并退回当前快照，
+    /// 不阻断对话，也不静默吞掉失败。</para>
+    /// </summary>
+    private async Task<SkillCatalogSnapshot?> ResolveSkillSnapshotAsync(
+        IServiceProvider services,
+        string executionId,
+        CancellationToken cancellationToken)
+    {
+        var catalog = services.GetService<ISkillCatalog>();
+        if (catalog is null)
+            return null;
+
+        try
+        {
+            return await catalog.EnsureFreshAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "技能目录刷新失败，本轮钉住当前快照: ExecutionId={ExecutionId}, Version={Version}",
+                executionId,
+                catalog.Current.Version);
+            return catalog.Current;
+        }
     }
 
     /// <summary>
@@ -805,7 +882,9 @@ internal sealed class ExecutionRunner : IExecutionRunner
             WorkspaceRoot = context.WorkspaceRoot ?? "",
             PermissionAuthorizer = context.PermissionAuthorizer,
             CancellationToken = cancellationToken,
-            ToolSettlement = context.ToolSettlement
+            ToolSettlement = context.ToolSettlement,
+            ContextBaseline = context.ContextBaseline,
+            SkillSnapshot = context.SkillSnapshot
         };
 
         // 传递请求级模型选择到 Metadata（适用于 Native Agent 和 ACP Passthrough）
@@ -831,6 +910,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
         SessionData session,
         ChatExecutionContext context,
         ICommandRegistry commandRegistry,
+        IServiceProvider services,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var cmdName = input.Split(' ').FirstOrDefault()?.TrimStart('/') ?? "";
@@ -846,6 +926,8 @@ internal sealed class ExecutionRunner : IExecutionRunner
         }
 
         // 直接执行命令（薄上下文：仅信息传递，命令自包含会话操作，宿主不做写同步）
+        // Services + 钉住快照一并传入：命令不得依赖「上下文里没人填过的槽位」，也不得读目录当前态。
+        var executionScope = services.GetService<IContextExecutionScope>();
         var cmdContext = new CommandContext
         {
             CommandName = cmdName,
@@ -853,7 +935,9 @@ internal sealed class ExecutionRunner : IExecutionRunner
             Arguments = input.Contains(' ') ? input.Substring(input.IndexOf(' ') + 1) : "",
             SessionId = sessionId,
             WorkspaceRoot = context.WorkspaceRoot,
-            CancellationToken = cancellationToken
+            CancellationToken = cancellationToken,
+            Services = services,
+            Skill = executionScope?.SkillSnapshot
         };
 
         var result = await command.ExecuteAsync(cmdContext, cancellationToken);

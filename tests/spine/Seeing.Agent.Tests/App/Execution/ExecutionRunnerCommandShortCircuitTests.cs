@@ -13,9 +13,9 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Compression;
 using Seeing.Agent.Core.Execution;
-using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Llm;
+using Seeing.Agent.Tests.Context;
 using Seeing.Session.Core;
 using System.Collections.Concurrent;
 using Xunit;
@@ -350,7 +350,6 @@ public class ExecutionRunnerCommandShortCircuitTests
 
         var services = new ServiceCollection();
         services.AddSingleton(sessionManager.Object);
-        services.AddSingleton(Mock.Of<IInstructionManager>());
         services.AddSingleton(modelManager.Object);
         services.AddSingleton(agentRegistry.Object);
         services.AddSingleton(executor);
@@ -359,6 +358,8 @@ public class ExecutionRunnerCommandShortCircuitTests
         services.AddSingleton(Mock.Of<IExecutionWorld>(w => w.Cwd == "workspace-root"));
         services.AddSingleton(commandRegistry);
         services.AddSingleton<ISessionToolExposureWriter>(new SessionToolExposureWriter(sessionManager.Object));
+        // 执行级上下文装配（scoped 装配器 + 执行作用域）：与生产接线同形
+        services.AddStubContextPipeline();
         var provider = services.BuildServiceProvider();
 
         var configStore = new Mock<IConfigSectionStore>();

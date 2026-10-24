@@ -1,0 +1,86 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Models
+
+@*
+    上下文管道的增量叙述卡片（独立于项目指令卡片）。
+    视觉沿用 project-instructions 的折叠卡片样式（同一类「机器注入的上下文补充」形态），
+    但语义与标题完全由消息的源键决定：技能清单变化不再被渲染成「项目指令变更」。
+*@
+<div class="project-instructions context-update @(_expanded ? "is-expanded" : null)">
+    <button type="button"
+            class="project-instructions__summary"
+            onclick="@Toggle"
+            title="@(_expanded ? "收起详情" : "展开上下文更新内容")">
+        <span class="project-instructions__leading">
+            <span class="project-instructions__icon" aria-hidden="true">
+                <Icon Type="@IconType.Outline.Sync" Theme="IconThemeType.Outline" />
+            </span>
+            <span class="project-instructions__label">
+                @Title
+            </span>
+        </span>
+        <span class="project-instructions__trailing">
+            <span class="project-instructions__time"
+                  title="更新于 @Message.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")">
+                @Message.Timestamp.ToString("HH:mm:ss")
+            </span>
+            <span class="project-instructions__chevron" aria-hidden="true">
+                <Icon Type="@(_expanded ? IconType.Outline.Up : IconType.Outline.Down)"
+                      Theme="IconThemeType.Outline" />
+            </span>
+        </span>
+    </button>
+
+    @if (_expanded)
+    {
+        <div class="project-instructions__details">
+            @if (Message.ContextUpdateSources.Count > 0)
+            {
+                <ul class="project-instructions__paths">
+                    @foreach (var source in Message.ContextUpdateSources)
+                    {
+                        <li title="@source">@SourceLabel(source)</li>
+                    }
+                </ul>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(Message.ContextUpdateRaw))
+            {
+                <pre class="project-instructions__raw">@Message.ContextUpdateRaw</pre>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public MessageViewModel Message { get; set; } = default!;
+
+    private bool _expanded;
+
+    private string Title => Message.ContextUpdateSources.Count switch
+    {
+        0 => "上下文已更新",
+        1 => $"{SourceLabel(Message.ContextUpdateSources[0])}已更新",
+        _ => $"{Message.ContextUpdateSources.Count} 项上下文已更新"
+    };
+
+    private void Toggle() => _expanded = !_expanded;
+
+    /// <summary>
+    /// 源键 → 展示名的映射（键由源类型全名派生，因此按类型简单名精确匹配，属身份映射而非内容嗅探）。
+    /// 未登记的源直接显示源键，便于定位新增源。
+    /// </summary>
+    private static string SourceLabel(string sourceKey)
+    {
+        if (string.IsNullOrWhiteSpace(sourceKey))
+            return "上下文";
+
+        var simpleName = sourceKey[(sourceKey.LastIndexOf('.') + 1)..];
+        return simpleName switch
+        {
+            "SkillsContextSource" => "技能清单",
+            "ProjectInstructionsContextSource" => "项目指令",
+            _ => sourceKey
+        };
+    }
+}

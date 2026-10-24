@@ -1,12 +1,15 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Core.Instructions;
-using System.Security.Cryptography;
-using System.Text;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Instructions;
 
+/// <summary>
+/// 搜索根规则锁定：候选路径顺序、去重与「工作区外只给用户级」。
+/// <para>生产路径只使用 <see cref="InstructionDiscovery.EnumerateCandidatePaths"/>；
+/// 存在性判断与读取分类由 <c>InstructionFileReader</c> 独占。</para>
+/// </summary>
 public sealed class InstructionDiscoveryTests : IDisposable
 {
     private readonly string _root;
@@ -23,111 +26,79 @@ public sealed class InstructionDiscoveryTests : IDisposable
     }
 
     [Fact]
-    public async Task DiscoverAsync_WhenCwdIsNested_ReturnsFilesInSpecificationOrder()
+    public void EnumerateCandidatePaths_WhenCwdIsNested_ReturnsPathsInSpecificationOrder()
     {
         var cwd = Path.Combine(_workspace, "src", "feature");
         Directory.CreateDirectory(cwd);
 
         var expectedPaths = new[]
         {
-            await WriteAgentsFileAsync(Path.Combine(_userHome, ".agents"), "user agents"),
-            await WriteAgentsFileAsync(Path.Combine(_userHome, ".seeing"), "user seeing"),
-            await WriteAgentsFileAsync(Path.Combine(_workspace, ".agents"), "workspace agents"),
-            await WriteAgentsFileAsync(Path.Combine(_workspace, ".seeing"), "workspace seeing"),
-            await WriteAgentsFileAsync(_workspace, "workspace root"),
-            await WriteAgentsFileAsync(Path.Combine(_workspace, "src"), "src"),
-            await WriteAgentsFileAsync(cwd, "feature")
+            Path.Combine(_userHome, ".agents", "AGENTS.md"),
+            Path.Combine(_userHome, ".seeing", "AGENTS.md"),
+            Path.Combine(_workspace, ".agents", "AGENTS.md"),
+            Path.Combine(_workspace, ".seeing", "AGENTS.md"),
+            Path.Combine(_workspace, "AGENTS.md"),
+            Path.Combine(_workspace, "src", "AGENTS.md"),
+            Path.Combine(cwd, "AGENTS.md")
         };
         var discovery = CreateDiscovery();
 
-        var result = await discovery.DiscoverAsync(cwd, _workspace, TestContext.Current.CancellationToken);
+        var result = discovery.EnumerateCandidatePaths(cwd, _workspace);
 
-        PathsShouldEqual(result.Select(file => file.Path), expectedPaths);
+        PathsShouldEqual(result, expectedPaths);
     }
 
     [Fact]
-    public async Task DiscoverAsync_WhenCwdEqualsWorkspace_ReturnsUserAndWorkspaceFilesWithoutAncestorEntries()
+    public void EnumerateCandidatePaths_WhenCwdEqualsWorkspace_ReturnsUserAndWorkspacePathsWithoutAncestorEntries()
     {
         var expectedPaths = new[]
         {
-            await WriteAgentsFileAsync(Path.Combine(_userHome, ".agents"), "user agents"),
-            await WriteAgentsFileAsync(Path.Combine(_userHome, ".seeing"), "user seeing"),
-            await WriteAgentsFileAsync(Path.Combine(_workspace, ".agents"), "workspace agents"),
-            await WriteAgentsFileAsync(Path.Combine(_workspace, ".seeing"), "workspace seeing"),
-            await WriteAgentsFileAsync(_workspace, "workspace root")
+            Path.Combine(_userHome, ".agents", "AGENTS.md"),
+            Path.Combine(_userHome, ".seeing", "AGENTS.md"),
+            Path.Combine(_workspace, ".agents", "AGENTS.md"),
+            Path.Combine(_workspace, ".seeing", "AGENTS.md"),
+            Path.Combine(_workspace, "AGENTS.md")
         };
         var discovery = CreateDiscovery();
 
-        var result = await discovery.DiscoverAsync(
-            _workspace,
-            _workspace,
-            TestContext.Current.CancellationToken);
+        var result = discovery.EnumerateCandidatePaths(_workspace, _workspace);
 
-        PathsShouldEqual(result.Select(file => file.Path), expectedPaths);
+        PathsShouldEqual(result, expectedPaths);
     }
 
     [Fact]
-    public async Task DiscoverAsync_WhenCwdIsOutsideWorkspace_ReturnsOnlyUserFiles()
+    public void EnumerateCandidatePaths_WhenCwdIsOutsideWorkspace_ReturnsOnlyUserPaths()
     {
         var outside = Path.Combine(_root, "outside");
         Directory.CreateDirectory(outside);
         var expectedPaths = new[]
         {
-            await WriteAgentsFileAsync(Path.Combine(_userHome, ".agents"), "user agents"),
-            await WriteAgentsFileAsync(Path.Combine(_userHome, ".seeing"), "user seeing")
+            Path.Combine(_userHome, ".agents", "AGENTS.md"),
+            Path.Combine(_userHome, ".seeing", "AGENTS.md")
         };
-        await WriteAgentsFileAsync(Path.Combine(_workspace, ".agents"), "workspace agents");
-        await WriteAgentsFileAsync(Path.Combine(_workspace, ".seeing"), "workspace seeing");
-        await WriteAgentsFileAsync(_workspace, "workspace root");
-        await WriteAgentsFileAsync(outside, "outside");
         var discovery = CreateDiscovery();
 
-        var result = await discovery.DiscoverAsync(
-            outside,
-            _workspace,
-            TestContext.Current.CancellationToken);
+        var result = discovery.EnumerateCandidatePaths(outside, _workspace);
 
-        PathsShouldEqual(result.Select(file => file.Path), expectedPaths);
+        PathsShouldEqual(result, expectedPaths);
     }
 
     [Fact]
-    public async Task DiscoverAsync_WhenLocationsResolveToSamePath_KeepsFirstOccurrence()
+    public void EnumerateCandidatePaths_WhenLocationsResolveToSamePath_KeepsFirstOccurrence()
     {
-        var agentsPath = await WriteAgentsFileAsync(Path.Combine(_workspace, ".agents"), "agents");
-        var seeingPath = await WriteAgentsFileAsync(Path.Combine(_workspace, ".seeing"), "seeing");
-        var rootPath = await WriteAgentsFileAsync(_workspace, "root");
+        // 用户目录 == 工作区：两组候选重复，去重后保留首次出现的顺序
         var discovery = new InstructionDiscovery(
             NullLogger<InstructionDiscovery>.Instance,
             () => _workspace);
 
-        var result = await discovery.DiscoverAsync(
-            _workspace,
-            _workspace,
-            TestContext.Current.CancellationToken);
+        var result = discovery.EnumerateCandidatePaths(_workspace, _workspace);
 
-        PathsShouldEqual(result.Select(file => file.Path), [agentsPath, seeingPath, rootPath]);
-    }
-
-    [Fact]
-    public async Task DiscoverAsync_WhenFileExists_PopulatesContentTimestampAndSha256Hash()
-    {
-        const string content = "你好, progressive instructions";
-        var path = await WriteAgentsFileAsync(Path.Combine(_userHome, ".agents"), content);
-        var discovery = CreateDiscovery();
-        var expectedHash = $"sha256:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content))).ToLowerInvariant()}";
-
-        var result = await discovery.DiscoverAsync(
-            _workspace,
-            _workspace,
-            TestContext.Current.CancellationToken);
-
-        var file = result.Should().ContainSingle().Subject;
-        StringComparer.OrdinalIgnoreCase.Equals(
-            Path.GetFullPath(file.Path),
-            Path.GetFullPath(path)).Should().BeTrue();
-        file.Content.Should().Be(content);
-        file.LastModified.Should().NotBe(default);
-        file.Hash.Should().Be(expectedHash);
+        PathsShouldEqual(result,
+        [
+            Path.Combine(_workspace, ".agents", "AGENTS.md"),
+            Path.Combine(_workspace, ".seeing", "AGENTS.md"),
+            Path.Combine(_workspace, "AGENTS.md")
+        ]);
     }
 
     public void Dispose()
@@ -143,14 +114,6 @@ public sealed class InstructionDiscoveryTests : IDisposable
         return new InstructionDiscovery(
             NullLogger<InstructionDiscovery>.Instance,
             () => _userHome);
-    }
-
-    private static async Task<string> WriteAgentsFileAsync(string directory, string content)
-    {
-        Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, "AGENTS.md");
-        await File.WriteAllTextAsync(path, content);
-        return Path.GetFullPath(path);
     }
 
     private static void PathsShouldEqual(

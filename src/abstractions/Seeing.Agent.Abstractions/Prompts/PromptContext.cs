@@ -56,4 +56,11 @@ public class PromptContext
 
     /// <summary>服务提供者（用于获取依赖）</summary>
     public IServiceProvider? Services { get; set; }
+
+    /// <summary>
+    /// 上下文基线文本（由 <c>IContextAssembler</c> 装配产出）。
+    /// <para>在分节注入、变量替换与 Trim 之后追加到提示词末尾：基线内的 <c>{{...}}</c> 字面量
+    /// 原样保留，避免每次请求被替换从而击穿前缀缓存。</para>
+    /// </summary>
+    public string? ContextBaseline { get; set; }
 }

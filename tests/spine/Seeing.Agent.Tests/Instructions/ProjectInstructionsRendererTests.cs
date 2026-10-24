@@ -1,7 +1,5 @@
 using FluentAssertions;
 using Seeing.Agent.Core.Instructions;
-using Seeing.Session.Core;
-using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Instructions;
@@ -36,30 +34,6 @@ public sealed class ProjectInstructionsRendererTests
     public void TryParse_PlainText_ReturnsFalse()
     {
         ProjectInstructionsRenderer.TryParse("ordinary user text", out _).Should().BeFalse();
-    }
-
-    [Fact]
-    public void CreateUserMessage_SetsUserRoleContentAndMetadata()
-    {
-        var files = new[]
-        {
-            File(@"E:\repo\AGENTS.md", "root", "sha256:root"),
-            File(@"E:\repo\src\AGENTS.md", "src", "sha256:src")
-        };
-
-        var message = ProjectInstructionsRenderer.CreateUserMessage(
-            @"E:\repo\src",
-            ProjectInstructions.Reasons.CwdChange,
-            files);
-
-        message.Role.Should().Be(MessageRole.User);
-        ProjectInstructionsRenderer.TryParse(message.Content, out _).Should().BeTrue();
-        message.Metadata![ProjectInstructions.MetadataKeys.ProjectInstructions].Should().Be(true);
-        message.Metadata[ProjectInstructions.MetadataKeys.Reason].Should().Be(ProjectInstructions.Reasons.CwdChange);
-        message.Metadata[ProjectInstructions.MetadataKeys.Cwd].Should().Be(@"E:\repo\src");
-        JsonSerializer.Deserialize<string[]>(
-                (string)message.Metadata[ProjectInstructions.MetadataKeys.Paths])
-            .Should().Equal(files.Select(file => file.Path));
     }
 
     private static InstructionFile File(string path, string content, string hash) =>

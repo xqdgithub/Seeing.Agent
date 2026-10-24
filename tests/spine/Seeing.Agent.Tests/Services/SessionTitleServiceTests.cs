@@ -211,6 +211,45 @@ namespace Seeing.Agent.Tests.Services
         }
 
         [Fact]
+        public void CountIntentionalUserMessages_excludes_context_update_messages()
+        {
+            // I1：上下文管道的增量叙述不得占用「真实用户消息」名额。
+            // 判定只认元数据（context.update / context.update.sources）；
+            // 「元数据丢失时按内容信封兜底」已删除——前缀嗅探是反模式，且新消息一定带元数据。
+            var messages = new List<SessionMessage>
+            {
+                SessionMessage.UserMessage(
+                        "<context-update source=\"k\">\n以下项目指令文件已新增或更新\n</context-update>")
+                    .WithMetadata(SessionMetadataKeys.ContextUpdate, true)
+                    .WithMetadata(SessionMetadataKeys.ContextUpdateSources, new[] { "k" }),
+                // 本次升级之前的会话数据只有 sources 键，同样不计入
+                SessionMessage.UserMessage(
+                        "<context-update source=\"k\">\n再次叙述\n</context-update>")
+                    .WithMetadata(SessionMetadataKeys.ContextUpdateSources, new[] { "k" }),
+                SessionMessage.UserMessage("real user intent"),
+            };
+
+            SessionTitleService.CountIntentionalUserMessages(messages).Should().Be(1);
+            SessionTitleService.IsIntentionalUserMessage(messages[0]).Should().BeFalse();
+            SessionTitleService.IsIntentionalUserMessage(messages[1]).Should().BeFalse();
+            SessionTitleService.IsIntentionalUserMessage(messages[2]).Should().BeTrue();
+        }
+
+        [Fact]
+        public void CountIntentionalUserMessages_excludes_instruction_envelope_detected_by_content()
+        {
+            // 信封内容（即使元数据缺失）同样不计入：UI / 标题服务识别的是源自己的信封
+            var envelope = ProjectInstructionsRenderer.Wrap(
+                @"C:\repo",
+                ProjectInstructions.Reasons.ContentChange,
+                [new InstructionFile { Path = @"C:\repo\AGENTS.md", Content = "x", Hash = "sha256:x" }]);
+
+            var message = SessionMessage.UserMessage(envelope);
+
+            SessionTitleService.IsIntentionalUserMessage(message).Should().BeFalse();
+        }
+
+        [Fact]
         public async Task TryEnsureAsync_writes_title_when_only_extra_messages_are_injections()
         {
             var session = SessionData.Create();

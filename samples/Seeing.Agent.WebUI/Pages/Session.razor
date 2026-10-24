@@ -580,7 +580,7 @@
         try
         {
             // 加载技能信息（工具清单由会话结算提供，无需在此预热）
-            await SkillManager.DiscoverSkillsAsync();
+            await SkillManager.RefreshSkillsAsync();
         }
         catch (Exception)
         {

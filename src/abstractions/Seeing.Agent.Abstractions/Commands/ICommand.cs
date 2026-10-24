@@ -1,4 +1,5 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Skills;
 
 namespace Seeing.Agent.Abstractions.Commands
 {
@@ -123,6 +124,13 @@ namespace Seeing.Agent.Abstractions.Commands
 
         /// <summary>服务提供者</summary>
         public IServiceProvider? Services { get; init; }
+
+        /// <summary>
+        /// 本轮执行的技能目录快照（执行级钉住，与系统提示词清单 / <c>skill</c> 工具同源）。
+        /// <para>宿主在命令执行前填充一次；为 null 表示未接线（命令可经
+        /// <see cref="Services"/> 回退到目录当前态，仅限旧宿主）。</para>
+        /// </summary>
+        public SkillCatalogSnapshot? Skill { get; init; }
 
         /// <summary>取消令牌</summary>
         public CancellationToken CancellationToken { get; init; }

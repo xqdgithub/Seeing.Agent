@@ -1,9 +1,11 @@
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Skills;
+using Seeing.Agent.Skills.Catalog;
 using Seeing.Agent.Skills.Commands;
 using Seeing.Session.Core;
 using Xunit;
@@ -15,12 +17,16 @@ namespace Seeing.Agent.Tests.Commands;
 /// </summary>
 public class SkillCommandsTests
 {
-    private static SkillManager CreateSkillManager(SkillInfo skill)
+    private static SkillCatalogCore CreateCatalog(SkillInfo skill)
     {
-        var manager = new SkillManager(NullLogger<SkillManager>.Instance);
-        manager.RegisterSkill(skill);
-        return manager;
+        var catalog = new SkillCatalogCore(NullLogger<SkillCatalogCore>.Instance);
+        catalog.RegisterAsync(skill, "test").GetAwaiter().GetResult().Should().BeTrue();
+        return catalog;
     }
+
+    /// <summary>命令执行期解析目录所需的最小服务容器。</summary>
+    private static IServiceProvider BuildServices(ISkillCatalog catalog) =>
+        new ServiceCollection().AddSingleton(catalog).BuildServiceProvider();
 
     private static Mock<ISessionManager> CreateSessionManager(SessionData session)
     {
@@ -49,9 +55,9 @@ public class SkillCommandsTests
             Description = "d",
             Content = "skill $1 content"
         };
-        var skillManager = CreateSkillManager(skill);
+        var catalog = CreateCatalog(skill);
         var sessionManager = CreateSessionManager(session);
-        var command = new SkillLoadCommand(skillManager, sessionManager.Object);
+        var command = new SkillLoadCommand(catalog, sessionManager.Object);
 
         // Act
         var result = await command.ExecuteAsync(
@@ -75,9 +81,9 @@ public class SkillCommandsTests
         session.AddMessage(SessionMessage.UserMessage("<project-instructions>...</project-instructions>"));
 
         var skill = new SkillInfo { Name = "demo", Description = "d", Content = "skill $1 content" };
-        var skillManager = CreateSkillManager(skill);
+        var catalog = CreateCatalog(skill);
         var sessionManager = CreateSessionManager(session);
-        var command = new SkillLoadCommand(skillManager, sessionManager.Object);
+        var command = new SkillLoadCommand(catalog, sessionManager.Object);
 
         // Act
         var result = await command.ExecuteAsync(
@@ -101,9 +107,9 @@ public class SkillCommandsTests
         var session = new SessionData { Id = "s1" };
         session.AddMessage(SessionMessage.AssistantMessage("old"));
         var skill = new SkillInfo { Name = "demo", Description = "d", Content = "content" };
-        var skillManager = CreateSkillManager(skill);
+        var catalog = CreateCatalog(skill);
         var sessionManager = CreateSessionManager(session);
-        var command = new SkillLoadCommand(skillManager, sessionManager.Object);
+        var command = new SkillLoadCommand(catalog, sessionManager.Object);
 
         // Act
         var result = await command.ExecuteAsync(
@@ -122,12 +128,19 @@ public class SkillCommandsTests
         var session = new SessionData { Id = "s1" };
         session.AddMessage(SessionMessage.UserMessage("/demo arg"));
         var skill = new SkillInfo { Name = "demo", Description = "d", Content = "skill $1 content" };
+        var catalog = CreateCatalog(skill);
         var sessionManager = CreateSessionManager(session);
-        var command = new DynamicSkillCommand(sessionManager.Object, skill);
+        var command = new DynamicSkillCommand(sessionManager.Object, "demo");
 
-        // Act
+        // Act：只给执行级钉住快照（生产形态），不注入 Services
         var result = await command.ExecuteAsync(
-            new CommandContext { SessionId = "s1", Input = "/demo arg", Arguments = "arg" },
+            new CommandContext
+            {
+                SessionId = "s1",
+                Input = "/demo arg",
+                Arguments = "arg",
+                Skill = catalog.Current
+            },
             TestContext.Current.CancellationToken);
 
         // Assert
@@ -138,6 +151,45 @@ public class SkillCommandsTests
     }
 
     [Fact]
+    public async Task DynamicSkillCommand_WithoutPinnedSnapshot_ShouldFallBackToServices()
+    {
+        // 兼容接缝：旧宿主 / 单测只填 Services 时仍可解析（唯一允许的兜底路径）
+        var session = new SessionData { Id = "s1" };
+        session.AddMessage(SessionMessage.UserMessage("/demo arg"));
+        var skill = new SkillInfo { Name = "demo", Description = "d", Content = "skill $1 content" };
+        var catalog = CreateCatalog(skill);
+        var sessionManager = CreateSessionManager(session);
+        var command = new DynamicSkillCommand(sessionManager.Object, "demo");
+
+        var result = await command.ExecuteAsync(
+            new CommandContext
+            {
+                SessionId = "s1",
+                Input = "/demo arg",
+                Arguments = "arg",
+                Services = BuildServices(catalog)
+            },
+            TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeTrue(result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task DynamicSkillCommand_WhenNoSnapshotAndNoServices_ShouldFailExplicitly()
+    {
+        var session = new SessionData { Id = "s1" };
+        session.AddMessage(SessionMessage.UserMessage("/demo arg"));
+        var command = new DynamicSkillCommand(CreateSessionManager(session).Object, "demo");
+
+        var result = await command.ExecuteAsync(
+            new CommandContext { SessionId = "s1", Input = "/demo arg", Arguments = "arg" },
+            TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("技能目录不可用");
+    }
+
+    [Fact]
     public async Task DynamicSkillCommand_WhenInstructionMessageFollowsCommand_ShouldRewriteCommandNotInstruction()
     {
         var session = new SessionData { Id = "s1" };
@@ -145,11 +197,18 @@ public class SkillCommandsTests
         session.AddMessage(SessionMessage.UserMessage("<project-instructions>...</project-instructions>"));
 
         var skill = new SkillInfo { Name = "demo", Description = "d", Content = "skill $1 content" };
+        var catalog = CreateCatalog(skill);
         var sessionManager = CreateSessionManager(session);
-        var command = new DynamicSkillCommand(sessionManager.Object, skill);
+        var command = new DynamicSkillCommand(sessionManager.Object, "demo");
 
         var result = await command.ExecuteAsync(
-            new CommandContext { SessionId = "s1", Input = "/demo arg", Arguments = "arg" },
+            new CommandContext
+            {
+                SessionId = "s1",
+                Input = "/demo arg",
+                Arguments = "arg",
+                Skill = catalog.Current
+            },
             TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
@@ -164,9 +223,9 @@ public class SkillCommandsTests
         // Arrange
         var session = new SessionData { Id = "s1" };
         var skill = new SkillInfo { Name = "demo", Description = "d", Content = "content" };
-        var skillManager = CreateSkillManager(skill);
+        var catalog = CreateCatalog(skill);
         var sessionManager = CreateSessionManager(session);
-        var command = new SkillLoadCommand(skillManager, sessionManager.Object);
+        var command = new SkillLoadCommand(catalog, sessionManager.Object);
 
         // Act
         var result = await command.ExecuteAsync(

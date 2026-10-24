@@ -65,4 +65,17 @@ public class AgentContext
     /// null 表示调用方未提供（非 Hosting 入口的遗留路径），此时执行器不做可见集校验。
     /// </summary>
     public Abstractions.Execution.SessionToolSchemaResolution? ToolSettlement { get; set; }
+
+    /// <summary>
+    /// 本轮上下文基线文本（由调用方经 <c>IContextAssembler.BuildSystemBaseline</c> 取得后透传）。
+    /// <para>与 <see cref="ToolSettlement"/> 一样由上游结算/装配产出，执行器不得自行读源或计算。</para>
+    /// </summary>
+    public string? ContextBaseline { get; set; }
+
+    /// <summary>
+    /// 本轮执行钉住的技能目录快照（执行开始时固化；执行器透传给工具的
+    /// <see cref="Tools.ToolContext.SkillSnapshot"/>）。
+    /// <para>null 表示宿主未组合技能模块或未接线执行作用域：工具按不可用处理，不得回落到目录当前态。</para>
+    /// </summary>
+    public Skills.SkillCatalogSnapshot? SkillSnapshot { get; set; }
 }

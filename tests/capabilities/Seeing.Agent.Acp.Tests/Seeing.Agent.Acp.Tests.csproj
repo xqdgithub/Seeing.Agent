@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Acp\Seeing.Agent.Acp.csproj" />
+    <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Skills\Seeing.Agent.Skills.csproj" />
     <ProjectReference Include="..\..\..\src\spine\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
   </ItemGroup>
 

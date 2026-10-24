@@ -32,6 +32,21 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
     private readonly IUiContributionRegistry? _ui;
     private readonly List<string> _registeredCommandNames = new();
 
+    /// <summary>本模块登记过的 ACP 动态技能命令名（撤销的输入集合，含已禁用项）。</summary>
+    private readonly HashSet<string> _registeredSkillCommandNames = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 命令注册闸：目录事件在 watcher / 执行线程并发投递，同时 Deactivate 也会改同一组集合。
+    /// 与 <c>DynamicSkillCommandSync</c> 同构——集合读写必须在同一把锁内完成。
+    /// </summary>
+    private readonly object _commandGate = new();
+
+    /// <summary>技能命令同步是否启用：Deactivate 后晚到的目录事件不得把命令重新登记回来。</summary>
+    private bool _skillCommandSyncEnabled;
+
+    /// <summary>目录快照订阅：技能出现 / 删除 / 被禁用都驱动 ACP 命令同步。</summary>
+    private IDisposable? _skillCatalogSubscription;
+
     /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
     public AcpModule()
     {
@@ -110,6 +125,10 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
     /// <inheritdoc />
     public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
+        // 先退订目录事件：退订后同步器不会再把新命令塞回注册表
+        _skillCatalogSubscription?.Dispose();
+        _skillCatalogSubscription = null;
+
         UnregisterHooks(services);
         UnregisterCommands(services);
         DetachReloadHandler(services);
@@ -217,43 +236,119 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
             return;
         }
 
-        _registeredCommandNames.Clear();
+        lock (_commandGate)
+        {
+            _registeredCommandNames.Clear();
+            // 先关同步开关：下面按快照对齐完成后再打开（避免订阅与首次对齐之间插入半个状态）
+            _skillCommandSyncEnabled = false;
+        }
 
         if (services.GetService<AcpCommands>() is { } acpCommands)
         {
             foreach (var command in discovery.DiscoverFromType(acpCommands.GetType(), acpCommands))
             {
                 registry.Register(command);
-                _registeredCommandNames.Add(command.Metadata.Name);
+                lock (_commandGate)
+                    _registeredCommandNames.Add(command.Metadata.Name);
             }
         }
 
-        if (services.GetService<ISkillManager>() is { } skillManager)
+        // 动态技能命令：订阅目录事件同步（删除 / 禁用都要撤销，修复旧实现只按启用集合求差的 bug）
+        if (services.GetService<ISkillCatalog>() is { } catalog)
         {
-            foreach (var skill in skillManager.GetAllSkillInfos().Values)
+            var logger = services.GetService<ILogger<AcpModule>>() ?? NullLogger<AcpModule>.Instance;
+            lock (_commandGate)
             {
-                var command = new AcpDynamicSkillCommand(skill.Name, skill.Description);
-                registry.Register(command);
-                _registeredCommandNames.Add(command.Metadata.Name);
+                _registeredSkillCommandNames.Clear();
+                _skillCommandSyncEnabled = true;
+            }
+
+            _skillCatalogSubscription = catalog.Subscribe(snapshot => SyncSkillCommands(registry, snapshot, catalog, logger));
+            SyncSkillCommands(registry, catalog.Current, catalog, logger);
+        }
+    }
+
+    /// <summary>
+    /// 按目录快照对齐 ACP 动态技能命令：登记启用项、撤销「本模块登记过但当前不可调用」的项。
+    /// <para>整段集合读写都在 <see cref="_commandGate"/> 内：目录事件可能并发投递，且与
+    /// <see cref="UnregisterCommands"/> 竞争（否则丢命令 / 集合被并发修改）。</para>
+    /// </summary>
+    private void SyncSkillCommands(
+        ICommandRegistry registry,
+        SkillCatalogSnapshot snapshot,
+        ISkillCatalog catalog,
+        ILogger logger)
+    {
+        lock (_commandGate)
+        {
+            // 已停用：晚到的目录事件不得重新登记命令（Deactivate 幂等）
+            if (!_skillCommandSyncEnabled)
+                return;
+
+            // 可用条目投影只有目录一份实现（禁用项必须同时撤销命令）
+            var enabled = catalog.GetEnabledEntries(snapshot);
+            var desired = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in enabled)
+                desired.Add(entry.Info.Name);
+
+            foreach (var name in _registeredSkillCommandNames.Where(name => !desired.Contains(name)).ToList())
+            {
+                _registeredSkillCommandNames.Remove(name);
+                _registeredCommandNames.Remove(name);
+
+                // 仅撤销本模块登记的 ACP 透传命令，避免误删同名默认命令
+                var existing = registry.GetCommand(name);
+                if (existing is AcpDynamicSkillCommand)
+                    registry.Unregister(name);
+            }
+
+            foreach (var name in desired.Where(name => !_registeredSkillCommandNames.Contains(name)))
+            {
+                try
+                {
+                    var description = enabled
+                        .FirstOrDefault(entry => string.Equals(entry.Info.Name, name, StringComparison.OrdinalIgnoreCase))
+                        ?.Info.Description;
+
+                    registry.Register(new AcpDynamicSkillCommand(name, description));
+                    _registeredSkillCommandNames.Add(name);
+                    _registeredCommandNames.Add(name);
+                }
+                catch (Exception ex)
+                {
+                    // 单个命令登记失败不得中断其余同步，但必须可观测（下次目录事件会重试）
+                    logger.LogWarning(ex, "登记 ACP 动态技能命令失败：{SkillName}", name);
+                }
             }
         }
     }
 
     private void UnregisterCommands(IServiceProvider services)
     {
-        if (_registeredCommandNames.Count == 0)
-            return;
-
-        if (services.GetService<ICommandRegistry>() is { } registry)
+        lock (_commandGate)
         {
-            foreach (var name in _registeredCommandNames)
+            // 先关同步开关：撤销之后任何晚到事件都不得复活命令（Deactivate 幂等）
+            _skillCommandSyncEnabled = false;
+
+            if (_registeredCommandNames.Count == 0)
             {
-                var existing = registry.GetCommand(name);
-                // 仅撤销运行时限定命令（AcpPassthrough），避免误删同名默认命令（如内置 /clear）
-                if (existing is not null && existing.Metadata.SupportedRuntimes.Length > 0)
-                    registry.Unregister(name);
+                // 早退路径也必须清空技能命令集合：不依赖「两个集合始终成对增删」的不变式（N7）
+                _registeredSkillCommandNames.Clear();
+                return;
             }
+
+            if (services.GetService<ICommandRegistry>() is { } registry)
+            {
+                foreach (var name in _registeredCommandNames)
+                {
+                    var existing = registry.GetCommand(name);
+                    // 仅撤销运行时限定命令（AcpPassthrough），避免误删同名默认命令（如内置 /clear）
+                    if (existing is not null && existing.Metadata.SupportedRuntimes.Length > 0)
+                        registry.Unregister(name);
+                }
+            }
+            _registeredCommandNames.Clear();
+            _registeredSkillCommandNames.Clear();
         }
-        _registeredCommandNames.Clear();
     }
 }

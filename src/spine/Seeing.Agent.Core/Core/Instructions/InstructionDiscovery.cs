@@ -1,11 +1,11 @@
 using Microsoft.Extensions.Logging;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace Seeing.Agent.Core.Instructions;
 
 /// <summary>
-/// 按层级发现并读取 AGENTS.md 指令文件。
+/// AGENTS.md 候选路径发现器：搜索根规则的唯一实现。
+/// <para>只负责枚举候选路径（不读取、不判断存在性）：读取与三态分类由
+/// <c>InstructionFileReader</c> 完成，避免「扫描规则」与「读取分类」两套实现漂移。</para>
 /// </summary>
 internal sealed class InstructionDiscovery
 {
@@ -14,6 +14,11 @@ internal sealed class InstructionDiscovery
     private readonly Func<string> _userProfileProvider;
     private readonly StringComparer _pathComparer;
 
+    /// <summary>
+    /// 创建候选路径发现器。
+    /// </summary>
+    /// <param name="logger">日志器。</param>
+    /// <param name="userProfileProvider">用户目录提供器（测试可注入；默认为当前用户目录）。</param>
     public InstructionDiscovery(
         ILogger<InstructionDiscovery> logger,
         Func<string>? userProfileProvider = null)
@@ -26,10 +31,11 @@ internal sealed class InstructionDiscovery
             : StringComparer.Ordinal;
     }
 
-    public async Task<IReadOnlyList<InstructionFile>> DiscoverAsync(
-        string cwd,
-        string workspaceRoot,
-        CancellationToken ct = default)
+    /// <summary>
+    /// 枚举全部候选指令文件路径（去重、绝对化，但不做存在性判断）。
+    /// <para>搜索根规则：用户级候选 + 工作区候选 + cwd 各级祖先候选。</para>
+    /// </summary>
+    public IReadOnlyList<string> EnumerateCandidatePaths(string cwd, string workspaceRoot)
     {
         var normalizedCwd = Path.GetFullPath(cwd);
         var normalizedWorkspace = Path.GetFullPath(workspaceRoot);
@@ -51,26 +57,18 @@ internal sealed class InstructionDiscovery
                 normalizedWorkspace);
         }
 
-        var discovered = new List<InstructionFile>();
+        var normalized = new List<string>(candidatePaths.Count);
         var seen = new HashSet<string>(_pathComparer);
-
         foreach (var candidatePath in candidatePaths)
         {
-            ct.ThrowIfCancellationRequested();
-            var normalizedPath = Path.GetFullPath(candidatePath);
-            if (!seen.Add(normalizedPath) || !File.Exists(normalizedPath))
+            var fullPath = Path.GetFullPath(candidatePath);
+            if (seen.Add(fullPath))
             {
-                continue;
-            }
-
-            var instructionFile = await TryReadAsync(normalizedPath, ct);
-            if (instructionFile is not null)
-            {
-                discovered.Add(instructionFile);
+                normalized.Add(fullPath);
             }
         }
 
-        return discovered;
+        return normalized;
     }
 
     private void AddUserCandidates(List<string> candidatePaths)
@@ -115,31 +113,5 @@ internal sealed class InstructionDiscovery
                 && relativePath != ".."
                 && !relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
                 && !relativePath.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal));
-    }
-
-    private async Task<InstructionFile?> TryReadAsync(string path, CancellationToken ct)
-    {
-        try
-        {
-            var content = await File.ReadAllTextAsync(path, ct);
-            var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(content));
-
-            return new InstructionFile
-            {
-                Path = path,
-                Content = content,
-                LastModified = File.GetLastWriteTimeUtc(path),
-                Hash = $"sha256:{Convert.ToHexString(hashBytes).ToLowerInvariant()}"
-            };
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "读取指令文件失败，已跳过: {Path}", path);
-            return null;
-        }
     }
 }

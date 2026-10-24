@@ -579,28 +579,28 @@ public class AgentExecutor : IAgentExecutor
             ?? (IReadOnlyList<FunctionToolSchema>)Array.Empty<FunctionToolSchema>();
 
         // 使用 PromptBuilder 构建系统提示词
-        string? systemPrompt = null;
-        if (!string.IsNullOrEmpty(agent.SystemPrompt))
+        // 不再以「agent 有无系统提示词」守卫整块：上下文基线即使在没有正文时也必须送达模型
+        // （PromptBuilder 在正文为空时直接返回基线）。
+        string? systemPrompt;
+        var promptContext = new PromptContext
         {
-            var promptContext = new PromptContext
-            {
-                Agent = agent,
-                SessionId = context.SessionId,
-                WorkingDirectory = context.WorkingDirectory,
-                WorkspaceRoot = context.WorkspaceRoot,
-                ModelName = ResolveModelId(agent, context),
-                Timestamp = DateTime.Now,
-                Platform = Environment.OSVersion.Platform.ToString(),
-                Tools = toolSchemas.Select(ts => ts.Function).ToList(),
-            };
-            // 工具目录正文（结算时渲染，string-only 携带）经通用 Sections 槽交给 ToolCatalog 分节贡献者
-            if (!string.IsNullOrWhiteSpace(settlement?.CatalogText))
-                promptContext.Sections[PromptSectionNames.ToolCatalog] = settlement.CatalogText;
+            Agent = agent,
+            SessionId = context.SessionId,
+            WorkingDirectory = context.WorkingDirectory,
+            WorkspaceRoot = context.WorkspaceRoot,
+            ModelName = ResolveModelId(agent, context),
+            Timestamp = DateTime.Now,
+            Platform = Environment.OSVersion.Platform.ToString(),
+            Tools = toolSchemas.Select(ts => ts.Function).ToList(),
+            ContextBaseline = context.ContextBaseline,
+        };
+        // 工具目录正文（结算时渲染，string-only 携带）经通用 Sections 槽交给 ToolCatalog 分节贡献者
+        if (!string.IsNullOrWhiteSpace(settlement?.CatalogText))
+            promptContext.Sections[PromptSectionNames.ToolCatalog] = settlement.CatalogText;
 
-            systemPrompt = await _promptBuilder.BuildAsync(promptContext, cancellationToken).ConfigureAwait(false);
-            if (string.IsNullOrEmpty(systemPrompt))
-                systemPrompt = null;
-        }
+        systemPrompt = await _promptBuilder.BuildAsync(promptContext, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(systemPrompt))
+            systemPrompt = null;
 
         // 转换 FunctionToolSchema 到 ToolDefinition
         var tools = toolSchemas.Select(s => new ToolDefinition
@@ -912,7 +912,8 @@ public class AgentExecutor : IAgentExecutor
         try
         {
             result = await _tools.ExecuteAsync(
-                tc, context.SessionId, cancellationToken, emitAsync, permissionAuthorizer, agent, toolScope)
+                tc, context.SessionId, cancellationToken, emitAsync, permissionAuthorizer, agent, toolScope,
+                context.SkillSnapshot)
                 .ConfigureAwait(false);
 
             // 工具声明的"本执行内已加载"由执行器统一应用（能力键门控 + 审计）。

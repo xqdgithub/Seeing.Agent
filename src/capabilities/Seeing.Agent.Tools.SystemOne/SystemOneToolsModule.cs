@@ -47,12 +47,14 @@ public sealed class SystemOneToolsModule : ISeeingModule
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (services.GetService<ISkillManager>() is { } skillManager)
+        if (services.GetService<ISkillCatalog>() is { } catalog)
         {
             var logger = services.GetService<ILogger<SystemOneToolsModule>>()
                          ?? NullLogger<SystemOneToolsModule>.Instance;
             _registeredSkillNames.Clear();
-            _registeredSkillNames.AddRange(SystemOneSkillRegistrar.Register(skillManager, logger));
+            _registeredSkillNames.AddRange(
+                await SystemOneSkillRegistrar.RegisterAsync(catalog, logger, cancellationToken)
+                    .ConfigureAwait(false));
         }
 
         var tm = services.GetService<IToolManager>();
@@ -67,9 +69,13 @@ public sealed class SystemOneToolsModule : ISeeingModule
     public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         if (_registeredSkillNames.Count > 0
-            && services.GetService<ISkillManager>() is { } skillManager)
+            && services.GetService<ISkillCatalog>() is { } catalog)
         {
-            SystemOneSkillRegistrar.Unregister(skillManager, _registeredSkillNames);
+            var logger = services.GetService<ILogger<SystemOneToolsModule>>()
+                         ?? NullLogger<SystemOneToolsModule>.Instance;
+            await SystemOneSkillRegistrar
+                .UnregisterAsync(catalog, _registeredSkillNames, logger, cancellationToken)
+                .ConfigureAwait(false);
             _registeredSkillNames.Clear();
         }
 

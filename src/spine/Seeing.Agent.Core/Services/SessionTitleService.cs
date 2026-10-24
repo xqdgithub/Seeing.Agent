@@ -55,7 +55,7 @@ namespace Seeing.Agent.Core.Services
         }
 
         /// <summary>
-        /// 是否计入「意图用户消息」（排除 synthetic / 项目指令注入）。
+        /// 是否计入「意图用户消息」（排除 synthetic / 项目指令 / 上下文增量注入）。
         /// </summary>
         internal static bool IsIntentionalUserMessage(SessionMessage message)
         {
@@ -63,19 +63,29 @@ namespace Seeing.Agent.Core.Services
                 return false;
 
             var metadata = message.Metadata;
-            if (metadata == null)
-                return true;
+            if (metadata != null)
+            {
+                if (metadata.ContainsKey(SyntheticMetadataKey))
+                    return false;
 
-            if (metadata.ContainsKey(SyntheticMetadataKey))
-                return false;
+                // AGENTS.md 等注入的 user 消息，不能占用「首条真实用户消息」名额
+                if (metadata.ContainsKey(ProjectInstructions.MetadataKeys.ProjectInstructions))
+                    return false;
 
-            // AGENTS.md 等注入的 user 消息，不能占用「首条真实用户消息」名额
-            if (metadata.ContainsKey(ProjectInstructions.MetadataKeys.ProjectInstructions))
-                return false;
+                // 上下文管道的增量叙述同样是机器注入（只认元数据，绝不按内容前缀嗅探；
+                // ContextUpdate 是本次新增的显式标记，ContextUpdateSources 兼容本次之前的会话数据）
+                if (metadata.ContainsKey(SessionMetadataKeys.ContextUpdate)
+                    || metadata.ContainsKey(SessionMetadataKeys.ContextUpdateSources))
+                    return false;
 
-            // 排除非 user 呈现的 inbox 消息（System/Assistant/None）
-            if (metadata.TryGetValue(InboxPresentationMetadataKey, out var presentation)
-                && !string.Equals(presentation?.ToString(), "user", StringComparison.OrdinalIgnoreCase))
+                // 排除非 user 呈现的 inbox 消息（System/Assistant/None）
+                if (metadata.TryGetValue(InboxPresentationMetadataKey, out var presentation)
+                    && !string.Equals(presentation?.ToString(), "user", StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+
+            // 内容兜底：项目指令消息在元数据丢失时仍可从信封还原（信封是强格式，不是前缀嗅探）
+            if (ProjectInstructionsRenderer.TryParse(message.Content ?? string.Empty, out _))
                 return false;
 
             return true;

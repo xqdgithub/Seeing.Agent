@@ -1,6 +1,8 @@
+using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Skills;
+using Seeing.Agent.Skills.Catalog;
 using Seeing.Session.Core;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -12,12 +14,12 @@ namespace Seeing.Agent.Skills.Commands;
 /// </summary>
 public sealed class SkillLoadCommand : ICommand
 {
-    private readonly ISkillManager _skillManager;
+    private readonly ISkillCatalog _catalog;
     private readonly ISessionManager _sessionManager;
 
-    public SkillLoadCommand(ISkillManager skillManager, ISessionManager sessionManager)
+    public SkillLoadCommand(ISkillCatalog catalog, ISessionManager sessionManager)
     {
-        _skillManager = skillManager;
+        _catalog = catalog;
         _sessionManager = sessionManager;
     }
 
@@ -33,35 +35,32 @@ public sealed class SkillLoadCommand : ICommand
 
     public async Task<CommandResult> ExecuteAsync(CommandContext context, CancellationToken cancellationToken = default)
     {
+        var snapshot = SkillCommandCatalogView.Resolve(context, _catalog);
+
         if (string.IsNullOrWhiteSpace(context.Arguments))
         {
-            var skills = _skillManager.GetAllSkillInfos().Values.ToList();
-            if (skills.Count == 0)
-            {
-                return CommandResult.Ok("No skills available. Add skills to .agents/skills/ or ~/.agents/skills/");
-            }
-
-            var list = "**Available Skills**\n\n";
-            foreach (var skill in skills.OrderBy(s => s.Name))
-            {
-                list += $"- **{skill.Name}**: {skill.Description}\n";
-            }
-            list += "\nUse `/skill <name>` to load a skill.";
-
-            return CommandResult.Ok(list);
+            // 清单文本只有 SkillCatalogFormatter 一个出口（与基线 / 工具提示共用）
+            return CommandResult.Ok(
+                SkillCatalogFormatter.RenderList(SkillCommandCatalogView.EnabledEntries(snapshot)));
         }
 
         var parts = context.Arguments.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         var skillName = parts[0];
         var skillArgs = parts.Length > 1 ? parts[1] : "";
 
-        var skillInfo = _skillManager.GetSkillInfo(skillName);
-        if (skillInfo == null)
+        var entry = SkillCommandCatalogView.Find(snapshot, _catalog, skillName);
+        if (entry is null)
         {
-            return CommandResult.Fail($"Skill not found: {skillName}");
+            return CommandResult.Fail(
+                $"Skill not found: {skillName}\n\n{SkillCatalogFormatter.RenderList(SkillCommandCatalogView.EnabledEntries(snapshot))}");
         }
 
-        var content = skillInfo.Content;
+        if (!SkillCommandCatalogView.IsEnabled(snapshot, _catalog, entry.Info.Name))
+        {
+            return CommandResult.Fail($"Skill '{entry.Info.Name}' is disabled. Enable it in the Skills settings.");
+        }
+
+        var content = entry.Info.Content;
         if (string.IsNullOrEmpty(content))
         {
             return CommandResult.Fail($"Skill content is empty: {skillName}");
@@ -101,11 +100,11 @@ public sealed class SkillLoadCommand : ICommand
 /// </summary>
 public sealed class SkillsListCommand : ICommand
 {
-    private readonly ISkillManager _skillManager;
+    private readonly ISkillCatalog _catalog;
 
-    public SkillsListCommand(ISkillManager skillManager)
+    public SkillsListCommand(ISkillCatalog catalog)
     {
-        _skillManager = skillManager;
+        _catalog = catalog;
     }
 
     public CommandMetadata Metadata { get; } = new()
@@ -120,20 +119,61 @@ public sealed class SkillsListCommand : ICommand
     };
 
     public Task<CommandResult> ExecuteAsync(CommandContext context, CancellationToken cancellationToken = default)
+        => Task.FromResult(CommandResult.Ok(
+            SkillCatalogFormatter.RenderList(
+                SkillCommandCatalogView.EnabledEntries(SkillCommandCatalogView.Resolve(context, _catalog)))));
+}
+
+/// <summary>
+/// 命令侧读取技能目录的<b>唯一接缝</b>：优先执行级钉住快照（<see cref="CommandContext.Skill"/>），
+/// 仅在宿主未接线时（旧宿主 / 命令单测）才退回注入目录的当前态。
+/// <para>只有本类允许触碰 <see cref="ISkillCatalog.Current"/>：命令实现（/skill、/skills、/&lt;技能名&gt;）
+/// 一律经此处解析，保证「提示词清单 / skill 工具 / 命令」三者同源，不会在一次执行内出现两个版本。</para>
+/// </summary>
+internal static class SkillCommandCatalogView
+{
+    /// <summary>本次命令应使用的快照；都取不到时返回 null（目录不可用）。</summary>
+    public static SkillCatalogSnapshot? Resolve(CommandContext context, ISkillCatalog? injectedCatalog)
+        => context.Skill
+           ?? injectedCatalog?.Current
+           // 兜底接缝：宿主只填了 Services 时按名取一次（不缓存，命令不得持有目录副本）
+           ?? (context.Services?.GetService<ISkillCatalog>())?.Current;
+
+    /// <summary>可用技能条目（唯一投影；禁用项不进入清单）。</summary>
+    public static IReadOnlyList<SkillCatalogEntry> EnabledEntries(SkillCatalogSnapshot? snapshot)
+        => snapshot is null ? [] : SkillCatalogProjection.EnabledEntries(snapshot);
+
+    /// <summary>按名查找条目（优先钉住快照）。</summary>
+    public static SkillCatalogEntry? Find(
+        SkillCatalogSnapshot? snapshot,
+        ISkillCatalog? injectedCatalog,
+        string name)
     {
-        var skills = _skillManager.GetAllSkillInfos().Values.ToList();
-        if (skills.Count == 0)
+        if (string.IsNullOrWhiteSpace(name))
+            return null;
+
+        if (snapshot is not null)
         {
-            return Task.FromResult(CommandResult.Ok("No skills available."));
+            return snapshot.Entries.FirstOrDefault(entry =>
+                string.Equals(entry.Info.Name, name, StringComparison.OrdinalIgnoreCase));
         }
 
-        var list = "**Available Skills**\n\n";
-        foreach (var skill in skills.OrderBy(s => s.Name))
+        return injectedCatalog?.Find(name);
+    }
+
+    /// <summary>技能是否可用（存在且未被任何层级禁用）。</summary>
+    public static bool IsEnabled(
+        SkillCatalogSnapshot? snapshot,
+        ISkillCatalog? injectedCatalog,
+        string name)
+    {
+        if (snapshot is not null)
         {
-            list += $"- **{skill.Name}**: {skill.Description}\n";
+            return Find(snapshot, injectedCatalog, name) is not null
+                   && !snapshot.DisabledNames.Contains(name);
         }
 
-        return Task.FromResult(CommandResult.Ok(list));
+        return injectedCatalog?.IsEnabled(name) == true;
     }
 }
 
@@ -338,26 +378,28 @@ internal static class SkillCommandMessageLocator
 
 /// <summary>
 /// 动态 Skill 命令 - 为每个已注册的 skill 自动创建命令（Native 版本）
+/// <para>只持有技能名：正文与元数据在执行时从 <see cref="ISkillCatalog"/> 现取，
+/// 避免第二份 <see cref="SkillInfo"/> 副本与目录漂移。</para>
 /// </summary>
 public sealed class DynamicSkillCommand : ICommand
 {
     private readonly ISessionManager _sessionManager;
     private readonly string _skillName;
-    private readonly SkillInfo _skillInfo;
 
     public CommandMetadata Metadata { get; }
 
-    public DynamicSkillCommand(ISessionManager sessionManager, SkillInfo skillInfo)
+    public DynamicSkillCommand(ISessionManager sessionManager, string skillName)
     {
-        _sessionManager = sessionManager;
-        _skillName = skillInfo.Name;
-        _skillInfo = skillInfo;
+        ArgumentException.ThrowIfNullOrWhiteSpace(skillName);
+
+        _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
+        _skillName = skillName;
 
         Metadata = new CommandMetadata
         {
-            Name = skillInfo.Name,
-            Description = skillInfo.Description,
-            Usage = $"/{skillInfo.Name} [args]",
+            Name = skillName,
+            Description = $"加载技能：{skillName}",
+            Usage = $"/{skillName} [args]",
             Category = CommandCategory.Tools,
             Type = CommandType.Skill,
             IsHidden = false,
@@ -368,7 +410,28 @@ public sealed class DynamicSkillCommand : ICommand
 
     public async Task<CommandResult> ExecuteAsync(CommandContext context, CancellationToken cancellationToken = default)
     {
-        var content = _skillInfo.Content;
+        // 执行时解析：命令不得持有目录副本。解析走唯一接缝（钉住快照优先），
+        // 不直接读目录当前态——否则同一次执行内清单 / 工具 / 命令会出现两个版本。
+        var snapshot = SkillCommandCatalogView.Resolve(context, injectedCatalog: null);
+        if (snapshot is null)
+        {
+            return CommandResult.Fail(
+                $"技能目录不可用，无法执行 /{_skillName}：请检查 Skills 模块是否已加载。");
+        }
+
+        var entry = SkillCommandCatalogView.Find(snapshot, injectedCatalog: null, _skillName);
+        if (entry is null)
+        {
+            return CommandResult.Fail($"Skill not found: {_skillName}");
+        }
+
+        if (!SkillCommandCatalogView.IsEnabled(snapshot, injectedCatalog: null, entry.Info.Name))
+        {
+            return CommandResult.Fail(
+                $"Skill '{entry.Info.Name}' is disabled. Enable it in the Skills settings.");
+        }
+
+        var content = entry.Info.Content;
         if (string.IsNullOrEmpty(content))
         {
             return CommandResult.Fail($"Skill content is empty: {_skillName}");
