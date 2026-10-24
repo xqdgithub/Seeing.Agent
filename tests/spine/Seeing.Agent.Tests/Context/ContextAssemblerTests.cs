@@ -676,6 +676,70 @@ public sealed class ContextAssemblerTests
     }
 
     [Fact]
+    public async Task Compaction_WithSkippedSource_ShouldReanchorOnRecoveryWithoutStaleTextOrBogusIssues()
+    {
+        // A7：压缩置位已消费、但本源本轮**被跳过**（未参与装配）时，状态必须保持 total：
+        // 文本/哈希/值全部原样保留 + 置 PendingReanchor。旧实现把 BaselineValues 推进到
+        // CurrentValues 却保留旧文本且不置标记 → 永久旧基线 + 每轮一条假的「同值不同文本」告警。
+        var rendered = "## Fake A";
+        var source = new FakeSource
+        {
+            Key = new("a.system"),
+            RenderInitialBehavior = _ => rendered
+        };
+        var session = new SessionData { Id = "s1" };
+        var assembler = CreateAssembler(session, source);
+        var store = new ContextBaselineStore(NullLogger<ContextBaselineStore>.Instance);
+
+        // 建立基线 A → 内容变为 B 并产生增量（CurrentValues 已推进到 B）
+        await AssembleAsync(assembler, session);
+        source.Value = FakeSource.ValueOf("""{"items":["b"]}""");
+        (await AssembleAsync(assembler, session)).DeltaText.Should().NotBeNull();
+
+        // 压缩置位 + 本轮跳过该源（等价于 SkipInstructionInject 期间发生压缩）
+        var state = store.Load(session);
+        state.Pending |= PendingBaselineReset.Compaction;
+        store.Save(session, state);
+
+        var skipped = await assembler.EnsureFreshAsync(
+            session,
+            ContextAssemblyMode.Persist,
+            insertBeforeMessageId: null,
+            skip: new HashSet<ContextSourceKey> { source.Key },
+            TestContext.Current.CancellationToken);
+
+        skipped.Issues.Should().BeEmpty("跳过不是「渲染不确定」，不得产生误导性告警");
+
+        var afterSkip = store.Load(session).Sources["a.system"];
+        afterSkip.PendingReanchor.Should().BeTrue("必须留下按源的重锚定重试标记");
+        afterSkip.BaselineText.Should().Be("## Fake A", "跳过的源不得被部分更新");
+        afterSkip.BaselineValues!.ToJsonString().Should().Contain("\"a\"", "基线值不得被部分推进");
+        afterSkip.CurrentValues!.ToJsonString().Should().Contain("\"b\"");
+
+        // 恢复参与装配（值仍是 B）：必须用当前值整体重锚定，文本与值同 epoch
+        rendered = "## Fake B";
+        var recovered = await AssembleAsync(assembler, session);
+
+        recovered.Issues.Should().BeEmpty("重锚定是 epoch 变化，不是「渲染不确定」");
+        recovered.DeltaText.Should().BeNull("重锚定的源本轮不得再叙述增量");
+        assembler.BuildSystemBaseline(session).Should().Be("## Fake B", "基线文本不得停留在旧 epoch");
+
+        var after = store.Load(session).Sources["a.system"];
+        after.PendingReanchor.Should().BeFalse("重锚定成功后必须清除重试标记");
+        after.BaselineText.Should().Be("## Fake B");
+        after.BaselineValues!.ToJsonString().Should().Contain("\"b\"");
+        after.CurrentValues!.ToJsonString().Should().Contain("\"b\"");
+
+        // 稳定：同一状态再装配不得产生告警 / 增量 / 重复消息
+        var countAfterRecovery = session.MessageCount;
+        var stable = await AssembleAsync(assembler, session);
+
+        stable.Issues.Should().BeEmpty();
+        stable.DeltaText.Should().BeNull();
+        session.MessageCount.Should().Be(countAfterRecovery);
+    }
+
+    [Fact]
     public async Task MultipleMessageSources_WithDelta_ShouldInsertInDeterministicOrder()
     {
         // I4：多初始消息不得倒序；增量必须在初始消息之后、锚点之前

@@ -44,6 +44,34 @@ public sealed class ContextLifecycleTests
     }
 
     [Fact]
+    public async Task CompactionFlag_ShouldBePersistedWithTheCompactionSave()
+    {
+        // P1：置位必须在落盘之前。旧实现先 SaveAndNotifyAsync 再只改内存对象，
+        // 进程在两者之间退出 / 另一进程接手时 Compaction 位从未落盘 → 压缩后指令永久消失。
+        var session = new SessionData { Id = "s1" };
+        session.AddMessage(SessionMessage.UserMessage("你好"));
+
+        string? persistedMetadataAtSave = null;
+        var service = CreateCompressionService(
+            session,
+            onSave: () => persistedMetadataAtSave = session.Metadata.GetValueOrDefault(
+                SessionMetadataKeys.ContextBaseline));
+
+        var outcome = await service.CompressAsync("s1", "manual", TestContext.Current.CancellationToken);
+
+        outcome.Success.Should().BeTrue();
+        persistedMetadataAtSave.Should().NotBeNull("压缩保存时基线状态必须已随会话一起落盘");
+
+        // 落盘快照往返：模拟重启后从磁盘读回的会话（新实例 + 同一 JSON）仍带 Compaction 位
+        var reloaded = new SessionData { Id = "s1" };
+        reloaded.Metadata[SessionMetadataKeys.ContextBaseline] = persistedMetadataAtSave!;
+
+        s_store.Load(reloaded).Pending.Should().HaveFlag(
+            PendingBaselineReset.Compaction,
+            "置位必须与压缩结果原子地写入同一次保存");
+    }
+
+    [Fact]
     public async Task CompactionThenWorkspaceChange_ShouldKeepBothFlags()
     {
         var session = new SessionData { Id = "s1" };
@@ -140,7 +168,7 @@ public sealed class ContextLifecycleTests
 
     // ===== 辅助 =====
 
-    private static CompressionService CreateCompressionService(SessionData session)
+    private static CompressionService CreateCompressionService(SessionData session, Action? onSave = null)
     {
         var summarizer = new Mock<ISummarizer>();
         summarizer
@@ -157,6 +185,7 @@ public sealed class ContextLifecycleTests
             .ReturnsAsync(session);
         manager
             .Setup(m => m.SaveAndNotifyAsync(session.Id, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .Callback(() => onSave?.Invoke())
             .Returns(Task.CompletedTask);
 
         return new CompressionService(

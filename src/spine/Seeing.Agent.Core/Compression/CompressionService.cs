@@ -88,11 +88,14 @@ public class CompressionService : ICompressionService
             session.InsertMessage(insertIndex, summaryMessage);
 
             session.UpdatedAt = DateTime.Now;
-            await _sessionManager.SaveAndNotifyAsync(session.Id, persist: true, cancellationToken);
 
-            // 压缩后置「待重置」位：装配器会把已叙述值折叠为新基线并重放 Target=Message 的初始渲染，
-            // 使被摘要吃掉的指令重新可见。置位失败绝不影响压缩结果（仅告警）。
+            // 压缩后置「待重置」位必须在**落盘之前**：位与压缩结果同一次保存写入，
+            // 进程在保存后退出 / 另一个进程（Gateway / WebUI 共享同一文件存储）接手时位不会丢失。
+            // 旧实现先保存再只改内存对象，重启后指令就永久消失（正是本规格要修的 bug）。
+            // 置位失败绝不影响压缩结果（仅告警）。
             TryMarkCompactionPending(session);
+
+            await _sessionManager.SaveAndNotifyAsync(session.Id, persist: true, cancellationToken);
 
             _logger.LogInformation("压缩完成: {SessionId} 移除 {Count} 条", sessionId, result.MessagesRemoved);
 

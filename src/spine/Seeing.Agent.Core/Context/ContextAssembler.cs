@@ -428,7 +428,15 @@ public sealed class ContextAssembler : IContextAssembler
                 if (visitedKeys.Contains(key))
                     continue;
 
-                FoldPendingResetKeepingBaseline(sourceState);
+                // 状态必须保持「可读路径」同构：本方法无需理解源内容，也绝不部分推进。
+                // 1) 文本、哈希、基线值与已叙述值**原样保留**（不可读/被跳过时不得摧毁基线）；
+                // 2) 只按源置「待重锚定」位：下一次参与装配时用当时的当前值整体重渲染并采纳；
+                // 3) 作废 BaselineMessageId：压缩已吃掉原初始消息，存库文本需要重新可见。
+                // 若在此把 BaselineValues 推进到 CurrentValues 而保留旧文本，就会留下
+                // 「值已推进、文本仍是旧 epoch、且无重锚定标记」的不可检出中间态：后续每轮
+                // 命中「同值不同文本」误告警，模型看到的永远是旧基线（A7）。
+                sourceState.PendingReanchor = true;
+                sourceState.BaselineMessageId = null;
                 stateDirty = true;
             }
         }
@@ -473,6 +481,7 @@ public sealed class ContextAssembler : IContextAssembler
                     narrations.Select(narration => ContextUpdateEnvelope.Wrap(narration.SourceKey, narration.Text)));
 
                 var message = SessionMessage.UserMessage(deltaText)
+                    .WithMetadata(SessionMetadataKeys.ContextUpdate, true)
                     .WithMetadata(
                         SessionMetadataKeys.ContextUpdateSources,
                         narrations.Select(n => n.SourceKey).ToArray());
@@ -631,22 +640,6 @@ public sealed class ContextAssembler : IContextAssembler
     }
 
     // ===== 生命周期 / 回退 =====
-
-    /// <summary>
-    /// 重置位已消费但本源本轮**未参与装配**（被跳过 / 已注销）时的折叠：
-    /// 保留存库 <see cref="ContextSourceState.BaselineText"/> 与已叙述值，只让已叙述值成为新基线、
-    /// 作废账本、清空 <see cref="ContextSourceState.BaselineMessageId"/> 以便 Message 落点重放。
-    /// <para>绝不把 <c>null</c> / 不可读状态写进基线——文件被临时占用不得毁掉指令。</para>
-    /// <para>「本轮读不到（Unavailable）」不走本方法：那种情况保留全部值与文本、只置
-    /// <see cref="ContextSourceState.PendingReanchor"/> 待下次重试，避免值与文本不等价（N2）。</para>
-    /// </summary>
-    private static void FoldPendingResetKeepingBaseline(ContextSourceState sourceState)
-    {
-        sourceState.BaselineValues = CloneObject(sourceState.CurrentValues);
-        sourceState.CurrentValues = CloneObject(sourceState.BaselineValues);
-        sourceState.DeltaLedger.Clear();
-        sourceState.BaselineMessageId = null;
-    }
 
     /// <summary>
     /// 压缩 / 切根后按**当前值**重新锚定基线（新 epoch）：重渲染基线文本并采用，

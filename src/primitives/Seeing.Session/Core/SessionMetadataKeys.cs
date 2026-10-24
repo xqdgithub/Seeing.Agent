@@ -12,8 +12,15 @@ public static class SessionMetadataKeys
     public const string ContextBaseline = "context.baseline";
 
     /// <summary>
+    /// 上下文管道增量消息的标记键（<c>bool</c>，恒为 true）：唯一判据「这是机器注入的上下文增量，不是用户输入」。
+    /// <para>消费方（标题计数 / UI 折叠）只认本键与 <see cref="ContextUpdateSources"/>，
+    /// <b>禁止</b>按消息内容前缀嗅探（字符串嗅探是反模式，且会让内容渲染与语义判定耦合）。</para>
+    /// </summary>
+    public const string ContextUpdate = "context.update";
+
+    /// <summary>
     /// 上下文管道增量消息的元数据键：本次叙述涉及的源键（<c>string[]</c>，稳定顺序）。
-    /// 消费方据它判定「机器注入而非用户输入」（标题计数、UI 折叠）。
+    /// 消费方据它判定「机器注入而非用户输入」（标题计数、UI 折叠），并据此显示来源。
     /// </summary>
     public const string ContextUpdateSources = "context.update.sources";
 
