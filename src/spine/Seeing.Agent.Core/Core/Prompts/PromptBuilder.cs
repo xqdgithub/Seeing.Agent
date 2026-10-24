@@ -36,26 +36,42 @@ public class PromptBuilder
 
     /// <summary>
     /// 构建完整的系统提示词
+    /// <para>顺序固定：分节注入 → 自定义变量替换 → 内置变量替换 → Trim → 追加上下文基线。
+    /// 基线最后追加（且不再参与变量替换），保证基线内的字面量逐请求不变，前缀缓存不被击穿。</para>
     /// </summary>
     public async Task<string> BuildAsync(PromptContext context, CancellationToken cancellationToken = default)
     {
         var basePrompt = context.Agent?.SystemPrompt;
 
-        if (string.IsNullOrEmpty(basePrompt))
+        var result = string.Empty;
+
+        // 不再因系统提示词为空而整体跳过：基线仍须作为系统提示词送达模型
+        if (!string.IsNullOrEmpty(basePrompt))
         {
-            return string.Empty;
+            result = await InjectSectionsAsync(basePrompt, context, cancellationToken).ConfigureAwait(false);
+
+            foreach (var (key, value) in context.Variables)
+            {
+                result = result.Replace($"{{{{{key}}}}}", value);
+            }
+
+            result = ReplaceBuiltinVariables(result, context);
+
+            result = result.Trim();
         }
 
-        var result = await InjectSectionsAsync(basePrompt, context, cancellationToken).ConfigureAwait(false);
+        return AppendBaseline(result, context.ContextBaseline);
+    }
 
-        foreach (var (key, value) in context.Variables)
-        {
-            result = result.Replace($"{{{{{key}}}}}", value);
-        }
+    /// <summary>
+    /// 在提示词末尾追加基线文本：正文为空时基线即系统提示词；否则以空行分隔追加。
+    /// </summary>
+    private static string AppendBaseline(string prompt, string? baseline)
+    {
+        if (string.IsNullOrWhiteSpace(baseline))
+            return prompt;
 
-        result = ReplaceBuiltinVariables(result, context);
-
-        return result.Trim();
+        return string.IsNullOrEmpty(prompt) ? baseline : prompt + "\n\n" + baseline;
     }
 
     /// <summary>按 SectionName 聚合后的分节（组级 Heading/Placement 取首个登记贡献者的声明）。</summary>

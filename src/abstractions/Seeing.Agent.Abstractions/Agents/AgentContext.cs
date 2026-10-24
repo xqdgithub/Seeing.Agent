@@ -65,4 +65,10 @@ public class AgentContext
     /// null 表示调用方未提供（非 Hosting 入口的遗留路径），此时执行器不做可见集校验。
     /// </summary>
     public Abstractions.Execution.SessionToolSchemaResolution? ToolSettlement { get; set; }
+
+    /// <summary>
+    /// 本轮上下文基线文本（由调用方经 <c>IContextAssembler.BuildSystemBaseline</c> 取得后透传）。
+    /// <para>与 <see cref="ToolSettlement"/> 一样由上游结算/装配产出，执行器不得自行读源或计算。</para>
+    /// </summary>
+    public string? ContextBaseline { get; set; }
 }
