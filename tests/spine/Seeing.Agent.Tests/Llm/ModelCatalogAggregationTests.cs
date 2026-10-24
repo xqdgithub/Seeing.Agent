@@ -444,8 +444,16 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             registry,
             NullLogger<ModelConfigManager>.Instance);
 
-        SetProviderRefreshVersion(catalog, "phantom", 1L);
-        HasProviderRefreshVersion(catalog, "phantom").Should().BeTrue();
+        // 构造时会排队一次后台 "initial" 全量刷新；它完成时会裁剪「不在注册表中」的 phantom 条目，
+        // 可能恰好落在 Set 与断言之间（并行跑全套件时更容易命中）。本用例只验证 FullRefresh 的裁剪语义，
+        // 因此先排空一次刷新，并把写入与断言放进同一把缓存锁内，消除这个无关竞态。
+        await catalog.RefreshCatalogAsync(ct: TestContext.Current.CancellationToken);
+
+        lock (GetCacheLock(catalog))
+        {
+            SetProviderRefreshVersion(catalog, "phantom", 1L);
+            HasProviderRefreshVersion(catalog, "phantom").Should().BeTrue();
+        }
 
         await catalog.RefreshCatalogAsync(ct: TestContext.Current.CancellationToken);
 
