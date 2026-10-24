@@ -27,6 +27,7 @@ public class SchedulerSkillRegistrationTests
         services.AddLogging();
         services.AddSingleton(sp => new SkillCatalogCore(
             Microsoft.Extensions.Logging.Abstractions.NullLogger<SkillCatalogCore>.Instance));
+        services.AddSingleton<ISkillCatalog>(sp => sp.GetRequiredService<SkillCatalogCore>());
         services.AddSingleton<SkillManager>();
         services.AddSingleton<ISkillManager>(sp => sp.GetRequiredService<SkillManager>());
         return services.BuildServiceProvider();
@@ -43,21 +44,22 @@ public class SchedulerSkillRegistrationTests
 
         await module.ActivateAsync(provider);
 
-        var skillManager = provider.GetRequiredService<ISkillManager>();
+        var catalog = provider.GetRequiredService<ISkillCatalog>();
         foreach (var name in ExpectedSkillNames)
         {
-            var skill = skillManager.GetSkillInfo(name);
-            skill.Should().NotBeNull($"skill '{name}' should be registered");
-            skill!.Location.Should().Be($"embedded://{name}");
-            skill.Description.Should().NotBeNullOrWhiteSpace();
-            skill.Content.Should().NotBeNullOrWhiteSpace();
+            var entry = catalog.Find(name);
+            entry.Should().NotBeNull($"skill '{name}' should be registered");
+            entry!.Info.Location.Should().Be($"scheduler/{name}");
+            entry.Info.Description.Should().NotBeNullOrWhiteSpace();
+            entry.Info.Content.Should().NotBeNullOrWhiteSpace();
+            entry.ProviderId.Should().Be("scheduler");
         }
-        ExpectedSkillNames.Count(n => skillManager.GetSkillInfo(n) is not null).Should().Be(4);
+        ExpectedSkillNames.Count(n => catalog.Find(n) is not null).Should().Be(4);
 
         await module.DeactivateAsync(provider);
 
         foreach (var name in ExpectedSkillNames)
-            skillManager.GetSkillInfo(name).Should().BeNull($"skill '{name}' should be unregistered");
+            catalog.Find(name).Should().BeNull($"skill '{name}' should be unregistered");
     }
 
     [Fact]

@@ -8,7 +8,6 @@ using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Ui;
@@ -18,6 +17,7 @@ using Seeing.Agent.Skills.Configuration;
 using Seeing.Agent.Skills.OnlineParsers;
 using Seeing.Agent.Skills.Sources;
 using Seeing.Agent.Skills.Watching;
+using Seeing.Session.Core;
 
 namespace Seeing.Agent.Skills;
 
@@ -37,6 +37,9 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
 
     /// <summary>目录快照订阅（根列表可能在加载器切工作区后变化，需同步监听范围）。</summary>
     private IDisposable? _catalogSubscription;
+
+    /// <summary>动态技能命令同步器（目录事件驱动，模块独占其生命周期）。</summary>
+    private DynamicSkillCommandSync? _commandSync;
 
     /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
     public SkillsModule()
@@ -119,6 +122,7 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
         _ui?.Register(this);
 
         StartWatcher(services);
+        StartCommandSync(services);
 
         var tm = services.GetService<IToolManager>();
         var tool = services.GetService<SkillTool>();
@@ -146,6 +150,10 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
         _watcher?.Dispose();
         _watcher = null;
 
+        // 动态技能命令：撤销本模块登记过的全部命令（含已禁用 / 已删除的技能名）
+        _commandSync?.Dispose();
+        _commandSync = null;
+
         var tm = services.GetService<IToolManager>();
         if (tm is not null)
         {
@@ -158,12 +166,6 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
         {
             registry.Unregister("skill");
             registry.Unregister("skills");
-            var skillManager = services.GetService<ISkillManager>();
-            if (skillManager is not null)
-            {
-                foreach (var name in skillManager.GetAllSkillInfos().Keys)
-                    registry.Unregister(name);
-            }
         }
 
         _ui?.Unregister(Id);
@@ -205,6 +207,28 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
         });
 
         logger.LogInformation("技能根监听已启用：根数={RootCount}", catalog.Roots.Count);
+    }
+
+    /// <summary>
+    /// 启动动态技能命令同步：以目录为唯一真相源，技能出现/消失/禁用即登记/撤销命令。
+    /// </summary>
+    private void StartCommandSync(IServiceProvider services)
+    {
+        if (_commandSync is not null)
+            return;
+
+        if (services.GetService<ISkillCatalog>() is not { } catalog
+            || services.GetService<ICommandRegistry>() is not { } registry
+            || services.GetService<ISessionManager>() is not { } sessionManager)
+        {
+            // 极简宿主可能没有命令注册表 / 会话管理器：不登记动态命令即可
+            return;
+        }
+
+        var logger = services.GetService<ILogger<SkillsModule>>() ?? NullLogger<SkillsModule>.Instance;
+
+        _commandSync = new DynamicSkillCommandSync(catalog, registry, sessionManager, logger);
+        _commandSync.Start();
     }
 
     private static void TryRegisterConfigSection(IServiceCollection services)

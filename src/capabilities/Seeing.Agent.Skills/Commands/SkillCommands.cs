@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Skills;
@@ -332,26 +333,28 @@ internal static class SkillCommandMessageLocator
 
 /// <summary>
 /// 动态 Skill 命令 - 为每个已注册的 skill 自动创建命令（Native 版本）
+/// <para>只持有技能名：正文与元数据在执行时从 <see cref="ISkillCatalog"/> 现取，
+/// 避免第二份 <see cref="SkillInfo"/> 副本与目录漂移。</para>
 /// </summary>
 public sealed class DynamicSkillCommand : ICommand
 {
     private readonly ISessionManager _sessionManager;
     private readonly string _skillName;
-    private readonly SkillInfo _skillInfo;
 
     public CommandMetadata Metadata { get; }
 
-    public DynamicSkillCommand(ISessionManager sessionManager, SkillInfo skillInfo)
+    public DynamicSkillCommand(ISessionManager sessionManager, string skillName)
     {
-        _sessionManager = sessionManager;
-        _skillName = skillInfo.Name;
-        _skillInfo = skillInfo;
+        ArgumentException.ThrowIfNullOrWhiteSpace(skillName);
+
+        _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
+        _skillName = skillName;
 
         Metadata = new CommandMetadata
         {
-            Name = skillInfo.Name,
-            Description = skillInfo.Description,
-            Usage = $"/{skillInfo.Name} [args]",
+            Name = skillName,
+            Description = $"加载技能：{skillName}",
+            Usage = $"/{skillName} [args]",
             Category = CommandCategory.Tools,
             Type = CommandType.Skill,
             IsHidden = false,
@@ -362,7 +365,27 @@ public sealed class DynamicSkillCommand : ICommand
 
     public async Task<CommandResult> ExecuteAsync(CommandContext context, CancellationToken cancellationToken = default)
     {
-        var content = _skillInfo.Content;
+        // 执行时解析：命令不得持有目录副本
+        var catalog = context.Services?.GetService<ISkillCatalog>();
+        if (catalog is null)
+        {
+            return CommandResult.Fail(
+                $"技能目录不可用，无法执行 /{_skillName}：请检查 Skills 模块是否已加载。");
+        }
+
+        var entry = catalog.Find(_skillName);
+        if (entry is null)
+        {
+            return CommandResult.Fail($"Skill not found: {_skillName}");
+        }
+
+        if (!catalog.IsEnabled(entry.Info.Name))
+        {
+            return CommandResult.Fail(
+                $"Skill '{entry.Info.Name}' is disabled. Enable it in the Skills settings.");
+        }
+
+        var content = entry.Info.Content;
         if (string.IsNullOrEmpty(content))
         {
             return CommandResult.Fail($"Skill content is empty: {_skillName}");

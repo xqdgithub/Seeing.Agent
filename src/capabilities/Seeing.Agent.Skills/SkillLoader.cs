@@ -1,13 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Skills.Catalog;
-using Seeing.Agent.Skills.Commands;
 using Seeing.Agent.Skills.Configuration;
-using Seeing.Session.Core;
 
 namespace Seeing.Agent.Skills;
 
@@ -39,11 +36,7 @@ public sealed class SkillLoader : IComponentLoader
         catalog.SetRoots(roots);
         var snapshot = await catalog.RefreshAsync(cancellationToken).ConfigureAwait(false);
 
-        // 先摘掉目录里已不存在的动态命令（删除技能 / 切工作区 / 禁用），再登记当前集合。
-        // 事件驱动的命令同步（含 ACP）留给 Task 10，这里只保证不留悬空命令。
-        UnregisterStaleDynamicSkillCommands(services, snapshot);
-        RegisterDynamicSkillCommands(services, snapshot);
-
+        // 动态技能命令由 SkillsModule 订阅目录事件同步（此处只负责触发一次目录重建）
         var enabledNames = snapshot.Entries
             .Where(entry => !snapshot.DisabledNames.Contains(entry.Info.Name))
             .Select(entry => entry.Info.Name)
@@ -98,43 +91,6 @@ public sealed class SkillLoader : IComponentLoader
         }
 
         return roots;
-    }
-
-    /// <summary>注销目录里已不存在的动态技能命令（删除技能 / 切工作区 / 被禁用）。</summary>
-    private static void UnregisterStaleDynamicSkillCommands(IServiceProvider services, SkillCatalogSnapshot snapshot)
-    {
-        var registry = services.GetService<ICommandRegistry>();
-        if (registry is null)
-            return;
-
-        var live = new HashSet<string>(
-            snapshot.Entries
-                .Where(entry => !snapshot.DisabledNames.Contains(entry.Info.Name))
-                .Select(entry => entry.Info.Name),
-            StringComparer.OrdinalIgnoreCase);
-
-        foreach (var command in registry.GetAllCommands().OfType<DynamicSkillCommand>())
-        {
-            if (!live.Contains(command.Metadata.Name))
-                registry.Unregister(command.Metadata.Name);
-        }
-    }
-
-    /// <summary>登记当前可用的动态技能命令（禁用的不登记）。</summary>
-    private static void RegisterDynamicSkillCommands(IServiceProvider services, SkillCatalogSnapshot snapshot)
-    {
-        var registry = services.GetService<ICommandRegistry>();
-        var sessionManager = services.GetService<ISessionManager>();
-        if (registry is null || sessionManager is null)
-            return;
-
-        foreach (var entry in snapshot.Entries)
-        {
-            if (snapshot.DisabledNames.Contains(entry.Info.Name))
-                continue;
-
-            registry.Register(new DynamicSkillCommand(sessionManager, entry.Info));
-        }
     }
 
     private static string ResolveProjectRoot(ISeeingDirectories? directories)

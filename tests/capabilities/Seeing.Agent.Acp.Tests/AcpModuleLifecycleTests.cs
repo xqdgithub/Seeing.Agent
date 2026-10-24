@@ -23,6 +23,7 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Commands;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Hooks;
+using Seeing.Agent.Skills.Catalog;
 using Seeing.Session.Core;
 using Xunit;
 
@@ -100,35 +101,49 @@ public class AcpModuleLifecycleTests
     }
 
     [Fact]
-    public async Task Activate_注册命令_Deactivate_注销()
+    public async Task AcpCommands_ShouldFollowCatalogEvents()
     {
         var registry = new CommandRegistry();
         var discovery = new Mock<ICommandDiscovery>();
         discovery.Setup(d => d.DiscoverFromType(It.IsAny<Type>(), It.IsAny<object?>()))
             .Returns(Array.Empty<ICommand>());
 
-        var skillManager = new Mock<ISkillManager>();
-        skillManager.Setup(m => m.GetAllSkillInfos()).Returns(new Dictionary<string, SkillInfo>
-        {
-            ["demo-skill"] = new() { Name = "demo-skill", Description = "演示" }
-        });
+        var catalog = new SkillCatalogCore(NullLogger<SkillCatalogCore>.Instance);
+        catalog.SetRoots([Path.Combine(Path.GetTempPath(), $"seeing-acp-skill-{Guid.NewGuid():N}")]);
+        await catalog.RegisterAsync(
+            new SkillInfo { Name = "demo-skill", Description = "演示" },
+            "test",
+            TestContext.Current.CancellationToken);
 
         var options = CreateOptions(new AcpOptions());
         var services = new ServiceCollection();
+        services.AddSingleton(catalog);
+        services.AddSingleton<ISkillCatalog>(catalog);
         services.AddSingleton<ICommandRegistry>(registry);
         services.AddSingleton(discovery.Object);
-        services.AddSingleton(skillManager.Object);
         services.AddSingleton(new AcpCommands());
         await using var provider = services.BuildServiceProvider();
 
         var module = CreateModule(options);
         await module.ActivateAsync(provider);
 
-        registry.HasCommand("demo-skill").Should().BeTrue();
+        registry.HasCommand("demo-skill").Should().BeTrue("激活时应按目录快照登记 ACP 动态技能命令");
+
+        // 目录事件：删除后命令必须撤销
+        (await catalog.UnregisterAsync("demo-skill", TestContext.Current.CancellationToken))
+            .Should().BeTrue();
+        registry.HasCommand("demo-skill").Should().BeFalse("目录变化必须驱动命令同步");
+
+        // 新技能出现后命令随即登记
+        await catalog.RegisterAsync(
+            new SkillInfo { Name = "later-skill", Description = "后来的" },
+            "test",
+            TestContext.Current.CancellationToken);
+        registry.HasCommand("later-skill").Should().BeTrue();
 
         await module.DeactivateAsync(provider);
 
-        registry.HasCommand("demo-skill").Should().BeFalse();
+        registry.HasCommand("later-skill").Should().BeFalse();
     }
 
     [Fact]

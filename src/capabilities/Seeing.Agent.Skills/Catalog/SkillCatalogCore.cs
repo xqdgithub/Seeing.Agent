@@ -28,7 +28,7 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
 
     /// <summary>
     /// 发布闸：快照字段写入 + 原子替换的唯一临界区。
-    /// <para>用同步锁而非异步闸，使注册通道的同步入口（内嵌技能注册）与扫盘共用同一临界区，
+    /// <para>用同步锁而非异步闸，使注册通道与扫盘共用同一临界区，
     /// 既不会与扫盘交错产出半更新快照，也不需要同步等待异步闸。</para>
     /// </summary>
     private readonly object _publishLock = new();
@@ -193,20 +193,6 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
         return Task.FromResult(accepted);
     }
 
-    /// <summary>
-    /// 同步注册（内嵌技能 / 只读门面转发用）：与扫盘发布共用同一临界区，不经过异步闸，
-    /// 因此无需（也不允许）用 <c>GetAwaiter().GetResult()</c> 同步等待异步接口。
-    /// </summary>
-    /// <returns>是否被接受；同名已注册时返回 false。</returns>
-    internal bool TryRegister(SkillInfo info, string providerId)
-    {
-        var accepted = TryRegisterCore(info, providerId, out var published);
-        if (published is not null)
-            RaiseChanged(published);
-
-        return accepted;
-    }
-
     private bool TryRegisterCore(SkillInfo info, string providerId, out SkillCatalogSnapshot? published)
     {
         ArgumentNullException.ThrowIfNull(info);
@@ -252,16 +238,6 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
             RaiseChanged(published);
 
         return Task.FromResult(removed);
-    }
-
-    /// <summary>同步注销（内嵌技能 / 只读门面转发用），与 <see cref="TryRegister"/> 同一临界区。</summary>
-    internal bool TryUnregister(string name)
-    {
-        var removed = TryUnregisterCore(name, out var published);
-        if (published is not null)
-            RaiseChanged(published);
-
-        return removed;
     }
 
     private bool TryUnregisterCore(string name, out SkillCatalogSnapshot? published)

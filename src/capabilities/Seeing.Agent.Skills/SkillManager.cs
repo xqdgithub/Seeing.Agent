@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Skills.Catalog;
-using System.Text;
 using System.Text.Json;
 
 namespace Seeing.Agent.Skills
@@ -123,83 +122,40 @@ namespace Seeing.Agent.Skills
             }
         }
 
-        // ===== 写面（本期为转发 / 明确拒绝的过渡实现，Task 10 收敛） =====
+        // ===== 写面（编译期拦截：唯一写入口是 ISkillCatalog） =====
 
         /// <summary>
         /// 添加技能搜索目录。
         /// </summary>
         /// <exception cref="NotSupportedException">
-        /// 根列表是目录的唯一事实（由加载器一次算出），任何「追加目录」都会造成第二份根定义，故本期拒绝。
+        /// 根列表是目录的唯一事实（由 SkillLoader 一次算出），任何「追加目录」都会造成第二份根定义。
         /// </exception>
+        [Obsolete("请使用 ISkillCatalog", error: true)]
         public void AddSearchDirectory(string directory)
-        {
-            // TODO(Task 10)：写面迁移到 ISkillWriter / ISkillCatalog 的显式根管理后再删除本方法。
-            throw new NotSupportedException(
+            => throw new NotSupportedException(
                 "技能搜索目录不再支持逐个追加：根列表由 SkillLoader 统一计算后经 ISkillCatalog.SetRoots 写入。" +
                 "请改用 ISkillCatalog，或在 SkillsOptions.Paths 中配置技能目录。");
-        }
 
-        /// <summary>重新扫描并发布目录快照（转发到 <see cref="ISkillCatalog.RefreshAsync"/>）。</summary>
-        public async Task DiscoverSkillsAsync(CancellationToken cancellationToken = default)
-            => await _catalog.RefreshAsync(cancellationToken).ConfigureAwait(false);
+        /// <summary>重新扫描并发布目录快照。</summary>
+        [Obsolete("请使用 ISkillCatalog", error: true)]
+        public Task DiscoverSkillsAsync(CancellationToken cancellationToken = default)
+            => throw new NotSupportedException(
+                "请改用 ISkillCatalog.RefreshAsync（强制重建）或 ISkillCatalog.EnsureFreshAsync（指纹未变时复用）。");
 
         /// <summary>刷新技能列表（转发到 <see cref="ISkillCatalog.RefreshAsync"/>）。</summary>
         public async Task RefreshSkillsAsync(CancellationToken cancellationToken = default)
             => await _catalog.RefreshAsync(cancellationToken).ConfigureAwait(false);
 
-        /// <summary>
-        /// 注册内嵌技能（模块 EmbeddedResource）。
-        /// <para>同步转发到目录的注册通道：目录内部用同步临界区，不做 async-over-sync。</para>
-        /// </summary>
+        /// <summary>注册内嵌技能（模块 EmbeddedResource）。</summary>
+        [Obsolete("请使用 ISkillCatalog", error: true)]
         public void RegisterEmbeddedSkill(SkillInfo skillInfo)
-        {
-            ArgumentNullException.ThrowIfNull(skillInfo);
-
-            if (string.IsNullOrWhiteSpace(skillInfo.Name))
-            {
-                _logger.LogWarning("技能名无效，拒绝注册内嵌技能：{Location}", skillInfo.Location);
-                return;
-            }
-
-            skillInfo.Location = "embedded://" + skillInfo.Name.TrimStart('/');
-            if (!_catalog.TryRegister(skillInfo, "embedded"))
-            {
-                _logger.LogWarning("内嵌技能注册被目录拒绝（同名已存在）：{Name}", skillInfo.Name);
-            }
-        }
-
-        /// <summary>注册技能（手工添加；同步转发到目录注册通道）。</summary>
-        public void RegisterSkill(SkillInfo skillInfo)
-        {
-            ArgumentNullException.ThrowIfNull(skillInfo);
-
-            if (string.IsNullOrWhiteSpace(skillInfo.Name))
-            {
-                _logger.LogWarning("技能名无效，拒绝注册技能：{Location}", skillInfo.Location);
-                return;
-            }
-
-            if (!_catalog.TryRegister(skillInfo, "manual"))
-            {
-                _logger.LogWarning("技能注册被目录拒绝（同名已存在）：{Name}", skillInfo.Name);
-            }
-        }
+            => throw new NotSupportedException(
+                "请改用 ISkillCatalog.RegisterAsync(info, providerId)：注册通道必须显式给出提供方，且需要 await。");
 
         /// <summary>注销已注册技能（模块 Deactivate 时对称撤销内嵌技能）。</summary>
+        [Obsolete("请使用 ISkillCatalog", error: true)]
         public bool Unregister(string name)
-        {
-            if (string.IsNullOrWhiteSpace(name))
-                return false;
-
-            var removed = _catalog.TryUnregister(name);
-            if (!removed)
-            {
-                // 文件通道技能由盘上文件决定，不能经注册通道注销
-                _logger.LogDebug("注销未命中注册通道：{Name}", name);
-            }
-
-            return removed;
-        }
+            => throw new NotSupportedException("请改用 ISkillCatalog.UnregisterAsync(name)。");
 
         // ===== 禁用状态（写盘 + 让目录重扫；Task 11 迁移到 SkillWriteGate） =====
 

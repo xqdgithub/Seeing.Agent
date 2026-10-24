@@ -4,15 +4,21 @@ using System.Text.RegularExpressions;
 
 namespace Seeing.Agent.Tools.SystemOne.Skills;
 
-/// <summary>SystemOne 内嵌 Skill 注册器 — 供模块 Activate/Deactivate 对称调用。</summary>
+/// <summary>SystemOne 内嵌 Skill 注册器 — 供模块 Activate/Deactivate 对称调用（写入口为 ISkillCatalog）。</summary>
 internal static class SystemOneSkillRegistrar
 {
+    /// <summary>注册通道的提供方标识。</summary>
+    public const string ProviderId = "systemone.tools";
+
     private static readonly Regex FrontmatterRegex = new(
         @"^---[\r]?[\n](.*?)[\r]?[\n]---[\r]?[\n]?",
         RegexOptions.Multiline | RegexOptions.Singleline | RegexOptions.Compiled);
 
     /// <summary>扫描程序集内嵌 SKILL.md 并注册，返回已注册技能名列表。</summary>
-    public static IReadOnlyList<string> Register(ISkillManager skillManager, ILogger logger)
+    public static async Task<IReadOnlyList<string>> RegisterAsync(
+        ISkillCatalog catalog,
+        ILogger logger,
+        CancellationToken cancellationToken = default)
     {
         var assembly = typeof(SystemOneSkillRegistrar).Assembly;
         var registered = new List<string>();
@@ -39,8 +45,14 @@ internal static class SystemOneSkillRegistrar
                 }
 
                 skill.Location = $"systemone/{skill.Name}";
-                skillManager.RegisterEmbeddedSkill(skill);
-                registered.Add(skill.Name);
+                if (await catalog.RegisterAsync(skill, ProviderId, cancellationToken).ConfigureAwait(false))
+                    registered.Add(skill.Name);
+                else
+                    logger.LogWarning("内嵌 skill 注册被目录拒绝（同名已存在）：{Name} 来源={Resource}", skill.Name, resourceName);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -53,10 +65,17 @@ internal static class SystemOneSkillRegistrar
     }
 
     /// <summary>注销先前注册的内嵌技能。</summary>
-    public static void Unregister(ISkillManager skillManager, IEnumerable<string> names)
+    public static async Task UnregisterAsync(
+        ISkillCatalog catalog,
+        IEnumerable<string> names,
+        ILogger logger,
+        CancellationToken cancellationToken = default)
     {
         foreach (var name in names)
-            skillManager.Unregister(name);
+        {
+            if (!await catalog.UnregisterAsync(name, cancellationToken).ConfigureAwait(false))
+                logger.LogDebug("注销内嵌 skill 未命中注册通道：{Name}", name);
+        }
     }
 
     private static SkillInfo? ParseSkill(string content)

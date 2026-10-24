@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Commands;
@@ -22,6 +23,10 @@ public class SkillCommandsTests
         catalog.RegisterAsync(skill, "test").GetAwaiter().GetResult().Should().BeTrue();
         return catalog;
     }
+
+    /// <summary>命令执行期解析目录所需的最小服务容器。</summary>
+    private static IServiceProvider BuildServices(ISkillCatalog catalog) =>
+        new ServiceCollection().AddSingleton(catalog).BuildServiceProvider();
 
     private static Mock<ISessionManager> CreateSessionManager(SessionData session)
     {
@@ -123,12 +128,19 @@ public class SkillCommandsTests
         var session = new SessionData { Id = "s1" };
         session.AddMessage(SessionMessage.UserMessage("/demo arg"));
         var skill = new SkillInfo { Name = "demo", Description = "d", Content = "skill $1 content" };
+        var catalog = CreateCatalog(skill);
         var sessionManager = CreateSessionManager(session);
-        var command = new DynamicSkillCommand(sessionManager.Object, skill);
+        var command = new DynamicSkillCommand(sessionManager.Object, "demo");
 
         // Act
         var result = await command.ExecuteAsync(
-            new CommandContext { SessionId = "s1", Input = "/demo arg", Arguments = "arg" },
+            new CommandContext
+            {
+                SessionId = "s1",
+                Input = "/demo arg",
+                Arguments = "arg",
+                Services = BuildServices(catalog)
+            },
             TestContext.Current.CancellationToken);
 
         // Assert
@@ -146,11 +158,18 @@ public class SkillCommandsTests
         session.AddMessage(SessionMessage.UserMessage("<project-instructions>...</project-instructions>"));
 
         var skill = new SkillInfo { Name = "demo", Description = "d", Content = "skill $1 content" };
+        var catalog = CreateCatalog(skill);
         var sessionManager = CreateSessionManager(session);
-        var command = new DynamicSkillCommand(sessionManager.Object, skill);
+        var command = new DynamicSkillCommand(sessionManager.Object, "demo");
 
         var result = await command.ExecuteAsync(
-            new CommandContext { SessionId = "s1", Input = "/demo arg", Arguments = "arg" },
+            new CommandContext
+            {
+                SessionId = "s1",
+                Input = "/demo arg",
+                Arguments = "arg",
+                Services = BuildServices(catalog)
+            },
             TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
