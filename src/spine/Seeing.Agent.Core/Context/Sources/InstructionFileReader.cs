@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Core.Instructions;
 
 namespace Seeing.Agent.Core.Context.Sources;
@@ -19,20 +18,17 @@ public sealed class InstructionFileReader : IInstructionFileReader
     /// <summary>
     /// 创建逐路径读取器。
     /// </summary>
+    /// <param name="discovery">候选路径发现器（搜索根规则的唯一实现，由 DI 单例注入，不在本类内 new）。</param>
     /// <param name="logger">读取告警日志。</param>
-    /// <param name="loggerFactory">可选：发现器日志工厂；缺省使用空日志。</param>
-    /// <param name="userProfileProvider">可选：用户主目录提供者（测试注入用）。</param>
-    public InstructionFileReader(
-        ILogger<InstructionFileReader> logger,
-        ILoggerFactory? loggerFactory = null,
-        Func<string>? userProfileProvider = null)
+    internal InstructionFileReader(
+        InstructionDiscovery discovery,
+        ILogger<InstructionFileReader> logger)
     {
+        ArgumentNullException.ThrowIfNull(discovery);
         ArgumentNullException.ThrowIfNull(logger);
 
         _logger = logger;
-        _discovery = new InstructionDiscovery(
-            (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<InstructionDiscovery>(),
-            userProfileProvider);
+        _discovery = discovery;
     }
 
     /// <inheritdoc />

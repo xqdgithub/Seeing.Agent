@@ -14,14 +14,17 @@ namespace Seeing.Agent.Core.Context;
 /// <para>职责边界：只做编排与落库，<b>不</b>为源渲染任何业务文本（信封之外不添加任何措辞）。</para>
 /// <para>状态落在 <see cref="SessionData.Metadata"/>（<see cref="SessionMetadataKeys.ContextBaseline"/>），
 /// 与消息写入同一个 <see cref="SessionData"/> 实例，由调用方本轮既有的 <c>SaveAsync</c> 一并落盘。</para>
+/// <para>模式语义：<see cref="ContextAssemblyMode.Persist"/> 写状态并叙述；
+/// <see cref="ContextAssemblyMode.ReadOnly"/> 不写状态、不叙述，返回**当前值渲染**的
+/// <see cref="ContextAssemblyResult.SystemBaseline"/>——旁路（Scheduler/Heartbeat）必须使用该返回值，
+/// 不能改用 <see cref="BuildSystemBaseline"/>（后者只读已存基线，在只读模式下是旧值）。</para>
 /// </summary>
 public sealed class ContextAssembler : IContextAssembler
 {
-    /// <summary>增量消息的元数据键：本次叙述涉及的源键（稳定顺序的字符串数组）。</summary>
-    internal const string DeltaSourcesMetadataKey = "context.update.sources";
-
-    /// <summary>增量消息信封标签；信封内只放源自己渲染的文本。</summary>
-    private const string DeltaEnvelopeTag = "context-update";
+    /// <summary>
+    /// 单源增量账本上限：只保留最近的条目（更老的增量早已并入摘要 / 不可能再回退到）。
+    /// </summary>
+    private const int MaxLedgerEntries = 32;
 
     /// <summary>
     /// 会话级单飞闸（固定条纹，避免按会话建表导致内存无限增长）。
@@ -40,7 +43,7 @@ public sealed class ContextAssembler : IContextAssembler
     /// 创建装配器。
     /// </summary>
     /// <param name="sources">全部已注册的上下文源（内部按 Scope → Key 排序）。</param>
-    /// <param name="sessionManager">会话管理器：仅用于乐观并发守卫（取权威实例）。</param>
+    /// <param name="sessionManager">会话管理器：仅用于并发守卫的诊断（不替换调用方实例）。</param>
     /// <param name="logger">装配日志。</param>
     /// <param name="loggerFactory">可选：用于状态存储的日志；缺省使用空日志（测试 / 极简宿主）。</param>
     public ContextAssembler(
@@ -72,13 +75,12 @@ public sealed class ContextAssembler : IContextAssembler
         ArgumentNullException.ThrowIfNull(session);
         ct.ThrowIfCancellationRequested();
 
-        // 单飞兜底：同一会话的并发装配串行化。
-        // Task 12 会把调用点移到 ExecutionRunner 并接入主链 CAS；本闸保留作为兜底，避免重复叙述。
+        // 单飞兜底：同一会话的并发装配串行化（Task 12 的主链 CAS 之外仍保留，避免重复叙述）。
         var gate = s_sessionGates[GetGateIndex(session.Id)];
         await gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            return await AssembleWithCasGuardAsync(session, mode, insertBeforeMessageId, skip, ct)
+            return await AssembleWithGuardAsync(session, mode, insertBeforeMessageId, skip, ct)
                 .ConfigureAwait(false);
         }
         finally
@@ -88,6 +90,11 @@ public sealed class ContextAssembler : IContextAssembler
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// 只读已存状态的 <c>BaselineText</c>，不读源、不渲染，因此字节稳定。
+    /// <b><see cref="ContextAssemblyMode.ReadOnly"/> 模式必须使用 <see cref="EnsureFreshAsync"/> 的返回值</b>
+    /// （那里给出的是当前值渲染）；本方法在只读模式下返回的是上次建立的旧基线。
+    /// </remarks>
     public string BuildSystemBaseline(SessionData session)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -99,11 +106,13 @@ public sealed class ContextAssembler : IContextAssembler
     // ===== 装配主体 =====
 
     /// <summary>
-    /// 乐观并发守卫：调用方持有的实例可能与缓存中的权威实例不同（例如并发轮次）。
-    /// 仅当时间戳 / 消息数不一致时按权威实例重跑一次；不调用 <c>UpdateSessionAsync</c>
-    /// —— 装配的所有写入都在同一 <see cref="SessionData"/> 上，由调用方统一落盘。
+    /// 并发守卫：检测调用方持有的实例是否就是缓存中的权威实例。
+    /// <para><b>不换实例重跑</b>：调用方随后会用自己手里的会话构建历史，
+    /// 若把消息/状态写到另一个实例上，就会产生「已叙述但模型看不到」的丢失更新——
+    /// 这正是 spec §4 明确要避免的形态。因此这里只告警并按调用方实例装配；
+    /// 权威实例由调用方（Task 12 的 <c>ExecutionRunner</c>）自己持有并传入。</para>
     /// </summary>
-    private async Task<ContextAssemblyResult> AssembleWithCasGuardAsync(
+    private async Task<ContextAssemblyResult> AssembleWithGuardAsync(
         SessionData session,
         ContextAssemblyMode mode,
         string? insertBeforeMessageId,
@@ -112,33 +121,31 @@ public sealed class ContextAssembler : IContextAssembler
     {
         if (!string.IsNullOrEmpty(session.Id))
         {
-            SessionData? fresh = null;
             try
             {
-                fresh = await _sessionManager.GetOrLoadAsync(session.Id, ct).ConfigureAwait(false);
+                var cached = await _sessionManager.GetOrLoadAsync(session.Id, ct).ConfigureAwait(false);
+                if (cached is not null &&
+                    !ReferenceEquals(cached, session) &&
+                    (cached.UpdatedAt != session.UpdatedAt || cached.MessageCount != session.MessageCount))
+                {
+                    _logger.LogWarning(
+                        "装配实例与缓存实例不一致，仍按调用方实例装配（调用方须传入权威实例）：{SessionId} 调用方消息数={CallerMessages} 缓存消息数={CachedMessages}",
+                        session.Id,
+                        session.MessageCount,
+                        cached.MessageCount);
+                }
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
             {
                 // 管理器不可用不致命：仍按调用方实例装配，但不得静默
                 _logger.LogWarning(
                     ex,
-                    "读取会话权威实例失败，按调用方实例装配：{SessionId}",
+                    "读取会话缓存实例失败，按调用方实例装配：{SessionId}",
                     session.Id);
-            }
-
-            if (fresh is not null &&
-                !ReferenceEquals(fresh, session) &&
-                (fresh.UpdatedAt != session.UpdatedAt || fresh.MessageCount != session.MessageCount))
-            {
-                _logger.LogDebug(
-                    "会话实例已更新，按权威实例重跑一次装配：{SessionId} {CallerMessages} → {FreshMessages}",
-                    session.Id,
-                    session.MessageCount,
-                    fresh.MessageCount);
-
-                // 只重跑一次：不递归，避免实例持续变化导致的自旋
-                return await AssembleCoreAsync(fresh, mode, insertBeforeMessageId, skip, ct)
-                    .ConfigureAwait(false);
             }
         }
 
@@ -180,7 +187,7 @@ public sealed class ContextAssembler : IContextAssembler
             stateDirty = true;
         }
 
-        var initialMessages = new List<(string SourceKey, string Text)>();
+        var initialMessages = new List<PendingInitialMessage>();
         var narrations = new List<(string SourceKey, string Text)>();
         var narratedStates = new List<ContextSourceState>();
 
@@ -198,9 +205,26 @@ public sealed class ContextAssembler : IContextAssembler
             }
 
             var current = values[i] ?? new ContextSourceValue(ContextValueState.Unavailable, null, null);
+            var hasState = state.Sources.TryGetValue(key, out var sourceState);
+
+            // 3) Message 落点：初始渲染消息已失效（压缩清空 / 回退移除）→ 用**存库文本**重放。
+            //    重放必须先于「不可用」的 continue：否则压缩时恰逢文件被占用，摘要已吃掉原消息，
+            //    指令就永久消失（既有 bug 会原样保留）。
+            var needsReplay = persist && source.Target == ContextSourceTarget.Message
+                && hasState && NeedsReplay(session, sourceState!);
+
             if (current.State == ContextValueState.Unavailable)
             {
-                // 保留上一次已叙述内容，不参与 diff（Review Focus #1）
+                // 保留上一次已叙述内容，不参与 diff（Review Focus #1）。
+                // 但「需重放」必须仍成立：只重放**存库文本**，绝不因不可读而重新渲染。
+                if (needsReplay &&
+                    !string.IsNullOrEmpty(sourceState!.BaselineText) &&
+                    TryReplayInitial(source, current, sourceState, initialMessages, issues))
+                {
+                    changedKeys.Add(key);
+                    stateDirty = true;
+                }
+
                 skippedKeys.Add(key);
                 continue;
             }
@@ -230,7 +254,7 @@ public sealed class ContextAssembler : IContextAssembler
                 continue;
             }
 
-            if (!state.Sources.TryGetValue(key, out var sourceState))
+            if (!hasState)
             {
                 if (currentState == ContextValueState.Removed)
                 {
@@ -253,12 +277,12 @@ public sealed class ContextAssembler : IContextAssembler
                 continue;
             }
 
-            // 3) 回退路径：裁剪已失效账本，并按存活的最晚条目折叠已叙述值
-            if (FoldLedgerToLive(session, sourceState))
+            // 4) 回退路径：裁剪已失效账本，并按存活的最晚条目折叠已叙述值
+            if (FoldLedgerToLive(session, sourceState!))
                 stateDirty = true;
 
-            // 4) 版本二分：不匹配 → 丢弃该源状态并按新形状重建
-            if (sourceState.ValueSchemaVersion != source.ValueSchemaVersion)
+            // 5) 版本二分：不匹配 → 丢弃该源状态并按新形状重建
+            if (sourceState!.ValueSchemaVersion != source.ValueSchemaVersion)
             {
                 // 旧形状的值不能再用于 diff：对源而言等同于「在此之前没有基线」
                 var previous = new ContextSourceValue(ContextValueState.Initial, null, null);
@@ -285,30 +309,20 @@ public sealed class ContextAssembler : IContextAssembler
                 continue;
             }
 
-            // 5) Message 落点：初始渲染消息被回退掉 → 重放（压缩后同样经 pending 清空 BaselineMessageId）
-            if (source.Target == ContextSourceTarget.Message &&
-                (string.IsNullOrEmpty(sourceState.BaselineMessageId) ||
-                 session.IndexOfMessage(sourceState.BaselineMessageId) < 0))
+            // 6) Message 落点需要重放（值可用）：重放存库文本后继续走 diff，本轮变化仍会叙述
+            if (needsReplay)
             {
-                var baselineText = SafeRenderInitial(source, current, issues);
-                if (baselineText is null)
+                if (!TryReplayInitial(source, current, sourceState, initialMessages, issues))
                 {
                     skippedKeys.Add(key);
                     continue;
                 }
 
-                initialMessages.Add((key, baselineText));
-                sourceState.BaselineText = baselineText;
-                sourceState.BaselineHash = HashText(baselineText);
-                sourceState.BaselineValues = CloneObject(currentValues);
-                // 重放的初始渲染已包含当前全量内容，不再重复叙述差异
-                sourceState.CurrentValues = CloneObject(currentValues);
                 changedKeys.Add(key);
                 stateDirty = true;
-                continue;
             }
 
-            // 5.1) 重置位已消费且落点为系统提示词：按当前值重新锚定基线文本。
+            // 6.1) 重置位已消费且落点为系统提示词：按当前值重新锚定基线文本。
             //      压缩后旧增量已并入摘要，系统基线必须承载当前内容，否则模型会看到过期清单；
             //      文本仍满足「同值重渲染逐字节相同」，不引入逐请求抖动。
             if (pendingConsumed && source.Target == ContextSourceTarget.System)
@@ -326,7 +340,7 @@ public sealed class ContextAssembler : IContextAssembler
                 }
             }
 
-            // 6) 同版本渲染确定性：值未变却重渲染出不同文本 → 保留已存文本 + 告警
+            // 7) 同版本渲染确定性：值未变却重渲染出不同文本 → 保留已存文本 + 告警
             if (currentState == ContextValueState.Value &&
                 sourceState.BaselineText.Length > 0 &&
                 JsonEquals(sourceState.BaselineValues, currentValues))
@@ -343,7 +357,7 @@ public sealed class ContextAssembler : IContextAssembler
                 }
             }
 
-            // 7) diff：以「已叙述值」而非基线值为基准
+            // 8) diff：以「已叙述值」而非基线值为基准
             if (JsonEquals(sourceState.CurrentValues, currentValues))
                 continue;
 
@@ -371,7 +385,7 @@ public sealed class ContextAssembler : IContextAssembler
             stateDirty = true;
         }
 
-        // 8) 提交：初始渲染消息 → 增量消息 → 状态
+        // 9) 提交：初始渲染消息 → 增量消息（顺序严格为「初始在前、增量在后」，且初始按源序）
         var historyBaseline = initialMessages.Count == 0
             ? null
             : string.Join("\n\n", initialMessages.Select(m => m.Text));
@@ -380,15 +394,21 @@ public sealed class ContextAssembler : IContextAssembler
 
         if (persist)
         {
-            foreach (var (sourceKey, text) in initialMessages)
-            {
-                var message = SessionMessage.UserMessage(text);
-                InsertBeforeAnchor(session, insertBeforeMessageId, message);
+            // 锚点索引只计算一次：逐条插入时索引递增，避免「每次都插到锚点之前」把顺序反转
+            var insertIndex = session.IndexOfMessage(insertBeforeMessageId);
+            if (insertIndex < 0)
+                insertIndex = session.MessageCount;
 
-                if (state.Sources.TryGetValue(sourceKey, out var sourceState))
+            foreach (var initial in initialMessages)
+            {
+                var message = SessionMessage.UserMessage(initial.Text);
+                ApplyMessageMetadata(initial.Source, initial.Text, initial.Value, message);
+                session.InsertMessage(insertIndex++, message);
+
+                if (state.Sources.TryGetValue(initial.SourceKey, out var sourceState))
                 {
                     sourceState.BaselineMessageId = message.Id;
-                    sourceState.DeltaLedger.Add(new DeltaLedgerEntry(
+                    AppendLedgerEntry(sourceState, new DeltaLedgerEntry(
                         message.Id!,
                         CloneObject(sourceState.CurrentValues) ?? new JsonObject()));
                 }
@@ -400,15 +420,17 @@ public sealed class ContextAssembler : IContextAssembler
             {
                 deltaText = string.Join(
                     "\n\n",
-                    narrations.Select(narration => FormatDelta(narration.SourceKey, narration.Text)));
+                    narrations.Select(narration => ContextUpdateEnvelope.Wrap(narration.SourceKey, narration.Text)));
 
                 var message = SessionMessage.UserMessage(deltaText)
-                    .WithMetadata(DeltaSourcesMetadataKey, narrations.Select(n => n.SourceKey).ToArray());
-                InsertBeforeAnchor(session, insertBeforeMessageId, message);
+                    .WithMetadata(
+                        SessionMetadataKeys.ContextUpdateSources,
+                        narrations.Select(n => n.SourceKey).ToArray());
+                session.InsertMessage(insertIndex, message);
 
                 foreach (var sourceState in narratedStates)
                 {
-                    sourceState.DeltaLedger.Add(new DeltaLedgerEntry(
+                    AppendLedgerEntry(sourceState, new DeltaLedgerEntry(
                         message.Id!,
                         CloneObject(sourceState.CurrentValues) ?? new JsonObject()));
                 }
@@ -420,7 +442,10 @@ public sealed class ContextAssembler : IContextAssembler
                 _store.Save(session, state);
         }
 
-        var systemBaseline = JoinSystemBaseline(state);
+        // 10) 系统基线：Persist 用已存基线（字节稳定）；ReadOnly 用**当前值渲染**（旁路不得拿旧值）
+        var systemBaseline = persist
+            ? JoinSystemBaseline(state)
+            : BuildReadOnlySystemBaseline(sources, values, state, skip, issues);
 
         _logger.LogDebug(
             "上下文装配完成：{SessionId} 模式={Mode} 变化={ChangedCount} 跳过={SkippedCount} 叙述={NarrationCount} 问题={IssueCount}",
@@ -440,7 +465,7 @@ public sealed class ContextAssembler : IContextAssembler
             issues.Count == 0 ? s_emptyKeys : issues.ToArray());
     }
 
-    // ===== 建立 / 重建基线 =====
+    // ===== 建立 / 重建 / 重放 =====
 
     /// <summary>
     /// 首次建立某源基线。System 落点直接进入提示词；Message 落点插入初始渲染消息（即首次叙述）。
@@ -451,7 +476,7 @@ public sealed class ContextAssembler : IContextAssembler
         ContextSourceValue current,
         JsonObject currentValues,
         ContextBaselineState state,
-        List<(string SourceKey, string Text)> initialMessages,
+        List<PendingInitialMessage> initialMessages,
         List<string> issues)
     {
         var key = source.Key.Value;
@@ -473,7 +498,7 @@ public sealed class ContextAssembler : IContextAssembler
         state.Sources[key] = sourceState;
 
         if (source.Target == ContextSourceTarget.Message)
-            initialMessages.Add((key, baselineText));
+            initialMessages.Add(new PendingInitialMessage(source, key, baselineText, current));
 
         return sourceState;
     }
@@ -488,7 +513,7 @@ public sealed class ContextAssembler : IContextAssembler
         ContextSourceValue current,
         JsonObject currentValues,
         ContextSourceState sourceState,
-        List<(string SourceKey, string Text)> initialMessages,
+        List<PendingInitialMessage> initialMessages,
         List<string> issues)
     {
         var baselineText = SafeRenderInitial(source, current, issues);
@@ -506,10 +531,45 @@ public sealed class ContextAssembler : IContextAssembler
         sourceState.DeltaLedger.Clear();
 
         if (source.Target == ContextSourceTarget.Message)
-            initialMessages.Add((source.Key.Value, baselineText));
+            initialMessages.Add(new PendingInitialMessage(source, source.Key.Value, baselineText, current));
 
         return true;
     }
+
+    /// <summary>
+    /// 重放 Message 落点的初始渲染：**优先使用存库文本**（字节锁与重放的唯一来源）。
+    /// <para>只有从未存过文本（无法重放的旧状态）才回退到重新渲染；源不可读时绝不重新渲染，
+    /// 否则压缩时被占用的文件会摧毁基线。</para>
+    /// <para>重放不改变 <c>BaselineValues</c> / <c>CurrentValues</c>（值未变化）。</para>
+    /// </summary>
+    private bool TryReplayInitial(
+        IContextSource source,
+        ContextSourceValue current,
+        ContextSourceState sourceState,
+        List<PendingInitialMessage> initialMessages,
+        List<string> issues)
+    {
+        var text = !string.IsNullOrEmpty(sourceState.BaselineText)
+            ? sourceState.BaselineText
+            : SafeRenderInitial(source, current, issues);
+
+        if (string.IsNullOrEmpty(text))
+        {
+            _logger.LogWarning(
+                "上下文源初始渲染无法重放（既无存库文本，也无法重新渲染）：{SourceKey}",
+                source.Key.Value);
+            return false;
+        }
+
+        // 提交段按实际插入的消息回填 BaselineMessageId
+        sourceState.BaselineMessageId = null;
+        initialMessages.Add(new PendingInitialMessage(source, source.Key.Value, text, current));
+        return true;
+    }
+
+    /// <summary>Message 落点的初始渲染消息是否已不存活（压缩清空 / 回退移除）。</summary>
+    private static bool NeedsReplay(SessionData session, ContextSourceState state) =>
+        string.IsNullOrEmpty(state.BaselineMessageId) || session.IndexOfMessage(state.BaselineMessageId) < 0;
 
     // ===== 生命周期 / 回退 =====
 
@@ -554,6 +614,18 @@ public sealed class ContextAssembler : IContextAssembler
         }
 
         return changed;
+    }
+
+    /// <summary>追加账本条目并裁剪最旧条目（账本只用于回退，无需无限增长）。</summary>
+    private static void AppendLedgerEntry(ContextSourceState sourceState, DeltaLedgerEntry entry)
+    {
+        sourceState.DeltaLedger.Add(entry);
+        if (sourceState.DeltaLedger.Count > MaxLedgerEntries)
+        {
+            sourceState.DeltaLedger.RemoveRange(
+                0,
+                sourceState.DeltaLedger.Count - MaxLedgerEntries);
+        }
     }
 
     // ===== 读取 / 渲染 =====
@@ -658,16 +730,38 @@ public sealed class ContextAssembler : IContextAssembler
 
     // ===== 提交 / 排序 / 工具 =====
 
-    private static void InsertBeforeAnchor(SessionData session, string? anchorMessageId, SessionMessage message)
+    /// <summary>
+    /// 为 Message 落点消息附加源自己的强类型元数据（可选能力）；
+    /// 未实现 <see cref="IContextSourceMessageMetadata"/> 的源不附加。
+    /// </summary>
+    private void ApplyMessageMetadata(
+        IContextSource source,
+        string renderedText,
+        ContextSourceValue value,
+        SessionMessage message)
     {
-        var index = session.IndexOfMessage(anchorMessageId);
-        if (index < 0)
+        if (source is not IContextSourceMessageMetadata provider)
+            return;
+
+        IReadOnlyDictionary<string, object>? metadata;
+        try
         {
-            session.AddMessage(message);
+            metadata = provider.GetMessageMetadata(renderedText, value);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(
+                ex,
+                "上下文源消息元数据计算失败，按无元数据落库：{SourceKey}",
+                source.Key.Value);
             return;
         }
 
-        session.InsertMessage(index, message);
+        if (metadata is null)
+            return;
+
+        foreach (var (key, metadataValue) in metadata)
+            message.WithMetadata(key, metadataValue);
     }
 
     private string JoinSystemBaseline(ContextBaselineState state)
@@ -696,6 +790,54 @@ public sealed class ContextAssembler : IContextAssembler
                 continue;
 
             (parts ??= new List<string>()).Add(sourceState.BaselineText);
+        }
+
+        return parts is null ? string.Empty : string.Join("\n\n", parts);
+    }
+
+    /// <summary>
+    /// 只读模式的系统基线：**渲染当前值**（不读已存基线、不写状态）。
+    /// <para>旁路（Scheduler / Heartbeat）自建消息列表且会话历史不参与本轮输入，若返回上次建立的旧基线，
+    /// 模型会完全看不到新内容。源不可用 / 被跳过时才退回已存文本。</para>
+    /// </summary>
+    private string BuildReadOnlySystemBaseline(
+        IReadOnlyList<IContextSource> sources,
+        ContextSourceValue?[] values,
+        ContextBaselineState state,
+        IReadOnlySet<ContextSourceKey>? skip,
+        List<string> issues)
+    {
+        List<string>? parts = null;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        for (var i = 0; i < sources.Count; i++)
+        {
+            var source = sources[i];
+            if (source.Target != ContextSourceTarget.System)
+                continue;
+
+            var key = source.Key.Value;
+            if (string.IsNullOrWhiteSpace(key) || !seen.Add(key))
+                continue;
+
+            string? text = null;
+
+            var skipped = skip is not null && skip.Contains(source.Key);
+            var value = values[i];
+            if (!skipped && value is { State: ContextValueState.Value or ContextValueState.Initial })
+                text = SafeRenderInitial(source, value, issues);
+
+            if (string.IsNullOrEmpty(text) &&
+                state.Sources.TryGetValue(key, out var sourceState) &&
+                !string.IsNullOrWhiteSpace(sourceState.BaselineText))
+            {
+                text = sourceState.BaselineText;
+            }
+
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+
+            (parts ??= new List<string>()).Add(text);
         }
 
         return parts is null ? string.Empty : string.Join("\n\n", parts);
@@ -760,12 +902,6 @@ public sealed class ContextAssembler : IContextAssembler
     }
 
     /// <summary>
-    /// 增量信封：框架只加 <c>&lt;context-update source="…"&gt;</c> 包裹，内部原样使用源渲染文本。
-    /// </summary>
-    private static string FormatDelta(string sourceKey, string text) =>
-        $"<{DeltaEnvelopeTag} source=\"{sourceKey}\">\n{text}\n</{DeltaEnvelopeTag}>";
-
-    /// <summary>
     /// 构造 previous 值：仅当从未叙述过时为 Initial；否则为 Value（Removed 时调用方要求 previous 为 Value）。
     /// </summary>
     private static ContextSourceValue BuildPreviousValue(ContextSourceState sourceState) =>
@@ -804,4 +940,11 @@ public sealed class ContextAssembler : IContextAssembler
     private static int GetGateIndex(string? sessionId) =>
         (string.IsNullOrEmpty(sessionId) ? 0 : StringComparer.Ordinal.GetHashCode(sessionId))
         & (s_sessionGates.Length - 1);
+
+    /// <summary>待提交的初始渲染消息（重放与首次建立共用同一条提交路径）。</summary>
+    private sealed record PendingInitialMessage(
+        IContextSource Source,
+        string SourceKey,
+        string Text,
+        ContextSourceValue Value);
 }

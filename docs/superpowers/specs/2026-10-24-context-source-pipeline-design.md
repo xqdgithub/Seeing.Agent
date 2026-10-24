@@ -238,7 +238,8 @@ per-session 状态序列化为 JSON，存 `SessionData.Metadata[SessionMetadataK
 
 - `Target = Message`，`Scope = Project`。
 - 读取：复用 `InstructionDiscovery` 的扫描，但**必须拿到逐路径结果**（`Loaded` / `Missing` / `Unreadable`）。现有 `TryReadAsync` 把所有异常吞成 `null`（`InstructionDiscovery.cs:120-143`），会让"文件被占用"被渲染成"指令已删除"——违反 §8.5。做法：在 Core 侧为指令源新增逐路径结果端口（`IInstructionFileReader`），发现器复用它；吞异常的那条路径不再被源使用。
-- `Canonical`：`[{path, sha256, mtime}]`（排序后）。
+- `Canonical`：`[{path, sha256}]`（排序后）。**不含 mtime**：diff 只认内容哈希，mtime 若进入 diff，
+  文件被 touch（内容不变）就会造成「每轮都检测到变化但无可叙述」的永久未完成状态；mtime 仅用于 UI/诊断。
 - `Payload`：`[{path, content}]`（正文，仅本次渲染用）。
 - 渲染：沿用 `ProjectInstructionsRenderer` 的信封与措辞（`<project-instructions>` + `<file>` 块），保证与今天一致。
 - 与今天的行为差异（唯一一处）：**压缩后按存库文本重放**（今天会永久消失）。Release Notes 明示这是修复。

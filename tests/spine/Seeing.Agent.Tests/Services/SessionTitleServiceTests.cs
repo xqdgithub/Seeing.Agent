@@ -211,6 +211,41 @@ namespace Seeing.Agent.Tests.Services
         }
 
         [Fact]
+        public void CountIntentionalUserMessages_excludes_context_update_messages()
+        {
+            // I1：上下文管道的增量叙述（<context-update>）不得占用「真实用户消息」名额
+            var messages = new List<SessionMessage>
+            {
+                SessionMessage.UserMessage(
+                        "<context-update source=\"k\">\n以下项目指令文件已新增或更新\n</context-update>")
+                    .WithMetadata(SessionMetadataKeys.ContextUpdateSources, new[] { "k" }),
+                // 元数据丢失（消息被重建）时按内容信封兜底
+                SessionMessage.UserMessage(
+                    "<context-update source=\"k\">\n再次叙述\n</context-update>"),
+                SessionMessage.UserMessage("real user intent"),
+            };
+
+            SessionTitleService.CountIntentionalUserMessages(messages).Should().Be(1);
+            SessionTitleService.IsIntentionalUserMessage(messages[0]).Should().BeFalse();
+            SessionTitleService.IsIntentionalUserMessage(messages[1]).Should().BeFalse();
+            SessionTitleService.IsIntentionalUserMessage(messages[2]).Should().BeTrue();
+        }
+
+        [Fact]
+        public void CountIntentionalUserMessages_excludes_instruction_envelope_detected_by_content()
+        {
+            // 信封内容（即使元数据缺失）同样不计入：UI / 标题服务识别的是源自己的信封
+            var envelope = ProjectInstructionsRenderer.Wrap(
+                @"C:\repo",
+                ProjectInstructions.Reasons.ContentChange,
+                [new InstructionFile { Path = @"C:\repo\AGENTS.md", Content = "x", Hash = "sha256:x" }]);
+
+            var message = SessionMessage.UserMessage(envelope);
+
+            SessionTitleService.IsIntentionalUserMessage(message).Should().BeFalse();
+        }
+
+        [Fact]
         public async Task TryEnsureAsync_writes_title_when_only_extra_messages_are_injections()
         {
             var session = SessionData.Create();

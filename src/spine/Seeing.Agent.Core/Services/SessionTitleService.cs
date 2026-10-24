@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Core.Configuration;
+using Seeing.Agent.Core.Context;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Llm;
 using Seeing.Session.Core;
@@ -55,7 +56,7 @@ namespace Seeing.Agent.Core.Services
         }
 
         /// <summary>
-        /// 是否计入「意图用户消息」（排除 synthetic / 项目指令注入）。
+        /// 是否计入「意图用户消息」（排除 synthetic / 项目指令 / 上下文增量注入）。
         /// </summary>
         internal static bool IsIntentionalUserMessage(SessionMessage message)
         {
@@ -63,19 +64,30 @@ namespace Seeing.Agent.Core.Services
                 return false;
 
             var metadata = message.Metadata;
-            if (metadata == null)
-                return true;
+            if (metadata != null)
+            {
+                if (metadata.ContainsKey(SyntheticMetadataKey))
+                    return false;
 
-            if (metadata.ContainsKey(SyntheticMetadataKey))
+                // AGENTS.md 等注入的 user 消息，不能占用「首条真实用户消息」名额
+                if (metadata.ContainsKey(ProjectInstructions.MetadataKeys.ProjectInstructions))
+                    return false;
+
+                // 上下文管道的增量叙述（<context-update>）同样是机器注入
+                if (metadata.ContainsKey(SessionMetadataKeys.ContextUpdateSources))
+                    return false;
+
+                // 排除非 user 呈现的 inbox 消息（System/Assistant/None）
+                if (metadata.TryGetValue(InboxPresentationMetadataKey, out var presentation)
+                    && !string.Equals(presentation?.ToString(), "user", StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+
+            // 内容兜底：消息被重建 / 元数据丢失时，按信封标签判定仍是机器注入
+            if (ContextUpdateEnvelope.IsContextUpdate(message.Content))
                 return false;
 
-            // AGENTS.md 等注入的 user 消息，不能占用「首条真实用户消息」名额
-            if (metadata.ContainsKey(ProjectInstructions.MetadataKeys.ProjectInstructions))
-                return false;
-
-            // 排除非 user 呈现的 inbox 消息（System/Assistant/None）
-            if (metadata.TryGetValue(InboxPresentationMetadataKey, out var presentation)
-                && !string.Equals(presentation?.ToString(), "user", StringComparison.OrdinalIgnoreCase))
+            if (ProjectInstructionsRenderer.TryParse(message.Content ?? string.Empty, out _))
                 return false;
 
             return true;

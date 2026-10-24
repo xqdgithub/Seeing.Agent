@@ -4,7 +4,6 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Context;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Instructions;
 
 namespace Seeing.Agent.Core.Context.Sources;
@@ -12,41 +11,30 @@ namespace Seeing.Agent.Core.Context.Sources;
 /// <summary>
 /// 项目指令源（AGENTS.md 等）：<c>Target = Message</c>，初始渲染以用户消息注入，
 /// 增量变化以叙述消息追加。
-/// <para>读值：逐路径三态（Loaded / Missing / Unreadable），<c>Canonical</c> 只放
-/// <c>{"files":[{"path","sha256","mtime"}]}</c>（排序），正文经 <c>Payload</c> 仅在本次渲染使用、不落盘。</para>
-/// <para>cwd / workspaceRoot 的解析：源在 <see cref="ReadAsync"/> 时自行解析（装配器不传外部上下文）。
-/// 默认取「进程当前目录 + <see cref="IWorkspaceProvider.GetProjectRoot"/>」；可通过
-/// <c>Func&lt;(string Cwd, string WorkspaceRoot)&gt;</c> 接缝覆盖（Task 12 由 ExecutionRunner
-/// 接入会话 cwd 时使用该接缝，避免 Core 反向依赖执行态）。</para>
+/// <para>读值：逐路径三态（Loaded / Missing / Unreadable）。**只要存在任何不可读路径就整体
+/// <see cref="ContextValueState.Unavailable"/>**（宁可保留上次已叙述内容，绝不把「被占用」叙述成「已删除」）。
+/// <c>Canonical</c> 只放 <c>{"files":[{"path","sha256"}]}</c>（按 path ordinal 排序）；
+/// 正文经 <c>Payload</c> 仅在本次渲染使用、不落盘。</para>
+/// <para>扫描根（cwd / workspaceRoot）来自执行作用域端口 <see cref="IInstructionRootsProvider"/>：
+/// 源不得读进程当前目录（那会让子会话 / 指定 WorkingDirectory 的执行看不到项目指令）。</para>
 /// </summary>
-public sealed class ProjectInstructionsContextSource : IContextSource
+public sealed class ProjectInstructionsContextSource : IContextSource, IContextSourceMessageMetadata
 {
     private const string TruncatedSuffix = "\n…（项目指令内容已按上下文基线上限截断）";
 
     private readonly IInstructionFileReader _reader;
-    private readonly Func<(string Cwd, string WorkspaceRoot)> _rootsProvider;
+    private readonly IInstructionRootsProvider _rootsProvider;
     private readonly ILogger<ProjectInstructionsContextSource> _logger;
 
     /// <summary>
-    /// 创建项目指令源（默认根解析：进程当前目录 + 工作区项目根）。
+    /// 创建项目指令源。
     /// </summary>
+    /// <param name="reader">逐路径读取端口（区分缺失与不可读）。</param>
+    /// <param name="rootsProvider">执行作用域扫描根端口（会话 cwd + 工作区根）。</param>
+    /// <param name="logger">源日志。</param>
     public ProjectInstructionsContextSource(
         IInstructionFileReader reader,
-        IWorkspaceProvider workspaceProvider,
-        ILogger<ProjectInstructionsContextSource> logger)
-        : this(
-            reader,
-            CreateDefaultRootsProvider(workspaceProvider),
-            logger)
-    {
-    }
-
-    /// <summary>
-    /// 创建项目指令源并显式指定根解析接缝（执行入口接入会话 cwd 时使用）。
-    /// </summary>
-    public ProjectInstructionsContextSource(
-        IInstructionFileReader reader,
-        Func<(string Cwd, string WorkspaceRoot)> rootsProvider,
+        IInstructionRootsProvider rootsProvider,
         ILogger<ProjectInstructionsContextSource> logger)
     {
         ArgumentNullException.ThrowIfNull(reader);
@@ -76,7 +64,19 @@ public sealed class ProjectInstructionsContextSource : IContextSource
     /// <inheritdoc />
     public async Task<ContextSourceValue> ReadAsync(CancellationToken ct = default)
     {
-        var (cwd, workspaceRoot) = _rootsProvider();
+        var roots = _rootsProvider.GetRoots();
+        var cwd = roots.Cwd;
+        var workspaceRoot = roots.WorkspaceRoot;
+
+        if (string.IsNullOrWhiteSpace(cwd) || string.IsNullOrWhiteSpace(workspaceRoot))
+        {
+            // 无扫描根：不参与 diff（保留上次叙述），并记录可诊断的事实
+            _logger.LogDebug(
+                "指令扫描根不完整，跳过本源：Cwd={Cwd} WorkspaceRoot={WorkspaceRoot}",
+                cwd,
+                workspaceRoot);
+            return Unavailable();
+        }
 
         IReadOnlyList<InstructionFileReadResult> results;
         try
@@ -107,24 +107,34 @@ public sealed class ProjectInstructionsContextSource : IContextSource
 
         var loaded = results
             .Where(result => result.Status == InstructionFileReadStatus.Loaded && result.Content is not null)
-            .ToList();
+            .Select(ToInstructionFile)
+            .OrderBy(file => file.Path, StringComparer.Ordinal)
+            .ToArray();
 
-        if (loaded.Count == 0)
+        var unreadable = results
+            .Where(result => result.Status == InstructionFileReadStatus.Unreadable)
+            .ToArray();
+
+        if (unreadable.Length > 0)
         {
-            var unreadable = results
-                .Where(result => result.Status == InstructionFileReadStatus.Unreadable)
-                .ToList();
+            // Review Focus #1 / spec §8.5：任一文件不可读 → 整体保留旧值。
+            // 绝不能只把「已读到的文件」当 canonical：从 canonical 消失的文件会被 Render 判定为删除，
+            // 从而把「被占用」叙述成「已不再适用」——比漏叙述更糟。
+            _logger.LogWarning(
+                "项目指令存在不可读文件，整体按不可用处理（保留上次已叙述内容）：不可读={UnreadableCount} 已读={LoadedCount} 缺失={MissingCount} Cwd={Cwd}",
+                unreadable.Length,
+                loaded.Length,
+                results.Count - loaded.Length - unreadable.Length,
+                cwd);
 
-            if (unreadable.Count > 0)
-            {
-                // Review Focus #1：暂时不可读 → 保留上次已叙述内容，绝不叙述「已删除」
-                _logger.LogWarning(
-                    "项目指令文件暂时不可读，保留上次已叙述内容：{Count} 个路径（{Cwd}）",
-                    unreadable.Count,
-                    cwd);
-                return Unavailable();
-            }
+            return new ContextSourceValue(
+                ContextValueState.Unavailable,
+                null,
+                new ProjectInstructionsPayload(cwd, loaded, unreadable));
+        }
 
+        if (loaded.Length == 0)
+        {
             // 全部确认缺失：返回 Removed 参与 diff（从未建立基线时装配器不会叙述）
             return new ContextSourceValue(
                 ContextValueState.Removed,
@@ -132,23 +142,10 @@ public sealed class ProjectInstructionsContextSource : IContextSource
                 new ProjectInstructionsPayload(cwd, [], []));
         }
 
-        var files = loaded
-            .Select(result => new InstructionFile
-            {
-                Path = result.Path,
-                Content = result.Content!,
-                Hash = $"sha256:{Sha256Hex(result.Content!)}",
-                LastModified = TryGetLastWriteTimeUtc(result.Path)
-            })
-            .OrderBy(file => file.Path, StringComparer.Ordinal)
-            .ToArray();
-
-        var canonical = BuildCanonical(files);
-
         return new ContextSourceValue(
             ContextValueState.Value,
-            canonical,
-            new ProjectInstructionsPayload(cwd, files, []));
+            BuildCanonical(loaded),
+            new ProjectInstructionsPayload(cwd, loaded, []));
     }
 
     /// <inheritdoc />
@@ -156,15 +153,10 @@ public sealed class ProjectInstructionsContextSource : IContextSource
     {
         var payload = value.Payload as ProjectInstructionsPayload;
         IReadOnlyList<InstructionFile> files = payload?.Files ?? [];
-        var cwd = payload?.Cwd ?? _rootsProvider().Cwd;
-
-        var envelope = ProjectInstructionsRenderer.Wrap(
-            cwd,
-            ProjectInstructions.Reasons.Initial,
-            files);
+        var cwd = payload?.Cwd ?? _rootsProvider.GetRoots().Cwd;
 
         // 截断在渲染内部完成：截断后的文本才是存库基线文本（装配器只观测、不再二次裁剪）
-        return Truncate(envelope, cwd);
+        return RenderEnvelope(cwd, ProjectInstructions.Reasons.Initial, files);
     }
 
     /// <inheritdoc />
@@ -185,6 +177,7 @@ public sealed class ProjectInstructionsContextSource : IContextSource
         {
             var isNew = !previousByPath.TryGetValue(entry.Path, out var previousEntry);
             var isChanged = !isNew &&
+                            previousEntry is not null &&
                             !string.Equals(previousEntry.Sha256, entry.Sha256, StringComparison.Ordinal);
 
             if (!isNew && !isChanged)
@@ -231,22 +224,42 @@ public sealed class ProjectInstructionsContextSource : IContextSource
         return sb.ToString().TrimEnd();
     }
 
-    private static Func<(string Cwd, string WorkspaceRoot)> CreateDefaultRootsProvider(
-        IWorkspaceProvider workspaceProvider)
+    /// <summary>
+    /// 为落库消息提供既有 <c>project-instructions</c> 元数据（UI 折叠与标题服务的既有契约）。
+    /// <para>元数据从源自己渲染的信封解析得到：重放路径下 <c>Payload</c> 不可用，
+    /// 但落库文本一定带有完整信封，因此这是唯一在两条路径上都成立的事实来源。</para>
+    /// </summary>
+    public IReadOnlyDictionary<string, object>? GetMessageMetadata(string renderedText, ContextSourceValue value)
     {
-        ArgumentNullException.ThrowIfNull(workspaceProvider);
+        if (!ProjectInstructionsRenderer.TryParse(renderedText, out var parts))
+            return null;
 
-        // 选择注入 IWorkspaceProvider 而非读取会话状态：本任务源无外部上下文参数，
-        // 而项目根只有工作区提供者能给出；执行 cwd 暂用进程当前目录，
-        // Task 12 由 ExecutionRunner 以接缝注入会话 cwd。
-        return () => (Directory.GetCurrentDirectory(), workspaceProvider.GetProjectRoot());
+        return new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            [ProjectInstructions.MetadataKeys.ProjectInstructions] = true,
+            [ProjectInstructions.MetadataKeys.Reason] = parts.Reason,
+            [ProjectInstructions.MetadataKeys.Cwd] = parts.Cwd,
+            [ProjectInstructions.MetadataKeys.Paths] =
+                JsonSerializer.Serialize(parts.Files.Select(file => file.Path))
+        };
     }
 
     private static ContextSourceValue Unavailable() =>
         new(ContextValueState.Unavailable, null, null);
 
+    private static InstructionFile ToInstructionFile(InstructionFileReadResult result) => new()
+    {
+        Path = result.Path,
+        Content = result.Content!,
+        Hash = $"sha256:{Sha256Hex(result.Content!)}",
+        // 仅作 UI / 诊断使用：不进入 Canonical（否则 touch 一次就会造成永久「每轮重试」）
+        LastModified = TryGetLastWriteTimeUtc(result.Path)
+    };
+
     /// <summary>
-    /// 值结构：<c>{"files":[{"path","sha256","mtime"}]}</c>（按 path ordinal 排序）。
+    /// 值结构：<c>{"files":[{"path","sha256"}]}</c>（按 path ordinal 排序）。
+    /// <para><b>不含 mtime</b>：diff 只认内容哈希；mtime 若进入 canonical，文件被 touch
+    /// （内容不变）就会产生「检测到变化但无需叙述」的永久未完成状态（每轮重试、永不收敛）。</para>
     /// </summary>
     private static JsonElement BuildCanonical(IReadOnlyList<InstructionFile> files)
     {
@@ -256,8 +269,7 @@ public sealed class ProjectInstructionsContextSource : IContextSource
             array.Add(new JsonObject
             {
                 ["path"] = file.Path,
-                ["sha256"] = Sha256Hex(file.Content),
-                ["mtime"] = file.LastModified.ToUnixTimeMilliseconds()
+                ["sha256"] = Sha256Hex(file.Content)
             });
         }
 
@@ -311,30 +323,105 @@ public sealed class ProjectInstructionsContextSource : IContextSource
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // mtime 仅用于 diff 观测；读取失败退化为 Unix 纪元（不影响正文与哈希）
+            // mtime 仅用于诊断；读取失败退化为 Unix 纪元（不影响正文与哈希）
             return DateTimeOffset.UnixEpoch;
         }
     }
 
     /// <summary>
-    /// 按 <see cref="MaxBaselineChars"/> 截断渲染文本；截断结果即存库文本。
+    /// 渲染完整信封；超出上限时按**文件块**截断，末尾仍保留 <c>&lt;/file&gt;</c> 与
+    /// <c>&lt;/project-instructions&gt;</c>，保证模型看到的仍是可解析的完整 XML。
     /// </summary>
-    private string Truncate(string text, string cwd)
+    private string RenderEnvelope(string cwd, string reason, IReadOnlyList<InstructionFile> files)
     {
-        if (MaxBaselineChars <= 0 || text.Length <= MaxBaselineChars)
-            return text;
+        var full = ProjectInstructionsRenderer.Wrap(cwd, reason, files);
+        if (MaxBaselineChars <= 0 || full.Length <= MaxBaselineChars)
+            return full;
 
-        var keep = Math.Max(0, MaxBaselineChars - TruncatedSuffix.Length);
-        var truncated = text[..keep] + TruncatedSuffix;
+        var included = new List<InstructionFile>(files.Count);
+        var used = ProjectInstructionsRenderer.Wrap(cwd, reason, []).Length;
+
+        foreach (var file in files)
+        {
+            var blockLength = ProjectInstructionsRenderer.RenderFileBlocks([file]).Length;
+            if (used + blockLength <= MaxBaselineChars)
+            {
+                included.Add(file);
+                used += blockLength;
+                continue;
+            }
+
+            var truncated = TruncateFileToFit(file, MaxBaselineChars - used);
+            if (truncated is not null)
+                included.Add(truncated);
+            break;
+        }
 
         _logger.LogWarning(
-            "项目指令基线超过上限，已截断：{Cwd} 原始={OriginalChars} 上限={MaxChars}",
+            "项目指令基线超过上限，已按文件块截断：{Cwd} 原始字符={OriginalChars} 上限={MaxChars} 保留文件={KeptFiles}/{TotalFiles}",
             cwd,
-            text.Length,
-            MaxBaselineChars);
+            full.Length,
+            MaxBaselineChars,
+            included.Count,
+            files.Count);
 
-        return truncated;
+        return ProjectInstructionsRenderer.Wrap(cwd, reason, included);
     }
+
+    /// <summary>
+    /// 在给定块预算内放下一个带截断标记的文件块；放不下（连标记都放不下）时返回 null。
+    /// <para>标记写在 <c>&lt;file&gt;</c> 正文末尾，因此截断不会破坏信封结构。</para>
+    /// </summary>
+    private static InstructionFile? TruncateFileToFit(InstructionFile file, int blockBudget)
+    {
+        if (blockBudget <= 0)
+            return null;
+
+        var content = file.Content ?? string.Empty;
+        if (Measure(file, content) <= blockBudget)
+            return file;
+
+        var shortest = content[..0] + TruncatedSuffix;
+        if (Measure(file, shortest) > blockBudget)
+            return null;
+
+        // 内容截断长度对块长度单调：二分找最大可容纳的正文前缀
+        var low = 0;
+        var high = content.Length - 1;
+        var best = 0;
+        while (low <= high)
+        {
+            var mid = (low + high) / 2;
+            if (Measure(file, content[..mid] + TruncatedSuffix) <= blockBudget)
+            {
+                best = mid;
+                low = mid + 1;
+            }
+            else
+            {
+                high = mid - 1;
+            }
+        }
+
+        return new InstructionFile
+        {
+            Path = file.Path,
+            Content = content[..best] + TruncatedSuffix,
+            Hash = file.Hash,
+            LastModified = file.LastModified
+        };
+    }
+
+    private static int Measure(InstructionFile file, string content) =>
+        ProjectInstructionsRenderer.RenderFileBlocks([WithContent(file, content)]).Length;
+
+    private static InstructionFile WithContent(InstructionFile file, string content) => new()
+    {
+        Path = file.Path,
+        Content = content,
+        Hash = file.Hash,
+        LastModified = file.LastModified
+    };
 
     private static string Sha256Hex(string content) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
@@ -347,7 +434,7 @@ public sealed class ProjectInstructionsContextSource : IContextSource
 /// </summary>
 /// <param name="Cwd">采集时的工作目录（信封属性）。</param>
 /// <param name="Files">读取成功的文件（按 path ordinal 排序）。</param>
-/// <param name="Unreadable">暂时不可读的路径（供诊断，不参与渲染）。</param>
+/// <param name="Unreadable">暂时不可读的路径（诊断用；任一不可读时整体状态为不可用，不参与渲染）。</param>
 public sealed record ProjectInstructionsPayload(
     string Cwd,
     IReadOnlyList<InstructionFile> Files,

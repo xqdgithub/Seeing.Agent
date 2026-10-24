@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Runtime;
+using Seeing.Agent.Core.Context;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.WebUI.Models;
@@ -95,6 +96,15 @@ public static class MessageViewModelFactory
                 }
             }
 
+            viewModel.InstructionRaw = msg.Content ?? "";
+        }
+        else if (msg.Metadata?.ContainsKey(SessionMetadataKeys.ContextUpdateSources) == true
+                 || ContextUpdateEnvelope.IsContextUpdate(msg.Content))
+        {
+            // 上下文管道的增量叙述（<context-update>）：同样折叠展示，避免 32k 指令正文裸奔
+            viewModel.IsProjectInstructions = true;
+            viewModel.InstructionReason = ProjectInstructions.Reasons.ContentChange;
+            viewModel.InstructionPaths = Array.Empty<string>();
             viewModel.InstructionRaw = msg.Content ?? "";
         }
 

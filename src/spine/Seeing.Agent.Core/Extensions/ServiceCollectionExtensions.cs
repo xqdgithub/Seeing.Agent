@@ -800,7 +800,17 @@ namespace Seeing.Agent.Core.Extensions
         /// </summary>
         public static IServiceCollection AddContextPipeline(this IServiceCollection services)
         {
-            services.TryAddSingleton<IInstructionFileReader, InstructionFileReader>();
+            // 搜索根规则的唯一实现（单例）：读取器与旧发现接口共用，不在读取器内 new 第二份
+            services.TryAddSingleton<InstructionDiscovery>(sp => new InstructionDiscovery(
+                sp.GetRequiredService<ILogger<InstructionDiscovery>>()));
+            services.TryAddSingleton<IInstructionFileReader>(sp => new InstructionFileReader(
+                sp.GetRequiredService<InstructionDiscovery>(),
+                sp.GetRequiredService<ILogger<InstructionFileReader>>()));
+            // 执行作用域事实（会话 cwd + 工作区根）经端口提供；Task 12 由 ExecutionRunner 按执行注入
+            services.TryAddSingleton<IInstructionRootsProvider>(sp => new InstructionRootsProvider(
+                sp.GetService<IWorkspaceProvider>(),
+                sp.GetService<IExecutionWorld>(),
+                sp.GetService<ILogger<InstructionRootsProvider>>()));
             services.TryAddEnumerable(
                 ServiceDescriptor.Singleton<IContextSource, ProjectInstructionsContextSource>());
             services.TryAddSingleton<IContextAssembler>(sp => new ContextAssembler(

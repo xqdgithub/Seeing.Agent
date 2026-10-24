@@ -18,6 +18,12 @@ public static class SessionMetadataKeys
     public const string ContextBaseline = "context.baseline";
 
     /// <summary>
+    /// 上下文管道增量消息的元数据键：本次叙述涉及的源键（<c>string[]</c>，稳定顺序）。
+    /// 消费方据它判定「机器注入而非用户输入」（标题计数、UI 折叠）。
+    /// </summary>
+    public const string ContextUpdateSources = "context.update.sources";
+
+    /// <summary>
     /// 子代理会话关联的父会话工具调用 ID（task 工具写入，UI 据此精确匹配父子关联）。
     /// </summary>
     public const string OriginToolCallId = "origin_tool_call_id";

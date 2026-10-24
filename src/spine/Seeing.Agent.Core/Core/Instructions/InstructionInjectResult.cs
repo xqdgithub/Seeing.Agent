@@ -2,6 +2,8 @@ namespace Seeing.Agent.Core.Instructions;
 
 /// <summary>
 /// 指令注入结果：是否实际注入及原因说明。
+/// <para>不含路径列表：路径属于源读取时的事实，已由源自带的元数据（消息
+/// <c>instructionPaths</c>）承载，不在本类重复产出（避免「同一事实两条产出路径」）。</para>
 /// </summary>
 public sealed class InstructionInjectResult
 {
@@ -10,7 +12,4 @@ public sealed class InstructionInjectResult
 
     /// <summary>注入或未注入的原因说明</summary>
     public string Reason { get; init; } = string.Empty;
-
-    /// <summary>本次注入的指令文件路径列表</summary>
-    public IReadOnlyList<string> InjectedPaths { get; init; } = Array.Empty<string>();
 }

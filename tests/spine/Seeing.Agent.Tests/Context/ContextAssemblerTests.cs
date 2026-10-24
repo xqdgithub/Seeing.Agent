@@ -2,8 +2,11 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Context;
+using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Core.Context;
+using Seeing.Agent.Core.Prompts;
 using Seeing.Session.Core;
 using Xunit;
 
@@ -273,6 +276,241 @@ public sealed class ContextAssemblerTests
         session.MessageCount.Should().Be(1);
         results.Count(r => r.DeltaText is not null).Should().Be(1);
     }
+
+    // ===== I9：核心不变量 =====
+
+    [Fact]
+    public async Task ChangedValues_ShouldKeepSystemBaselineByteIdentical()
+    {
+        // 设计的首要目标：内容变化不击穿前缀缓存（System 基线不变，变化只走增量消息）
+        var source = new FakeSource { Key = new("a.system") };
+        var session = new SessionData { Id = "s1" };
+        var assembler = CreateAssembler(session, source);
+        await AssembleAsync(assembler, session);
+
+        var baselineBefore = assembler.BuildSystemBaseline(session);
+        var promptBuilder = new PromptBuilder([]);
+        var promptBefore = await promptBuilder.BuildAsync(
+            new PromptContext
+            {
+                Agent = new AgentDefinition { SystemPrompt = "BODY" },
+                ContextBaseline = baselineBefore
+            },
+            TestContext.Current.CancellationToken);
+
+        source.Value = FakeSource.ValueOf("""{"items":["a","b"]}""");
+        var assembled = await AssembleAsync(assembler, session);
+
+        assembled.DeltaText.Should().NotBeNull();
+        assembler.BuildSystemBaseline(session).Should().Be(baselineBefore);
+
+        var promptAfter = await promptBuilder.BuildAsync(
+            new PromptContext
+            {
+                Agent = new AgentDefinition { SystemPrompt = "BODY" },
+                ContextBaseline = assembler.BuildSystemBaseline(session)
+            },
+            TestContext.Current.CancellationToken);
+
+        promptAfter.Should().Be(promptBefore, "同一状态两次装配 + 提示词构建必须逐字节相同");
+
+        // 同一状态连续两次构建：逐字节相同
+        var promptAgain = await promptBuilder.BuildAsync(
+            new PromptContext
+            {
+                Agent = new AgentDefinition { SystemPrompt = "BODY" },
+                ContextBaseline = assembler.BuildSystemBaseline(session)
+            },
+            TestContext.Current.CancellationToken);
+
+        promptAgain.Should().Be(promptAfter);
+    }
+
+    [Fact]
+    public async Task SourceTextWithPlaceholders_ShouldNotBeSubstitutedInPrompt()
+    {
+        // Review Focus #2：源渲染文本里的 {{timestamp}} / {{model}} 必须原样保留
+        var source = new FakeSource
+        {
+            Key = new("a.system"),
+            RenderInitialBehavior = _ => "## Fake\nliteral {{timestamp}} and {{model}}"
+        };
+        var session = new SessionData { Id = "s1" };
+        var assembler = CreateAssembler(session, source);
+        await AssembleAsync(assembler, session);
+
+        var prompt = await new PromptBuilder([]).BuildAsync(
+            new PromptContext
+            {
+                Agent = new AgentDefinition { SystemPrompt = "BODY {{timestamp}}" },
+                ContextBaseline = assembler.BuildSystemBaseline(session),
+                ModelName = "provider/model",
+                Timestamp = DateTime.Now
+            },
+            TestContext.Current.CancellationToken);
+
+        prompt.Should().Contain("literal {{timestamp}} and {{model}}");
+    }
+
+    [Fact]
+    public async Task PersistedState_ShouldNotContainPayloadBody()
+    {
+        // spec §6 硬不变量：Payload 每次重新取得、不落盘
+        const string payloadBody = "PAYLOAD-BODY-MUST-NOT-PERSIST";
+        var source = new FakeSource
+        {
+            Key = new("a.system"),
+            Payload = new { Body = payloadBody }
+        };
+        var session = new SessionData { Id = "s1" };
+        var assembler = CreateAssembler(session, source);
+        await AssembleAsync(assembler, session);
+
+        var persisted = session.Metadata[SessionMetadataKeys.ContextBaseline];
+        persisted.Should().NotContain(payloadBody);
+        persisted.Should().NotContain("payload");
+        assembler.BuildSystemBaseline(session).Should().Contain("""{"items":["a"]}""");
+    }
+
+    [Fact]
+    public async Task NondeterministicRerender_ShouldKeepStoredTextAndReportIssue()
+    {
+        // spec §8.3 第二分支：同版本同值却渲染出不同文本 → 沿用已存文本 + 告警
+        var renders = 0;
+        var source = new FakeSource
+        {
+            Key = new("a.system"),
+            RenderInitialBehavior = _ => $"## Fake v{renders++}"
+        };
+        var session = new SessionData { Id = "s1" };
+        var assembler = CreateAssembler(session, source);
+        await AssembleAsync(assembler, session);
+
+        var result = await AssembleAsync(assembler, session);
+
+        result.Issues.Should().Contain(issue => issue.Contains("不确定"));
+        assembler.BuildSystemBaseline(session).Should().Contain("v0");
+        session.MessageCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task SkipSet_ShouldLeaveSourceUntouched()
+    {
+        var source = new FakeSource { Key = new("a.system") };
+        var session = new SessionData { Id = "s1" };
+        var assembler = CreateAssembler(session, source);
+
+        var result = await assembler.EnsureFreshAsync(
+            session,
+            ContextAssemblyMode.Persist,
+            insertBeforeMessageId: null,
+            skip: new HashSet<ContextSourceKey> { source.Key },
+            TestContext.Current.CancellationToken);
+
+        result.SkippedSourceKeys.Should().Contain("a.system");
+        result.ChangedSourceKeys.Should().BeEmpty();
+        session.Metadata.Should().NotContainKey(SessionMetadataKeys.ContextBaseline);
+    }
+
+    // ===== I3 / I4 / I5：语义与时序 =====
+
+    [Fact]
+    public async Task Compaction_WithUnavailableSource_ShouldReplayStoredText()
+    {
+        // I3：重放必须用存库文本；源不可读时也不能让指令永久消失
+        var source = new FakeSource
+        {
+            Key = new("a.message"),
+            Target = ContextSourceTarget.Message,
+            Value = FakeSource.ValueOf("""{"items":["m"]}""")
+        };
+        var session = new SessionData { Id = "s1" };
+        var assembler = CreateAssembler(session, source);
+
+        var first = await AssembleAsync(assembler, session);
+        var stored = first.HistoryBaseline;
+        stored.Should().NotBeNull();
+        session.MessageCount.Should().Be(1);
+
+        var store = new ContextBaselineStore(NullLogger<ContextBaselineStore>.Instance);
+        var state = store.Load(session);
+        state.Pending |= PendingBaselineReset.Compaction;
+        store.Save(session, state);
+
+        source.Value = FakeSource.Unavailable();
+        source.RenderInitialBehavior = _ => "MUTATED-RENDER-MUST-NOT-APPEAR";
+
+        var result = await AssembleAsync(assembler, session);
+
+        result.HistoryBaseline.Should().Be(stored);
+        session.MessageCount.Should().Be(2);
+        session.Messages[^1].Content.Should().Be(stored);
+        session.Messages[^1].Content.Should().NotContain("MUTATED-RENDER");
+    }
+
+    [Fact]
+    public async Task MultipleMessageSources_WithDelta_ShouldInsertInDeterministicOrder()
+    {
+        // I4：多初始消息不得倒序；增量必须在初始消息之后、锚点之前
+        var firstSource = new FakeSource
+        {
+            Key = new("a.message"),
+            Target = ContextSourceTarget.Message,
+            Value = FakeSource.ValueOf("""{"items":["1"]}""")
+        };
+        var secondSource = new FakeSource
+        {
+            Key = new("b.message"),
+            Target = ContextSourceTarget.Message,
+            Value = FakeSource.ValueOf("""{"items":["2"]}""")
+        };
+        var systemSource = new FakeSource { Key = new("c.system") };
+        var session = new SessionData { Id = "s1" };
+        var assembler = CreateAssembler(session, firstSource, secondSource, systemSource);
+
+        await AssembleAsync(assembler, session);
+        session.MessageCount.Should().Be(2);
+        session.Messages[0].Content.Should().Contain("\"1\"");
+        session.Messages[1].Content.Should().Contain("\"2\"");
+
+        // 模拟压缩 / revert：初始消息被移除，同时系统源发生变化（重放 + 增量同轮）
+        var anchor = SessionMessage.UserMessage("user");
+        session.AddMessage(anchor);
+        foreach (var message in session.Messages.Where(m => !ReferenceEquals(m, anchor)).ToList())
+            session.RemoveMessage(message);
+
+        systemSource.Value = FakeSource.ValueOf("""{"items":["a","z"]}""");
+        var result = await AssembleAsync(assembler, session, anchor.Id);
+
+        result.ChangedSourceKeys.Should().HaveCount(3);
+        session.Messages.Should().HaveCount(4);
+        session.Messages[0].Content.Should().Contain("\"1\"");
+        session.Messages[1].Content.Should().Contain("\"2\"");
+        session.Messages[2].Content.Should().Contain("""<context-update source="c.system">""");
+        session.Messages[3].Should().BeSameAs(anchor);
+    }
+
+    [Fact]
+    public async Task ReadOnly_WithChangedSystemSource_ShouldReturnCurrentRender()
+    {
+        // I5：只读模式返回当前值渲染，而不是上次建立的旧基线；且不写状态
+        var source = new FakeSource { Key = new("a.system") };
+        var session = new SessionData { Id = "s1" };
+        var assembler = CreateAssembler(session, source);
+        await AssembleAsync(assembler, session);
+
+        var storedBaseline = assembler.BuildSystemBaseline(session);
+        storedBaseline.Should().Contain("""{"items":["a"]}""");
+
+        source.Value = FakeSource.ValueOf("""{"items":["b"]}""");
+        var readOnly = await AssembleAsync(assembler, session, mode: ContextAssemblyMode.ReadOnly);
+
+        readOnly.SystemBaseline.Should().Contain("""{"items":["b"]}""");
+        readOnly.SystemBaseline.Should().NotBe(storedBaseline);
+        // 状态未被推进：已存基线仍是旧值（只读不写）
+        assembler.BuildSystemBaseline(session).Should().Be(storedBaseline);
+        session.MessageCount.Should().Be(0);
+    }
 }
 
 /// <summary>
@@ -293,8 +531,16 @@ file sealed class FakeSource : IContextSource
     /// <summary>当前读取结果；测试可直接替换以模拟运行时变化。</summary>
     public ContextSourceValue Value { get; set; } = ValueOf("""{"items":["a"]}""");
 
+    /// <summary>本次读取附带的 Payload（用于验证「不落盘」）。</summary>
+    public object? Payload { get; set; }
+
     /// <summary>自定义增量渲染；null 表示用默认文案。</summary>
     public Func<ContextSourceValue, ContextSourceValue, string?>? RenderBehavior { get; set; }
+
+    /// <summary>自定义初始渲染（参数为调用序号）；null 表示用默认文案。</summary>
+    public Func<int, string>? RenderInitialBehavior { get; set; }
+
+    private int _renderInitialCount;
 
     /// <summary>为 true 时读取抛异常（验证异常映射为 Unavailable 并进入 Issues）。</summary>
     public bool ThrowOnRead { get; set; }
@@ -304,12 +550,18 @@ file sealed class FakeSource : IContextSource
     public Task<ContextSourceValue> ReadAsync(CancellationToken ct = default)
     {
         ReadCount++;
-        return ThrowOnRead
-            ? Task.FromException<ContextSourceValue>(new IOException("读取失败"))
-            : Task.FromResult(Value);
+        if (ThrowOnRead)
+            return Task.FromException<ContextSourceValue>(new IOException("读取失败"));
+
+        var value = Value;
+        return Task.FromResult(Payload is null
+            ? value
+            : new ContextSourceValue(value.State, value.Canonical, Payload));
     }
 
-    public string RenderInitial(ContextSourceValue value) => $"## Fake\n{CanonicalText(value)}";
+    public string RenderInitial(ContextSourceValue value) =>
+        RenderInitialBehavior?.Invoke(_renderInitialCount++)
+        ?? $"## Fake\n{CanonicalText(value)}";
 
     public string? Render(ContextSourceValue previous, ContextSourceValue current) =>
         RenderBehavior is null

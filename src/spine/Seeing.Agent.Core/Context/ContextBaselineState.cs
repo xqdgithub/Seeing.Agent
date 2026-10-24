@@ -48,7 +48,10 @@ internal sealed class ContextSourceState
     /// <summary>已渲染基线文本（字节锁与重放的唯一来源）。</summary>
     public string BaselineText { get; set; } = string.Empty;
 
-    /// <summary>基线文本对应值的规范化哈希。</summary>
+    /// <summary>
+    /// 已渲染基线文本的 SHA-256（同值重渲染的字节比对；不是值的哈希，
+    /// 值的规范化快照见 <see cref="BaselineValues"/>）。
+    /// </summary>
     public string BaselineHash { get; set; } = string.Empty;
 
     /// <summary>基线值的规范化快照（不含 Payload）。</summary>
