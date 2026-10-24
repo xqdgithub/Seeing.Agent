@@ -201,6 +201,8 @@ public sealed class SkillRootWatcher : IDisposable
 
     /// <summary>
     /// 在指定目录挂载一个 watcher 并原子替换旧实例；返回 false 表示该根已被移除 / 已释放。
+    /// <para>顺序约束（N3）：先把 <c>Watching</c> 发布到新的监听目录，再启用事件——
+    /// 否则窗口期内到达的事件会按旧状态被 <see cref="IsRelevantEvent"/> 过滤掉。</para>
     /// </summary>
     private bool TryAttachAt(RootWatch watch, string target)
     {
@@ -208,6 +210,10 @@ public sealed class SkillRootWatcher : IDisposable
         var recursive = string.Equals(target, watch.Root, StringComparison.OrdinalIgnoreCase);
 
         FileSystemWatcher? created = null;
+        FileSystemWatcher? previous = null;
+        var previousWatching = watch.Watching;
+        var tracked = false;
+
         try
         {
             created = new FileSystemWatcher(target)
@@ -227,28 +233,37 @@ public sealed class SkillRootWatcher : IDisposable
             created.Deleted += (_, e) => OnFileSystemEvent(watch, e);
             created.Renamed += (_, e) => OnFileSystemEvent(watch, e);
             created.Error += (_, e) => OnWatcherError(watch, e.GetException());
-            created.EnableRaisingEvents = true;
+
+            lock (_gate)
+            {
+                if (Volatile.Read(ref _disposed) == 0
+                    && _watches.TryGetValue(watch.Root, out var current)
+                    && ReferenceEquals(current, watch))
+                {
+                    previous = watch.Watcher;
+                    // 先发布监听目录（事件处理器据此过滤），再启用事件（N3）
+                    watch.Watcher = created;
+                    watch.Watching = target;
+                    created.EnableRaisingEvents = true;
+                    tracked = true;
+                }
+            }
         }
         catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or PlatformNotSupportedException)
         {
+            // 启用失败时 Watcher 可能已指向新实例：回滚到旧监听状态，绝不留下「已挂载但未启用」的空壳
+            lock (_gate)
+            {
+                if (ReferenceEquals(watch.Watcher, created))
+                {
+                    watch.Watcher = previous;
+                    watch.Watching = previousWatching;
+                }
+            }
+
             created?.Dispose();
             _logger.LogWarning(ex, "技能根监听挂载失败（该根本轮不监听）：根={Root} 目标={Target}", watch.Root, target);
             return false;
-        }
-
-        FileSystemWatcher? previous = null;
-        var tracked = false;
-        lock (_gate)
-        {
-            if (Volatile.Read(ref _disposed) == 0
-                && _watches.TryGetValue(watch.Root, out var current)
-                && ReferenceEquals(current, watch))
-            {
-                previous = watch.Watcher;
-                watch.Watcher = created;
-                watch.Watching = target;
-                tracked = true;
-            }
         }
 
         if (!tracked)
@@ -315,7 +330,7 @@ public sealed class SkillRootWatcher : IDisposable
         if (string.IsNullOrEmpty(relative) ||
             relative == "." ||
             Path.IsPathRooted(relative) ||
-            relative.StartsWith("..", StringComparison.Ordinal))
+            IsParentReference(relative))
         {
             return null;
         }
@@ -329,6 +344,15 @@ public sealed class SkillRootWatcher : IDisposable
 
     private static string TrimSeparators(string path) =>
         path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+    /// <summary>
+    /// 是否为上级引用。<c>..</c> 本身或以分隔符开头的 <c>..</c> 才算越界；
+    /// 根下合法目录名 <c>..foo</c> 不得被误判（N4）。
+    /// </summary>
+    private static bool IsParentReference(string relative) =>
+        relative == ".."
+        || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+        || relative.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal);
 
     /// <summary>缓冲区溢出：事件已丢，必须重扫（回调本身即重扫）。</summary>
     private void OnWatcherError(RootWatch watch, Exception exception)
@@ -460,11 +484,22 @@ public sealed class SkillRootWatcher : IDisposable
     /// <summary>单个根的监听状态。</summary>
     private sealed class RootWatch(string root)
     {
+        /// <summary>当前实际监听的目录（事件线程读、挂载线程写）。</summary>
+        private string? _watching;
+
         /// <summary>逻辑根（可能尚不存在）。</summary>
         public string Root { get; } = root;
 
-        /// <summary>当前实际监听的目录（根本身或最近存在祖先）。</summary>
-        public string? Watching { get; set; }
+        /// <summary>
+        /// 当前实际监听的目录（根本身或最近存在祖先）。
+        /// <para>volatile 读写（N3）：写入在 <c>_gate</c> 内，读取发生在文件系统事件线程上，
+        /// 不加同步时可能长期读到旧值，从而按错误的监听范围过滤事件。</para>
+        /// </summary>
+        public string? Watching
+        {
+            get => Volatile.Read(ref _watching);
+            set => Volatile.Write(ref _watching, value);
+        }
 
         /// <summary>当前 watcher 实例（重挂时整体替换）。</summary>
         public FileSystemWatcher? Watcher { get; set; }

@@ -27,6 +27,9 @@ public sealed class SkillWriter : ISkillWriter
     /// <summary>技能名称最大长度（与扫描器一致）。</summary>
     private const int MaxNameLength = 64;
 
+    /// <summary>临时文件名中缀：同目录临时文件 → 原子 <c>Move</c> 的唯一命名标记（N6，避免多处字面量）。</summary>
+    private const string TempFileInfix = ".tmp-";
+
     /// <summary>技能名称正则：小写字母数字 + 单个连字符分隔。</summary>
     private static readonly Regex s_namePattern = new(@"^[a-z0-9]+(-[a-z0-9]+)*$", RegexOptions.Compiled);
 
@@ -334,41 +337,43 @@ public sealed class SkillWriter : ISkillWriter
         if (_catalog.Find(name) is null)
             return Failure($"技能不存在：{name}");
 
+        // 全局锁序（N1）：状态写闸 →（释放）→ 目录刷新闸，单向不可反转。
+        // 阶段一在写闸内完成状态文件的「读-改-写」，闸必须在调用目录刷新之前释放：
+        // 目录刷新会先取写闸读禁用状态、再取目录闸扫盘；若本方法持写闸等待目录闸，
+        // 与并发的刷新流程（持目录闸等写闸）互等即死锁。
         try
         {
-            return await _gate.RunAsync(async token =>
+            // 阶段一：状态文件「读-改-写」（闸内，串行化并发开关）
+            var error = await _gate.RunAsync(async token => enabled
+                ? await ClearAllLevelsAsync(name, token).ConfigureAwait(false)
+                : await TryUpdateDisabledStateAsync(
+                    SeeingDirectoryOf(level), name, disable: true, token).ConfigureAwait(false),
+                ct).ConfigureAwait(false);
+
+            if (error is not null)
             {
-                // 阶段一：状态文件「读-改-写」（闸内，串行化并发开关）
-                var error = enabled
-                    ? await ClearAllLevelsAsync(name, token).ConfigureAwait(false)
-                    : await TryUpdateDisabledStateAsync(
-                        SeeingDirectoryOf(level), name, disable: true, token).ConfigureAwait(false);
-
-                if (error is not null)
-                {
-                    _logger.LogError(
-                        "保存技能启用状态失败：{Name} 层级={Level} 原因={Reason}",
-                        name,
-                        level,
-                        error);
-                    return Failure(error);
-                }
-
-                // 阶段二：刷新目录（读侧经同一写闸，且与阶段一同属一条逻辑流程 → 可重入）
-                var snapshot = await _catalog.RefreshAsync(token).ConfigureAwait(false);
-                var entry = snapshot.Entries.FirstOrDefault(e =>
-                    string.Equals(e.Info.Name, name, StringComparison.OrdinalIgnoreCase));
-
-                _logger.LogInformation(
-                    "技能启用状态已更新：{Name} 启用={Enabled} 层级={Level}",
+                _logger.LogError(
+                    "保存技能启用状态失败：{Name} 层级={Level} 原因={Reason}",
                     name,
-                    enabled,
-                    level);
+                    level,
+                    error);
+                return Failure(error);
+            }
 
-                return entry is null
-                    ? Failure($"状态已保存，但目录中找不到技能：{name}")
-                    : new SkillWriteResult(true, null, entry);
-            }, ct).ConfigureAwait(false);
+            // 阶段二：刷新目录（写闸已释放）
+            var snapshot = await _catalog.RefreshAsync(ct).ConfigureAwait(false);
+            var entry = snapshot.Entries.FirstOrDefault(e =>
+                string.Equals(e.Info.Name, name, StringComparison.OrdinalIgnoreCase));
+
+            _logger.LogInformation(
+                "技能启用状态已更新：{Name} 启用={Enabled} 层级={Level}",
+                name,
+                enabled,
+                level);
+
+            return entry is null
+                ? Failure($"状态已保存，但目录中找不到技能：{name}")
+                : new SkillWriteResult(true, null, entry);
         }
         catch (OperationCanceledException)
         {
@@ -708,7 +713,7 @@ public sealed class SkillWriter : ISkillWriter
             data,
             new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
 
-        var temp = $"{filePath}.tmp-{Guid.NewGuid():N}";
+        var temp = $"{filePath}{TempFileInfix}{Guid.NewGuid():N}";
         try
         {
             await File.WriteAllTextAsync(temp, json, new UTF8Encoding(false), ct).ConfigureAwait(false);

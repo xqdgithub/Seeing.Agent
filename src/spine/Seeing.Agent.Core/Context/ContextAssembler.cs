@@ -175,7 +175,8 @@ public sealed class ContextAssembler : IContextAssembler
 
         // 2) 先消费生命周期重置位（压缩 / 切根），再 diff。
         //    重置按源在循环内处理：可读的源必须用**当前值**重渲染并成为新基线（C1），
-        //    不可读的源保留存库基线与已叙述值（绝不因文件被占用而摧毁基线）。
+        //    不可读的源保留存库基线与已叙述值，并按源置「待重锚定」位在后续装配重试（N2）
+        //    ——绝不因文件被临时占用而摧毁基线，也不留下值与文本不等价的中间态。
         var pendingConsumed = false;
         if (persist && state.Pending != PendingBaselineReset.None)
         {
@@ -222,14 +223,18 @@ public sealed class ContextAssembler : IContextAssembler
             {
                 // 保留上一次已叙述内容，不参与 diff（Review Focus #1）。
                 // 但「需重放」必须仍成立：只重放**存库文本**，绝不因不可读而重新渲染。
-                if (persist && hasState && pendingConsumed)
+                if (persist && hasState && (pendingConsumed || sourceState!.PendingReanchor))
                 {
-                    // 重置位已消费但本轮读不到：只折叠已叙述值并作废账本，不动存库基线文本。
-                    // 必须先折叠再判断重放：折叠会清空 BaselineMessageId（压缩后原消息已被摘要取代）。
-                    FoldPendingResetKeepingBaseline(sourceState!);
+                    // 重置位已消费但本轮读不到：基线文本与全部值原样保留（**不做部分更新**），
+                    // 只按源置「待重锚定」位，下一次装配继续重试（N2）。
+                    // 折叠出「BaselineValues 已推进、BaselineText 仍是旧 epoch」会让后续每一轮
+                    // 都命中「同值不同文本」，持续产生误导性告警且基线永久停在旧内容。
+                    // 仍需作废 BaselineMessageId：压缩后原初始消息已被摘要取代，必须让存库文本重新可见。
+                    sourceState!.PendingReanchor = true;
+                    sourceState.BaselineMessageId = null;
                     stateDirty = true;
                     needsReplay = source.Target == ContextSourceTarget.Message
-                        && NeedsReplay(session, sourceState!);
+                        && NeedsReplay(session, sourceState);
                 }
 
                 if (needsReplay &&
@@ -292,24 +297,30 @@ public sealed class ContextAssembler : IContextAssembler
                 continue;
             }
 
-            // 3.1) 重置位已消费（压缩 / 切根）：用**本轮刚读到的值**重渲染基线并采用为新基线（新 epoch）。
+            // 3.1) 重置位已消费（压缩 / 切根），或本源上一轮被标记为「待重锚定」：用**本轮刚读到的值**
+            //      重渲染基线并采用为新基线（新 epoch）。
             //      绝不重放存库文本——那会把「首次建立时」的旧内容重新插回历史，且随后因
             //      CurrentValues 已对齐而永不补叙（C1）。重新锚定的源本轮不产生增量叙述。
-            if (pendingConsumed)
+            if (pendingConsumed || sourceState!.PendingReanchor)
             {
                 if (TryReanchorBaseline(session, source, current, currentValues, sourceState!, initialMessages, issues))
                 {
+                    // 重锚定成功：清掉待重试标记（N2 的重试在此收敛）
+                    sourceState!.PendingReanchor = false;
                     changedKeys.Add(key);
                     stateDirty = true;
                 }
                 else
                 {
-                    // 渲染失败（源异常）：保留存库基线与已叙述值，本轮不叙述，下次装配重试。
+                    // 渲染失败（源异常）：保留存库基线与已叙述值，本轮不叙述，下次装配继续重试
+                    // （置位不放，否则重试机会丢失、基线永久停在旧 epoch）。
+                    sourceState!.PendingReanchor = true;
                     _logger.LogWarning(
-                        "上下文源重置后无法用当前值重渲染基线，保留已存基线：{SourceKey} {SessionId}",
+                        "上下文源重置后无法用当前值重渲染基线，保留已存基线并留待下次重试：{SourceKey} {SessionId}",
                         key,
                         session.Id);
                     skippedKeys.Add(key);
+                    stateDirty = true;
                 }
 
                 continue;
@@ -361,7 +372,10 @@ public sealed class ContextAssembler : IContextAssembler
             }
 
             // 7) 同版本渲染确定性：值未变却重渲染出不同文本 → 保留已存文本 + 告警
-            if (currentState == ContextValueState.Value &&
+            //    待重锚定的源不参与该检查：它的基线文本属于旧 epoch，与值本就可能不等价，
+            //    此时报「同值不同文本」是误导（N2）。
+            if (!sourceState.PendingReanchor &&
+                currentState == ContextValueState.Value &&
                 sourceState.BaselineText.Length > 0 &&
                 JsonEquals(sourceState.BaselineValues, currentValues))
             {
@@ -619,10 +633,12 @@ public sealed class ContextAssembler : IContextAssembler
     // ===== 生命周期 / 回退 =====
 
     /// <summary>
-    /// 重置位已消费但本源本轮无法用当前值重渲染（不可读 / 未参与装配）时的折叠：
+    /// 重置位已消费但本源本轮**未参与装配**（被跳过 / 已注销）时的折叠：
     /// 保留存库 <see cref="ContextSourceState.BaselineText"/> 与已叙述值，只让已叙述值成为新基线、
     /// 作废账本、清空 <see cref="ContextSourceState.BaselineMessageId"/> 以便 Message 落点重放。
     /// <para>绝不把 <c>null</c> / 不可读状态写进基线——文件被临时占用不得毁掉指令。</para>
+    /// <para>「本轮读不到（Unavailable）」不走本方法：那种情况保留全部值与文本、只置
+    /// <see cref="ContextSourceState.PendingReanchor"/> 待下次重试，避免值与文本不等价（N2）。</para>
     /// </summary>
     private static void FoldPendingResetKeepingBaseline(ContextSourceState sourceState)
     {

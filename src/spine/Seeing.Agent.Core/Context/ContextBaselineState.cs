@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace Seeing.Agent.Core.Context;
 
@@ -66,6 +67,17 @@ internal sealed class ContextSourceState
 
     /// <summary><c>Target=Message</c> 时初始渲染所在消息 Id。</summary>
     public string? BaselineMessageId { get; set; }
+
+    /// <summary>
+    /// 待重新锚定标记：重置位（压缩 / 切根）已消费，但本源本轮无法用当前值重渲染基线
+    /// （不可读 / 渲染失败），必须在下一次装配重试。
+    /// <para>为 true 期间 <see cref="BaselineText"/> 与全部值都保持不变（不做部分更新），
+    /// 且不得参与「同值不同文本」的确定性检查——否则会每轮产生误导性告警（N2）。</para>
+    /// <para>默认 false 不落盘（<see cref="JsonIgnoreCondition.WhenWritingDefault"/>），
+    /// 既有会话的状态字节不因该字段引入而变化。</para>
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool PendingReanchor { get; set; }
 
     /// <summary>已叙述增量的快照账本（用于精确回退，避免重复叙述）。</summary>
     public List<DeltaLedgerEntry> DeltaLedger { get; set; } = new();

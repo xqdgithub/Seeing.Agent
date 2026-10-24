@@ -600,6 +600,82 @@ public sealed class ContextAssemblerTests
     }
 
     [Fact]
+    public async Task Compaction_WithUnavailableSource_ShouldKeepBaselineAndRetryReanchor()
+    {
+        // N2：压缩时源不可读 → 基线与值原样保留（不做部分更新）+ 按源标记待重锚定；
+        // 恢复可读后下一次装配重锚定到当前内容，且不得产生「同值不同文本」误导告警或增量重复。
+        var rendered = "## Fake A";
+        var renderCount = 0;
+        var source = new FakeSource
+        {
+            Key = new("a.system"),
+            RenderInitialBehavior = _ =>
+            {
+                renderCount++;
+                return rendered;
+            }
+        };
+        var session = new SessionData { Id = "s1" };
+        var assembler = CreateAssembler(session, source);
+        var store = new ContextBaselineStore(NullLogger<ContextBaselineStore>.Instance);
+
+        // 建立基线 A → 内容变为 B 并产生增量叙述（CurrentValues 已推进到 B）
+        await AssembleAsync(assembler, session);
+        var baselineTextA = store.Load(session).Sources["a.system"].BaselineText;
+        baselineTextA.Should().Be("## Fake A");
+        var baselineHashA = store.Load(session).Sources["a.system"].BaselineHash;
+
+        source.Value = FakeSource.ValueOf("""{"items":["b"]}""");
+        (await AssembleAsync(assembler, session)).DeltaText.Should().NotBeNull();
+
+        // 压缩（System 落点无需移除消息）+ 源恰好不可读
+        var state = store.Load(session);
+        state.Pending |= PendingBaselineReset.Compaction;
+        store.Save(session, state);
+
+        source.Value = FakeSource.Unavailable();
+        rendered = "MUTATED-RENDER-MUST-NOT-APPEAR";
+
+        var unavailable = await AssembleAsync(assembler, session);
+
+        unavailable.Issues.Should().BeEmpty("不可读只是暂时状态，不得记录误导性告警");
+        assembler.BuildSystemBaseline(session).Should().Be("## Fake A", "旧文本必须继续可用");
+        renderCount.Should().Be(1, "不可读时绝不重新渲染");
+
+        var preserved = store.Load(session).Sources["a.system"];
+        preserved.BaselineText.Should().Be(baselineTextA);
+        preserved.BaselineHash.Should().Be(baselineHashA, "基线文本未变，哈希也必须逐字节一致");
+        preserved.BaselineValues!.ToJsonString().Should().Contain("\"a\"", "基线值不得被部分推进");
+        preserved.CurrentValues!.ToJsonString().Should().Contain("\"b\"");
+        preserved.PendingReanchor.Should().BeTrue("必须留下按源的重锚定重试标记");
+
+        var countAfterUnavailable = session.MessageCount;
+
+        // 源恢复可读（值仍是 B）：下一次装配重锚定到 B
+        rendered = "## Fake B";
+        source.Value = FakeSource.ValueOf("""{"items":["b"]}""");
+
+        var reanchored = await AssembleAsync(assembler, session);
+
+        reanchored.Issues.Should().BeEmpty("重锚定是 epoch 变化，不是「渲染不确定」");
+        reanchored.DeltaText.Should().BeNull("重锚定的源本轮不得再叙述增量");
+        assembler.BuildSystemBaseline(session).Should().Be("## Fake B");
+
+        var after = store.Load(session).Sources["a.system"];
+        after.PendingReanchor.Should().BeFalse("重锚定成功后必须清除重试标记");
+        after.BaselineText.Should().Be("## Fake B");
+        after.BaselineValues!.ToJsonString().Should().Contain("\"b\"");
+        after.BaselineHash.Should().NotBe(baselineHashA);
+
+        // 之后同一状态再装配：不得重复叙述、不得再报问题、不得再插历史消息
+        var stable = await AssembleAsync(assembler, session);
+
+        stable.DeltaText.Should().BeNull();
+        stable.Issues.Should().BeEmpty();
+        session.MessageCount.Should().Be(countAfterUnavailable, "重锚定不得产生重复的叙述内容");
+    }
+
+    [Fact]
     public async Task MultipleMessageSources_WithDelta_ShouldInsertInDeterministicOrder()
     {
         // I4：多初始消息不得倒序；增量必须在初始消息之后、锚点之前

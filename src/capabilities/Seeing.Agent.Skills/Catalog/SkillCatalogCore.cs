@@ -157,12 +157,17 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
         // 单飞判据：进入时的快照实例；等锁期间若已被其它调用推进，直接复用其成果
         var observed = Current;
 
+        // 全局锁序（N1）：状态写闸 →（释放）→ 目录扫盘闸，单向不可反转。
+        // 禁用状态必须在取目录闸**之前**读完：若在持目录闸时再去取写闸，与「持写闸等目录闸」
+        // 的写入方（SkillWriter 的刷新阶段）互等即死锁。
+        var disabledState = await LoadDisabledStateAsync(ct).ConfigureAwait(false);
+
         SkillCatalogSnapshot snapshot;
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             snapshot = ReferenceEquals(Current, observed)
-                ? await ScanAndPublishAsync(ct).ConfigureAwait(false)
+                ? await ScanAndPublishAsync(disabledState, ct).ConfigureAwait(false)
                 : Current;
         }
         finally
@@ -178,12 +183,16 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
     }
 
     /// <summary>扫盘 → 合并 → 发布。</summary>
-    private async Task<SkillCatalogSnapshot> ScanAndPublishAsync(CancellationToken ct)
+    /// <param name="disabledState">已在取目录闸之前读取的禁用状态（见 <see cref="RefreshAsync"/> 的锁序说明）。</param>
+    /// <param name="ct">取消令牌。</param>
+    private async Task<SkillCatalogSnapshot> ScanAndPublishAsync(
+        (IReadOnlySet<string> Names, IReadOnlyDictionary<string, ConfigLevel> Scopes) disabledState,
+        CancellationToken ct)
     {
         var roots = Volatile.Read(ref _roots);
         var fingerprint = await ComputeFingerprintAsync(roots, ct).ConfigureAwait(false);
         var scan = await SkillFileScanner.ScanAsync(roots, _logger, ct).ConfigureAwait(false);
-        var (disabledNames, disabledScopes) = await LoadDisabledStateAsync(ct).ConfigureAwait(false);
+        var (disabledNames, disabledScopes) = disabledState;
 
         lock (_publishLock)
         {
@@ -565,6 +574,8 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
     /// <summary>
     /// 读取两级 <c>skill-state.json</c>：名称取并集；上报层级项目级优先（用户级被覆盖）。
     /// <para>读写闸内执行（与写者共享 <see cref="SkillWriteGate"/>），保证不会读到写了一半的状态文件。</para>
+    /// <para>锁序约束：本方法必须在持有目录扫盘闸（<see cref="_gate"/>）**之前**调用——它取写闸，
+    /// 而写入方的锁序是「写闸 →（释放）→ 目录闸」，持目录闸再取写闸会形成反转死锁（N1）。</para>
     /// </summary>
     private async Task<(IReadOnlySet<string> Names, IReadOnlyDictionary<string, ConfigLevel> Scopes)>
         LoadDisabledStateAsync(CancellationToken ct)

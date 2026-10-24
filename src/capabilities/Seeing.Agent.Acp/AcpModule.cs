@@ -328,7 +328,11 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
             _skillCommandSyncEnabled = false;
 
             if (_registeredCommandNames.Count == 0)
+            {
+                // 早退路径也必须清空技能命令集合：不依赖「两个集合始终成对增删」的不变式（N7）
+                _registeredSkillCommandNames.Clear();
                 return;
+            }
 
             if (services.GetService<ICommandRegistry>() is { } registry)
             {

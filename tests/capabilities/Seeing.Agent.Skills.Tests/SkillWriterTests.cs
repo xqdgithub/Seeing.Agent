@@ -338,6 +338,68 @@ public sealed class SkillWriterTests : IDisposable
         Directory.GetFiles(ProjectSeeingDirectory, "*.tmp-*").Should().BeEmpty("原子写不得残留临时文件");
     }
 
+    [Fact]
+    public async Task SetEnabledAndRefresh_Repeatedly_ShouldNotDeadlock()
+    {
+        // N1：连续多次「写状态 → 刷新目录」必须全部完成（锁序为 写闸 →（释放）→ 目录闸）
+        var (catalog, writer, _) = CreateWriterWithSharedGate();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var ct = cts.Token;
+
+        WriteSkillFile(ProjectSkillsRoot, "alpha", "锁序");
+        WriteSkillFile(ProjectSkillsRoot, "beta", "锁序");
+        await catalog.RefreshAsync(ct);
+
+        for (var round = 0; round < 3; round++)
+        {
+            (await writer.SetEnabledAsync("alpha", enabled: false, ConfigLevel.Project, ct))
+                .Success.Should().BeTrue();
+            (await writer.SetEnabledAsync("beta", enabled: false, ConfigLevel.Project, ct))
+                .Success.Should().BeTrue();
+            await catalog.RefreshAsync(ct);
+        }
+
+        catalog.IsEnabled("alpha").Should().BeFalse();
+        catalog.IsEnabled("beta").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RefreshWhileWriteGateHeld_ShouldNotDeadlock()
+    {
+        // N1：写入方持写闸时，另一条独立流程的目录刷新不得「持目录闸等写闸」——
+        // 旧实现（写闸内调目录刷新 + 读侧闸内取写闸）在此必然互等。
+        var (catalog, _, gate) = CreateWriterWithSharedGate();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var ct = cts.Token;
+
+        WriteSkillFile(ProjectSkillsRoot, "alpha", "锁序");
+        await catalog.RefreshAsync(ct);
+
+        var holding = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // 写入方：持写闸期间刷新目录（旧实现即在此处取目录闸）
+        var writerFlow = Task.Run(async () => await gate.RunAsync(async token =>
+        {
+            holding.SetResult();
+            await release.Task.WaitAsync(token);
+            await catalog.RefreshAsync(token);
+            return true;
+        }, ct), ct);
+
+        await holding.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // 另一条独立流程（watcher / 执行链路）：同时刷新目录
+        var refreshFlow = Task.Run(async () => await catalog.RefreshAsync(ct), ct);
+
+        // 给刷新流程足够时间进入「等写闸」的旧状态，再让写入方继续
+        await Task.Delay(TimeSpan.FromMilliseconds(300), ct);
+        release.SetResult();
+
+        (await writerFlow.WaitAsync(TimeSpan.FromSeconds(10))).Should().BeTrue();
+        await refreshFlow.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
     // ===== 失败清理 =====
 
     [Fact]
@@ -421,8 +483,19 @@ public sealed class SkillWriterTests : IDisposable
 
     private (SkillCatalogCore Catalog, SkillWriter Writer) CreateWriter()
     {
+        var (catalog, writer, _) = CreateWriterWithSharedGate();
+        return (catalog, writer);
+    }
+
+    /// <summary>
+    /// 按生产装配创建目录与写者：目录读侧与写入侧共用**同一** <see cref="SkillWriteGate"/>
+    /// （<c>SkillsModule</c> 的登记方式），锁序回归测试必须使用该装配。
+    /// </summary>
+    private (SkillCatalogCore Catalog, SkillWriter Writer, SkillWriteGate Gate) CreateWriterWithSharedGate()
+    {
         var directories = new FakeDirectories(UserSeeingDirectory, ProjectSeeingDirectory);
-        var catalog = new SkillCatalogCore(NullLogger<SkillCatalogCore>.Instance, directories);
+        var gate = new SkillWriteGate();
+        var catalog = new SkillCatalogCore(NullLogger<SkillCatalogCore>.Instance, directories, gate);
 
         // 显式设置根：避免默认根（真实用户主目录）污染测试
         catalog.SetRoots([ProjectSkillsRoot, UserSkillsRoot]);
@@ -431,9 +504,9 @@ public sealed class SkillWriterTests : IDisposable
             NullLogger<SkillWriter>.Instance,
             catalog,
             directories,
-            new SkillWriteGate());
+            gate);
 
-        return (catalog, writer);
+        return (catalog, writer, gate);
     }
 
     /// <summary>写一个合法技能目录（frontmatter + 正文）。</summary>
