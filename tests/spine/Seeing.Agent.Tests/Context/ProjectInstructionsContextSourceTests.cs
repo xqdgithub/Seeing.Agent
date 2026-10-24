@@ -139,6 +139,25 @@ public sealed class ProjectInstructionsContextSourceTests
     }
 
     [Fact]
+    public async Task GetMessageMetadata_ShouldExposeLegacyInstructionKeys()
+    {
+        // 落库消息的既有契约（UI 折叠 + 标题服务判定）：从源自己渲染的信封反解，两条路径都成立
+        const string path = @"C:\work\repo\AGENTS.md";
+        var reader = new FakeInstructionFileReader { Results = [Loaded(path, "# 根指令")] };
+        var source = CreateSource(reader);
+        var value = await source.ReadAsync(TestContext.Current.CancellationToken);
+        var text = source.RenderInitial(value);
+
+        var metadata = source.GetMessageMetadata(text, value);
+
+        metadata.Should().NotBeNull();
+        metadata![ProjectInstructions.MetadataKeys.ProjectInstructions].Should().Be(true);
+        metadata[ProjectInstructions.MetadataKeys.Reason].Should().Be(ProjectInstructions.Reasons.Initial);
+        metadata[ProjectInstructions.MetadataKeys.Cwd].Should().Be(Cwd);
+        metadata[ProjectInstructions.MetadataKeys.Paths].Should().Be($"[{System.Text.Json.JsonSerializer.Serialize(path)}]");
+    }
+
+    [Fact]
     public async Task Canonical_ShouldContainPathAndHash_NotContent()
     {
         const string content = "秘密正文 SHALL-NOT-APPEAR-IN-CANONICAL";

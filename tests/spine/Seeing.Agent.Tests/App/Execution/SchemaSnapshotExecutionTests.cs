@@ -18,7 +18,6 @@ using Seeing.Agent.Core;
 using Seeing.Agent.Core.Compression;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Execution;
-using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Core.Scenarios;
 using Seeing.Agent.Hosting.Execution;
@@ -187,11 +186,6 @@ public class SchemaSnapshotExecutionTests
         sessionManager.Setup(m => m.SaveAsync(session.Id)).Returns(Task.CompletedTask);
         sessionManager.Setup(m => m.FlushAsync(session.Id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-        var instructionManager = new Mock<IInstructionManager>();
-        instructionManager.Setup(m => m.InjectIfNeededAsync(
-                It.IsAny<SessionData>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
-            .ReturnsAsync(new InstructionInjectResult { Injected = false });
-
         var modelManager = new Mock<IModelManager>();
         modelManager.Setup(m => m.GetSessionModelRef(It.IsAny<SessionData>())).Returns(string.Empty);
         modelManager.Setup(m => m.ResolveNativeModel(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string>()))
@@ -226,7 +220,6 @@ public class SchemaSnapshotExecutionTests
 
         var services = new ServiceCollection();
         services.AddSingleton(sessionManager.Object);
-        services.AddSingleton(instructionManager.Object);
         services.AddSingleton(modelManager.Object);
         services.AddSingleton(agentRegistry.Object);
         services.AddSingleton(executor);

@@ -30,7 +30,7 @@ public sealed record InstructionFileReadResult(
 
 /// <summary>
 /// 指令文件的逐路径读取端口：按候选路径返回三态结果。
-/// <para>与 <c>InstructionDiscovery.TryReadAsync</c> 的关键差异：不得把 IO 失败吞成「不存在」，
+/// <para>三态区分的硬要求：不得把 IO 失败归并为「不存在」，
 /// 否则「文件被占用」会被渲染成「指令已删除」。</para>
 /// </summary>
 public interface IInstructionFileReader

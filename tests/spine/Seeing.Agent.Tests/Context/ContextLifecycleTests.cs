@@ -71,14 +71,12 @@ public sealed class ContextLifecycleTests
         var session = new SessionData { Id = "s1" };
         session.AddMessage(SessionMessage.UserMessage("你好"));
         s_store.Save(session, new ContextBaselineState());
-        session.Metadata[SessionMetadataKeys.InstructionFingerprints] = """{"cwd":"x","files":[]}""";
         session.Metadata.Should().ContainKey(SessionMetadataKeys.ContextBaseline);
 
         session.ClearMessages();
 
         session.Messages.Should().BeEmpty();
         session.Metadata.Should().NotContainKey(SessionMetadataKeys.ContextBaseline);
-        session.Metadata.Should().NotContainKey(SessionMetadataKeys.InstructionFingerprints);
     }
 
     // ===== fork =====
@@ -86,21 +84,18 @@ public sealed class ContextLifecycleTests
     [Fact]
     public async Task Fork_ShouldNotCarryContextBaseline()
     {
-        // 分支属新 epoch：基线必须重建（只复制指令指纹）
+        // 分支属新 epoch：基线必须重建（本用例锁定「不复制」边界）
         var manager = new SessionManager(
             new InMemorySessionStore(),
             logger: NullLogger<SessionManager>.Instance);
         var source = manager.Create(partitionId: "p1", selectedAgent: "build");
         source.AddMessage(SessionMessage.UserMessage("你好"));
         s_store.Save(source, new ContextBaselineState());
-        source.Metadata[SessionMetadataKeys.InstructionFingerprints] = """{"cwd":"x","files":[]}""";
 
         var forker = new SessionForker(NullLogger<SessionForker>.Instance, manager);
         var forked = await forker.ForkAsync(source.Id, "branch", TestContext.Current.CancellationToken);
 
         forked.Metadata.Should().NotContainKey(SessionMetadataKeys.ContextBaseline);
-        // 指令指纹仍按既有语义复制（锁定「只复制指纹」的边界）
-        forked.Metadata.Should().ContainKey(SessionMetadataKeys.InstructionFingerprints);
     }
 
     // ===== revert =====

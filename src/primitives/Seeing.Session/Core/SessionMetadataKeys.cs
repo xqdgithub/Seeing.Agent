@@ -6,12 +6,6 @@ namespace Seeing.Session.Core;
 public static class SessionMetadataKeys
 {
     /// <summary>
-    /// 项目指令渐进加载的指纹快照（JSON：cwd + files）。
-    /// 清空消息时应移除；Fork / Branch 时应随消息一并复制。
-    /// </summary>
-    public const string InstructionFingerprints = "instruction.fingerprints";
-
-    /// <summary>
     /// 上下文源基线（JSON：状态版本 + 待处理重置位 + 各源已渲染文本与规范化值）。
     /// 清空消息时移除；Fork 不复制（分支属新 epoch）。
     /// </summary>

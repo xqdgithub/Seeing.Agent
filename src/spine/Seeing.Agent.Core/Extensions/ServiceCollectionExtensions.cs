@@ -405,7 +405,7 @@ namespace Seeing.Agent.Core.Extensions
             services.AddSingleton<Seeing.Session.Hooks.IHookManager>(sp =>
                 new Seeing.Agent.Core.Services.HookManagerAdapter(sp.GetRequiredService<HookManager>()));
 
-            // 上下文源管道（内置源 + 装配器）：须先于提示词构建注册（InstructionManager 依赖装配器）
+            // 上下文源管道（内置源 + 装配器）：须先于提示词构建注册（提示词构建读取装配结果）
             services.AddContextPipeline();
 
             // 提示词构建服务
@@ -831,7 +831,6 @@ namespace Seeing.Agent.Core.Extensions
         /// </summary>
         public static IServiceCollection AddPromptBuilder(this IServiceCollection services)
         {
-            services.AddSingleton<IInstructionManager, InstructionManager>();
             services.AddSingleton<IPromptSectionContributor, ToolsPromptSectionContributor>();
             services.AddSingleton<IPromptSectionContributor, AgentsPromptSectionContributor>();
             services.AddSingleton<IPromptSectionContributor, EnvironmentPromptSectionContributor>();

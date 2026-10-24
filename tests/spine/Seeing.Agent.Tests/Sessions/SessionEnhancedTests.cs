@@ -68,8 +68,6 @@ public class SessionForkerTests
         var (manager, forker) = CreateForker();
         var original = manager.Create();
         original.AddMessage(new SessionMessage { Role = "user", Content = "Hello" });
-        original.Metadata[SessionMetadataKeys.InstructionFingerprints] =
-            """{"cwd":"/repo","files":{"/repo/AGENTS.md":"sha256:abc"}}""";
 
         // Act
         var forked = await forker.ForkAsync(original.Id, ct: TestContext.Current.CancellationToken);
@@ -77,8 +75,6 @@ public class SessionForkerTests
         // Assert：关系字段不再由复制引擎写入，仅验证消息与配置复制
         forked.Id.Should().NotBe(original.Id);
         forked.Messages.Should().HaveCount(1);
-        forked.Metadata[SessionMetadataKeys.InstructionFingerprints]
-            .Should().Be(original.Metadata[SessionMetadataKeys.InstructionFingerprints]);
     }
 
     [Fact]

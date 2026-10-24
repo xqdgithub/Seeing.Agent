@@ -52,7 +52,6 @@ namespace Seeing.Session.Management
             forkedSession.ScenarioOverride = sourceSession.ScenarioOverride?.Clone();
             // 发现集/待生效发现/升级位随分支继承（同一对话的暴露事实）；每轮度量不继承，分支下一轮重新结算。
             forkedSession.ToolExposure = sourceSession.ToolExposure.Clone(includeMetrics: false);
-            CopyInstructionFingerprints(sourceSession, forkedSession);
 
             foreach (var msg in sourceSession.Messages)
             {
@@ -88,15 +87,6 @@ namespace Seeing.Session.Management
             var clone = msg.Clone();
             clone.Id = Guid.NewGuid().ToString("N");
             return clone;
-        }
-
-        private static void CopyInstructionFingerprints(SessionData source, SessionData target)
-        {
-            if (source.Metadata.TryGetValue(SessionMetadataKeys.InstructionFingerprints, out var fingerprints)
-                && !string.IsNullOrEmpty(fingerprints))
-            {
-                target.Metadata[SessionMetadataKeys.InstructionFingerprints] = fingerprints;
-            }
         }
     }
 }

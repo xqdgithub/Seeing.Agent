@@ -52,15 +52,14 @@ namespace Seeing.Session.Tests
             var data = SessionData.Create();
             data.AddMessage(SessionMessage.UserMessage("One"));
             data.AddMessage(SessionMessage.UserMessage("Two"));
-            data.Metadata[SessionMetadataKeys.InstructionFingerprints] =
-                """{"cwd":"/repo","files":{"/repo/AGENTS.md":"sha256:abc"}}""";
+            data.Metadata[SessionMetadataKeys.ContextBaseline] = """{"schemaVersion":1}""";
 
             // Act
             data.ClearMessages();
 
             // Assert
             data.Messages.Should().BeEmpty();
-            data.Metadata.Should().NotContainKey(SessionMetadataKeys.InstructionFingerprints);
+            data.Metadata.Should().NotContainKey(SessionMetadataKeys.ContextBaseline);
         }
 
         [Fact]

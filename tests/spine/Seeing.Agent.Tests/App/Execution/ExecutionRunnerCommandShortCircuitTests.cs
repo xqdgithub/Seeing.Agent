@@ -13,7 +13,6 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Compression;
 using Seeing.Agent.Core.Execution;
-using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Tests.Context;
@@ -351,7 +350,6 @@ public class ExecutionRunnerCommandShortCircuitTests
 
         var services = new ServiceCollection();
         services.AddSingleton(sessionManager.Object);
-        services.AddSingleton(Mock.Of<IInstructionManager>());
         services.AddSingleton(modelManager.Object);
         services.AddSingleton(agentRegistry.Object);
         services.AddSingleton(executor);

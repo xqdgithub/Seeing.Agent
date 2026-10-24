@@ -49,13 +49,13 @@ public sealed class ProjectInstructionsRendererTests
 
         var message = ProjectInstructionsRenderer.CreateUserMessage(
             @"E:\repo\src",
-            ProjectInstructions.Reasons.CwdChange,
+            ProjectInstructions.Reasons.ContentChange,
             files);
 
         message.Role.Should().Be(MessageRole.User);
         ProjectInstructionsRenderer.TryParse(message.Content, out _).Should().BeTrue();
         message.Metadata![ProjectInstructions.MetadataKeys.ProjectInstructions].Should().Be(true);
-        message.Metadata[ProjectInstructions.MetadataKeys.Reason].Should().Be(ProjectInstructions.Reasons.CwdChange);
+        message.Metadata[ProjectInstructions.MetadataKeys.Reason].Should().Be(ProjectInstructions.Reasons.ContentChange);
         message.Metadata[ProjectInstructions.MetadataKeys.Cwd].Should().Be(@"E:\repo\src");
         JsonSerializer.Deserialize<string[]>(
                 (string)message.Metadata[ProjectInstructions.MetadataKeys.Paths])

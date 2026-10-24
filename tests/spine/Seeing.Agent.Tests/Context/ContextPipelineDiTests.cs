@@ -7,7 +7,6 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Context.Sources;
 using Seeing.Agent.Core.Extensions;
-using Seeing.Agent.Core.Instructions;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Context;
@@ -38,7 +37,6 @@ public sealed class ContextPipelineDiTests : IDisposable
         var assembler = provider.GetRequiredService<IContextAssembler>();
         assembler.Should().BeSameAs(provider.GetRequiredService<IContextAssembler>());
 
-        provider.GetRequiredService<IInstructionManager>().Should().NotBeNull();
         provider.GetRequiredService<IInstructionFileReader>().Should().NotBeNull();
         provider.GetServices<IContextSource>()
             .Should().ContainSingle(source => source is ProjectInstructionsContextSource);
