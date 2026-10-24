@@ -23,9 +23,7 @@ namespace Seeing.Session.Storage
         /// <summary>归档目录名（位于基础目录下）</summary>
         private const string ArchiveDirectoryName = "_archive";
 
-        // 文件锁字典（实例级别，随实例生命周期释放）
-        private readonly Dictionary<string, SemaphoreSlim> _fileLocks = new();
-        private readonly object _lockDictLock = new();
+        // 文件锁由 AtomicFileWrite 统一以「目标路径」为键在进程级提供（跨实例互斥）
         private bool _disposed;
 
         /// <summary>
@@ -116,20 +114,9 @@ namespace Seeing.Session.Storage
         }
 
         /// <summary>
-        /// 获取文件锁
+        /// 获取文件锁（进程级、按目标路径共享，多个存储实例指向同一目录时也能互斥）。
         /// </summary>
-        private SemaphoreSlim GetFileLock(string filePath)
-        {
-            lock (_lockDictLock)
-            {
-                if (!_fileLocks.TryGetValue(filePath, out var fileLock))
-                {
-                    fileLock = new SemaphoreSlim(1, 1);
-                    _fileLocks[filePath] = fileLock;
-                }
-                return fileLock;
-            }
-        }
+        private static SemaphoreSlim GetFileLock(string filePath) => AtomicFileWrite.GetLock(filePath);
 
         /// <summary>
         /// 保存单个会话（<paramref name="data"/> 为调用方移交的私有快照，本方法不修改其时间戳）。
@@ -158,22 +145,22 @@ namespace Seeing.Session.Storage
 
                 var json = JsonSerializer.Serialize(data, _jsonOptions);
 
-                // 使用临时文件 + 原子替换确保写入完整性
-                var tempPath = filePath + ".tmp";
+                // 使用唯一临时文件 + 原子替换确保写入完整性（唯一名避免跨实例互相覆盖）
+                var tempPath = AtomicFileWrite.CreateTempPath(filePath);
                 var moved = false;
                 try
                 {
                     await File.WriteAllTextAsync(tempPath, json, Encoding.UTF8, ct);
 
                     // 原子替换（带重试机制处理 Windows Defender/OS 缓存导致的瞬时访问失败）
-                    await AtomicMoveWithRetryAsync(tempPath, filePath, data.Id, ct);
+                    await AtomicFileWrite.MoveWithRetryAsync(tempPath, filePath, data.Id, _logger, ct);
                     moved = true;
                 }
                 finally
                 {
-                    // 仅在成功替换后清理残留 .tmp；失败时保留唯一可恢复副本供排查/恢复
+                    // 仅在成功替换后清理残留临时文件；失败时保留唯一可恢复副本供排查/恢复
                     if (moved)
-                        TryDeleteFile(tempPath);
+                        AtomicFileWrite.TryDelete(tempPath);
                 }
 
                 _logger?.LogDebug("保存会话成功: {SessionId}", data.Id);
@@ -187,91 +174,12 @@ namespace Seeing.Session.Storage
         /// <summary>
         /// 原子文件替换（带重试机制）
         /// </summary>
-        /// <remarks>
-        /// Windows 上 File.Move 可能因以下原因失败：
-        /// 1. Windows Defender 扫描新写入的文件
-        /// 2. 操作系统文件系统缓存未完全刷新
-        /// 3. 其他进程短暂持有文件句柄
-        /// 重试机制可处理这些瞬时故障。
-        /// </remarks>
-        private async Task AtomicMoveWithRetryAsync(string sourcePath, string destPath, string sessionId, CancellationToken ct)
-        {
-            const int maxRetries = 5;
-            const int initialDelayMs = 50;
-            var delay = initialDelayMs;
-
-            for (var attempt = 0; attempt < maxRetries; attempt++)
-            {
-                try
-                {
-                    // 确保源文件存在
-                    if (!File.Exists(sourcePath))
-                    {
-                        throw new FileNotFoundException($"临时文件不存在: {sourcePath}");
-                    }
-
-                    // 尝试原子替换
-                    File.Move(sourcePath, destPath, overwrite: true);
-                    return; // 成功则返回
-                }
-                catch (UnauthorizedAccessException ex)
-                {
-                    _logger?.LogWarning(
-                        "文件移动失败 (尝试 {Attempt}/{MaxRetries}): {SessionId}, 错误: {Error}",
-                        attempt + 1, maxRetries, sessionId, ex.Message);
-
-                    // 最后一次尝试失败不重试，落到下方备用策略
-                    if (attempt < maxRetries - 1)
-                    {
-                        await Task.Delay(delay, ct);
-                        delay *= 2;
-                    }
-                }
-                catch (IOException ex)
-                {
-                    // 处理 IO 异常（如文件被锁定）
-                    _logger?.LogWarning(
-                        "文件移动失败 (尝试 {Attempt}/{MaxRetries}): {SessionId}, 错误: {Error}",
-                        attempt + 1, maxRetries, sessionId, ex.Message);
-
-                    if (attempt < maxRetries - 1)
-                    {
-                        await Task.Delay(delay, ct);
-                        delay *= 2;
-                    }
-                }
-            }
-
-            // 所有重试都失败，尝试最后的安全备份策略：Copy 覆盖目标后删除临时源。
-            // 采用 Copy-then-delete（而非 delete dest + Move）：即使目标无法替换，
-            // 也不会先毁掉已有会话文件；Copy 失败时保留 source 作为唯一可恢复副本。
-            try
-            {
-                File.Copy(sourcePath, destPath, overwrite: true);
-                TryDeleteFile(sourcePath);
-                _logger?.LogWarning("使用备用策略成功保存会话: {SessionId}", sessionId);
-            }
-            catch (Exception ex)
-            {
-                // 不删除 source：交由 SaveAsync 的 finally 按成功/失败决定清理
-                _logger?.LogError(ex, "保存会话失败（所有重试耗尽）: {SessionId}", sessionId);
-                throw new IOException($"保存会话失败: {sessionId}", ex);
-            }
-        }
+        /// <remarks>实现已上收到 <see cref="AtomicFileWrite"/>，两个存储共用同一套重试与兜底语义。</remarks>
+        private Task AtomicMoveWithRetryAsync(string sourcePath, string destPath, string sessionId, CancellationToken ct)
+            => AtomicFileWrite.MoveWithRetryAsync(sourcePath, destPath, sessionId, _logger, ct);
 
         /// <summary>尽力删除文件（不存在或失败均静默）。</summary>
-        private static void TryDeleteFile(string path)
-        {
-            try
-            {
-                if (File.Exists(path))
-                    File.Delete(path);
-            }
-            catch
-            {
-                // 忽略清理失败
-            }
-        }
+        private static void TryDeleteFile(string path) => AtomicFileWrite.TryDelete(path);
 
         /// <summary>
         /// 加载单个会话
@@ -798,14 +706,15 @@ namespace Seeing.Session.Storage
                 var archivePath = Path.Combine(archiveDir, $"{sessionId}.json.gz");
 
                 // 临时文件 + 原子替换，避免并发列表读到半写的 .gz
-                var archiveTemp = archivePath + ".tmp";
+                var archiveTemp = AtomicFileWrite.CreateTempPath(archivePath);
                 await using (var fileStream = File.Create(archiveTemp))
                 await using (var gzipStream = new GZipStream(fileStream, CompressionLevel.Optimal))
                 await using (var writer = new StreamWriter(gzipStream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)))
                 {
                     await writer.WriteAsync(json.AsMemory(), ct).ConfigureAwait(false);
                 }
-                File.Move(archiveTemp, archivePath, overwrite: true);
+                await AtomicFileWrite.MoveWithRetryAsync(archiveTemp, archivePath, sessionId, _logger, ct).ConfigureAwait(false);
+                AtomicFileWrite.TryDelete(archiveTemp);
 
                 // 从活跃目录移除（含 ref 附属目录）
                 File.Delete(filePath);
@@ -866,7 +775,7 @@ namespace Seeing.Session.Storage
 
                 // 复用原子写路径（临时文件 + 原子替换），避免半写文件
                 var json2 = JsonSerializer.Serialize(data, _jsonOptions);
-                var tempPath = filePath + ".tmp";
+                var tempPath = AtomicFileWrite.CreateTempPath(filePath);
                 var moved = false;
                 try
                 {
@@ -940,21 +849,13 @@ namespace Seeing.Session.Storage
         }
 
         /// <summary>
-        /// 释放文件锁字典中的所有信号量
+        /// 释放实例。文件锁是进程级共享的（见 <see cref="AtomicFileWrite"/>），
+        /// 不能随实例释放，否则会破坏其它实例与后续写入。
         /// </summary>
         public void Dispose()
         {
             if (_disposed) return;
             _disposed = true;
-
-            lock (_lockDictLock)
-            {
-                foreach (var semaphore in _fileLocks.Values)
-                {
-                    semaphore.Dispose();
-                }
-                _fileLocks.Clear();
-            }
         }
     }
 }

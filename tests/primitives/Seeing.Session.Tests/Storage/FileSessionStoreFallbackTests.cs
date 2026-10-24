@@ -31,11 +31,11 @@ public class FileSessionStoreFallbackTests : IDisposable
 
         var act = async () => await store.SaveAsync(data, TestContext.Current.CancellationToken);
 
-        // 重试耗尽后应走备用策略并统一包装为 IOException；失败时 source（.tmp）保留
+        // 重试耗尽后应走备用策略并统一包装为 IOException；失败时 source（唯一 .tmp）保留
         await act.Should().ThrowAsync<IOException>();
-        var tempPath = destPath + ".tmp";
-        File.Exists(tempPath).Should().BeTrue("失败时必须保留临时源文件供恢复");
-        (await File.ReadAllTextAsync(tempPath, TestContext.Current.CancellationToken))
+        var tempFiles = Directory.GetFiles(_dir, data.Id + ".json.*.tmp");
+        tempFiles.Should().ContainSingle("失败时必须保留唯一临时源文件供恢复");
+        (await File.ReadAllTextAsync(tempFiles[0], TestContext.Current.CancellationToken))
             .Should().Contain(data.Id);
     }
 
@@ -48,8 +48,7 @@ public class FileSessionStoreFallbackTests : IDisposable
 
         await store.SaveAsync(data, TestContext.Current.CancellationToken);
 
-        var tempPath = Path.Combine(_dir, data.Id + ".json.tmp");
-        File.Exists(tempPath).Should().BeFalse("成功后不得残留 .tmp 临时文件");
+        Directory.GetFiles(_dir, data.Id + ".json.*.tmp").Should().BeEmpty("成功后不得残留临时文件");
         (await store.LoadAsync(data.Id, TestContext.Current.CancellationToken)).Should().NotBeNull();
     }
 
