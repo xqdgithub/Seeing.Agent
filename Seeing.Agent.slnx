@@ -133,7 +133,6 @@
     <Project Path="tests/apps/Seeing.Agent.Cli.Tests/Seeing.Agent.Cli.Tests.csproj" />
     <Project Path="tests/apps/Seeing.Agent.HostComposition.Tests/Seeing.Agent.HostComposition.Tests.csproj" />
     <Project Path="tests/apps/Seeing.Agent.Tui.Tests/Seeing.Agent.Tui.Tests.csproj" />
-    <Project Path="tests/apps/Seeing.Agent.WebUI.Tests/Seeing.Agent.WebUI.Tests.csproj" />
     <Project Path="tests/apps/Seeing.Agent.WebUI.Files.Tests/Seeing.Agent.WebUI.Files.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/plugs/">
