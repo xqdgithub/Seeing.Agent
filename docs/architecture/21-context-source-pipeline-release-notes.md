@@ -25,7 +25,7 @@
 | DI 注册 | `AddSeeingCore` → `AddContextPipeline()`（`src/spine/Seeing.Agent.Core/Extensions/ServiceCollectionExtensions.cs`） |
 | 装配点（主链） | `src/hosting/Seeing.Agent.Hosting/Execution/ExecutionRunner.cs`：命令处理之后、构建历史之前 |
 | 状态键 | `SessionMetadataKeys.ContextBaseline = "context.baseline"`（`src/primitives/Seeing.Session/Core/SessionMetadataKeys.cs`） |
-| 增量消息元数据键 | `SessionMetadataKeys.ContextUpdateSources = "context.update.sources"`（本次叙述涉及的源键，供 UI 折叠 / 标题计数） |
+| 增量消息元数据键 | `SessionMetadataKeys.ContextUpdate = "context.update"`（恒为 true 的显式标记）+ `SessionMetadataKeys.ContextUpdateSources = "context.update.sources"`（本次叙述涉及的源键，供 UI 折叠 / 标题计数）。**判定只认元数据，禁止按内容前缀嗅探** |
 
 ### 2.2 值模型（不落正文）
 
@@ -55,7 +55,7 @@
 | `/clear`（`SessionData.ClearMessages`） | 移除 `context.baseline`（新 epoch，下轮全量重建） |
 | fork | 状态**不复制**；分支首次装配全量渲染，不产生重复叙述 |
 | revert | 增量消息被移除后，账本折叠（`FoldLedgerToLive`）到存活的最晚条目；**全部增量都被回退时折回 `baselineValues`**（模型只剩基线文本，不能继续声称「已叙述」），下一次改回旧值会重新叙述 |
-| 压缩（`CompressionService`） | 置 `PendingBaselineReset.Compaction` 位；下一次装配按源消费一次：**能读到当前值的源用当前值重渲染基线并成为新基线（新 epoch）**，`Target=Message` 的初始渲染随新基线重新注入；不可读的源保留存库基线与已叙述值（文件被临时占用不得毁掉基线），并按源置 `pendingReanchor` 标记，**在后续装配重试重锚定**（期间的存库文本继续可用，且不参与「同值不同文本」检查，避免每轮误报）。重新锚定的源本轮不产生增量叙述，也不触发「渲染不确定」告警 |
+| 压缩（`CompressionService`） | 置 `PendingBaselineReset.Compaction` 位（**在会话落盘之前**置位，位与压缩结果同一次保存写入，重启/多进程不丢）；下一次装配按源消费一次：**能读到当前值的源用当前值重渲染基线并成为新基线（新 epoch）**，`Target=Message` 的初始渲染随新基线重新注入；不可读的源保留存库基线与已叙述值（文件被临时占用不得毁掉基线），并按源置 `pendingReanchor` 标记，**在后续装配重试重锚定**（期间的存库文本继续可用，且不参与「同值不同文本」检查，避免每轮误报）。**被跳过 / 本轮未参与装配的源同样如此**（文本、哈希、值全部原样保留 + 置 `pendingReanchor`）：不存在「值已推进而文本仍是旧 epoch」的中间态（那会每轮产生假的「渲染不确定」告警，且模型永远看到旧内容）。重新锚定的源本轮不产生增量叙述，也不触发「渲染不确定」告警 |
 | 工作区变更 | `PendingBaselineReset.WorkspaceChanged` 位：处理方式与压缩相同（可读源按当前值重新锚定）。**该位目前为预留**：生产代码尚未置位（工作区切换实际靠 canonical 中的绝对路径变化自然产生 diff），宿主如需要可显式写入 |
 
 ### 2.6 并发与单飞
@@ -102,13 +102,13 @@
 | **插件技能同名优先于文件技能** | 之前由执行顺序决定 | 显式规则：`Registered` > `ProjectFile`(`.seeing` > `.agents` > `skills`) > `UserFile`(`.seeing` > `.agents`)；冲突进 `SkillCatalogSnapshot.Conflicts` |
 | **`ISkillManager` 写面 `[Obsolete(error: true)]`** | 破坏性（源码级） | `AddSearchDirectory` / `DiscoverSkillsAsync` / `RegisterEmbeddedSkill` / `Unregister` 全部指向 `ISkillCatalog`（`RegisterAsync` / `UnregisterAsync` / `RefreshAsync` / `EnsureFreshAsync`） |
 | **`ISkillWriter.SetEnabledAsync` 需显式层级** | 破坏性（新增契约） | `SetEnabledAsync(name, enabled, ConfigLevel level)`；启用时清除**所有**层级禁用项，禁用只写指定层级；UI 预选当前生效层级 |
-| **`IToolManager.ExecuteAsync` 新增可选参数 `skillSnapshot`** | 破坏性（源码级，第三方实现需补参数） | 契约新增 `SkillCatalogSnapshot? skillSnapshot = null` 末位参数（透传到 `ToolContext.SkillSnapshot`，供 `skill` 工具按执行级钉住解析）。`ToolManager` 的便捷重载（`ExecuteAsync(List<ToolCall>, …)` 与 `ExecuteAsync(string toolId, Dictionary<…>, …)`）**不透传**该快照：走这两条路径时钉住退化为「目录当前态」，仅主链 `AgentExecutor` 路径保证钉住 |
+| **`IToolManager.ExecuteAsync` 新增可选参数 `skillSnapshot`** | 破坏性（源码级，第三方实现需补参数） | 契约新增 `SkillCatalogSnapshot? skillSnapshot = null` 末位参数（透传到 `ToolContext.SkillSnapshot`，供 `skill` 工具按执行级钉住解析）。原有两个零调用的便捷重载（`ExecuteAsync(List<ToolCall>, …)`、`ExecuteAsync(string toolId, Dictionary<…>, …)`）已删除——它们不透传快照，是「钉住静默退化」的唯一入口 |
 | **`SkillManager` 不再是提示词分节贡献者** | 提示词结构变化 | `## Skills` 由基线提供；agent 模板中如有同名占位应删除（`DynamicPromptBuilder` 已删除） |
 | **`SkillInfo.DirectoryPath` 移除** | 破坏性（罕见使用） | 迁到 `SkillCatalogEntry.DirectoryPath`（快照构建时写入的数据字段） |
 | **结算失败时不再注入指令增量** | 行为变化 | 装配在结算之后；执行未发生则不应宣称「已告知」 |
 | **`/help`、`/clear`、`/compact` 等短路命令不再注入指令** | 行为变化（无实际影响） | 这些命令不调用模型 |
 | **迁移适配器 `IInstructionManager` 删除** | 破坏性（源码级） | 主链早已直连 `IContextAssembler`；`InstructionInjectResult` 无生产消费者。需要「触发一次注入」请直接注入 `IContextAssembler` |
-| 新增 `context.baseline` / `context.update.sources` 元数据键 | 纯增量 | Clear 清除基线；fork 不复制基线 |
+| 新增 `context.baseline` / `context.update` / `context.update.sources` 元数据键 | 纯增量 | Clear 清除基线；fork 不复制基线 |
 | **旧会话首次装配会多一条基线指令消息** | 迁移行为 | 升级前的历史里已有旧 `InstructionManager` 注入的指令消息；首次装配会再插入一条新基线，同一 epoch 内可能出现重复（其中一条可能过期）的指令块。属一次性迁移噪声，新会话不受影响 |
 
 ---
@@ -122,12 +122,19 @@
 | `SkillFileScanner` | `.../Catalog/SkillFileScanner.cs` | 扫盘、解析、冲突与问题（半写目录 → `SkillLoadIssue`，不崩溃） |
 | `SkillCatalogFormatter` | `.../Catalog/SkillCatalogFormatter.cs` | 清单文本唯一格式化入口（基线 / 列表 / 增量），ordering 与字节稳定 |
 | `SkillRootWatcher` | `.../Watching/SkillRootWatcher.cs` | 每根一个 `FileSystemWatcher` + 400ms 去抖；生命周期归 `SkillsModule` |
-| `SkillWriteGate` | `.../Catalog/SkillWriteGate.cs` | `skill-state.json` 单写者（`SemaphoreSlim(1,1)`） |
+| `SkillWriteGate` | `.../Catalog/SkillWriteGate.cs` | `skill-state.json` 单写者（`SemaphoreSlim(1,1)`，不重入） |
 | `ISkillWriter` / `SkillWriter` | `Abstractions/Skills/ISkillWriter.cs`、`.../SkillWriter.cs` | 文件通道唯一写入口：路径安全、临时目录 + `Directory.Move` 原子写、写完 `RefreshAsync` |
-| 执行级钉住 | `Hosting/Execution/ExecutionRunner.ResolveSkillSnapshotAsync`、`Core/Context/ContextExecutionScope.cs` | 执行开始固化一次；`IContextExecutionScope` 与 `ISkillCatalogPin` 解析到同一实例 |
+| 执行级钉住 | `Hosting/Execution/ExecutionRunner.ResolveSkillSnapshotAsync`、`Core/Context/ContextExecutionScope.cs` | 执行开始（命令之前）固化一次，同一个 `IContextExecutionScope` 实例供命令 / 装配 / 工具共用 |
 
 `SkillLoader.LoadAsync/ReloadAsync` 合并为一条幂等路径（解析根 → `RefreshAsync`），修掉切工作区不清旧技能的问题。
 `SkillsPage` / `SkillCreatePage` / `SkillDetailPage` 改为订阅 `ISkillCatalog` + 调用 `ISkillWriter`，页面不再碰文件系统、不再用路径前缀嗅探来源。
+
+**根的唯一来源**：`ISkillCatalog.Roots` 是技能根的唯一事实。写服务（`SkillWriter`）的可写根选择与删除越界判定都读它——
+`.seeing/skills`、`.agents/skills`、`<ws>/skills`、`SkillsOptions.Paths` 下的技能都可列出、可编辑、可删除，不再出现「读根宽于写/删根」的分裂。
+**可用技能的唯一投影**：`ISkillCatalog.EnabledEntries` / `GetEnabledEntries(snapshot)`（实现单点 `SkillCatalogProjection`）——
+禁用项在所有消费方（基线清单 / `/skill` / `/<技能名>` / `skill` 工具 / 加载器 / ACP 命令同步 / UI）用同一判断。
+**命令与执行级钉住**：`CommandContext.Skill` 携带本轮钉住快照（宿主在命令之前填充），`/skill`、`/skills`、`/<技能名>`
+优先按它解析，只在旧宿主未接线时才经 `Services` 回退到目录当前态（唯一接缝 `SkillCommandCatalogView`）。
 
 ---
 

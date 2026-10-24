@@ -18,7 +18,10 @@ public interface IContextSource
     /// <summary>初始渲染落点。</summary>
     ContextSourceTarget Target { get; }
 
-    /// <summary>基线文本的字符上限（超出由装配器截断并记录到 Issues）。</summary>
+    /// <summary>
+    /// 基线文本的字符上限（0 = 不限）。<b>仅用于诊断</b>：截断由源在渲染内部完成
+    /// （截断结果即存库文本，见 <c>docs/architecture/21</c> §2.4），框架只观测并在超限时记入 Issues，不再二次截断。
+    /// </summary>
     int MaxBaselineChars { get; }
 
     /// <summary>
