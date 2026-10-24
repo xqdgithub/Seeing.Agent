@@ -23,8 +23,15 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
     private readonly ILogger<SkillCatalogCore> _logger;
     private readonly ISeeingDirectories? _directories;
 
-    /// <summary>扫盘 / 发布闸：所有写状态的操作都在它之内（原子替换的唯一出口）。</summary>
+    /// <summary>扫盘闸：同一时刻只允许一次扫盘（单飞的判据是快照实例 + 版本推进）。</summary>
     private readonly SemaphoreSlim _gate = new(1, 1);
+
+    /// <summary>
+    /// 发布闸：快照字段写入 + 原子替换的唯一临界区。
+    /// <para>用同步锁而非异步闸，使注册通道的同步入口（内嵌技能注册）与扫盘共用同一临界区，
+    /// 既不会与扫盘交错产出半更新快照，也不需要同步等待异步闸。</para>
+    /// </summary>
+    private readonly object _publishLock = new();
 
     private readonly object _subscriberLock = new();
     private readonly List<Action<SkillCatalogSnapshot>> _subscribers = [];
@@ -66,6 +73,18 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
 
     /// <inheritdoc />
     public SkillCatalogSnapshot Current => Volatile.Read(ref _snapshot);
+
+    /// <summary>
+    /// 默认根目录（优先级从高到低）：<c>{ws}/.seeing/skills</c>、<c>{ws}/.agents/skills</c>、
+    /// <c>{ws}/skills</c>、<c>~/.seeing/skills</c>、<c>~/.agents/skills</c>。
+    /// <para>加载器据此计算根列表，避免「默认根」出现第二份定义。</para>
+    /// </summary>
+    public IReadOnlyList<string> DefaultRoots =>
+        BuildDefaultRoots().Select(root => root.Directory).ToArray();
+
+    /// <summary>当前生效的根目录（优先级从高到低）。</summary>
+    public IReadOnlyList<string> Roots =>
+        Volatile.Read(ref _roots).Select(root => root.Directory).ToArray();
 
     /// <inheritdoc />
     public IDisposable Subscribe(Action<SkillCatalogSnapshot> onChanged)
@@ -138,7 +157,7 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
         return snapshot;
     }
 
-    /// <summary>扫盘 → 合并 → 发布（必须在闸内调用）。</summary>
+    /// <summary>扫盘 → 合并 → 发布。</summary>
     private async Task<SkillCatalogSnapshot> ScanAndPublishAsync(CancellationToken ct)
     {
         var roots = Volatile.Read(ref _roots);
@@ -146,34 +165,60 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
         var scan = await SkillFileScanner.ScanAsync(roots, _logger, ct).ConfigureAwait(false);
         var (disabledNames, disabledScopes) = await LoadDisabledStateAsync(ct).ConfigureAwait(false);
 
-        _fileSkills = ToImmutable(scan.Entries);
-        _fileConflicts = scan.Conflicts.ToArray();
-        _fileIssues = scan.Issues.ToArray();
-        _disabledNames = disabledNames;
-        _disabledScopes = disabledScopes;
-        _fingerprint = fingerprint;
+        lock (_publishLock)
+        {
+            _fileSkills = ToImmutable(scan.Entries);
+            _fileConflicts = scan.Conflicts.ToArray();
+            _fileIssues = scan.Issues.ToArray();
+            _disabledNames = disabledNames;
+            _disabledScopes = disabledScopes;
+            Volatile.Write(ref _fingerprint, fingerprint);
 
-        return Publish();
+            return Publish();
+        }
     }
 
     /// <inheritdoc />
-    public async Task<bool> RegisterAsync(
+    public Task<bool> RegisterAsync(
         SkillInfo info,
         string providerId,
         CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
+        var accepted = TryRegisterCore(info, providerId, out var published);
+        if (published is not null)
+            RaiseChanged(published);
+
+        return Task.FromResult(accepted);
+    }
+
+    /// <summary>
+    /// 同步注册（内嵌技能 / 只读门面转发用）：与扫盘发布共用同一临界区，不经过异步闸，
+    /// 因此无需（也不允许）用 <c>GetAwaiter().GetResult()</c> 同步等待异步接口。
+    /// </summary>
+    /// <returns>是否被接受；同名已注册时返回 false。</returns>
+    internal bool TryRegister(SkillInfo info, string providerId)
+    {
+        var accepted = TryRegisterCore(info, providerId, out var published);
+        if (published is not null)
+            RaiseChanged(published);
+
+        return accepted;
+    }
+
+    private bool TryRegisterCore(SkillInfo info, string providerId, out SkillCatalogSnapshot? published)
+    {
         ArgumentNullException.ThrowIfNull(info);
+        published = null;
+
         if (string.IsNullOrWhiteSpace(info.Name))
         {
-            _logger.LogWarning("拒绝注册名称无效的技能：{ProviderId}", providerId);
+            _logger.LogWarning("拒绝注册名称无效的技能：提供方={ProviderId}", providerId);
             return false;
         }
 
-        ct.ThrowIfCancellationRequested();
-
-        SkillCatalogSnapshot? published = null;
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
-        try
+        lock (_publishLock)
         {
             if (_registered.ContainsKey(info.Name))
             {
@@ -193,29 +238,40 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
             _registered = _registered.SetItem(info.Name, entry);
             published = Publish();
             _logger.LogInformation("已注册技能：{Name} 提供方={ProviderId}", info.Name, providerId);
+            return true;
         }
-        finally
-        {
-            _gate.Release();
-        }
-
-        if (published is not null)
-            RaiseChanged(published);
-
-        return true;
     }
 
     /// <inheritdoc />
-    public async Task<bool> UnregisterAsync(string name, CancellationToken ct = default)
+    public Task<bool> UnregisterAsync(string name, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+
+        var removed = TryUnregisterCore(name, out var published);
+        if (published is not null)
+            RaiseChanged(published);
+
+        return Task.FromResult(removed);
+    }
+
+    /// <summary>同步注销（内嵌技能 / 只读门面转发用），与 <see cref="TryRegister"/> 同一临界区。</summary>
+    internal bool TryUnregister(string name)
+    {
+        var removed = TryUnregisterCore(name, out var published);
+        if (published is not null)
+            RaiseChanged(published);
+
+        return removed;
+    }
+
+    private bool TryUnregisterCore(string name, out SkillCatalogSnapshot? published)
+    {
+        published = null;
+
         if (string.IsNullOrWhiteSpace(name))
             return false;
 
-        ct.ThrowIfCancellationRequested();
-
-        SkillCatalogSnapshot? published = null;
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
-        try
+        lock (_publishLock)
         {
             if (!_registered.ContainsKey(name))
                 return false;
@@ -223,16 +279,8 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
             _registered = _registered.Remove(name);
             published = Publish();
             _logger.LogInformation("已注销技能：{Name}", name);
+            return true;
         }
-        finally
-        {
-            _gate.Release();
-        }
-
-        if (published is not null)
-            RaiseChanged(published);
-
-        return true;
     }
 
     /// <summary>
@@ -267,6 +315,7 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
     /// <summary>
     /// 合并双通道并发布新快照（版本 +1），最后在锁外触发事件。
     /// <para>注册通道优先：同名文件技能被注册项遮蔽，并记录一条冲突（不静默覆盖）。</para>
+    /// <para>调用方必须持有 <see cref="_publishLock"/>：快照字段读取与版本推进同属一个临界区。</para>
     /// </summary>
     private SkillCatalogSnapshot Publish()
     {
