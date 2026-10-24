@@ -1,8 +1,6 @@
-using Seeing.Session.Core;
 using System.Net;
 using System.Security;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Seeing.Agent.Core.Instructions;
@@ -99,24 +97,6 @@ public static partial class ProjectInstructionsRenderer
             files,
             content);
         return true;
-    }
-
-    /// <summary>
-    /// 构造携带指令元数据的用户消息，用于注入会话历史。
-    /// </summary>
-    public static SessionMessage CreateUserMessage(
-        string cwd,
-        string reason,
-        IReadOnlyList<InstructionFile> files)
-    {
-        var content = Wrap(cwd, reason, files);
-        var pathsJson = JsonSerializer.Serialize(files.Select(file => file.Path));
-
-        return SessionMessage.UserMessage(content)
-            .WithMetadata(ProjectInstructions.MetadataKeys.ProjectInstructions, true)
-            .WithMetadata(ProjectInstructions.MetadataKeys.Reason, reason)
-            .WithMetadata(ProjectInstructions.MetadataKeys.Cwd, cwd)
-            .WithMetadata(ProjectInstructions.MetadataKeys.Paths, pathsJson);
     }
 
     private static string EscapeAttribute(string value) => SecurityElement.Escape(value) ?? string.Empty;

@@ -20,7 +20,7 @@ namespace Seeing.Agent.Abstractions.Tools
 
         /// <summary>
         /// 本轮执行钉住的技能快照（由执行器透传；工具须优先使用，缺失时才回退目录当前态）。
-        /// <para>与 <see cref="ISkillCatalogPin"/> 指向同一对象，
+        /// <para>与执行级作用域（<c>IContextExecutionScope.SkillSnapshot</c>）是同一对象，
         /// 保证「装配看到的清单」与「工具能加载的技能」一致。</para>
         /// </summary>
         public SkillCatalogSnapshot? SkillSnapshot { get; set; }

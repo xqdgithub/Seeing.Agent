@@ -809,11 +809,9 @@ namespace Seeing.Agent.Core.Extensions
                 sp.GetRequiredService<InstructionDiscovery>(),
                 sp.GetRequiredService<ILogger<InstructionFileReader>>()));
 
-            // 执行级事实（会话 cwd + 工作区根 + 钉住快照）：每次执行一个实例，由宿主在装配前填充。
-            // ISkillCatalogPin 是它的语义别名，必须解析到同一个实例（不另建只看快照的第二份对象）。
+            // 执行级事实（会话 cwd + 工作区根 + 钉住快照）：每次执行一个实例，由宿主在命令/装配之前填充。
             services.TryAddScoped<ContextExecutionScope>();
             services.TryAddScoped<IContextExecutionScope>(sp => sp.GetRequiredService<ContextExecutionScope>());
-            services.TryAddScoped<ISkillCatalogPin>(sp => sp.GetRequiredService<ContextExecutionScope>());
 
             services.TryAddEnumerable(
                 ServiceDescriptor.Scoped<IContextSource, ProjectInstructionsContextSource>());

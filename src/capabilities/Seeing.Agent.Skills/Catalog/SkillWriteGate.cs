@@ -8,15 +8,14 @@ namespace Seeing.Agent.Skills.Catalog;
 /// 写入方（<c>SkillWriter</c>）在闸内只做状态文件读写，释放后才刷新目录；
 /// 目录方（<c>SkillCatalogCore</c>）先取本闸读禁用状态、释放后再取目录扫盘闸。
 /// 因此不存在「一方持写闸等目录闸、另一方持目录闸等写闸」的互等。</para>
-/// <para>读侧与写侧共用同一实例；<b>同一条异步流</b>可重入（<see cref="AsyncLocal{T}"/>），
-/// 该能力仅为兼容既有调用点保留——锁序修复后正常路径已不再嵌套，新代码不得依赖它。</para>
+/// <para><b>不重入</b>：既有两个调用点（<c>SkillWriter.SetEnabledAsync</c>、
+/// <c>SkillCatalogCore.LoadDisabledStateAsync</c>）都是顶层调用，锁序修复后不存在嵌套。
+/// 此前用 <c>AsyncLocal</c> 放行重入还有一个隐患：它会流入闸内启动的子任务，
+/// 让子任务继承「已持闸」并绕过信号量，在临界区内并发改状态文件。因此不再提供重入。</para>
 /// </summary>
 public sealed class SkillWriteGate : IDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
-
-    /// <summary>当前异步流持有深度（&gt;0 表示该流程已持闸，重入直接执行）。</summary>
-    private readonly AsyncLocal<int> _heldDepth = new();
 
     /// <summary>在闸内执行一次完整的读-改-写。</summary>
     /// <typeparam name="T">结果类型。</typeparam>
@@ -27,19 +26,13 @@ public sealed class SkillWriteGate : IDisposable
     {
         ArgumentNullException.ThrowIfNull(action);
 
-        // 同一异步流已持闸（写者 → 目录刷新 → 读状态文件）：直接执行，不重复获取。
-        if (_heldDepth.Value > 0)
-            return await action(ct).ConfigureAwait(false);
-
         await _gate.WaitAsync(ct).ConfigureAwait(false);
-        _heldDepth.Value++;
         try
         {
             return await action(ct).ConfigureAwait(false);
         }
         finally
         {
-            _heldDepth.Value--;
             _gate.Release();
         }
     }

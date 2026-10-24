@@ -88,15 +88,6 @@ internal sealed class ContextBaselineStore
     }
 
     /// <summary>
-    /// 移除会话基线状态（清空消息时使用）。
-    /// </summary>
-    public void Clear(SessionData session)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        session.Metadata?.Remove(SessionMetadataKeys.ContextBaseline);
-    }
-
-    /// <summary>
     /// 修正反序列化可绕过的非空约束（JSON 显式 null）并丢弃无法使用的损坏条目。
     /// </summary>
     private ContextBaselineState Normalize(SessionData session, ContextBaselineState state)

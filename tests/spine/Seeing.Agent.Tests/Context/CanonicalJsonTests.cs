@@ -27,12 +27,12 @@ public sealed class CanonicalJsonTests
         CanonicalJson.Serialize(d.RootElement).Should().Be("""{"a":[1,2]}""");
     }
 
-    // 已知向量：Hash 必须稳定（golden）
+    // 已知向量：规范化输出必须稳定（golden，回归即意味着 diff/持久化字节漂移）
     [Fact]
-    public void Hash_ShouldMatchGoldenVector()
+    public void Serialize_ShouldMatchGoldenVector()
     {
         using var d = JsonDocument.Parse("""{"a":[1,2],"b":"x"}""");
 
-        CanonicalJson.Hash(d.RootElement).Should().Be("d0f56dda38d34376527524ddd98f7ec117d5cbfb240f86e11bfb9d2d01a717d9");
+        CanonicalJson.Serialize(d.RootElement).Should().Be("""{"a":[1,2],"b":"x"}""");
     }
 }

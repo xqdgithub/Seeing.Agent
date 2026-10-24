@@ -79,15 +79,4 @@ public sealed class ContextBaselineStoreTests
         loaded.Sources["k"].DeltaLedger[0].MessageId.Should().Be("msg_2");
         loaded.Sources["k"].DeltaLedger[0].Values["x"]!.GetValue<string>().Should().Be("y");
     }
-
-    [Fact]
-    public void Clear_ShouldRemoveMetadataKey()
-    {
-        var s = new SessionData { Id = "s1" };
-        s.Metadata[SessionMetadataKeys.ContextBaseline] = "{}";
-
-        CreateStore().Clear(s);
-
-        s.Metadata.Should().NotContainKey(SessionMetadataKeys.ContextBaseline);
-    }
 }

@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -6,11 +5,12 @@ using System.Text.Json;
 namespace Seeing.Agent.Core.Context;
 
 /// <summary>
-/// 规范化 JSON 与稳定哈希。
+/// 规范化 JSON（diff 与持久化的字节稳定形式）。
 /// <para>规范化规则：对象键按 ordinal 升序递归输出；数组保持顺序；不含任何空白；
 /// 字符串使用标准转义（"、\ 与控制字符转义，非 ASCII 原样 UTF-8）；数字保留原始表示
 /// （<see cref="JsonElement.GetRawText"/>，避免精度改写）；未定义类型抛
 /// <see cref="NotSupportedException"/>。</para>
+/// <para>只做序列化：值的哈希由装配器按<b>文本</b>计算（同值重渲染比对用的就是渲染文本的哈希）。</para>
 /// </summary>
 internal static class CanonicalJson
 {
@@ -33,15 +33,6 @@ internal static class CanonicalJson
         _ => throw new NotSupportedException(
             $"无法规范化未定义的 JSON 类型：{value.ValueKind}")
     };
-
-    /// <summary>
-    /// 规范化文本的 SHA-256，返回 64 位小写十六进制。
-    /// </summary>
-    public static string Hash(JsonElement value)
-    {
-        var bytes = Encoding.UTF8.GetBytes(Serialize(value));
-        return Convert.ToHexStringLower(SHA256.HashData(bytes));
-    }
 
     private static string SerializeObject(JsonElement value)
     {
