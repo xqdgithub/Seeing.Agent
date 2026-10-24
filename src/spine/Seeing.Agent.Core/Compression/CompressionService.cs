@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Compression;
 using Seeing.Agent.Abstractions.Summarization;
+using Seeing.Agent.Core.Context;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Core.Compression;
@@ -14,16 +15,25 @@ public class CompressionService : ICompressionService
     private readonly ISummarizer? _summarizer;
     private readonly ISessionManager _sessionManager;
     private readonly ILogger<CompressionService> _logger;
+    private readonly ContextBaselineStore _baselineStore;
 
     /// <summary>初始化压缩编排服务，注入摘要器、会话管理器与日志器。</summary>
+    /// <param name="summarizer">摘要器；为 null 时压缩直接失败。</param>
+    /// <param name="sessionManager">会话管理器。</param>
+    /// <param name="logger">压缩日志。</param>
+    /// <param name="loggerFactory">可选：用于上下文基线存储的日志；缺省使用空日志。</param>
     public CompressionService(
         ISummarizer? summarizer,
         ISessionManager sessionManager,
-        ILogger<CompressionService>? logger = null)
+        ILogger<CompressionService>? logger = null,
+        ILoggerFactory? loggerFactory = null)
     {
         _summarizer = summarizer;
         _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
         _logger = logger ?? NullLogger<CompressionService>.Instance;
+        _baselineStore = new ContextBaselineStore(
+            loggerFactory?.CreateLogger<ContextBaselineStore>()
+            ?? NullLogger<ContextBaselineStore>.Instance);
     }
 
     /// <summary>
@@ -80,6 +90,10 @@ public class CompressionService : ICompressionService
             session.UpdatedAt = DateTime.Now;
             await _sessionManager.SaveAndNotifyAsync(session.Id, persist: true, cancellationToken);
 
+            // 压缩后置「待重置」位：装配器会把已叙述值折叠为新基线并重放 Target=Message 的初始渲染，
+            // 使被摘要吃掉的指令重新可见。置位失败绝不影响压缩结果（仅告警）。
+            TryMarkCompactionPending(session);
+
             _logger.LogInformation("压缩完成: {SessionId} 移除 {Count} 条", sessionId, result.MessagesRemoved);
 
             return new CompressionOutcome
@@ -96,6 +110,27 @@ public class CompressionService : ICompressionService
         {
             _logger.LogError(ex, "压缩失败: {SessionId}", sessionId);
             return new CompressionOutcome { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+
+    /// <summary>
+    /// 置「压缩后重建基线」待处理位（位集合：不覆盖其它待处理位）。
+    /// </summary>
+    private void TryMarkCompactionPending(SessionData session)
+    {
+        try
+        {
+            var state = _baselineStore.Load(session);
+            state.Pending |= PendingBaselineReset.Compaction;
+            _baselineStore.Save(session, state);
+        }
+        catch (Exception ex)
+        {
+            // 基线置位是增强能力：失败必须可观测，但不得让压缩失败
+            _logger.LogWarning(
+                ex,
+                "压缩后置待重建基线失败，已跳过：{SessionId}",
+                session.Id);
         }
     }
 
