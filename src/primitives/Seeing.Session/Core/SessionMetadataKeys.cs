@@ -12,6 +12,12 @@ public static class SessionMetadataKeys
     public const string InstructionFingerprints = "instruction.fingerprints";
 
     /// <summary>
+    /// 上下文源基线（JSON：状态版本 + 待处理重置位 + 各源已渲染文本与规范化值）。
+    /// 清空消息时移除；Fork 不复制（分支属新 epoch）。
+    /// </summary>
+    public const string ContextBaseline = "context.baseline";
+
+    /// <summary>
     /// 子代理会话关联的父会话工具调用 ID（task 工具写入，UI 据此精确匹配父子关联）。
     /// </summary>
     public const string OriginToolCallId = "origin_tool_call_id";
