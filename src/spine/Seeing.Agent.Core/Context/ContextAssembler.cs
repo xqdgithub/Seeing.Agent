@@ -173,7 +173,9 @@ public sealed class ContextAssembler : IContextAssembler
         // 1) 并行读取全部源（单源失败不影响其它源）
         var values = await ReadAllAsync(sources, session, issues, skippedKeys, ct).ConfigureAwait(false);
 
-        // 2) 先消费生命周期重置位（压缩 / 切根），再 diff
+        // 2) 先消费生命周期重置位（压缩 / 切根），再 diff。
+        //    重置按源在循环内处理：可读的源必须用**当前值**重渲染并成为新基线（C1），
+        //    不可读的源保留存库基线与已叙述值（绝不因文件被占用而摧毁基线）。
         var pendingConsumed = false;
         if (persist && state.Pending != PendingBaselineReset.None)
         {
@@ -181,7 +183,6 @@ public sealed class ContextAssembler : IContextAssembler
                 "消费上下文基线重置位：{SessionId} {Pending}",
                 session.Id,
                 state.Pending);
-            ApplyPendingReset(state);
             state.Pending = PendingBaselineReset.None;
             pendingConsumed = true;
             stateDirty = true;
@@ -190,6 +191,9 @@ public sealed class ContextAssembler : IContextAssembler
         var initialMessages = new List<PendingInitialMessage>();
         var narrations = new List<(string SourceKey, string Text)>();
         var narratedStates = new List<ContextSourceState>();
+        HashSet<string>? visitedKeys = pendingConsumed
+            ? new HashSet<string>(StringComparer.Ordinal)
+            : null;
 
         for (var i = 0; i < sources.Count; i++)
         {
@@ -206,6 +210,7 @@ public sealed class ContextAssembler : IContextAssembler
 
             var current = values[i] ?? new ContextSourceValue(ContextValueState.Unavailable, null, null);
             var hasState = state.Sources.TryGetValue(key, out var sourceState);
+            visitedKeys?.Add(key);
 
             // 3) Message 落点：初始渲染消息已失效（压缩清空 / 回退移除）→ 用**存库文本**重放。
             //    重放必须先于「不可用」的 continue：否则压缩时恰逢文件被占用，摘要已吃掉原消息，
@@ -217,6 +222,16 @@ public sealed class ContextAssembler : IContextAssembler
             {
                 // 保留上一次已叙述内容，不参与 diff（Review Focus #1）。
                 // 但「需重放」必须仍成立：只重放**存库文本**，绝不因不可读而重新渲染。
+                if (persist && hasState && pendingConsumed)
+                {
+                    // 重置位已消费但本轮读不到：只折叠已叙述值并作废账本，不动存库基线文本。
+                    // 必须先折叠再判断重放：折叠会清空 BaselineMessageId（压缩后原消息已被摘要取代）。
+                    FoldPendingResetKeepingBaseline(sourceState!);
+                    stateDirty = true;
+                    needsReplay = source.Target == ContextSourceTarget.Message
+                        && NeedsReplay(session, sourceState!);
+                }
+
                 if (needsReplay &&
                     !string.IsNullOrEmpty(sourceState!.BaselineText) &&
                     TryReplayInitial(source, current, sourceState, initialMessages, issues))
@@ -277,6 +292,29 @@ public sealed class ContextAssembler : IContextAssembler
                 continue;
             }
 
+            // 3.1) 重置位已消费（压缩 / 切根）：用**本轮刚读到的值**重渲染基线并采用为新基线（新 epoch）。
+            //      绝不重放存库文本——那会把「首次建立时」的旧内容重新插回历史，且随后因
+            //      CurrentValues 已对齐而永不补叙（C1）。重新锚定的源本轮不产生增量叙述。
+            if (pendingConsumed)
+            {
+                if (TryReanchorBaseline(session, source, current, currentValues, sourceState!, initialMessages, issues))
+                {
+                    changedKeys.Add(key);
+                    stateDirty = true;
+                }
+                else
+                {
+                    // 渲染失败（源异常）：保留存库基线与已叙述值，本轮不叙述，下次装配重试。
+                    _logger.LogWarning(
+                        "上下文源重置后无法用当前值重渲染基线，保留已存基线：{SourceKey} {SessionId}",
+                        key,
+                        session.Id);
+                    skippedKeys.Add(key);
+                }
+
+                continue;
+            }
+
             // 4) 回退路径：裁剪已失效账本，并按存活的最晚条目折叠已叙述值
             if (FoldLedgerToLive(session, sourceState!))
                 stateDirty = true;
@@ -320,24 +358,6 @@ public sealed class ContextAssembler : IContextAssembler
 
                 changedKeys.Add(key);
                 stateDirty = true;
-            }
-
-            // 6.1) 重置位已消费且落点为系统提示词：按当前值重新锚定基线文本。
-            //      压缩后旧增量已并入摘要，系统基线必须承载当前内容，否则模型会看到过期清单；
-            //      文本仍满足「同值重渲染逐字节相同」，不引入逐请求抖动。
-            if (pendingConsumed && source.Target == ContextSourceTarget.System)
-            {
-                var refreshed = SafeRenderInitial(source, current, issues);
-                if (refreshed is not null)
-                {
-                    WarnIfBaselineTooLong(session, source, refreshed, issues);
-                    sourceState.BaselineText = refreshed;
-                    sourceState.BaselineHash = HashText(refreshed);
-                    sourceState.BaselineValues = CloneObject(currentValues);
-                    sourceState.CurrentValues = CloneObject(currentValues);
-                    changedKeys.Add(key);
-                    stateDirty = true;
-                }
             }
 
             // 7) 同版本渲染确定性：值未变却重渲染出不同文本 → 保留已存文本 + 告警
@@ -385,6 +405,20 @@ public sealed class ContextAssembler : IContextAssembler
             stateDirty = true;
         }
 
+        // 8.1) 本轮未参与装配的源（被跳过 / 已注销）也要消费重置位：否则其账本仍指向
+        //      压缩后已不存在的增量消息，「已叙述」与模型可见内容继续漂移。
+        if (pendingConsumed && visitedKeys is not null)
+        {
+            foreach (var (key, sourceState) in state.Sources)
+            {
+                if (visitedKeys.Contains(key))
+                    continue;
+
+                FoldPendingResetKeepingBaseline(sourceState);
+                stateDirty = true;
+            }
+        }
+
         // 9) 提交：初始渲染消息 → 增量消息（顺序严格为「初始在前、增量在后」，且初始按源序）
         var historyBaseline = initialMessages.Count == 0
             ? null
@@ -408,9 +442,11 @@ public sealed class ContextAssembler : IContextAssembler
                 if (state.Sources.TryGetValue(initial.SourceKey, out var sourceState))
                 {
                     sourceState.BaselineMessageId = message.Id;
+                    // 账本记录「这条初始消息实际展示的值」= 基线值（不是可能已在同轮推进的已叙述值），
+                    // 否则回退折叠会把模型看不到的更新当成已叙述。
                     AppendLedgerEntry(sourceState, new DeltaLedgerEntry(
                         message.Id!,
-                        CloneObject(sourceState.CurrentValues) ?? new JsonObject()));
+                        CloneObject(sourceState.BaselineValues) ?? new JsonObject()));
                 }
 
                 stateDirty = true;
@@ -567,39 +603,91 @@ public sealed class ContextAssembler : IContextAssembler
         return true;
     }
 
-    /// <summary>Message 落点的初始渲染消息是否已不存活（压缩清空 / 回退移除）。</summary>
-    private static bool NeedsReplay(SessionData session, ContextSourceState state) =>
-        string.IsNullOrEmpty(state.BaselineMessageId) || session.IndexOfMessage(state.BaselineMessageId) < 0;
+    /// <summary>
+    /// Message 落点的初始渲染消息是否已不存活（压缩清空 / 回退移除）。
+    /// <para>空基线（无文本且值空）没有可重放的内容：不重放，也不反复尝试。</para>
+    /// </summary>
+    private static bool NeedsReplay(SessionData session, ContextSourceState state)
+    {
+        if (string.IsNullOrEmpty(state.BaselineText) && state.BaselineValues is { Count: 0 })
+            return false;
+
+        return string.IsNullOrEmpty(state.BaselineMessageId)
+            || session.IndexOfMessage(state.BaselineMessageId) < 0;
+    }
 
     // ===== 生命周期 / 回退 =====
 
     /// <summary>
-    /// 消费 pending 位：已叙述值成为新基线，账本作废（防止旧增量被折叠回来）。
-    /// <para>清空 <see cref="ContextSourceState.BaselineMessageId"/> 以触发 Message 落点的初始渲染重放
-    /// （压缩后摘要取代了原消息）。</para>
+    /// 重置位已消费但本源本轮无法用当前值重渲染（不可读 / 未参与装配）时的折叠：
+    /// 保留存库 <see cref="ContextSourceState.BaselineText"/> 与已叙述值，只让已叙述值成为新基线、
+    /// 作废账本、清空 <see cref="ContextSourceState.BaselineMessageId"/> 以便 Message 落点重放。
+    /// <para>绝不把 <c>null</c> / 不可读状态写进基线——文件被临时占用不得毁掉指令。</para>
     /// </summary>
-    private static void ApplyPendingReset(ContextBaselineState state)
+    private static void FoldPendingResetKeepingBaseline(ContextSourceState sourceState)
     {
-        foreach (var sourceState in state.Sources.Values)
+        sourceState.BaselineValues = CloneObject(sourceState.CurrentValues);
+        sourceState.CurrentValues = CloneObject(sourceState.BaselineValues);
+        sourceState.DeltaLedger.Clear();
+        sourceState.BaselineMessageId = null;
+    }
+
+    /// <summary>
+    /// 压缩 / 切根后按**当前值**重新锚定基线（新 epoch）：重渲染基线文本并采用，
+    /// <c>BaselineValues := CurrentValues := 当前值</c>，清空账本。
+    /// <para>返回 true 表示已重新锚定，调用方本轮不得再叙述该源的增量（值被视为已告知）；
+    /// 返回 false 表示渲染失败，调用方须保留旧基线与旧值。</para>
+    /// </summary>
+    private bool TryReanchorBaseline(
+        SessionData session,
+        IContextSource source,
+        ContextSourceValue current,
+        JsonObject currentValues,
+        ContextSourceState sourceState,
+        List<PendingInitialMessage> initialMessages,
+        List<string> issues)
+    {
+        var baselineText = SafeRenderInitial(source, current, issues);
+
+        if (string.IsNullOrWhiteSpace(baselineText))
         {
-            sourceState.BaselineValues = CloneObject(sourceState.CurrentValues);
-            sourceState.CurrentValues = CloneObject(sourceState.BaselineValues);
-            sourceState.DeltaLedger.Clear();
-            sourceState.BaselineMessageId = null;
+            // 确认消失（Removed）时「空」就是正确的新基线；其它情况视为渲染失败（保留旧基线）。
+            if (current.State != ContextValueState.Removed)
+                return false;
+
+            baselineText = string.Empty;
         }
+        else
+        {
+            WarnIfBaselineTooLong(session, source, baselineText, issues);
+        }
+
+        sourceState.ValueSchemaVersion = source.ValueSchemaVersion;
+        sourceState.BaselineText = baselineText;
+        sourceState.BaselineHash = HashText(baselineText);
+        sourceState.BaselineValues = CloneObject(currentValues);
+        sourceState.CurrentValues = CloneObject(currentValues);
+        sourceState.DeltaLedger.Clear();
+        sourceState.BaselineMessageId = null;
+
+        // Message 落点的初始渲染必须随新 epoch 重新可见（摘要已吃掉原消息）；空基线不插空消息。
+        if (source.Target == ContextSourceTarget.Message && baselineText.Length > 0)
+            initialMessages.Add(new PendingInitialMessage(source, source.Key.Value, baselineText, current));
+
+        return true;
     }
 
     /// <summary>
     /// 回退折叠：丢弃消息已不存在的账本条目；若存活的最晚条目值与已叙述值不同，
     /// 说明会话被回退，按该条目折叠 currentValues（只补叙之后的差异，不重复叙述）。
+    /// <para>账本被清空（所有已叙述增量都被回退掉）时必须折回 <see cref="ContextSourceState.BaselineValues"/>：
+    /// 模型此时只能看到基线文本，若 state 仍停在「已叙述值」，后续改回同一值会被判为无变化而永不补叙（C2）。</para>
     /// </summary>
     private static bool FoldLedgerToLive(SessionData session, ContextSourceState sourceState)
     {
-        if (sourceState.DeltaLedger.Count == 0)
-            return false;
-
         var before = sourceState.DeltaLedger.Count;
-        sourceState.DeltaLedger.RemoveAll(entry => session.IndexOfMessage(entry.MessageId) < 0);
+        if (before > 0)
+            sourceState.DeltaLedger.RemoveAll(entry => session.IndexOfMessage(entry.MessageId) < 0);
 
         var changed = before != sourceState.DeltaLedger.Count;
 
@@ -611,6 +699,14 @@ public sealed class ContextAssembler : IContextAssembler
                 sourceState.CurrentValues = CloneObject(newest.Values);
                 changed = true;
             }
+        }
+        else if (sourceState.BaselineValues is not null &&
+                 !JsonEquals(sourceState.CurrentValues, sourceState.BaselineValues))
+        {
+            // 没有任何存活增量：模型只剩基线（System 源始终可见；Message 源随后会被重放），
+            // 已叙述值必须折回基线，否则「回退 → 再改回旧值」永远不补叙。
+            sourceState.CurrentValues = CloneObject(sourceState.BaselineValues);
+            changed = true;
         }
 
         return changed;

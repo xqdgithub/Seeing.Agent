@@ -394,6 +394,157 @@ public sealed class ContextAssemblerTests
     }
 
     [Fact]
+    public async Task Compaction_WithChangedContent_ShouldReanchorToCurrentText()
+    {
+        // C1：压缩后必须用**当前值**重新锚定基线；重放首次文本会让之后的修改永久不可见
+        var source = new FakeSource
+        {
+            Key = new("a.message"),
+            Target = ContextSourceTarget.Message,
+            Value = FakeSource.ValueOf("""{"items":["a"]}""")
+        };
+        var session = new SessionData { Id = "s1" };
+        var assembler = CreateAssembler(session, source);
+
+        // 建立基线（A）→ 改内容产生增量（B）
+        await AssembleAsync(assembler, session);
+        source.Value = FakeSource.ValueOf("""{"items":["b"]}""");
+        (await AssembleAsync(assembler, session)).DeltaText.Should().Contain("\"b\"");
+
+        // 压缩：置位，并清空历史（摘要取代了原消息）
+        var store = new ContextBaselineStore(NullLogger<ContextBaselineStore>.Instance);
+        var state = store.Load(session);
+        state.Pending |= PendingBaselineReset.Compaction;
+        store.Save(session, state);
+        foreach (var message in session.Messages.ToList())
+            session.RemoveMessage(message);
+
+        var compacted = await AssembleAsync(assembler, session);
+
+        // 新基线来自当前值 B，不是首次的 A
+        compacted.Issues.Should().BeEmpty("epoch 变化不是「渲染不确定」，不得产生误导性告警");
+        compacted.HistoryBaseline.Should().Contain("\"b\"").And.NotContain("\"a\"");
+        // 重新锚定的源本轮不得再产生增量叙述
+        compacted.DeltaText.Should().BeNull();
+
+        var reanchoredState = store.Load(session).Sources["a.message"];
+        reanchoredState.BaselineText.Should().Contain("\"b\"").And.NotContain("\"a\"");
+        reanchoredState.BaselineValues!.ToJsonString().Should().Contain("\"b\"");
+        reanchoredState.CurrentValues!.ToJsonString().Should().Contain("\"b\"");
+
+        // 之后的变化必须相对新基线（B）叙述；同一装配不得再报「同值不同文本」
+        string? previousCanonical = null;
+        source.RenderBehavior = (previous, _) =>
+        {
+            previousCanonical = previous.Canonical is { } value ? CanonicalJson.Serialize(value) : null;
+            return "CHANGED-TO-C";
+        };
+        source.Value = FakeSource.ValueOf("""{"items":["c"]}""");
+
+        var next = await AssembleAsync(assembler, session);
+
+        next.Issues.Should().BeEmpty();
+        next.DeltaText.Should().Contain("CHANGED-TO-C");
+        previousCanonical.Should().Contain("\"b\"", "增量必须相对压缩后的新基线叙述");
+    }
+
+    [Fact]
+    public async Task RevertPastLastDelta_ShouldFoldToBaselineAndRenarrate()
+    {
+        // C2：回退掉全部增量后，已叙述值必须折回基线，否则模型看不到却永远不再补叙
+        var source = new FakeSource { Key = new("a.system") };
+        var session = new SessionData { Id = "s1" };
+        var assembler = CreateAssembler(session, source);
+
+        await AssembleAsync(assembler, session);
+
+        var anchor = SessionMessage.UserMessage("user");
+        session.AddMessage(anchor);
+
+        source.Value = FakeSource.ValueOf("""{"items":["b"]}""");
+        (await AssembleAsync(assembler, session, anchor.Id)).DeltaText.Should().NotBeNull();
+
+        // 回退：删除唯一一条增量消息
+        var deltaMessage = session.Messages.First(message =>
+            message.Content?.Contains("<context-update", StringComparison.Ordinal) == true);
+        session.RemoveMessage(deltaMessage);
+
+        // 当前值仍是 B，但模型只剩基线 A → 必须重新叙述
+        var renarrated = await AssembleAsync(assembler, session, anchor.Id);
+        renarrated.DeltaText.Should().NotBeNull().And.Contain("\"b\"");
+        session.MessageCount.Should().Be(2);
+
+        // 相同装配不得重复叙述
+        var stable = await AssembleAsync(assembler, session, anchor.Id);
+        stable.DeltaText.Should().BeNull();
+        session.MessageCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task RevertAllMessageNarrations_ShouldFoldToBaselineAndRenarrate()
+    {
+        // C2（Message 落点）：初始消息与增量都被回退后，重放基线 + 重新叙述当前差异
+        var source = new FakeSource
+        {
+            Key = new("a.message"),
+            Target = ContextSourceTarget.Message,
+            Value = FakeSource.ValueOf("""{"items":["a"]}""")
+        };
+        var session = new SessionData { Id = "s1" };
+        var assembler = CreateAssembler(session, source);
+
+        await AssembleAsync(assembler, session);
+        source.Value = FakeSource.ValueOf("""{"items":["b"]}""");
+        (await AssembleAsync(assembler, session)).DeltaText.Should().NotBeNull();
+        session.MessageCount.Should().Be(2);
+
+        // 回退掉初始消息与增量（等价于回到压缩前状态）
+        foreach (var message in session.Messages.ToList())
+            session.RemoveMessage(message);
+
+        var result = await AssembleAsync(assembler, session);
+
+        // 初始消息重放基线（A），增量重新叙述当前值（B）
+        result.HistoryBaseline.Should().Contain("\"a\"").And.NotContain("\"b\"");
+        result.DeltaText.Should().NotBeNull().And.Contain("\"b\"");
+        session.Messages[0].Content.Should().Contain("\"a\"");
+
+        var stable = await AssembleAsync(assembler, session);
+        stable.DeltaText.Should().BeNull("相同的已叙述状态不得重复叙述");
+    }
+
+    [Fact]
+    public async Task Compaction_WithRemovedSource_ShouldClearBaseline()
+    {
+        // C1：压缩后「确认消失」的源必须锚定为空基线，不能把旧内容继续留在系统提示词里
+        var source = new FakeSource { Key = new("a.system") };
+        var session = new SessionData { Id = "s1" };
+        var assembler = CreateAssembler(session, source);
+
+        await AssembleAsync(assembler, session);
+        assembler.BuildSystemBaseline(session).Should().Contain("\"a\"");
+
+        var store = new ContextBaselineStore(NullLogger<ContextBaselineStore>.Instance);
+        var state = store.Load(session);
+        state.Pending |= PendingBaselineReset.Compaction;
+        store.Save(session, state);
+
+        // 源已确认消失（Removed）；FakeSource 的 RenderInitial 对空对象仍返回标题 + {}，这里模拟真实源的空渲染
+        source.Value = FakeSource.Removed();
+        source.RenderInitialBehavior = _ => string.Empty;
+
+        var result = await AssembleAsync(assembler, session);
+
+        result.DeltaText.Should().BeNull("重新锚定的源本轮不得叙述增量");
+        assembler.BuildSystemBaseline(session).Should().BeEmpty();
+
+        // 下一轮不得反复尝试重放失败（Issues 为空、无增量）
+        var next = await AssembleAsync(assembler, session);
+        next.DeltaText.Should().BeNull();
+        next.Issues.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task SkipSet_ShouldLeaveSourceUntouched()
     {
         var source = new FakeSource { Key = new("a.system") };
