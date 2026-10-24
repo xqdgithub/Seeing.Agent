@@ -31,6 +31,36 @@ internal sealed class InstructionDiscovery
         string workspaceRoot,
         CancellationToken ct = default)
     {
+        var candidatePaths = EnumerateCandidatePaths(cwd, workspaceRoot);
+
+        var discovered = new List<InstructionFile>();
+
+        foreach (var normalizedPath in candidatePaths)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!File.Exists(normalizedPath))
+            {
+                continue;
+            }
+
+            var instructionFile = await TryReadAsync(normalizedPath, ct);
+            if (instructionFile is not null)
+            {
+                discovered.Add(instructionFile);
+            }
+        }
+
+        return discovered;
+    }
+
+    /// <summary>
+    /// 枚举全部候选指令文件路径（去重、绝对化，但不做存在性判断）。
+    /// <para>搜索根规则的唯一实现：用户级候选 + 工作区候选 + cwd 各级祖先候选。
+    /// <see cref="DiscoverAsync"/> 与逐路径读取端口（<c>InstructionFileReader</c>）共用此方法，
+    /// 避免两套扫描规则漂移。</para>
+    /// </summary>
+    public IReadOnlyList<string> EnumerateCandidatePaths(string cwd, string workspaceRoot)
+    {
         var normalizedCwd = Path.GetFullPath(cwd);
         var normalizedWorkspace = Path.GetFullPath(workspaceRoot);
         var candidatePaths = new List<string>();
@@ -51,26 +81,18 @@ internal sealed class InstructionDiscovery
                 normalizedWorkspace);
         }
 
-        var discovered = new List<InstructionFile>();
+        var normalized = new List<string>(candidatePaths.Count);
         var seen = new HashSet<string>(_pathComparer);
-
         foreach (var candidatePath in candidatePaths)
         {
-            ct.ThrowIfCancellationRequested();
-            var normalizedPath = Path.GetFullPath(candidatePath);
-            if (!seen.Add(normalizedPath) || !File.Exists(normalizedPath))
+            var fullPath = Path.GetFullPath(candidatePath);
+            if (seen.Add(fullPath))
             {
-                continue;
-            }
-
-            var instructionFile = await TryReadAsync(normalizedPath, ct);
-            if (instructionFile is not null)
-            {
-                discovered.Add(instructionFile);
+                normalized.Add(fullPath);
             }
         }
 
-        return discovered;
+        return normalized;
     }
 
     private void AddUserCandidates(List<string> candidatePaths)

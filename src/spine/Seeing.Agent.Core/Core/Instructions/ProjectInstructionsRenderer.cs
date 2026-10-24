@@ -38,6 +38,21 @@ public static partial class ProjectInstructionsRenderer
         sb.AppendLine(Notice);
         sb.AppendLine("</notice>");
 
+        sb.Append(RenderFileBlocks(files));
+
+        sb.Append("</").Append(ProjectInstructions.Tag).Append('>');
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// 渲染 <c>&lt;file&gt;</c> 块序列（含转义与换行）。
+    /// <para>信封与增量叙述共用同一实现，保证两处块格式逐字节一致。</para>
+    /// </summary>
+    public static string RenderFileBlocks(IReadOnlyList<InstructionFile> files)
+    {
+        ArgumentNullException.ThrowIfNull(files);
+
+        var sb = new StringBuilder();
         foreach (var file in files)
         {
             sb.Append("<file path=\"").Append(EscapeAttribute(file.Path));
@@ -46,7 +61,6 @@ public static partial class ProjectInstructionsRenderer
             sb.AppendLine("</file>");
         }
 
-        sb.Append("</").Append(ProjectInstructions.Tag).Append('>');
         return sb.ToString();
     }
 

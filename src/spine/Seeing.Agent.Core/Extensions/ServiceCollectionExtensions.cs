@@ -10,6 +10,7 @@ using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Compression;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
@@ -27,6 +28,7 @@ using Seeing.Agent.Core.Commands.Discovery;
 using Seeing.Agent.Core.Compression;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Context;
+using Seeing.Agent.Core.Context.Sources;
 using Seeing.Agent.Core.Decorators;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Hooks;
@@ -401,6 +403,9 @@ namespace Seeing.Agent.Core.Extensions
             // Session Hook 管理器适配器（让 SessionManager 使用）
             services.AddSingleton<Seeing.Session.Hooks.IHookManager>(sp =>
                 new Seeing.Agent.Core.Services.HookManagerAdapter(sp.GetRequiredService<HookManager>()));
+
+            // 上下文源管道（内置源 + 装配器）：须先于提示词构建注册（InstructionManager 依赖装配器）
+            services.AddContextPipeline();
 
             // 提示词构建服务
             services.AddPromptBuilder();
@@ -786,6 +791,25 @@ namespace Seeing.Agent.Core.Extensions
                     logger: sp.GetService<ILogger<ModuleSettlementReloadHandler>>()));
             services.AddSingleton<IReloadHandler>(sp =>
                 sp.GetRequiredService<ModuleSettlementReloadHandler>());
+        }
+
+        /// <summary>
+        /// 注册上下文源管道：源、逐路径读取端口与装配器。
+        /// <para>源可继续由能力模块追加（<c>IContextSource</c> 多注册）；本方法只登记 Core 自带的内置源。
+        /// 装配器用 <c>TryAdd</c>：宿主若提供专用装配实现，后注册者覆盖。</para>
+        /// </summary>
+        public static IServiceCollection AddContextPipeline(this IServiceCollection services)
+        {
+            services.TryAddSingleton<IInstructionFileReader, InstructionFileReader>();
+            services.TryAddEnumerable(
+                ServiceDescriptor.Singleton<IContextSource, ProjectInstructionsContextSource>());
+            services.TryAddSingleton<IContextAssembler>(sp => new ContextAssembler(
+                sp.GetServices<IContextSource>(),
+                sp.GetRequiredService<ISessionManager>(),
+                sp.GetRequiredService<ILogger<ContextAssembler>>(),
+                sp.GetService<ILoggerFactory>()));
+
+            return services;
         }
 
         /// <summary>
