@@ -18,7 +18,7 @@ namespace Seeing.Agent.Skills
     public class SkillManager : ISkillManager
     {
         private readonly ILogger<SkillManager> _logger;
-        private readonly SkillCatalogCore _catalog;
+        private readonly ISkillCatalog _catalog;
 
         /// <summary>
         /// 创建门面。
@@ -27,7 +27,7 @@ namespace Seeing.Agent.Skills
         /// <param name="catalog">技能目录（唯一真相源）。</param>
         public SkillManager(
             ILogger<SkillManager> logger,
-            SkillCatalogCore catalog)
+            ISkillCatalog catalog)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));

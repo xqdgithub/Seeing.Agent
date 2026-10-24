@@ -97,7 +97,10 @@ namespace Seeing.Agent.Core.Commands
                     MessageId = context.MessageId ?? string.Empty,
                     Services = context.Services,
                     CancellationToken = context.CancellationToken,
-                    WorkspaceRoot = context.WorkspaceRoot
+                    WorkspaceRoot = context.WorkspaceRoot,
+                    // 执行级钉住的技能快照必须随上下文一起重建：
+                    // 丢掉它会让命令回退到目录当前态，同一次执行内出现第二个真相源。
+                    Skill = context.Skill
                 };
             }
 

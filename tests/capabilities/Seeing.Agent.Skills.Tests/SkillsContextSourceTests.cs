@@ -212,15 +212,73 @@ public sealed class SkillsContextSourceTests : IDisposable
             TestContext.Current.CancellationToken);
         loadResult.Message.Should().Be(expected);
 
-        // 工具的「未找到」提示复用同一份清单文本
+        // 工具的「未找到」提示复用同一份清单文本（清单来自执行级钉住快照）
         var manager = new SkillManager(NullLogger<SkillManager>.Instance, catalog);
         var tool = new SkillTool(manager, NullLogger<SkillTool>.Instance);
         var result = await tool.ExecuteAsync(
             Arguments("missing"),
-            new ToolContext { SessionId = "s1" });
+            new ToolContext { SessionId = "s1", SkillSnapshot = Snapshot(entries) });
 
         result.Success.Should().BeFalse();
         result.Output.Should().Contain(expected);
+    }
+
+    // ===== 快照是唯一事实源 =====
+
+    [Fact]
+    public async Task SkillTool_WhenSnapshotMissing_ShouldFailWithoutReadingCatalog()
+    {
+        // 严格 mock：任何对 ISkillCatalog 的访问（尤其 Current）都会抛异常；
+        // 工具必须在「快照缺失」处失败，绝不回退目录当前态。
+        var catalog = new Mock<ISkillCatalog>(MockBehavior.Strict);
+        var manager = new SkillManager(NullLogger<SkillManager>.Instance, catalog.Object);
+        var tool = new SkillTool(manager, NullLogger<SkillTool>.Instance);
+
+        var result = await tool.ExecuteAsync(
+            Arguments("pinned"),
+            new ToolContext { SessionId = "s1" });
+
+        result.Success.Should().BeFalse();
+        result.Output.Should().Be(
+            "Skill catalog is not available in this execution; retry the request.");
+        catalog.VerifyGet(c => c.Current, Times.Never, "钉住快照缺失时不得读取目录当前态");
+    }
+
+    [Fact]
+    public async Task SkillTool_WhenCatalogDiffers_ShouldLoadPinnedSnapshotEntry()
+    {
+        var pinnedEntry = new SkillCatalogEntry(
+            new SkillInfo
+            {
+                Name = "pinned",
+                Description = "钉住说明",
+                Content = "钉住正文"
+            },
+            SkillSource.Registered,
+            "pinned-provider",
+            string.Empty);
+
+        // 目录当前态里同名技能已换成另一份正文（模拟执行期间被改写）
+        var catalog = new SkillCatalogCore(NullLogger<SkillCatalogCore>.Instance);
+        await catalog.RegisterAsync(
+            new SkillInfo { Name = "pinned", Description = "目录说明", Content = "目录正文" },
+            "catalog-provider",
+            TestContext.Current.CancellationToken);
+
+        var manager = new SkillManager(NullLogger<SkillManager>.Instance, catalog);
+        var tool = new SkillTool(manager, NullLogger<SkillTool>.Instance);
+
+        var result = await tool.ExecuteAsync(
+            Arguments("pinned"),
+            new ToolContext
+            {
+                SessionId = "s1",
+                SkillSnapshot = Snapshot(pinnedEntry)
+            });
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Contain("钉住正文");
+        result.Output.Should().NotContain("目录正文", "工具必须只认执行级快照");
     }
 
     // ===== 辅助 =====

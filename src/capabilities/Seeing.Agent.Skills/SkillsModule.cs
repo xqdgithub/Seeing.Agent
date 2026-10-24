@@ -102,7 +102,7 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
 
         services.AddSingleton<SkillManager>(sp => new SkillManager(
             sp.GetRequiredService<ILogger<SkillManager>>(),
-            sp.GetRequiredService<SkillCatalogCore>()));
+            sp.GetRequiredService<ISkillCatalog>()));
         services.TryAddSingleton<ISkillManager>(sp => sp.GetRequiredService<SkillManager>());
         services.AddSingleton<SkillTool>();
         services.AddSingleton<IComponentLoader, SkillLoader>();

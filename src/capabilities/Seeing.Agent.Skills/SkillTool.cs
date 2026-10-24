@@ -13,9 +13,9 @@ namespace Seeing.Agent.Skills
     /// 然后遵循技能中的指令执行任务。
     /// </para>
     /// <para>
-    /// 解析优先读执行级钉住快照（<see cref="ToolContext.SkillSnapshot"/>）：同一次执行内
-    /// 「装配看到的清单」与「工具能加载的技能」是同一份事实，安装/删除中途也不会漂移；
-    /// 仅在旧宿主未透传快照时才回退只读门面（目录当前态）。
+    /// 解析<b>只</b>读执行级钉住快照（<see cref="ToolContext.SkillSnapshot"/>）：同一次执行内
+    /// 「装配看到的清单」与「工具能加载的技能」是同一份事实，安装/删除中途也不会漂移。
+    /// 快照缺失视为宿主接线错误——直接失败，绝不回退目录当前态（否则一次执行内出现两个真相）。
     /// </para>
     /// </summary>
     public class SkillTool : ITool
@@ -97,41 +97,35 @@ namespace Seeing.Agent.Skills
             string directory;
             List<string> skillFiles;
 
-            if (context.SkillSnapshot is { } snapshot)
+            // 执行级钉住快照是本工具的唯一事实源：缺失即宿主未接线，失败并告警；
+            // 不得读取 ISkillCatalog / SkillManager 的目录当前态（会与提示词清单分叉）。
+            if (context.SkillSnapshot is not { } snapshot)
             {
-                // 执行级钉住：解析与文件列表都以本轮快照为准
-                var entry = snapshot.Entries.FirstOrDefault(
-                    candidate => string.Equals(candidate.Info.Name, skillName, StringComparison.OrdinalIgnoreCase));
+                _logger.LogWarning(
+                    "技能钉住快照缺失，skill 工具不可用: SessionId={SessionId}",
+                    context.SessionId);
+                return Task.FromResult(Failure(
+                    "Skill catalog is not available in this execution; retry the request."));
+            }
 
-                if (entry is null)
-                {
-                    if (snapshot.DisabledNames.Contains(skillName))
-                        return Task.FromResult(Disabled(skillName));
+            // 解析与文件列表都以本轮快照为准
+            var entry = snapshot.Entries.FirstOrDefault(
+                candidate => string.Equals(candidate.Info.Name, skillName, StringComparison.OrdinalIgnoreCase));
 
-                    return Task.FromResult(NotFound(skillName, snapshot));
-                }
-
-                if (snapshot.DisabledNames.Contains(entry.Info.Name))
+            if (entry is null)
+            {
+                if (snapshot.DisabledNames.Contains(skillName))
                     return Task.FromResult(Disabled(skillName));
 
-                skill = entry.Info;
-                directory = entry.DirectoryPath;
-                skillFiles = _skillManager.GetSkillFiles(entry, MaxSkillFiles);
+                return Task.FromResult(NotFound(skillName, snapshot));
             }
-            else
-            {
-                // 兼容旧宿主（未透传钉住快照）：回退只读门面的目录当前态
-                if (!_skillManager.IsSkillEnabled(skillName))
-                    return Task.FromResult(Disabled(skillName));
 
-                var info = _skillManager.GetSkillInfo(skillName);
-                if (info is null)
-                    return Task.FromResult(NotFound(skillName, null));
+            if (snapshot.DisabledNames.Contains(entry.Info.Name))
+                return Task.FromResult(Disabled(skillName));
 
-                skill = info;
-                directory = Path.GetDirectoryName(info.Location) ?? string.Empty;
-                skillFiles = _skillManager.GetSkillFiles(skillName, MaxSkillFiles);
-            }
+            skill = entry.Info;
+            directory = entry.DirectoryPath;
+            skillFiles = _skillManager.GetSkillFiles(entry, MaxSkillFiles);
 
             _logger.LogInformation("Loading skill: {Name}", skillName);
 
@@ -218,13 +212,9 @@ namespace Seeing.Agent.Skills
         }
 
         /// <summary>「技能不存在」提示：清单文本复用 <see cref="SkillCatalogFormatter"/>（唯一出口）。</summary>
-        private ToolResult NotFound(string skillName, SkillCatalogSnapshot? snapshot)
+        private ToolResult NotFound(string skillName, SkillCatalogSnapshot snapshot)
         {
-            IReadOnlyList<SkillCatalogEntry> available = snapshot is null
-                ? _skillManager.GetAllSkillInfos().Values
-                    .Select(info => new SkillCatalogEntry(info, SkillSource.Registered, null, string.Empty))
-                    .ToList()
-                : SkillCatalogProjection.EnabledEntries(snapshot);
+            var available = SkillCatalogProjection.EnabledEntries(snapshot);
 
             return Failure(
                 $"Skill \"{skillName}\" not found.\n\n{SkillCatalogFormatter.RenderList(available)}");
