@@ -17,9 +17,7 @@ namespace Seeing.Session.Storage
         private readonly ILogger<FileSessionGroupStore>? _logger;
         private readonly JsonSerializerOptions _jsonOptions;
 
-        // 按组文件的锁字典（实例级别，消除全局写锁串行）
-        private readonly Dictionary<string, SemaphoreSlim> _groupLocks = new();
-        private readonly object _lockDictLock = new();
+        // 组文件锁由 AtomicFileWrite 统一以「目标路径」为键在进程级提供（跨实例互斥）
 
         // 会话 → 组 的正向 TTL 索引（避免 FindBySessionAsync 每次全量扫描）；Save/Delete/SetBaseDirectory 同步刷新
         private readonly ConcurrentDictionary<string, SessionIndexEntry> _sessionIndex = new(StringComparer.Ordinal);
@@ -133,9 +131,20 @@ namespace Seeing.Session.Storage
                     group.CreatedAt = DateTime.Now;
 
                 var json = JsonSerializer.Serialize(group, _jsonOptions);
-                var tempPath = filePath + ".tmp";
-                await File.WriteAllTextAsync(tempPath, json, Encoding.UTF8, ct).ConfigureAwait(false);
-                File.Move(tempPath, filePath, overwrite: true);
+                // 唯一临时名 + 移动重试：多实例/多进程并发保存同一组文件时不会互相覆盖
+                var tempPath = AtomicFileWrite.CreateTempPath(filePath);
+                var moved = false;
+                try
+                {
+                    await File.WriteAllTextAsync(tempPath, json, Encoding.UTF8, ct).ConfigureAwait(false);
+                    await AtomicFileWrite.MoveWithRetryAsync(tempPath, filePath, group.Id, _logger, ct).ConfigureAwait(false);
+                    moved = true;
+                }
+                finally
+                {
+                    if (moved)
+                        AtomicFileWrite.TryDelete(tempPath);
+                }
 
                 IndexGroup(group);
                 _logger?.LogDebug("保存会话组成功: {GroupId}", group.Id);
@@ -249,18 +258,8 @@ namespace Seeing.Session.Storage
             }
         }
 
-        private SemaphoreSlim GetGroupLock(string filePath)
-        {
-            lock (_lockDictLock)
-            {
-                if (!_groupLocks.TryGetValue(filePath, out var groupLock))
-                {
-                    groupLock = new SemaphoreSlim(1, 1);
-                    _groupLocks[filePath] = groupLock;
-                }
-                return groupLock;
-            }
-        }
+        /// <summary>组文件锁（进程级、按目标路径共享，多个存储实例指向同一目录时也能互斥）。</summary>
+        private static SemaphoreSlim GetGroupLock(string filePath) => AtomicFileWrite.GetLock(filePath);
 
         private string GetGroupFilePath(string groupId)
         {
