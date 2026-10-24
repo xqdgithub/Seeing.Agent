@@ -107,6 +107,19 @@ public class MessageViewModel
     public string InstructionRaw { get; set; } = "";
 
     /// <summary>
+    /// 是否为上下文管道的增量叙述（<c>&lt;context-update&gt;</c> 消息）。
+    /// <para>与 <see cref="IsProjectInstructions"/> 互斥：增量可能来自任意源（技能清单 / 项目指令 / …），
+    /// 不得冒充「项目指令变更」。</para>
+    /// </summary>
+    public bool IsContextUpdate { get; set; }
+
+    /// <summary>本次叙述涉及的源键（稳定顺序，来自消息元数据）。</summary>
+    public IReadOnlyList<string> ContextUpdateSources { get; set; } = Array.Empty<string>();
+
+    /// <summary>上下文增量原文（折叠展示用）。</summary>
+    public string ContextUpdateRaw { get; set; } = "";
+
+    /// <summary>
     /// 是否包含附件
     /// </summary>
     public bool HasAttachments => Parts != null && Parts.Count > 0;

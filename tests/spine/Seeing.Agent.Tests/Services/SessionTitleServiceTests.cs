@@ -213,15 +213,19 @@ namespace Seeing.Agent.Tests.Services
         [Fact]
         public void CountIntentionalUserMessages_excludes_context_update_messages()
         {
-            // I1：上下文管道的增量叙述（<context-update>）不得占用「真实用户消息」名额
+            // I1：上下文管道的增量叙述不得占用「真实用户消息」名额。
+            // 判定只认元数据（context.update / context.update.sources）；
+            // 「元数据丢失时按内容信封兜底」已删除——前缀嗅探是反模式，且新消息一定带元数据。
             var messages = new List<SessionMessage>
             {
                 SessionMessage.UserMessage(
                         "<context-update source=\"k\">\n以下项目指令文件已新增或更新\n</context-update>")
+                    .WithMetadata(SessionMetadataKeys.ContextUpdate, true)
                     .WithMetadata(SessionMetadataKeys.ContextUpdateSources, new[] { "k" }),
-                // 元数据丢失（消息被重建）时按内容信封兜底
+                // 本次升级之前的会话数据只有 sources 键，同样不计入
                 SessionMessage.UserMessage(
-                    "<context-update source=\"k\">\n再次叙述\n</context-update>"),
+                        "<context-update source=\"k\">\n再次叙述\n</context-update>")
+                    .WithMetadata(SessionMetadataKeys.ContextUpdateSources, new[] { "k" }),
                 SessionMessage.UserMessage("real user intent"),
             };
 

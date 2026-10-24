@@ -1,5 +1,4 @@
 using Seeing.Agent.Abstractions.Runtime;
-using Seeing.Agent.Core.Context;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Reminders;
 using Seeing.Agent.WebUI.Models;
@@ -66,6 +65,15 @@ public static class MessageViewModelFactory
             viewModel.ReminderTaskBody = reminderParts.Task;
             viewModel.ReminderRaw = reminderParts.Raw;
         }
+        else if (IsContextUpdateMessage(msg))
+        {
+            // 上下文管道的增量叙述：独立种类（可来自任意源），不得冒充「项目指令变更」。
+            // 判定只认元数据标记，不按内容前缀嗅探（内容渲染与语义判定解耦）。
+            viewModel.IsContextUpdate = true;
+            viewModel.ContextUpdateSources = ReadMetadataStringArray(
+                msg.Metadata, SessionMetadataKeys.ContextUpdateSources);
+            viewModel.ContextUpdateRaw = msg.Content ?? "";
+        }
         else if (ProjectInstructionsRenderer.TryParse(msg.Content ?? "", out var instructionParts))
         {
             viewModel.IsProjectInstructions = true;
@@ -98,17 +106,51 @@ public static class MessageViewModelFactory
 
             viewModel.InstructionRaw = msg.Content ?? "";
         }
-        else if (msg.Metadata?.ContainsKey(SessionMetadataKeys.ContextUpdateSources) == true
-                 || ContextUpdateEnvelope.IsContextUpdate(msg.Content))
-        {
-            // 上下文管道的增量叙述（<context-update>）：同样折叠展示，避免 32k 指令正文裸奔
-            viewModel.IsProjectInstructions = true;
-            viewModel.InstructionReason = ProjectInstructions.Reasons.ContentChange;
-            viewModel.InstructionPaths = Array.Empty<string>();
-            viewModel.InstructionRaw = msg.Content ?? "";
-        }
 
         return viewModel;
+    }
+
+    /// <summary>
+    /// 是否为上下文管道的增量叙述：只认显式元数据标记。
+    /// <para><c>context.update</c> 是本次新增的标记；<c>context.update.sources</c> 兼容本次之前的会话数据。
+    /// 两者都是元数据，不做任何内容前缀判定。</para>
+    /// </summary>
+    private static bool IsContextUpdateMessage(SessionMessage msg)
+        => msg.Metadata is { } metadata
+           && (metadata.ContainsKey(SessionMetadataKeys.ContextUpdate)
+               || metadata.ContainsKey(SessionMetadataKeys.ContextUpdateSources));
+
+    /// <summary>读取元数据里的字符串数组（兼容 <c>string[]</c> 与落盘再加载后的 <see cref="JsonElement"/>）。</summary>
+    private static IReadOnlyList<string> ReadMetadataStringArray(
+        IReadOnlyDictionary<string, object>? metadata,
+        string key)
+    {
+        if (metadata is null || !metadata.TryGetValue(key, out var raw) || raw is null)
+            return Array.Empty<string>();
+
+        switch (raw)
+        {
+            case string[] array:
+                return array;
+            case JsonElement element when element.ValueKind == JsonValueKind.Array:
+                return element.EnumerateArray()
+                    .Where(item => item.ValueKind == JsonValueKind.String)
+                    .Select(item => item.GetString() ?? string.Empty)
+                    .Where(item => item.Length > 0)
+                    .ToArray();
+            case JsonElement element when element.ValueKind == JsonValueKind.String:
+                // 旧数据可能把数组序列化成字符串：解析失败按「无来源」处理，不抛
+                try
+                {
+                    return JsonSerializer.Deserialize<string[]>(element.GetString() ?? "") ?? Array.Empty<string>();
+                }
+                catch (JsonException)
+                {
+                    return Array.Empty<string>();
+                }
+            default:
+                return Array.Empty<string>();
+        }
     }
 
     /// <summary>

@@ -812,6 +812,8 @@ public sealed class MessageTimelineStore
     {
         if (vm.IsSystemReminder)
             return TimelineItemKind.Reminder;
+        if (vm.IsContextUpdate)
+            return TimelineItemKind.ContextUpdate;
         if (vm.IsProjectInstructions)
             return TimelineItemKind.ProjectInstructions;
         if (vm.IsCompactionSummary)

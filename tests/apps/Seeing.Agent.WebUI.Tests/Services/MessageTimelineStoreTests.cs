@@ -121,6 +121,41 @@ public class MessageTimelineStoreTests
     }
 
     [Fact]
+    public void ResetFromSession_ShouldMapContextUpdateToItsOwnKind()
+    {
+        // F5：上下文增量不得冒充项目指令。判据是元数据标记（context.update），
+        // 即使内容前缀恰好是 <context-update> 也不参与判定（旧实现按前缀嗅探）。
+        var store = new MessageTimelineStore();
+        store.ResetFromSession(
+        [
+            Msg("d1", "user", "<context-update source=\"k\">x</context-update>", metadata: new Dictionary<string, object>
+            {
+                [SessionMetadataKeys.ContextUpdate] = true,
+                [SessionMetadataKeys.ContextUpdateSources] = new[] { "k" }
+            }),
+            // 本次升级之前的旧数据：只有 sources 键，也必须归入独立种类
+            Msg("d2", "user", "<context-update source=\"k\">y</context-update>", metadata: new Dictionary<string, object>
+            {
+                [SessionMetadataKeys.ContextUpdateSources] = new[] { "k" }
+            }),
+            Msg("i1", "user", "instructions", metadata: new Dictionary<string, object>
+            {
+                [Seeing.Agent.Core.Instructions.ProjectInstructions.MetadataKeys.ProjectInstructions] = true
+            }),
+        ], "s1");
+
+        store.Items.Select(i => i.Kind).Should().Equal(
+            TimelineItemKind.ContextUpdate,
+            TimelineItemKind.ContextUpdate,
+            TimelineItemKind.ProjectInstructions);
+
+        var contextUpdate = store.Items[0].Message!;
+        contextUpdate.IsContextUpdate.Should().BeTrue();
+        contextUpdate.IsProjectInstructions.Should().BeFalse("增量不得被当作项目指令变更");
+        contextUpdate.ContextUpdateSources.Should().Equal("k");
+    }
+
+    [Fact]
     public void Changed_ShouldFireOnResetAndSync()
     {
         var store = new MessageTimelineStore();

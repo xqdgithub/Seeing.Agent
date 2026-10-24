@@ -1,8 +1,10 @@
 namespace Seeing.Agent.Core.Context;
 
 /// <summary>
-/// 增量叙述消息的信封：格式与识别的唯一实现（禁止在装配器 / 标题服务 / UI 各自硬编码标签）。
+/// 增量叙述消息的信封：格式的唯一实现（禁止在装配器 / 标题服务 / UI 各自硬编码标签）。
 /// <para>信封只包裹源自己渲染的文本，装配器不添加任何措辞。</para>
+/// <para>「这条消息是上下文增量」由消息元数据（<see cref="Seeing.Session.Core.SessionMetadataKeys.ContextUpdate"/>）
+/// 判定，<b>不</b>由内容前缀判定：内容渲染与语义判定必须解耦。</para>
 /// </summary>
 public static class ContextUpdateEnvelope
 {
@@ -14,15 +16,4 @@ public static class ContextUpdateEnvelope
     /// <param name="text">源渲染文本（原样放入）。</param>
     public static string Wrap(string sourceKey, string text) =>
         $"<{Tag} source=\"{sourceKey}\">\n{text}\n</{Tag}>";
-
-    /// <summary>
-    /// 判断消息内容是否为增量叙述信封（用于「机器注入 ≠ 用户输入」的判定）。
-    /// </summary>
-    public static bool IsContextUpdate(string? content)
-    {
-        if (string.IsNullOrWhiteSpace(content))
-            return false;
-
-        return content.TrimStart().StartsWith($"<{Tag}", StringComparison.Ordinal);
-    }
 }

@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Core.Context;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Llm;
 using Seeing.Session.Core;
@@ -73,8 +72,10 @@ namespace Seeing.Agent.Core.Services
                 if (metadata.ContainsKey(ProjectInstructions.MetadataKeys.ProjectInstructions))
                     return false;
 
-                // 上下文管道的增量叙述（<context-update>）同样是机器注入
-                if (metadata.ContainsKey(SessionMetadataKeys.ContextUpdateSources))
+                // 上下文管道的增量叙述同样是机器注入（只认元数据，绝不按内容前缀嗅探；
+                // ContextUpdate 是本次新增的显式标记，ContextUpdateSources 兼容本次之前的会话数据）
+                if (metadata.ContainsKey(SessionMetadataKeys.ContextUpdate)
+                    || metadata.ContainsKey(SessionMetadataKeys.ContextUpdateSources))
                     return false;
 
                 // 排除非 user 呈现的 inbox 消息（System/Assistant/None）
@@ -83,10 +84,7 @@ namespace Seeing.Agent.Core.Services
                     return false;
             }
 
-            // 内容兜底：消息被重建 / 元数据丢失时，按信封标签判定仍是机器注入
-            if (ContextUpdateEnvelope.IsContextUpdate(message.Content))
-                return false;
-
+            // 内容兜底：项目指令消息在元数据丢失时仍可从信封还原（信封是强格式，不是前缀嗅探）
             if (ProjectInstructionsRenderer.TryParse(message.Content ?? string.Empty, out _))
                 return false;
 
