@@ -4,8 +4,9 @@ namespace Seeing.Agent.Skills.Watching;
 
 /// <summary>
 /// 技能根目录文件监听器：每个根一个 <see cref="FileSystemWatcher"/>，突发事件经去抖后合并为一次回调。
-/// <para>根不存在时监听其「最近存在的祖先目录」，检测到根被创建后自动重挂到根本身
-/// （安装器写到一半 / 首次创建工作区目录都必须可用）。</para>
+/// <para>根不存在时监听其「最近存在的祖先目录」的**一层**，且只回应通向根的下一个路径段；
+/// 检测到根被创建后自动重挂为根本身的递归监听（安装器写到一半 / 首次创建工作区目录都必须可用，
+/// 但不得把主目录 / 工作区根变成常驻递归扫描源）。</para>
 /// <para>生命周期只由 <c>SkillsModule</c> 拥有：<see cref="Dispose"/> 停止全部监听并阻断后续回调。
 /// 本类不持有目录、不扫盘、不解析技能，只负责回答「根下可能变了」。</para>
 /// </summary>
@@ -164,23 +165,54 @@ public sealed class SkillRootWatcher : IDisposable
 
     /// <summary>
     /// 把某个根的监听重挂到「最近存在的祖先或根本身」。
+    /// <para>根缺失时只监听祖先的**一层**，且仅回应通向根的下一个路径段（见
+    /// <see cref="IsRelevantEvent"/>）；一旦根出现立即升级为递归监听根本身（I1：
+    /// 递归监听祖先会把整个主目录 / 工作区变成常驻扫描源）。</para>
     /// <para>挂载失败只降级为不监听（记录警告），不得让宿主启动失败。</para>
     /// </summary>
     private void Attach(RootWatch watch)
     {
-        var target = NearestExistingDirectory(watch.Root);
-        if (target is null)
+        // 逐段向根部靠拢：创建目录常一次性产生多级（快照 / 安装器），
+        // 只有一路重挂到「最近存在的层级」，后续文件事件才不会落空。
+        for (var guard = 0; guard < 32; guard++)
         {
-            _logger.LogWarning("技能根及其祖先均不存在，暂时不监听：{Root}", watch.Root);
-            return;
+            var target = NearestExistingDirectory(watch.Root);
+            if (target is null)
+            {
+                _logger.LogWarning("技能根及其祖先均不存在，暂时不监听：{Root}", watch.Root);
+                return;
+            }
+
+            if (!TryAttachAt(watch, target))
+                return;
+
+            var next = NearestExistingDirectory(watch.Root);
+            if (next is null ||
+                string.Equals(next, target, StringComparison.OrdinalIgnoreCase) ||
+                next.Length <= target.Length)
+            {
+                return;
+            }
         }
+
+        // 深度异常（理论上不可达）：保留当前层的监听，避免无限重挂
+        _logger.LogWarning("技能根重挂层级异常，保留当前监听：根={Root} 监听={Target}", watch.Root, watch.Watching);
+    }
+
+    /// <summary>
+    /// 在指定目录挂载一个 watcher 并原子替换旧实例；返回 false 表示该根已被移除 / 已释放。
+    /// </summary>
+    private bool TryAttachAt(RootWatch watch, string target)
+    {
+        // 只有监听根本身时才递归：监听祖先时递归会把无关子树的变化全部纳入（I1）。
+        var recursive = string.Equals(target, watch.Root, StringComparison.OrdinalIgnoreCase);
 
         FileSystemWatcher? created = null;
         try
         {
             created = new FileSystemWatcher(target)
             {
-                IncludeSubdirectories = true,
+                IncludeSubdirectories = recursive,
                 Filter = "*",
                 NotifyFilter = NotifyFilters.FileName
                                | NotifyFilters.DirectoryName
@@ -190,10 +222,10 @@ public sealed class SkillRootWatcher : IDisposable
                 InternalBufferSize = 32 * 1024
             };
 
-            created.Created += (_, _) => OnFileSystemEvent(watch);
-            created.Changed += (_, _) => OnFileSystemEvent(watch);
-            created.Deleted += (_, _) => OnFileSystemEvent(watch);
-            created.Renamed += (_, _) => OnFileSystemEvent(watch);
+            created.Created += (_, e) => OnFileSystemEvent(watch, e);
+            created.Changed += (_, e) => OnFileSystemEvent(watch, e);
+            created.Deleted += (_, e) => OnFileSystemEvent(watch, e);
+            created.Renamed += (_, e) => OnFileSystemEvent(watch, e);
             created.Error += (_, e) => OnWatcherError(watch, e.GetException());
             created.EnableRaisingEvents = true;
         }
@@ -201,7 +233,7 @@ public sealed class SkillRootWatcher : IDisposable
         {
             created?.Dispose();
             _logger.LogWarning(ex, "技能根监听挂载失败（该根本轮不监听）：根={Root} 目标={Target}", watch.Root, target);
-            return;
+            return false;
         }
 
         FileSystemWatcher? previous = null;
@@ -223,24 +255,80 @@ public sealed class SkillRootWatcher : IDisposable
         {
             // 期间被 SyncRoots 移除或已释放：不得留下孤儿 watcher
             created.Dispose();
-            return;
+            return false;
         }
 
         previous?.Dispose();
-        _logger.LogDebug("技能根监听已挂载：根={Root} 监听={Target}", watch.Root, target);
+        _logger.LogDebug("技能根监听已挂载：根={Root} 监听={Target} 递归={Recursive}", watch.Root, target, recursive);
+        return true;
     }
 
     // ===== 事件 =====
 
     /// <summary>文件系统事件：先校正挂载层级（根可能刚出现 / 刚消失），再排一次去抖回调。</summary>
-    private void OnFileSystemEvent(RootWatch watch)
+    private void OnFileSystemEvent(RootWatch watch, FileSystemEventArgs e)
     {
         if (Volatile.Read(ref _disposed) != 0)
+            return;
+
+        if (!IsRelevantEvent(watch, e))
             return;
 
         EnsureAttachment(watch);
         ScheduleDebouncedCallback();
     }
+
+    /// <summary>
+    /// 事件是否与「缺失段的创建」相关。
+    /// <para>尚未挂到根本身时，只关心通往根的下一个路径段：祖先（主目录 / 工作区根）下任何
+    /// 无关的兄弟目录变化都不得触发整根重扫。</para>
+    /// </summary>
+    private static bool IsRelevantEvent(RootWatch watch, FileSystemEventArgs e)
+    {
+        var watching = watch.Watching;
+        if (watching is null || string.Equals(watching, watch.Root, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var next = NextSegmentPath(watching, watch.Root);
+        if (next is null)
+            return false;
+
+        return string.Equals(
+            TrimSeparators(e.FullPath),
+            TrimSeparators(next),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>祖先 → 根路径上的下一个路径段（完整路径）；不在祖先之下时返回 null。</summary>
+    private static string? NextSegmentPath(string watching, string root)
+    {
+        string relative;
+        try
+        {
+            relative = Path.GetRelativePath(watching, root);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrEmpty(relative) ||
+            relative == "." ||
+            Path.IsPathRooted(relative) ||
+            relative.StartsWith("..", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var segment = relative.Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries)[0];
+
+        return segment.Length == 0 ? null : Path.Combine(watching, segment);
+    }
+
+    private static string TrimSeparators(string path) =>
+        path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
     /// <summary>缓冲区溢出：事件已丢，必须重扫（回调本身即重扫）。</summary>
     private void OnWatcherError(RootWatch watch, Exception exception)
@@ -297,6 +385,15 @@ public sealed class SkillRootWatcher : IDisposable
         {
             if (Volatile.Read(ref _disposed) != 0)
                 return;
+
+            // 回调前校正挂载层级：多级创建时「根出现」的事件不一定都收得到（非递归只看一层），
+            // 去抖窗口结束前根可能已存在，必须在此升级为递归监听根本身，否则后续文件事件会静默丢失。
+            RootWatch[] watches;
+            lock (_gate)
+                watches = _watches.Values.ToArray();
+
+            foreach (var watch in watches)
+                EnsureAttachment(watch);
 
             await _onChange(_lifetime.Token).ConfigureAwait(false);
         }

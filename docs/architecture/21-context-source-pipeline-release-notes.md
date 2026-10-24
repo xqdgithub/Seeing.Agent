@@ -54,13 +54,16 @@
 |---|---|
 | `/clear`（`SessionData.ClearMessages`） | 移除 `context.baseline`（新 epoch，下轮全量重建） |
 | fork | 状态**不复制**；分支首次装配全量渲染，不产生重复叙述 |
-| revert | 增量消息被移除后，账本折叠（`FoldLedgerToLive`）到存活的最晚条目，不重复不遗漏 |
-| 压缩（`CompressionService`） | 置 `PendingBaselineReset.Compaction` 位；下一次装配消费一次，`Target=Message` 的初始渲染重新注入（修掉「压缩后指令永久消失」） |
-| 工作区变更 | 置 `WorkspaceChanged` 位，整体重建基线 |
+| revert | 增量消息被移除后，账本折叠（`FoldLedgerToLive`）到存活的最晚条目；**全部增量都被回退时折回 `baselineValues`**（模型只剩基线文本，不能继续声称「已叙述」），下一次改回旧值会重新叙述 |
+| 压缩（`CompressionService`） | 置 `PendingBaselineReset.Compaction` 位；下一次装配按源消费一次：**能读到当前值的源用当前值重渲染基线并成为新基线（新 epoch）**，`Target=Message` 的初始渲染随新基线重新注入；不可读的源保留存库基线与已叙述值（文件被临时占用不得毁掉基线）。重新锚定的源本轮不产生增量叙述，也不触发「渲染不确定」告警 |
+| 工作区变更 | `PendingBaselineReset.WorkspaceChanged` 位：处理方式与压缩相同（可读源按当前值重新锚定）。**该位目前为预留**：生产代码尚未置位（工作区切换实际靠 canonical 中的绝对路径变化自然产生 diff），宿主如需要可显式写入 |
 
 ### 2.6 并发与单飞
 
-同一会话并发装配由 CAS 保证只推进一次；不同会话可并行。技能目录刷新另有进程级 `SemaphoreSlim` 单飞。
+同一会话并发装配由**进程内固定条纹锁**（64 个 `SemaphoreSlim`，按 `SessionId` 取模）串行化，**只保证本进程内不重复推进**；
+跨进程写入仍是最后写者胜（不做 CAS，也不经 `ISessionManager.UpdateSessionAsync`）。调用方必须把**权威会话实例**传给装配器：
+装配器对 `ISessionManager` 只做实例一致性诊断告警，不替换实例、不重跑（否则会出现「已叙述但模型看不到」的丢失更新）。
+不同会话可并行。技能目录刷新另有进程级 `SemaphoreSlim` 单飞。
 
 ---
 
@@ -99,12 +102,14 @@
 | **插件技能同名优先于文件技能** | 之前由执行顺序决定 | 显式规则：`Registered` > `ProjectFile`(`.seeing` > `.agents` > `skills`) > `UserFile`(`.seeing` > `.agents`)；冲突进 `SkillCatalogSnapshot.Conflicts` |
 | **`ISkillManager` 写面 `[Obsolete(error: true)]`** | 破坏性（源码级） | `AddSearchDirectory` / `DiscoverSkillsAsync` / `RegisterEmbeddedSkill` / `Unregister` 全部指向 `ISkillCatalog`（`RegisterAsync` / `UnregisterAsync` / `RefreshAsync` / `EnsureFreshAsync`） |
 | **`ISkillWriter.SetEnabledAsync` 需显式层级** | 破坏性（新增契约） | `SetEnabledAsync(name, enabled, ConfigLevel level)`；启用时清除**所有**层级禁用项，禁用只写指定层级；UI 预选当前生效层级 |
+| **`IToolManager.ExecuteAsync` 新增可选参数 `skillSnapshot`** | 破坏性（源码级，第三方实现需补参数） | 契约新增 `SkillCatalogSnapshot? skillSnapshot = null` 末位参数（透传到 `ToolContext.SkillSnapshot`，供 `skill` 工具按执行级钉住解析）。`ToolManager` 的便捷重载（`ExecuteAsync(List<ToolCall>, …)` 与 `ExecuteAsync(string toolId, Dictionary<…>, …)`）**不透传**该快照：走这两条路径时钉住退化为「目录当前态」，仅主链 `AgentExecutor` 路径保证钉住 |
 | **`SkillManager` 不再是提示词分节贡献者** | 提示词结构变化 | `## Skills` 由基线提供；agent 模板中如有同名占位应删除（`DynamicPromptBuilder` 已删除） |
 | **`SkillInfo.DirectoryPath` 移除** | 破坏性（罕见使用） | 迁到 `SkillCatalogEntry.DirectoryPath`（快照构建时写入的数据字段） |
 | **结算失败时不再注入指令增量** | 行为变化 | 装配在结算之后；执行未发生则不应宣称「已告知」 |
 | **`/help`、`/clear`、`/compact` 等短路命令不再注入指令** | 行为变化（无实际影响） | 这些命令不调用模型 |
 | **迁移适配器 `IInstructionManager` 删除** | 破坏性（源码级） | 主链早已直连 `IContextAssembler`；`InstructionInjectResult` 无生产消费者。需要「触发一次注入」请直接注入 `IContextAssembler` |
 | 新增 `context.baseline` / `context.update.sources` 元数据键 | 纯增量 | Clear 清除基线；fork 不复制基线 |
+| **旧会话首次装配会多一条基线指令消息** | 迁移行为 | 升级前的历史里已有旧 `InstructionManager` 注入的指令消息；首次装配会再插入一条新基线，同一 epoch 内可能出现重复（其中一条可能过期）的指令块。属一次性迁移噪声，新会话不受影响 |
 
 ---
 
@@ -154,6 +159,8 @@
 5. **ACP 不支持**：passthrough 执行器不构建系统提示词。
 6. **装配失败不阻断对话**：主链记录错误日志并沿用已存基线（不静默、不冒充成功）。
 7. **fork 不复制基线**：分支首轮全量渲染；已叙述过的事实不会跨分支重复。
+8. **watcher 对缺失根只监听一层**：根不存在时监听最近存在祖先的非递归 watcher，且只回应通向根的下一个路径段；根一旦出现立即升级为递归监听根本身（不会把主目录 / 工作区根变成常驻递归扫描源）。
+9. **`skill-state.json` 损坏按「不可用」处理**：写入为同目录临时文件 + `File.Move(overwrite: true)` 原子替换；读侧在 `SkillWriteGate` 内解析，失败时沿用上一次成功读取的禁用集合（绝不当作「无禁用项」）；写侧读到损坏文件会拒绝覆盖写并返回可展示的原因（不会静默清空用户禁用项）。
 
 ---
 

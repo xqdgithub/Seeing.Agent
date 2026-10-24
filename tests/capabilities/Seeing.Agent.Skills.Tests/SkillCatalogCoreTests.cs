@@ -333,6 +333,38 @@ public sealed class SkillCatalogCoreTests : IDisposable
         catalog.IsEnabled("alpha").Should().BeFalse();
     }
 
+    [Fact]
+    public async Task CorruptStateFile_ShouldKeepPreviousDisabledSet()
+    {
+        // I3：损坏 / 撕裂的状态文件不得把「所有技能」重新视为启用（否则管道会叙述假的「新增技能」增量）
+        var root = ProjectSkillRoot(0);
+        WriteSkill(root, "alpha", "alpha", "被禁用");
+        WriteDisabledState(Path.Combine(_workspace, ".seeing"), "alpha");
+
+        using var gate = new SkillWriteGate();
+        var catalog = CreateCatalogWithGate(gate, root);
+        await catalog.RefreshAsync(TestContext.Current.CancellationToken);
+
+        catalog.Current.DisabledNames.Should().Contain("alpha");
+
+        var statePath = Path.Combine(_workspace, ".seeing", "skill-state.json");
+        await File.WriteAllTextAsync(
+            statePath,
+            "{ \"DisabledSkills\": [\"alph",
+            TestContext.Current.CancellationToken);
+
+        var refreshed = await catalog.RefreshAsync(TestContext.Current.CancellationToken);
+
+        refreshed.DisabledNames.Should().Contain("alpha", "损坏 ≠ 全部启用：必须沿用上一次成功解析的禁用集合");
+        refreshed.DisabledScopes["alpha"].Should().Be(ConfigLevel.Project);
+        catalog.IsEnabled("alpha").Should().BeFalse();
+
+        // 连续两次刷新不得抖动（技能集合与禁用集合都稳定）
+        var again = await catalog.RefreshAsync(TestContext.Current.CancellationToken);
+        again.DisabledNames.Should().BeEquivalentTo(refreshed.DisabledNames);
+        again.Entries.Select(e => e.Info.Name).Should().BeEquivalentTo(refreshed.Entries.Select(e => e.Info.Name));
+    }
+
     // ===== 环境 =====
 
     private SkillCatalogCore CreateCatalog(params string[] roots)
@@ -344,6 +376,20 @@ public sealed class SkillCatalogCoreTests : IDisposable
                 projectSeeing: Path.Combine(_workspace, ".seeing")));
 
         // 始终显式设置根：避免默认根（真实用户主目录）污染测试
+        catalog.SetRoots(roots);
+        return catalog;
+    }
+
+    /// <summary>与 <c>SkillWriter</c> 共用同一写闸的目录实例（锁定读侧入闸行为）。</summary>
+    private SkillCatalogCore CreateCatalogWithGate(SkillWriteGate gate, params string[] roots)
+    {
+        var catalog = new SkillCatalogCore(
+            NullLogger<SkillCatalogCore>.Instance,
+            new FakeDirectories(
+                userSeeing: Path.Combine(_userHome, ".seeing"),
+                projectSeeing: Path.Combine(_workspace, ".seeing")),
+            gate);
+
         catalog.SetRoots(roots);
         return catalog;
     }

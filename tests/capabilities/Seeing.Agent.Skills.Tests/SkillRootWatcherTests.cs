@@ -177,6 +177,47 @@ public sealed class SkillRootWatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task MissingRoot_ShouldIgnoreUnrelatedSiblingCreation()
+    {
+        // I1：缺失根只监听最近存在祖先的一层，且只关心通向根的下一个路径段；
+        // 祖先下无关的兄弟目录变化不得触发整根重扫。
+        var ancestor = Path.Combine(_root, "ancestor");
+        Directory.CreateDirectory(ancestor);
+        var missingRoot = Path.Combine(ancestor, "deep", "skills");
+
+        var hits = 0;
+        using var watcher = new SkillRootWatcher(
+            [missingRoot],
+            _ =>
+            {
+                Interlocked.Increment(ref hits);
+                return Task.CompletedTask;
+            },
+            NullLogger.Instance,
+            Debounce);
+
+        // Act 1：祖先下创建无关兄弟目录 + 文件
+        var sibling = Path.Combine(ancestor, "unrelated");
+        Directory.CreateDirectory(sibling);
+        await File.WriteAllTextAsync(Path.Combine(sibling, "note.txt"), "无关内容", Ct);
+
+        // Assert 1：静默窗口内不得触发重扫
+        await Task.Delay(Debounce * 3, Ct);
+        Volatile.Read(ref hits).Should().Be(0,
+            "缺失根只应观察通向根的下一个路径段，无关兄弟变化不得触发刷新");
+
+        // Act 2：一次性创建多级根目录 —— 仍必须被观察到并升级为递归监听
+        Directory.CreateDirectory(missingRoot);
+        (await WaitUntilAsync(() => Volatile.Read(ref hits) >= 1)).Should().BeTrue(
+            "根目录被创建后必须触发回调");
+
+        var afterCreate = Volatile.Read(ref hits);
+        WriteSkill(missingRoot, "omega");
+        (await WaitUntilAsync(() => Volatile.Read(ref hits) > afterCreate)).Should().BeTrue(
+            "根出现后必须递归监听根本身，后续文件事件不得丢失");
+    }
+
+    [Fact]
     public async Task Dispose_ShouldStopCallbacks()
     {
         var skillsRoot = Path.Combine(_root, "skills");

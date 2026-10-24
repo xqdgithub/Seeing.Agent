@@ -26,6 +26,18 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
     private readonly ILogger<SkillCatalogCore> _logger;
     private readonly ISeeingDirectories? _directories;
 
+    /// <summary>
+    /// 状态文件写闸（与 <c>SkillWriter</c> 共用同一实例）：禁用状态的读取与写入必须串行，
+    /// 否则目录刷新可能读到「写了一半」的文件（I3）。为 null 时不加闸（测试 / 极简宿主）。
+    /// </summary>
+    private readonly SkillWriteGate? _writeGate;
+
+    /// <summary>各状态文件最近一次成功解析的禁用集合（损坏时沿用，绝不当作「无禁用项」）。</summary>
+    private readonly Dictionary<string, IReadOnlySet<string>> _lastGoodDisabled =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly object _disabledMemoryLock = new();
+
     /// <summary>扫盘闸：同一时刻只允许一次扫盘（单飞的判据是快照实例 + 版本推进）。</summary>
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -67,10 +79,15 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
     /// </summary>
     /// <param name="logger">目录日志。</param>
     /// <param name="directories">配置目录契约；为 null 时无法定位默认根与禁用状态（测试 / 极简宿主）。</param>
-    public SkillCatalogCore(ILogger<SkillCatalogCore> logger, ISeeingDirectories? directories = null)
+    /// <param name="writeGate">状态文件写闸（与 <c>SkillWriter</c> 共用）；为 null 时读侧不加闸。</param>
+    public SkillCatalogCore(
+        ILogger<SkillCatalogCore> logger,
+        ISeeingDirectories? directories = null,
+        SkillWriteGate? writeGate = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _directories = directories;
+        _writeGate = writeGate;
         _roots = BuildDefaultRoots();
     }
 
@@ -547,9 +564,19 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
 
     /// <summary>
     /// 读取两级 <c>skill-state.json</c>：名称取并集；上报层级项目级优先（用户级被覆盖）。
+    /// <para>读写闸内执行（与写者共享 <see cref="SkillWriteGate"/>），保证不会读到写了一半的状态文件。</para>
     /// </summary>
     private async Task<(IReadOnlySet<string> Names, IReadOnlyDictionary<string, ConfigLevel> Scopes)>
         LoadDisabledStateAsync(CancellationToken ct)
+    {
+        if (_writeGate is null)
+            return await LoadDisabledStateCoreAsync(ct).ConfigureAwait(false);
+
+        return await _writeGate.RunAsync(LoadDisabledStateCoreAsync, ct).ConfigureAwait(false);
+    }
+
+    private async Task<(IReadOnlySet<string> Names, IReadOnlyDictionary<string, ConfigLevel> Scopes)>
+        LoadDisabledStateCoreAsync(CancellationToken ct)
     {
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var scopes = new Dictionary<string, ConfigLevel>(StringComparer.OrdinalIgnoreCase);
@@ -557,12 +584,15 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
         if (_directories is null)
             return (names, scopes);
 
-        var userDisabled = await LoadDisabledSetAsync(
-            Path.Combine(_directories.UserSeeingDirectory, SkillStateFileName),
-            ct).ConfigureAwait(false);
-        var projectDisabled = await LoadDisabledSetAsync(
-            Path.Combine(_directories.ProjectSeeingDirectory, SkillStateFileName),
-            ct).ConfigureAwait(false);
+        var userPath = Path.Combine(_directories.UserSeeingDirectory, SkillStateFileName);
+        var projectPath = Path.Combine(_directories.ProjectSeeingDirectory, SkillStateFileName);
+
+        // 损坏 / 不可读 → 沿用上一次成功解析的集合（「损坏 ≠ 全部启用」，否则会叙述一条假的
+        // 「新增技能」增量，下一次刷新再叙述删除，模型上下文被无意义抖动）。
+        var userDisabled = await LoadDisabledSetAsync(userPath, ct).ConfigureAwait(false)
+            ?? PreviousDisabled(userPath);
+        var projectDisabled = await LoadDisabledSetAsync(projectPath, ct).ConfigureAwait(false)
+            ?? PreviousDisabled(projectPath);
 
         foreach (var name in userDisabled)
         {
@@ -580,11 +610,18 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
         return (names, scopes);
     }
 
-    private async Task<HashSet<string>> LoadDisabledSetAsync(string filePath, CancellationToken ct)
+    /// <summary>
+    /// 解析单个状态文件。
+    /// <para>文件不存在 = 真的没有禁用项（空集合）；解析 / 读取失败返回 <c>null</c>，
+    /// 调用方必须沿用上一次成功结果，不得把损坏态当成「全部启用」。</para>
+    /// </summary>
+    private async Task<HashSet<string>?> LoadDisabledSetAsync(string filePath, CancellationToken ct)
     {
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (!File.Exists(filePath))
-            return result;
+        {
+            RememberDisabled(filePath, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
 
         try
         {
@@ -593,11 +630,15 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
                 json,
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var name in data?.DisabledSkills ?? [])
             {
                 if (!string.IsNullOrWhiteSpace(name))
                     result.Add(name);
             }
+
+            RememberDisabled(filePath, result);
+            return result;
         }
         catch (OperationCanceledException)
         {
@@ -605,11 +646,31 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
-            // 状态文件损坏 / 不可读：按「无禁用项」处理，但必须可观测
-            _logger.LogWarning(ex, "读取技能禁用状态失败，按空集合处理：{Path}", filePath);
+            // 状态文件损坏 / 不可读：按「不可用」处理，沿用上次成功集合
+            _logger.LogWarning(
+                ex,
+                "读取技能禁用状态失败，沿用上一次成功读取的禁用集合：{Path}",
+                filePath);
+            return null;
         }
+    }
 
-        return result;
+    /// <summary>记住某状态文件最近一次成功解析的禁用集合。</summary>
+    private void RememberDisabled(string filePath, IReadOnlySet<string> names)
+    {
+        lock (_disabledMemoryLock)
+            _lastGoodDisabled[filePath] = names;
+    }
+
+    /// <summary>取某状态文件上一次成功解析的禁用集合（没有则空集合）。</summary>
+    private HashSet<string> PreviousDisabled(string filePath)
+    {
+        lock (_disabledMemoryLock)
+        {
+            return _lastGoodDisabled.TryGetValue(filePath, out var names)
+                ? new HashSet<string>(names, StringComparer.OrdinalIgnoreCase)
+                : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
     }
 
     /// <summary>禁用状态落盘模型（沿用既有格式）。</summary>

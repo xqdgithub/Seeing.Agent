@@ -83,14 +83,17 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
 
         services.AddSingleton<OnlineSkillParserAggregator>();
 
+        // 状态文件写闸：先于目录登记，使目录读侧与写入侧共用同一把闸（I3：读不得看到写了一半的文件）
+        services.AddSingleton<SkillWriteGate>();
+
         // 技能目录：可见性的唯一真相源（单例，全局共享同一快照序列）
         services.AddSingleton<SkillCatalogCore>(sp => new SkillCatalogCore(
             sp.GetRequiredService<ILogger<SkillCatalogCore>>(),
-            sp.GetService<ISeeingDirectories>()));
+            sp.GetService<ISeeingDirectories>(),
+            sp.GetRequiredService<SkillWriteGate>()));
         services.TryAddSingleton<ISkillCatalog>(sp => sp.GetRequiredService<SkillCatalogCore>());
 
         // 写入收口：文件通道唯一写入口（注册通道技能只读），skill-state.json 写闸串行化
-        services.AddSingleton<SkillWriteGate>();
         services.TryAddSingleton<ISkillWriter>(sp => new SkillWriter(
             sp.GetRequiredService<ILogger<SkillWriter>>(),
             sp.GetRequiredService<ISkillCatalog>(),

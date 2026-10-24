@@ -338,21 +338,23 @@ public sealed class SkillWriter : ISkillWriter
         {
             return await _gate.RunAsync(async token =>
             {
-                if (enabled)
+                // 阶段一：状态文件「读-改-写」（闸内，串行化并发开关）
+                var error = enabled
+                    ? await ClearAllLevelsAsync(name, token).ConfigureAwait(false)
+                    : await TryUpdateDisabledStateAsync(
+                        SeeingDirectoryOf(level), name, disable: true, token).ConfigureAwait(false);
+
+                if (error is not null)
                 {
-                    // 启用必须清除「所有」层级：任一层残留禁用项都会让技能继续不可用
-                    await UpdateDisabledStateAsync(_directories.UserSeeingDirectory, name, disable: false, token)
-                        .ConfigureAwait(false);
-                    await UpdateDisabledStateAsync(_directories.ProjectSeeingDirectory, name, disable: false, token)
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    // 禁用只写调用方指定的层级（另一层保持不动）
-                    await UpdateDisabledStateAsync(SeeingDirectoryOf(level), name, disable: true, token)
-                        .ConfigureAwait(false);
+                    _logger.LogError(
+                        "保存技能启用状态失败：{Name} 层级={Level} 原因={Reason}",
+                        name,
+                        level,
+                        error);
+                    return Failure(error);
                 }
 
+                // 阶段二：刷新目录（读侧经同一写闸，且与阶段一同属一条逻辑流程 → 可重入）
                 var snapshot = await _catalog.RefreshAsync(token).ConfigureAwait(false);
                 var entry = snapshot.Entries.FirstOrDefault(e =>
                     string.Equals(e.Info.Name, name, StringComparison.OrdinalIgnoreCase));
@@ -607,10 +609,26 @@ public sealed class SkillWriter : ISkillWriter
     // ===== 状态文件（唯一写者） =====
 
     /// <summary>
+    /// 启用时清除两个层级的禁用项（任一层残留都会让技能继续不可用）。
+    /// </summary>
+    /// <returns>null 表示成功；非 null 为可直接展示给用户的失败原因。</returns>
+    private async Task<string?> ClearAllLevelsAsync(string name, CancellationToken ct)
+    {
+        var userError = await TryUpdateDisabledStateAsync(
+            _directories!.UserSeeingDirectory, name, disable: false, ct).ConfigureAwait(false);
+        if (userError is not null)
+            return userError;
+
+        return await TryUpdateDisabledStateAsync(
+            _directories.ProjectSeeingDirectory, name, disable: false, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// 更新某一级的禁用集合：启用 → 移除；禁用 → 加入。内容未变则不写盘。
     /// <para>调用方必须已持有 <see cref="SkillWriteGate"/>：整文件覆盖写不能与并发开关交错。</para>
     /// </summary>
-    private async Task UpdateDisabledStateAsync(
+    /// <returns>null 表示成功；非 null 为可直接展示给用户的失败原因。</returns>
+    private async Task<string?> TryUpdateDisabledStateAsync(
         string seeingDirectory,
         string name,
         bool disable,
@@ -618,15 +636,26 @@ public sealed class SkillWriter : ISkillWriter
     {
         var filePath = Path.Combine(seeingDirectory, SkillCatalogCore.SkillStateFileName);
         var disabled = await LoadDisabledNamesAsync(filePath, ct).ConfigureAwait(false);
+        if (disabled is null)
+        {
+            // 损坏 ≠ 全部启用：拒绝覆盖写，否则会把用户已有的禁用项静默清空
+            return $"技能状态文件不可读，已拒绝覆盖写（请修复或删除该文件）：{filePath}";
+        }
 
         var changed = disable ? disabled.Add(name) : disabled.Remove(name);
         if (!changed)
-            return;
+            return null;
 
         await SaveDisabledNamesAsync(filePath, disabled, ct).ConfigureAwait(false);
+        return null;
     }
 
-    private async Task<HashSet<string>> LoadDisabledNamesAsync(string filePath, CancellationToken ct)
+    /// <summary>
+    /// 读取禁用集合。
+    /// <para>文件不存在 = 真的没有禁用项（空集合）；解析 / 读取失败返回 <c>null</c>，
+    /// 由调用方决定拒绝写（撕裂或损坏的中间态绝不能被当成「全部启用」）。</para>
+    /// </summary>
+    private async Task<HashSet<string>?> LoadDisabledNamesAsync(string filePath, CancellationToken ct)
     {
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (!File.Exists(filePath))
@@ -644,6 +673,8 @@ public sealed class SkillWriter : ISkillWriter
                 if (!string.IsNullOrWhiteSpace(name))
                     result.Add(name);
             }
+
+            return result;
         }
         catch (OperationCanceledException)
         {
@@ -651,13 +682,17 @@ public sealed class SkillWriter : ISkillWriter
         }
         catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException or UnauthorizedAccessException)
         {
-            // 状态文件损坏 / 不可读：按空集合处理（可观测），避免整次开关直接失败
-            _logger.LogWarning(ex, "读取技能禁用状态失败，按空集合处理：{Path}", filePath);
+            // 损坏 / 不可读：返回 null（调用方拒绝写），并记录以便排查
+            _logger.LogWarning(ex, "读取技能禁用状态失败（按不可用处理）：{Path}", filePath);
+            return null;
         }
-
-        return result;
     }
 
+    /// <summary>
+    /// 原子写入禁用集合：同目录临时文件 → <see cref="File.Move(string,string,bool)"/> 覆盖。
+    /// <para>直接覆盖写会先截断文件；watcher / 目录刷新并发读到半截 JSON 时会把
+    /// 「全部启用」叙述给模型（I3）。临时文件与目标同目录，保证 Move 是同卷原子替换。</para>
+    /// </summary>
     private async Task SaveDisabledNamesAsync(string filePath, HashSet<string> disabled, CancellationToken ct)
     {
         var directory = Path.GetDirectoryName(filePath);
@@ -673,7 +708,17 @@ public sealed class SkillWriter : ISkillWriter
             data,
             new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
 
-        await File.WriteAllTextAsync(filePath, json, ct).ConfigureAwait(false);
+        var temp = $"{filePath}.tmp-{Guid.NewGuid():N}";
+        try
+        {
+            await File.WriteAllTextAsync(temp, json, new UTF8Encoding(false), ct).ConfigureAwait(false);
+            File.Move(temp, filePath, overwrite: true);
+        }
+        finally
+        {
+            TryDeleteFile(temp);
+        }
+
         _logger.LogInformation("技能禁用状态已保存：{Path} 数量={Count}", filePath, data.DisabledSkills.Count);
     }
 

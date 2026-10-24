@@ -14,7 +14,11 @@ internal enum PendingBaselineReset
     /// <summary>压缩后：重新叙述（使 <c>Target=Message</c> 的初始渲染重新可见）。</summary>
     Compaction = 1,
 
-    /// <summary>工作区变更（cwd 切换等）：整体重建基线。</summary>
+    /// <summary>
+    /// 工作区变更（cwd 切换等）：整体重建基线。
+    /// <para><b>预留位</b>：当前生产代码尚未置位（工作区切换靠 canonical 中的绝对路径变化自然产生 diff）；
+    /// 装配器已按与压缩相同的方式处理，宿主可在需要时显式写入。</para>
+    /// </summary>
     WorkspaceChanged = 2
 }
 

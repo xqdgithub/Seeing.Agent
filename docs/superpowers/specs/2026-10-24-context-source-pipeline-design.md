@@ -215,7 +215,7 @@ per-session 状态序列化为 JSON，存 `SessionData.Metadata[SessionMetadataK
 5. **三态语义**：`Unavailable` 保留旧值、不叙述；`Removed` 必须渲染显式"不可再使用"；读取异常映射为 `Unavailable` 并记入 `Issues`。源不得复用会吞异常的辅助（见 §10.1）。
 6. **有 diff 必有叙述**：`Render` 返回 null 时该源不推进已叙述值（下次仍会重试），杜杜绝"检测到变化但静默丢弃"。
 7. **确定性顺序**：源按 `Scope` → `Key`（ordinal）排序；源内条目排序由源保证并锁定测试。
-8. **单飞**：装配以 `SessionData` 上的乐观并发（版本号 CAS，交给 `ISessionManager.UpdateSessionAsync`）保证同一会话不被并发推进；不新造第二把会话级锁。
+8. **单飞**：装配以 `SessionData` 上的乐观并发（版本号 CAS，交给 `ISessionManager.UpdateSessionAsync`）保证同一会话不被并发推进；不新造第二把会话级锁。（**实现现状：进程内固定条纹锁 + 调用方持权威实例**，跨进程不保证，见 `docs/architecture/21` §2.6）
 9. **钉住一致**：`SkillsContextSource` 读 `ISkillCatalogPin`，`skill` 工具解析也读同一个对象；禁止源内自读 `SkillCatalog.Current`。
 10. **提交如实**：见 §7 步骤 3。
 
@@ -227,7 +227,7 @@ per-session 状态序列化为 JSON，存 `SessionData.Metadata[SessionMetadataK
 |---|---|---|
 | 压缩（自动 / `/compact` / TokenBudget API） | `CompressionService.CompressAsync`（三条入口的唯一汇聚点；`CompactionRunner` 只覆盖其中两条，`TokenBudgetApi.cs:69` 直连 `CompressionService`） | 置 `Compaction`：`baselineValues := currentValues`，清 `deltaLedger`；`Target=Message` 的源在摘要之后**重放**初始渲染（修掉压缩后项目指令消失的既有 bug） |
 | `/clear` | `SessionData.ClearMessages()` 清除元数据键 | 无状态 → 下次全量渲染（不需要 pending 标记，清除即足够） |
-| 工作区切换 | 现有 `WorkspaceChange` 处理链 | 置 `WorkspaceChanged`：根集合变化 → 全量重算 canonical，差异按 §8.6 叙述 |
+| 工作区切换 | 现有 `WorkspaceChange` 处理链 | 置 `WorkspaceChanged`：根集合变化 → 全量重算 canonical，差异按 §8.6 叙述（**实现现状：该位为预留，生产代码尚未置位**，见 `docs/architecture/21` §2.5） |
 | revert | 无需写入 | 装配时按 `deltaLedger` 中仍存活的最后一条折叠 `currentValues`；初始渲染消息若被回退掉则重放 |
 | fork | `SessionForker` 不复制该元数据键 | 新 epoch：下次装配全量渲染（旧增量在复制来的历史里属于过去的真实状态，不冲突） |
 | 值 schema 升级 | `ValueSchemaVersion` 不匹配 | 丢弃该源状态重建 |

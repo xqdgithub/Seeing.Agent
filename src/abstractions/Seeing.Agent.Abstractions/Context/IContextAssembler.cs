@@ -22,7 +22,7 @@ public enum ContextAssemblyMode
 /// <param name="SystemBaseline">系统提示词末尾的基线文本（字节稳定）。</param>
 /// <param name="HistoryBaseline">历史消息侧的基线文本（无则为 null）。</param>
 /// <param name="DeltaText">本次要叙述的增量文本（无变化则为 null）。</param>
-/// <param name="ChangedSourceKeys">本次值发生变化的源键（稳定排序）。</param>
+/// <param name="ChangedSourceKeys">本次检测到值变化（或基线重新锚定 / 初始消息重放）的源键（稳定排序）；<b>不代表已叙述</b>——`Render` 返回空时不叙述但仍在其中。</param>
 /// <param name="SkippedSourceKeys">本次不可读而跳过的源键（稳定排序）。</param>
 /// <param name="Issues">装配过程中的非致命问题（读取失败、超限截断等），禁止静默吞掉。</param>
 public sealed record ContextAssemblyResult(

@@ -299,6 +299,45 @@ public sealed class SkillWriterTests : IDisposable
         catalog.IsEnabled(names[0]).Should().BeFalse();
     }
 
+    [Fact]
+    public async Task SetEnabled_WithCorruptStateFile_ShouldFailWithoutDestroyingIt()
+    {
+        // I3：损坏 / 撕裂的状态文件不得被当成「没有禁用项」覆盖写（那会清空用户已有禁用项）
+        var (catalog, writer) = CreateWriter();
+        var ct = TestContext.Current.CancellationToken;
+
+        WriteSkillFile(ProjectSkillsRoot, "alpha", "损坏保护");
+        await catalog.RefreshAsync(ct);
+
+        Directory.CreateDirectory(ProjectSeeingDirectory);
+        var statePath = Path.Combine(ProjectSeeingDirectory, "skill-state.json");
+        const string corrupt = "{ \"DisabledSkills\": [\"broken";
+        await File.WriteAllTextAsync(statePath, corrupt, ct);
+
+        var result = await writer.SetEnabledAsync("alpha", enabled: false, ConfigLevel.Project, ct);
+
+        result.Success.Should().BeFalse("损坏状态文件必须拒绝覆盖写，而不是当作「全部启用」");
+        result.Error.Should().Contain("不可读");
+        (await File.ReadAllTextAsync(statePath, ct)).Should().Be(corrupt, "损坏文件须原样保留以待人工修复");
+    }
+
+    [Fact]
+    public async Task SetEnabled_ShouldWriteStateFileAtomically()
+    {
+        // I3：临时文件 + Move 覆盖，避免并发读者看到半截 JSON
+        var (catalog, writer) = CreateWriter();
+        var ct = TestContext.Current.CancellationToken;
+
+        WriteSkillFile(ProjectSkillsRoot, "alpha", "原子状态");
+        await catalog.RefreshAsync(ct);
+
+        var result = await writer.SetEnabledAsync("alpha", enabled: false, ConfigLevel.Project, ct);
+
+        result.Success.Should().BeTrue(result.Error ?? "禁用应成功");
+        ReadDisabledState(ProjectSeeingDirectory).Should().BeEquivalentTo("alpha");
+        Directory.GetFiles(ProjectSeeingDirectory, "*.tmp-*").Should().BeEmpty("原子写不得残留临时文件");
+    }
+
     // ===== 失败清理 =====
 
     [Fact]

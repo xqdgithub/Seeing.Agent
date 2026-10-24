@@ -174,6 +174,199 @@ public class AcpModuleLifecycleTests
             hookManager.Count(spec).Should().Be(0, $"Deactivate 后应撤销 {spec.Point}");
     }
 
+    [Fact]
+    public async Task SkillCommandSync_LateEventAfterDeactivate_ShouldNotReregister()
+    {
+        // I2：Deactivate 之后（订阅已失效 / 事件在途）的目录事件不得把命令重新登记回来
+        var registry = new BlockingCommandRegistry();
+        var discovery = new Mock<ICommandDiscovery>();
+        discovery.Setup(d => d.DiscoverFromType(It.IsAny<Type>(), It.IsAny<object?>()))
+            .Returns(Array.Empty<ICommand>());
+
+        var catalog = new FakeSkillCatalog();
+        var services = new ServiceCollection();
+        services.AddSingleton<ISkillCatalog>(catalog);
+        services.AddSingleton<ICommandRegistry>(registry);
+        services.AddSingleton(discovery.Object);
+        await using var provider = services.BuildServiceProvider();
+
+        var module = CreateModule(CreateOptions(new AcpOptions()));
+        await module.ActivateAsync(provider, TestContext.Current.CancellationToken);
+
+        await module.DeactivateAsync(provider, TestContext.Current.CancellationToken);
+        // 幂等：重复停用不得抛
+        await module.DeactivateAsync(provider, TestContext.Current.CancellationToken);
+
+        // 晚到事件（模拟已进入回调队列的目录刷新）
+        catalog.Raise(Snapshot("late-skill"));
+
+        registry.HasCommand("late-skill").Should().BeFalse("停用后晚到的目录事件不得复活 ACP 技能命令");
+        registry.RegistrationAttempts.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task SkillCommandSync_ConcurrentCatalogEvents_ShouldRegisterOnce()
+    {
+        // I2：两个目录事件并发投递时，集合读写必须在同一把锁内（否则同一命令登记两次）
+        var registry = new BlockingCommandRegistry { BlockFirstRegistration = true };
+        var discovery = new Mock<ICommandDiscovery>();
+        discovery.Setup(d => d.DiscoverFromType(It.IsAny<Type>(), It.IsAny<object?>()))
+            .Returns(Array.Empty<ICommand>());
+
+        var catalog = new FakeSkillCatalog();
+        var services = new ServiceCollection();
+        services.AddSingleton<ISkillCatalog>(catalog);
+        services.AddSingleton<ICommandRegistry>(registry);
+        services.AddSingleton(discovery.Object);
+        await using var provider = services.BuildServiceProvider();
+
+        var module = CreateModule(CreateOptions(new AcpOptions()));
+        await module.ActivateAsync(provider, TestContext.Current.CancellationToken);
+
+        var snapshot = Snapshot("race-skill");
+        var first = Task.Run(() => catalog.Raise(snapshot), TestContext.Current.CancellationToken);
+
+        // 等第一个回调进入 Register 内部（此时它已持有同步闸）
+        registry.FirstRegistrationEntered.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue(
+            "第一个目录事件应已进入命令登记");
+
+        // 第二个并发事件：有锁时必须等待；随后释放第一个，两者共只登记一次
+        var second = Task.Run(() => catalog.Raise(snapshot), TestContext.Current.CancellationToken);
+        await Task.Delay(150, TestContext.Current.CancellationToken);
+        registry.ReleaseFirstRegistration();
+
+        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        registry.RegistrationAttempts.Should().Be(1, "并发目录事件不得重复登记同一命令");
+        registry.HasCommand("race-skill").Should().BeTrue();
+
+        await module.DeactivateAsync(provider, TestContext.Current.CancellationToken);
+        registry.HasCommand("race-skill").Should().BeFalse();
+    }
+
+    private static SkillCatalogSnapshot Snapshot(params string[] names) =>
+        new(
+            1,
+            names.Select(name => new SkillCatalogEntry(
+                new SkillInfo { Name = name, Description = $"{name} 技能" },
+                SkillSource.Registered,
+                "test",
+                string.Empty)).ToArray(),
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            new Dictionary<string, ConfigLevel>(StringComparer.OrdinalIgnoreCase),
+            [],
+            []);
+
+    /// <summary>脚本化目录：事件由测试显式触发（可模拟晚到 / 并发投递）。</summary>
+    private sealed class FakeSkillCatalog : ISkillCatalog
+    {
+        private readonly List<Action<SkillCatalogSnapshot>> _handlers = [];
+
+        public SkillCatalogSnapshot Current { get; private set; } =
+            new(0, [], new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                new Dictionary<string, ConfigLevel>(StringComparer.OrdinalIgnoreCase), [], []);
+
+        public IDisposable Subscribe(Action<SkillCatalogSnapshot> onChanged)
+        {
+            lock (_handlers)
+                _handlers.Add(onChanged);
+
+            // 故意不在 Dispose 时移除：模拟「事件已进入回调队列」的晚到投递
+            return new NoopDisposable();
+        }
+
+        public void Raise(SkillCatalogSnapshot snapshot)
+        {
+            Current = snapshot;
+
+            Action<SkillCatalogSnapshot>[] handlers;
+            lock (_handlers)
+                handlers = _handlers.ToArray();
+
+            foreach (var handler in handlers)
+                handler(snapshot);
+        }
+
+        public SkillCatalogEntry? Find(string name) => null;
+
+        public bool IsEnabled(string name) => false;
+
+        public Task<SkillCatalogSnapshot> EnsureFreshAsync(CancellationToken ct = default) =>
+            Task.FromResult(Current);
+
+        public Task<SkillCatalogSnapshot> RefreshAsync(CancellationToken ct = default) =>
+            Task.FromResult(Current);
+
+        public Task<bool> RegisterAsync(SkillInfo info, string providerId, CancellationToken ct = default) =>
+            Task.FromResult(false);
+
+        public Task<bool> UnregisterAsync(string name, CancellationToken ct = default) =>
+            Task.FromResult(false);
+
+        private sealed class NoopDisposable : IDisposable
+        {
+            public void Dispose()
+            {
+            }
+        }
+    }
+
+    /// <summary>可阻塞首次登记的命令注册表：用于制造确定性的双线程交错。</summary>
+    private sealed class BlockingCommandRegistry : ICommandRegistry
+    {
+        private readonly CommandRegistry _inner = new();
+        private readonly ManualResetEventSlim _firstRegistrationEntered = new(false);
+        private readonly ManualResetEventSlim _releaseFirstRegistration = new(false);
+        private int _blockFirst;
+        private int _registrationAttempts;
+
+        public bool BlockFirstRegistration { get; init; }
+
+        public ManualResetEventSlim FirstRegistrationEntered => _firstRegistrationEntered;
+
+        public int RegistrationAttempts => Volatile.Read(ref _registrationAttempts);
+
+        public void ReleaseFirstRegistration() => _releaseFirstRegistration.Set();
+
+        public void Register(ICommand command)
+        {
+            Interlocked.Increment(ref _registrationAttempts);
+
+            if (BlockFirstRegistration && Interlocked.Exchange(ref _blockFirst, 1) == 0)
+            {
+                _firstRegistrationEntered.Set();
+                _releaseFirstRegistration.Wait(TimeSpan.FromSeconds(10));
+            }
+
+            _inner.Register(command);
+        }
+
+        public void RegisterAll(IEnumerable<ICommand> commands)
+        {
+            foreach (var command in commands)
+                Register(command);
+        }
+
+        public ICommand? GetCommand(string name) => _inner.GetCommand(name);
+
+        public ICommand? GetCommand(string name, AgentRuntime runtime) => _inner.GetCommand(name, runtime);
+
+        public IEnumerable<ICommand> GetAllCommands() => _inner.GetAllCommands();
+
+        public IEnumerable<ICommand> GetCommandsByRuntime(AgentRuntime runtime) => _inner.GetCommandsByRuntime(runtime);
+
+        public IEnumerable<ICommand> GetCommandsByCategory(CommandCategory category) =>
+            _inner.GetCommandsByCategory(category);
+
+        public IEnumerable<CommandMetadata> GetAllMetadata() => _inner.GetAllMetadata();
+
+        public bool HasCommand(string name) => _inner.HasCommand(name);
+
+        public bool Unregister(string name) => _inner.Unregister(name);
+
+        public int Count => _inner.Count;
+    }
+
     private static IOptionsMonitor<AcpOptions> CreateOptions(AcpOptions value)
     {
         var monitor = new Mock<IOptionsMonitor<AcpOptions>>();
