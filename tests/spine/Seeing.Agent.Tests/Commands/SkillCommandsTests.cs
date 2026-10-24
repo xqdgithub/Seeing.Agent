@@ -132,7 +132,35 @@ public class SkillCommandsTests
         var sessionManager = CreateSessionManager(session);
         var command = new DynamicSkillCommand(sessionManager.Object, "demo");
 
-        // Act
+        // Act：只给执行级钉住快照（生产形态），不注入 Services
+        var result = await command.ExecuteAsync(
+            new CommandContext
+            {
+                SessionId = "s1",
+                Input = "/demo arg",
+                Arguments = "arg",
+                Skill = catalog.Current
+            },
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        result.NeedsRefresh.Should().BeTrue();
+        result.RemoveCommandMessage.Should().BeFalse("命令声明保留命令消息（内容已替换为展开结果）");
+        session.Messages[^1].Content.Should().Contain("skill arg content");
+    }
+
+    [Fact]
+    public async Task DynamicSkillCommand_WithoutPinnedSnapshot_ShouldFallBackToServices()
+    {
+        // 兼容接缝：旧宿主 / 单测只填 Services 时仍可解析（唯一允许的兜底路径）
+        var session = new SessionData { Id = "s1" };
+        session.AddMessage(SessionMessage.UserMessage("/demo arg"));
+        var skill = new SkillInfo { Name = "demo", Description = "d", Content = "skill $1 content" };
+        var catalog = CreateCatalog(skill);
+        var sessionManager = CreateSessionManager(session);
+        var command = new DynamicSkillCommand(sessionManager.Object, "demo");
+
         var result = await command.ExecuteAsync(
             new CommandContext
             {
@@ -143,11 +171,22 @@ public class SkillCommandsTests
             },
             TestContext.Current.CancellationToken);
 
-        // Assert
-        result.Success.Should().BeTrue();
-        result.NeedsRefresh.Should().BeTrue();
-        result.RemoveCommandMessage.Should().BeFalse("命令声明保留命令消息（内容已替换为展开结果）");
-        session.Messages[^1].Content.Should().Contain("skill arg content");
+        result.Success.Should().BeTrue(result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task DynamicSkillCommand_WhenNoSnapshotAndNoServices_ShouldFailExplicitly()
+    {
+        var session = new SessionData { Id = "s1" };
+        session.AddMessage(SessionMessage.UserMessage("/demo arg"));
+        var command = new DynamicSkillCommand(CreateSessionManager(session).Object, "demo");
+
+        var result = await command.ExecuteAsync(
+            new CommandContext { SessionId = "s1", Input = "/demo arg", Arguments = "arg" },
+            TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("技能目录不可用");
     }
 
     [Fact]
@@ -168,7 +207,7 @@ public class SkillCommandsTests
                 SessionId = "s1",
                 Input = "/demo arg",
                 Arguments = "arg",
-                Services = BuildServices(catalog)
+                Skill = catalog.Current
             },
             TestContext.Current.CancellationToken);
 

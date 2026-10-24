@@ -25,6 +25,7 @@ using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Scheduler;
 using Seeing.Agent.Scheduler.Jobs;
+using Seeing.Agent.Skills.Commands;
 using Seeing.Agent.Tests.Context;
 using Seeing.Session.Core;
 using Xunit;
@@ -315,6 +316,90 @@ public class ExecutionRunnerContextAssemblyTests
         sessionManager.Verify(m => m.SaveAsync(It.IsAny<string>()), Times.Never);
     }
 
+    [Fact]
+    public async Task DynamicSkillCommand_ShouldResolveFromPinnedSnapshot_WithoutManualServices()
+    {
+        // F1 回归：真实执行链上 /<技能名> 必须成功。
+        // 旧实现从 CommandContext.Services 取 ISkillCatalog，而主链从未填充该槽位——测试自己注入了
+        // Services 才把坑掩盖过去。本用例只走 ExecutionRunner 的真实接线，不手工构造 CommandContext。
+        var session = SessionData.Create();
+        session.AddMessage(SessionMessage.UserMessage("/demo arg"));
+
+        var snapshot = new SkillCatalogSnapshot(
+            1,
+            [
+                new SkillCatalogEntry(
+                    new SkillInfo { Name = "demo", Description = "演示技能", Content = "skill $1 content" },
+                    SkillSource.Registered,
+                    "test",
+                    string.Empty)
+            ],
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            new Dictionary<string, ConfigLevel>(StringComparer.OrdinalIgnoreCase),
+            [],
+            []);
+
+        var sessionManager = new Mock<ISessionManager>();
+        sessionManager
+            .Setup(m => m.EnsureSessionAsync(session.Id, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
+            .ReturnsAsync(session);
+        sessionManager.Setup(m => m.Get(It.IsAny<string>())).Returns(session);
+        sessionManager
+            .Setup(m => m.GetOrLoadAsync(session.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        sessionManager
+            .Setup(m => m.UpdateSessionAsync(
+                session.Id,
+                It.IsAny<Action<SessionData>>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<string, Action<SessionData>, CancellationToken>((_, action, _) => action(session))
+            .ReturnsAsync(session);
+        sessionManager.Setup(m => m.SaveAsync(session.Id)).Returns(Task.CompletedTask);
+        sessionManager.Setup(m => m.FlushAsync(session.Id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var command = new DynamicSkillCommand(sessionManager.Object, "demo");
+        var commandRegistry = new Mock<ICommandRegistry>();
+        commandRegistry.Setup(r => r.GetCommand("demo", AgentRuntime.Native)).Returns(command);
+
+        var catalog = new Mock<ISkillCatalog>();
+        catalog.Setup(c => c.Current).Returns(snapshot);
+        catalog.Setup(c => c.EnsureFreshAsync(It.IsAny<CancellationToken>())).ReturnsAsync(snapshot);
+        catalog.Setup(c => c.GetEnabledEntries(It.IsAny<SkillCatalogSnapshot>()))
+            .Returns((SkillCatalogSnapshot s) => s.Entries);
+
+        var events = new List<IMessageEvent>();
+        var publisher = new Mock<IExecutionEventPublisher>();
+        publisher
+            .Setup(p => p.Publish(It.IsAny<string>(), It.IsAny<IMessageEvent>()))
+            .Callback<string, IMessageEvent>((_, evt) => events.Add(evt));
+
+        var executor = new Mock<IAgentExecutor>();
+        executor
+            .Setup(e => e.ExecuteAsync(
+                It.IsAny<AgentDefinition>(),
+                It.IsAny<IReadOnlyList<ChatMessage>>(),
+                It.IsAny<AgentContext>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(EmptyStream());
+
+        var runner = CreateRunner(
+            session,
+            executor.Object,
+            new RecordingContextAssembler { Baseline = "SYSTEM-BASELINE" },
+            commandRegistry.Object,
+            configureServices: services => services.AddSingleton(catalog.Object),
+            eventPublisher: publisher.Object);
+
+        // Act
+        await runner.RunOnceAsync(
+            NewRecord(session.Id, "/demo arg"), NewBatch(), TestContext.Current.CancellationToken);
+
+        // Assert：命令成功、目录里的技能正文被展开进用户消息（不再返回「技能目录不可用」）
+        var result = events.OfType<CommandResultEvent>().Should().ContainSingle().Subject;
+        result.Success.Should().BeTrue(result.Message);
+        session.Messages.Should().Contain(m => m.Content!.Contains("skill arg content", StringComparison.Ordinal));
+    }
+
     // ===== 假实现 =====
 
     /// <summary>注定失败的结算：模拟工具视图结算阶段抛错。</summary>
@@ -337,7 +422,8 @@ public class ExecutionRunnerContextAssemblyTests
         IContextAssembler? assembler = null,
         ICommandRegistry? commandRegistry = null,
         ISessionToolSchemaResolver? schemaResolver = null,
-        Action<IServiceCollection>? configureServices = null)
+        Action<IServiceCollection>? configureServices = null,
+        IExecutionEventPublisher? eventPublisher = null)
     {
         var sessionManager = new Mock<ISessionManager>();
         sessionManager
@@ -346,6 +432,17 @@ public class ExecutionRunnerContextAssemblyTests
         sessionManager.Setup(m => m.Get(It.IsAny<string>())).Returns(session);
         sessionManager.Setup(m => m.SaveAsync(session.Id)).Returns(Task.CompletedTask);
         sessionManager.Setup(m => m.FlushAsync(session.Id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        // 命令路径：/skill 与 /<技能名> 经 GetOrLoadAsync 读会话、经 UpdateSessionAsync 改消息内容
+        sessionManager
+            .Setup(m => m.GetOrLoadAsync(session.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        sessionManager
+            .Setup(m => m.UpdateSessionAsync(
+                session.Id,
+                It.IsAny<Action<SessionData>>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<string, Action<SessionData>, CancellationToken>((_, action, _) => action(session))
+            .ReturnsAsync(session);
 
         var agentRegistry = new Mock<IAgentRegistry>();
         agentRegistry
@@ -377,7 +474,7 @@ public class ExecutionRunnerContextAssemblyTests
 
         return new ExecutionRunner(
             provider,
-            Mock.Of<IExecutionEventPublisher>(),
+            eventPublisher ?? Mock.Of<IExecutionEventPublisher>(),
             new ExecutionOptions(),
             configStore.Object,
             new CompactionRunner(
