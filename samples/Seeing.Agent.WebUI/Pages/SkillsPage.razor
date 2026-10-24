@@ -1,8 +1,9 @@
 @using AntDesign
-@using Seeing.Agent.Skills
-@inject SkillManager SkillManager
+@inject ISkillCatalog SkillCatalog
+@inject ISkillWriter SkillWriter
 @inject IMessageService MessageService
 @inject NavigationManager NavigationManager
+@implements IDisposable
 
 <PageTitle>技能 - Seeing.Agent</PageTitle>
 
@@ -44,6 +45,20 @@
             </div>
         </div>
     </div>
+
+    <!-- 目录问题（冲突 / 加载失败）不静默：直接展示 -->
+    @if (_snapshot is { } snapshot && snapshot.Conflicts.Count > 0)
+    {
+        <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 12px;"
+               Message="@($"同名技能冲突 {snapshot.Conflicts.Count} 项（保留高优先级来源，其余不可调用）")"
+               Description="@DescribeConflicts(snapshot)" />
+    }
+    @if (_snapshot is { } issueSnapshot && issueSnapshot.Issues.Count > 0)
+    {
+        <Alert Type="@AlertType.Error" ShowIcon="true" Style="margin-bottom: 12px;"
+               Message="@($"技能加载问题 {issueSnapshot.Issues.Count} 项")"
+               Description="@DescribeIssues(issueSnapshot)" />
+    }
     
     <div class="page-filters">
         <div class="filter-search">
@@ -90,39 +105,39 @@
         }
         else if (_isCardView) {
             <div class="items-grid">
-            @foreach (var skill in _filteredSkills) {
+            @foreach (var entry in _filteredSkills) {
                 <div class="item-card">
                     <div class="item-card-header">
-                        <div class="card-icon @(SkillManager.IsSkillEnabled(skill.Key) ? "success" : "")">
+                        <div class="card-icon @(IsEnabled(entry) ? "success" : "")">
                             <Icon Type="@IconType.Outline.Code" />
                         </div>
                         <div class="card-title-section">
-                            <h3 class="card-title">@skill.Key</h3>
+                            <h3 class="card-title">@entry.Info.Name</h3>
                             <div class="card-status-row">
-                                <Tag Color="@GetSkillTypeColor(skill.Value)">@GetSkillType(skill.Value)</Tag>
-                                <Tag Color="@(SkillManager.IsSkillEnabled(skill.Key) ? "success" : "default")">
-                                    @(SkillManager.IsSkillEnabled(skill.Key) ? "Enabled" : "Disabled")
+                                <Tag Color="@GetSourceColor(entry)">@GetSourceLabel(entry)</Tag>
+                                <Tag Color="@(IsEnabled(entry) ? "success" : "default")">
+                                    @(IsEnabled(entry) ? "Enabled" : "Disabled")
                                 </Tag>
                             </div>
                         </div>
                         <div class="card-header-action">
                             <Button Type="@ButtonType.Text" Size="@ButtonSize.Small"
                                     Icon="@IconType.Outline.InfoCircle"
-                                    OnClick="@(() => ViewSkill(skill.Key))" />
+                                    OnClick="@(() => ViewSkill(entry.Info.Name))" />
                         </div>
                     </div>
                     <div class="item-card-body">
-                        <p class="card-description">@GetDescriptionPreview(skill.Value?.Description)</p>
-                        @if (!string.IsNullOrEmpty(skill.Value?.Location)) {
+                        <p class="card-description">@GetDescriptionPreview(entry.Info.Description)</p>
+                        @if (!string.IsNullOrEmpty(entry.DirectoryPath)) {
                             <div class="meta-item">
                                 <Icon Type="@IconType.Outline.Folder" />
-                                <span class="meta-value">@GetLocationPreview(skill.Value.Location)</span>
+                                <span class="meta-value">@GetLocationPreview(entry.DirectoryPath)</span>
                             </div>
                         }
                     </div>
                     <div class="item-card-footer">
                         <div class="card-actions">
-                            <Switch Checked="@SkillManager.IsSkillEnabled(skill.Key)" OnChange="@((bool v) => ToggleSkill(skill.Key, v))" />
+                            <Switch Checked="@IsEnabled(entry)" OnChange="@((bool v) => ToggleSkill(entry, v))" />
                         </div>
                     </div>
                 </div>
@@ -135,40 +150,40 @@
                     <thead>
                         <tr>
                             <th>Name</th>
-                            <th>Type</th>
+                            <th>Source</th>
                             <th>Status</th>
                             <th>Description</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                    @foreach (var skill in _filteredSkills) {
+                    @foreach (var entry in _filteredSkills) {
                         <tr>
                             <td>
                                 <div class="table-cell-name">
                                     <div class="table-cell-icon"><Icon Type="@IconType.Outline.Code" /></div>
                                     <div class="table-cell-text">
-                                        <span class="table-cell-title">@skill.Key</span>
+                                        <span class="table-cell-title">@entry.Info.Name</span>
                                     </div>
                                 </div>
                             </td>
                             <td>
-                                <Tag Color="@GetSkillTypeColor(skill.Value)">@GetSkillType(skill.Value)</Tag>
+                                <Tag Color="@GetSourceColor(entry)">@GetSourceLabel(entry)</Tag>
                             </td>
                             <td>
-                                <Tag Color="@(SkillManager.IsSkillEnabled(skill.Key) ? "success" : "default")">
-                                    @(SkillManager.IsSkillEnabled(skill.Key) ? "Enabled" : "Disabled")
+                                <Tag Color="@(IsEnabled(entry) ? "success" : "default")">
+                                    @(IsEnabled(entry) ? "Enabled" : "Disabled")
                                 </Tag>
                             </td>
                             <td>
-                                <span class="table-cell-description">@GetDescriptionPreview(skill.Value?.Description)</span>
+                                <span class="table-cell-description">@GetDescriptionPreview(entry.Info.Description)</span>
                             </td>
                             <td>
                                 <div class="table-cell-actions">
                                     <Button Type="@ButtonType.Text" Size="@ButtonSize.Small"
                                             Icon="@IconType.Outline.InfoCircle"
-                                            OnClick="@(() => ViewSkill(skill.Key))" />
-                                    <Switch Checked="@SkillManager.IsSkillEnabled(skill.Key)" OnChange="@((bool v) => ToggleSkill(skill.Key, v))" />
+                                            OnClick="@(() => ViewSkill(entry.Info.Name))" />
+                                    <Switch Checked="@IsEnabled(entry)" OnChange="@((bool v) => ToggleSkill(entry, v))" />
                                 </div>
                             </td>
                         </tr>
@@ -184,84 +199,147 @@
     private string _searchText = "";
     private bool _isLoading = false;
     private bool _isCardView = true;
-    private List<KeyValuePair<string, SkillInfo>> _filteredSkills = new();
-    private List<KeyValuePair<string, SkillInfo>> _allSkills = new();
-    
+
+    /// <summary>目录快照（唯一渲染数据源；不再维护本地技能缓存）。</summary>
+    private SkillCatalogSnapshot? _snapshot;
+
+    /// <summary>目录变更订阅（Dispose 时退订）。</summary>
+    private IDisposable? _subscription;
+
+    private bool _disposed;
+
+    private List<SkillCatalogEntry> _filteredSkills = new();
+
     // Statistics
-    private int _totalCount => _allSkills.Count;
-    private int _enabledCount => _allSkills.Count(s => SkillManager.IsSkillEnabled(s.Key));
+    private int _totalCount => _snapshot?.Entries.Count ?? 0;
+    private int _enabledCount => _snapshot?.Entries.Count(IsEnabled) ?? 0;
     private int _disabledCount => _totalCount - _enabledCount;
-    
-    protected override async Task OnInitializedAsync() => await RefreshSkills();
-    
-    async Task RefreshSkills() {
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 先订阅再取快照：避免「取完快照、订阅之前」发布的版本被漏掉
+        _subscription = SkillCatalog.Subscribe(OnCatalogChanged);
+        _snapshot = await SkillCatalog.EnsureFreshAsync();
+        ApplyFilter();
+    }
+
+    /// <summary>目录事件可能来自 watcher 线程：切回 UI 上下文再渲染。</summary>
+    private void OnCatalogChanged(SkillCatalogSnapshot snapshot)
+    {
+        if (_disposed)
+            return;
+
+        _ = InvokeAsync(() =>
+        {
+            _snapshot = snapshot;
+            ApplyFilter();
+            StateHasChanged();
+        });
+    }
+
+    async Task RefreshSkills()
+    {
         _isLoading = true;
         StateHasChanged();
-        
-        _allSkills = SkillManager.GetAllSkillInfosIncludingDisabled().ToList();
+
+        _snapshot = await SkillCatalog.RefreshAsync();
         ApplyFilter();
-        
+
         _isLoading = false;
         StateHasChanged();
     }
-    
-    void ApplyFilter() {
-        _filteredSkills = _allSkills
-            .Where(s => string.IsNullOrEmpty(_searchText) || s.Key.Contains(_searchText, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(s => GetSkillTypeSortOrder(s.Value))
-            .ThenBy(s => s.Key, StringComparer.OrdinalIgnoreCase)
+
+    void ApplyFilter()
+    {
+        _filteredSkills = (_snapshot?.Entries ?? [])
+            .Where(entry => string.IsNullOrEmpty(_searchText)
+                || entry.Info.Name.Contains(_searchText, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(GetSourceSortOrder)
+            .ThenBy(entry => entry.Info.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
-    
-    void SetViewMode(bool isCard) {
+
+    void SetViewMode(bool isCard)
+    {
         _isCardView = isCard;
     }
-    
-    void ClearSearch() {
+
+    void ClearSearch()
+    {
         _searchText = "";
         ApplyFilter();
     }
-    
-    private async Task ToggleSkill(string name, bool enabled) {
-        await SkillManager.SetSkillEnabledAsync(name, enabled);
+
+    /// <summary>启用/禁用：层级取当前生效层级（未禁用时按来源推断），写操作由 ISkillWriter 收口。</summary>
+    private async Task ToggleSkill(SkillCatalogEntry entry, bool enabled)
+    {
+        var result = await SkillWriter.SetEnabledAsync(entry.Info.Name, enabled, ResolveLevel(entry));
+        if (!result.Success)
+        {
+            MessageService.Error(result.Error ?? "操作失败");
+            return;
+        }
+
+        MessageService.Success(enabled ? "已启用" : "已禁用");
         StateHasChanged();
     }
-    
-    string GetSkillType(SkillInfo? s) {
-        if (s?.Location == null) return "未知";
-        // 内置技能：embedded:// 开头
-        if (s.Location.StartsWith("embedded://", StringComparison.OrdinalIgnoreCase)) return "内置";
-        // 用户级：路径包含用户目录
-        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (s.Location.StartsWith(userProfile, StringComparison.OrdinalIgnoreCase)) return "用户级";
-        // 项目级：其他路径
-        return "项目级";
+
+    private ConfigLevel ResolveLevel(SkillCatalogEntry entry)
+    {
+        if (_snapshot is not null && _snapshot.DisabledScopes.TryGetValue(entry.Info.Name, out var scope))
+            return scope;
+
+        return entry.Source == SkillSource.UserFile ? ConfigLevel.User : ConfigLevel.Project;
     }
-    
-    /// <summary>
-    /// 获取技能类型排序值：项目级=1, 用户级=2, 内置=3
-    /// </summary>
-    int GetSkillTypeSortOrder(SkillInfo? s) {
-        if (s?.Location == null) return 4;
-        if (s.Location.StartsWith("embedded://", StringComparison.OrdinalIgnoreCase)) return 3;
-        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (s.Location.StartsWith(userProfile, StringComparison.OrdinalIgnoreCase)) return 2;
-        return 1;
-    }
-    
-    /// <summary>
-    /// 获取技能类型标签颜色（AntDesign Tag Color）
-    /// </summary>
-    string GetSkillTypeColor(SkillInfo? s) {
-        if (s?.Location == null) return "default";
-        if (s.Location.StartsWith("embedded://", StringComparison.OrdinalIgnoreCase)) return "orange";  // 内置：橙色
-        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (s.Location.StartsWith(userProfile, StringComparison.OrdinalIgnoreCase)) return "purple";    // 用户级：紫色
-        return "blue";  // 项目级：蓝色
-    }
-    
+
+    /// <summary>技能是否可用：目录快照未把该名列入禁用集合（各层级并集语义）。</summary>
+    private bool IsEnabled(SkillCatalogEntry entry) =>
+        _snapshot is not null && !_snapshot.DisabledNames.Contains(entry.Info.Name);
+
+    /// <summary>来源标签（读 SkillCatalogEntry.Source，不再嗅探路径前缀）。</summary>
+    string GetSourceLabel(SkillCatalogEntry entry) => entry.Source switch
+    {
+        SkillSource.Registered => "内置",
+        SkillSource.ProjectFile => "项目级",
+        SkillSource.UserFile => "用户级",
+        _ => "未知"
+    };
+
+    int GetSourceSortOrder(SkillCatalogEntry entry) => entry.Source switch
+    {
+        SkillSource.ProjectFile => 1,
+        SkillSource.UserFile => 2,
+        SkillSource.Registered => 3,
+        _ => 4
+    };
+
+    /// <summary>来源标签颜色（AntDesign Tag Color）。</summary>
+    string GetSourceColor(SkillCatalogEntry entry) => entry.Source switch
+    {
+        SkillSource.ProjectFile => "blue",
+        SkillSource.UserFile => "purple",
+        SkillSource.Registered => "orange",
+        _ => "default"
+    };
+
+    string DescribeConflicts(SkillCatalogSnapshot snapshot) =>
+        string.Join("；", snapshot.Conflicts.Take(5).Select(conflict =>
+            $"{conflict.Name}：保留 {conflict.WinnerOrigin}，忽略 {conflict.LoserOrigin}"))
+        + (snapshot.Conflicts.Count > 5 ? $"；等 {snapshot.Conflicts.Count} 项" : "");
+
+    string DescribeIssues(SkillCatalogSnapshot snapshot) =>
+        string.Join("；", snapshot.Issues.Take(5).Select(issue => $"{issue.Path}：{issue.Reason}"))
+        + (snapshot.Issues.Count > 5 ? $"；等 {snapshot.Issues.Count} 项" : "");
+
     string GetDescriptionPreview(string? d) => string.IsNullOrEmpty(d) ? "无描述" : (d.Length > 100 ? d[..100] + "..." : d);
     string GetLocationPreview(string? loc) => loc?.Length > 40 ? "..." + loc[^Math.Min(40, loc.Length)..] : loc ?? "";
     void ViewSkill(string name) => NavigationManager.NavigateTo($"/skills/{name}");
     void CreateSkill() => NavigationManager.NavigateTo("/skills/create");
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _subscription?.Dispose();
+        _subscription = null;
+    }
 }

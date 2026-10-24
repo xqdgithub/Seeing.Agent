@@ -325,6 +325,51 @@ public sealed class SkillWriterTests : IDisposable
         Directory.GetDirectories(ProjectSkillsRoot, "*.bak-*").Should().BeEmpty();
     }
 
+    // ===== UI 投影（仓库无 bUnit：锁定页面渲染所依赖的目录事件 / Source 投影） =====
+
+    [Fact]
+    public async Task CatalogEvent_ShouldExposeSourceProjectionForUi()
+    {
+        var (catalog, writer) = CreateWriter();
+        var ct = TestContext.Current.CancellationToken;
+
+        var published = new List<SkillCatalogSnapshot>();
+        using var subscription = catalog.Subscribe(snapshot =>
+        {
+            lock (published)
+                published.Add(snapshot);
+        });
+
+        await writer.CreateAsync(
+            new SkillDraft("ui-skill", "UI 投影", "正文"),
+            ConfigLevel.Project,
+            overwrite: false,
+            ct);
+
+        (await catalog.RegisterAsync(
+            new SkillInfo { Name = "ui-builtin", Description = "内置技能" },
+            "plugin-x",
+            ct)).Should().BeTrue();
+
+        // 禁用后事件快照必须带禁用集合：页面直接渲染快照，不做本地缓存
+        await writer.SetEnabledAsync("ui-skill", enabled: false, ConfigLevel.Project, ct);
+
+        SkillCatalogSnapshot last;
+        lock (published)
+            last = published[^1];
+
+        last.Entries.Select(entry => (entry.Info.Name, entry.Source)).Should().BeEquivalentTo(
+            [
+                ("ui-skill", SkillSource.ProjectFile),
+                ("ui-builtin", SkillSource.Registered)
+            ]);
+        last.DisabledNames.Should().Contain("ui-skill");
+        last.DisabledScopes["ui-skill"].Should().Be(ConfigLevel.Project);
+
+        lock (published)
+            published.Count.Should().BeGreaterThanOrEqualTo(3);
+    }
+
     // ===== 环境 =====
 
     private string ProjectSkillsRoot => Path.Combine(ProjectSeeingDirectory, "skills");

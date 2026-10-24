@@ -1,12 +1,15 @@
 @using AntDesign
 @using Seeing.Agent.Skills
+@inject ISkillCatalog SkillCatalog
+@inject ISkillWriter SkillWriter
 @inject SkillManager SkillManager
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
+@implements IDisposable
 
 <PageTitle>@SkillName - 技能详情</PageTitle>
 
-<WorkspacePageShell Loading="@_loading" IsEmpty="@(_skill == null)" EmptyTitle="技能不存在">
+<WorkspacePageShell Loading="@_loading" IsEmpty="@(_entry == null)" EmptyTitle="技能不存在">
     <Breadcrumb>
         <BreadcrumbItem><a @onclick="@(() => NavigationManager.NavigateTo("/skills"))" style="cursor:pointer;">技能</a></BreadcrumbItem>
         <BreadcrumbItem>@SkillName</BreadcrumbItem>
@@ -19,17 +22,28 @@
         </Space>
     </Extra>
     <ChildContent>
-        @if (_skill != null)
+        @if (_entry != null)
         {
             <Descriptions Bordered Column="2" Style="margin-bottom: 16px;">
                 <DescriptionsItem Title="名称">@SkillName</DescriptionsItem>
-                <DescriptionsItem Title="类型"><Tag Color="@GetSkillTypeColor(_skill)">@GetSkillType(_skill)</Tag></DescriptionsItem>
-                <DescriptionsItem Title="路径" Span="2">@_skill.Location</DescriptionsItem>
-                <DescriptionsItem Title="描述" Span="2">@(_skill.Description ?? "无")</DescriptionsItem>
+                <DescriptionsItem Title="来源"><Tag Color="@GetSourceColor(_entry)">@GetSourceLabel(_entry)</Tag></DescriptionsItem>
+                <DescriptionsItem Title="路径" Span="2">@(string.IsNullOrEmpty(_entry.DirectoryPath) ? "（注册通道技能，无磁盘目录）" : _entry.DirectoryPath)</DescriptionsItem>
+                <DescriptionsItem Title="描述" Span="2">@(_entry.Info.Description ?? "无")</DescriptionsItem>
+                <DescriptionsItem Title="禁用层级" Span="2">
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <RadioGroup TValue="string" @bind-Value="@_level" ButtonStyle="@RadioButtonStyle.Solid">
+                            <Radio Value="@("project")">项目级</Radio>
+                            <Radio Value="@("user")">用户级</Radio>
+                        </RadioGroup>
+                        <span style="color: var(--color-text-tertiary); font-size: 12px;">
+                            禁用时只写所选层级；启用时清除所有层级的禁用项。
+                        </span>
+                    </div>
+                </DescriptionsItem>
             </Descriptions>
             <Tabs>
                 <TabPane Key="content" Tab="说明">
-                    <div style="white-space: pre-wrap; line-height: 1.6;">@(_skill.Content ?? "无内容")</div>
+                    <div style="white-space: pre-wrap; line-height: 1.6;">@(_entry.Info.Content ?? "无内容")</div>
                 </TabPane>
                 <TabPane Key="raw" Tab="原始文件">
                     <pre style="white-space: pre-wrap; max-height: 500px; overflow: auto;">@_rawContent</pre>
@@ -52,46 +66,105 @@
 
 @code {
     [Parameter] public string SkillName { get; set; } = "";
-    private SkillInfo? _skill;
+
+    private SkillCatalogEntry? _entry;
     private string _rawContent = "";
     private List<string> _files = new();
     private bool _enabled = true;
     private bool _loading;
 
+    /// <summary>禁用写盘层级（"project" / "user"）；默认预选当前生效层级。</summary>
+    private string _level = "project";
+
+    private IDisposable? _subscription;
+    private bool _disposed;
+
     protected override async Task OnInitializedAsync()
     {
         _loading = true;
-        _skill = SkillManager.GetSkillInfoIncludingDisabled(SkillName);
-        _enabled = SkillManager.IsSkillEnabled(SkillName);
-        if (_skill != null && !string.IsNullOrEmpty(_skill.Location) && File.Exists(_skill.Location))
-            _rawContent = await File.ReadAllTextAsync(_skill.Location);
-        _files = SkillManager.GetSkillFiles(SkillName);
+
+        var snapshot = await SkillCatalog.EnsureFreshAsync();
+        _entry = SkillCatalog.Find(SkillName);
+
+        if (_entry != null)
+        {
+            _enabled = SkillCatalog.IsEnabled(SkillName);
+            _level = ResolveLevel(snapshot, SkillName, _entry);
+            _files = SkillManager.GetSkillFiles(_entry);
+
+            var location = _entry.Info.Location;
+            if (!string.IsNullOrEmpty(location) && File.Exists(location))
+                _rawContent = await File.ReadAllTextAsync(location);
+        }
+
+        _subscription = SkillCatalog.Subscribe(OnCatalogChanged);
         _loading = false;
+    }
+
+    /// <summary>目录事件（可能是 watcher 线程）：切回 UI 上下文刷新启用态。</summary>
+    private void OnCatalogChanged(SkillCatalogSnapshot snapshot)
+    {
+        if (_disposed)
+            return;
+
+        _ = InvokeAsync(() =>
+        {
+            _entry = snapshot.Entries.FirstOrDefault(e =>
+                string.Equals(e.Info.Name, SkillName, StringComparison.OrdinalIgnoreCase));
+            _enabled = _entry is not null && !snapshot.DisabledNames.Contains(_entry.Info.Name);
+            StateHasChanged();
+        });
     }
 
     private async Task ToggleEnabled(bool enabled)
     {
-        await SkillManager.SetSkillEnabledAsync(SkillName, enabled);
+        // 层级显式传入（用户在下方单选里可改）；启用时写入实现会清除所有层级
+        var result = await SkillWriter.SetEnabledAsync(SkillName, enabled, ToLevel(_level));
+        if (!result.Success)
+        {
+            MessageService.Error(result.Error ?? "操作失败");
+            return;
+        }
+
         _enabled = enabled;
         MessageService.Success(enabled ? "已启用" : "已禁用");
     }
 
-    string GetSkillType(SkillInfo? s) {
-        if (s?.Location == null) return "未知";
-        // 内置技能：embedded:// 开头
-        if (s.Location.StartsWith("embedded://", StringComparison.OrdinalIgnoreCase)) return "内置";
-        // 用户级：路径包含用户目录
-        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (s.Location.StartsWith(userProfile, StringComparison.OrdinalIgnoreCase)) return "用户级";
-        // 项目级：其他路径
-        return "项目级";
+    private static string ResolveLevel(SkillCatalogSnapshot snapshot, string skillName, SkillCatalogEntry? entry)
+    {
+        if (snapshot.DisabledScopes.TryGetValue(skillName, out var scope))
+            return scope == ConfigLevel.User ? "user" : "project";
+
+        // 未禁用时按来源预选：项目级技能默认写项目级状态
+        return entry?.Source == SkillSource.UserFile ? "user" : "project";
     }
 
-    string GetSkillTypeColor(SkillInfo? s) {
-        if (s?.Location == null) return "default";
-        if (s.Location.StartsWith("embedded://", StringComparison.OrdinalIgnoreCase)) return "orange";
-        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (s.Location.StartsWith(userProfile, StringComparison.OrdinalIgnoreCase)) return "purple";
-        return "blue";
+    private static ConfigLevel ToLevel(string level) =>
+        string.Equals(level, "user", StringComparison.OrdinalIgnoreCase)
+            ? ConfigLevel.User
+            : ConfigLevel.Project;
+
+    /// <summary>来源标签（读 SkillCatalogEntry.Source，不再嗅探路径前缀）。</summary>
+    string GetSourceLabel(SkillCatalogEntry? entry) => entry?.Source switch
+    {
+        SkillSource.Registered => "内置",
+        SkillSource.ProjectFile => "项目级",
+        SkillSource.UserFile => "用户级",
+        _ => "未知"
+    };
+
+    string GetSourceColor(SkillCatalogEntry? entry) => entry?.Source switch
+    {
+        SkillSource.ProjectFile => "blue",
+        SkillSource.UserFile => "purple",
+        SkillSource.Registered => "orange",
+        _ => "default"
+    };
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _subscription?.Dispose();
+        _subscription = null;
     }
 }
