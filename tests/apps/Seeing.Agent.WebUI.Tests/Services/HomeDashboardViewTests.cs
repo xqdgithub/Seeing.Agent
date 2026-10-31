@@ -28,6 +28,17 @@ public class HomeDashboardViewTests
         HomeDashboardView.RelativeTime(Now.AddMinutes(5), Now).Should().Be("刚刚");
     }
 
+    [Fact]
+    public void RelativeTime_WhenTimeIsUtc_ShouldNormalizeKinds()
+    {
+        // SessionSummary.LastActiveAt 写入路径 Kind 不一致（Utc / Local 混用），
+        // 直接相减会差出一个时区偏移：这里的 UTC 时间代表「2 分钟前」，必须仍然显示 2 分钟前。
+        var localNow = new DateTime(2026, 10, 31, 15, 0, 0, DateTimeKind.Local);
+        var utcTime = localNow.ToUniversalTime().AddMinutes(-2);
+
+        HomeDashboardView.RelativeTime(utcTime, localNow).Should().Be("2 分钟前");
+    }
+
     [Theory]
     [InlineData(0, 0, 0, false)]
     [InlineData(1, 0, 0, true)]

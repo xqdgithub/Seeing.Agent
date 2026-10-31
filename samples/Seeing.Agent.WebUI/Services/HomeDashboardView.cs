@@ -15,7 +15,9 @@ public static class HomeDashboardView
     /// <summary>相对时间：刚刚 / N 分钟前 / N 小时前 / 昨天 / N 天前（未来时间按「刚刚」）。</summary>
     public static string RelativeTime(DateTime time, DateTime now)
     {
-        var delta = now - time;
+        // LastActiveAt 的 Kind 在不同写入路径不一致（Utc / Local 混用），
+        // 直接相减会差出一个时区偏移，先统一到 UTC 再比较。
+        var delta = ToUtc(now) - ToUtc(time);
         if (delta < TimeSpan.Zero)
             delta = TimeSpan.Zero;
 
@@ -30,6 +32,14 @@ public static class HomeDashboardView
 
         return $"{(int)delta.TotalDays} 天前";
     }
+
+    /// <summary>Kind 归一：Utc 原样、Local 转 UTC、Unspecified 视为本地墙钟再转 UTC。</summary>
+    private static DateTime ToUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Utc => value,
+        DateTimeKind.Local => value.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(value, DateTimeKind.Local).ToUniversalTime()
+    };
 
     /// <summary>待我处理是否该出现：任一项非零才显示整卡（避免空卡噪音）。</summary>
     public static bool HasActionItems(int approvals, int questions, int failures) =>

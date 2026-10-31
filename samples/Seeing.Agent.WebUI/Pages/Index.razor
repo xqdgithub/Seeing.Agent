@@ -240,6 +240,9 @@
 
         .home-dash-row .title {
             color: #262626;
+            /* flex item 默认 min-width:auto 不会收缩，长英文/URL 标题会撑破卡片 */
+            flex: 1 1 auto;
+            min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
