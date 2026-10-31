@@ -135,7 +135,7 @@
                 </div>
 
                 @{
-                    var remaining = _todayRuns.Where(r => r.When >= _now).Take(4).ToList();
+                    var remaining = _todayRuns.Where(r => r.When >= _now).Take(6).ToList();
                 }
                 <div class="sched-list">
                     @if (_todayRuns.Count == 0)
