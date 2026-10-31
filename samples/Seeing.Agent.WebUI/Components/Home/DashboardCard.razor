@@ -1,6 +1,6 @@
 @* 主页仪表盘卡片外壳：标题 + 可选右上角链接 + 整卡点击 + hover 抬升。 *@
 
-<div class="dash-card @(OnClick.HasDelegate ? "is-clickable" : null) @Class"
+<div class="@CssClass"
      @onclick="HandleClick"
      role="@(OnClick.HasDelegate ? "button" : null)"
      tabindex="@(OnClick.HasDelegate ? "0" : null)"
@@ -16,65 +16,6 @@
     </div>
     @ChildContent
 </div>
-
-<style>
-    .dash-card {
-        background: #fff;
-        border: 1px solid #e8e8e8;
-        border-radius: 8px;
-        padding: 16px;
-        margin-bottom: 16px;
-        /* 瀑布流（CSS columns）里必须整卡留在同一列 */
-        break-inside: avoid;
-        -webkit-column-break-inside: avoid;
-        transition: border-color .15s, transform .15s;
-    }
-
-    .dash-card.is-clickable {
-        cursor: pointer;
-    }
-
-        .dash-card.is-clickable:hover {
-            border-color: #1890ff;
-            transform: translateY(-1px);
-        }
-
-        .dash-card.is-clickable:focus-visible {
-            outline: 2px solid #1890ff;
-            outline-offset: 2px;
-        }
-
-    .dash-card-head {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 12px;
-    }
-
-    .dash-card-title {
-        font-size: 13px;
-        font-weight: 600;
-        color: #262626;
-    }
-
-    .dash-card-link {
-        font-size: 12px;
-        color: #1890ff;
-        text-decoration: none;
-        white-space: nowrap;
-    }
-
-        .dash-card-link:hover {
-            text-decoration: underline;
-        }
-
-    @@media (prefers-reduced-motion: reduce) {
-        .dash-card {
-            transition: none;
-        }
-    }
-</style>
 
 @code {
     /// <summary>卡片标题（左上）。</summary>
@@ -93,6 +34,11 @@
     [Parameter] public string? Class { get; set; }
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private string CssClass => string.Join(
+        ' ',
+        new[] { "dash-card", OnClick.HasDelegate ? "is-clickable" : null, Class }
+            .Where(part => !string.IsNullOrWhiteSpace(part)));
 
     private async Task HandleClick()
     {
