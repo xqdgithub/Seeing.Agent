@@ -89,7 +89,7 @@
                     <span Class="batch-count">已选 <b>@_selectedIds.Count</b> 项</span>
                 </SpaceItem>
                 <SpaceItem>
-                    <Popconfirm Title="@($"确定删除所选 {_selectedIds.Count} 个会话？将同步删除其子会话。")"
+                    <Popconfirm Title="@GetBatchDeleteConfirmText()"
                                 OnConfirm="@DeleteSelectedAsync">
                         <Button Type="@ButtonType.Primary" Danger Icon="@IconType.Outline.Delete">
                             批量删除
@@ -118,7 +118,7 @@
                 <div class="session-list">
                     @foreach (var session in _archivedSessions)
                     {
-                        <div Class="session-card-wrapper">
+                        <div Class="session-card-wrapper @(IsSelected(session.Id) ? "session-card-selected" : "")">
                             <Card Size="@CardSize.Small" Class="session-card">
                                 <div Class="session-card-content">
                                     <div Class="session-card-header">
@@ -136,11 +136,22 @@
                                         </span>
                                     </div>
                                     <div class="session-card-actions">
-                                        <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small"
-                                                Icon="@IconType.Outline.Rollback"
-                                                OnClick="@(() => RestoreSession(session.Id))">
-                                            恢复
-                                        </Button>
+                                        <Checkbox Checked="@IsSelected(session.Id)"
+                                                  CheckedChanged="@((bool value) => ToggleSelect(session.Id, value))" />
+                                        <div class="session-card-action-buttons">
+                                            <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small"
+                                                    Icon="@IconType.Outline.Rollback"
+                                                    OnClick="@(() => RestoreSession(session.Id))">
+                                                恢复
+                                            </Button>
+                                            <Popconfirm Title="确定删除此已归档会话？该操作不可恢复，将同步删除其子会话。"
+                                                        OnConfirm="@(() => DeleteSession(session.Id))">
+                                                <Button Type="@ButtonType.Text" Size="@ButtonSize.Small"
+                                                        Danger Icon="@IconType.Outline.Delete">
+                                                    删除
+                                                </Button>
+                                            </Popconfirm>
+                                        </div>
                                     </div>
                                 </div>
                             </Card>
@@ -567,18 +578,18 @@
     }
 
     bool IsAllSelected() =>
-        _filteredSessions.Count > 0 && _filteredSessions.All(s => _selectedIds.Contains(s.Id));
+        CurrentSessions.Count > 0 && CurrentSessions.All(s => _selectedIds.Contains(s.Id));
 
     void OnToggleSelectAll(bool value)
     {
         if (value)
         {
-            foreach (var s in _filteredSessions)
+            foreach (var s in CurrentSessions)
                 _selectedIds.Add(s.Id);
         }
         else
         {
-            foreach (var s in _filteredSessions)
+            foreach (var s in CurrentSessions)
                 _selectedIds.Remove(s.Id);
         }
         StateHasChanged();
@@ -590,6 +601,15 @@
         _selectedIds.Clear();
         StateHasChanged();
     }
+
+    /// <summary>当前视图下的可选列表（归档视图 → 归档列表；普通视图 → 筛选列表）。</summary>
+    private IReadOnlyList<SessionSummary> CurrentSessions =>
+        _showArchived ? _archivedSessions : _filteredSessions;
+
+    /// <summary>批量删除确认文案：归档删除不可恢复，单独提示。</summary>
+    string GetBatchDeleteConfirmText() => _showArchived
+        ? $"确定删除所选 {_selectedIds.Count} 个已归档会话？该操作不可恢复，将同步删除其子会话。"
+        : $"确定删除所选 {_selectedIds.Count} 个会话？将同步删除其子会话。";
 
     /// <summary>搜索词变化即清空勾选（筛选结果改变，旧的勾选无意义）</summary>
     void OnSearchChanged()
