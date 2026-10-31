@@ -88,6 +88,8 @@ builder.Services.AddScoped<Seeing.Agent.WebUI.Files.Services.FileTreeState>();
 builder.Services.AddSingleton<Seeing.Agent.WebUI.Services.HostRequestInbox>();
 builder.Services.AddSingleton<Seeing.Agent.WebUI.Services.HostRequestActivePanelRegistry>();
 builder.Services.AddScoped<Seeing.Agent.WebUI.Services.HostRequestDispatcher>();
+// 跨组件 UI 覆盖层请求（Scoped，circuit 维度）：主页卡片 → 审批中心抽屉
+builder.Services.AddScoped<Seeing.Agent.WebUI.Services.UiOverlayService>();
 
 // EventStreamHandler：页面渲染实例经 SessionEventStreamRouter.GetOrCreateConsumer 按会话创建（Session.razor）。
 // 此处保留的 Scoped 注册作为全局事件处理占位实例（sessionId 为空串）。

@@ -19,6 +19,7 @@
 @inject PermissionInboxView PermissionView
 @inject WebUiSurfacePresenter PermissionPresenter
 @inject QuestionInboxView QuestionView
+@inject UiOverlayService Overlays
 
 <Sider Class="@GetSiderClass()"
        Width="240"
@@ -203,6 +204,7 @@
         Registry.Changed += OnRegistryChanged;
         _optionsSubscription = AgentOptions.OnChange(_ => RefreshNav());
         PermissionView.Changed += OnPermissionChanged;
+        Overlays.PermissionCenterRequested += OpenPermissionCenter;
         RefreshNav();
         UpdateSelectedKey();
     }
@@ -213,6 +215,7 @@
         NavigationManager.LocationChanged -= OnLocationChanged;
         Registry.Changed -= OnRegistryChanged;
         PermissionView.Changed -= OnPermissionChanged;
+        Overlays.PermissionCenterRequested -= OpenPermissionCenter;
         _optionsSubscription?.Dispose();
     }
 
