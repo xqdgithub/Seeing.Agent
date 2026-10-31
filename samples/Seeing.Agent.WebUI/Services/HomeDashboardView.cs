@@ -84,9 +84,9 @@ public static class HomeDashboardView
                 {
                     when = ScheduleExpressionParser.GetNextOccurrence(job.Schedule, now);
                 }
-                catch (Exception)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    // 表达式异常不阻塞整卡渲染：跳过该任务
+                    // 表达式无效不阻塞整卡渲染：跳过该任务（取消信号不得被吞掉）
                     when = null;
                 }
             }

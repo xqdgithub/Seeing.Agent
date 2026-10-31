@@ -132,6 +132,22 @@ public class HomeDashboardViewTests
     }
 
     [Fact]
+    public void UpcomingRuns_InvalidScheduleExpression_ShouldSkipInsteadOfThrow()
+    {
+        // 表达式非法时 GetNextOccurrence 会抛异常；首页不能因此整卡渲染失败（应跳过该任务）。
+        var job = new ScheduledJobSpec
+        {
+            Id = "j7",
+            Intent = ScheduleIntent.Active,
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "not-an-interval" }
+        };
+
+        var runs = HomeDashboardView.UpcomingRuns([job], new Dictionary<string, JobStatus>(), Now, take: 3);
+
+        runs.Should().BeEmpty();
+    }
+
+    [Fact]
     public void CountExpired_ShouldFollowJobExpiryRules()
     {
         var once = new ScheduledJobSpec

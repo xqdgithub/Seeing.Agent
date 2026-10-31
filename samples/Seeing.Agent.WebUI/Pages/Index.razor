@@ -60,8 +60,11 @@
                     @foreach (var session in _sessions)
                     {
                         var sessionId = session.Id;
-                        <div class="home-dash-row"
+                        <div class="home-dash-row is-actionable"
+                             role="button"
+                             tabindex="0"
                              @onclick="@(() => Navigation.NavigateTo($"/session/{sessionId}"))"
+                             @onkeydown="@(args => HandleRowKeyDown(args, sessionId))"
                              @onclick:stopPropagation="true">
                             <span class="title">@HomeDashboardView.SessionTitle(session.Title)</span>
                             <span class="meta">@HomeDashboardView.RelativeTime(session.LastActiveAt, _now)</span>
@@ -231,12 +234,21 @@
         padding: 6px 8px;
         border-radius: 6px;
         font-size: 13px;
-        cursor: pointer;
     }
 
-        .home-dash-row:hover {
-            background: #f5f5f5;
+        /* 只有真正可点的行（最近会话）才暗示可交互 */
+        .home-dash-row.is-actionable {
+            cursor: pointer;
         }
+
+            .home-dash-row.is-actionable:hover {
+                background: #f5f5f5;
+            }
+
+            .home-dash-row.is-actionable:focus-visible {
+                outline: 2px solid #1890ff;
+                outline-offset: 1px;
+            }
 
         .home-dash-row .title {
             color: #262626;
@@ -378,6 +390,13 @@
         {
             _loading = false;
         }
+    }
+
+    /// <summary>行的键盘可达性：Enter / Space 等价于点击（与整卡交互一致）。</summary>
+    private void HandleRowKeyDown(KeyboardEventArgs args, string sessionId)
+    {
+        if (args.Key is "Enter" or " " or "Spacebar")
+            Navigation.NavigateTo($"/session/{sessionId}");
     }
 
     private async Task CreateNewSession()
