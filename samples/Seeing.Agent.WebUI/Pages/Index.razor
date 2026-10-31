@@ -178,7 +178,7 @@
             </DashboardCard>
 
             @* 合并卡：同类计数放一张卡，数字本身即入口 *@
-            <DashboardCard Title="运行概况">
+            <DashboardCard Title="概览">
                 <div class="home-stat-grid">
                     <div class="home-stat" role="button" tabindex="0"
                          @onclick="@(() => Navigation.NavigateTo("/sessions"))"
@@ -198,11 +198,6 @@
                         <span class="home-stat-value">@_modelCount</span>
                         <span class="home-stat-label">模型</span>
                     </div>
-                </div>
-            </DashboardCard>
-
-            <DashboardCard Title="能力与集成">
-                <div class="home-stat-grid">
                     <div class="home-stat" role="button" tabindex="0"
                          @onclick="@(() => Navigation.NavigateTo("/skills"))"
                          @onkeydown="@(args => NavigateOnKey(args, "/skills"))">
@@ -588,7 +583,12 @@
             // 工作区四类入口：模块可能未启用，用 GetService 而非硬注入，缺失时按 0 展示
             _skillCount = Services.GetService<ISkillCatalog>()?.EnabledEntries.Count ?? 0;
             _toolCount = Services.GetService<IToolManager>()?.GetRegisteredTools().Count ?? 0;
-            _mcpCount = Services.GetService<McpStateService>()?.GetAvailableCount() ?? 0;
+
+            // MCP 状态缓存由 1s 定时器填充，首屏读取前先刷一次，否则会显示 0
+            var mcpState = Services.GetService<McpStateService>();
+            mcpState?.ManualRefresh();
+            _mcpCount = mcpState?.GetAvailableCount() ?? 0;
+
             _acpCount = agents.Count(agent => agent.Runtime == AgentRuntime.AcpPassthrough);
 
             var status = await SchedulerStatus.GetStatusAsync();
