@@ -50,57 +50,58 @@ public static class HomeDashboardView
         string.IsNullOrWhiteSpace(title) ? "未命名会话" : title.Trim();
 
     /// <summary>
-    /// 即将触发的任务：仅启用意图、未过期，按时间升序取前 <paramref name="take"/> 个。
-    /// 时间优先取调度器的 <see cref="JobStatus.NextFireTime"/>，缺失时按表达式推算。
+    /// 当天（00:00–24:00）的全部触发点，按时间升序。
+    /// 已过去的点也保留——时间轴要能看出「今天什么时候有任务」。
     /// </summary>
-    public static IReadOnlyList<UpcomingRun> UpcomingRuns(
+    /// <param name="perJobLimit">单任务单日最多展开多少个点，防止高频 interval 把小图撑爆。</param>
+    public static IReadOnlyList<TodayRun> TodayRuns(
         IReadOnlyList<ScheduledJobSpec> jobs,
         IReadOnlyDictionary<string, JobStatus> statuses,
         DateTime now,
-        int take)
+        int perJobLimit = 60)
     {
         ArgumentNullException.ThrowIfNull(jobs);
         ArgumentNullException.ThrowIfNull(statuses);
 
-        if (take <= 0)
-            return Array.Empty<UpcomingRun>();
+        if (perJobLimit <= 0)
+            return Array.Empty<TodayRun>();
 
-        var runs = new List<UpcomingRun>();
+        var dayStart = now.Date;
+        var dayEnd = dayStart.AddDays(1);
+        var runs = new List<TodayRun>();
+
         foreach (var job in jobs)
         {
             if (job.Intent != ScheduleIntent.Active)
                 continue;
 
             var status = statuses.GetValueOrDefault(job.Id);
-
-            // 首页拿到的是「已启动调度器」的快照；过期判定与 cron_list 保持一致。
             if (JobExpiry.IsExpired(job, status, now, schedulerStarted: true))
                 continue;
 
-            var when = status?.NextFireTime;
-            if (when is null)
+            var cursor = dayStart;
+            for (var i = 0; i < perJobLimit; i++)
             {
+                DateTime? next;
                 try
                 {
-                    when = ScheduleExpressionParser.GetNextOccurrence(job.Schedule, now);
+                    next = ScheduleExpressionParser.GetNextOccurrence(job.Schedule, cursor);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    // 表达式无效不阻塞整卡渲染：跳过该任务（取消信号不得被吞掉）
-                    when = null;
+                    next = null;
                 }
+
+                // 不前进视为收敛（防止表达式异常导致死循环）
+                if (next is null || next.Value <= cursor || next.Value >= dayEnd)
+                    break;
+
+                runs.Add(new TodayRun(next.Value, TitleOrId(job)));
+                cursor = next.Value;
             }
-
-            if (when is null)
-                continue;
-
-            runs.Add(new UpcomingRun(job.Id, TitleOrId(job), when.Value));
         }
 
-        return runs
-            .OrderBy(r => r.When)
-            .Take(take)
-            .ToList();
+        return runs.OrderBy(r => r.When).ToList();
     }
 
     /// <summary>已过期任务数（口径同 <see cref="JobExpiry"/>）。</summary>
@@ -121,5 +122,5 @@ public static class HomeDashboardView
         string.IsNullOrWhiteSpace(job.Name) ? job.Id : job.Name.Trim();
 }
 
-/// <summary>即将触发的一条任务（主页卡片行）。</summary>
-public sealed record UpcomingRun(string JobId, string Title, DateTime When);
+/// <summary>当天的一个触发点（今日时间轴上的一个标记）。</summary>
+public sealed record TodayRun(DateTime When, string Title);

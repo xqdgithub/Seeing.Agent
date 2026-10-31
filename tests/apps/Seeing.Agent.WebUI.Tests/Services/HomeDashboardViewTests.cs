@@ -59,80 +59,7 @@ public class HomeDashboardViewTests
     }
 
     [Fact]
-    public void UpcomingRuns_ShouldSortAscendingSkipExpiredAndDisabled()
-    {
-        var cron = new ScheduledJobSpec
-        {
-            Id = "j1",
-            Name = "起床提醒",
-            Intent = ScheduleIntent.Active,
-            Schedule = new ScheduleSpec { Type = ScheduleTypes.Cron, Cron = "0 8 * * *", Timezone = "Asia/Shanghai" }
-        };
-        var expiredOnce = new ScheduledJobSpec
-        {
-            Id = "j2",
-            Name = "过期一次性",
-            Intent = ScheduleIntent.Active,
-            Schedule = new ScheduleSpec { Type = ScheduleTypes.Once, RunAt = Now.AddHours(-1), Timezone = "Asia/Shanghai" }
-        };
-        var disabled = new ScheduledJobSpec
-        {
-            Id = "j3",
-            Name = "已禁用",
-            Intent = ScheduleIntent.Disabled,
-            Schedule = new ScheduleSpec { Type = ScheduleTypes.Cron, Cron = "0 9 * * *", Timezone = "Asia/Shanghai" }
-        };
-
-        var statuses = new Dictionary<string, JobStatus>
-        {
-            ["j1"] = new() { JobId = "j1", NextFireTime = Now.AddHours(2) },
-            ["j2"] = new() { JobId = "j2" },
-            ["j3"] = new() { JobId = "j3", NextFireTime = Now.AddHours(1) }
-        };
-
-        var runs = HomeDashboardView.UpcomingRuns([cron, expiredOnce, disabled], statuses, Now, take: 3);
-
-        runs.Should().HaveCount(1);
-        runs[0].JobId.Should().Be("j1");
-        runs[0].Title.Should().Be("起床提醒");
-        runs[0].When.Should().Be(Now.AddHours(2));
-    }
-
-    [Fact]
-    public void UpcomingRuns_WhenStatusMissing_ShouldComputeFromSchedule()
-    {
-        var once = new ScheduledJobSpec
-        {
-            Id = "j4",
-            Name = "开会",
-            Intent = ScheduleIntent.Active,
-            Schedule = new ScheduleSpec { Type = ScheduleTypes.Once, RunAt = Now.AddHours(3), Timezone = "Asia/Shanghai" }
-        };
-
-        var runs = HomeDashboardView.UpcomingRuns([once], new Dictionary<string, JobStatus>(), Now, take: 1);
-
-        runs.Should().HaveCount(1);
-        runs[0].When.Should().Be(Now.AddHours(3));
-    }
-
-    [Fact]
-    public void UpcomingRuns_ShouldRespectTake()
-    {
-        var jobs = Enumerable.Range(0, 5).Select(i => new ScheduledJobSpec
-        {
-            Id = $"j{i}",
-            Name = $"任务 {i}",
-            Intent = ScheduleIntent.Active,
-            Schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h", Timezone = "Asia/Shanghai" }
-        }).ToList();
-
-        var statuses = jobs.ToDictionary(j => j.Id, j => new JobStatus { JobId = j.Id, NextFireTime = Now.AddHours(1) });
-
-        HomeDashboardView.UpcomingRuns(jobs, statuses, Now, take: 3).Should().HaveCount(3);
-    }
-
-    [Fact]
-    public void UpcomingRuns_InvalidScheduleExpression_ShouldSkipInsteadOfThrow()
+    public void TodayRuns_InvalidScheduleExpression_ShouldSkipInsteadOfThrow()
     {
         // 表达式非法时 GetNextOccurrence 会抛异常；首页不能因此整卡渲染失败（应跳过该任务）。
         var job = new ScheduledJobSpec
@@ -142,9 +69,100 @@ public class HomeDashboardViewTests
             Schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "not-an-interval" }
         };
 
-        var runs = HomeDashboardView.UpcomingRuns([job], new Dictionary<string, JobStatus>(), Now, take: 3);
+        HomeDashboardView.TodayRuns([job], new Dictionary<string, JobStatus>(), Now).Should().BeEmpty();
+    }
 
-        runs.Should().BeEmpty();
+    [Fact]
+    public void TodayRuns_ShouldIncludeWholeDayOfDailyCron()
+    {
+        var cron = new ScheduledJobSpec
+        {
+            Id = "daily",
+            Name = "起床提醒",
+            Intent = ScheduleIntent.Active,
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Cron, Cron = "0 9 * * *", Timezone = "Asia/Shanghai" }
+        };
+
+        var runs = HomeDashboardView.TodayRuns([cron], new Dictionary<string, JobStatus>(), Now, perJobLimit: 10);
+
+        runs.Should().ContainSingle();
+        runs[0].When.Should().Be(Now.Date.AddHours(9), "当天 09:00 的触发点即使已过去也要出现在时间轴上");
+        runs[0].Title.Should().Be("起床提醒");
+    }
+
+    [Fact]
+    public void TodayRuns_ShouldEnumerateHourlyIntervalWithinDay()
+    {
+        var hourly = new ScheduledJobSpec
+        {
+            Id = "hourly",
+            Intent = ScheduleIntent.Active,
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h", Timezone = "Asia/Shanghai" }
+        };
+
+        var runs = HomeDashboardView.TodayRuns([hourly], new Dictionary<string, JobStatus>(), Now, perJobLimit: 60);
+
+        runs.Should().HaveCount(23, "01:00 到 23:00，不含次日 00:00");
+        runs[0].When.Should().Be(Now.Date.AddHours(1));
+        runs[^1].When.Should().Be(Now.Date.AddHours(23));
+    }
+
+    [Fact]
+    public void TodayRuns_ShouldRespectPerJobLimit()
+    {
+        var hourly = new ScheduledJobSpec
+        {
+            Id = "hourly",
+            Intent = ScheduleIntent.Active,
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "1h", Timezone = "Asia/Shanghai" }
+        };
+
+        HomeDashboardView.TodayRuns([hourly], new Dictionary<string, JobStatus>(), Now, perJobLimit: 5)
+            .Should().HaveCount(5);
+    }
+
+    [Fact]
+    public void TodayRuns_ShouldSkipExpiredAndDisabledJobs()
+    {
+        var expiredOnce = new ScheduledJobSpec
+        {
+            Id = "past",
+            Intent = ScheduleIntent.Active,
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Once, RunAt = Now.AddHours(-1) }
+        };
+        var disabled = new ScheduledJobSpec
+        {
+            Id = "off",
+            Intent = ScheduleIntent.Disabled,
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Once, RunAt = Now.AddHours(2) }
+        };
+
+        HomeDashboardView.TodayRuns([expiredOnce, disabled], new Dictionary<string, JobStatus>(), Now, perJobLimit: 5)
+            .Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TodayRuns_ShouldPlaceOnceJobOnTodayAndIgnoreTomorrow()
+    {
+        var today = new ScheduledJobSpec
+        {
+            Id = "today",
+            Name = "今天开会",
+            Intent = ScheduleIntent.Active,
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Once, RunAt = Now.Date.AddHours(18) }
+        };
+        var tomorrow = new ScheduledJobSpec
+        {
+            Id = "tomorrow",
+            Intent = ScheduleIntent.Active,
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Once, RunAt = Now.Date.AddDays(1).AddHours(9) }
+        };
+
+        var runs = HomeDashboardView.TodayRuns([today, tomorrow], new Dictionary<string, JobStatus>(), Now, perJobLimit: 5);
+
+        runs.Should().ContainSingle();
+        runs[0].Title.Should().Be("今天开会");
+        runs[0].When.Should().Be(Now.Date.AddHours(18));
     }
 
     [Fact]
@@ -180,7 +198,7 @@ public class HomeDashboardViewTests
     }
 
     [Fact]
-    public void UpcomingRuns_TitleShouldFallbackToIdWhenNameMissing()
+    public void TodayRuns_TitleShouldFallbackToIdWhenNameMissing()
     {
         var job = new ScheduledJobSpec
         {
@@ -190,7 +208,7 @@ public class HomeDashboardViewTests
             Schedule = new ScheduleSpec { Type = ScheduleTypes.Once, RunAt = Now.AddHours(1) }
         };
 
-        HomeDashboardView.UpcomingRuns([job], new Dictionary<string, JobStatus>(), Now, take: 1)
+        HomeDashboardView.TodayRuns([job], new Dictionary<string, JobStatus>(), Now)
             .Single().Title.Should().Be("job_abc");
     }
 }

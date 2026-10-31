@@ -111,25 +111,56 @@
                 </DashboardCard>
             }
 
-            <DashboardCard Title="定时任务" LinkText="全部 →"
+            @* 大卡：今日日程时间轴（00:00–24:00），跨 2 列 2 行 *@
+            <DashboardCard Class="card-schedule" Title="定时任务 · 今日" LinkText="全部 →"
                            OnLink="@(() => Navigation.NavigateTo("/cron-jobs"))"
                            OnClick="@(() => Navigation.NavigateTo("/cron-jobs"))">
-                @if (_upcomingRuns.Count == 0)
-                {
-                    <div class="home-empty">
-                        <span class="home-muted">暂无即将触发的任务</span>
-                    </div>
+                @* 时间轴常显：即使今天没有触发点，也能看到今天的日程骨架与当前时刻 *@
+                <div class="sched-timeline" title="今日 00:00–24:00">
+                    @foreach (var run in _todayRuns)
+                    {
+                        var past = run.When < _now;
+                        <span class="@(past ? "sched-point is-past" : "sched-point")"
+                              style="@($"left:{TimelinePercent(run.When):0.##}%")"
+                              title="@($"{run.When:HH:mm} {run.Title}")"></span>
+                    }
+                    <span class="sched-now" style="@($"left:{TimelinePercent(_now):0.##}%")" title="现在"></span>
+                </div>
+                <div class="sched-axis">
+                    <span>00:00</span>
+                    <span>06:00</span>
+                    <span>12:00</span>
+                    <span>18:00</span>
+                    <span>24:00</span>
+                </div>
+
+                @{
+                    var remaining = _todayRuns.Where(r => r.When >= _now).Take(4).ToList();
                 }
-                else
-                {
-                    @foreach (var run in _upcomingRuns)
+                <div class="sched-list">
+                    @if (_todayRuns.Count == 0)
                     {
                         <div class="home-dash-row">
-                            <span class="title">@run.Title</span>
-                            <span class="meta">@run.When.ToString("yyyy-MM-dd HH:mm")</span>
+                            <span class="home-muted">今天没有定时任务</span>
                         </div>
                     }
-                }
+                    else if (remaining.Count == 0)
+                    {
+                        <div class="home-dash-row">
+                            <span class="home-muted">今天的任务都已触发</span>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var run in remaining)
+                        {
+                            <div class="home-dash-row">
+                                <span class="title">@run.Title</span>
+                                <span class="meta">@run.When.ToString("HH:mm")</span>
+                            </div>
+                        }
+                    }
+                </div>
                 @if (_expiredCount > 0)
                 {
                     <div class="home-card-foot">已过期 @_expiredCount 个</div>
@@ -269,6 +300,59 @@
         gap: 16px;
     }
 
+    /* 定时任务大卡：跨 2 列 2 行（尺寸仍固定） */
+    .home-board .card-schedule {
+        grid-column: span 2;
+        grid-row: span 2;
+    }
+
+    /* 今日日程时间轴 */
+    .sched-timeline {
+        position: relative;
+        height: 46px;
+        margin: 4px 0 2px;
+        border-radius: 6px;
+        background: linear-gradient(#fafafa, #f0f0f0);
+        border: 1px solid #f0f0f0;
+    }
+
+    .sched-point {
+        position: absolute;
+        top: 50%;
+        width: 8px;
+        height: 8px;
+        margin: -4px 0 0 -4px;
+        border-radius: 50%;
+        background: #1890ff;
+        box-shadow: 0 0 0 2px #e6f7ff;
+    }
+
+        .sched-point.is-past {
+            background: #d9d9d9;
+            box-shadow: none;
+        }
+
+    .sched-now {
+        position: absolute;
+        top: -2px;
+        bottom: -2px;
+        width: 1px;
+        background: #ff4d4f;
+        opacity: .75;
+    }
+
+    .sched-axis {
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+        color: #bfbfbf;
+        line-height: 1;
+    }
+
+    .sched-list {
+        margin-top: 8px;
+    }
+
     .home-dash-row {
         display: flex;
         justify-content: space-between;
@@ -360,6 +444,11 @@
             grid-auto-rows: auto;
         }
 
+        .home-board .card-schedule {
+            grid-column: span 1;
+            grid-row: span 1;
+        }
+
         .dash-card {
             height: auto;
             min-height: 140px;
@@ -373,10 +462,9 @@
 
 @code {
     private const int RecentSessionCount = 3;
-    private const int UpcomingRunCount = 3;
 
     private List<SessionSummary> _sessions = new();
-    private IReadOnlyList<UpcomingRun> _upcomingRuns = Array.Empty<UpcomingRun>();
+    private IReadOnlyList<TodayRun> _todayRuns = Array.Empty<TodayRun>();
     private int _sessionCount;
     private int _agentCount;
     private int _modelCount;
@@ -420,7 +508,7 @@
                 jobStatuses[jobStatus.JobId] = jobStatus;
 
             var jobs = await ScheduleManager.ListJobsAsync();
-            _upcomingRuns = HomeDashboardView.UpcomingRuns(jobs, jobStatuses, _now, UpcomingRunCount);
+            _todayRuns = HomeDashboardView.TodayRuns(jobs, jobStatuses, _now);
             _expiredCount = HomeDashboardView.CountExpired(jobs, jobStatuses, _now, status.IsStarted);
 
             _pendingApprovals = PermissionInboxService.TotalCount;
@@ -446,6 +534,13 @@
     {
         if (args.Key is "Enter" or " " or "Spacebar")
             Navigation.NavigateTo($"/session/{sessionId}");
+    }
+
+    /// <summary>今日时间轴刻度：把一天中的时刻换算成 0–100% 的横向位置。</summary>
+    private double TimelinePercent(DateTime when)
+    {
+        var minutes = (when - _now.Date).TotalMinutes;
+        return Math.Clamp(minutes / 1440d * 100d, 0d, 100d);
     }
 
     /// <summary>英雄区主操作：有最近会话就续聊，否则去会话列表。</summary>
