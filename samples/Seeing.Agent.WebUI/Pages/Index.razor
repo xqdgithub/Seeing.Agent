@@ -24,12 +24,23 @@
 <PageTitle>总览 - Seeing</PageTitle>
 
 <div class="home-dashboard">
-    <div class="home-toolbar">
-        <h1 class="home-title">总览</h1>
-        <Space>
-            <Button Icon="@IconType.Outline.Reload" Loading="@_loading" OnClick="@(() => LoadAsync(showSkeleton: true))">刷新</Button>
-            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="CreateNewSession">新建会话</Button>
+    <section class="home-hero">
+        <img src="ai.svg" alt="Seeing" class="home-hero-logo" />
+        <h1 class="home-hero-title">Seeing</h1>
+        <p class="home-hero-tagline">行到水穷处，坐看云起时</p>
+        <p class="home-hero-desc">会话、定时任务与待办审批一屏总览；点卡片进入对应页面。</p>
+        <Space Size="@("middle")">
+            <Button Type="@ButtonType.Primary" Size="@ButtonSize.Large"
+                    Icon="@IconType.Outline.Message" OnClick="ContinueLastSession">开始对话</Button>
+            <Button Size="@ButtonSize.Large"
+                    Icon="@IconType.Outline.Plus" OnClick="CreateNewSession">新建会话</Button>
         </Space>
+    </section>
+
+    <div class="home-section-head">
+        <span class="home-section-title">总览</span>
+        <Button Type="@ButtonType.Link" Icon="@IconType.Outline.Reload"
+                Loading="@_loading" OnClick="@(() => LoadAsync(showSkeleton: true))">刷新</Button>
     </div>
 
     @if (_error is not null)
@@ -43,7 +54,7 @@
     }
     else
     {
-        @* 瀑布流：CSS 多列，卡片按内容高度自然错落 *@
+        @* 等尺寸卡片网格：卡片同高，排列规整；窄屏自动降列 *@
         <div class="home-board">
 
             <DashboardCard Title="最近会话" LinkText="全部 →"
@@ -150,10 +161,10 @@
         border: 1px solid #e8e8e8;
         border-radius: 8px;
         padding: 16px;
-        margin-bottom: 16px;
-        /* 瀑布流（CSS columns）里必须整卡留在同一列 */
-        break-inside: avoid;
-        -webkit-column-break-inside: avoid;
+        /* 等尺寸卡片：高度由网格行高决定，内容超出裁切，保证排列规整 */
+        height: 100%;
+        overflow: hidden;
+        box-sizing: border-box;
         transition: border-color .15s, transform .15s;
     }
 
@@ -206,24 +217,56 @@
         padding: 24px 32px;
     }
 
-    .home-toolbar {
+    .home-hero {
+        text-align: center;
+        padding: 24px 0 28px;
+    }
+
+    .home-hero-logo {
+        width: 56px;
+        height: 56px;
+        display: inline-block;
+    }
+
+    .home-hero-title {
+        margin: 10px 0 6px;
+        font-size: 28px;
+        font-weight: 600;
+        color: #1890ff;
+        letter-spacing: .5px;
+    }
+
+    .home-hero-tagline {
+        margin: 0;
+        font-size: 14px;
+        color: #8c8c8c;
+    }
+
+    .home-hero-desc {
+        margin: 10px 0 18px;
+        font-size: 13px;
+        color: #bfbfbf;
+    }
+
+    .home-section-head {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 20px;
+        margin-bottom: 12px;
     }
 
-    .home-title {
-        margin: 0;
-        font-size: 20px;
+    .home-section-title {
+        font-size: 14px;
         font-weight: 600;
         color: #262626;
     }
 
-    /* 瀑布流三列；卡片内部保证 break-inside: avoid（见 DashboardCard） */
+    /* 等尺寸卡片网格：列宽自适应，行高固定 → 每张卡片一样大 */
     .home-board {
-        column-count: 3;
-        column-gap: 16px;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        grid-auto-rows: 168px;
+        gap: 16px;
     }
 
     .home-dash-row {
@@ -307,13 +350,19 @@
 
     @@media (max-width: 900px) {
         .home-board {
-            column-count: 2;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
         }
     }
 
     @@media (max-width: 600px) {
         .home-board {
-            column-count: 1;
+            grid-template-columns: 1fr;
+            grid-auto-rows: auto;
+        }
+
+        .dash-card {
+            height: auto;
+            min-height: 140px;
         }
 
         .home-dashboard {
@@ -323,7 +372,7 @@
 </style>
 
 @code {
-    private const int RecentSessionCount = 4;
+    private const int RecentSessionCount = 3;
     private const int UpcomingRunCount = 3;
 
     private List<SessionSummary> _sessions = new();
@@ -397,6 +446,13 @@
     {
         if (args.Key is "Enter" or " " or "Spacebar")
             Navigation.NavigateTo($"/session/{sessionId}");
+    }
+
+    /// <summary>英雄区主操作：有最近会话就续聊，否则去会话列表。</summary>
+    private void ContinueLastSession()
+    {
+        var last = _sessions.FirstOrDefault();
+        Navigation.NavigateTo(last is null ? "/sessions" : $"/session/{last.Id}");
     }
 
     private async Task CreateNewSession()
