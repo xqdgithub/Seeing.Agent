@@ -288,12 +288,18 @@ public sealed class SkillCatalogCoreTests : IDisposable
     {
         var root = ProjectSkillRoot(0);
         WriteSkill(root, "good-skill", "good-skill", "正常技能");
-        // 无 frontmatter 且目录名不符合名称格式 → 解析失败（不得抛异常）
-        var badDirectory = Path.Combine(root, "Bad_Dir");
+        // 有 frontmatter 但缺少 name → 解析失败（不得抛异常）
+        var badDirectory = Path.Combine(root, "no-name-dir");
         Directory.CreateDirectory(badDirectory);
         await File.WriteAllTextAsync(
             Path.Combine(badDirectory, "SKILL.md"),
-            "没有 frontmatter 的正文",
+            """
+            ---
+            description: 没有 name 字段
+            ---
+
+            正文
+            """,
             TestContext.Current.CancellationToken);
 
         var catalog = CreateCatalog(root);
@@ -304,7 +310,7 @@ public sealed class SkillCatalogCoreTests : IDisposable
         issue.Reason.Should().NotBeNullOrWhiteSpace();
         // 失败项不进入可调用集合，正常技能不受影响
         catalog.Current.Entries.Should().ContainSingle().Which.Info.Name.Should().Be("good-skill");
-        catalog.Find("Bad_Dir").Should().BeNull();
+        catalog.Find("no-name-dir").Should().BeNull();
     }
 
     [Fact]

@@ -30,9 +30,6 @@ public sealed class SkillWriter : ISkillWriter
     /// <summary>临时文件名中缀：同目录临时文件 → 原子 <c>Move</c> 的唯一命名标记（N6，避免多处字面量）。</summary>
     private const string TempFileInfix = ".tmp-";
 
-    /// <summary>技能名称正则：小写字母数字 + 单个连字符分隔。</summary>
-    private static readonly Regex s_namePattern = new(@"^[a-z0-9]+(-[a-z0-9]+)*$", RegexOptions.Compiled);
-
     /// <summary>名称中禁止出现的路径 / 平台保留字符。</summary>
     private static readonly char[] s_forbiddenNameChars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
 
@@ -620,7 +617,13 @@ public sealed class SkillWriter : ISkillWriter
         return true;
     }
 
-    /// <summary>技能名称校验：非空、长度、无路径分隔符 / 上级引用、符合正则。</summary>
+    /// <summary>
+    /// 技能名称校验：非空、长度、无路径分隔符 / 上级引用。
+    /// <para>
+    /// 不再限制大小写与分隔风格：生态里存在 <c>Self-Improving + Proactive Agent</c> 这类名称，
+    /// 只保留「能安全用作目录名 / 键」的边界。
+    /// </para>
+    /// </summary>
     private static bool TryValidateName(string? name, out string error)
     {
         error = string.Empty;
@@ -642,12 +645,6 @@ public sealed class SkillWriter : ISkillWriter
             || name.IndexOfAny(s_forbiddenNameChars) >= 0)
         {
             error = $"技能名称不得包含路径分隔符或上级目录引用：{name}";
-            return false;
-        }
-
-        if (!s_namePattern.IsMatch(name))
-        {
-            error = $"技能名称只能包含小写字母、数字和连字符（如 my-skill）：{name}";
             return false;
         }
 

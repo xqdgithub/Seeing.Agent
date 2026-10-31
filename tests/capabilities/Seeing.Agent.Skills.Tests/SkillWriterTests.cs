@@ -120,8 +120,7 @@ public sealed class SkillWriterTests : IDisposable
             "..\\escape",
             "/abs",
             "C:\\abs",
-            "a/b",
-            "Bad_Name"
+            "a/b"
         ];
 
         foreach (var name in illegalNames)

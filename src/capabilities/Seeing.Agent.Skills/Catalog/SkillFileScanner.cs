@@ -32,11 +32,46 @@ public sealed record SkillScanResult(
 /// </summary>
 public static class SkillFileScanner
 {
+    /// <summary>
+    /// 技能名称校验：只做安全边界（非空 / 长度 / 字符集），不限制大小写与分隔风格。
+    /// </summary>
+    /// <param name="name">待校验名称（原样，方法内部会 Trim）。</param>
+    /// <param name="error">失败原因（可直接展示）。</param>
+    private static bool TryValidateName(string? name, out string? error)
+    {
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            error = "缺少 name 字段";
+            return false;
+        }
+
+        var trimmed = name.Trim();
+        if (trimmed.Length > MaxNameLength)
+        {
+            error = $"技能名称过长（{trimmed.Length} > {MaxNameLength}）";
+            return false;
+        }
+
+        if (s_nameInvalidChars.IsMatch(trimmed))
+        {
+            error = $"技能名称含非法字符（不能包含 \\ / : * ? \" < > | 或控制字符）：{trimmed}";
+            return false;
+        }
+
+        return true;
+    }
+
     /// <summary>技能文件名常量。</summary>
     public const string SkillFileName = "SKILL.md";
 
-    /// <summary>技能名称验证正则：小写字母数字，单个连字符分隔，1-64 字符。</summary>
-    private static readonly Regex s_namePattern = new(@"^[a-z0-9]+(-[a-z0-9]+)*$", RegexOptions.Compiled);
+    /// <summary>技能名称里不允许出现的字符：路径分隔符、Windows 非法文件名字符、控制字符。</summary>
+    /// <remarks>
+    /// 名称只是目录内的键，不要求小写或连字符——生态里常见
+    /// <c>Self-Improving + Proactive Agent</c> 这类名称，按格式拒绝会让整条技能加载失败。
+    /// </remarks>
+    private static readonly Regex s_nameInvalidChars = new(@"[\\/:*?""<>|\x00-\x1F]", RegexOptions.Compiled);
 
     private static readonly Regex s_frontmatterPattern = new(
         @"^---[\r]?[\n](.*?)[\r]?[\n]---[\r]?[\n]?",
@@ -207,13 +242,14 @@ public static class SkillFileScanner
             info.Description = $"技能: {skillDirName}（从目录名自动生成）";
             info.Content = content.Trim();
 
-            if (!s_namePattern.IsMatch(info.Name))
+            if (!TryValidateName(info.Name, out var inferredError))
             {
-                logger.LogWarning("推断的技能名称格式无效 (必须是小写字母数字+连字符): {Name}", info.Name);
-                reason = $"缺少 YAML frontmatter，且目录名不是合法技能名称：{skillDirName}";
+                logger.LogWarning("推断的技能名称不可用: {Name}（{Reason}）", info.Name, inferredError);
+                reason = $"缺少 YAML frontmatter，且目录名不可作为技能名称：{skillDirName}（{inferredError}）";
                 return null;
             }
 
+            info.Name = info.Name.Trim();
             return info;
         }
 
@@ -285,26 +321,14 @@ public static class SkillFileScanner
 
         // === 验证 ===
 
-        if (string.IsNullOrEmpty(info.Name))
+        if (!TryValidateName(info.Name, out var nameError))
         {
-            logger.LogWarning("技能缺少 name 字段: {File}", filePath);
-            reason = "缺少 name 字段";
+            logger.LogWarning("技能名称不可用: {Reason}", nameError);
+            reason = nameError;
             return null;
         }
 
-        if (info.Name.Length > MaxNameLength)
-        {
-            logger.LogWarning("技能名称过长 ({Length} > {Max}): {Name}", info.Name.Length, MaxNameLength, info.Name);
-            reason = $"技能名称过长（{info.Name.Length} > {MaxNameLength}）";
-            return null;
-        }
-
-        if (!s_namePattern.IsMatch(info.Name))
-        {
-            logger.LogWarning("技能名称格式无效 (必须是小写字母数字+连字符): {Name}", info.Name);
-            reason = $"技能名称格式无效（必须是小写字母数字+连字符）：{info.Name}";
-            return null;
-        }
+        info.Name = info.Name.Trim();
 
         // 名称与目录名不一致仅告警（既有行为：不拒绝加载）
         var dirName = Path.GetFileName(Path.GetDirectoryName(filePath));
