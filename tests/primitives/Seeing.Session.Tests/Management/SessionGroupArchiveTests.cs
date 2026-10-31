@@ -80,4 +80,38 @@ public class SessionGroupArchiveTests
 
         summaries.Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task RemoveSessionAsync_ArchivedGroupMember_ShouldKeepOtherMembersArchived()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot("g-root");
+        await h.Manager.EnsureForSessionAsync(root.Id);
+        var child = h.CreatePlainSession(SessionKind.SubAgent);
+        child.Title = "child";
+        await h.SessionStore.SaveAsync(child);
+        var group = await h.Manager.GetGroupForSessionAsync(root.Id);
+        await h.Manager.AddMemberAsync(group!.Id, new SessionGroupMember
+        {
+            SessionId = child.Id,
+            Relation = SessionRelation.Child,
+            ParentSessionId = root.Id
+        });
+        await h.Manager.ArchiveGroupAsync(group.Id);
+
+        await h.Manager.RemoveSessionAsync(child.Id, TestContext.Current.CancellationToken);
+
+        var archived = new List<SessionSummary>();
+        await foreach (var s in h.SessionStore.ListArchivedAsync())
+            archived.Add(s);
+        archived.Should().HaveCount(1);
+        archived[0].Id.Should().Be(root.Id);
+
+        var remaining = await h.Manager.GetGroupAsync(group.Id);
+        remaining.Should().NotBeNull();
+        remaining!.Members.Should().ContainSingle(m => m.SessionId == root.Id);
+
+        (await h.Manager.RestoreGroupAsync(group.Id)).Should().BeTrue();
+        (await h.SessionStore.LoadAsync(root.Id)).Should().NotBeNull();
+    }
 }

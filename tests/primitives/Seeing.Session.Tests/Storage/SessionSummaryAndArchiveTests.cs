@@ -247,6 +247,22 @@ public class SessionSummaryAndArchiveTests
     }
 
     [Fact]
+    public async Task InMemoryStore_DeleteAsync_ShouldRemoveArchivedEntry()
+    {
+        var store = new InMemorySessionStore();
+        var session = SessionData.Create(selectedAgent: "plan");
+        await store.SaveAsync(session);
+        await store.ArchiveAsync(session.Id);
+
+        await store.DeleteAsync(session.Id);
+
+        var archived = new List<SessionSummary>();
+        await foreach (var s in store.ListArchivedAsync())
+            archived.Add(s);
+        archived.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task ListSummariesAsync_ShouldFallbackForStoreWithoutProvider()
     {
         var store = new MinimalStore();

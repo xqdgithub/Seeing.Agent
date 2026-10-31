@@ -68,6 +68,7 @@ namespace Seeing.Session.Storage
             ct.ThrowIfCancellationRequested();
 
             _sessions.TryRemove(sessionId, out _);
+            _archived.TryRemove(sessionId, out _);
             return Task.CompletedTask;
         }
 
