@@ -5,7 +5,10 @@
     <div class="page-header-left">
       @if (Breadcrumb != null)
       {
-        @Breadcrumb
+        @* 页面里写的是 <Breadcrumb><BreadcrumbItem/>…</Breadcrumb>：由于该标签与参数名同名，
+           Razor 会把它当作命名片段容器并剥离外层标签，片段内容只剩 BreadcrumbItem 序列。
+           此处统一重新包一层 Breadcrumb，才能渲染出标准的 .ant-breadcrumb > nav/ol 结构与 "/" 分隔符。 *@
+        <Breadcrumb>@Breadcrumb</Breadcrumb>
       }
       else if (!string.IsNullOrEmpty(Title))
       {
@@ -14,7 +17,7 @@
     </div>
     @if (Extra != null)
     {
-      <div class="header-actions">@Extra</div>
+      <div class="page-header-actions">@Extra</div>
     }
   </div>
 

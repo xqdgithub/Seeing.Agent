@@ -8,11 +8,13 @@
 
 <div class="workspace-page">
     <div class="page-header">
-        <Breadcrumb>
-            <BreadcrumbItem>工作区</BreadcrumbItem>
-            <BreadcrumbItem>工具</BreadcrumbItem>
-        </Breadcrumb>
-        <div class="header-actions">
+        <div class="page-header-left">
+            <Breadcrumb>
+                <BreadcrumbItem>工作区</BreadcrumbItem>
+                <BreadcrumbItem>工具</BreadcrumbItem>
+            </Breadcrumb>
+        </div>
+        <div class="page-header-actions">
             <Switch Checked="@_allEnabled" OnChange="@ToggleAllTools" CheckedChildren="全部启用" UnCheckedChildren="全部禁用" />
         </div>
     </div>

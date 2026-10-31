@@ -11,7 +11,8 @@
 
 <WorkspacePageShell Loading="@_loading" IsEmpty="@(_entry == null)" EmptyTitle="技能不存在">
     <Breadcrumb>
-        <BreadcrumbItem><a @onclick="@(() => NavigationManager.NavigateTo("/skills"))" style="cursor:pointer;">技能</a></BreadcrumbItem>
+        <BreadcrumbItem>工作区</BreadcrumbItem>
+        <BreadcrumbItem Href="/skills">技能</BreadcrumbItem>
         <BreadcrumbItem>@SkillName</BreadcrumbItem>
     </Breadcrumb>
     <Extra>

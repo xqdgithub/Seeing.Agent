@@ -14,11 +14,13 @@
 
 <div class="workspace-page">
     <div class="page-header">
-        <Breadcrumb>
-            <BreadcrumbItem>工作区</BreadcrumbItem>
-            <BreadcrumbItem>MCP 客户端</BreadcrumbItem>
-        </Breadcrumb>
-        <div class="header-actions">
+        <div class="page-header-left">
+            <Breadcrumb>
+                <BreadcrumbItem>工作区</BreadcrumbItem>
+                <BreadcrumbItem>MCP 客户端</BreadcrumbItem>
+            </Breadcrumb>
+        </div>
+        <div class="page-header-actions">
             <Space>
                 <SpaceItem>
                     <Button Type="@ButtonType.Default" Icon="@IconType.Outline.Reload" OnClick="HandleRefresh">刷新</Button>
