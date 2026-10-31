@@ -105,6 +105,24 @@ public static class HomeDashboardView
     }
 
     /// <summary>
+    /// 按小时汇总当天触发点（长度 24，索引 = 小时）。用于「24 小时格子」可视化。
+    /// </summary>
+    public static IReadOnlyList<int> HourLoads(IReadOnlyList<TodayRun> runs)
+    {
+        ArgumentNullException.ThrowIfNull(runs);
+
+        var loads = new int[24];
+        foreach (var run in runs)
+        {
+            var hour = run.When.Hour;
+            if (hour is >= 0 and < 24)
+                loads[hour]++;
+        }
+
+        return loads;
+    }
+
+    /// <summary>
     /// 下一条未来触发（跨任务取最早）。今天没有任务时用它给一行「下次：…」提示。
     /// 无可用任务（全部过期/禁用/表达式非法）返回 null。
     /// </summary>

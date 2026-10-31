@@ -225,6 +225,31 @@ public class HomeDashboardViewTests
     }
 
     [Fact]
+    public void HourLoads_ShouldCountRunsPerHour()
+    {
+        var runs = new List<TodayRun>
+        {
+            new(Now.Date.AddHours(20).AddMinutes(53), "测试1"),
+            new(Now.Date.AddHours(20).AddMinutes(56), "测试2"),
+            new(Now.Date.AddHours(21), "测试3")
+        };
+
+        var loads = HomeDashboardView.HourLoads(runs);
+
+        loads.Should().HaveCount(24);
+        loads[20].Should().Be(2);
+        loads[21].Should().Be(1);
+        loads.Where((_, hour) => hour is not (20 or 21)).Should().OnlyContain(c => c == 0);
+    }
+
+    [Fact]
+    public void HourLoads_EmptyInput_ShouldReturn24Zeros()
+    {
+        HomeDashboardView.HourLoads(Array.Empty<TodayRun>())
+            .Should().HaveCount(24).And.OnlyContain(c => c == 0);
+    }
+
+    [Fact]
     public void CountExpired_ShouldFollowJobExpiryRules()
     {
         var once = new ScheduledJobSpec

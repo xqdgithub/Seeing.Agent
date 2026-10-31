@@ -115,23 +115,23 @@
             <DashboardCard Class="card-schedule" Title="定时任务 · 今日" LinkText="全部 →"
                            OnLink="@(() => Navigation.NavigateTo("/cron-jobs"))"
                            OnClick="@(() => Navigation.NavigateTo("/cron-jobs"))">
-                @* 时间轴常显：即使今天没有触发点，也能看到今天的日程骨架与当前时刻 *@
-                <div class="sched-timeline" title="今日 00:00–24:00">
-                    @foreach (var run in _todayRuns)
+                @* 24 小时格子：有任务的时段整格高亮，已过时段压暗，当前小时描红 *@
+                <div class="sched-strip" title="今日 00:00–24:00">
+                    @for (var hour = 0; hour < 24; hour++)
                     {
-                        var past = run.When < _now;
-                        <span class="@(past ? "sched-point is-past" : "sched-point")"
-                              style="@($"left:{TimelinePercent(run.When):0.##}%")"
-                              title="@($"{run.When:HH:mm} {run.Title}")"></span>
+                        var count = _hourLoads[hour];
+                        var barClass = "sched-bar"
+                            + (count > 0 ? " has-task" : string.Empty)
+                            + (hour < _now.Hour ? " is-past" : string.Empty)
+                            + (hour == _now.Hour ? " is-now" : string.Empty);
+                        <div class="sched-cell" title="@($"{hour:00}:00 · {count} 个任务")">
+                            <span class="@barClass"></span>
+                            @if (hour % 6 == 0)
+                            {
+                                <span class="sched-tick">@hour.ToString("00")</span>
+                            }
+                        </div>
                     }
-                    <span class="sched-now" style="@($"left:{TimelinePercent(_now):0.##}%")" title="现在"></span>
-                </div>
-                <div class="sched-axis">
-                    <span>00:00</span>
-                    <span>06:00</span>
-                    <span>12:00</span>
-                    <span>18:00</span>
-                    <span>24:00</span>
                 </div>
 
                 @{
@@ -299,11 +299,12 @@
         color: #262626;
     }
 
-    /* 等尺寸卡片网格：列宽自适应，行高固定 → 每张卡片一样大 */
+    /* 等尺寸卡片网格：最多 3 列，宽屏也不散开 */
     .home-board {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         grid-auto-rows: 168px;
+        grid-auto-flow: dense;
         gap: 16px;
     }
 
@@ -313,47 +314,51 @@
         grid-row: span 2;
     }
 
-    /* 今日日程时间轴 */
-    .sched-timeline {
+    /* 24 小时格子：有任务的时段整格高亮 */
+    .sched-strip {
+        display: flex;
+        align-items: flex-end;
+        gap: 3px;
+        height: 56px;
+        margin: 6px 0 20px;
+    }
+
+    .sched-cell {
         position: relative;
-        height: 46px;
-        margin: 4px 0 2px;
-        border-radius: 6px;
-        background: linear-gradient(#fafafa, #f0f0f0);
-        border: 1px solid #f0f0f0;
+        flex: 1;
+        height: 100%;
+        display: flex;
+        align-items: flex-end;
     }
 
-    .sched-point {
-        position: absolute;
-        top: 50%;
-        width: 8px;
+    .sched-bar {
+        width: 100%;
         height: 8px;
-        margin: -4px 0 0 -4px;
-        border-radius: 50%;
-        background: #1890ff;
-        box-shadow: 0 0 0 2px #e6f7ff;
+        border-radius: 3px;
+        background: #f0f0f0;
     }
 
-        .sched-point.is-past {
-            background: #d9d9d9;
-            box-shadow: none;
+        .sched-bar.has-task {
+            height: 100%;
+            background: #1890ff;
         }
 
-    .sched-now {
-        position: absolute;
-        top: -2px;
-        bottom: -2px;
-        width: 1px;
-        background: #ff4d4f;
-        opacity: .75;
-    }
+            .sched-bar.has-task.is-past {
+                background: #d9d9d9;
+            }
 
-    .sched-axis {
-        display: flex;
-        justify-content: space-between;
+        .sched-bar.is-now {
+            outline: 2px solid #ffccc7;
+            outline-offset: 1px;
+        }
+
+    .sched-tick {
+        position: absolute;
+        bottom: -15px;
+        left: 50%;
+        transform: translateX(-50%);
         font-size: 10px;
         color: #bfbfbf;
-        line-height: 1;
     }
 
     .sched-list {
@@ -439,13 +444,13 @@
         color: #fa8c16;
     }
 
-    @@media (max-width: 900px) {
+    @@media (max-width: 1200px) {
         .home-board {
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
     }
 
-    @@media (max-width: 600px) {
+    @@media (max-width: 800px) {
         .home-board {
             grid-template-columns: 1fr;
             grid-auto-rows: auto;
@@ -472,6 +477,7 @@
 
     private List<SessionSummary> _sessions = new();
     private IReadOnlyList<TodayRun> _todayRuns = Array.Empty<TodayRun>();
+    private IReadOnlyList<int> _hourLoads = new int[24];
     private TodayRun? _nextRun;
     private int _sessionCount;
     private int _agentCount;
@@ -517,6 +523,7 @@
 
             var jobs = await ScheduleManager.ListJobsAsync();
             _todayRuns = HomeDashboardView.TodayRuns(jobs, jobStatuses, _now);
+            _hourLoads = HomeDashboardView.HourLoads(_todayRuns);
             _nextRun = HomeDashboardView.NextRunAfter(jobs, jobStatuses, _now);
             _expiredCount = HomeDashboardView.CountExpired(jobs, jobStatuses, _now, status.IsStarted);
 
@@ -543,13 +550,6 @@
     {
         if (args.Key is "Enter" or " " or "Spacebar")
             Navigation.NavigateTo($"/session/{sessionId}");
-    }
-
-    /// <summary>今日时间轴刻度：把一天中的时刻换算成 0–100% 的横向位置。</summary>
-    private double TimelinePercent(DateTime when)
-    {
-        var minutes = (when - _now.Date).TotalMinutes;
-        return Math.Clamp(minutes / 1440d * 100d, 0d, 100d);
     }
 
     /// <summary>英雄区主操作：有最近会话就续聊，否则去会话列表。</summary>
