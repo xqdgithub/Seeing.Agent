@@ -78,7 +78,7 @@
                              role="button"
                              tabindex="0"
                              @onclick="@(() => Navigation.NavigateTo($"/session/{sessionId}"))"
-                             @onkeydown="@(args => HandleRowKeyDown(args, sessionId))"
+                             @onkeydown="@(args => NavigateOnKey(args, $"/session/{sessionId}"))"
                              @onclick:stopPropagation="true">
                             <span class="title">@HomeDashboardView.SessionTitle(session.Title)</span>
                             <span class="meta">@HomeDashboardView.RelativeTime(session.LastActiveAt, _now)</span>
@@ -177,39 +177,57 @@
                 }
             </DashboardCard>
 
-            <DashboardCard Title="会话" OnClick="@(() => Navigation.NavigateTo("/sessions"))">
-                <div class="home-dash-number">@_sessionCount</div>
-                <div class="home-dash-label">全部会话</div>
+            @* 合并卡：同类计数放一张卡，数字本身即入口 *@
+            <DashboardCard Title="运行概况">
+                <div class="home-stat-grid">
+                    <div class="home-stat" role="button" tabindex="0"
+                         @onclick="@(() => Navigation.NavigateTo("/sessions"))"
+                         @onkeydown="@(args => NavigateOnKey(args, "/sessions"))">
+                        <span class="home-stat-value">@_sessionCount</span>
+                        <span class="home-stat-label">会话</span>
+                    </div>
+                    <div class="home-stat" role="button" tabindex="0"
+                         @onclick="@(() => Navigation.NavigateTo("/agents"))"
+                         @onkeydown="@(args => NavigateOnKey(args, "/agents"))">
+                        <span class="home-stat-value">@_agentCount</span>
+                        <span class="home-stat-label">智能体</span>
+                    </div>
+                    <div class="home-stat" role="button" tabindex="0"
+                         @onclick="@(() => Navigation.NavigateTo("/models"))"
+                         @onkeydown="@(args => NavigateOnKey(args, "/models"))">
+                        <span class="home-stat-value">@_modelCount</span>
+                        <span class="home-stat-label">模型</span>
+                    </div>
+                </div>
             </DashboardCard>
 
-            <DashboardCard Title="智能体" OnClick="@(() => Navigation.NavigateTo("/agents"))">
-                <div class="home-dash-number">@_agentCount</div>
-                <div class="home-dash-label">主智能体</div>
-            </DashboardCard>
-
-            <DashboardCard Title="模型" OnClick="@(() => Navigation.NavigateTo("/models"))">
-                <div class="home-dash-number">@_modelCount</div>
-                <div class="home-dash-label">可用模型</div>
-            </DashboardCard>
-
-            <DashboardCard Title="技能" OnClick="@(() => Navigation.NavigateTo("/skills"))">
-                <div class="home-dash-number">@_skillCount</div>
-                <div class="home-dash-label">可用技能</div>
-            </DashboardCard>
-
-            <DashboardCard Title="工具" OnClick="@(() => Navigation.NavigateTo("/tools"))">
-                <div class="home-dash-number">@_toolCount</div>
-                <div class="home-dash-label">已注册工具</div>
-            </DashboardCard>
-
-            <DashboardCard Title="MCP" OnClick="@(() => Navigation.NavigateTo("/mcp"))">
-                <div class="home-dash-number">@_mcpCount</div>
-                <div class="home-dash-label">已连接服务</div>
-            </DashboardCard>
-
-            <DashboardCard Title="ACP" OnClick="@(() => Navigation.NavigateTo("/acp"))">
-                <div class="home-dash-number">@_acpCount</div>
-                <div class="home-dash-label">ACP 智能体</div>
+            <DashboardCard Title="能力与集成">
+                <div class="home-stat-grid">
+                    <div class="home-stat" role="button" tabindex="0"
+                         @onclick="@(() => Navigation.NavigateTo("/skills"))"
+                         @onkeydown="@(args => NavigateOnKey(args, "/skills"))">
+                        <span class="home-stat-value">@_skillCount</span>
+                        <span class="home-stat-label">技能</span>
+                    </div>
+                    <div class="home-stat" role="button" tabindex="0"
+                         @onclick="@(() => Navigation.NavigateTo("/tools"))"
+                         @onkeydown="@(args => NavigateOnKey(args, "/tools"))">
+                        <span class="home-stat-value">@_toolCount</span>
+                        <span class="home-stat-label">工具</span>
+                    </div>
+                    <div class="home-stat" role="button" tabindex="0"
+                         @onclick="@(() => Navigation.NavigateTo("/mcp"))"
+                         @onkeydown="@(args => NavigateOnKey(args, "/mcp"))">
+                        <span class="home-stat-value">@_mcpCount</span>
+                        <span class="home-stat-label">MCP</span>
+                    </div>
+                    <div class="home-stat" role="button" tabindex="0"
+                         @onclick="@(() => Navigation.NavigateTo("/acp"))"
+                         @onkeydown="@(args => NavigateOnKey(args, "/acp"))">
+                        <span class="home-stat-value">@_acpCount</span>
+                        <span class="home-stat-label">ACP</span>
+                    </div>
+                </div>
             </DashboardCard>
         </div>
     }
@@ -433,17 +451,40 @@
         font-weight: 500;
     }
 
-    .home-dash-number {
-        font-size: 26px;
+    /* 合并卡里的多个计数：每个数字都是独立入口 */
+    .home-stat-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+        gap: 4px;
+    }
+
+    .home-stat {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 6px 8px;
+        border-radius: 6px;
+    }
+
+        .home-stat:hover {
+            background: #f5f5f5;
+        }
+
+        .home-stat:focus-visible {
+            outline: 2px solid #1890ff;
+            outline-offset: 1px;
+        }
+
+    .home-stat-value {
+        font-size: 22px;
         font-weight: 600;
         color: #1890ff;
         line-height: 1.1;
     }
 
-    .home-dash-label {
+    .home-stat-label {
         font-size: 12px;
         color: #8c8c8c;
-        margin-top: 4px;
     }
 
     .home-empty {
@@ -579,11 +620,11 @@
         }
     }
 
-    /// <summary>行的键盘可达性：Enter / Space 等价于点击（与整卡交互一致）。</summary>
-    private void HandleRowKeyDown(KeyboardEventArgs args, string sessionId)
+    /// <summary>键盘可达性：Enter / Space 等价于点击（行与计数块共用）。</summary>
+    private void NavigateOnKey(KeyboardEventArgs args, string path)
     {
         if (args.Key is "Enter" or " " or "Spacebar")
-            Navigation.NavigateTo($"/session/{sessionId}");
+            Navigation.NavigateTo(path);
     }
 
     /// <summary>英雄区主操作：有最近会话就续聊，否则去会话列表。</summary>
