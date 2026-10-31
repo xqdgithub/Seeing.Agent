@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Scheduler.Abstractions;
+using Seeing.Agent.Scheduler.Engine;
+using Seeing.Agent.Scheduler.Models;
 using Seeing.Agent.Tools.Support;
 using System.Text.Json;
 
@@ -45,7 +47,23 @@ public sealed class CronResumeTool : ToolBase
                 return Failure($"任务不存在: {id}");
 
             await _manager.ResumeJobAsync(id, context.CancellationToken).ConfigureAwait(false);
-            return Success($"已启用任务: {id}");
+
+            JobStatus? status = null;
+            try
+            {
+                status = await _manager.GetJobStatusAsync(id, context.CancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "查询定时任务状态失败（恢复结果中省略下次触发时间）: {JobId}", id);
+            }
+
+            var label = string.IsNullOrWhiteSpace(job.Name) ? job.Id : $"{job.Id} · {job.Name}";
+            var expired = JobExpiry.IsExpired(job, status, DateTime.Now, _manager.IsStarted);
+            var hint = expired ? "\n注意: 该任务已过期，需编辑调度时间后才会再次触发。" : string.Empty;
+            return Success(
+                $"已启用任务: {label}",
+                $"调度: {ScheduleTextFormatter.DescribeSchedule(job.Schedule)}\n下次触发: {ScheduleTextFormatter.DescribeNextFire(job, status, schedulerStarted: _manager.IsStarted)}{hint}");
         }
         catch (Exception ex)
         {

@@ -72,7 +72,8 @@ public sealed class ToolExposureConfigResolver
         "todowrite",
         "webfetch",
         "websearch",
-        "codesearch"
+        "codesearch",
+        "current_time"
     ];
 
     /// <summary>

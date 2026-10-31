@@ -40,11 +40,17 @@ public sealed class CronDeleteTool : ToolBase
 
         try
         {
+            var job = await _manager.GetJobAsync(id, context.CancellationToken).ConfigureAwait(false);
+
             var deleted = await _manager.DeleteJobAsync(id, context.CancellationToken).ConfigureAwait(false);
             if (!deleted)
                 return Failure($"任务不存在或删除失败: {id}");
 
-            return Success($"已删除任务: {id}");
+            if (job is null)
+                return Success($"已删除任务: {id}");
+
+            var label = string.IsNullOrWhiteSpace(job.Name) ? job.Id : $"{job.Id} · {job.Name}";
+            return Success($"已删除任务: {label}", $"调度: {ScheduleTextFormatter.DescribeSchedule(job.Schedule)}");
         }
         catch (Exception ex)
         {

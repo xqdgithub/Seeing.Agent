@@ -59,7 +59,7 @@ public sealed class JsonScheduleRepository : IScheduleRepository
             var tmpPath = JobsFilePath + ".tmp";
             var payload = JsonSerializer.Serialize(jobs, JsonOptions);
             await File.WriteAllTextAsync(tmpPath, payload, ct).ConfigureAwait(false);
-            File.Move(tmpPath, JobsFilePath, overwrite: true);
+            await ReplaceFileWithRetryAsync(tmpPath, JobsFilePath, ct).ConfigureAwait(false);
             _logger.LogDebug("Saved jobs file: {Path}", JobsFilePath);
         }
         finally
@@ -94,7 +94,7 @@ public sealed class JsonScheduleRepository : IScheduleRepository
 
             var tmpPath = path + ".tmp";
             await File.WriteAllTextAsync(tmpPath, JsonSerializer.Serialize(history, JsonOptions), ct).ConfigureAwait(false);
-            File.Move(tmpPath, path, overwrite: true);
+            await ReplaceFileWithRetryAsync(tmpPath, path, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -116,4 +116,31 @@ public sealed class JsonScheduleRepository : IScheduleRepository
 
     private static string SanitizeFileName(string jobId) =>
         string.Concat(jobId.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
+
+    /// <summary>
+    /// 原子替换目标文件，带有限重试。
+    /// <para>
+    /// Windows 上杀毒/索引器可能瞬时持有刚写完的临时文件或目标文件句柄，
+    /// 导致 <see cref="File.Move(string, string, bool)"/> 抛
+    /// <see cref="UnauthorizedAccessException"/> / <see cref="IOException"/>。
+    /// 这类占用通常毫秒级释放，因此短退避重试即可，避免一次偶发占用丢掉整次保存。
+    /// </para>
+    /// </summary>
+    private static async Task ReplaceFileWithRetryAsync(string sourcePath, string destinationPath, CancellationToken ct)
+    {
+        const int maxAttempts = 5;
+
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                File.Move(sourcePath, destinationPath, overwrite: true);
+                return;
+            }
+            catch (Exception ex) when (attempt < maxAttempts && ex is IOException or UnauthorizedAccessException)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(20 * attempt), ct).ConfigureAwait(false);
+            }
+        }
+    }
 }

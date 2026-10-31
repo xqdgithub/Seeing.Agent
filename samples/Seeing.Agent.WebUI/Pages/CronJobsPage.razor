@@ -1,6 +1,7 @@
 @using AntDesign
 @using Seeing.Agent.Scheduler
 @using Seeing.Agent.Scheduler.Abstractions
+@using Seeing.Agent.Scheduler.Engine
 @using Seeing.Agent.Scheduler.Models
 @using Seeing.Agent.WebUI.Components.CronJobs
 @using Seeing.Agent.WebUI.Services
@@ -37,7 +38,7 @@
         <div class="stat-item">
             <div class="stat-icon" style="color: #52c41a;"><Icon Type="@IconType.Outline.CheckCircle" /></div>
             <div class="stat-content">
-                <span class="stat-value">@_rows.Count(r => r.State == JobState.Scheduled)</span>
+                <span class="stat-value">@_rows.Count(r => r.State == JobState.Scheduled && !r.IsExpired)</span>
                 <span class="stat-label">已调度</span>
             </div>
         </div>
@@ -55,74 +56,87 @@
                 <span class="stat-label">已禁用</span>
             </div>
         </div>
+        <div class="stat-item">
+            <div class="stat-icon" style="color: #bfbfbf;"><Icon Type="@IconType.Outline.History" /></div>
+            <div class="stat-content">
+                <span class="stat-value">@_rows.Count(r => r.IsExpired)</span>
+                <span class="stat-label">已过期</span>
+            </div>
+        </div>
     </Stats>
     <ChildContent>
-        @* 状态筛选标签页 *@
+        @* 状态筛选标签页：默认「已调度」，已过期任务单独归栏，避免列表噪音 *@
         <Tabs @bind-ActiveKey="_activeTab" OnChange="OnTabChange" Style="margin-bottom: 16px;">
-            <TabPane Key="scheduled" Tab="@($"已调度 ({_rows.Count(r => r.State == JobState.Scheduled)})")" />
+            <TabPane Key="scheduled" Tab="@($"已调度 ({_rows.Count(r => r.State == JobState.Scheduled && !r.IsExpired)})")" />
             <TabPane Key="running" Tab="@($"运行中 ({_rows.Count(r => r.State == JobState.Running)})")" />
+            <TabPane Key="expired" Tab="@($"已过期 ({_rows.Count(r => r.IsExpired)})")" />
             <TabPane Key="disabled" Tab="@($"已禁用 ({_rows.Count(r => r.State == JobState.Paused || r.State == JobState.Disabled)})")" />
             <TabPane Key="all" Tab="@($"全部 ({_rows.Count})")" />
         </Tabs>
         
         <Table TItem="JobRow" DataSource="@_filteredRows" RowKey="@(j => j.Id)" @key="_rowsVersion">
-            <PropertyColumn Property="c => c.Name" Title="名称" />
-            <PropertyColumn Property="c => c.Id" Title="ID" />
-            <PropertyColumn Property="c => c.TaskType" Title="类型" />
-            <PropertyColumn Property="c => c.ScheduleText" Title="调度" />
-            <PropertyColumn Property="c => c.Agent" Title="Agent" />
-            <PropertyColumn Property="c => c.State" Title="状态">
-                <JobStatusBadge State="@context.State" />
-            </PropertyColumn>
-            <PropertyColumn Property="c => c.NextRunText" Title="下次运行">
-                <JobNextRunTimer NextRun="@context.NextFireTime" State="@context.State" />
-            </PropertyColumn>
-            <ActionColumn Title="操作">
-                <Space>
-                    @if (CanRun(context.State))
-                    {
-                        <Button Size="@ButtonSize.Small" 
-                                Loading="@_runningJobs.Contains(context.Id)" 
-                                OnClick="@(() => RunOnce(context.Id))">
-                            @if (_runningJobs.Contains(context.Id))
-                            {
-                                <Text>执行中</Text>
-                            }
-                            else
-                            {
-                                <Text>运行</Text>
-                            }
-                        </Button>
-                    }
-                    @if (CanDisable(context.State))
-                    {
-                        <Popconfirm Title="确定要禁用此任务吗？" OnConfirm="@(() => DisableJob(context.Id))">
-                            <Button Size="@ButtonSize.Small">禁用</Button>
-                        </Popconfirm>
-                    }
-                    @if (CanEnable(context.State))
-                    {
-                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="@(() => EnableJob(context.Id))">启用</Button>
-                    }
-                    @if (CanCancel(context.State))
-                    {
-                        <Popconfirm Title="确定要取消正在运行的任务吗？当前操作将被中断。" OnConfirm="@(() => CancelJob(context.Id))">
-                            <Button Size="@ButtonSize.Small" Danger="true">取消</Button>
-                        </Popconfirm>
-                    }
-                    @if (CanEdit(context.State))
-                    {
-                        <Button Size="@ButtonSize.Small" OnClick="@(() => EditJob(context.Id))">编辑</Button>
-                    }
-                    <Button Size="@ButtonSize.Small" OnClick="@(() => NavigateToDetail(context.Id))">详情</Button>
-                    @if (CanDelete(context.State))
-                    {
-                        <Popconfirm Title="确定删除此任务？" OnConfirm="@(() => DeleteJob(context.Id))">
-                            <Button Size="@ButtonSize.Small" Danger="true">删除</Button>
-                        </Popconfirm>
-                    }
-                </Space>
-            </ActionColumn>
+            <EmptyTemplate>
+                <Empty Description="@("该分类下暂无任务")" />
+            </EmptyTemplate>
+            <ChildContent>
+                <PropertyColumn Property="c => c.Name" Title="名称" />
+                <PropertyColumn Property="c => c.Id" Title="ID" />
+                <PropertyColumn Property="c => c.TaskType" Title="类型" />
+                <PropertyColumn Property="c => c.ScheduleText" Title="调度" />
+                <PropertyColumn Property="c => c.Agent" Title="Agent" />
+                <PropertyColumn Property="c => c.State" Title="状态">
+                    <JobStatusBadge State="@context.State" Expired="@context.IsExpired" />
+                </PropertyColumn>
+                <PropertyColumn Property="c => c.NextRunText" Title="下次运行">
+                    <JobNextRunTimer NextRun="@context.NextFireTime" State="@context.State" Expired="@context.IsExpired" />
+                </PropertyColumn>
+                <ActionColumn Title="操作">
+                    <Space>
+                        @if (CanRun(context.State))
+                        {
+                            <Button Size="@ButtonSize.Small" 
+                                    Loading="@_runningJobs.Contains(context.Id)" 
+                                    OnClick="@(() => RunOnce(context.Id))">
+                                @if (_runningJobs.Contains(context.Id))
+                                {
+                                    <Text>执行中</Text>
+                                }
+                                else
+                                {
+                                    <Text>运行</Text>
+                                }
+                            </Button>
+                        }
+                        @if (CanDisable(context.State))
+                        {
+                            <Popconfirm Title="确定要禁用此任务吗？" OnConfirm="@(() => DisableJob(context.Id))">
+                                <Button Size="@ButtonSize.Small">禁用</Button>
+                            </Popconfirm>
+                        }
+                        @if (CanEnable(context.State))
+                        {
+                            <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="@(() => EnableJob(context.Id))">启用</Button>
+                        }
+                        @if (CanCancel(context.State))
+                        {
+                            <Popconfirm Title="确定要取消正在运行的任务吗？当前操作将被中断。" OnConfirm="@(() => CancelJob(context.Id))">
+                                <Button Size="@ButtonSize.Small" Danger="true">取消</Button>
+                            </Popconfirm>
+                        }
+                        @if (CanEdit(context.State))
+                        {
+                            <Button Size="@ButtonSize.Small" OnClick="@(() => EditJob(context.Id))">编辑</Button>
+                        }
+                        <Button Size="@ButtonSize.Small" OnClick="@(() => NavigateToDetail(context.Id))">详情</Button>
+                        @if (CanDelete(context.State))
+                        {
+                            <Popconfirm Title="确定删除此任务？" OnConfirm="@(() => DeleteJob(context.Id))">
+                                <Button Size="@ButtonSize.Small" Danger="true">删除</Button>
+                            </Popconfirm>
+                        }
+                    </Space>
+                </ActionColumn>
+            </ChildContent>
         </Table>
     </ChildContent>
     <EmptyAction>
@@ -215,6 +229,8 @@
 
                 _jobs = jobs;
                 _status = status;
+                var schedulerStarted = status.IsStarted;
+                var now = DateTime.Now;
                 _rows = _jobs.Select(j =>
                 {
                     var jobStatus = statusDict.GetValueOrDefault(j.Id);
@@ -228,7 +244,8 @@
                         Intent = j.Intent,
                         State = jobStatus?.State ?? JobState.Disabled,
                         NextFireTime = jobStatus?.NextFireTime,
-                        NextRunText = jobStatus?.NextFireTime?.ToString("yyyy-MM-dd HH:mm") ?? "-"
+                        NextRunText = jobStatus?.NextFireTime?.ToString("yyyy-MM-dd HH:mm") ?? "-",
+                        IsExpired = JobExpiry.IsExpired(j, jobStatus, now, schedulerStarted)
                     };
                 }).ToList();
 
@@ -255,8 +272,10 @@
     {
         _filteredRows = _activeTab switch
         {
-            "scheduled" => _rows.Where(r => r.State == JobState.Scheduled).ToList(),
+            // 已过期任务默认不出现，单独归入 expired 栏目
+            "scheduled" => _rows.Where(r => r.State == JobState.Scheduled && !r.IsExpired).ToList(),
             "running" => _rows.Where(r => r.State == JobState.Running).ToList(),
+            "expired" => _rows.Where(r => r.IsExpired).ToList(),
             "disabled" => _rows.Where(r => r.State == JobState.Paused || r.State == JobState.Disabled).ToList(),
             _ => _rows.ToList()
         };
@@ -432,6 +451,10 @@
             row.State = status.State;
             row.NextFireTime = status.NextFireTime;
             row.NextRunText = status.NextFireTime?.ToString("yyyy-MM-dd HH:mm") ?? "-";
+
+            var job = _jobs.FirstOrDefault(j => j.Id == id);
+            if (job != null)
+                row.IsExpired = JobExpiry.IsExpired(job, status, DateTime.Now, _status.IsStarted);
         }
         ApplyTabFilter();
         _rowsVersion++;
@@ -470,5 +493,8 @@
         public JobState State { get; set; }
         public DateTime? NextFireTime { get; set; }
         public string NextRunText { get; set; } = "";
+
+        /// <summary>启用但已无后续自动触发（一次性已过期等），默认栏目不展示。</summary>
+        public bool IsExpired { get; set; }
     }
 }

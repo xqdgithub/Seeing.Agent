@@ -45,7 +45,9 @@ public sealed class CronDisableTool : ToolBase
                 return Failure($"任务不存在: {id}");
 
             await _manager.DisableJobAsync(id, context.CancellationToken).ConfigureAwait(false);
-            return Success($"已禁用任务: {id}");
+
+            var label = string.IsNullOrWhiteSpace(job.Name) ? job.Id : $"{job.Id} · {job.Name}";
+            return Success($"已禁用任务: {label}", $"调度: {ScheduleTextFormatter.DescribeSchedule(job.Schedule)}\n可用 cron_resume 恢复。");
         }
         catch (Exception ex)
         {

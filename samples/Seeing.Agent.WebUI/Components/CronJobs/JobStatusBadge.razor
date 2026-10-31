@@ -3,11 +3,17 @@
 
 @code {
     [Parameter] public JobState State { get; set; }
+
+    /// <summary>启用但不会再有后续自动触发（一次性已过期等）。优先于 State 呈现。</summary>
+    [Parameter] public bool Expired { get; set; }
+
     [Parameter] public bool ShowText { get; set; } = true;
 }
 
 @{
-    var (color, icon, text) = GetStateDisplay(State);
+    var (color, icon, text) = Expired && State == JobState.Scheduled
+        ? ("default", IconType.Outline.ClockCircle, "已过期")
+        : GetStateDisplay(State);
 }
 
 <Tag Color="@color">

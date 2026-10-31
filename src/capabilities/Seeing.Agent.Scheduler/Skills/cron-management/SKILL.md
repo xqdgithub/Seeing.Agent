@@ -16,12 +16,13 @@ Use these tools to manage scheduled jobs (text reminders or agent runs):
 | `cron_resume` | Re-enable a disabled job |
 | `cron_run` | Trigger a job once immediately |
 
-## Session-bound outbound (important)
+## Outbound targets
 
 - When a job fires, delivery targets the **Session** bound at create time (`Dispatch.Target.SessionId`).
-- **Outbound Channel / UserId live on the Session**, not on the Job.
-- Do **not** put Channel or UserId on the job. There is no Job Channel fallback.
-- `cron_create` binds `SessionId` from the current tool context automatically.
+- **Outbound Channel / UserId default to the Session's `ChannelRoute`**, snapshotted onto the job at save time.
+- A job may also carry an explicit `conversation` (`channelId` / `kind` / `externalId`), which takes precedence
+  over the Session route. Set it via `cron_create` `conversation` or the WebUI editor.
+- `cron_create` binds `SessionId` from the current tool context automatically; it cannot be overridden.
 
 Prefer `text` for pure reminders; `agent` only when work must run at fire time. See skill `cron-create`.
 

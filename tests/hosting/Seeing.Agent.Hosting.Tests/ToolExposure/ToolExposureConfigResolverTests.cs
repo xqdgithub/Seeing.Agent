@@ -101,6 +101,13 @@ public class ToolExposureConfigResolverTests
     }
 
     [Fact]
+    public void DefaultPinnedTools_ShouldContainCurrentTime()
+    {
+        // current_time 是时间类问题的基础能力，必须常驻内联，不能退化为需要 tool_search。
+        ToolExposureConfigResolver.DefaultPinnedTools.Should().Contain("current_time");
+    }
+
+    [Fact]
     public void Resolve_NonEmptyConfigPinned_ShouldReplaceDefaults()
     {
         var options = new SeeingAgentOptions();

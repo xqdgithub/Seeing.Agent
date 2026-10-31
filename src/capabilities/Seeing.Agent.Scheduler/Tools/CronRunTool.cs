@@ -41,12 +41,20 @@ public sealed class CronRunTool : ToolBase
 
         try
         {
+            var job = await _manager.GetJobAsync(id, context.CancellationToken).ConfigureAwait(false);
             var result = await _manager.RunJobOnceAsync(id, context.CancellationToken).ConfigureAwait(false);
+
+            var label = job is null
+                ? id
+                : string.IsNullOrWhiteSpace(job.Name) ? job.Id : $"{job.Id} · {job.Name}";
+
             return result switch
             {
-                TriggerResult.Accepted a => Success($"任务已触发，RunId: {a.RunId}"),
-                TriggerResult.NotFound => Failure("任务不存在。"),
-                TriggerResult.Disabled => Failure("任务已禁用。"),
+                TriggerResult.Accepted a => Success(
+                    $"任务已触发: {label}",
+                    $"RunId: {a.RunId}" + (job is null ? string.Empty : $"\n调度: {ScheduleTextFormatter.DescribeSchedule(job.Schedule)}")),
+                TriggerResult.NotFound => Failure($"任务不存在: {id}"),
+                TriggerResult.Disabled => Failure($"任务已禁用，请先 cron_resume: {label}"),
                 TriggerResult.Conflict c => Failure(c.Reason),
                 _ => Failure("未知触发结果。")
             };

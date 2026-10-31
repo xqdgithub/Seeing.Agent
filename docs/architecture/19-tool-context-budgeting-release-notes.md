@@ -16,7 +16,7 @@
 2. **同名 MCP server 重复注册改为报错。** 原 `McpToolRegistry` 静默覆盖；现跨连接抢占 server 名抛 `McpDuplicateServerException`。同 owner 重连仍允许（覆盖语义，与 `ToolManager` 重复 id 覆盖一致）。
 3. **默认暴露策略由"全量内联"变为 `auto`。** 51 内置工具场景（约 15–35k token）默认即触发升级，首轮 `tools[]` 显著变小、目录分节出现。前缀缓存有一次性失效成本（可接受）。设 `Tools.Exposure.PolicyMode = "All"` 即回到改造前全内联行为（回退开关）。
 4. **检索命中工具改为"本次请求内即可调用"。** 执行层新增执行级可见性作用域：可调用集 = 本轮内联集 ∪ 本执行内经 `tool_search detail=full` 加载的工具。加载**不改变** `tools[]`（仍保持单轮 schema 不变与前缀缓存），只是放行执行层校验；自下一次请求起才真正进入 schema。
-5. **默认钉选核心工具（16 个）。** 默认集在 Hosting（`ToolExposureConfigResolver.DefaultPinnedTools`），**不写进配置初始化器**（避免 MergeDeep 覆盖用户配置）。`Tools.Exposure.PinnedTools` 非空时整体替换默认集；Agent 级同义且优先。分层模式下的 `tools[]` 因此不再是"只有 `tool_search`"。
+5. **默认钉选核心工具（17 个，含 `current_time`）。** 默认集在 Hosting（`ToolExposureConfigResolver.DefaultPinnedTools`），**不写进配置初始化器**（避免 MergeDeep 覆盖用户配置）。`Tools.Exposure.PinnedTools` 非空时整体替换默认集；Agent 级同义且优先。分层模式下的 `tools[]` 因此不再是"只有 `tool_search`"。
 6. **公共 API 破坏（编译期）**：
    - `SessionToolSchemaResolution.IsCallable` 删除，改用 `SendsSchema`（不做兼容别名）；
    - `IToolManager.ExecuteAsync` 追加 `AgentDefinition? agent` / `IExecutionToolScope? toolScope` 两个可选参数（原 5 参数重载合并，已编译的外部实现/调用方需重编）；
@@ -27,7 +27,7 @@
 | 键 | 默认 | 说明 |
 |---|---|---|
 | `PolicyMode` | `Auto` | `All` / `Auto` / `Tiered`。`All` 全内联（回退）；`Tiered` 恒分层；`Auto` 阈值+粘滞升级 |
-| `PinnedTools` | `[]`（空 = 使用代码默认集） | 恒内联工具 id；代码默认集为 16 个常用工具（`ToolExposureConfigResolver.DefaultPinnedTools`）；**非空时整体替换**；Agent 级 `PinnedTools` 优先且同样整体覆盖 |
+| `PinnedTools` | `[]`（空 = 使用代码默认集） | 恒内联工具 id；代码默认集为 17 个常用工具（`ToolExposureConfigResolver.DefaultPinnedTools`，含 `current_time`）；**非空时整体替换**；Agent 级 `PinnedTools` 优先且同样整体覆盖 |
 | `CatalogBudgetChars` | 8000 | 目录整体字符预算（按字符，非 token）。默认值按「35 个延迟工具全量可见」取值：35 × (200+3) ≈ 7.1k，加开场白与分组标题 ≈ 7.3k，余量容纳 MCP 命名空间标题 |
 | `CatalogLineMaxChars` | 200 | 目录单行**整行**截断上限（`id(参数摘要): 描述`） |
 | `EscalateToolCount` | 30 | auto 升级阈值：可用工具数 |

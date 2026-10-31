@@ -5,6 +5,10 @@
 @code {
     [Parameter] public DateTime? NextRun { get; set; }
     [Parameter] public JobState State { get; set; } = JobState.Scheduled;
+
+    /// <summary>启用但已无后续自动触发（一次性已过期等）。</summary>
+    [Parameter] public bool Expired { get; set; }
+
     [Parameter] public bool ShowIcon { get; set; } = true;
     
     private TimeSpan _remaining;
@@ -45,6 +49,12 @@
 
     private void UpdateRemaining()
     {
+        if (Expired)
+        {
+            _displayText = "已过期";
+            return;
+        }
+
         if (State == JobState.Paused || State == JobState.Disabled)
         {
             _displayText = "-";

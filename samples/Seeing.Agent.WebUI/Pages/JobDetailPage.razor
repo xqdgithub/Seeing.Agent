@@ -1,6 +1,7 @@
 @using AntDesign
 @using Seeing.Agent.Scheduler
 @using Seeing.Agent.Scheduler.Abstractions
+@using Seeing.Agent.Scheduler.Engine
 @using Seeing.Agent.Scheduler.Models
 @using Seeing.Agent.WebUI.Components.CronJobs
 @inject IScheduleManager ScheduleManager
@@ -32,12 +33,19 @@ else if (_job != null)
             </Space>
         </Extra>
         <ChildContent>
+            @if (_isExpired)
+            {
+                <Alert Type="@AlertType.Warning" ShowIcon="true"
+                       Message="该任务已过期：调度时间已过去，不会再次自动触发"
+                       Description="如需再次提醒，请编辑调度时间后保存。"
+                       Style="margin-bottom: 16px;" />
+            }
             <Card Title="任务信息" Style="margin-bottom: 16px;">
                 <Descriptions Column="3">
                     <DescriptionsItem Title="ID">@_job.Id</DescriptionsItem>
                     <DescriptionsItem Title="名称">@_job.Name</DescriptionsItem>
                     <DescriptionsItem Title="状态">
-                        <JobStatusBadge State="@_status" />
+                        <JobStatusBadge State="@_status" Expired="@_isExpired" />
                     </DescriptionsItem>
                     <DescriptionsItem Title="类型">
                         <Tag Color="@GetTaskTypeColor(_job.TaskType)">@_job.TaskType</Tag>
@@ -47,6 +55,7 @@ else if (_job != null)
                     <DescriptionsItem Title="创建时间">@(_createdAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")</DescriptionsItem>
                     <DescriptionsItem Title="最后运行">@(_job.LastRunAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")</DescriptionsItem>
                     <DescriptionsItem Title="Session">@(_job.Dispatch?.Target?.SessionId ?? "main")</DescriptionsItem>
+                    <DescriptionsItem Title="出站目标">@FormatConversation(_job)</DescriptionsItem>
                 </Descriptions>
             </Card>
 
@@ -117,6 +126,7 @@ else if (_job != null)
 
     private ScheduledJobSpec? _job;
     private JobState _status = JobState.Disabled;
+    private bool _isExpired;
     private DateTime? _createdAt;
     private bool _loading = true;
     private bool _notFound;
@@ -148,6 +158,7 @@ else if (_job != null)
 
             var status = await ScheduleManager.GetJobStatusAsync(JobId);
             _status = status.State;
+            _isExpired = JobExpiry.IsExpired(_job, status, DateTime.Now, ScheduleManager.IsStarted);
             _createdAt = status.PreviousFireTime; // Use last run as approximate creation time
             
             _historyOffset = 0;
@@ -236,6 +247,17 @@ else if (_job != null)
             return every;
         var parts = s.Windows.Select(w => $"{w.Start ?? "00:00"}–{w.End ?? "23:59:59"}");
         return $"{every} · {string.Join(", ", parts)}";
+    }
+
+    /// <summary>出站 conversation（未显式配置时为空，运行时回落到会话绑定）。</summary>
+    private static string FormatConversation(ScheduledJobSpec job)
+    {
+        var conversation = job.Dispatch?.Target?.Conversation;
+        if (conversation is not { IsComplete: true })
+            return "跟随会话绑定";
+
+        var title = string.IsNullOrWhiteSpace(conversation.Title) ? "" : $"（{conversation.Title}）";
+        return $"{conversation.ChannelId}/{conversation.Kind}/{conversation.ExternalId}{title}";
     }
 
     private static string Truncate(string text, int maxLength) =>
