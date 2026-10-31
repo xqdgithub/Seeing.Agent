@@ -150,6 +150,77 @@ public class SessionSummaryAndArchiveTests
     }
 
     [Fact]
+    public async Task DeleteAsync_AfterArchive_ShouldRemoveArchivedCopyAndSummary()
+    {
+        var dir = NewTempDir();
+        try
+        {
+            var store = new FileSessionStore(dir);
+            var session = await SeedAsync(store);
+            await store.ArchiveAsync(session.Id);
+            var archivePath = Path.Combine(dir, "_archive", $"{session.Id}.json.gz");
+            File.Exists(archivePath).Should().BeTrue();
+
+            await store.DeleteAsync(session.Id);
+
+            File.Exists(archivePath).Should().BeFalse();
+            var archived = new List<SessionSummary>();
+            await foreach (var s in store.ListArchivedAsync())
+                archived.Add(s);
+            archived.Should().BeEmpty();
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ActiveSessionWithoutArchive_ShouldStillDelete()
+    {
+        var dir = NewTempDir();
+        try
+        {
+            var store = new FileSessionStore(dir);
+            var session = await SeedAsync(store);
+
+            await store.DeleteAsync(session.Id);
+
+            File.Exists(Path.Combine(dir, $"{session.Id}.json")).Should().BeFalse();
+            (await store.LoadAsync(session.Id)).Should().BeNull();
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ArchivedFileLocked_ShouldStillDeleteActiveData()
+    {
+        var dir = NewTempDir();
+        try
+        {
+            var store = new FileSessionStore(dir);
+            var session = await SeedAsync(store);
+            await store.ArchiveAsync(session.Id);
+            var archivePath = Path.Combine(dir, "_archive", $"{session.Id}.json.gz");
+
+            using (new FileStream(archivePath, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                var act = async () => await store.DeleteAsync(session.Id);
+                await act.Should().NotThrowAsync();
+            }
+
+            (await store.LoadAsync(session.Id)).Should().BeNull();
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task InMemoryStore_ShouldSupportSummaryAndArchive()
     {
         var store = new InMemorySessionStore();

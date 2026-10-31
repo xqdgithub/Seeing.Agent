@@ -279,6 +279,7 @@ namespace Seeing.Session.Storage
             ValidateSessionId(sessionId);
 
             DeleteRefDirectory(sessionId);
+            DeleteArchivedFile(sessionId);
 
             var filePath = GetSessionFilePath(sessionId);
 
@@ -322,6 +323,20 @@ namespace Seeing.Session.Storage
             {
                 _logger?.LogWarning(ex, "删除会话引用目录失败: {SessionId}, {RefDir}", sessionId, refDir);
             }
+        }
+
+        /// <summary>删除归档副本（_archive/{sessionId}.json.gz）；不存在或失败均不影响主删除流程。</summary>
+        private void DeleteArchivedFile(string sessionId)
+        {
+            var archivePath = Path.Combine(GetArchiveDirectory(), $"{sessionId}.json.gz");
+            if (!File.Exists(archivePath))
+                return;
+
+            AtomicFileWrite.TryDelete(archivePath);
+            if (File.Exists(archivePath))
+                _logger?.LogWarning("删除归档副本失败: {SessionId}, {Path}", sessionId, archivePath);
+            else
+                _logger?.LogInformation("删除归档副本: {SessionId}", sessionId);
         }
 
         /// <summary>
