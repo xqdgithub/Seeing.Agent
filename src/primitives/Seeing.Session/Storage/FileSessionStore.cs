@@ -272,29 +272,30 @@ namespace Seeing.Session.Storage
         }
 
         /// <summary>
-        /// 删除会话
+        /// 删除会话（含归档副本）：活跃文件与 <c>_archive/{id}.json.gz</c> 一并清理。
         /// </summary>
         public async Task DeleteAsync(string sessionId, CancellationToken ct = default)
         {
             ValidateSessionId(sessionId);
 
-            DeleteRefDirectory(sessionId);
-            DeleteArchivedFile(sessionId);
-
             var filePath = GetSessionFilePath(sessionId);
-
-            if (!File.Exists(filePath))
-            {
-                _logger?.LogDebug("会话文件不存在，无需删除: {FilePath}", filePath);
-                return;
-            }
-
             var fileLock = GetFileLock(filePath);
 
-            await fileLock.WaitAsync(ct);
+            // 与 ArchiveAsync/RestoreAsync 共用同一把 {id}.json 锁，且活跃文件缺失时也必须持锁：
+            // 否则并发归档会在删除完成之后写回归档文件，出现「已删除却复活」。
+            await fileLock.WaitAsync(ct).ConfigureAwait(false);
 
             try
             {
+                DeleteRefDirectory(sessionId);
+                DeleteArchivedFile(sessionId);
+
+                if (!File.Exists(filePath))
+                {
+                    _logger?.LogDebug("会话文件不存在，无需删除: {FilePath}", filePath);
+                    return;
+                }
+
                 File.Delete(filePath);
                 _logger?.LogDebug("删除会话成功: {SessionId}", sessionId);
             }
