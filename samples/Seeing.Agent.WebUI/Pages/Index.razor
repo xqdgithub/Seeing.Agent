@@ -1,6 +1,8 @@
 @using AntDesign
 @using Seeing.Agent.Abstractions.Agents
 @using Seeing.Agent.Abstractions.Runtime
+@using Seeing.Agent.Abstractions.Skills
+@using Seeing.Agent.Abstractions.Tools
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Core.Llm
 @using Seeing.Agent.Llm
@@ -19,6 +21,7 @@
 @inject PermissionInbox PermissionInboxService
 @inject QuestionInbox QuestionInboxService
 @inject UiOverlayService Overlays
+@inject IServiceProvider Services
 @inject NavigationManager Navigation
 
 <PageTitle>总览 - Seeing</PageTitle>
@@ -187,6 +190,26 @@
             <DashboardCard Title="模型" OnClick="@(() => Navigation.NavigateTo("/models"))">
                 <div class="home-dash-number">@_modelCount</div>
                 <div class="home-dash-label">可用模型</div>
+            </DashboardCard>
+
+            <DashboardCard Title="技能" OnClick="@(() => Navigation.NavigateTo("/skills"))">
+                <div class="home-dash-number">@_skillCount</div>
+                <div class="home-dash-label">可用技能</div>
+            </DashboardCard>
+
+            <DashboardCard Title="工具" OnClick="@(() => Navigation.NavigateTo("/tools"))">
+                <div class="home-dash-number">@_toolCount</div>
+                <div class="home-dash-label">已注册工具</div>
+            </DashboardCard>
+
+            <DashboardCard Title="MCP" OnClick="@(() => Navigation.NavigateTo("/mcp"))">
+                <div class="home-dash-number">@_mcpCount</div>
+                <div class="home-dash-label">已连接服务</div>
+            </DashboardCard>
+
+            <DashboardCard Title="ACP" OnClick="@(() => Navigation.NavigateTo("/acp"))">
+                <div class="home-dash-number">@_acpCount</div>
+                <div class="home-dash-label">ACP 智能体</div>
             </DashboardCard>
         </div>
     }
@@ -482,6 +505,10 @@
     private int _sessionCount;
     private int _agentCount;
     private int _modelCount;
+    private int _skillCount;
+    private int _toolCount;
+    private int _mcpCount;
+    private int _acpCount;
     private int _expiredCount;
     private int _pendingApprovals;
     private int _pendingQuestions;
@@ -513,8 +540,15 @@
             _sessionCount = visible.Count;
             _sessions = visible.Take(RecentSessionCount).ToList();
 
-            _agentCount = (await AgentRegistry.GetPrimaryAgentsAsync()).Count;
+            var agents = await AgentRegistry.GetPrimaryAgentsAsync();
+            _agentCount = agents.Count;
             _modelCount = LlmService.GetAvailableModels().Count;
+
+            // 工作区四类入口：模块可能未启用，用 GetService 而非硬注入，缺失时按 0 展示
+            _skillCount = Services.GetService<ISkillCatalog>()?.EnabledEntries.Count ?? 0;
+            _toolCount = Services.GetService<IToolManager>()?.GetRegisteredTools().Count ?? 0;
+            _mcpCount = Services.GetService<McpStateService>()?.GetAvailableCount() ?? 0;
+            _acpCount = agents.Count(agent => agent.Runtime == AgentRuntime.AcpPassthrough);
 
             var status = await SchedulerStatus.GetStatusAsync();
             var jobStatuses = new Dictionary<string, JobStatus>();
