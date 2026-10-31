@@ -143,6 +143,13 @@
                         <div class="home-dash-row">
                             <span class="home-muted">今天没有定时任务</span>
                         </div>
+                        @if (_nextRun is not null)
+                        {
+                            <div class="home-dash-row">
+                                <span class="title">下次：@_nextRun.Title</span>
+                                <span class="meta">@_nextRun.When.ToString("MM-dd HH:mm")</span>
+                            </div>
+                        }
                     }
                     else if (remaining.Count == 0)
                     {
@@ -465,6 +472,7 @@
 
     private List<SessionSummary> _sessions = new();
     private IReadOnlyList<TodayRun> _todayRuns = Array.Empty<TodayRun>();
+    private TodayRun? _nextRun;
     private int _sessionCount;
     private int _agentCount;
     private int _modelCount;
@@ -509,6 +517,7 @@
 
             var jobs = await ScheduleManager.ListJobsAsync();
             _todayRuns = HomeDashboardView.TodayRuns(jobs, jobStatuses, _now);
+            _nextRun = HomeDashboardView.NextRunAfter(jobs, jobStatuses, _now);
             _expiredCount = HomeDashboardView.CountExpired(jobs, jobStatuses, _now, status.IsStarted);
 
             _pendingApprovals = PermissionInboxService.TotalCount;

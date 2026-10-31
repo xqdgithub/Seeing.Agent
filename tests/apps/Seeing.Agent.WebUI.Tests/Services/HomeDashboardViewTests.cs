@@ -166,6 +166,65 @@ public class HomeDashboardViewTests
     }
 
     [Fact]
+    public void NextRunAfter_ShouldReturnEarliestFutureRunAcrossJobs()
+    {
+        var later = new ScheduledJobSpec
+        {
+            Id = "later",
+            Name = "明天起床",
+            Intent = ScheduleIntent.Active,
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Once, RunAt = Now.Date.AddDays(1).AddHours(8) }
+        };
+        var sooner = new ScheduledJobSpec
+        {
+            Id = "sooner",
+            Name = "今晚睡觉",
+            Intent = ScheduleIntent.Active,
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Once, RunAt = Now.Date.AddHours(21) }
+        };
+
+        var next = HomeDashboardView.NextRunAfter([later, sooner], new Dictionary<string, JobStatus>(), Now);
+
+        next.Should().NotBeNull();
+        next!.Title.Should().Be("今晚睡觉");
+        next.When.Should().Be(Now.Date.AddHours(21));
+    }
+
+    [Fact]
+    public void NextRunAfter_ShouldIgnoreExpiredDisabledAndPastJobs()
+    {
+        var expired = new ScheduledJobSpec
+        {
+            Id = "past",
+            Intent = ScheduleIntent.Active,
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Once, RunAt = Now.AddHours(-2) }
+        };
+        var disabled = new ScheduledJobSpec
+        {
+            Id = "off",
+            Intent = ScheduleIntent.Disabled,
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Once, RunAt = Now.AddHours(1) }
+        };
+
+        HomeDashboardView.NextRunAfter([expired, disabled], new Dictionary<string, JobStatus>(), Now)
+            .Should().BeNull();
+    }
+
+    [Fact]
+    public void NextRunAfter_ShouldSkipInvalidScheduleExpression()
+    {
+        var broken = new ScheduledJobSpec
+        {
+            Id = "broken",
+            Intent = ScheduleIntent.Active,
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Interval, Every = "not-an-interval" }
+        };
+
+        HomeDashboardView.NextRunAfter([broken], new Dictionary<string, JobStatus>(), Now)
+            .Should().BeNull();
+    }
+
+    [Fact]
     public void CountExpired_ShouldFollowJobExpiryRules()
     {
         var once = new ScheduledJobSpec

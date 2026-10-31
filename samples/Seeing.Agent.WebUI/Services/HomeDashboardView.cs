@@ -104,6 +104,48 @@ public static class HomeDashboardView
         return runs.OrderBy(r => r.When).ToList();
     }
 
+    /// <summary>
+    /// 下一条未来触发（跨任务取最早）。今天没有任务时用它给一行「下次：…」提示。
+    /// 无可用任务（全部过期/禁用/表达式非法）返回 null。
+    /// </summary>
+    public static TodayRun? NextRunAfter(
+        IReadOnlyList<ScheduledJobSpec> jobs,
+        IReadOnlyDictionary<string, JobStatus> statuses,
+        DateTime now)
+    {
+        ArgumentNullException.ThrowIfNull(jobs);
+        ArgumentNullException.ThrowIfNull(statuses);
+
+        TodayRun? best = null;
+        foreach (var job in jobs)
+        {
+            if (job.Intent != ScheduleIntent.Active)
+                continue;
+
+            var status = statuses.GetValueOrDefault(job.Id);
+            if (JobExpiry.IsExpired(job, status, now, schedulerStarted: true))
+                continue;
+
+            DateTime? next;
+            try
+            {
+                next = ScheduleExpressionParser.GetNextOccurrence(job.Schedule, now);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                next = null;
+            }
+
+            if (next is null)
+                continue;
+
+            if (best is null || next.Value < best.When)
+                best = new TodayRun(next.Value, TitleOrId(job));
+        }
+
+        return best;
+    }
+
     /// <summary>已过期任务数（口径同 <see cref="JobExpiry"/>）。</summary>
     public static int CountExpired(
         IReadOnlyList<ScheduledJobSpec> jobs,
