@@ -129,7 +129,7 @@
 | IEvaluateMemoryAsync | 记忆评估（MemoryEvaluator.cs:7 内嵌） | Async 作后缀不符规范（异步方法后缀规则） | **审查中**（建议改名 IMemoryEvaluatorAsync 或并入 IMemoryEvaluator；扩展包内部，低优先） |
 | IFileStore | 文件存储 | 合规（Store） | **保留** |
 | IKeywordIndex | 关键词索引 | 合规（Index） | **保留** |
-| IMigration | 模式迁移 | 合规（Migration） | **保留** |
+| IMigration | 模式迁移 | 合规（Migration） | **已删除（T7）**：`SchemaManager` 零生产调用，整目录删除 |
 | IMemoryBenchmark | 记忆基准测试 | 合规（Benchmark） | **保留** |
 | IMemoryEvaluator | 记忆评估器 | 合规（Evaluator） | **保留** |
 | IMemoryEvolutionService | 记忆进化服务 | 合规（Service） | **保留** |

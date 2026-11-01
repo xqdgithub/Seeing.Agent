@@ -13,6 +13,11 @@ namespace Seeing.Agent.Memory.Tests.Core;
 /// <see cref="SqliteConnectionGate"/> 被 4 个生产类共用（VectorIndex / KeywordIndex /
 /// SqliteMemoryGraph / SqliteEmbeddingCache），本测试是它唯一的并发覆盖。
 /// </para>
+/// <para>
+/// <b>两个重载必须分别覆盖</b>：非泛型 <c>RunAsync</c> 与泛型 <c>RunAsync&lt;T&gt;</c> 各自持有独立锁路径。
+/// 泛型重载有 3 处生产调用（<c>KeywordIndex.cs:157</c>、<c>VectorIndex.cs:184/226</c>，正是读共享连接的路径）。
+/// 只覆盖其中一个会让另一个的锁失效在测试中隐形——这正是变异 B 暴露的问题。
+/// </para>
 /// </summary>
 public sealed class SqliteConnectionGateTests : IDisposable
 {
@@ -37,17 +42,15 @@ public sealed class SqliteConnectionGateTests : IDisposable
     }
 
     [Fact]
-    public async Task RunAsync_Under64WayConcurrency_ShouldNeverAllowTwoActionsInsideCriticalSection()
+    public async Task RunAsync_NonGeneric_Under64WayConcurrency_ShouldNeverAllowTwoInside()
     {
-        // Arrange：直接测门的语义——临界区同一时刻只允许一个执行体。
-        // 去掉锁后此断言必然失败（maxObserved 会接近 64），因此它对锁的实现有判别力。
+        // 非泛型重载：临界区同一时刻只允许一个执行体。
         var gate = new SqliteConnectionGate();
         var ct = TestContext.Current.CancellationToken;
         var inside = 0;
         var maxObserved = 0;
         var completed = 0;
 
-        // Act
         var tasks = Enumerable.Range(0, Concurrency).Select(async _ =>
         {
             await gate.RunAsync(async token =>
@@ -66,19 +69,52 @@ public sealed class SqliteConnectionGateTests : IDisposable
 
         await Task.WhenAll(tasks);
 
-        // Assert
-        maxObserved.Should().Be(1, "临界区必须互斥：任何时刻只允许一个执行体进入");
+        maxObserved.Should().Be(1, "非泛型 RunAsync 的临界区必须互斥");
+        completed.Should().Be(Concurrency);
+    }
+
+    [Fact]
+    public async Task RunAsync_Generic_Under64WayConcurrency_ShouldNeverAllowTwoInside()
+    {
+        // 泛型重载 RunAsync<T>：独立锁路径，必须单独覆盖。
+        // KeywordIndex.cs:157 / VectorIndex.cs:184 / VectorIndex.cs:226 走的就是这条。
+        var gate = new SqliteConnectionGate();
+        var ct = TestContext.Current.CancellationToken;
+        var inside = 0;
+        var maxObserved = 0;
+        var completed = 0;
+
+        var tasks = Enumerable.Range(0, Concurrency).Select(async _ =>
+        {
+            var projected = await gate.RunAsync(async token =>
+            {
+                var now = Interlocked.Increment(ref inside);
+                InterlockedMax(ref maxObserved, now);
+
+                await Task.Yield();
+                await Task.Delay(1, token);
+
+                Interlocked.Decrement(ref inside);
+                Interlocked.Increment(ref completed);
+                return 0;
+            }, ct);
+
+            projected.Should().Be(0);
+        }).ToArray();
+
+        await Task.WhenAll(tasks);
+
+        maxObserved.Should().Be(1, "泛型 RunAsync<T> 的临界区必须互斥");
         completed.Should().Be(Concurrency);
     }
 
     [Fact]
     public async Task RunAsync_With64ConcurrentWrites_ShouldNotCorruptSharedConnection()
     {
-        // Arrange
+        // 泛型重载的"连接不被破坏"弱断言（保留作为补充；判别力靠上面两条互斥用例）。
         var gate = new SqliteConnectionGate();
         var ct = TestContext.Current.CancellationToken;
 
-        // Act：64 个并发写入，全部经同一 gate 串行访问同一连接
         var tasks = Enumerable.Range(0, Concurrency).Select(i => gate.RunAsync(async token =>
         {
             using var cmd = _connection.CreateCommand();
@@ -90,7 +126,6 @@ public sealed class SqliteConnectionGateTests : IDisposable
 
         var written = await Task.WhenAll(tasks);
 
-        // Assert：无异常抛出，且 64 行全部落盘（连接未被并发破坏）
         written.Should().HaveCount(Concurrency);
         (await CountRowsAsync()).Should().Be(Concurrency);
     }
@@ -98,15 +133,24 @@ public sealed class SqliteConnectionGateTests : IDisposable
     [Fact]
     public async Task RunAsync_ShouldPropagateCancellationToCaller()
     {
-        // Arrange
         var gate = new SqliteConnectionGate();
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
 
-        // Act
         var act = async () => await gate.RunAsync(_ => Task.CompletedTask, cts.Token);
 
-        // Assert
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task RunAsync_Generic_ShouldPropagateCancellationToCaller()
+    {
+        var gate = new SqliteConnectionGate();
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        var act = async () => await gate.RunAsync(_ => Task.FromResult(0), cts.Token);
+
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
 

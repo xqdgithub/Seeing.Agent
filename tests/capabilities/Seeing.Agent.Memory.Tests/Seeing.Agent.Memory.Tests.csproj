@@ -23,6 +23,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Memory\Seeing.Agent.Memory.csproj" />
+    <!-- 仅测试用：让配置兼容性用例走生产 UnifiedConfigManager 的加载/反序列化路径。
+         仓库内已有多例（Acp/Mcp/Scheduler/SystemOne 的测试项目同样引用 Core）；
+         分层禁令约束的是 src/ 下的能力包，不约束测试项目。 -->
+    <ProjectReference Include="..\..\..\src\spine\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
   </ItemGroup>
 
 </Project>

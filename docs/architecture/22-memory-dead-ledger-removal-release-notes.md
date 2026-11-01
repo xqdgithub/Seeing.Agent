@@ -46,8 +46,9 @@ Memory 包内两套「token 记账」实现（`ITokenTracker`/`SqliteTokenTracke
 
 - `SchemaManager` 在生产代码中**零调用**：`ApplyMigrationsAsync` / `EnsureInitializedAsync` 的调用点只有
   `tests/capabilities/Seeing.Agent.Memory.Tests/Schema/SchemaManagerTests.cs`。
-- `git log --all --oneline -S "SchemaManager" -- src samples plugs` 只返回 `da7a150b`
+- `git log --all --oneline -S "SchemaManager" -- src samples plugs` **在删除前**只返回 `da7a150b`
   （新增该文件那次提交），**全历史从未**有 DI 注册或 `new SchemaManager(...)`。
+  > 注：该命令在**删除后**会额外返回删除提交本身，因此这条证据只在删除前成立，不能事后原样复跑核对。
 - `MemoryModule.ActivateAsync` 只做 `_connectionOwner.Open()` + Hook 注册 + Tool 注册，不碰 Schema。
 - 运行时建表走各实现自己的 `EnsureInitializedCoreAsync`，表名与 V1 的 `vectors`/`keywords`/`links`
   **根本不是一套**：
@@ -72,8 +73,21 @@ Memory 包内两套「token 记账」实现（`ITokenTracker`/`SqliteTokenTracke
 它只出现在自身定义处。但 `MemoryOptionsProvider.SaveAsync` 会把整个 `MemoryOptions` 序列化写进
 `memory.json`，所以它是「**配置项真实可写、真实落盘、永久无效**」的用户可见谎言。
 
-**兼容性**：STJ 默认忽略未知成员，存量 `memory.json` 里的 `Cost` 键不会导致加载失败
-（守门用例 `MemoryOptionsDeserializationTests.Deserialize_WithLegacyCostKey_ShouldNotThrow_AndIgnoreIt`）。
+> **落盘位置（易错点，已钉测）**：Memory 节**不在** `seeing.json`，而在**独立文件 `memory.json`**。
+> 证据是 `AddMemoryServices` 的注册：
+> `new ConfigSectionMeta(ConfigSectionMemoryOptionsStore.SectionName, "memory.json", ConfigScope.Both, typeof(MemoryOptions))`
+> （`Extensions/MemoryServiceExtensions.cs:36-40`），其中 `SectionName = "Memory"`。
+> `UnifiedConfigManager` 对 `FileName != "seeing.json"` 的节走独立文件分支（`CollectSectionToCacheAsync`
+> 的 `else` 分支 + `GetFilePath(level, meta.FileName)`）。
+> 守门用例 `AddMemoryServices_Should_Register_Memory_Section_On_MemoryJson` 断言 `meta.FileName == "memory.json"`。
+
+**兼容性**：STJ 默认忽略未知成员，存量 `memory.json` 里的 `Cost` 键不会导致加载失败。
+守门用例 `MemoryOptionsDeserializationTests.GetSection_WithLegacyCostKey_ShouldNotThrow_AndIgnoreIt`
+**走真实 `UnifiedConfigManager.LoadAsync` + `GetSection<MemoryOptions>("Memory")`**（不是自造
+`JsonSerializerOptions`），因此能捕获"生产序列化器变严"这类回归：若给 `UnifiedConfigManager.JsonOptions`
+加上 `UnmappedMemberHandling.Disallow`，该用例会抛
+`JsonException: The JSON property 'Cost' could not be mapped to any .NET member contained in type
+'Seeing.Agent.Memory.Configuration.MemoryOptions'` 并变红（已实测，见报告变异 D）。
 WebUI 无引用。**不选**"接上 IRateLimiter"——那是加功能，不是净删除。
 
 ---
@@ -108,11 +122,53 @@ WebUI 无引用。**不选**"接上 IRateLimiter"——那是加功能，不是�
 | 删除 `CostControl/DailyQuotaManagerTests.cs`（4 例） | 同上 |
 | 删除 `Schema/SchemaManagerTests.cs`（14 例） | 直接 `new` 被删类型 |
 | 新增 `CostControl/CostLedgerRemovalTests.cs`（7 例） | 程序集级 + DI 级守门 |
-| 新增 `Configuration/MemoryOptionsDeserializationTests.cs`（2 例） | 含存量 `Cost` 键的反序列化兼容 |
-| 新增 `Core/SqliteConnectionGateTests.cs`（3 例） | **补回被删测试丢失的 gate 并发覆盖**（64 并发 + 临界区互斥 + 取消传播） |
+| 新增 `Configuration/MemoryOptionsDeserializationTests.cs`（4 例） | 含存量 `Cost` 键的生产路径兼容 + 落盘位置钉测 |
+| 新增 `Core/SqliteConnectionGateTests.cs`（5 例） | gate 并发覆盖：**两个重载各自**一条临界区互斥 + 64 并发写 + 各自取消传播 |
 
-`SqliteConnectionGateTests` 的互斥用例做了变异验证：临时移除 `SqliteConnectionGate` 的
-`SemaphoreSlim` 后，`maxObserved` 由 `1` 变为 `64`，用例失败——证明它对锁的实现有判别力。
+### 5.1 `SqliteConnectionGate` 覆盖的完整性与判别力
+
+`SqliteConnectionGate` 有**两个独立锁路径**：非泛型 `RunAsync` 与泛型 `RunAsync<T>`。
+泛型重载有 3 处生产调用（`KeywordIndex.cs:157`、`VectorIndex.cs:184`、`VectorIndex.cs:226`，正是读共享连接的路径），
+因此两个重载都必须单独覆盖——只测一个会让另一个的锁失效在测试中隐形。
+
+**判别力按「逐个变异点」验证**（不是一次性删掉整个锁）：
+
+| 变异 | 改动 | 结果 |
+|---|---|---|
+| A | 两个重载都去锁 | 红（失败 4 / 通过 1 / 总计 5） |
+| B | **只**去泛型 `RunAsync<T>` | 红：`Expected maxObserved to be 1 because 泛型 RunAsync<T> 的临界区必须互斥, but found 64` |
+| C | **只**去非泛型 `RunAsync` | 红：`Expected maxObserved to be 1 because 非泛型 RunAsync 的临界区必须互斥, but found 64` |
+
+三个变异各自只让对应重载的用例失败，证明覆盖与锁路径一一对应。
+（历史：本测试最初只有非泛型互斥用例 + 一条泛型"64 并发写不抛异常"弱用例；弱用例在变异 B 下仍绿，
+已改为按重载分别断言临界区互斥。）
+
+---
+
+## 5.2 Follow-up：Memory 包已无任何 schema 演进机制（**必读，勿直接改表**）
+
+删除 `SchemaManager` 后，Memory 包**不再具备任何 schema 演进能力**：
+
+- `ALTER TABLE` 在 `src/` 下 **0 命中**
+- `user_version` / `PRAGMA` 在 `src/` 下 **0 命中**（仅有 `#pragma warning` 的误匹配）
+- 所有表都只靠 `CREATE TABLE IF NOT EXISTS` 建立：
+
+  | 表 | 建表点 |
+  |---|---|
+  | `vector_index` | `Core/Index/VectorIndex.cs:52` |
+  | `keyword_index`（FTS5） | `Core/Index/KeywordIndex.cs:46` |
+  | `graph_nodes` / `graph_edges` | `Core/Graph/SqliteMemoryGraph.cs:55/60` |
+  | `embedding_cache` | `Core/Embedding/SqliteEmbeddingCache.cs:48` |
+
+**后果**：既有用户的 `memory.db` **无法再做任何列变更**。`CREATE TABLE IF NOT EXISTS` 对已存在的表是空操作，
+加列不会被应用、改类型不会被应用、删列不会被应用。想演进只能手工迁移或新建表 + 拷数据。
+
+**这不是行为回归**——`SchemaManager` 本来就是死的（从未被任何生产代码调用），所以删除前后行为一致。
+但删掉的是唯一的"演进占位"：下一个人看到这套 `CREATE TABLE IF NOT EXISTS` 时，必须知道
+**没有迁移框架兜底**，不能直接把新列加进那几条 SQL 就以为老库会跟上。
+
+（若要恢复演进能力，正确做法是新增一个**被真正调用**的迁移入口 —— 在 `MemoryModule.ActivateAsync`
+打开连接后执行版本化迁移，而不是复活旧的 `SchemaManager`。）
 
 ---
 
