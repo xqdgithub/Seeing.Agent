@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Memory.Abstractions;
@@ -146,8 +147,17 @@ public static class MemoryServiceExtensions
         services.TryAddSingleton<IMemoryEvolutionService, Core.Evolution.LlmMemoryEvolution>();
         services.TryAddSingleton<IMemoryRecallService, Core.Recall.MemoryRecallService>();
 
+        // 记忆召回上下文源：读执行作用域的本轮用户查询（Source 只依赖 IContextExecutionScope，不读会话）。
+        // 作用域与装配器同作用域（Core 的 AddContextPipeline 以 scoped 注册），故源必须同为 scoped——
+        // 单例会捕获某次执行的作用域（钉住静默失效）。
+        // 登记必须用 TryAddEnumerable：TryAddScoped<IContextSource, T>() 按 ServiceType 去重，
+        // 在已有 ProjectInstructionsContextSource / SkillsContextSource 时会整条静默跳过。
+        services.TryAddEnumerable(
+            ServiceDescriptor.Scoped<IContextSource, MemoryContextSource>());
+
         services.TryAddSingleton<ChatMemoryHandler>();
         services.TryAddSingleton<ToolMemoryHandler>();
+
         // 终态观察者登记必须同时满足两点：①「具体类型 + 接口」解析到同一实例（状态不分裂）；
         // ②重复调用 AddMemoryServices 不翻倍（翻倍会让 TryFlushAfterTurn 调两次，
         // 轮次计数与 flush 时机一起减半）。
