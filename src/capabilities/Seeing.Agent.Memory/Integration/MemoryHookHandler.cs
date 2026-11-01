@@ -189,6 +189,14 @@ public sealed class AgentTurnMemoryHandler : IExecutionOutcomeObserver
     /// <b>当前属非可达路径</b>，不得因「测不到」而删除。
     /// </para>
     /// <para>
+    /// <b>关于 <see cref="_activity"/> 为 <c>null</c></b>：刻意视为「活跃」而非「停用」。
+    /// 取舍理由：<c>null</c> 只出现在测试或独立使用场景（生产路径由
+    /// <c>AddMemoryServices</c> 无条件 <c>TryAddSingleton</c> 登记），若按停用处理，
+    /// 这些场景会静默失效且难以定位。代价是：若将来生产环境漏登记
+    /// <c>MemoryModuleActivity</c>，停用门控会静默失效——该风险已登记为已知取舍，
+    /// 不通过「改为必填参数」解决（会牵连多处构造点，成本大于收益）。
+    /// </para>
+    /// <para>
     /// <b>已知行为差异</b>：<see cref="SessionOrigin.Scheduler"/> / <see cref="SessionOrigin.Heartbeat"/>
     /// 在仓库中尚无赋值点（T4 债），心跳/cron 任务默认跑在用户主会话上，
     /// 因此这些轮次<b>会被计入</b>记忆轮次节奏。这是可接受的现状：它们确实是真实执行轮次。
@@ -233,11 +241,14 @@ public sealed class AgentTurnMemoryHandler : IExecutionOutcomeObserver
     /// <param name="ct">取消令牌（本处理为同步入队，不观察取消）。</param>
     public Task OnExecutionCompletedAsync(ExecutionOutcome outcome, CancellationToken ct = default)
     {
-        if (!ShouldObserve(outcome))
-            return Task.CompletedTask;
-
         try
         {
+            // 门禁判定也在 try 内：类文档承诺「异常一律在内部消化，绝不外抛」，
+            // 而 ShouldObserve 读取热重载配置（IOptionsMonitor.CurrentValue），
+            // 不能假设它永不失抛。
+            if (!ShouldObserve(outcome))
+                return Task.CompletedTask;
+
             _flush.TryFlushAfterTurn(outcome.SessionId);
             return Task.CompletedTask;
         }

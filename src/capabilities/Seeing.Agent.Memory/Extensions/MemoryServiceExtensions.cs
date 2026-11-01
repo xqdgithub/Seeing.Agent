@@ -151,12 +151,18 @@ public static class MemoryServiceExtensions
         // 终态观察者登记必须同时满足两点：①「具体类型 + 接口」解析到同一实例（状态不分裂）；
         // ②重复调用 AddMemoryServices 不翻倍（翻倍会让 TryFlushAfterTurn 调两次，
         // 轮次计数与 flush 时机一起减半）。
-        // TryAddEnumerable 不接受工厂描述符（其对工厂取 ImplementationType 得 typeof(object) 并抛异常），
-        // 故改由「枚举槽用实现类型登记、具体类型从枚举槽取回」达成：枚举槽由 TryAddEnumerable
+        // TryAddEnumerable 不接受工厂描述符：它用 GetImplementationType 判重，而工厂描述符的
+        // ImplementationType 为 null，内部回落到「工厂委托的泛型第二实参」即服务类型本身
+        // （Func<IServiceProvider, IExecutionOutcomeObserver> 的第二实参就是 IExecutionOutcomeObserver），
+        // 于是与服务类型相同 → 判定 "indistinguishable" 并抛 ArgumentException。
+        // 故改由「枚举槽用真实实现类型登记、具体类型从枚举槽取回」达成：枚举槽由 TryAddEnumerable
         // 按实现类型去重，具体类型由 TryAddSingleton 按服务类型去重，两条都幂等，
         // 且解析任一入口都落到枚举槽里那唯一一个单例。
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IExecutionOutcomeObserver, AgentTurnMemoryHandler>());
+        // 前提（当前不可达，但改动前必读）：具体类型必须由本方法从上面的枚举槽取回。
+        // 宿主若自行 AddSingleton<AgentTurnMemoryHandler>() 而不走本方法，接口与具体类型
+        // 会各自构造一个实例（状态分裂：轮次计数落在接口实例上，调用方读到的是另一个）。
         services.TryAddSingleton(sp =>
             sp.GetServices<IExecutionOutcomeObserver>().OfType<AgentTurnMemoryHandler>().First());
         services.TryAddSingleton<MemoryRecallHandler>();

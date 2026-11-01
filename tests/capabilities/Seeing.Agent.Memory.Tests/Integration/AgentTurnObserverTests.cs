@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Execution;
@@ -128,6 +129,22 @@ public class AgentTurnObserverTests
         await act.Should().NotThrowAsync("观察者契约要求自身失败不得影响执行链");
     }
 
+    [Fact(DisplayName = "门禁判定自身抛异常时亦不得外抛")]
+    public async Task OnExecutionCompleted_When_Gate_Throws_Should_Not_Throw()
+    {
+        // 门禁读热重载配置；配置源故障时 ShouldObserve 可能抛。
+        // 类文档承诺「异常一律在内部消化」，故门禁必须在 try 内。
+        var handler = new AgentTurnMemoryHandler(
+            Mock.Of<IMemoryFlushService>(),
+            new ThrowingOptionsMonitor<MemoryOptions>(new InvalidOperationException("配置源故障")),
+            NullLogger<AgentTurnMemoryHandler>.Instance);
+
+        var act = () => handler.OnExecutionCompletedAsync(
+            CompletedOutcome("s"), TestContext.Current.CancellationToken);
+
+        await act.Should().NotThrowAsync("门禁在 try 外会让配置异常直接击穿执行链");
+    }
+
     [Fact(DisplayName = "DI 中观察者与具体处理器应解析为同一实例")]
     public void Di_Resolution_Should_Return_Same_Handler_Instance()
     {
@@ -158,6 +175,27 @@ public class AgentTurnObserverTests
             "观察者翻倍会让 TryFlushAfterTurn 调两次，轮次计数与 flush 时机全部减半");
     }
 
+    [Fact(DisplayName = "重复注册后观察者既唯一又与会具体类型同实例")]
+    public void Di_Double_Registration_Should_Keep_Single_Shared_Instance()
+    {
+        var services = new ServiceCollection();
+        AddMemoryTestStubs(services);
+        var registry = new StubConfigSectionRegistry();
+        services.AddMemoryServices(registry, "Data Source=:memory:");
+        services.AddMemoryServices(registry, "Data Source=:memory:");
+
+        using var provider = services.BuildServiceProvider();
+
+        // 合并断言：单独测 HaveCount(1) 抓不到「唯一但与会具体类型分裂」，
+        // 单独测单次注册的 BeSameAs 抓不到「不同注册路径各建一个实例」。
+        var concrete = provider.GetRequiredService<AgentTurnMemoryHandler>();
+        var observers = provider.GetServices<IExecutionOutcomeObserver>().ToList();
+
+        observers.Should().ContainSingle("观察者翻倍会让 TryFlushAfterTurn 调两次，轮次计数与 flush 时机全部减半");
+        observers[0].Should().BeSameAs(concrete,
+            "重复注册后接口与具体类型仍须指向同一单例，否则内部状态会在两个实例间分裂");
+    }
+
     private static ServiceCollection BuildMemoryServices()
     {
         var services = new ServiceCollection();
@@ -174,6 +212,21 @@ public class AgentTurnObserverTests
         services.AddSingleton(Mock.Of<IFileStore>());
         // flush 链路最终会实例化 LlmMemoryExtractor（抽取器），需要 LLM 补全端口占位
         services.AddSingleton(Mock.Of<Seeing.Agent.Abstractions.Llm.ITextCompletion>());
+    }
+
+    /// <summary>读取 CurrentValue 即抛的配置监视器，用于验证门禁异常被隔离。</summary>
+    private sealed class ThrowingOptionsMonitor<T>(Exception error) : IOptionsMonitor<T>
+    {
+        public T CurrentValue => throw error;
+
+        public T Get(string? name) => throw error;
+
+        public IDisposable OnChange(Action<T, string?> listener) => new Noop();
+
+        private sealed class Noop : IDisposable
+        {
+            public void Dispose() { }
+        }
     }
 
     private static ExecutionOutcome CompletedOutcome(string sessionId) => new()
