@@ -43,7 +43,11 @@ public sealed class MemoryExtractionOptions
     public string? Model { get; set; }
     /// <summary>每分钟最多 flush（批量抽取）次数。</summary>
     public int MaxCandidatesPerMinute { get; set; } = 6;
-    /// <summary>每累计 N 次顶层 agent.after_invoke 触发一次 flush；≤0 关闭轮次触发。</summary>
+    /// <summary>每累计 N 次顶层 Agent 执行终态触发一次 flush；≤0 关闭轮次触发。</summary>
+    /// <remarks>
+    /// 触发源是 <c>IExecutionOutcomeObserver</c>（执行终态扇出），
+    /// 不是 <c>agent.after_invoke</c> 钩子——该钩子点在全仓没有触发点。
+    /// </remarks>
     public int ExtractEveryNTurns { get; set; } = 10;
     /// <summary>缓冲空闲超过该分钟数则 flush；≤0 关闭空闲 flush。</summary>
     public int FlushIdleMinutes { get; set; } = 5;

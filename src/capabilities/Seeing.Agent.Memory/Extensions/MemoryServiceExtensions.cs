@@ -148,10 +148,17 @@ public static class MemoryServiceExtensions
 
         services.TryAddSingleton<ChatMemoryHandler>();
         services.TryAddSingleton<ToolMemoryHandler>();
-        services.TryAddSingleton<AgentTurnMemoryHandler>();
-        // 终态观察者：用工厂指向同一单例，避免「具体类型 + 接口」各建一个实例导致内部状态分裂。
-        services.AddSingleton<IExecutionOutcomeObserver>(
-            sp => sp.GetRequiredService<AgentTurnMemoryHandler>());
+        // 终态观察者登记必须同时满足两点：①「具体类型 + 接口」解析到同一实例（状态不分裂）；
+        // ②重复调用 AddMemoryServices 不翻倍（翻倍会让 TryFlushAfterTurn 调两次，
+        // 轮次计数与 flush 时机一起减半）。
+        // TryAddEnumerable 不接受工厂描述符（其对工厂取 ImplementationType 得 typeof(object) 并抛异常），
+        // 故改由「枚举槽用实现类型登记、具体类型从枚举槽取回」达成：枚举槽由 TryAddEnumerable
+        // 按实现类型去重，具体类型由 TryAddSingleton 按服务类型去重，两条都幂等，
+        // 且解析任一入口都落到枚举槽里那唯一一个单例。
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IExecutionOutcomeObserver, AgentTurnMemoryHandler>());
+        services.TryAddSingleton(sp =>
+            sp.GetServices<IExecutionOutcomeObserver>().OfType<AgentTurnMemoryHandler>().First());
         services.TryAddSingleton<MemoryRecallHandler>();
 
         services.TryAddSingleton<MemorySearchTool>();
