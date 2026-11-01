@@ -23,13 +23,21 @@ public interface ISessionRuntime
     /// 语义约定：
     /// </para>
     /// <list type="bullet">
-    /// <item>仅接受 <see cref="InboxDelivery.Wake"/>：<see cref="InboxDelivery.Inject"/> /
-    /// <see cref="InboxDelivery.Notify"/> 不产生执行，等待必然落空，直接抛 <see cref="ArgumentException"/>。</item>
+    /// <item>仅接受 <see cref="InboxDelivery.Wake"/> 且 presentation 不是
+    /// <see cref="InboxPresentation.Assistant"/> / <see cref="InboxPresentation.None"/>：这两类
+    /// 落盘即标记已消费，永不进入未读集合、不会触发执行，等待必然落空，直接抛
+    /// <see cref="ArgumentException"/>。同样地 <see cref="InboxDelivery.Inject"/> /
+    /// <see cref="InboxDelivery.Notify"/> 也被拒绝。</item>
     /// <item>投递失败（<see cref="InboxResult.Success"/> 为 <c>false</c>）抛 <see cref="InvalidOperationException"/>。</item>
     /// <item><paramref name="ct"/> 取消、运行时释放、或等待期间会话被 <see cref="StopAsync"/> 停止时，
     /// 抛 <see cref="OperationCanceledException"/>（不会永久挂起）。</item>
     /// <item>被中断（<see cref="InterruptAsync"/>）或执行失败仍算「终态」，照常返回对应
     /// <see cref="ExecutionStatus"/> 的 outcome，不抛异常——是否可接受由调用方判定。</item>
+    /// <item>返回的 outcome <b>绝不会</b>处于 <see cref="ExecutionStatus.Running"/> /
+    /// <see cref="ExecutionStatus.Pending"/>；实现保证只在终态组装，
+    /// 且执行体抛异常时落定为 <see cref="ExecutionStatus.Failed"/>。</item>
+    /// <item><see cref="ExecutionOutcome.Duration"/> 当前为墙钟口径（含排队与工具等待），
+    /// 非「模型循环累计时长」；精确口径待执行链补齐后收敛。</item>
     /// </list>
     /// <para>
     /// 默认实现直接抛 <see cref="NotSupportedException"/>：未接入消费循环的替身不应静默成功，
