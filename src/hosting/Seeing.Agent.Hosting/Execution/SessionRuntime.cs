@@ -34,6 +34,17 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
     private readonly ILogger<SessionRuntime> _logger;
     private readonly CancellationTokenSource _disposeCts = new();
     private readonly ConcurrentDictionary<string, DateTime> _lastActive = new();
+
+    /// <summary>
+    /// 待等待的终态订阅者：key = 入站消息 Id。
+    /// <para>
+    /// 为什么绑消息 Id 而不是 executionId：executionId 只在消费循环真正开跑时才产生，
+    /// 投递返回时无从得知。而每条消息只会被某一批消费恰一次，因此「消息 Id → 消费它的那一轮执行」
+    /// 天然唯一，连续投递不会串台。
+    /// </para>
+    /// </summary>
+    private readonly ConcurrentDictionary<string, ExecutionAwaiter> _awaiters = new();
+
     private readonly Timer? _cleanupTimer;
     private int _disposed;
 
@@ -65,6 +76,99 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
     }
 
     public async Task<InboxResult> DeliverAsync(InboxMessage message, CancellationToken ct = default)
+        => await DeliverCoreAsync(message, onMessagePersisted: null, ct).ConfigureAwait(false);
+
+    /// <summary>
+    /// 投递并等待本次投递所消费的那一轮执行终态：把「投递 + 猜最近一次执行」收敛成一个契约。
+    /// <para>
+    /// 等待与**消息 Id**绑定（而非 executionId，后者只在消费循环开跑时才产生）；
+    /// 同一条消息被合并进哪一批执行，就由那一批执行完成等待，因此连续投递不会串台。
+    /// </para>
+    /// <para>
+    /// 禁止在 <see cref="InboxDelivery.Wake"/> 之外的投递上调用：Inject/Notify 不产生执行。
+    /// </para>
+    /// </summary>
+    public async Task<ExecutionOutcome> DeliverAndAwaitAsync(
+        InboxMessage message, CancellationToken ct = default)
+    {
+        if (message is null)
+            throw new ArgumentNullException(nameof(message));
+
+        if (message.Delivery != InboxDelivery.Wake)
+        {
+            throw new ArgumentException(
+                "DeliverAndAwaitAsync 仅支持 Wake 投递：Inject/Notify 不产生执行，等待必然落空。",
+                nameof(message));
+        }
+
+        // 会话 Id 非法：交给 DeliverAsync 产出失败结果，再按契约转异常（错误文案单一来源）。
+        if (string.IsNullOrWhiteSpace(message.TargetSessionId))
+        {
+            var invalid = await DeliverAsync(message, ct).ConfigureAwait(false);
+            throw new InvalidOperationException(invalid.Error ?? "入站投递失败。");
+        }
+
+        var awaiter = new ExecutionAwaiter(message.TargetSessionId);
+
+        // 取消（含调用方超时）直接让等待任务取消；registration 必须注销，避免长期持有回调。
+        using var cancellationRegistration = ct.Register(
+            static state => ((ExecutionAwaiter)state!).TrySetCanceled(), awaiter);
+
+        InboxResult result;
+        try
+        {
+            // 关键顺序：等待槽在消息落盘**之前**登记（回调在建好 SessionMessage 后立即触发），
+            // 因此消费循环不可能先看到这条消息、再被我们登记——消除「先完成、后登记」的竞态。
+            result = await DeliverCoreAsync(
+                message, persistedId => RegisterAwaiter(persistedId, awaiter), ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            RemoveAwaiter(awaiter);
+            throw;
+        }
+
+        if (!result.Success)
+        {
+            RemoveAwaiter(awaiter);
+            throw new InvalidOperationException(result.Error ?? "入站投递失败。");
+        }
+
+        if (awaiter.MessageId is null)
+        {
+            // 幂等键命中：本次没有产生新的落盘消息，也就没有可绑定的那一轮执行。
+            RemoveAwaiter(awaiter);
+            throw new InvalidOperationException(
+                "投递被幂等键短路，未产生新的执行，无法等待终态；请改用 DeliverAsync 后自行判定。");
+        }
+
+        // 消息已落盘：此后会话级的「取消滞留等待」才会作用于本等待槽。
+        awaiter.MarkCommitted();
+
+        // 竞态兜底：提交瞬间会话已被停止、且消费循环已因停止退出 → 不会再有执行兑现本次等待。
+        if (_stoppedSessions.ContainsKey(message.TargetSessionId))
+        {
+            RemoveAwaiter(awaiter);
+            throw new OperationCanceledException("会话已停止，本次投递不会产生执行终态。");
+        }
+
+        try
+        {
+            return await awaiter.Completion.Task.ConfigureAwait(false);
+        }
+        finally
+        {
+            RemoveAwaiter(awaiter);
+        }
+    }
+
+    /// <summary>
+    /// <see cref="DeliverAsync"/> 的实际实现。
+    /// <paramref name="onMessagePersisted"/> 在入站消息构造完成、**落盘之前**以消息 Id 回调，
+    /// 供等待方抢占登记位置（避免消费循环先消费、等待方后登记的竞态）。
+    /// </summary>
+    private async Task<InboxResult> DeliverCoreAsync(
+        InboxMessage message, Action<string>? onMessagePersisted, CancellationToken ct)
     {
         if (message is null)
             return InboxResult.Failed("InboxMessage is required");
@@ -104,6 +208,10 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         {
             var persisted = BuildInboxMessage(message, scope.ServiceProvider);
             persistedMessageId = persisted.Id;
+
+            // 等待方先占位（尚未落盘，消费循环不可能已消费该条）→ 无「先完成后登记」窗口。
+            onMessagePersisted?.Invoke(persisted.Id);
+
             await sessionManager.AddMessageAsync(sessionId, persisted, ct).ConfigureAwait(false);
         }
 
@@ -202,6 +310,9 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     // 终止检查：会话已被 Stop（或已删除）→ 退出循环，不再消费
                     if (_stoppedSessions.ContainsKey(sessionId))
                     {
+                        // 兜底：StopAsync 的取消清扫之后才提交的等待槽，在此收口。
+                        CancelAwaitersForSession(sessionId, new OperationCanceledException(
+                            "会话已停止，执行未产生可用终态。"));
                         RemoveLoop(sessionId, handle);
                         break;
                     }
@@ -211,6 +322,9 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     var session = sessionManager.Get(sessionId);
                     if (session is null)
                     {
+                        // 会话已被删除：不会再有执行兑现等待。
+                        CancelAwaitersForSession(sessionId, new OperationCanceledException(
+                            "会话不存在（可能已删除），执行未产生可用终态。"));
                         RemoveLoop(sessionId, handle);
                         break;
                     }
@@ -218,7 +332,10 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     pending = session.Messages.Where(IsPendingInboxMessage).ToList();
                     if (pending.Count == 0)
                     {
-                        // 退出与检查在同一 gate 临界区内，无丢唤醒窗口
+                        // 退出与检查在同一 gate 临界区内，无丢唤醒窗口。
+                        // 仍有等待者说明其消息未被本批消费（如被撤销/改写），不会有执行来兑现。
+                        CancelAwaitersForSession(sessionId, new OperationCanceledException(
+                            "没有可消费的入站消息，本轮不会执行。"));
                         RemoveLoop(sessionId, handle);
                         break;
                     }
@@ -227,6 +344,8 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     // 必须在标记 consumed 之前判定：命中则退出且不消费本批，避免消息被静默丢失。
                     if (_stoppedSessions.ContainsKey(sessionId))
                     {
+                        CancelAwaitersForSession(sessionId, new OperationCanceledException(
+                            "会话已停止，执行未产生可用终态。"));
                         RemoveLoop(sessionId, handle);
                         break;
                     }
@@ -244,6 +363,10 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     gate.Release();
                 }
 
+                // 本批对应的等待者：以「消息是否被本批消费」为锚点，与本轮执行一一绑定。
+                // 必须在本批已被标记 consumed 且 gate 释放后取：此时该批已定形，不会再有消息并入。
+                var awaiters = TakeAwaitersFor(pending);
+
                 ExecutionRecord? record = null;
                 try
                 {
@@ -253,7 +376,12 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                         // Stop 可能落在「全局并发等待期间」——此时 record 尚未创建，取消 record.Cts 无从生效。
                         // 放行后、创建 record 前再次校验停止态；命中则本轮不执行，退出循环。
                         if (_stoppedSessions.ContainsKey(sessionId) || ct.IsCancellationRequested)
+                        {
+                            // 本轮不执行：本批等待者不会有 outcome，必须显式取消而不是永久挂起。
+                            CancelAwaiters(awaiters, new OperationCanceledException(
+                                "会话已停止或运行时已释放，本轮执行未启动。"));
                             break;
+                        }
 
                         var executionId = $"exec_{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid():N}"[..24];
                         record = new ExecutionRecord
@@ -299,6 +427,7 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
 
                         await _runner.RunOnceAsync(record, batch, record.Cts.Token).ConfigureAwait(false);
                         state.LastExecution = record;
+                        TryCompleteAwaiters(sessionId, record, awaiters);
                     }
                     finally
                     {
@@ -318,14 +447,31 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     // Interrupt/Stop 取消：本执行已终态；consumed 不回退。
                     // Interrupt → 循环继续消费剩余未读；Stop → 下轮终止检查命中退出。
                     if (record is not null)
+                    {
                         _states.GetOrAdd(sessionId, _ => new SessionExecutionState()).LastExecution = record;
+                        TryCompleteAwaiters(sessionId, record, awaiters);
+                    }
+                    else
+                    {
+                        // 记录都没建出来（全局并发等待期被取消）：本批等待者不会有 outcome。
+                        CancelAwaiters(awaiters, new OperationCanceledException(
+                            "执行未启动即被取消。"));
+                    }
                 }
                 catch (Exception ex)
                 {
                     // 执行失败：记录失败，继续循环消费剩余未读（避免整循环崩溃）
                     _logger.LogError(ex, "消费循环执行失败: SessionId={SessionId}", sessionId);
                     if (record is not null)
+                    {
                         _states.GetOrAdd(sessionId, _ => new SessionExecutionState()).LastExecution = record;
+                        TryCompleteAwaiters(sessionId, record, awaiters);
+                    }
+                    else
+                    {
+                        // 同上：没有 record 就没有 outcome；显式失败而非永久挂起。
+                        CancelAwaiters(awaiters, ex);
+                    }
                 }
             }
         }
@@ -339,11 +485,208 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         }
     }
 
+    /// <summary>登记等待槽：key = 入站消息 Id。调用点保证消息尚未落盘，故不可能已被消费。</summary>
+    private void RegisterAwaiter(string messageId, ExecutionAwaiter awaiter)
+    {
+        awaiter.MessageId = messageId;
+        _awaiters[messageId] = awaiter;
+    }
+
+    /// <summary>撤销登记（幂等；已被消费取走时无操作）。</summary>
+    private void RemoveAwaiter(ExecutionAwaiter awaiter)
+    {
+        if (awaiter.MessageId is { } messageId)
+            _awaiters.TryRemove(messageId, out _);
+    }
+
+    /// <summary>
+    /// 取走本批消息对应的等待槽。用「消息 Id 交集」而非当前执行推断，
+    /// 因此即使执行体迟到（全局并发排队），也不会绑定到错误的轮次。
+    /// </summary>
+    private List<ExecutionAwaiter> TakeAwaitersFor(IReadOnlyList<SessionMessage> batch)
+    {
+        var taken = new List<ExecutionAwaiter>();
+        foreach (var message in batch)
+        {
+            if (_awaiters.TryRemove(message.Id, out var awaiter))
+                taken.Add(awaiter);
+        }
+
+        return taken;
+    }
+
+    /// <summary>
+    /// 本轮进入终态：为等待者组装 <see cref="ExecutionOutcome"/> 并完成。
+    /// <para>
+    /// 会话已被 Stop 时改为取消等待：硬停不是「正常终态」，把它当成功返回会误导调用方。
+    /// </para>
+    /// </summary>
+    private void TryCompleteAwaiters(
+        string sessionId, ExecutionRecord record, List<ExecutionAwaiter> awaiters)
+    {
+        if (awaiters.Count == 0)
+            return;
+
+        if (_stoppedSessions.ContainsKey(sessionId))
+        {
+            CancelAwaiters(awaiters, new OperationCanceledException("会话已停止，执行未产生可用终态。"));
+            return;
+        }
+
+        var outcome = BuildOutcome(sessionId, record);
+        foreach (var awaiter in awaiters)
+            awaiter.TrySetResult(outcome);
+    }
+
+    /// <summary>
+    /// 组装终态快照。只取 <see cref="ExecutionRecord"/> 上**已存在**的事实字段：
+    /// <c>AgentName</c>/<c>AgentExecuted</c>/<c>TotalSteps</c>/<c>Usage</c> 由执行链在记录上填充
+    /// （ExecutionRecord 增列后），本方法保持默认值而不臆造任何数字。
+    /// </summary>
+    private ExecutionOutcome BuildOutcome(string sessionId, ExecutionRecord record)
+    {
+        var completedAt = record.CompletedAt ?? DateTime.UtcNow;
+        var duration = completedAt - record.StartedAt;
+        if (duration < TimeSpan.Zero)
+            duration = TimeSpan.Zero;
+
+        // 顶层判定与父会话同源：SessionData.Kind / 会话组父子关系。
+        // 不得读 ChatExecutionContext.IsTopLevel——该字段在唯一构造点从未被赋值，恒为默认 true。
+        var (isTopLevel, parentSessionId) = ResolveSessionRelation(sessionId);
+
+        return new ExecutionOutcome
+        {
+            SessionId = sessionId,
+            ExecutionId = record.ExecutionId,
+            Status = record.Status,
+            IsTopLevel = isTopLevel,
+            ParentSessionId = parentSessionId,
+            Duration = duration,
+            CompletedAt = completedAt
+        };
+    }
+
+    /// <summary>
+    /// 解析「是否顶层 + 父会话 Id」。读不到会话时按顶层处理（保守：不把根会话误判为子 Agent）。
+    /// </summary>
+    private (bool IsTopLevel, string? ParentSessionId) ResolveSessionRelation(string sessionId)
+    {
+        try
+        {
+            using var scope = _services.CreateScope();
+            var sessionManager = scope.ServiceProvider.GetService<ISessionManager>();
+            var session = sessionManager?.Get(sessionId);
+            if (session is null || session.Kind != SessionKind.SubAgent)
+                return (true, null);
+
+            var groupManager = scope.ServiceProvider.GetService<ISessionGroupManager>();
+            var parentId = groupManager is not null && groupManager.TryGetParent(sessionId, out var parent)
+                ? parent
+                : null;
+            return (false, parentId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "读取会话关系失败，按顶层处理: SessionId={SessionId}", sessionId);
+            return (true, null);
+        }
+    }
+
+    /// <summary>取消一组等待槽（执行未启动 / 会话被停止 / 运行时释放）。</summary>
+    private static void CancelAwaiters(IEnumerable<ExecutionAwaiter> awaiters, Exception exception)
+    {
+        foreach (var awaiter in awaiters)
+            CancelAwaiter(awaiter, exception);
+    }
+
+    /// <summary>取消单个等待槽：取消类异常走 SetCanceled，其余走 SetException。</summary>
+    private static void CancelAwaiter(ExecutionAwaiter awaiter, Exception exception)
+    {
+        if (exception is OperationCanceledException)
+            awaiter.TrySetCanceled();
+        else
+            awaiter.TrySetException(exception);
+    }
+
+    /// <summary>
+    /// 取消某会话仍在等待中的**已提交**等待槽（消息已落盘）。
+    /// 覆盖「消息不会再被任何一轮执行消费」的情况——此时不会再有 outcome 来兑现承诺。
+    /// <para>
+    /// 未提交的等待槽跳过：它正处于投递过程中，消息尚未出现在会话里，
+    /// 消费循环马上会看到并消费它，此时取消属于误伤。
+    /// </para>
+    /// </summary>
+    private int CancelAwaitersForSession(string sessionId, Exception exception)
+    {
+        var cancelled = 0;
+        foreach (var pair in _awaiters)
+        {
+            if (!string.Equals(pair.Value.SessionId, sessionId, StringComparison.Ordinal))
+                continue;
+            if (!pair.Value.Committed)
+                continue;
+            if (!_awaiters.TryRemove(pair.Key, out var awaiter))
+                continue;
+
+            CancelAwaiter(awaiter, exception);
+            cancelled++;
+        }
+
+        return cancelled;
+    }
+
+    /// <summary>取消全部等待槽（运行时释放）。</summary>
+    private int CancelAllAwaiters(Exception exception)
+    {
+        var cancelled = 0;
+        foreach (var key in _awaiters.Keys.ToArray())
+        {
+            if (_awaiters.TryRemove(key, out var awaiter))
+            {
+                CancelAwaiter(awaiter, exception);
+                cancelled++;
+            }
+        }
+
+        return cancelled;
+    }
+
     /// <summary>按「值匹配」移除循环条目，避免误删重新注册的新循环。</summary>
     private void RemoveLoop(string sessionId, LoopHandle handle)
     {
         ((ICollection<KeyValuePair<string, Task>>)_activeLoops)
             .Remove(new KeyValuePair<string, Task>(sessionId, handle.Loop));
+    }
+
+    /// <summary>单个等待槽：一次 <c>DeliverAndAwaitAsync</c> 的终态承诺。</summary>
+    private sealed class ExecutionAwaiter
+    {
+        public ExecutionAwaiter(string sessionId) => SessionId = sessionId;
+
+        public string SessionId { get; }
+
+        /// <summary>登记后由投递过程回填（消息构造完成、落盘之前）。</summary>
+        public string? MessageId { get; set; }
+
+        private int _committed;
+
+        /// <summary>
+        /// 消息已落盘（投递成功返回）。未提交的等待槽处于「投递进行中」，
+        /// 消费循环不得把它当作滞留等待取消——它的消息还没出现在会话里，下一轮会消费。
+        /// <para>用 <see cref="Volatile"/> 读写：写方是投递线程，读方是消费循环线程。</para>
+        /// </summary>
+        public bool Committed => Volatile.Read(ref _committed) != 0;
+
+        public TaskCompletionSource<ExecutionOutcome> Completion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void MarkCommitted() => Volatile.Write(ref _committed, 1);
+
+        public void TrySetResult(ExecutionOutcome outcome) => Completion.TrySetResult(outcome);
+
+        public void TrySetCanceled() => Completion.TrySetCanceled();
+
+        public void TrySetException(Exception ex) => Completion.TrySetException(ex);
     }
 
     /// <summary>循环句柄：Ready 门控保证「先登记后运行」；Loop 持自身 Task 供值匹配移除。</summary>
@@ -644,6 +987,10 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
             {
                 var metadata = message.Metadata ?? ImmutableDictionary<string, object>.Empty;
                 message.Metadata = metadata.SetItem(InboxMetadataKeys.Consumed, true);
+
+                // 被丢弃的消息不会再有执行来兑现等待：显式取消而不是让调用方永久挂起。
+                if (_awaiters.TryRemove(message.Id, out var awaiter))
+                    CancelAwaiter(awaiter, new OperationCanceledException("入站消息已被丢弃，不会产生执行终态。"));
             }
 
             await sessionManager.SaveAsync(sessionId).ConfigureAwait(false);
@@ -705,6 +1052,10 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         // 2. 加入停止态（自身 + 子会话）
         foreach (var id in targets)
             _stoppedSessions[id] = 0;
+
+        // 2.5 取消仍在等待的终态承诺：硬停不会产生正常的 outcome，必须显式收口而不是永久挂起。
+        foreach (var id in targets)
+            CancelAwaitersForSession(id, new OperationCanceledException($"会话 {id} 已停止，执行未产生可用终态。"));
 
         // 3. 取消当前执行体
         var cancelled = 0;
@@ -809,7 +1160,11 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
 
         // Stop 态视为 idle：循环已（或即将）退出，直接返回。
         if (_stoppedSessions.ContainsKey(sessionId))
+        {
+            // 循环已（或即将）退出，不会有下一轮来兑现等待。
+            CancelAwaitersForSession(sessionId, new OperationCanceledException("会话已停止，执行未产生可用终态。"));
             return;
+        }
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _disposeCts.Token);
         var token = linked.Token;
@@ -1013,6 +1368,9 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
             return;
 
         _cleanupTimer?.Dispose();
+
+        // 运行时释放：在途等待不可能再有结果，显式取消而非永久挂起。
+        CancelAllAwaiters(new OperationCanceledException("会话运行时已释放，未完成的等待被取消。"));
 
         try
         {
