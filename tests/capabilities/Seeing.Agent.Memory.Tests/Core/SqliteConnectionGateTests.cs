@@ -15,7 +15,10 @@ namespace Seeing.Agent.Memory.Tests.Core;
 /// </para>
 /// <para>
 /// <b>两个重载必须分别覆盖</b>：非泛型 <c>RunAsync</c> 与泛型 <c>RunAsync&lt;T&gt;</c> 各自持有独立锁路径。
-/// 泛型重载有 3 处生产调用（<c>KeywordIndex.cs:157</c>、<c>VectorIndex.cs:184/226</c>，正是读共享连接的路径）。
+/// 全包共 26 处调用点：泛型 12 处、非泛型 14 处（按「lambda 体是否产出值」逐点判定，并经编译器改名探针复核）。
+/// 泛型 12 处：<c>KeywordIndex.cs:157/190</c>、<c>VectorIndex.cs:184/226/260</c>、
+/// <c>SqliteMemoryGraph.cs:191/236/269/291</c>、<c>SqliteEmbeddingCache.cs:65/144/159</c>
+/// ——其中多数是表达式体方法（签名返回 <c>Task&lt;T&gt;</c>，不出现 <c>return</c> 关键字）。
 /// 只覆盖其中一个会让另一个的锁失效在测试中隐形——这正是变异 B 暴露的问题。
 /// </para>
 /// </summary>

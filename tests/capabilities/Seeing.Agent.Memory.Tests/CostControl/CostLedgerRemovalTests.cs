@@ -123,21 +123,9 @@ public sealed class CostLedgerRemovalTests
         services.AddSingleton(Mock.Of<IFileStore>());
     }
 
-    private sealed class StubConfigSectionRegistry : IConfigSectionRegistry
-    {
-        private readonly Dictionary<string, ConfigSectionMeta> _sections =
-            new(StringComparer.OrdinalIgnoreCase);
-
-        public void Register(ConfigSectionMeta meta) => _sections[meta.Key] = meta;
-        public IReadOnlyCollection<ConfigSectionMeta> Sections => _sections.Values;
-        public bool TryGet(string key, out ConfigSectionMeta meta) =>
-            _sections.TryGetValue(key, out meta!);
-    }
-
     private sealed class StubConfigSectionStore : IConfigSectionStore
     {
         private readonly Dictionary<string, object> _sections = new(StringComparer.OrdinalIgnoreCase);
-
         public T GetSection<T>(string sectionName) where T : class, new() =>
             _sections.TryGetValue(sectionName, out var value) && value is T typed ? typed : new T();
 

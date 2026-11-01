@@ -44,8 +44,9 @@ Memory 包内两套「token 记账」实现（`ITokenTracker`/`SqliteTokenTracke
 
 **判定依据**（证据，不是推测）：
 
-- `SchemaManager` 在生产代码中**零调用**：`ApplyMigrationsAsync` / `EnsureInitializedAsync` 的调用点只有
-  `tests/capabilities/Seeing.Agent.Memory.Tests/Schema/SchemaManagerTests.cs`。
+- `SchemaManager` 在生产代码中**零调用**：`ApplyMigrationsAsync` / `EnsureInitializedAsync` 的调用点
+  **仅在（本轮已删除的）`tests/capabilities/Seeing.Agent.Memory.Tests/Schema/SchemaManagerTests.cs` 中**，
+  生产代码从未调用。
 - `git log --all --oneline -S "SchemaManager" -- src samples plugs` **在删除前**只返回 `da7a150b`
   （新增该文件那次提交），**全历史从未**有 DI 注册或 `new SchemaManager(...)`。
   > 注：该命令在**删除后**会额外返回删除提交本身，因此这条证据只在删除前成立，不能事后原样复跑核对。
@@ -128,7 +129,24 @@ WebUI 无引用。**不选**"接上 IRateLimiter"——那是加功能，不是�
 ### 5.1 `SqliteConnectionGate` 覆盖的完整性与判别力
 
 `SqliteConnectionGate` 有**两个独立锁路径**：非泛型 `RunAsync` 与泛型 `RunAsync<T>`。
-泛型重载有 3 处生产调用（`KeywordIndex.cs:157`、`VectorIndex.cs:184`、`VectorIndex.cs:226`，正是读共享连接的路径），
+全包共 **26 处**调用点：**泛型 12 处、非泛型 14 处**。
+
+| 重载 | 处数 | 调用点（`路径:行`） |
+|---|---|---|
+| 泛型 `RunAsync<T>` | 12 | `KeywordIndex.cs:157/190`、`VectorIndex.cs:184/226/260`、`SqliteMemoryGraph.cs:191/236/269/291`、`SqliteEmbeddingCache.cs:65/144/159` |
+| 非泛型 `RunAsync` | 14 | `KeywordIndex.cs:61/87/132/201`、`VectorIndex.cs:76/108/160/271`、`SqliteMemoryGraph.cs:79/102/126/160/171`、`SqliteEmbeddingCache.cs:112` |
+
+判定方法：**lambda 体是否产出值**。注意「表达式体方法」不出现 `return` 关键字，但签名返回 `Task<T>`
+已强制走泛型重载，例如：
+
+```csharp
+public Task<GraphStats> GetStatsAsync(CancellationToken ct = default) =>
+    _gate.RunAsync(async token => { ...; return new GraphStats(...); }, ct);   // 泛型
+```
+
+上述数字经**编译器改名探针**独立复核：把泛型重载临时改名为 `RunAsyncG<T>`，编译报出的
+「无法从异步 lambda 返回值」错误行恰好落在泛型那 12 处的 `return` 语句上。
+
 因此两个重载都必须单独覆盖——只测一个会让另一个的锁失效在测试中隐形。
 
 **判别力按「逐个变异点」验证**（不是一次性删掉整个锁）：

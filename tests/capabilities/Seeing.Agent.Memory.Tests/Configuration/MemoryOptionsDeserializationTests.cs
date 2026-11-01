@@ -97,15 +97,20 @@ public sealed class MemoryOptionsDeserializationTests : IDisposable
     }
 
     /// <summary>
-    /// 生产序列化器若变得严格（<c>UnmappedMemberHandling.Disallow</c>），未知的 <c>Cost</c> 键会抛异常。
-    /// 本用例把该假设钉死：生产 <c>JsonOptions</c> 的默认容忍语义是兼容性的**唯一**保障。
+    /// STJ 默认语义对照：未知成员默认被忽略，但显式 <c>UnmappedMemberHandling.Disallow</c> 下会被拒绝。
+    /// <para>
+    /// <b>本用例不守护生产配置</b>——它只自造两个 <see cref="JsonSerializerOptions"/> 做默认行为对照，
+    /// 读不到 <c>UnifiedConfigManager.JsonOptions</c>（那是 <c>private static</c> 字段）。
+    /// 实测也证实这一点：给生产侧加 <c>Disallow</c> 时本用例**仍然绿**。
+    /// 真正守护生产路径的是 <see cref="GetSection_WithLegacyCostKey_ShouldNotThrow_AndIgnoreIt"/>。
+    /// </para>
     /// </summary>
     [Fact]
-    public void ProductionJsonOptions_Should_Tolerate_UnknownMembers_ByDefault()
+    public void StjDefaults_Should_Tolerate_UnknownMembers()
     {
         const string legacyJson = """{ "Cost": { "DailyTokenQuota": 1 } }""";
 
-        // 严格模式对照：确认这段 JSON 在 Disallow 下确实会炸（证明上面的生产用例不是空转）
+        // 严格模式对照：确认这段 JSON 在 Disallow 下确实会炸
         var strict = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true,
@@ -113,9 +118,9 @@ public sealed class MemoryOptionsDeserializationTests : IDisposable
         };
         var strictAct = () => JsonSerializer.Deserialize<MemoryOptions>(legacyJson, strict);
         strictAct.Should().Throw<JsonException>(
-            "严格模式下未知的 Cost 键会被拒绝——这正是生产侧必须保持默认容忍语义的原因");
+            "严格模式下未知的 Cost 键会被拒绝");
 
-        // 生产语义对照：默认（无 UnmappedMemberHandling 设置）应容忍
+        // STJ 默认（未设置 UnmappedMemberHandling）应容忍未知成员
         var tolerant = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var tolerantAct = () => JsonSerializer.Deserialize<MemoryOptions>(legacyJson, tolerant);
         tolerantAct.Should().NotThrow();
@@ -143,16 +148,5 @@ public sealed class MemoryOptionsDeserializationTests : IDisposable
         meta.FileName.Should().Be("memory.json");
         meta.Key.Should().Be("Memory");
         meta.SectionType.Should().Be(typeof(MemoryOptions));
-    }
-
-    private sealed class StubConfigSectionRegistry : IConfigSectionRegistry
-    {
-        private readonly Dictionary<string, ConfigSectionMeta> _sections =
-            new(StringComparer.OrdinalIgnoreCase);
-
-        public void Register(ConfigSectionMeta meta) => _sections[meta.Key] = meta;
-        public IReadOnlyCollection<ConfigSectionMeta> Sections => _sections.Values;
-        public bool TryGet(string key, out ConfigSectionMeta meta) =>
-            _sections.TryGetValue(key, out meta!);
     }
 }
