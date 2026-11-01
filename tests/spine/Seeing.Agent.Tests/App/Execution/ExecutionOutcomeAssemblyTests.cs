@@ -347,7 +347,13 @@ public class ExecutionOutcomeAssemblyTests
         elapsed.Stop();
 
         recording.Outcomes.Should().ContainSingle("超时的观察者被放弃后，后续观察者必须照常收到通知");
-        elapsed.Elapsed.Should().BeGreaterThanOrEqualTo(slowTimeout, "必须等满超时上限才放弃该观察者");
+
+        // 下界只做**量级判别**（是否真的等过超时窗口），不卡精确值：
+        // WaitAsync 的计时起点与 Stopwatch 不同，且 Timer 触发有几十微秒级提前，
+        // 断言 `>= 100ms` 会在边界上偶发假红（实测 99.93ms）。
+        // 取 80% 仍能抓住「超时为 0 / 未生效 → 立即返回」的真实缺陷。
+        elapsed.Elapsed.Should().BeGreaterThanOrEqualTo(slowTimeout * 0.8,
+            "必须等过超时窗口才放弃该观察者（量级判别，容忍计时抖动）");
         elapsed.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5),
             "必须在超时后立刻继续，而不是等慢观察者自然结束（10s）");
         fx.SingleOutcome().Status.Should().Be(ExecutionStatus.Completed, "观察者超时不得改变本轮终态");
