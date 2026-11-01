@@ -158,7 +158,6 @@ namespace Seeing.Agent.Core.Configuration
             var allAgents = await _agentStore.GetAllAsync();
             var taskable = allAgents
                 .Where(a => !a.Disabled
-                    && !a.IsHidden
                     && a.Mode != AgentMode.Primary
                     && a.Runtime == AgentRuntime.Native)
                 .OrderBy(a => a.Name, StringComparer.Ordinal)
