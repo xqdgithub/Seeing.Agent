@@ -322,6 +322,13 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
     private async Task RunLoopAsync(string sessionId, LoopHandle handle, CancellationToken ct)
     {
         var gate = _sessionGates.GetOrAdd(sessionId, _ => new SemaphoreSlim(1, 1));
+
+        // 本循环最后一次创建的记录（跨迭代持有）。
+        // 外层 finally 只能据此「按身份」清空 CurrentExecution，绝不能无条件清：
+        // RemoveLoop 之后投递线程可立刻拉起**新**循环并写入它自己的 CurrentExecution，
+        // 无条件清空会抹掉新循环的在途记录，导致 Stop/Interrupt/Dispose 读不到 Cts 而取消失效。
+        ExecutionRecord? loopOwnedRecord = null;
+
         try
         {
             while (true)
@@ -356,13 +363,17 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     pending = session.Messages.Where(IsPendingInboxMessage).ToList();
                     if (pending.Count == 0)
                     {
-                        // 退出与检查在同一 gate 临界区内，无丢唤醒窗口：
-                        // 投递方「落盘消息 → 抢 gate 检查 _activeLoops」与这里的
-                        // 「在 gate 内读未读 → 摘除 _activeLoops」互斥，因此要么本轮读到该消息，
+                        // 【唤醒不丢】投递方先落盘、再抢 gate 检查 _activeLoops；循环在 gate 内
+                        // 「读未读 → 摘除 _activeLoops」。两者互斥，所以要么本轮读到该消息，
                         // 要么投递方看到循环已摘除并另起一个——不存在「刚判空闲、消息随后落盘」的漏消费。
                         //
-                        // 此处**不**取消任何等待槽：没有未读只是瞬时事实，取消会误杀在途/已兑现的等待；
-                        // 无终态的等待由 Stop / Discard / Dispose / 调用方 ct 显式收口。
+                        // 【但 gate 不覆盖 awaiter 时序】MarkPersisted 在 DeliverCoreAsync 返回之后才执行，
+                        // 那时投递方已释放 gate，因此「循环在此处取消等待槽」与本对象的落盘标记
+                        // **不在同一临界区**，靠 gate 无法判对。所以这里**完全不取消等待槽**：
+                        // 没有未读只是瞬时事实，消息可能已被上一轮消费（等待已兑现）。
+                        // 残留等待（消息被第三方 trim/revert 删除）是已知边界，见
+                        // ISessionRuntime.DeliverAndAwaitAsync 的 remarks；
+                        // Stop 侧「已落盘但循环已退出」的窗口由投递侧复查 _stoppedSessions 兜住。
                         RemoveLoop(sessionId, handle);
                         break;
                     }
@@ -423,6 +434,7 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                         var state = _states.GetOrAdd(sessionId, _ => new SessionExecutionState());
                         state.CurrentExecution = record;
                         state.PendingInputCount = 0;
+                        loopOwnedRecord = record;
                         Touch(sessionId);
 
                         var userMessages = pending
@@ -458,7 +470,10 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     }
                     finally
                     {
-                        _states.GetOrAdd(sessionId, _ => new SessionExecutionState()).CurrentExecution = null;
+                        // 按身份清空：只有 CurrentExecution 仍是我这一轮的记录才清。
+                        // 无条件置 null 会把「另一条路径刚写入的记录」一并抹掉（顶层 finally 的同型缺陷）。
+                        ClearCurrentExecutionIfOwned(sessionId, record);
+
                         // 本轮终态后释放专属 CTS：RunOnceAsync 已返回（含取消路径），执行体不再持有令牌。
                         // Stop/Interrupt 与释放存在窄竞态，二者均捕获 ObjectDisposedException，视为已终态。
                         if (record is not null)
@@ -526,9 +541,37 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         {
             RemoveLoop(sessionId, handle);
 
-            // 清理该会话的运行态脏条目：循环已终止，CurrentExecution 不该再指向任何在途记录。
-            if (_states.TryGetValue(sessionId, out var leftover))
-                leftover.CurrentExecution = null;
+            // 清理本循环遗留的 CurrentExecution —— **只能按记录身份清**。
+            // RemoveLoop 摘除后，投递线程可立刻拉起新循环并为它写入自己的 CurrentExecution；
+            // 若此处无条件置 null，会抹掉新循环的在途记录，使 Stop/Interrupt/Dispose 读不到 Cts、
+            // 取消对该轮彻底失效，也让 CleanupIdleSessions 误判空闲清掉运行态。
+            ClearCurrentExecutionIfOwned(sessionId, loopOwnedRecord);
+        }
+    }
+
+    /// <summary>测试用：直接写入某会话的 CurrentExecution（构造跨循环交错的确定性场景）。</summary>
+    internal void SetCurrentExecutionForTest(string sessionId, ExecutionRecord record) =>
+        _states.GetOrAdd(sessionId, _ => new SessionExecutionState()).CurrentExecution = record;
+
+    /// <summary>
+    /// 仅当 <c>CurrentExecution</c> 仍是 <paramref name="record"/> 本身时才清空。
+    /// <para>
+    /// 这是运行态收尾的**唯一**写 null 入口：无条件清空会跨循环误伤——
+    /// 旧循环退出与新循环启动之间没有互斥，新循环可能已经把记录写进去了。
+    /// </para>
+    /// <para>
+    /// internal 仅供测试直接钉住「按身份清空」语义（项目已对测试项目开放 InternalsVisibleTo）。
+    /// </para>
+    /// </summary>
+    internal void ClearCurrentExecutionIfOwned(string sessionId, ExecutionRecord? record)
+    {
+        if (record is null)
+            return;
+
+        if (_states.TryGetValue(sessionId, out var state) &&
+            ReferenceEquals(state.CurrentExecution, record))
+        {
+            state.CurrentExecution = null;
         }
     }
 
@@ -679,16 +722,19 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
 
     /// <summary>
     /// 取消某会话仍在等待中的等待槽。
-    /// 覆盖「消息不会再被任何一轮执行消费」的情况（Stop / Dispose / 会话删除 / 投递卡死）——
+    /// 覆盖「消息不会再被任何一轮执行消费」的情况（Stop / Dispose / 会话删除）——
     /// 此时不会再有 outcome 来兑现承诺。
     /// <para>
     /// <b>只取消已落盘（<see cref="ExecutionAwaiter.Persisted"/>）的等待槽</b>：
-    /// 尚未落盘说明投递线程正握着消息、马上会进会话，此时取消属于误杀——
-    /// 消费循环会通过 <c>TryWaitForInFlightDeliveriesAsync</c> 等它落盘后再消费。
+    /// 尚未落盘说明投递线程正握着消息、马上会进会话，此时取消属于误杀。
+    /// 这类等待的兜底在投递侧：<c>DeliverAndAwaitAsync</c> 落盘后会复查
+    /// <c>_stoppedSessions</c> 并主动抛出取消（那里没有「循环已退出」的歧义）。
     /// </para>
     /// <para>
     /// <b>不用于「无未读 → 循环退出」路径</b>：那一刻没有未读只是瞬时事实，
     /// 消息可能已被上一轮消费（等待已兑现），取消会误杀已兑现的等待。
+    /// 该路径上「消息被第三方删除」的残留等待是已知边界，见
+    /// <c>ISessionRuntime.DeliverAndAwaitAsync</c> 的 remarks。
     /// </para>
     /// </summary>
     private int CancelAwaitersForSession(string sessionId, Exception exception)

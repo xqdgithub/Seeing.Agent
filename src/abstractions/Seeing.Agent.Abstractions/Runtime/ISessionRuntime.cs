@@ -47,6 +47,26 @@ public interface ISessionRuntime
     /// <param name="message">待投递的入站消息（须为 Wake 投递）。</param>
     /// <param name="ct">取消令牌：取消即放弃等待。</param>
     /// <returns>本次投递所消费的那一轮执行的终态快照。</returns>
+    /// <remarks>
+    /// <para><b>已知边界：消息在落盘后被第三方移出会话时，本方法不会自行结束。</b></para>
+    /// <para>
+    /// 等待与「这条消息被哪一轮消费」绑定。若消息落盘后、被消费前，经会话编辑类能力
+    /// （如 <c>SessionTrimTool</c> / <c>SessionReverter</c> 的 <c>ReplaceMessages</c>）从会话中删除，
+    /// 消费循环将永远看不到它，也就不会有任何一轮执行来兑现本次等待。
+    /// </para>
+    /// <para>
+    /// <b>为什么不做自动兜底</b>：唯一能在「无未读」时刻判定「这条消息彻底没人要了」的方式是
+    /// 在该处取消等待槽，但那一刻「没有未读」只是瞬时事实（同批消息可能刚被上一轮消费完），
+    /// 取消会误杀已兑现的等待——把偶发的误取消换成偶发的挂起，是更可控的取舍：
+    /// 挂起可被调用方 <see cref="CancellationToken"/> 兜住，误取消则会让拿到错误结论。
+    /// </para>
+    /// <para>
+    /// <b>调用方契约</b>：本方法可能在 <b>没有执行发生</b>的情况下长时间不返回，
+    /// 因此<b>务必</b>传入带超时的 <paramref name="ct"/>（如 <c>new CancellationTokenSource(timeout)</c>），
+    /// 不要依赖本方法自身收敛。<see cref="StopAsync"/>、运行时释放、<see cref="DiscardPendingAsync"/>
+    /// 仍会主动结束等待。
+    /// </para>
+    /// </remarks>
     Task<ExecutionOutcome> DeliverAndAwaitAsync(InboxMessage message, CancellationToken ct = default)
         => throw new NotSupportedException(
             $"{nameof(ISessionRuntime)} 的实现未支持 {nameof(DeliverAndAwaitAsync)}。");

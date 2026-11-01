@@ -211,16 +211,107 @@ public class DeliverAndAwaitTests
         // Important 3 回归：运行时释放时在途等待必须被取消，不能永久挂起。
         var runtime = CreateRuntime(runHook: null, out _, out var runner);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var executionTokenCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         runner.OnRunAsync = async token =>
         {
             started.TrySetResult();
-            await Task.Delay(TimeSpan.FromSeconds(5), token).ConfigureAwait(false);
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                executionTokenCancelled.TrySetResult();
+                throw;
+            }
         };
 
         var waiting = runtime.DeliverAndAwaitAsync(MakeMessage("ses_dispose", "x"), CancellationToken.None);
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
+        var releasedAt = System.Diagnostics.Stopwatch.StartNew();
         await runtime.DisposeAsync();
+
+        var act = async () => await waiting.WaitAsync(TimeSpan.FromSeconds(10));
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        releasedAt.Stop();
+
+        // 时效断言：等待必须在 Dispose 后立刻收口，而不是等执行体的 5s 自然跑完。
+        // 少了这条，「遍历 _states 取消 Cts」那半边修复即使被删掉，测试也只会变慢、不会变红。
+        releasedAt.Elapsed.Should().BeLessThan(
+            TimeSpan.FromSeconds(1),
+            "Dispose 必须主动取消在途执行令牌，而非等执行体自然结束");
+
+        // 令牌断言：直接钉住「执行体收到的 token 确实被取消」这一事实。
+        await executionTokenCancelled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public void ClearCurrentExecutionIfOwned_Should_Not_Clear_Another_Loops_Record()
+    {
+        // 回归 1 的确定性单测：旧循环收尾时，若 CurrentExecution 已被**新循环**写入，
+        // 旧循环必须放手（身份不匹配）。无条件置 null 会抹掉新循环的在途记录，
+        // 使 Stop/Interrupt/Dispose 读不到 Cts、取消失效，CleanupIdleSessions 也会误判空闲。
+        var runtime = BuildRuntime(out _, out _);
+
+        var oldLoopRecord = Record("exec_old");
+        var newLoopRecord = Record("exec_new");
+
+        // 场景：旧循环退出时，状态里已是新循环的记录。
+        runtime.SetCurrentExecutionForTest("ses_race", newLoopRecord);
+        runtime.ClearCurrentExecutionIfOwned("ses_race", oldLoopRecord);
+
+        runtime.GetOverview("ses_race").CurrentExecution.Should().BeSameAs(
+            newLoopRecord, "旧循环不得清掉新循环仍在途的记录");
+
+        // 自己的记录仍然要能清掉（否则会永久残留，让 Stop 误以为有在途执行）。
+        runtime.ClearCurrentExecutionIfOwned("ses_race", newLoopRecord);
+        runtime.GetOverview("ses_race").CurrentExecution.Should().BeNull();
+
+        static ExecutionRecord Record(string executionId) => new()
+        {
+            ExecutionId = executionId,
+            SessionId = "ses_race",
+            Status = ExecutionStatus.Running,
+            StartedAt = DateTime.UtcNow
+        };
+    }
+
+    [Fact]
+    public async Task DeliverAndAwait_Should_Expose_InFlight_Execution_So_Stop_Can_Cancel_It()
+    {
+        // 回归 1：旧循环退出后不得抹掉新循环的 CurrentExecution。
+        // 一旦被抹掉，StopAsync 读不到 Cts，取消对该轮彻底失效。
+        var runtime = BuildRuntime(out _, out var runner);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        runner.OnRunAsync = async token =>
+        {
+            started.TrySetResult();
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30), token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                cancelled.TrySetResult();
+                throw;
+            }
+        };
+
+        var waiting = runtime.DeliverAndAwaitAsync(MakeMessage("ses_inflight", "x"), CancellationToken.None);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        // 关键断言：执行中 CurrentExecution 必须可见（不被任何收尾逻辑清掉）。
+        var overview = runtime.GetOverview("ses_inflight");
+        overview.CurrentExecution.Should().NotBeNull("在途执行必须对 Stop/Interrupt/Dispose 可见");
+        overview.HasActiveExecution.Should().BeTrue();
+
+        // 端到端证明：可见性成立时 Stop 才能真的取消它。
+        var stopped = await runtime.StopAsync("ses_inflight");
+        stopped.Should().BeGreaterThan(0, "Stop 必须能取消在途执行，说明 Cts 可读");
+        await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         var act = async () => await waiting.WaitAsync(TimeSpan.FromSeconds(10));
         await act.Should().ThrowAsync<OperationCanceledException>();
