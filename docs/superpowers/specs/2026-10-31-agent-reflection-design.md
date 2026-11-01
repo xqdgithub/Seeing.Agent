@@ -213,18 +213,31 @@ public enum SessionOrigin
 
 同时修 `TaskTool.cs:117` 的 `Kind != SubAgent` 判定改为显式白名单（`Kind == SubAgent && Origin == SubAgentTask`）。
 
-### 3.5 `GetTaskableAgentsAsync` 补 `IsHidden` 过滤
+### 3.5 ~~`GetTaskableAgentsAsync` 补 `IsHidden` 过滤~~（已撤销，2026-11-01）
 
-**问题**：`AgentManager.cs:159-165` 只过滤 `Disabled` / `Mode != Primary` / `Runtime != Native`，不看 `IsHidden`。导致 `build`（`All`）与 `summary`（`All` + `IsHidden`）出现在「可用子代理类型」列表里。这是既有 bug，与 Reflection 无关。
+**原提案（错误，已回滚）**：`AgentManager.cs:159-165` 只过滤 `Disabled` / `Mode != Primary` / `Runtime != Native`，不看 `IsHidden`，判定 `build` 与 `summary` 出现在「可用子代理类型」列表里是 bug，建议加 `&& !a.IsHidden`。
 
-**改法**：一行——加 `&& !a.IsHidden`。
+**为什么错**：`AgentDefinition.cs:41` 的契约注释明确写 `IsHidden` = 「不在用户选择列表显示，**但仍可作为 SubAgent 使用**」。隐藏 ≠ 不可委派，这是两个正交语义：
 
-**关于 `reflection` agent 的模式**：修完这条后，`Mode = SubAgent` + `IsHidden = true` 即可同时躲开：
-- `GetTaskableAgentsAsync`：被 `!IsHidden` 排除
-- `GetPrimaryAgentsAsync`（`:172-173`）：被 `!IsHidden` 排除
-- `TaskTool`：`Mode == Primary` 才拒；`SubAgent` 本来可委派，但 `IsHidden` 已在上一行排除
+| 维度 | 决定什么 | 判定点 |
+|---|---|---|
+| `IsHidden` | 是否出现在**用户可见的 agent 选择列表**（UI） | `GetPrimaryAgentsAsync` 的 `!IsHidden` |
+| `Mode` | 是否可被 `task` 工具**委派** | `GetTaskableAgentsAsync` 的 `Mode != Primary` |
 
-**不需要新增 `AgentMode.System`**。v2 的 `Primary + IsHidden` 组合是在 `GetTaskableAgentsAsync` 有 bug 前提下的巧合，修掉 bug 后就不需要那个巧合了。这是比「新增枚举值」更小的正确解。
+`general`（`SubAgent` + `IsHidden=true`）正是「隐藏但可委派」的正例，`TaskTool.cs:63` 的参数描述直接举例「如 explore、general」。原提案会让内置可委派集合从 `{build, plan, explore, general}` 静默收缩为 `{build, plan, explore}`，并与 `AgentsPromptSectionContributor`（只看 `Mode == SubAgent`）的系统提示清单矛盾——把一个符合契约的行为改成三处口径不一致。
+
+**撤销记录**：实施时该任务（T5）已提交 `69027046`，审查发现后果后 revert 为 `c8ac9e19`。
+
+**`reflection` agent 的正确模式**：`Mode = AgentMode.Primary` + `IsHidden = true`。
+
+- `GetTaskableAgentsAsync`：按 `Mode != Primary` 排除 ✓（不可被 `task` 委派）
+- `GetPrimaryAgentsAsync`（`:172-173`）：按 `!IsHidden` 排除 ✓（不出现在 UI 选择列表）
+- `TaskTool.cs:92-93`：显式拒绝 `Mode == Primary` ✓（双保险）
+
+这不是「两个无关开关的巧合」，而是两个维度各司其职：`Primary` 表达「不可作为子任务委派」，`IsHidden` 表达「不显示在 UI」。`reflection` 同时需要这两个否命题，所以同时设这两个值是正确的，不是绕过。
+
+**遗留技术债（本期不修，已在 §9 登记）**：`GetSubAgentsAsync` / `GetAccessibleSubAgentsAsync` 零消费者且缺 `IsHidden` 过滤；`TaskTool.ExecuteAsync` 不校验 `IsHidden`。
+
 
 ### 3.6 会话活动追踪下沉
 

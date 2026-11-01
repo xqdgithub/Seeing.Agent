@@ -65,7 +65,7 @@ dotnet vstest tests/<proj>/bin/Debug/net10.0/<Proj>.dll --TestCaseFilter:"FullyQ
 | `src/capabilities/Seeing.Agent.Memory/Integration/MemoryRecallHandler.cs` | 删除 |
 | `src/capabilities/Seeing.Agent.Memory/Core/*Token*.cs`、`Core/CostControl/DailyQuotaManager.cs` | 删除（零消费者的死账本） |
 | `src/capabilities/Seeing.Agent.Memory/Integration/MemoryHookHandler.cs` | 修改。`AgentTurnMemoryHandler` 改实现 `IExecutionOutcomeObserver` |
-| `src/spine/Seeing.Agent.Core/Configuration/AgentManager.cs` | 修改。`GetTaskableAgentsAsync` 加 `!IsHidden` |
+| `src/spine/Seeing.Agent.Core/Configuration/AgentManager.cs` | **不修改**（原 T5「加 `!IsHidden`」已撤销，见 spec §3.5） |
 | `src/hosting/Seeing.Agent.Hosting/Tools/TaskStatusTool.cs`、`TaskTool.cs` | 修改。排除 `Origin == Reflection` |
 | `src/hosting/Seeing.Agent.Hosting/Tools/TuiSurfaceProvider.cs` | 修改。同上 |
 | `src/hosting/Seeing.Agent.Hosting/Execution/ExecutionRunner.cs` | 修改。`Origin == Reflection` 不生成标题 |
@@ -100,7 +100,7 @@ dotnet vstest tests/<proj>/bin/Debug/net10.0/<Proj>.dll --TestCaseFilter:"FullyQ
 
 ```
 Wave 1（无依赖，可全并行）
-  T1 ExecutionOutcome 契约        T2 DeliverAndAwaitAsync      T4 SessionOrigin      T5 IsHidden 过滤
+  T1 ExecutionOutcome 契约        T2 DeliverAndAwaitAsync      T4 SessionOrigin
                                                                  T6 activityTracker 下沉
 Wave 2（依赖 T1）
   T3 ExecutionRunner 组装 outcome + 观察者扇出
@@ -465,50 +465,15 @@ git commit -am "feat(session): 新增 SessionOrigin 正交维度与 CreateIntern
 
 ---
 
-### Task 5: `GetTaskableAgentsAsync` 排除 `IsHidden`
+### Task 5: ~~`GetTaskableAgentsAsync` 排除 `IsHidden`~~（已撤销，不执行）
 
-**Files:**
-- Modify: `src/spine/Seeing.Agent.Core/Configuration/AgentManager.cs:156-166`
-- Test: `tests/spine/Seeing.Agent.Tests/Configuration/TaskableAgentsTests.cs`
+**状态：作废（2026-11-01）。** 实现已提交 `69027046`，审查发现方向错误后 revert 为 `c8ac9e19`。
 
-**Interfaces:**
-- Consumes: 无
-- Produces: `GetTaskableAgentsAsync()` 不再返回 `IsHidden == true` 的 agent
+**撤销理由**：`AgentDefinition.cs:41` 的契约注释明确 `IsHidden` = 「不在用户选择列表显示，**但仍可作为 SubAgent 使用**」。隐藏 ≠ 不可委派。`general`（`SubAgent`+`IsHidden`）是该语义的正例，`TaskTool.cs:63` 直接举例「如 explore、general」。原提案会让内置可委派集合从 `{build, plan, explore, general}` 静默收缩为 `{build, plan, explore}`，并与 `AgentsPromptSectionContributor`（只看 `Mode == SubAgent`）的系统提示清单矛盾——把符合契约的行为改成三处口径不一致。
 
-- [ ] **Step 1: 写失败测试**
+**对 `reflection` agent 的替代方案**：用 `Mode = AgentMode.Primary` + `IsHidden = true`（见 Task 10）。`Primary` 表达「不可委派」，`IsHidden` 表达「不显示在 UI」，两个维度各司其职。
 
-```csharp
-[Theory]
-[InlineData("build", AgentMode.All, false)]        // 可见的 All → 应出现
-[InlineData("summary", AgentMode.All, true)]        // 隐藏的 All → 不应出现
-[InlineData("reflection", AgentMode.SubAgent, true)]// 隐藏的 SubAgent → 不应出现
-public async Task GetTaskableAgents_Should_Exclude_Hidden(
-    string name, AgentMode mode, bool hidden)
-{
-    var manager = BuildManagerWith(new AgentDefinition
-    { Name = name, Mode = mode, IsHidden = hidden, Runtime = AgentRuntime.Native, IsNative = true });
-    var result = await manager.GetTaskableAgentsAsync();
-    result.Any(a => a.Name == name).Should().Be(!hidden);
-}
-```
-
-- [ ] **Step 2: 运行确认失败**
-
-Run: `--TestCaseFilter:"FullyQualifiedName~TaskableAgents"` → `summary` / `reflection` 用例 FAIL
-
-- [ ] **Step 3: 实现**
-
-`:160` 的 `Where` 加一个条件 `&& !a.IsHidden`。
-
-- [ ] **Step 4: 运行确认通过**
-
-Run: 同上 → 3 passed
-
-- [ ] **Step 5: 提交**
-
-```bash
-git commit -am "fix(agents): GetTaskableAgentsAsync 排除隐藏 agent，修复 build/summary 误入委托列表"
-```
+**本任务不执行任何代码改动。** 保留此段仅为记录决策与回滚。
 
 ---
 
@@ -826,7 +791,8 @@ csproj 只引用 `..\..\abstractions\Seeing.Agent.Abstractions\Seeing.Agent.Abst
 
 `ReflectionWorker`：`BackgroundService + IModuleHostedService`，`ModuleId = "reflection"`，照抄 `MemoryEvolutionWorker` 的 `ModuleHostedRunGate` + `RegisterWake` + Deactivate 哨兵。两个循环：队列消费（调 `IReflectionExecutor`，本期为 no-op 桩）+ 1 分钟 tick 空闲扫描。
 
-`ReflectionModule`：`ConfigureServices` 留空（DI 在 `ReflectionServiceExtensions`）；`ActivateAsync` 注册 agent（本期先注册一个 `Mode=SubAgent`/`IsHidden=true` 的占位定义，`SystemPrompt` 用 `Prompts.ReflectionSystem`，T11 到位后替换）、`MarkActive()`；`DeactivateAsync` 对称。
+`ReflectionModule`：`ConfigureServices` 留空（DI 在 `ReflectionServiceExtensions`）；`ActivateAsync` 注册 agent（占位定义用 **`Mode = AgentMode.Primary` + `IsHidden = true`**——`Primary` 表达「不可被 task 委派」，`IsHidden` 表达「不显示在 UI 选择列表」，见 spec §3.5；`SystemPrompt` 用 `Prompts.ReflectionSystem`，T11 到位后替换）、`MarkActive()`；`DeactivateAsync` 对称。
+`ReflectionObserver`：`ShouldObserve` 是接口默认实现，**C# 只能经接口类型调用**。必须在 `ReflectionObserver` 上显式声明 `public bool ShouldObserve(ExecutionOutcome outcome, SessionOrigin origin)` 同名重载供测试直接调用；接口的 `ShouldObserve(ExecutionOutcome)` 保持默认实现。
 
 `ReflectionServiceExtensions.AddSeeingReflection(registry)`：注册配置节 `Reflection`/`reflection.json`/`ConfigScope.Both`、`ReflectionOptionsProvider`、`IReflectionQueue` 单例、`IExecutionOutcomeObserver → ReflectionObserver`、`AddModuleHostedService<ReflectionWorker>`、`ISeeingModule → ReflectionModule`。
 
@@ -1180,10 +1146,10 @@ git commit -am "feat(reflection): 登记 full 能力集与宿主组合根，补�
 
 ## 自检（已执行）
 
-**Spec 覆盖**：§3.1→T1/T3；§3.2→T2；§3.3→T9；§3.4→T4（含三处视图过滤，见 §3.4 列出的 `TaskStatusTool`/`TaskTool`/`TuiSurfaceProvider`/标题生成，均落在 T4 的 Step 3 与 T3 的标题门禁）；§3.5→T5；§3.6→T6；§3.7→T7；§3.8→T8；§4.1–4.10→T10/T11/T12/T13/T14。无遗漏。
+**Spec 覆盖**：§3.1→T1/T3；§3.2→T2；§3.3→T9；§3.4→T4（含三处视图过滤，见 §3.4 列出的 `TaskStatusTool`/`TaskTool`/`TuiSurfaceProvider`/标题生成，均落在 T4 的 Step 3 与 T3 的标题门禁）；§3.5→**已撤销（T5 作废，`reflection` agent 改用 `Primary`+`IsHidden`，落在 T10）**；§3.6→T6；§3.7→T7；§3.8→T8；§4.1–4.10→T10/T11/T12/T13/T14。
 
 **类型一致性**：`ExecutionOutcome`/`IExecutionOutcomeObserver`（T1）在 T3/T8/T10/T12 复用同一签名；`SessionOrigin`（T4）在 T10/T12 复用；`ReflectionSuggestion`（T11）在 T12 复用；`IReflectionExecutor.RunAsync` 返回 `ReflectionRunResult` 在 T10（桩）与 T12（实现）一致。
 
-**并行边界**：Wave 1 的五个任务互不改同一文件（T1 只动 Abstractions/Execution，T2 动 Runtime + SessionRuntime，T4 动 primitives/Session，T5 只动 AgentManager 一行，T6 动 primitives/Session 的**不同文件**——T4 与 T6 会同时改 `SessionManager`/`SessionGroupManager` 所在的目录但文件不同，需在合并时注意 `dotnet build` 冲突）。T4 与 T6 若严格并行，建议 T6 由另一 agent 在 T4 落库后立刻 rebase。
+**并行边界**：Wave 1 的**三个**任务互不改同一文件（T1 只动 Abstractions/Execution，T2 动 Runtime + SessionRuntime，T4 动 primitives/Session）。T6 因同改 `src/primitives/Seeing.Session/` 目录且与 T8/T9 共享 `MemoryServiceExtensions.cs`（DI 注册文件串行叠加），移到 Wave 1b 与 T4 串行。T5 已作废。
 
 **未决项（留给 builder）**：`ExecutionOutcome` 放在 `ExecutionCompleteEvent` 内部还是并列字段；`CreateInternalAsync` 是否入独立 partition；journal 文件名冲突后缀；`SessionOrigin` 是否覆盖 Scheduler/Heartbeat 创建路径（本期只加枚举值）。
