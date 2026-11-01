@@ -741,19 +741,21 @@ public void ShouldObserve_Should_Gate_Correctly(
     bool enabled, bool executed, bool topLevel, ExecutionStatus status,
     string agent, SessionOrigin origin, bool expected)
 {
-    var o = BuildObserver(enabled);
-    var outcome = MakeOutcome(executed, topLevel, status, agent);
-    o.ShouldObserve(outcome, origin).Should().Be(expected);
+    // ShouldObserve 是接口默认实现，只能经接口类型调用（具体类上调用会 CS1061）
+    IExecutionOutcomeObserver o = BuildObserver(enabled);
+    var outcome = MakeOutcome(executed, topLevel, status, agent) with { Origin = origin };
+    o.ShouldObserve(outcome).Should().Be(expected);
 }
 
 [Fact]
 public void Nudge_Should_Enqueue_Only_On_Threshold()
 {
     var queue = new ReflectionQueue(32);
-    var o = BuildObserver(enabled: true, interval: 3);
-    for (var i = 1; i <= 2; i++) o.ObserveCounted(MakeOutcome(), "s1");
+    var o = BuildObserver(enabled: true, interval: 3, queue);
+    for (var i = 1; i <= 2; i++)
+        o.OnExecutionCompletedAsync(MakeOutcome("s1"), default).GetAwaiter().GetResult();
     queue.PendingCount.Should().Be(0);
-    o.ObserveCounted(MakeOutcome(), "s1");
+    o.OnExecutionCompletedAsync(MakeOutcome("s1"), default).GetAwaiter().GetResult();
     queue.PendingCount.Should().Be(1);
 }
 
@@ -787,12 +789,12 @@ csproj 只引用 `..\..\abstractions\Seeing.Agent.Abstractions\Seeing.Agent.Abst
 
 `ReflectionQueue`：`Channel.CreateBounded<ReflectionRequest>(capacity)`、`SingleReader`、内部 `ConcurrentDictionary<string, string>` 记录「sessionId → 最新 executionId」用于合并。
 
-`ReflectionObserver`：`ShouldObserve(outcome)` 走默认实现（无法拿到 origin），实际门禁在 `ShouldObserve(ExecutionOutcome, SessionOrigin)` 重载里；`OnExecutionCompletedAsync` 内自己从 `ISessionManager.TryGetOrLoadAsync` 取 `Origin`，门禁通过后计数，到期 `Reset` + `TryEnqueue`。
+`ReflectionObserver`：门禁直接读 `outcome.Origin` / `outcome.AgentExecuted` / `outcome.IsTopLevel` / `outcome.Status`（**全部已在 `ExecutionOutcome` 上，禁止回读会话**——契约 `IExecutionOutcomeObserver` 明文要求，且回读会被 5s 超时截断）。`ShouldObserve(outcome)` 单参实现即可，**不需要** `ShouldObserve(outcome, origin)` 双参重载。门禁通过后计数，到期 `Reset` + `TryEnqueue`。
 
 `ReflectionWorker`：`BackgroundService + IModuleHostedService`，`ModuleId = "reflection"`，照抄 `MemoryEvolutionWorker` 的 `ModuleHostedRunGate` + `RegisterWake` + Deactivate 哨兵。两个循环：队列消费（调 `IReflectionExecutor`，本期为 no-op 桩）+ 1 分钟 tick 空闲扫描。
 
 `ReflectionModule`：`ConfigureServices` 留空（DI 在 `ReflectionServiceExtensions`）；`ActivateAsync` 注册 agent（占位定义用 **`Mode = AgentMode.Primary` + `IsHidden = true`**——`Primary` 表达「不可被 task 委派」，`IsHidden` 表达「不显示在 UI 选择列表」，见 spec §3.5；`SystemPrompt` 用 `Prompts.ReflectionSystem`，T11 到位后替换）、`MarkActive()`；`DeactivateAsync` 对称。
-`ReflectionObserver`：`ShouldObserve` 是接口默认实现，**C# 只能经接口类型调用**。必须在 `ReflectionObserver` 上显式声明 `public bool ShouldObserve(ExecutionOutcome outcome, SessionOrigin origin)` 同名重载供测试直接调用；接口的 `ShouldObserve(ExecutionOutcome)` 保持默认实现。
+`ReflectionObserver`：门禁直接读 `outcome.Origin` / `outcome.AgentExecuted` / `outcome.IsTopLevel` / `outcome.Status`（**全部已在 `ExecutionOutcome` 上，禁止回读会话**）。`ShouldObserve(outcome)` 是接口默认实现，**C# 只能经接口类型调用**——测试里必须声明为 `IExecutionOutcomeObserver`（`var o = new ReflectionObserver(); o.ShouldObserve(...)` 会 `CS1061`）；**不需要**双参重载。
 
 `ReflectionServiceExtensions.AddSeeingReflection(registry)`：注册配置节 `Reflection`/`reflection.json`/`ConfigScope.Both`、`ReflectionOptionsProvider`、`IReflectionQueue` 单例、`IExecutionOutcomeObserver → ReflectionObserver`、`AddModuleHostedService<ReflectionWorker>`、`ISeeingModule → ReflectionModule`。
 
