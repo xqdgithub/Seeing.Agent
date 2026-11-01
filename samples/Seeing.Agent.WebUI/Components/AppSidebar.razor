@@ -98,7 +98,7 @@
     </Menu>
 
     <div class="@GetFooterClass()">
-        <Popconfirm Title="确定关闭当前 WebUI 程序？关闭后需要重新启动程序才能再次访问。"
+        <Popconfirm Title="确定关闭当前程序？关闭后需要重新启动程序才能再次访问。"
                     OkText="关闭程序"
                     CancelText="取消"
                     OnConfirm="RequestShutdown">
@@ -107,7 +107,7 @@
                     Class="sider-footer-close"
                     Disabled="@_shutdownRequested">
                 <Icon Type="@IconType.Outline.CloseCircle" />
-                <span class="sider-footer-label">@(_shutdownRequested ? "正在关闭..." : "关闭 WebUI")</span>
+                <span class="sider-footer-label">@(_shutdownRequested ? "正在关闭..." : "关闭")</span>
             </Button>
         </Popconfirm>
 

@@ -27,19 +27,29 @@ aside.app-sider.ant-layout-sider {
 }
 
 /* ========== Header ========== */
+/* 与菜单区同底色（白色）、无分割线，logo 靠左对齐（与内容区起点一致） */
 .sider-header {
-    height: 56px;
+    height: 64px;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     padding: 0 16px;
-    border-bottom: 1px solid #e8e8e8;
+    border-bottom: none;
+    background: #ffffff;
     flex-shrink: 0;
 }
 
-    .sider-header:hover {
-        background-color: #f5f5f5;
+    /* 仅做轻微视觉反馈，不再整块变色，保持与菜单区融为一体的观感 */
+    .sider-header:hover .logo-text,
+    .sider-header:hover .app-logo {
+        opacity: 0.75;
     }
+
+/* 折叠态（窄栏）下没有文字，logo 居中显示 */
+.app-sider.ant-layout-sider-collapsed .sider-header {
+    justify-content: center;
+    padding: 0;
+}
 
 .logo-section {
     display: flex;
@@ -57,6 +67,7 @@ aside.app-sider.ant-layout-sider {
     display: block;
     flex-shrink: 0;
     object-fit: contain;
+    transition: opacity 0.2s;
 }
 
 .app-logo-collapsed {
@@ -65,10 +76,13 @@ aside.app-sider.ant-layout-sider {
 }
 
 .logo-text {
-    font-size: 16px;
+    font-size: 17px;
     font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.2px;
     color: #1890ff;
     white-space: nowrap;
+    transition: opacity 0.2s;
 }
 
 /* ========== Agent Selector ========== */
@@ -160,10 +174,11 @@ aside.app-sider.ant-layout-sider {
         border-right-color: #303030 !important;
     }
     
+    /* 菜单固定为 Light 主题（MenuTheme.Light），页头保持白色与菜单一致 */
     .sider-header {
-        border-bottom-color: #303030;
+        background: #ffffff;
     }
-    
+
     .sider-agent-selector {
         border-bottom-color: #303030;
     }
