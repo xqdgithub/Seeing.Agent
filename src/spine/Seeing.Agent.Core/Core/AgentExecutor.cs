@@ -183,9 +183,6 @@ public class AgentExecutor : IAgentExecutor
                 if (step == 0)
                     await AppendPausedTodoReminderAsync(history, context).ConfigureAwait(false);
 
-                // 构建请求（异步注入动态上下文；token 改用 effectiveToken）
-                var request = await BuildRequestAsync(agent, history, context, effectiveToken).ConfigureAwait(false);
-
                 ChatMessage? assistantMessage = null;
                 Exception? llmException = null;
                 TokenUsage? lastUsage = null;
@@ -193,6 +190,10 @@ public class AgentExecutor : IAgentExecutor
 
                 for (var attempt = 1; ; attempt++)
                 {
+                    // 每次 attempt 重新构建请求：传输层适配（温度/上限/思考强度）会改写请求对象，
+                    // 跨重试复用会让下一次调用读到上一次已被修改的值。
+                    var request = await BuildRequestAsync(agent, history, context, effectiveToken).ConfigureAwait(false);
+
                     assistantMessage = null;            // 每次 attempt 重置，避免残留上一尝试结果
                     var usageBeforeTurn = totalUsage;   // 重试失败时回滚本轮 usage 累加
                     var streamingContent = new StringBuilder();
