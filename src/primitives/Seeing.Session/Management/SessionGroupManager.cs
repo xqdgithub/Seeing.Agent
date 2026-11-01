@@ -635,10 +635,22 @@ namespace Seeing.Session.Management
         public async Task<SessionData> CreateInternalAsync(
             string parentId, string agentName, string title,
             IReadOnlyList<SessionPermissionRule> snapshot, string? scenario,
-            SessionOrigin origin, CancellationToken ct = default) =>
-            await CreateChildCoreAsync(
+            SessionOrigin origin, CancellationToken ct = default)
+        {
+            // 拒绝 User：本入口产出 Kind=SubAgent，标成 User 会被后续任务视图白名单整体排除且难以排查。
+            // Enum.IsDefined 同时拦截 (SessionOrigin)99 这类未定义值，避免脏数据落盘。
+            if (!Enum.IsDefined(origin))
+                throw new ArgumentException(
+                    $"会话来源必须是已定义的 SessionOrigin 值：Origin={origin}", nameof(origin));
+            if (origin == SessionOrigin.User)
+                throw new ArgumentException(
+                    "CreateInternalAsync 不得用于用户来源会话（Origin=User）：用户会话不走子会话入口",
+                    nameof(origin));
+
+            return await CreateChildCoreAsync(
                 parentId, agentName, title, snapshot, scenario,
                 origin, ct).ConfigureAwait(false);
+        }
 
         /// <summary>
         /// 子会话创建的共用主体：建会话 → 落盘 → 入组（Relation=Child）→ 回写 GroupId。
@@ -660,7 +672,6 @@ namespace Seeing.Session.Management
             child.Kind = SessionKind.SubAgent;
             // 显式来源：须在 SaveAsync 之前写入才会落盘
             child.Origin = origin;
-            // 保留调用方标题（不覆盖为 "Session ses_..."）
             child.Title = title;
             child.SelectedAgent = agentName;
             // 默认继承父委派时配置；子 Agent 自带 Model 时由调用方覆盖

@@ -21,19 +21,26 @@ namespace Seeing.Session.Core
 
         /// <summary>
         /// 创建平台内部会话（复盘 / 定时任务 / 心跳等）并加入父会话所在组。
-        /// <para>与 <see cref="CreateChildAsync"/> 的唯一差异：显式指定 <paramref name="origin"/> 用途标记，
-        /// 且保留调用方给定的 <paramref name="title"/>（不生成默认标题）。</para>
+        /// <para>与 <see cref="CreateChildAsync"/> 的唯一差异是来源标记：本入口由调用方显式指定
+        /// <paramref name="origin"/>；标题保留行为两者一致（都写入调用方给定标题）。</para>
         /// <para>产出的会话 <see cref="SessionData.Kind"/> 仍为 <see cref="SessionKind.SubAgent"/>，
         /// 以满足组不变量「Relation=Child ⇔ Kind=SubAgent」；用途由
         /// <see cref="SessionData.Origin"/> 表达，两者正交。</para>
         /// </summary>
         /// <param name="parentId">父会话 ID（其所在组为新会话的归属组）。</param>
         /// <param name="agentName">子会话使用的 Agent 名。</param>
-        /// <param name="title">会话标题（原样保留，不覆盖为默认标题）。</param>
+        /// <param name="title">会话标题。</param>
         /// <param name="snapshot">权限快照。</param>
         /// <param name="scenario">会话级场景名；null = 进程级回退。</param>
-        /// <param name="origin">会话来源/用途标记。</param>
+        /// <param name="origin">
+        /// 会话来源/用途标记。<b>禁止传 <see cref="SessionOrigin.User"/></b>（且必须是已定义枚举值）：
+        /// 用户来源应走用户建会话路径；本入口产出 <c>Kind=SubAgent</c> 的会话若标成
+        /// <see cref="SessionOrigin.User"/>，会在后续任务视图白名单
+        /// （<c>Kind==SubAgent &amp;&amp; Origin==SubAgentTask</c>）下整体消失且难以排查。
+        /// </param>
         /// <param name="ct">取消令牌。</param>
+        /// <exception cref="ArgumentException"><paramref name="origin"/> 为
+        /// <see cref="SessionOrigin.User"/> 或未定义枚举值。</exception>
         Task<SessionData> CreateInternalAsync(
             string parentId, string agentName, string title,
             IReadOnlyList<SessionPermissionRule> snapshot, string? scenario,
