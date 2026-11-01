@@ -171,42 +171,48 @@ executionScope.UserQuery = record.Input?.Text;
 
 ### 4.3 `MemoryContextSource` 设计
 
-照 `SkillsContextSource` 的形状（`src/capabilities/Seeing.Agent.Skills/Sources/SkillsContextSource.cs`）：
+照 `SkillsContextSource` 的形状（`src/capabilities/Seeing.Agent.Skills/Sources/SkillsContextSource.cs`）。
+
+**关键决策（v2，与 v1 不同）**：
+
+| 项 | v1 | v2 | 理由 |
+|---|---|---|---|
+| `Target` | `System` | **`Message`** | `ContextAssembler` 对 System 源只在首次建立时渲染基线，之后只叙述 delta。而 `UserQuery` 每轮变 → 召回每轮变 → 系统提示永久停在第一轮，但每轮还在产生 delta 消息。`Message` 让内容以消息形式进入历史，语义一致 |
+| 无命中 | `Removed` | **`Unavailable`** | `RecallAsync` 内部 catch 所有异常返回空列表，源无法区分「确实无命中」与「IO 失败」。`Removed` 会在一次瞬时失败时叙述「记忆已移除」，违反 `IContextSource` 纪律 |
 
 ```csharp
 public sealed class MemoryContextSource : IContextSource
 {
+    public const int BaselineCharLimit = 8_000;
+
     public ContextSourceKey Key => new(typeof(MemoryContextSource).FullName!);
     public ContextSourceScope Scope => ContextSourceScope.Project;
     public int ValueSchemaVersion => 1;
-    public ContextSourceTarget Target => ContextSourceTarget.System;
-    public int MaxBaselineChars => BaselineCharLimit;   // 8000
+    public ContextSourceTarget Target => ContextSourceTarget.Message;
+    public int MaxBaselineChars => BaselineCharLimit;
 
     public async Task<ContextSourceValue> ReadAsync(CancellationToken ct)
     {
-        // 1. ToolsOnly 模式 → Unavailable
-        // 2. UserQuery 为空 → Unavailable
-        // 3. RecallAsync(UserQuery)（内部 150ms 超时兜底）
-        // 4. 无命中 → Removed（明确"已无相关记忆"，触发移除叙述）
-        // 5. 有命中 → Value，Canonical = 稳定序列化（按 path 排序，只含 path/score/title）
+        // 1. 模块停用 → Unavailable
+        // 2. ToolsOnly 模式 → Unavailable
+        // 3. UserQuery 为空 → Unavailable
+        // 4. RecallAsync(UserQuery)（内部 150ms 超时兜底）
+        // 5. 无命中 → Unavailable（不是 Removed）
+        // 6. 有命中 → Value，Canonical = {"hits":[{"path","score"}]}
     }
 
-    public string RenderInitial(ContextSourceValue value) { /* 渲染 ## Relevant memories 分节 */ }
+    public string RenderInitial(ContextSourceValue value) { /* 渲染 ## Relevant memories */ }
     public string? Render(ContextSourceValue previous, ContextSourceValue current) { /* 变化叙述 */ }
 }
 ```
 
-**渲染格式**（沿用原 handler 的格式，降低行为变更面）：
+**`Canonical` 必须是 JSON 对象**：`ContextAssembler.cs:261-275` 会把数组形态判为「声明有值但没有可用 Canonical」并跳过整个源。
 
-```
-## Relevant memories
-- (0.92) 标题A: 内容摘要…
-- (0.85) 标题B: 内容摘要…
-```
+**`Render(previous, current)` 的 `previous.Payload` 恒为 null**（`ContextAssembler.cs:1012-1018`）——增量叙述只能读 `Canonical`（path/score），不能依赖标题或正文。
 
-**`Canonical` 的稳定序列化**：`{"hits":[{"path":"...","score":0.92}]}`，按 path ordinal 排序。**不含正文**——正文进 `Payload`（仅本次渲染用，不落盘），与 `SkillsContextSource` 同策略。
+**截断上限统一用 `MaxBaselineChars = 8000`**（不与 `MaxInjectTokens * 4` 并用；后者只约束召回条数）。
 
-**预算**：沿用 `MemoryRetrievalOptions.MaxInjectTokens * 4` 的字符预算（与原 handler 一致）。
+**注册**：必须用 `services.TryAddEnumerable(ServiceDescriptor.Scoped<IContextSource, MemoryContextSource>())`，与 `SkillsModule.cs:113` 一致。用 `TryAddScoped<IContextSource, T>()` 会按 ServiceType 去重，在已有其它 `IContextSource` 描述符时**整条静默跳过**。
 
 ### 4.4 `AgentExecutor` 的 request 生命周期
 
@@ -260,11 +266,13 @@ for (var attempt = 1; ; attempt++)
 
 | 风险 | 缓解 |
 |---|---|
-| A-1 删 `ChatBeforeStart` 后，第三方插件若订阅了它会静默失效 | 该 hook 点是公开契约。`HookRegistry` 删除该字段会导致**编译期错误**（好于运行期静默） |
+| A-1 删 `ChatBeforeStart` 后，第三方插件若订阅了它会静默失效 | `HookRegistry` 删除该字段会导致**编译期错误**（好于运行期静默） |
 | `Seeing.Agent.Memory` 是发布包，删除 `MemoryRecallHandler` 对包消费者是 source-breaking | release notes 明确标注 |
-| `BuildRequestAsync` 每 attempt 重跑可能拖慢重试路径 | 可接受（重试本身是异常路径）；若实测有影响再考虑缓存 |
-| `MemoryContextSource` 的 `Scope = Project` | 记忆是项目级事实（`.seeing/memory.db`），与技能源一致 |
-| `record.Input?.Text` 可能为 null（纯系统批次） | 源按 `Unavailable` 处理，不注入、不叙述移除 |
+| `BuildRequestAsync` 每 attempt 重跑可能拖慢重试路径 | 可接受（重试本身是异常路径） |
+| `Message` 目标每轮值变化会新增一条消息，长会话中稀释历史 | 用户已裁决采用。同 turn 内 `UserQuery` 固定 → 不重复；只跨 turn 变化 |
+| `RecallAsync` 无法区分失败与无命中 | 都返回 `Unavailable`，表现为"本轮无注入"；内部已有 Warning 日志 |
+| Scheduler/Heartbeat 旁路不填 `UserQuery` | 定时任务里记忆永不注入。登记为已知边界；覆盖需另改 Scheduler 包 |
+| `record.Input?.Text` 可能为空（纯系统批次） | 源返回 `Unavailable`，不注入 |
 
 ## 6. 验收标准
 
