@@ -29,4 +29,11 @@ public interface IContextExecutionScope
     /// 宿主未组合技能模块时为 null（技能源按不可用处理，保留上次已叙述内容）。
     /// </summary>
     SkillCatalogSnapshot? SkillSnapshot { get; set; }
+
+    /// <summary>
+    /// 本轮执行的用户查询文本（本批最后一条用户输入）。
+    /// <para>供「查询依赖」的上下文源使用（如记忆召回）。为空时源按不可用处理。</para>
+    /// <para>由宿主在装配前填充一次，执行期内只读。</para>
+    /// </summary>
+    string? UserQuery { get; set; }
 }

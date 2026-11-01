@@ -326,6 +326,8 @@ public sealed class SkillsContextSourceTests : IDisposable
         public string WorkspaceRoot { get; set; } = string.Empty;
 
         public SkillCatalogSnapshot? SkillSnapshot { get; set; } = snapshot;
+
+        public string? UserQuery { get; set; }
     }
 
 }

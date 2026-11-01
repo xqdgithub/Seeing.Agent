@@ -373,5 +373,7 @@ public sealed class ProjectInstructionsContextSourceTests
         public string WorkspaceRoot { get; set; } = workspaceRoot;
 
         public SkillCatalogSnapshot? SkillSnapshot { get; set; }
+
+        public string? UserQuery { get; set; }
     }
 }

@@ -27,4 +27,7 @@ public sealed class ContextExecutionScope : IContextExecutionScope
 
     /// <inheritdoc />
     public SkillCatalogSnapshot? SkillSnapshot { get; set; }
+
+    /// <inheritdoc />
+    public string? UserQuery { get; set; }
 }
