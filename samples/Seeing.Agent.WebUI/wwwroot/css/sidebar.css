@@ -33,7 +33,9 @@ aside.app-sider.ant-layout-sider {
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    padding: 0 16px;
+    /* 左内边距 29.4px = 菜单图标左缘 32px − ai.svg 墨迹内缩 2.58px（viewBox 留白），
+       使 logo 视觉左缘与菜单项图标严格对齐 */
+    padding: 0 16px 0 29.4px;
     border-bottom: none;
     background: #ffffff;
     flex-shrink: 0;
