@@ -170,17 +170,32 @@ Task<ExecutionOutcome> DeliverAndAwaitAsync(InboxMessage message, CancellationTo
 
 **顺带收益**：4 个既有轮询调用点可逐步迁移。
 
-### 3.3 记忆注入迁移到 ContextSource
+### 3.3 记忆注入：修复 `ChatBeforeStart` 触发（**方案已改**，2026-11-01）
 
-**问题**：记忆自动注入是死路径（见 §0）。技能走 2026-10-24 的 ContextSource 管道，记忆走老的 `chat.before_start` 改 `systemPrompt`——而那条路径没有消费方。
+**问题**：记忆自动注入是死路径。`MemoryRecallHandler`（`Spec => HookRegistry.ChatBeforeStart`）读 `userMessage`/`message`/`content`（`:40-42`），但两处触发（`LlmService.cs:330-338`、`:459-468`）**只传 `modelId`/`provider`**，且 `mutable` 传的是 `null`（`cancellationToken:` 命名参数跳过）。因此 handler 恒在 `:43` 提前返回。即便它写入 `Mutable["systemPrompt"]`，**也没有任何消费方**——系统提示词走另一条 `LlmSystemPrompt` + 局部 `promptOutput`（`:511-530`）。
 
-**改法**：
+**原方案（错误，已撤销）**：把记忆注入迁移到 `IContextSource`，与 `SkillsContextSource` 同构。
 
-1. 新增 `MemoryContextSource : IContextSource`（`capabilities/Seeing.Agent.Memory`），`Target = System`，与 `SkillsContextSource` 同构：canonical 为召回结果的稳定序列化，基线字节稳定，变化只叙述增量。
-2. **删除 `MemoryRecallHandler`** 及其注册（`MemoryModule.RegisterHooks:133/148`）。
-3. `MemoryRetrievalMode.AutoInject` / `Both` 的语义此时才真正生效。
+**为什么错**：`IContextSource` 的契约是**无状态纯函数**：
 
-**为什么必须搭车修**：不修它，Reflection 目标 1「产出物下一轮自动可见」只剩技能半条腿，复盘写的记忆只能靠模型自己 `memory_search` 才有机会被看到。
+- 「同一值重复渲染**逐字节相等**」
+- 「`RenderInitial` 须为纯函数」
+- `Canonical` 落盘做 diff，值变化才叙述增量
+
+而记忆召回是**查询依赖**的：同一会话里，用户问不同问题应召回不同记忆。若按 ContextSource 实现，每次查询文本变化都会让 `Canonical` 变化 → 触发「记忆已更新」的增量消息 → **污染历史**，且违反字节稳定约束。两者语义不兼容，不是实现难度问题。
+
+**正确方案**：修复 `ChatBeforeStart` 的两处触发，补齐它本就该传的事实。
+
+1. `LlmService.CompleteAsync`（`:330-338`）与 `CompleteStreamAsync`（`:459-468`）：
+   - `input` 增加 `["userMessage"] = <本请求最后一条 user 消息文本>`（从 `ChatRequest.Messages` 取，`ChatRequest` 在作用域内）
+   - 创建一个 `var promptOutput = new Dictionary<string, object?> { ["systemPrompt"] = request.SystemPrompt ?? "" }`，作为 `mutable` 传入
+2. 触发后，若 handler 修改了 `promptOutput["systemPrompt"]`，**写回** `request.SystemPrompt`（与 `LlmSystemPrompt` 的处理方式一致，见 `:529`）
+3. `MemoryRecallHandler` 保持不变（它读 `userMessage` 与 `Mutable["systemPrompt"]` 的逻辑本来就是对的）
+
+**约束**：`ChatBeforeStart` 是 `Blocking` 策略，召回有 150ms 超时兜底（`MemoryRecallOptions.InjectTimeoutMs`），不会显著拖慢。但必须在 `MemoryRecallHandler` 里保证异常不外抛（已有 try/catch）。
+
+**测试**：给 `LlmService` 补断言——`ChatBeforeStart` 的 `input` 含 `userMessage`，`mutable` 非 null；`MemoryRecallHandler` 在收到真实 payload 时能注入并回写。
+
 
 ### 3.4 会话用途正交维度
 
