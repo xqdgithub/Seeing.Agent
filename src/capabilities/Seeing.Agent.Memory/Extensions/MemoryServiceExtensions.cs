@@ -132,22 +132,9 @@ public static class MemoryServiceExtensions
             return new TokenBucketRateLimiter(maxTokens: 100, refillRate: 10.0, logger);
         });
 
-        services.TryAddSingleton<ITokenTracker>(sp =>
-        {
-            var owner = sp.GetRequiredService<SqliteConnectionOwner>();
-            var gate = sp.GetRequiredService<SqliteConnectionGate>();
-            var logger = sp.GetRequiredService<ILogger<SqliteTokenTracker>>();
-            return new SqliteTokenTracker(owner, gate, logger);
-        });
-
-        services.TryAddSingleton<IQuotaManager>(sp =>
-        {
-            var owner = sp.GetRequiredService<SqliteConnectionOwner>();
-            var gate = sp.GetRequiredService<SqliteConnectionGate>();
-            var logger = sp.GetRequiredService<ILogger<DailyQuotaManager>>();
-            return new DailyQuotaManager(owner, gate, logger);
-        });
-
+        // 注：Token 用量统计不在此处记账。唯一权威来源是执行终态快照
+        // Seeing.Agent.Abstractions.Execution.ExecutionOutcome.Usage（由 ExecutionRunner 从模型循环累计）。
+        // 曾经的 ITokenTracker / IQuotaManager 账本零生产消费者，已删除。
         services.TryAddScoped<IMemoryService, MemoryService>();
 
         services.TryAddSingleton<IMemoryExtractor, Core.Evolution.LlmMemoryExtractor>();
