@@ -78,7 +78,7 @@ public class OneShotRunnerTests
         var fx = new Fixture();
         fx.Emit(
             new StreamCompleteEvent { SessionId = "ses_test", Message = new ChatMessage { Content = "结果" } },
-            new ExecutionCompleteEvent { SessionId = "ses_test", ExecutionId = "exec_1", Status = ExecutionStatus.Completed });
+            Complete("ses_test", "exec_1", ExecutionStatus.Completed));
 
         var code = await fx.Create().RunAsync(new OneShotOptions("你好"), TestContext.Current.CancellationToken);
 
@@ -90,12 +90,7 @@ public class OneShotRunnerTests
     public async Task RunAsync_WhenFailed_ShouldReturnOne()
     {
         var fx = new Fixture();
-        fx.Emit(new ExecutionCompleteEvent
-        {
-            SessionId = "ses_test",
-            ExecutionId = "exec_1",
-            Status = ExecutionStatus.Failed
-        });
+        fx.Emit(Complete("ses_test", "exec_1", ExecutionStatus.Failed));
 
         var code = await fx.Create().RunAsync(new OneShotOptions("你好"), TestContext.Current.CancellationToken);
 
@@ -106,7 +101,7 @@ public class OneShotRunnerTests
     public async Task RunAsync_WithYolo_ShouldSetSessionAutoApproveEnabled()
     {
         var fx = new Fixture();
-        fx.Emit(new ExecutionCompleteEvent { SessionId = "ses_test", ExecutionId = "exec_1", Status = ExecutionStatus.Completed });
+        fx.Emit(Complete("ses_test", "exec_1", ExecutionStatus.Completed));
 
         await fx.Create().RunAsync(new OneShotOptions("你好", Yolo: true), TestContext.Current.CancellationToken);
 
@@ -118,7 +113,7 @@ public class OneShotRunnerTests
     public async Task RunAsync_WithoutYolo_ShouldNotSetAutoApprove()
     {
         var fx = new Fixture();
-        fx.Emit(new ExecutionCompleteEvent { SessionId = "ses_test", ExecutionId = "exec_1", Status = ExecutionStatus.Completed });
+        fx.Emit(Complete("ses_test", "exec_1", ExecutionStatus.Completed));
 
         await fx.Create().RunAsync(new OneShotOptions("你好"), TestContext.Current.CancellationToken);
 
@@ -129,7 +124,7 @@ public class OneShotRunnerTests
     public async Task RunAsync_ShouldDeliverUserPresentationAndForwardAgentModel()
     {
         var fx = new Fixture();
-        fx.Emit(new ExecutionCompleteEvent { SessionId = "ses_test", ExecutionId = "exec_1", Status = ExecutionStatus.Completed });
+        fx.Emit(Complete("ses_test", "exec_1", ExecutionStatus.Completed));
 
         await fx.Create().RunAsync(
             new OneShotOptions("你好", Agent: "plan", Model: "openai/gpt-4o"),
@@ -164,10 +159,29 @@ public class OneShotRunnerTests
         var fx = new Fixture();
         fx.Emit(
             new ErrorEvent { SessionId = "ses_test", Message = "llm down" },
-            new ExecutionCompleteEvent { SessionId = "ses_test", ExecutionId = "exec_1", Status = ExecutionStatus.Completed });
+            Complete("ses_test", "exec_1", ExecutionStatus.Completed));
 
         var code = await fx.Create().RunAsync(new OneShotOptions("你好"), TestContext.Current.CancellationToken);
 
         code.Should().Be(1);
     }
+
+    /// <summary>
+    /// 构造终态事件：<see cref="ExecutionCompleteEvent.Outcome"/> 为 required，
+    /// 本文件只关心 Status 等外部字段，故给一个最小事实快照。
+    /// </summary>
+    private static ExecutionCompleteEvent Complete(
+        string sessionId, string executionId, ExecutionStatus status) => new()
+        {
+            SessionId = sessionId,
+            ExecutionId = executionId,
+            Status = status,
+            Outcome = new ExecutionOutcome
+            {
+                SessionId = sessionId,
+                ExecutionId = executionId,
+                Status = status
+            }
+        };
 }
+

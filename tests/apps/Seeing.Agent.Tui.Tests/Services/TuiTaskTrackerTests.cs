@@ -1,5 +1,6 @@
 using Moq;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Tui.Services;
 using Seeing.Session.Core;
 using System.Diagnostics;
@@ -112,7 +113,16 @@ public sealed class TuiTaskTrackerTests
         await WaitUntilAsync(() => pumps.Count == 1);
         var pump = pumps.Last!;
 
-        pump.Emit(new ExecutionCompleteEvent { SessionId = "child-1" });
+        pump.Emit(new ExecutionCompleteEvent
+        {
+            SessionId = "child-1",
+            Outcome = new ExecutionOutcome
+            {
+                SessionId = "child-1",
+                ExecutionId = "exec-1",
+                Status = ExecutionStatus.Completed
+            }
+        });
 
         await WaitUntilAsync(() => pump.Stopped);
         var stepCount = CurrentTool(state, "call-1").Steps.Count;

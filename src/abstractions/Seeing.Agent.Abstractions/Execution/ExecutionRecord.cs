@@ -1,3 +1,4 @@
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Models;
 
 namespace Seeing.Agent.Abstractions.Execution;
@@ -58,9 +59,28 @@ public class ExecutionRecord
     public string? LastMessageId { get; set; }
 
     /// <summary>
-    /// Number of messages processed during this execution.
+    /// 本轮实际执行的 Agent 名称。
+    /// <para>
+    /// 语义与 <see cref="ExecutionOutcome.AgentName"/> 一致：<b>仅在 <see cref="AgentExecuted"/> 为 <c>true</c> 时有值</b>；
+    /// 命令短路、纯系统批次等未真正执行 Agent 的轮次必须保持 <c>null</c>，不得填入"将要执行"的名称。
+    /// </para>
     /// </summary>
-    public int ProcessedMessageCount { get; set; }
+    public string? AgentName { get; set; }
+
+    /// <summary>
+    /// 本轮是否真正进入了 Agent 执行（<c>true</c>），或仅走了命令处理 / 早退路径（<c>false</c>）。
+    /// </summary>
+    public bool AgentExecuted { get; set; }
+
+    /// <summary>
+    /// 本轮模型循环的总步数（多段 <c>LoopCompleteEvent</c> 累计）；未执行 Agent 时为 0。
+    /// </summary>
+    public int TotalSteps { get; set; }
+
+    /// <summary>
+    /// 本轮 Token 使用量合计（逐字段累加）；无模型调用或上游未上报时为 <c>null</c>（表示未知，不等价于零消耗）。
+    /// </summary>
+    public TokenUsage? Usage { get; set; }
 
     /// <summary>
     /// 本执行专属的取消令牌源。

@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.TokenBudget;
@@ -116,10 +117,10 @@ public sealed class TuiEventInterpreterTests
 
         sut.Apply(new ExecutionStartedEvent { SessionId = Session, ExecutionId = "exec1" });
 
-        sut.Apply(new ExecutionCompleteEvent { SessionId = Session, ExecutionId = "other" }).Should().BeFalse();
+        sut.Apply(Complete("other")).Should().BeFalse();
         sut.IsExecuting.Should().BeTrue();
 
-        sut.Apply(new ExecutionCompleteEvent { SessionId = Session, ExecutionId = "exec1" }).Should().BeTrue();
+        sut.Apply(Complete("exec1")).Should().BeTrue();
         sut.IsExecuting.Should().BeFalse();
         state.ActiveExecutionId.Should().BeNull();
     }
@@ -323,9 +324,22 @@ public sealed class TuiEventInterpreterTests
             Status = ToolCallStatus.Success,
             Output = "ok",
         };
-        yield return new ExecutionCompleteEvent { SessionId = Session, ExecutionId = "exec1" };
+        yield return Complete("exec1");
         yield return new LoopCompleteEvent { SessionId = Session, LoopId = "loop1" };
     }
+
+    /// <summary>构造终态事件：<c>Outcome</c> 为 required，测试只关心外部字段时给最小快照。</summary>
+    private static ExecutionCompleteEvent Complete(string executionId) => new()
+    {
+        SessionId = Session,
+        ExecutionId = executionId,
+        Outcome = new ExecutionOutcome
+        {
+            SessionId = Session,
+            ExecutionId = executionId,
+            Status = ExecutionStatus.Completed
+        }
+    };
 
     private sealed record StubEvent(string SessionId, string? LoopId, DateTime Timestamp) : IMessageEvent
     {

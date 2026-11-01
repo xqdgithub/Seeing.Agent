@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Moq;
 using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Tui.Services;
 using Seeing.Session.Core;
 using System.Diagnostics;
@@ -9,8 +10,8 @@ using System.Threading.Channels;
 namespace Seeing.Agent.Tui.Tests.Services;
 
 /// <summary>
-/// <see cref="TuiTaskTracker"/> 的发布语义：已发布 <see cref="TuiToolState"/> 换新对象而非原地改集合；
-/// 已终态 task 不再重建 pump / 重新订阅。
+/// <see cref="TuiTaskTracker"/> 的发布语义：已发布的 <see cref="TuiToolState"/> 换新对象而非原地改集合；
+/// 已终态的 task 不再重建 pump / 重新订阅。
 /// </summary>
 public sealed class TuiTaskTrackerSnapshotTests
 {
@@ -50,7 +51,16 @@ public sealed class TuiTaskTrackerSnapshotTests
 
         tracker.Observe(tool);
         await WaitUntilAsync(() => pumps.Count == 1);
-        pumps.Last!.Emit(new ExecutionCompleteEvent { SessionId = "child-1" });
+        pumps.Last!.Emit(new ExecutionCompleteEvent
+        {
+            SessionId = "child-1",
+            Outcome = new ExecutionOutcome
+            {
+                SessionId = "child-1",
+                ExecutionId = "exec-1",
+                Status = ExecutionStatus.Completed
+            }
+        });
         await WaitUntilAsync(() => pumps.Last!.Stopped);
 
         await tracker.ReconcileAsync();
@@ -70,7 +80,16 @@ public sealed class TuiTaskTrackerSnapshotTests
 
         tracker.Observe(toolA);
         await WaitUntilAsync(() => pumps.Count == 1);
-        pumps.Last!.Emit(new ExecutionCompleteEvent { SessionId = "child-1" });
+        pumps.Last!.Emit(new ExecutionCompleteEvent
+        {
+            SessionId = "child-1",
+            Outcome = new ExecutionOutcome
+            {
+                SessionId = "child-1",
+                ExecutionId = "exec-1",
+                Status = ExecutionStatus.Completed
+            }
+        });
         await WaitUntilAsync(() => pumps.Last!.Stopped);
 
         var toolB = NewTool("call-b", "task", taskId: "child-1");

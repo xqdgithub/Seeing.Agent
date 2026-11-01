@@ -93,6 +93,15 @@ internal sealed class ExecutionRunner : IExecutionRunner
         var executionWorld = scope.ServiceProvider.GetRequiredService<IExecutionWorld>();
         var commandRegistry = scope.ServiceProvider.GetRequiredService<ICommandRegistry>();
 
+        // === 本轮终态事实的承接变量（只能在真正发生的位置写入，禁止提前填「将要执行」的推测值） ===
+        // Agent 名称刻意不在此处由 context.Agent 预填：命令短路时 Agent 从未执行，
+        // 名称若提前赋值就会伪造「执行过某 Agent」的事实（见下方 if (!commandConsumedExecution)）。
+        string? executedAgentName = null;
+        var agentExecuted = false;
+        var totalSteps = 0;
+        TokenUsage? usage = null;
+        var loopDuration = TimeSpan.Zero;
+
         try
         {
             // 会话确保（失败则本轮失败：与旧 ProcessExecutionAsync 一致）
@@ -226,6 +235,11 @@ internal sealed class ExecutionRunner : IExecutionRunner
                 // 1) 命令短路（/clear、/compact 等）上面已跳过整块：本轮不执行 Agent，不装配、不叙述。
                 // 2) 结算（工具视图）在上面已成功：结算失败会在 BuildExecutionContextAsync 抛出并进入失败路径。
                 // 3) 执行作用域已在命令之前填充（见上），此处不再重复填充：源与命令共用同一份钉住快照。
+                // 4) Agent 名称只在这里赋值：能走到这一行才代表「本轮真的执行 Agent」，
+                //    提前在上方拿 context.Agent 赋值会让命令短路轮次伪造出「执行过 build」的事实。
+                agentExecuted = true;
+                executedAgentName = context.Agent.Name;
+
                 var assembler = scope.ServiceProvider.GetRequiredService<IContextAssembler>();
 
                 // 跳过集强类型：只排除项目指令源，其余源照常装配。
@@ -319,10 +333,26 @@ internal sealed class ExecutionRunner : IExecutionRunner
                         loopFailed = true;
                         loopError = err.Message;
                     }
-                    else if (evt is LoopCompleteEvent loopEnd && !loopEnd.Success)
+                    else if (evt is LoopCompleteEvent loopEnd)
                     {
-                        loopFailed = true;
-                        loopError ??= loopEnd.Error;
+                        // 步数 / 用量 / 耗时是**累计**事实：多段循环（含重试重开）必须逐段相加，
+                        // 取最后一次会系统性低估成本，让上层的账本与反思节奏判错。
+                        totalSteps += loopEnd.TotalSteps;
+                        usage = MergeUsage(usage, loopEnd.Usage);
+                        loopDuration += loopEnd.Duration;
+
+                        if (!loopEnd.Success)
+                        {
+                            loopFailed = true;
+                            loopError ??= loopEnd.Error;
+                        }
+                    }
+                    else if (evt is LoopCancelledEvent loopCancelled)
+                    {
+                        // 取消路径不产出 LoopCompleteEvent，部分事实只能从 LoopCancelledEvent 取：
+                        // 不累计就会把「取消前已完成的工作」全部记为 0。
+                        totalSteps += loopCancelled.CompletedSteps;
+                        usage = MergeUsage(usage, loopCancelled.PartialUsage);
                     }
 
                     var liveSession = sessionManager.Get(record.SessionId) ?? session;
@@ -411,6 +441,13 @@ internal sealed class ExecutionRunner : IExecutionRunner
         {
             record.CompletedAt = DateTime.UtcNow;
 
+            // 把本轮事实写回记录：记录是「可变生命周期」层，其它消费方
+            // （SessionRuntime.BuildOutcome、task_status 等）只能读记录，故事实必须先落到这里。
+            record.AgentExecuted = agentExecuted;
+            record.AgentName = executedAgentName;
+            record.TotalSteps = totalSteps;
+            record.Usage = usage;
+
             // Final save（先写 history 再落盘，避免 history 永远落后一次）
             try
             {
@@ -424,17 +461,152 @@ internal sealed class ExecutionRunner : IExecutionRunner
                 _logger.LogError(ex, "Failed to save final state for execution {ExecutionId}", record.ExecutionId);
             }
 
+            // === 组装终态事实并发布 + 扇出观察者（落盘之后：事件里的快照与磁盘一致） ===
+            // 组装本身失败（如会话关系读取异常）不得吞掉终态事件：整体降级为记录直出的最小快照。
+            var outcome = BuildOutcome(record, scope.ServiceProvider, agentExecuted, executedAgentName, totalSteps, usage, loopDuration);
+
             // 发布执行终态事件：UI/TUI 据此结束「执行中」态并刷新。
             // 每轮执行（含消费循环的每一轮）恰发布一次。
             _eventPublisher.Publish(record.SessionId, new ExecutionCompleteEvent
             {
                 SessionId = record.SessionId,
                 ExecutionId = record.ExecutionId,
-                Status = record.Status
+                Status = record.Status,
+                Outcome = outcome
             });
+
+            await FanOutObserversAsync(scope.ServiceProvider, outcome);
         }
 
         return record;
+    }
+
+    /// <summary>
+    /// 组装本轮终态事实快照。
+    /// <para>
+    /// 只陈述已发生的事实：<paramref name="agentExecuted"/> 为 <c>false</c> 时名称必为 <c>null</c>、步数为 0；
+    /// 会话关系读不到时按顶层处理（保守：不把根会话误判成子 Agent）。
+    /// </para>
+    /// <para>
+    /// <c>CompletedAt</c> 必须显式取自 <see cref="ExecutionRecord.CompletedAt"/>：契约上的默认值
+    /// <c>DateTime.UtcNow</c> 在对象构造时求值，漏赋值会让「构造时刻」冒充「终态时刻」。
+    /// </para>
+    /// </summary>
+    private ExecutionOutcome BuildOutcome(
+        ExecutionRecord record,
+        IServiceProvider services,
+        bool agentExecuted,
+        string? agentName,
+        int totalSteps,
+        TokenUsage? usage,
+        TimeSpan loopDuration)
+    {
+        var (isTopLevel, parentSessionId) = ResolveSessionRelation(services, record.SessionId);
+        var completedAt = record.CompletedAt ?? DateTime.UtcNow;
+
+        return new ExecutionOutcome
+        {
+            SessionId = record.SessionId,
+            ExecutionId = record.ExecutionId,
+            Status = record.Status,
+            AgentName = agentExecuted ? agentName : null,
+            AgentExecuted = agentExecuted,
+            IsTopLevel = isTopLevel,
+            ParentSessionId = parentSessionId,
+            TotalSteps = totalSteps,
+            Usage = usage,
+            Duration = loopDuration,
+            CompletedAt = completedAt
+        };
+    }
+
+    /// <summary>
+    /// 解析「是否顶层 + 父会话 Id」：真值来源是 <see cref="SessionData.Kind"/>（<c>SubAgent</c> → 非顶层）
+    /// 与会话组的父子关系，<b>不得</b>读 <c>ChatExecutionContext.IsTopLevel</c>（该字段在唯一构造点从未赋值）。
+    /// </summary>
+    private (bool IsTopLevel, string? ParentSessionId) ResolveSessionRelation(IServiceProvider services, string sessionId)
+    {
+        try
+        {
+            var session = services.GetService<ISessionManager>()?.Get(sessionId);
+            if (session is null || session.Kind != SessionKind.SubAgent)
+                return (true, null);
+
+            var groupManager = services.GetService<ISessionGroupManager>();
+            var parentId = groupManager is not null && groupManager.TryGetParent(sessionId, out var parent)
+                ? parent
+                : null;
+            return (false, parentId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "读取会话关系失败，按顶层处理: SessionId={SessionId}", sessionId);
+            return (true, null);
+        }
+    }
+
+    /// <summary>
+    /// 逐字段累加 Token 用量：任一为 <c>null</c> 时返回另一方（<c>null</c> 表示「未知」而不是零）。
+    /// </summary>
+    internal static TokenUsage? MergeUsage(TokenUsage? total, TokenUsage? delta)
+    {
+        if (delta is null)
+            return total;
+        if (total is null)
+            return delta;
+
+        return new TokenUsage
+        {
+            InputTokens = total.InputTokens + delta.InputTokens,
+            OutputTokens = total.OutputTokens + delta.OutputTokens,
+            ReasoningTokens = total.ReasoningTokens + delta.ReasoningTokens
+        };
+    }
+
+    /// <summary>
+    /// 扇出终态给全部观察者。
+    /// <para>
+    /// 每个观察者独立 try/catch（一个失败不阻断其它、也不影响本轮终态）；异常只记 <c>LogWarning</c>。
+    /// 取消令牌一律用 <see cref="CancellationToken.None"/>：本轮被取消同样是一次有效终态，
+    /// 观察者必须收到通知，不能因为执行令牌已取消而被静默跳过。
+    /// </para>
+    /// <para>
+    /// 依次 <c>await</c> 而非 fire-and-forget：契约要求实现「尽快返回」（典型实现只做入队），
+    /// 顺序等待既保证异常可捕获（不产生未观察的 Task 异常），也让扇出完成有确定性观测点。
+    /// </para>
+    /// </summary>
+    private async Task FanOutObserversAsync(IServiceProvider services, ExecutionOutcome outcome)
+    {
+        IReadOnlyList<IExecutionOutcomeObserver> observers;
+        try
+        {
+            observers = services.GetServices<IExecutionOutcomeObserver>().ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "解析终态观察者失败，跳过扇出: ExecutionId={ExecutionId}", outcome.ExecutionId);
+            return;
+        }
+
+        foreach (var observer in observers)
+        {
+            var observerName = observer.GetType().Name;
+            try
+            {
+                if (!observer.ShouldObserve(outcome))
+                    continue;
+
+                await observer.OnExecutionCompletedAsync(outcome, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "终态观察者处理失败（已隔离，不影响其它观察者）: Observer={Observer}, ExecutionId={ExecutionId}",
+                    observerName,
+                    outcome.ExecutionId);
+            }
+        }
     }
 
     /// <summary>

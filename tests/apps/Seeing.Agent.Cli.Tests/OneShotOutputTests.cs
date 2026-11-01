@@ -82,12 +82,30 @@ public class OneShotOutputTests
         {
             SessionId = "ses_1",
             ExecutionId = "exec_1",
-            Status = ExecutionStatus.Completed
+            Status = ExecutionStatus.Completed,
+            Outcome = new ExecutionOutcome
+            {
+                SessionId = "ses_1",
+                ExecutionId = "exec_1",
+                Status = ExecutionStatus.Completed,
+                AgentName = "build",
+                AgentExecuted = true,
+                IsTopLevel = true,
+                TotalSteps = 3,
+                Usage = new TokenUsage { InputTokens = 10, OutputTokens = 5 },
+                Duration = TimeSpan.FromSeconds(2)
+            }
         });
 
         using var doc = JsonDocument.Parse(stdout.ToString().Trim());
         doc.RootElement.GetProperty("type").GetString().Should().Be("loop.complete");
         doc.RootElement.GetProperty("status").GetString().Should().Be("Completed");
+
+        // 终态事实经 JSONL 一并外发：消费方无需再自行推算步数/用量/层级
+        var outcome = doc.RootElement.GetProperty("outcome");
+        outcome.GetProperty("agentName").GetString().Should().Be("build");
+        outcome.GetProperty("agentExecuted").GetBoolean().Should().BeTrue();
+        outcome.GetProperty("totalSteps").GetInt32().Should().Be(3);
     }
 
     [Fact]

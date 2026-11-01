@@ -75,4 +75,13 @@ public record ExecutionCompleteEvent : IMessageEvent
 
     public string ExecutionId { get; init; } = "";
     public ExecutionStatus Status { get; init; }
+
+    /// <summary>
+    /// 本轮执行的完整终态事实快照。
+    /// <para>
+    /// 与本事件并列（而非继承/组合）是为了让消费方只拿一个字段就有全部事实，
+    /// 无需再自行推算步数、用量或会话层级；<see cref="Status"/> 仍保留以兼容既有消费方。
+    /// </para>
+    /// </summary>
+    public required ExecutionOutcome Outcome { get; init; }
 }
