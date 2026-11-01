@@ -316,7 +316,7 @@ public class LlmService : ILlmService
     }
 
     /// <summary>
-    /// 非流式补全：依次跑开始/参数/请求头/系统提示 Hook 后调用客户端，失败时触发错误 Hook。
+    /// 非流式补全：依次跑参数/请求头 Hook 后调用客户端，响应与失败经观测 Hook 上报。
     /// </summary>
     public async Task<ChatResponse> CompleteAsync(
         string modelId,
@@ -326,16 +326,6 @@ public class LlmService : ILlmService
     {
         var (client, apiModelId, modelConfig) = PrepareClientRequest(modelId, request);
         var call = CreateCallContext(sessionId);
-
-        await _hookManager.TriggerBlockingAsync(
-            HookRegistry.ChatBeforeStart,
-            sessionId ?? string.Empty,
-            new Dictionary<string, object?>
-            {
-                ["modelId"] = apiModelId,
-                ["provider"] = client.ProviderId
-            },
-            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var paramsOutput = new Dictionary<string, object?>
         {
@@ -375,23 +365,6 @@ public class LlmService : ILlmService
             cancellationToken).ConfigureAwait(false);
 
         MergeHeadersHookOutput(call, headersOutput);
-
-        if (!string.IsNullOrEmpty(request.SystemPrompt))
-        {
-            var promptOutput = new Dictionary<string, object?>
-            {
-                ["prompt"] = request.SystemPrompt
-            };
-
-            await _hookManager.TriggerBlockingAsync(
-                HookRegistry.LlmSystemPrompt,
-                sessionId ?? string.Empty,
-                new Dictionary<string, object?> { ["modelId"] = modelId },
-                promptOutput,
-                cancellationToken).ConfigureAwait(false);
-
-            request.SystemPrompt = promptOutput["prompt"]?.ToString();
-        }
 
         _logger.LogDebug("发送聊天请求: Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
 
@@ -445,7 +418,7 @@ public class LlmService : ILlmService
     }
 
     /// <summary>
-    /// 流式补全：跑完整 Hook 链后经通道转发增量，失败时包装为 Llm 异常抛出，结束触发完成 Hook。
+    /// 流式补全：跑参数/请求头 Hook 后经通道转发增量，失败时包装为 Llm 异常抛出，结束触发完成 Hook。
     /// </summary>
     public async IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(
         string modelId,
@@ -455,17 +428,6 @@ public class LlmService : ILlmService
     {
         var (client, apiModelId, modelConfig) = PrepareClientRequest(modelId, request);
         var call = CreateCallContext(sessionId);
-
-        await _hookManager.TriggerBlockingAsync(
-            HookRegistry.ChatBeforeStart,
-            sessionId ?? string.Empty,
-            new Dictionary<string, object?>
-            {
-                ["modelId"] = modelId,
-                ["provider"] = client.ProviderId,
-                ["streaming"] = true
-            },
-            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var paramsOutput = new Dictionary<string, object?>
         {
@@ -507,27 +469,6 @@ public class LlmService : ILlmService
             cancellationToken).ConfigureAwait(false);
 
         MergeHeadersHookOutput(call, headersOutput);
-
-        if (!string.IsNullOrEmpty(request.SystemPrompt))
-        {
-            var promptOutput = new Dictionary<string, object?>
-            {
-                ["prompt"] = request.SystemPrompt
-            };
-
-            await _hookManager.TriggerBlockingAsync(
-                HookRegistry.LlmSystemPrompt,
-                sessionId ?? string.Empty,
-                new Dictionary<string, object?>
-                {
-                    ["modelId"] = modelId,
-                    ["streaming"] = true
-                },
-                promptOutput,
-                cancellationToken).ConfigureAwait(false);
-
-            request.SystemPrompt = promptOutput["prompt"]?.ToString();
-        }
 
         _logger.LogDebug("发送流式聊天请求: Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
         var startTime = DateTime.Now;

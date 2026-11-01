@@ -128,8 +128,6 @@ public sealed class MemoryModule : ISeeingModule, IUiContribution
             hooks.Register(chat);
         if (services.GetService<ToolMemoryHandler>() is { } tool)
             hooks.Register(tool);
-        if (services.GetService<MemoryRecallHandler>() is { } recall)
-            hooks.Register(recall);
     }
 
     private static void UnregisterHooks(IServiceProvider services)
@@ -141,7 +139,5 @@ public sealed class MemoryModule : ISeeingModule, IUiContribution
             hooks.Remove(chat);
         if (services.GetService<ToolMemoryHandler>() is { } tool)
             hooks.Remove(tool);
-        if (services.GetService<MemoryRecallHandler>() is { } recall)
-            hooks.Remove(recall);
     }
 }

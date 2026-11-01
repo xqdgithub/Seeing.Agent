@@ -238,7 +238,6 @@ var policy = new AgentPermissionPolicy
 
 | Hook 点 | 触发时机 | 可修改数据 |
 |---------|----------|------------|
-| `chat.before_start` | LLM 请求开始前 | - |
 | `chat.after_complete` | LLM 请求完成后 | response |
 | `chat.before_retry` | LLM 调用重试前 | - |
 | `chat.on_error` | LLM 调用异常时 | - |
@@ -260,7 +259,6 @@ var policy = new AgentPermissionPolicy
 | `agent.before_invoke` | Agent 执行前 | - |
 | `agent.after_invoke` | Agent 执行后 | - |
 | `permission.ask` | 权限 Ask 决策时 | decision, reason |
-| `llm.system_prompt` | 系统提示词设置 | prompt |
 | `shell.env` | Shell 命令执行前 | env |
 | `command.execute.before` | 自定义命令执行前 | arguments, proceed |
 

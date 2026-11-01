@@ -34,17 +34,17 @@ namespace Seeing.Agent.Tests.Hooks
         public void Register_ShouldOrderByPriority()
         {
             var handler1 = new Mock<IHookHandler>();
-            handler1.Setup(h => h.Spec).Returns(HookRegistry.ChatBeforeStart);
+            handler1.Setup(h => h.Spec).Returns(HookRegistry.ChatParams);
             handler1.Setup(h => h.Priority).Returns(20);
 
             var handler2 = new Mock<IHookHandler>();
-            handler2.Setup(h => h.Spec).Returns(HookRegistry.ChatBeforeStart);
+            handler2.Setup(h => h.Spec).Returns(HookRegistry.ChatParams);
             handler2.Setup(h => h.Priority).Returns(10);
 
             _manager.Register(handler1.Object);
             _manager.Register(handler2.Object);
 
-            _manager.Count(HookRegistry.ChatBeforeStart).Should().Be(2);
+            _manager.Count(HookRegistry.ChatParams).Should().Be(2);
         }
 
         [Fact]

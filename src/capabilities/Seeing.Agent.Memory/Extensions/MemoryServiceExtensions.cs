@@ -165,7 +165,6 @@ public static class MemoryServiceExtensions
         // 会各自构造一个实例（状态分裂：轮次计数落在接口实例上，调用方读到的是另一个）。
         services.TryAddSingleton(sp =>
             sp.GetServices<IExecutionOutcomeObserver>().OfType<AgentTurnMemoryHandler>().First());
-        services.TryAddSingleton<MemoryRecallHandler>();
 
         services.TryAddSingleton<MemorySearchTool>();
         services.TryAddSingleton<MemoryWriteTool>();

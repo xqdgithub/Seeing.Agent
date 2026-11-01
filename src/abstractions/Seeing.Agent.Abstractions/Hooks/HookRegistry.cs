@@ -23,9 +23,6 @@ public static class HookRegistry
 
     #region Chat 生命周期
 
-    /// <summary>Chat 开始前 - 阻塞策略</summary>
-    public static readonly HookSpec ChatBeforeStart = new(HookPolicy.Blocking, "chat.before_start");
-
     /// <summary>Chat 参数处理 - 阻塞策略</summary>
     public static readonly HookSpec ChatParams = new(HookPolicy.Blocking, "chat.params");
 
@@ -140,13 +137,6 @@ public static class HookRegistry
 
     /// <summary>循环检测 - 非阻塞策略</summary>
     public static readonly HookSpec LoopDetected = new(HookPolicy.FireAndForget, "permission.loop.detected");
-
-    #endregion
-
-    #region LLM 调用
-
-    /// <summary>LLM 系统提示词处理 - 阻塞策略</summary>
-    public static readonly HookSpec LlmSystemPrompt = new(HookPolicy.Blocking, "llm.system_prompt");
 
     #endregion
 

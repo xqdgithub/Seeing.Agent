@@ -39,6 +39,7 @@
 | [20 tool_search 真实 Provider 联调清单](20-tool-search-provider-smoke-checklist.md) | 检索命中后同一执行内可调的真实 Provider 冒烟步骤与判据 |
 | [21 上下文源管道 Release Notes](21-context-source-pipeline-release-notes.md) | 基线 + 增量 + epoch、两个内置源（项目指令 / 技能清单）、运行时矩阵、技能单一真相源、行为变更、删除清单与已知边界 |
 | [22 Memory 死账本清理 Release Notes](22-memory-dead-ledger-removal-release-notes.md) | 删除零消费者的 token 账本/配额/死 DDL/死配置、`ExecutionOutcome.Usage` 为唯一用量来源、破坏性清单与防回归扫描 |
+| [24 LlmService 纯传输层 Release Notes](24-llmservice-transport-only-release-notes.md) | 删除 `ChatBeforeStart` / `LlmSystemPrompt` 两个 prompt 改写钩子与 `MemoryRecallHandler`、`LlmService` 不再改写 `SystemPrompt`、保留钩子不变、记忆注入了空窗 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 
