@@ -20,6 +20,26 @@ namespace Seeing.Session.Core
             CancellationToken ct = default);
 
         /// <summary>
+        /// 创建平台内部会话（复盘 / 定时任务 / 心跳等）并加入父会话所在组。
+        /// <para>与 <see cref="CreateChildAsync"/> 的唯一差异：显式指定 <paramref name="origin"/> 用途标记，
+        /// 且保留调用方给定的 <paramref name="title"/>（不生成默认标题）。</para>
+        /// <para>产出的会话 <see cref="SessionData.Kind"/> 仍为 <see cref="SessionKind.SubAgent"/>，
+        /// 以满足组不变量「Relation=Child ⇔ Kind=SubAgent」；用途由
+        /// <see cref="SessionData.Origin"/> 表达，两者正交。</para>
+        /// </summary>
+        /// <param name="parentId">父会话 ID（其所在组为新会话的归属组）。</param>
+        /// <param name="agentName">子会话使用的 Agent 名。</param>
+        /// <param name="title">会话标题（原样保留，不覆盖为默认标题）。</param>
+        /// <param name="snapshot">权限快照。</param>
+        /// <param name="scenario">会话级场景名；null = 进程级回退。</param>
+        /// <param name="origin">会话来源/用途标记。</param>
+        /// <param name="ct">取消令牌。</param>
+        Task<SessionData> CreateInternalAsync(
+            string parentId, string agentName, string title,
+            IReadOnlyList<SessionPermissionRule> snapshot, string? scenario,
+            SessionOrigin origin, CancellationToken ct = default);
+
+        /// <summary>
         /// 分支会话：源为子会话时建立独立新组；源为根会话时加入源组（Relation=Fork）。
         /// </summary>
         Task<SessionData> ForkSessionAsync(string sessionId, string? title, CancellationToken ct = default);

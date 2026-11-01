@@ -620,10 +620,37 @@ namespace Seeing.Session.Management
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// 本入口对应 Task 工具的子 Agent 委派，来源标记为 <see cref="SessionOrigin.SubAgentTask"/>。
+        /// </remarks>
         public async Task<SessionData> CreateChildAsync(
             string parentId, string agentName, string title,
             IReadOnlyList<SessionPermissionRule> snapshot, string? scenario,
-            CancellationToken ct = default)
+            CancellationToken ct = default) =>
+            await CreateChildCoreAsync(
+                parentId, agentName, title, snapshot, scenario,
+                SessionOrigin.SubAgentTask, ct).ConfigureAwait(false);
+
+        /// <inheritdoc/>
+        public async Task<SessionData> CreateInternalAsync(
+            string parentId, string agentName, string title,
+            IReadOnlyList<SessionPermissionRule> snapshot, string? scenario,
+            SessionOrigin origin, CancellationToken ct = default) =>
+            await CreateChildCoreAsync(
+                parentId, agentName, title, snapshot, scenario,
+                origin, ct).ConfigureAwait(false);
+
+        /// <summary>
+        /// 子会话创建的共用主体：建会话 → 落盘 → 入组（Relation=Child）→ 回写 GroupId。
+        /// <para><b>Origin 必须在 <see cref="ISessionManager.SaveAsync"/> 之前写入</b>：
+        /// 该保存移交的是保存时刻的克隆快照，保存后再赋值只改内存，重启即丢。</para>
+        /// <para>Kind 恒为 <see cref="SessionKind.SubAgent"/>，以满足
+        /// <see cref="ValidateMemberInvariant"/> 的「Relation=Child ⇔ SubAgent」不变量。</para>
+        /// </summary>
+        private async Task<SessionData> CreateChildCoreAsync(
+            string parentId, string agentName, string title,
+            IReadOnlyList<SessionPermissionRule> snapshot, string? scenario,
+            SessionOrigin origin, CancellationToken ct)
         {
             var parentGroup = await EnsureForSessionAsync(parentId, ct).ConfigureAwait(false);
             var parent = await _sessions.TryGetOrLoadAsync(parentId).ConfigureAwait(false)
@@ -631,6 +658,9 @@ namespace Seeing.Session.Management
 
             var child = _sessions.Create(parent.PartitionId, agentName, scenario);
             child.Kind = SessionKind.SubAgent;
+            // 显式来源：须在 SaveAsync 之前写入才会落盘
+            child.Origin = origin;
+            // 保留调用方标题（不覆盖为 "Session ses_..."）
             child.Title = title;
             child.SelectedAgent = agentName;
             // 默认继承父委派时配置；子 Agent 自带 Model 时由调用方覆盖

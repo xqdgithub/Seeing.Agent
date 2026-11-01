@@ -78,6 +78,13 @@ namespace Seeing.Session.Core
         /// <summary>会话类型（Root / SubAgent）</summary>
         public SessionKind Kind { get; set; } = SessionKind.Root;
 
+        /// <summary>
+        /// 会话来源/用途（与 <see cref="Kind"/> 正交）：默认 <see cref="SessionOrigin.User"/>。
+        /// <para>平台内部创建的会话（复盘 / 定时任务 / 心跳）标记为对应来源，便于与用户任务区分；
+        /// 存量会话缺该字段时反序列化为默认值 <see cref="SessionOrigin.User"/>。</para>
+        /// </summary>
+        public SessionOrigin Origin { get; set; } = SessionOrigin.User;
+
         /// <summary>所属会话组 ID（关系唯一权威在 SessionGroup）</summary>
         public string? GroupId { get; set; }
 
@@ -477,6 +484,7 @@ namespace Seeing.Session.Core
                 Status = Status,
                 ChannelRoute = ChannelRoute,
                 Kind = Kind,
+                Origin = Origin,
                 GroupId = GroupId,
                 AutoApprove = AutoApprove,
                 PermissionSnapshot = PermissionSnapshot.Select(r => new SessionPermissionRule
