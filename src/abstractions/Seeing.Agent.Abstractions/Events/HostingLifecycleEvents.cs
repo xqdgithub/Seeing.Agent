@@ -74,13 +74,21 @@ public record ExecutionCompleteEvent : IMessageEvent
     public string Type => MessageEventType.LoopComplete;
 
     public string ExecutionId { get; init; } = "";
-    public ExecutionStatus Status { get; init; }
+
+    /// <summary>
+    /// 终态状态。
+    /// <para>
+    /// <b>唯一真相是 <see cref="Outcome"/>.Status</b>：本属性是投影，仅为兼容既有消费方而保留，
+    /// 不可单独赋值（无 <c>init</c> 访问器），从结构上消除「两个 Status 不一致」的可能。
+    /// </para>
+    /// </summary>
+    public ExecutionStatus Status => Outcome.Status;
 
     /// <summary>
     /// 本轮执行的完整终态事实快照。
     /// <para>
     /// 与本事件并列（而非继承/组合）是为了让消费方只拿一个字段就有全部事实，
-    /// 无需再自行推算步数、用量或会话层级；<see cref="Status"/> 仍保留以兼容既有消费方。
+    /// 无需再自行推算步数、用量或会话层级。
     /// </para>
     /// </summary>
     public required ExecutionOutcome Outcome { get; init; }

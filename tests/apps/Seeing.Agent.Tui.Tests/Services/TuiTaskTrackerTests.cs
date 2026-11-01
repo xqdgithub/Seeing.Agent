@@ -116,6 +116,7 @@ public sealed class TuiTaskTrackerTests
         pump.Emit(new ExecutionCompleteEvent
         {
             SessionId = "child-1",
+            ExecutionId = "exec-1",
             Outcome = new ExecutionOutcome
             {
                 SessionId = "child-1",

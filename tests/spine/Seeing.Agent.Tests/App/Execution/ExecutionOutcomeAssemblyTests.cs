@@ -114,6 +114,13 @@ public class ExecutionOutcomeAssemblyTests
     public async Task RunOnce_Should_Capture_Usage_And_TotalSteps_From_LoopComplete()
     {
         // 多段循环：步数/用量/耗时必须累计（第一段无用量，取第二段后再与第三段相加）。
+        //
+        // ⚠ 关于 ReasoningTokens 的重要说明：本用例用**手工构造**的 LoopCompleteEvent 验证
+        // ExecutionRunner.MergeUsage 的逐字段累加语义；它**不**代表端到端该字段可用。
+        // 上游 AgentExecutor 的 totalUsage 累加只写 InputTokens/OutputTokens
+        //（首段构造时也不抄 ReasoningTokens，后续 with 只加 delta 的 input/output），
+        // 因此真实链路里 LoopCompleteEvent.Usage.ReasoningTokens 出来就已是 0，
+        // outcome.Usage.ReasoningTokens 端到端恒为 0。这是既有的独立缺陷，不在本任务范围内。
         var fx = BuildRunner(
             agentName: "build",
             loopEvents:
@@ -145,12 +152,108 @@ public class ExecutionOutcomeAssemblyTests
         outcome.Usage.Should().NotBeNull();
         outcome.Usage!.InputTokens.Should().Be(300);
         outcome.Usage.OutputTokens.Should().Be(120);
-        outcome.Usage.ReasoningTokens.Should().Be(10);
+        outcome.Usage.ReasoningTokens.Should().Be(10, "仅证明 MergeUsage 逐字段累加；上游该字段恒 0");
         outcome.Usage.TotalTokens.Should().Be(420);
         outcome.Duration.Should().Be(TimeSpan.FromSeconds(3));
 
         record.TotalSteps.Should().Be(8);
         record.Usage!.TotalTokens.Should().Be(420);
+    }
+
+    [Fact]
+    public async Task RunOnce_Should_Capture_Partial_Facts_From_LoopCancelled()
+    {
+        // 取消路径**不产出** LoopCompleteEvent（AgentExecutor 的 OCE 分支只写 LoopCancelledEvent），
+        // 若只认 LoopCompleteEvent，取消轮次的步数与用量会全部记为 0 —— 等于丢掉「取消前已烧掉的成本」。
+        var fx = BuildRunner(
+            agentName: "build",
+            loopEvents:
+            [
+                new LoopCancelledEvent
+                {
+                    SessionId = "ses_cancel",
+                    LoopId = "l1",
+                    Reason = "user",
+                    CompletedSteps = 2,
+                    PartialUsage = new TokenUsage { InputTokens = 40, OutputTokens = 9 }
+                }
+            ]);
+        var record = Record("ses_cancel");
+
+        await fx.Runner.RunOnceAsync(record, Batch(), CancellationToken.None);
+
+        var outcome = fx.SingleOutcome();
+        outcome.TotalSteps.Should().Be(2, "取消前已完成的步数必须保留");
+        outcome.Usage.Should().NotBeNull();
+        outcome.Usage!.InputTokens.Should().Be(40);
+        outcome.Usage.OutputTokens.Should().Be(9);
+        outcome.Usage.TotalTokens.Should().Be(49);
+        outcome.Duration.Should().Be(TimeSpan.Zero, "LoopCancelledEvent 不携带耗时，不得臆造");
+    }
+
+    [Fact]
+    public async Task RunOnce_Should_Not_Double_Count_When_Both_Terminal_Events_Arrive()
+    {
+        // 负向护栏：同一 LoopId 的终态事实只能计一次。
+        // 两个终态事件是两个独立循环迭代 —— `else if` 只保证单次迭代内互斥，**挡不住双计**，
+        // 必须靠 LoopId 去重集合（本用例就是这条去重的唯一护栏）。
+        var fx = BuildRunner(
+            agentName: "build",
+            loopEvents:
+            [
+                new LoopCompleteEvent
+                {
+                    SessionId = "ses_double", LoopId = "l1", TotalSteps = 3,
+                    Usage = new TokenUsage { InputTokens = 20, OutputTokens = 10 },
+                    Duration = TimeSpan.FromSeconds(1), Success = true
+                },
+                new LoopCancelledEvent
+                {
+                    SessionId = "ses_double", LoopId = "l1", Reason = "user",
+                    CompletedSteps = 2,
+                    PartialUsage = new TokenUsage { InputTokens = 30, OutputTokens = 20 }
+                }
+            ]);
+        var record = Record("ses_double");
+
+        await fx.Runner.RunOnceAsync(record, Batch(), CancellationToken.None);
+
+        var outcome = fx.SingleOutcome();
+        outcome.TotalSteps.Should().Be(3, "同一 LoopId 的终态事实只计一次，不得把两个事件都累加");
+        outcome.Usage!.TotalTokens.Should().Be(30);
+        outcome.Duration.Should().Be(TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task RunOnce_Should_Accumulate_Distinct_Loop_Ids()
+    {
+        // 反向护栏：去重只能按 LoopId，不能退化成「全局只认第一个终态事件」。
+        // 两个不同 LoopId 的终态事实必须都计入，否则多段执行会被系统性低估。
+        var fx = BuildRunner(
+            agentName: "build",
+            loopEvents:
+            [
+                new LoopCompleteEvent
+                {
+                    SessionId = "ses_multi", LoopId = "l1", TotalSteps = 2,
+                    Usage = new TokenUsage { InputTokens = 10, OutputTokens = 5 },
+                    Duration = TimeSpan.FromSeconds(1), Success = true
+                },
+                new LoopCompleteEvent
+                {
+                    SessionId = "ses_multi", LoopId = "l2", TotalSteps = 3,
+                    Usage = new TokenUsage { InputTokens = 20, OutputTokens = 10 },
+                    Duration = TimeSpan.FromSeconds(2), Success = true
+                }
+            ]);
+        var record = Record("ses_multi");
+
+        await fx.Runner.RunOnceAsync(record, Batch(), CancellationToken.None);
+
+        var outcome = fx.SingleOutcome();
+        outcome.TotalSteps.Should().Be(5);
+        outcome.Usage!.TotalTokens.Should().Be(45);
+        outcome.Duration.Should().Be(TimeSpan.FromSeconds(3));
     }
 
     [Fact]
@@ -194,6 +297,60 @@ public class ExecutionOutcomeAssemblyTests
         recording.Outcomes[0].Should().BeSameAs(fx.SingleOutcome());
     }
 
+    [Fact]
+    public async Task RunOnce_Should_Isolate_Async_Observer_Fault_After_Await()
+    {
+        // 关键路径：async 方法在 await 之后抛出时，异常落在返回的 Task 上（try/catch 包不住方法体），
+        // 这正是「扇出必须 await 而非 `_ = ...`」的全部理由 —— 丢弃 Task 会让它变成未观察异常。
+        // 本用例用真实 async + await 后 throw 覆盖该路径；同步 throw 由上一个用例覆盖。
+        var asyncFaulting = new AsyncFaultingObserver();
+        var recording = new RecordingObserver();
+
+        var fx = BuildRunner(
+            agentName: "build",
+            observers: [asyncFaulting, recording]);
+
+        await fx.Runner.RunOnceAsync(Record("ses_async_fault"), Batch(), CancellationToken.None);
+
+        // 走到这里即证明：RunOnceAsync 未被该异常打断，且后续观察者仍被调用。
+        asyncFaulting.ReachedAfterAwait.Should().BeTrue("观察者确实在 await 之后才抛");
+        recording.Outcomes.Should().ContainSingle("异步抛出不得阻断后续观察者");
+        fx.SingleOutcome().Status.Should().Be(ExecutionStatus.Completed, "观察者失败不得改变本轮终态");
+    }
+
+    [Fact]
+    public async Task RunOnce_Should_Truncate_Slow_Observer_After_Timeout()
+    {
+        // 超时护栏：观察者契约要求毫秒级返回，慢实现不得拖住 RunOnceAsync 返回
+        //（它连带阻塞 DeliverAndAwaitAsync 兑现与全局并发额度）。
+        // 观察者挂 10 秒、超时设 100ms：断言「按超时放弃」，而不是等它自然结束。
+        var slowTimeout = TimeSpan.FromMilliseconds(100);
+        var slow = new SlowObserver(TimeSpan.FromSeconds(10));
+        var recording = new RecordingObserver();
+
+        var fx = BuildRunner(
+            agentName: "build",
+            observers: [slow, recording],
+            observerTimeout: slowTimeout);
+
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        await fx.Runner.RunOnceAsync(Record("ses_slow"), Batch(), CancellationToken.None);
+        elapsed.Stop();
+
+        recording.Outcomes.Should().ContainSingle("超时的观察者被放弃后，后续观察者必须照常收到通知");
+        elapsed.Elapsed.Should().BeGreaterThanOrEqualTo(slowTimeout, "必须等满超时上限才放弃该观察者");
+        elapsed.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5),
+            "必须在超时后立刻继续，而不是等慢观察者自然结束（10s）");
+        fx.SingleOutcome().Status.Should().Be(ExecutionStatus.Completed, "观察者超时不得改变本轮终态");
+    }
+
+    [Fact]
+    public void ObserverTimeout_Default_Should_Be_Five_Seconds()
+    {
+        // 契约文档承诺「超过 5 秒会被截断」，此处锁住这个数字，避免文档与实现漂移。
+        ExecutionRunner.ObserverTimeout.Should().Be(TimeSpan.FromSeconds(5));
+    }
+
     // === 测试夹具 ===
 
     /// <summary>一次执行的装配结果（供断言执行器是否被调用、事件与记录是否一致）。</summary>
@@ -215,7 +372,8 @@ public class ExecutionOutcomeAssemblyTests
         IReadOnlyList<IMessageEvent>? loopEvents = null,
         Mock<ICommandRegistry>? commandRegistry = null,
         IReadOnlyList<IExecutionOutcomeObserver>? observers = null,
-        Func<Task>? onFlush = null)
+        Func<Task>? onFlush = null,
+        TimeSpan? observerTimeout = null)
     {
         var session = SessionData.Create();
         session.Kind = sessionKind;
@@ -298,6 +456,9 @@ public class ExecutionOutcomeAssemblyTests
                 sessionManager.Object),
             NullLogger<ExecutionRunner>.Instance,
             new StubSessionToolSchemaResolver());
+
+        if (observerTimeout is { } timeout)
+            runner.OverrideObserverTimeoutForTest(timeout);
 
         return new Fixture { Runner = runner, Published = published, Executor = executor };
     }
@@ -401,6 +562,40 @@ public class ExecutionOutcomeAssemblyTests
         {
             Outcomes.Add(outcome);
             return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>在 <c>await</c> 之后抛异常的观察者：覆盖「异常落在 Task 上」的真实路径。</summary>
+    private sealed class AsyncFaultingObserver : IExecutionOutcomeObserver
+    {
+        /// <summary>是否已越过 <c>await</c>（用于证明异常确实发生在异步续体里）。</summary>
+        public bool ReachedAfterAwait { get; private set; }
+
+        public bool ShouldObserve(ExecutionOutcome outcome) => true;
+
+        public async Task OnExecutionCompletedAsync(ExecutionOutcome outcome, CancellationToken ct = default)
+        {
+            await Task.Yield();
+            ReachedAfterAwait = true;
+            throw new InvalidOperationException("异步续体中故意失败");
+        }
+    }
+
+    /// <summary>挂起指定时长才返回的观察者：验证超时截断。</summary>
+    private sealed class SlowObserver : IExecutionOutcomeObserver
+    {
+        private readonly TimeSpan _delay;
+
+        public SlowObserver(TimeSpan delay) => _delay = delay;
+
+        public bool ShouldObserve(ExecutionOutcome outcome) => true;
+
+        public async Task OnExecutionCompletedAsync(ExecutionOutcome outcome, CancellationToken ct = default)
+        {
+            var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            // 不用 ct：验证的是宿主侧超时，而不是协作式取消。
+            using var timer = new Timer(_ => tcs.TrySetResult(), null, _delay, Timeout.InfiniteTimeSpan);
+            await tcs.Task.ConfigureAwait(false);
         }
     }
 }

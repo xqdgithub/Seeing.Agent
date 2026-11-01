@@ -707,9 +707,16 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
     }
 
     /// <summary>
-    /// 组装终态快照。只取 <see cref="ExecutionRecord"/> 上**已存在**的事实字段：
-    /// <c>AgentName</c>/<c>AgentExecuted</c>/<c>TotalSteps</c>/<c>Usage</c> 由执行链在记录上填充
-    /// （ExecutionRecord 增列后），本方法保持默认值而不臆造任何数字。
+    /// 组装终态快照。取 <see cref="ExecutionRecord"/> 上由执行链在 <c>finally</c> 落定的事实字段：
+    /// <c>AgentName</c>/<c>AgentExecuted</c>/<c>TotalSteps</c>/<c>Usage</c> 原样搬运，
+    /// 本方法不臆造任何数字（记录里是默认值就搬默认值）。
+    /// <para>
+    /// <b>注意 <c>Duration</c> 的口径差异</b>：本方法填的是**墙钟**（<c>CompletedAt - StartedAt</c>，
+    /// 含排队与工具等待）；而 <c>ExecutionCompleteEvent.Outcome.Duration</c> 填的是
+    /// **模型循环累计时长**（<c>ExecutionRunner</c> 汇总 <c>LoopCompleteEvent</c>）。
+    /// 两条通道的同名字段不是同一口径，消费方按用途选择：要「这一轮花了多久」用本方法，
+    /// 要「模型跑了多久」用事件里的 outcome。
+    /// </para>
     /// </summary>
     private ExecutionOutcome BuildOutcome(string sessionId, ExecutionRecord record)
     {
@@ -725,9 +732,6 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
             status = ExecutionStatus.Failed;
         }
 
-        // Duration 实际是「墙钟」口径：CompletedAt - StartedAt，含排队与工具等待，
-        // 不等价于契约里说的「模型循环累计时长」（后者需 ExecutionRunner 汇总 LoopCompleteEvent）。
-        // 精确口径待 T3 给 ExecutionRecord 增列后由执行链提供，此处不臆造更细的分解。
         var completedAt = record.CompletedAt ?? DateTime.UtcNow;
         var duration = completedAt - record.StartedAt;
         if (duration < TimeSpan.Zero)
@@ -742,6 +746,12 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
             SessionId = sessionId,
             ExecutionId = record.ExecutionId,
             Status = status,
+            // 这四个字段是「这一轮到底发生了什么」的权威事实，必须从记录搬运：
+            // 漏读会让 DeliverAndAwaitAsync 恒报「没执行 Agent、零消耗」，下游账本与反思节奏全部失真。
+            AgentName = record.AgentName,
+            AgentExecuted = record.AgentExecuted,
+            TotalSteps = record.TotalSteps,
+            Usage = record.Usage,
             IsTopLevel = isTopLevel,
             ParentSessionId = parentSessionId,
             Duration = duration,

@@ -82,7 +82,6 @@ public class OneShotOutputTests
         {
             SessionId = "ses_1",
             ExecutionId = "exec_1",
-            Status = ExecutionStatus.Completed,
             Outcome = new ExecutionOutcome
             {
                 SessionId = "ses_1",

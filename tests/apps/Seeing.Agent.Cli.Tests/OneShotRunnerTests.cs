@@ -167,15 +167,14 @@ public class OneShotRunnerTests
     }
 
     /// <summary>
-    /// 构造终态事件：<see cref="ExecutionCompleteEvent.Outcome"/> 为 required，
-    /// 本文件只关心 Status 等外部字段，故给一个最小事实快照。
+    /// 构造终态事件：<see cref="ExecutionCompleteEvent.Outcome"/> 为必填，
+    /// 且事件的 <c>Status</c> 是 outcome 的投影（只读），故状态只需在 outcome 上给一次。
     /// </summary>
     private static ExecutionCompleteEvent Complete(
         string sessionId, string executionId, ExecutionStatus status) => new()
         {
             SessionId = sessionId,
             ExecutionId = executionId,
-            Status = status,
             Outcome = new ExecutionOutcome
             {
                 SessionId = sessionId,

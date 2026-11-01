@@ -54,6 +54,7 @@ public sealed class TuiTaskTrackerSnapshotTests
         pumps.Last!.Emit(new ExecutionCompleteEvent
         {
             SessionId = "child-1",
+            ExecutionId = "exec-1",
             Outcome = new ExecutionOutcome
             {
                 SessionId = "child-1",
@@ -83,6 +84,7 @@ public sealed class TuiTaskTrackerSnapshotTests
         pumps.Last!.Emit(new ExecutionCompleteEvent
         {
             SessionId = "child-1",
+            ExecutionId = "exec-1",
             Outcome = new ExecutionOutcome
             {
                 SessionId = "child-1",

@@ -328,7 +328,7 @@ public sealed class TuiEventInterpreterTests
         yield return new LoopCompleteEvent { SessionId = Session, LoopId = "loop1" };
     }
 
-    /// <summary>构造终态事件：<c>Outcome</c> 为 required，测试只关心外部字段时给最小快照。</summary>
+    /// <summary>构造终态事件：<c>Status</c> 由 <c>Outcome.Status</c> 投影，故只给 outcome 一处。</summary>
     private static ExecutionCompleteEvent Complete(string executionId) => new()
     {
         SessionId = Session,

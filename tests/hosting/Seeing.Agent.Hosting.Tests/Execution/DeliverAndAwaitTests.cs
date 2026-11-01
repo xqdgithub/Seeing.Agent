@@ -103,6 +103,41 @@ public class DeliverAndAwaitTests
     }
 
     [Fact]
+    public async Task DeliverAndAwait_Should_Carry_Execution_Facts_From_Record()
+    {
+        // Critical（第四轮审查）：BuildOutcome 曾一个字段都不读 record，导致本通道恒报
+        // AgentExecuted=false / TotalSteps=0 / Usage=null / AgentName=null。
+        // 那是静默数据错误：账本恒记 0 成本、ReflectionObserver.ShouldObserve 永不触发。
+        var runtime = BuildRuntime(out _, out var runner);
+        runner.OnRunAsync = _ =>
+        {
+            // 真实执行链是在 finally 里把事实写回记录的；此处模拟同一时序。
+            runner.PendingFacts = new ExecutionFacts
+            {
+                AgentName = "build",
+                AgentExecuted = true,
+                TotalSteps = 7,
+                Usage = new Seeing.Agent.Abstractions.Llm.TokenUsage
+                {
+                    InputTokens = 300,
+                    OutputTokens = 120
+                }
+            };
+            return Task.CompletedTask;
+        };
+
+        var outcome = await runtime.DeliverAndAwaitAsync(
+            MakeMessage("ses_facts", "work"), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        outcome.AgentName.Should().Be("build");
+        outcome.AgentExecuted.Should().BeTrue("否则复盘观察者会因该标志为 false 而永不触发");
+        outcome.TotalSteps.Should().Be(7);
+        outcome.Usage.Should().NotBeNull("否则用量账本与 Journal 成本恒为 0");
+        outcome.Usage!.TotalTokens.Should().Be(420);
+    }
+
+    [Fact]
     public async Task DeliverAndAwait_Should_Report_SubAgent_Session_As_Not_TopLevel()
     {
         // 顶层判定真值来源为 SessionData.Kind；子 Agent 会话必须报 false。
@@ -474,6 +509,12 @@ public class DeliverAndAwaitTests
         /// <summary>阻塞钩子（参数为本次执行的取消令牌）。</summary>
         public Func<CancellationToken, Task>? OnRunAsync { get; set; }
 
+        /// <summary>
+        /// 本轮要写回记录的执行事实；为 null 时保持记录默认值（等价「没执行 Agent」）。
+        /// <para>真实执行链在 <c>finally</c> 里写回这些字段，BuildOutcome 再原样搬运。</para>
+        /// </summary>
+        public ExecutionFacts? PendingFacts { get; set; }
+
         public async Task<ExecutionRecord> RunOnceAsync(
             ExecutionRecord record, InboxBatch batch, CancellationToken executionToken)
         {
@@ -484,8 +525,26 @@ public class DeliverAndAwaitTests
 
             record.Status = ExecutionStatus.Completed;
             record.CompletedAt = DateTime.UtcNow;
+
+            if (PendingFacts is { } facts)
+            {
+                record.AgentName = facts.AgentName;
+                record.AgentExecuted = facts.AgentExecuted;
+                record.TotalSteps = facts.TotalSteps;
+                record.Usage = facts.Usage;
+            }
+
             return record;
         }
+    }
+
+    /// <summary>假执行体写回记录的一组执行事实。</summary>
+    private sealed record ExecutionFacts
+    {
+        public string? AgentName { get; init; }
+        public bool AgentExecuted { get; init; }
+        public int TotalSteps { get; init; }
+        public Seeing.Agent.Abstractions.Llm.TokenUsage? Usage { get; init; }
     }
 
     private static SessionRuntime BuildRuntime(

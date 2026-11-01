@@ -48,6 +48,17 @@ internal interface IExecutionRunner
 /// </summary>
 internal sealed class ExecutionRunner : IExecutionRunner
 {
+    /// <summary>
+    /// 单个终态观察者的调用超时（生产默认值）。
+    /// <para>
+    /// 取值理由：观察者契约要求毫秒级返回（典型实现只做入队），5 秒已远超任何合规实现；
+    /// 但又要足够宽容，避免机器繁忙时把正常的入队调用误判为超时。
+    /// 超时的代价只是放弃本次观察（记告警），不影响本轮终态与其它观察者。
+    /// </para>
+    /// </summary>
+    internal static readonly TimeSpan ObserverTimeout = TimeSpan.FromSeconds(5);
+
+    private TimeSpan _observerTimeout;
     private readonly IServiceProvider _serviceProvider;
     private readonly IExecutionEventPublisher _eventPublisher;
     private readonly ExecutionOptions _options;
@@ -71,10 +82,17 @@ internal sealed class ExecutionRunner : IExecutionRunner
         _configStore = configStore;
         _compactionRunner = compactionRunner ?? throw new ArgumentNullException(nameof(compactionRunner));
         _logger = logger;
+        _observerTimeout = ObserverTimeout;
         // schema 唯一计算点经端口 ISessionToolSchemaResolver：必需注入，缺失即构造期失败，
         // 不再自构造回退实例，杜绝第二套结算路径与类型耦合。
         _schemaResolver = schemaResolver ?? throw new ArgumentNullException(nameof(schemaResolver));
     }
+
+    /// <summary>
+    /// 测试专用：把观察者超时改成较短值，避免用例真的等满 <see cref="ObserverTimeout"/>。
+    /// <para>仅供 <c>InternalsVisibleTo</c> 的测试程序集使用；生产路径永远用默认值。</para>
+    /// </summary>
+    internal void OverrideObserverTimeoutForTest(TimeSpan timeout) => _observerTimeout = timeout;
 
     /// <summary>跑一轮执行：模型/模式落盘、指令注入、投影事件、终态落盘，返回终态记录。不做忙闲/循环管理。</summary>
     public async Task<ExecutionRecord> RunOnceAsync(
@@ -320,6 +338,9 @@ internal sealed class ExecutionRunner : IExecutionRunner
                 // 令牌已在本方法入参绑定本记录（executionToken），BuildAgentContext 与 ExecuteAsync 共用同一令牌。
                 var loopFailed = false;
                 string? loopError = null;
+                // 已计入事实的 LoopId：终态事件的重复投递、或「Complete + Cancelled」先后到达时，
+                // 同一 LoopId 只计一次，避免成本被算两遍（与「累计」正交，两者都需要）。
+                var terminalLoopIds = new HashSet<string>(StringComparer.Ordinal);
                 await foreach (var evt in executionRouter.ExecuteAsync(
                     context.Agent,
                     messages,
@@ -335,11 +356,16 @@ internal sealed class ExecutionRunner : IExecutionRunner
                     }
                     else if (evt is LoopCompleteEvent loopEnd)
                     {
-                        // 步数 / 用量 / 耗时是**累计**事实：多段循环（含重试重开）必须逐段相加，
-                        // 取最后一次会系统性低估成本，让上层的账本与反思节奏判错。
-                        totalSteps += loopEnd.TotalSteps;
-                        usage = MergeUsage(usage, loopEnd.Usage);
-                        loopDuration += loopEnd.Duration;
+                        // 步数 / 用量 / 耗时按**累计**处理：将来若出现多段终态（分片执行等），
+                        // 累计天然正确，取最后一次会系统性低估成本。
+                        // 但**同一个 LoopId 只能计一次**：终态事件的重复投递或「Complete 后紧跟 Cancelled」
+                        // 都不得把同一批事实算两遍（见下方的去重集合）。
+                        if (terminalLoopIds.Add(loopEnd.LoopId))
+                        {
+                            totalSteps += loopEnd.TotalSteps;
+                            usage = MergeUsage(usage, loopEnd.Usage);
+                            loopDuration += loopEnd.Duration;
+                        }
 
                         if (!loopEnd.Success)
                         {
@@ -349,10 +375,14 @@ internal sealed class ExecutionRunner : IExecutionRunner
                     }
                     else if (evt is LoopCancelledEvent loopCancelled)
                     {
-                        // 取消路径不产出 LoopCompleteEvent，部分事实只能从 LoopCancelledEvent 取：
-                        // 不累计就会把「取消前已完成的工作」全部记为 0。
-                        totalSteps += loopCancelled.CompletedSteps;
-                        usage = MergeUsage(usage, loopCancelled.PartialUsage);
+                        // 取消路径**不产出** LoopCompleteEvent（AgentExecutor 的 OCE 分支只写本事件），
+                        // 部分事实只能从这里取：不累计就会把「取消前已完成的工作」全部记为 0。
+                        // 与 LoopComplete 共用同一个去重集合：同一 LoopId 已有终态事实时不再重复计入。
+                        if (terminalLoopIds.Add(loopCancelled.LoopId))
+                        {
+                            totalSteps += loopCancelled.CompletedSteps;
+                            usage = MergeUsage(usage, loopCancelled.PartialUsage);
+                        }
                     }
 
                     var liveSession = sessionManager.Get(record.SessionId) ?? session;
@@ -462,7 +492,9 @@ internal sealed class ExecutionRunner : IExecutionRunner
             }
 
             // === 组装终态事实并发布 + 扇出观察者（落盘之后：事件里的快照与磁盘一致） ===
-            // 组装本身失败（如会话关系读取异常）不得吞掉终态事件：整体降级为记录直出的最小快照。
+            // 组装所需的外部数据（会话关系）已在 ResolveSessionRelation 内部兜底（读失败按顶层），
+            // 故此处不再包一层 try/catch：真出现未预期异常时让 finally 抛出更利于暴露缺陷，
+            // 而不是把「组装失败」伪装成「一切正常的最小快照」。
             var outcome = BuildOutcome(record, scope.ServiceProvider, agentExecuted, executedAgentName, totalSteps, usage, loopDuration);
 
             // 发布执行终态事件：UI/TUI 据此结束「执行中」态并刷新。
@@ -471,7 +503,6 @@ internal sealed class ExecutionRunner : IExecutionRunner
             {
                 SessionId = record.SessionId,
                 ExecutionId = record.ExecutionId,
-                Status = record.Status,
                 Outcome = outcome
             });
 
@@ -566,13 +597,16 @@ internal sealed class ExecutionRunner : IExecutionRunner
     /// <summary>
     /// 扇出终态给全部观察者。
     /// <para>
-    /// 每个观察者独立 try/catch（一个失败不阻断其它、也不影响本轮终态）；异常只记 <c>LogWarning</c>。
+    /// 每个观察者独立 try/catch 与独立超时（一个失败/超时都不阻断其它、也不影响本轮终态）；
+    /// 异常与超时只记 <c>LogWarning</c>。
     /// 取消令牌一律用 <see cref="CancellationToken.None"/>：本轮被取消同样是一次有效终态，
     /// 观察者必须收到通知，不能因为执行令牌已取消而被静默跳过。
     /// </para>
     /// <para>
-    /// 依次 <c>await</c> 而非 fire-and-forget：契约要求实现「尽快返回」（典型实现只做入队），
-    /// 顺序等待既保证异常可捕获（不产生未观察的 Task 异常），也让扇出完成有确定性观测点。
+    /// 依次 <c>await</c>（带超时）而非 fire-and-forget：契约要求实现「毫秒级返回」，
+    /// 正常情况下 <c>await</c> 的代价是一次入队调用的开销；顺序等待保证 async 方法
+    /// <c>await</c> 之后抛出的异常（落在返回的 Task 上）也能被这里捕获隔离，
+    /// 而丢弃 Task（<c>_ = ...</c>）会让这类异常变成未观察异常，测试也无确定性观测点。
     /// </para>
     /// </summary>
     private async Task FanOutObserversAsync(IServiceProvider services, ExecutionOutcome outcome)
@@ -596,7 +630,21 @@ internal sealed class ExecutionRunner : IExecutionRunner
                 if (!observer.ShouldObserve(outcome))
                     continue;
 
-                await observer.OnExecutionCompletedAsync(outcome, CancellationToken.None).ConfigureAwait(false);
+                // 超时兜底：观察者契约要求毫秒级返回，超时即视为「实现违约」。
+                // 不设超时会让一个慢观察者连带阻塞 DeliverAndAwaitAsync 的兑现与全局并发额度
+                // （RunOnceAsync 返回前必须先走完 finally）。
+                await observer
+                    .OnExecutionCompletedAsync(outcome, CancellationToken.None)
+                    .WaitAsync(_observerTimeout)
+                    .ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning(
+                    "终态观察者超时（已隔离，不影响其它观察者）: Observer={Observer}, ExecutionId={ExecutionId}, TimeoutSeconds={TimeoutSeconds}",
+                    observerName,
+                    outcome.ExecutionId,
+                    _observerTimeout.TotalSeconds);
             }
             catch (Exception ex)
             {
