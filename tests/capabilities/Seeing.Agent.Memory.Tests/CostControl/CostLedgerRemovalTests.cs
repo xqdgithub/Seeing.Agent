@@ -6,6 +6,7 @@ using Moq;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Memory.Abstractions;
+using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Core.Graph;
 using Seeing.Agent.Memory.Extensions;
 using Seeing.Agent.Memory.Integration.Tools;
@@ -20,6 +21,10 @@ namespace Seeing.Agent.Memory.Tests.CostControl;
 /// 与一个同名 <c>TokenUsage</c> record，与 <see cref="Seeing.Agent.Abstractions.Llm.TokenUsage"/> 重名并存且零生产消费者。
 /// Token 用量的唯一权威来源是 <see cref="Seeing.Agent.Abstractions.Execution.ExecutionOutcome.Usage"/>。
 /// </para>
+/// <para>
+/// 同批清理的还有两处配套残留：从未被生产代码调用的 <c>SchemaManager</c>（其 V1 迁移唯一地建了
+/// <c>token_usage</c>/<c>quota_state</c> 死表），以及可写可落盘却永久无效的 <c>MemoryCostOptions</c>。
+/// </para>
 /// </summary>
 public sealed class CostLedgerRemovalTests
 {
@@ -32,6 +37,23 @@ public sealed class CostLedgerRemovalTests
         {
             "ITokenTracker", "IQuotaManager", "SqliteTokenTracker", "DailyQuotaManager",
         });
+    }
+
+    [Fact]
+    public void Memory_Assembly_Should_Not_Define_SchemaManager()
+    {
+        var names = typeof(MemoryModule).Assembly.GetTypes().Select(t => t.Name).ToArray();
+
+        names.Should().NotContain(new[] { "SchemaManager", "IMigration", "V1_InitialSchema" });
+    }
+
+    [Fact]
+    public void MemoryOptions_Should_Not_Expose_Cost()
+    {
+        typeof(MemoryOptions).GetProperty("Cost").Should().BeNull(
+            "MemoryCostOptions 从未被任何代码读取，但它会被序列化写进 memory.json，属用户可见的无效配置");
+        typeof(MemoryOptions).Assembly.GetTypes().Select(t => t.Name)
+            .Should().NotContain("MemoryCostOptions");
     }
 
     [Fact]

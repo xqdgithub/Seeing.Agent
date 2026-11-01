@@ -146,11 +146,11 @@
 | IMemoryService | 记忆服务门面 | 合规（Service） | **保留** |
 | IMemorySessionEvents | 记忆会话事件 | 合规（Events） | **保留** |
 | IMemoryWorkQueue | 记忆工作队列 | 合规（Queue） | **保留** |
-| IQuotaManager | 配额管理 | 合规（Manager） | **保留** |
+| IQuotaManager | 配额管理 | 合规（Manager） | **已删除（T7）**：零生产消费者 |
 | IRateLimiter | 限流器 | 合规（Limiter） | **保留** |
 | ISessionActivityTracker | 会话活动跟踪器 | 合规（Tracker） | **保留** |
 | ISessionMemoryBuffer | 会话记忆缓冲 | 合规（Buffer） | **保留** |
-| ITokenTracker | Token 跟踪器 | 合规（Tracker） | **保留** |
+| ITokenTracker | Token 跟踪器 | 合规（Tracker） | **已删除（T7）**：零生产消费者，且与 `Abstractions.Llm.TokenUsage` 的 DTO 重名 |
 | IVectorIndex | 向量索引 | 合规（Index） | **保留** |
 
 ## 七、Seeing.Agent.TokenBudget（7 个，扩展包内部契约，本次不动）

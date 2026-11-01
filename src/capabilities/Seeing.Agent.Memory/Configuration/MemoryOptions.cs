@@ -8,7 +8,6 @@ public sealed class MemoryOptions
     public MemoryEvolutionOptions Evolution { get; set; } = new();
     public MemoryEmbeddingOptions Embedding { get; set; } = new();
     public MemoryRetrievalOptions Retrieval { get; set; } = new();
-    public MemoryCostOptions Cost { get; set; } = new();
 
     public bool IsEmbeddingConfigured =>
         !string.IsNullOrWhiteSpace(Embedding.Provider)
@@ -78,8 +77,5 @@ public sealed class MemoryRetrievalOptions
     public List<string> SearchTypes { get; set; } = new() { "daily", "digest" };
 }
 
-public sealed class MemoryCostOptions
-{
-    public long DailyTokenQuota { get; set; } = 1_000_000;
-    public int RateLimitPerMinute { get; set; } = 60;
-}
+// 原 Cost 配置节已删除：它从未被任何代码读取，但会随 MemoryOptions 序列化写进
+// memory.json，属于“用户改了没效果”的无效配置。令牌用量请查 ExecutionOutcome.Usage。
