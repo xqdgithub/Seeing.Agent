@@ -374,12 +374,18 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                         // 残留等待（消息被第三方 trim/revert 删除）是已知边界，见
                         // ISessionRuntime.DeliverAndAwaitAsync 的 remarks。
                         //
-                        // Stop 窗口的闭合是**两阶段联合**，不可只归因于其中一处：
-                        //   ① StopAsync 先把会话加入 _stoppedSessions，再扫描取消等待槽（两个独立步骤）；
-                        //   ② 投递侧落盘后复查 _stoppedSessions 并主动抛取消。
-                        // 若只有 ①：循环已退出且扫描时该等待槽尚未 Persisted 会被跳过 → 漏；
-                        // 若只有 ②：等待槽在复查之前就已建立、且循环此后才退出 → 漏。
-                        // 两者叠加才闭合「已落盘但循环已退出」的窗口。
+                        // Stop 窗口的闭合依赖**两处独立动作**，缺任一处都会留下挂起：
+                        //   ① StopAsync 先把会话加入 _stoppedSessions，再在 gate 外扫描取消**已落盘**的等待槽；
+                        //   ② 投递侧在落盘之后、进入等待之前复查 _stoppedSessions 并主动抛取消。
+                        // 缺 ① 的漏法：等待槽已落盘且复查通过（当时还没 Stop），随后才发生 Stop，
+                        //            再没有扫描去取消它 —— 只能靠调用方 ct 或后续 Dispose 收口。
+                        // 缺 ② 的漏法：Stop 恰好落在「消息已落盘、循环尚未消费」的窄窗，
+                        //            ① 的扫描因该等待槽当时尚未 Persisted 而跳过它，之后循环退出，
+                        //            该次等待永远等不到终态。
+                        //
+                        // ⚠ 本处**没有单点测试固定**：两处都需要纳秒级时序注入才能构造「只删其一」的失败，
+                        //   审查者实测删除 ① 或删除 ② 各自都全绿。改动 ①② 任一处，必须人工推演上述两条漏法，
+                        //   不要依赖测试兜底。（诚实标注优于虚假承诺。）
                         RemoveLoop(sessionId, handle);
                         break;
                     }
@@ -478,12 +484,7 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     {
                         // 按身份清空：只有 CurrentExecution 仍是我这一轮的记录才清。
                         // 无条件置 null 会把「另一条路径刚写入的记录」一并抹掉（与 TeardownLoop 同型缺陷）。
-                        if (record is not null &&
-                            _states.TryGetValue(sessionId, out var tickState) &&
-                            ReferenceEquals(tickState.CurrentExecution, record))
-                        {
-                            tickState.CurrentExecution = null;
-                        }
+                        ClearRoundCurrentExecution(sessionId, record);
 
                         // 本轮终态后释放专属 CTS：RunOnceAsync 已返回（含取消路径），执行体不再持有令牌。
                         // Stop/Interrupt 与释放存在窄竞态，二者均捕获 ObjectDisposedException，视为已终态。
@@ -555,6 +556,30 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
     }
 
     /// <summary>
+    /// 轮内收尾：本轮执行结束后按**记录身份**清空 <c>CurrentExecution</c>。
+    /// <para>
+    /// 与 <see cref="TeardownLoop"/> 是同型守卫但位置不同：这里覆盖「正常跑完一轮」，
+    /// 那里覆盖「循环整体退出（break/OCE）」。两处都必须按身份，否则会抹掉另一条路径刚写入的记录。
+    /// </para>
+    /// <para>internal 供测试直接钉住轮内守卫（顶层守卫由 <see cref="TeardownLoop"/> 单测覆盖）。</para>
+    /// </summary>
+    internal void ClearRoundCurrentExecution(string sessionId, ExecutionRecord? record)
+    {
+        if (record is null)
+            return;
+
+        // 接线可观测点：证明逐轮 finally 确实带着本轮记录进来（而非恒传 null）。
+        // 没有它时「轮内清空被整体删掉」不会被状态断言发现——下一轮会重新赋值 CurrentExecution。
+        Interlocked.Increment(ref _roundClearWithRecordCount);
+
+        if (_states.TryGetValue(sessionId, out var state) &&
+            ReferenceEquals(state.CurrentExecution, record))
+        {
+            state.CurrentExecution = null;
+        }
+    }
+
+    /// <summary>
     /// 循环收尾（**唯一**的循环退出清理入口）：摘除本循环的活跃登记 + 按记录身份清理运行态。
     /// <para>
     /// <b>为什么按身份清</b>：<see cref="RemoveLoop"/> 摘除后，投递线程可立刻拉起**新**循环并为它写入
@@ -591,9 +616,15 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
     }
 
     private int _teardownWithOwnedCount;
+    private int _roundClearWithRecordCount;
+
+    #region 测试接缝（仅供测试项目，经 InternalsVisibleTo 可见；不参与生产行为）
 
     /// <summary>测试用：返回「收尾时确实带着本循环记录」的累计次数（用于钉住 RunLoopAsync 的接线）。</summary>
     internal int TeardownWithOwnedCount => Volatile.Read(ref _teardownWithOwnedCount);
+
+    /// <summary>测试用：返回「轮内收尾确实带着本轮记录」的累计次数（用于钉住逐轮 finally 的接线）。</summary>
+    internal int RoundClearWithRecordCount => Volatile.Read(ref _roundClearWithRecordCount);
 
     /// <summary>测试用：直接写入某会话的 CurrentExecution（构造跨循环交错的确定性场景）。</summary>
     internal void SetCurrentExecutionForTest(string sessionId, ExecutionRecord record) =>
@@ -602,6 +633,18 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
     /// <summary>测试用：直接读取某会话的 CurrentExecution。</summary>
     internal ExecutionRecord? GetCurrentExecutionForTest(string sessionId) =>
         _states.TryGetValue(sessionId, out var state) ? state.CurrentExecution : null;
+
+    /// <summary>
+    /// 测试用：该会话是否仍有活跃循环登记。
+    /// 用于钉住收尾的「句柄值匹配摘除」——传错句柄会让条目泄漏，此处可观测。
+    /// </summary>
+    internal bool HasActiveLoopForTest(string sessionId) => _activeLoops.ContainsKey(sessionId);
+
+    /// <summary>测试用：预置一个活跃循环登记条目（构造「传错句柄」的确定性场景）。</summary>
+    internal void RegisterActiveLoopForTest(string sessionId, LoopHandle handle) =>
+        _activeLoops[sessionId] = handle.Loop;
+
+    #endregion
 
     /// <summary>登记等待槽：key = 入站消息 Id。调用点保证消息尚未落盘，故不可能已被消费。</summary>
     private void RegisterAwaiter(string messageId, ExecutionAwaiter awaiter)

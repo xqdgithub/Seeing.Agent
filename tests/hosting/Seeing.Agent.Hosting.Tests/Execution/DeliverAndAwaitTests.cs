@@ -309,11 +309,77 @@ public class DeliverAndAwaitTests
         await runtime.DeliverAndAwaitAsync(MakeMessage("ses_wire", "hi"), CancellationToken.None)
             .WaitAsync(TimeSpan.FromSeconds(10));
 
-        // 等循环真正退出（无未读 → 摘除 + 收尾）。
-        await WaitUntilAsync(() => !runtime.HasAnyActiveExecution(), TimeSpan.FromSeconds(5));
+        // 直接等计数量本身，而不是等 HasAnyActiveExecution。
+        // 二者不是同一原子事实：CurrentExecution 在逐轮 finally 就已被清空，
+        // 而计数递增发生在其后的 TeardownLoop —— 等前者会在收尾尚未执行时提前返回（实测 3.3% 假红）。
+        await WaitUntilAsync(() => runtime.TeardownWithOwnedCount > 0, TimeSpan.FromSeconds(10));
 
         runtime.TeardownWithOwnedCount.Should().BeGreaterThan(
             0, "RunLoopAsync 必须把本轮记录交给收尾，而不是恒传 null");
+    }
+
+    [Fact]
+    public void TeardownLoop_Should_Remove_Own_Loop_Entry_But_Not_Another()
+    {
+        // 变异 6 的护栏：收尾必须按**句柄值匹配**摘除 _activeLoops。
+        // 传错句柄时不能误删别人条目，同时自己的条目必须被摘掉——否则条目泄漏，
+        // 该会话会被永久认为「有活跃循环」，投递不再启动新循环。
+        var runtime = BuildRuntime(out _, out _);
+
+        var ownHandle = NewLoopHandle();
+        var otherHandle = NewLoopHandle();
+        runtime.RegisterActiveLoopForTest("ses_leak", ownHandle);
+        runtime.RegisterActiveLoopForTest("ses_leak_other", otherHandle);
+
+        // 用自己的句柄收尾：自己的条目必须被摘除。
+        runtime.TeardownLoop("ses_leak", ownHandle, owned: null);
+        runtime.HasActiveLoopForTest("ses_leak").Should().BeFalse(
+            "收尾必须摘除本循环的活跃登记，否则条目泄漏、会话被永久判定为繁忙");
+
+        // 用错句柄收尾：不得误删他人条目（值匹配语义）。
+        runtime.TeardownLoop("ses_leak_other", NewLoopHandle(), owned: null);
+        runtime.HasActiveLoopForTest("ses_leak_other").Should().BeTrue(
+            "传错句柄不得误删另一个循环的登记");
+    }
+
+    [Fact]
+    public void ClearRoundCurrentExecution_Should_Not_Clear_Another_Record()
+    {
+        // 变异 9 的护栏：轮内 finally 与顶层同型——必须按身份清空。
+        // 去掉轮内守卫后，一次「执行中写入的记录」会被并发的收尾抹掉，
+        // 状态断言可能因后续重新赋值而看不出来，故直接钉住该方法本身。
+        var runtime = BuildRuntime(out _, out _);
+
+        var roundRecord = Record("exec_round");
+        var foreignRecord = Record("exec_foreign");
+
+        // 场景：轮内收尾时，状态里已是另一条路径写入的记录。
+        runtime.SetCurrentExecutionForTest("ses_tick", foreignRecord);
+        runtime.ClearRoundCurrentExecution("ses_tick", roundRecord);
+
+        runtime.GetCurrentExecutionForTest("ses_tick").Should().BeSameAs(
+            foreignRecord, "轮内收尾不得清掉他人记录");
+
+        // 自己的记录必须能清掉（否则轮内残留会让 Stop 误以为仍有在途执行）。
+        runtime.SetCurrentExecutionForTest("ses_tick", roundRecord);
+        runtime.ClearRoundCurrentExecution("ses_tick", roundRecord);
+        runtime.GetCurrentExecutionForTest("ses_tick").Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RunLoop_Should_Clear_Round_Record_Via_Round_Guard()
+    {
+        // 变异 9 的接线护栏：轮内 finally 必须真的带着本轮记录调用守卫（而非恒传 null）。
+        var runtime = BuildRuntime(out _, out _);
+        runtime.RoundClearWithRecordCount.Should().Be(0, "初始应无轮内收尾记录");
+
+        await runtime.DeliverAndAwaitAsync(MakeMessage("ses_tickwire", "hi"), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        await WaitUntilAsync(() => runtime.RoundClearWithRecordCount > 0, TimeSpan.FromSeconds(10));
+
+        runtime.RoundClearWithRecordCount.Should().BeGreaterThan(
+            0, "逐轮 finally 必须带着本轮记录调用守卫，而不是恒传 null");
     }
 
     [Fact]
@@ -469,8 +535,20 @@ public class DeliverAndAwaitTests
         }
     }
 
-    /// <summary>测试用：构造一个未被任何循环登记的句柄（TeardownLoop 需值匹配摘除，不能误删他人）。</summary>
-    private static SessionRuntime.LoopHandle NewLoopHandle() => new();
+    /// <summary>
+    /// 测试用：构造一个未被任何循环登记的句柄。
+    /// <para>
+    /// 特意赋予**唯一且永不完成**的 Loop Task：<c>RemoveLoop</c> 是按 (sessionId, handle.Loop) 值匹配的，
+    /// 若所有句柄的 Loop 都是默认的同一个 <c>Task.CompletedTask</c>，值匹配将退化为只比 sessionId，
+    /// 测不出「传错句柄」这类缺陷。
+    /// </para>
+    /// </summary>
+    private static SessionRuntime.LoopHandle NewLoopHandle()
+    {
+        var handle = new SessionRuntime.LoopHandle();
+        handle.Loop = new TaskCompletionSource().Task; // 永不完成，且每个句柄各不相同
+        return handle;
+    }
 
     /// <summary>测试用：构造一个指定 Id 的执行记录。</summary>
     private static ExecutionRecord Record(string executionId, string sessionId = "") => new()
