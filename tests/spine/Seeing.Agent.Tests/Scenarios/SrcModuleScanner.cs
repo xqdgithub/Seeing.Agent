@@ -1,7 +1,5 @@
 using Seeing.Agent.Abstractions.Modules;
 using System.Reflection;
-using System.Reflection.Metadata;
-using System.Reflection.PortableExecutable;
 
 namespace Seeing.Agent.Tests.Scenarios;
 
@@ -14,60 +12,6 @@ namespace Seeing.Agent.Tests.Scenarios;
 /// </summary>
 internal static class SrcModuleScanner
 {
-    /// <summary>
-    /// 按程序集名从 <c>src/</c> 构建产物读取其声明的全部类型全名（纯元数据读取，不加载依赖）。
-    /// </summary>
-    /// <param name="assemblyName">程序集简名，如 <c>Seeing.Agent.Memory</c>。</param>
-    /// <returns>类型全名集合；找不到产物或读取失败返回 null。</returns>
-    public static IReadOnlyList<string>? TryReadSrcAssemblyTypeNames(string assemblyName)
-    {
-        var path = FindSrcAssemblyPath(assemblyName);
-        if (path is null)
-            return null;
-
-        try
-        {
-            using var stream = File.OpenRead(path);
-            using var peReader = new PEReader(stream);
-            var reader = peReader.GetMetadataReader();
-            return reader.TypeDefinitions
-                .Select(handle =>
-                {
-                    var definition = reader.GetTypeDefinition(handle);
-                    var ns = reader.GetString(definition.Namespace);
-                    var name = reader.GetString(definition.Name);
-                    return string.IsNullOrEmpty(ns) ? name : $"{ns}.{name}";
-                })
-                .ToList();
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static string? FindSrcAssemblyPath(string assemblyName)
-    {
-        var root = FindRepoRoot();
-        var srcRoot = Path.Combine(root, "src");
-        if (!Directory.Exists(srcRoot))
-            return null;
-
-        var config = AppContext.BaseDirectory.Contains(
-            $"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}",
-            StringComparison.OrdinalIgnoreCase)
-            ? "Release"
-            : "Debug";
-
-        var fileName = assemblyName + ".dll";
-        return Directory
-            .EnumerateFiles(srcRoot, fileName, SearchOption.AllDirectories)
-            .FirstOrDefault(path =>
-                path.Contains(
-                    $"{Path.DirectorySeparatorChar}{config}{Path.DirectorySeparatorChar}net10.0",
-                    StringComparison.OrdinalIgnoreCase));
-    }
-
     public static IReadOnlyList<string> DiscoverImplementedModuleIds()
     {
         var ids = new SortedSet<string>(StringComparer.Ordinal);

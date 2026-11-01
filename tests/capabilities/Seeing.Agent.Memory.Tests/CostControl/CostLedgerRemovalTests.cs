@@ -69,6 +69,12 @@ public sealed class CostLedgerRemovalTests
             .Should().BeEmpty("配额概念随 IQuotaManager 一并移除");
 
     [Fact]
+    public void Memory_Assembly_Should_Not_Define_MemoryRecallHandler() =>
+        typeof(MemoryModule).Assembly.GetTypes().Select(t => t.Name)
+            .Should().NotContain("MemoryRecallHandler",
+                "记忆注入已迁到 IContextSource 管道，旧的 hook handler 不得复活");
+
+    [Fact]
     public void AddMemoryServices_Should_Not_Register_CostLedger_Descriptors()
     {
         // Arrange

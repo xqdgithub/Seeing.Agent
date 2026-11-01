@@ -7,7 +7,6 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Llm;
-using Seeing.Agent.Tests.Scenarios;
 using System.Reflection;
 using Xunit;
 
@@ -78,16 +77,6 @@ public class LlmTransportOnlyTests
         }
 
         request.SystemPrompt.Should().Be("原始提示");
-    }
-
-    [Fact]
-    public void Memory_Assembly_Should_Not_Define_MemoryRecallHandler()
-    {
-        // Seeing.Agent.Tests 不引用 Memory 包，故按 src 构建产物做元数据读取
-        var typeNames = SrcModuleScanner.TryReadSrcAssemblyTypeNames("Seeing.Agent.Memory");
-        typeNames.Should().NotBeNull("Seeing.Agent.Memory 应随解决方案构建产出");
-
-        typeNames!.Should().NotContain(name => name.EndsWith(".MemoryRecallHandler", StringComparison.Ordinal));
     }
 
     private static ChatRequest MakeRequest(string? systemPrompt = null) => new()
