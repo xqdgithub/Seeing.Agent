@@ -16,8 +16,8 @@ public interface ISessionRuntime
     /// <list type="bullet">
     /// <item><see cref="WaitForIdleAsync"/> 只保证「会话当前空闲」，既不知道是**哪一轮**跑完的，
     /// 也无法与并发投递对齐——调用方只能轮询并用「猜最近一次执行」的方式补足，连续投递时天然歧义。</item>
-    /// <item>本方法把等待**绑定到 executionId**：返回的 outcome 就是本次投递所在的执行，
-    /// 连续多次投递不会串台；且不会在无执行发生时静默返回。</item>
+    /// <item>本方法把等待**绑定到本次投递的那一轮执行**（实现层按消息归属锚定 executionId），
+    /// 返回的 outcome 就是本次投递所在的执行；连续多次投递不会串台，也不会在无执行发生时静默返回。</item>
     /// </list>
     /// <para>
     /// 语义约定：
