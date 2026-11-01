@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Background;
@@ -148,6 +149,9 @@ public static class MemoryServiceExtensions
         services.TryAddSingleton<ChatMemoryHandler>();
         services.TryAddSingleton<ToolMemoryHandler>();
         services.TryAddSingleton<AgentTurnMemoryHandler>();
+        // 终态观察者：用工厂指向同一单例，避免「具体类型 + 接口」各建一个实例导致内部状态分裂。
+        services.AddSingleton<IExecutionOutcomeObserver>(
+            sp => sp.GetRequiredService<AgentTurnMemoryHandler>());
         services.TryAddSingleton<MemoryRecallHandler>();
 
         services.TryAddSingleton<MemorySearchTool>();

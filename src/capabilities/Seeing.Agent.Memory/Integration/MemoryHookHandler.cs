@@ -1,9 +1,11 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Core.Models;
+using Seeing.Session.Core;
 
 namespace Seeing.Agent.Memory.Integration;
 
@@ -125,16 +127,20 @@ public sealed class ToolMemoryHandler : IHookHandler
 }
 
 /// <summary>
-/// 顶层 Agent 完成后累计轮次，达到阈值则 flush。
+/// 顶层 Agent 一轮完成后的终态观察者：累计轮次，达到阈值则 flush。
+/// <para>
+/// 历史实现挂在 <c>agent.after_invoke</c> 钩子上，但该钩子点在全仓没有触发点，
+/// 导致 <see cref="MemoryExtractionOptions.ExtractEveryNTurns"/> 从未生效。
+/// 现改由 <see cref="IExecutionOutcomeObserver"/> 承载：终态由执行链在
+/// <c>ExecutionRunner</c> 的 finally 中统一扇出，本处理器只需消费已有的
+/// <see cref="ExecutionOutcome"/> 事实，不回读会话、不做 I/O。
+/// </para>
 /// </summary>
-public sealed class AgentTurnMemoryHandler : IHookHandler
+public sealed class AgentTurnMemoryHandler : IExecutionOutcomeObserver
 {
     private readonly IMemoryFlushService _flush;
     private readonly IOptionsMonitor<MemoryOptions> _options;
     private readonly ILogger<AgentTurnMemoryHandler>? _logger;
-
-    public HookSpec Spec => HookRegistry.AgentAfterInvoke;
-    public int Priority => 10;
 
     public AgentTurnMemoryHandler(
         IMemoryFlushService flush,
@@ -146,25 +152,53 @@ public sealed class AgentTurnMemoryHandler : IHookHandler
         _logger = logger;
     }
 
-    public Task<HookResult> ExecuteAsync(HookPayload payload)
+    /// <summary>
+    /// 判定本轮终态是否计入记忆轮次节奏。
+    /// <para>
+    /// 六条门禁（全部满足才观察）：抽取开关开启、轮次阈值 &gt; 0、本轮真正执行了 Agent
+    /// （排除命令短路与纯系统批次）、属于顶层会话（排除子代理会话）、来源不是复盘会话自身、
+    /// 终态为 <see cref="ExecutionStatus.Completed"/>（失败/中断不复盘）、以及会话 ID 非空。
+    /// </para>
+    /// </summary>
+    /// <param name="outcome">本轮执行的终态事实。</param>
+    /// <returns><c>true</c> 表示需要触发一次轮次 flush。</returns>
+    public bool ShouldObserve(ExecutionOutcome outcome)
+    {
+        var extraction = _options.CurrentValue.Extraction;
+        return extraction.Enabled
+            && extraction.ExtractEveryNTurns > 0
+            && outcome.AgentExecuted
+            && outcome.IsTopLevel
+            && outcome.Origin != SessionOrigin.Reflection
+            && outcome.Status == ExecutionStatus.Completed
+            && !string.IsNullOrWhiteSpace(outcome.SessionId);
+    }
+
+    /// <summary>
+    /// 终态回调：达到轮次阈值时尝试 flush 该会话缓冲。
+    /// <para>异常一律在内部消化并记日志，绝不外抛——观察者失败不得影响执行链。</para>
+    /// </summary>
+    /// <param name="outcome">本轮执行的终态事实。</param>
+    /// <param name="ct">取消令牌（本处理为同步入队，不观察取消）。</param>
+    public Task OnExecutionCompletedAsync(ExecutionOutcome outcome, CancellationToken ct = default)
     {
         try
         {
             var opts = _options.CurrentValue;
             if (!opts.Extraction.Enabled || opts.Extraction.ExtractEveryNTurns <= 0)
-                return Task.FromResult(HookResult.Success);
+                return Task.CompletedTask;
 
-            var sessionId = payload.SessionId;
+            var sessionId = outcome.SessionId;
             if (string.IsNullOrWhiteSpace(sessionId))
-                return Task.FromResult(HookResult.Success);
+                return Task.CompletedTask;
 
             _flush.TryFlushAfterTurn(sessionId);
-            return Task.FromResult(HookResult.Success);
+            return Task.CompletedTask;
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "AgentTurnMemoryHandler failed");
-            return Task.FromResult(HookResult.Success);
+            return Task.CompletedTask;
         }
     }
 }

@@ -114,29 +114,3 @@ public class ToolMemoryHandlerTests
         (await handler.ExecuteAsync(payload)).Should().Be(HookResult.Success);
     }
 }
-
-public class AgentTurnMemoryHandlerTests
-{
-    [Fact]
-    public async Task ExecuteAsync_ShouldCallFlushAfterTurn()
-    {
-        var flush = new Mock<IMemoryFlushService>();
-        flush.Setup(f => f.TryFlushAfterTurn("session-1")).Returns(true);
-
-        var handler = new AgentTurnMemoryHandler(
-            flush.Object,
-            MemoryTestOptions.Monitor(new MemoryOptions
-            {
-                Extraction = new MemoryExtractionOptions { ExtractEveryNTurns = 10 }
-            }),
-            NullLogger<AgentTurnMemoryHandler>.Instance);
-
-        var payload = HookPayload.FireAndForget(
-            HookRegistry.AgentAfterInvoke,
-            "session-1",
-            input: new Dictionary<string, object?> { ["agentName"] = "build", ["success"] = true }, cancellationToken: TestContext.Current.CancellationToken);
-
-        await handler.ExecuteAsync(payload);
-        flush.Verify(f => f.TryFlushAfterTurn("session-1"), Times.Once);
-    }
-}

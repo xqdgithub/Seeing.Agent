@@ -93,7 +93,8 @@ public class MemoryModuleHookLifecycleTests
 
         hooks.Count(HookRegistry.ChatAfterComplete).Should().Be(1);
         hooks.Count(HookRegistry.ToolExecuteAfter).Should().Be(1);
-        hooks.Count(HookRegistry.AgentAfterInvoke).Should().Be(1);
+        // 轮次触发已迁移至 IExecutionOutcomeObserver，不再登记 agent.after_invoke 钩子
+        hooks.Count(HookRegistry.AgentAfterInvoke).Should().Be(0);
         hooks.Count(HookRegistry.ChatBeforeStart).Should().Be(1);
     }
 
