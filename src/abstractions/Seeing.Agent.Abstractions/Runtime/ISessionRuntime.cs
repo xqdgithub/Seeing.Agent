@@ -63,8 +63,14 @@ public interface ISessionRuntime
     /// <para>
     /// <b>调用方契约</b>：本方法可能在 <b>没有执行发生</b>的情况下长时间不返回，
     /// 因此<b>务必</b>传入带超时的 <paramref name="ct"/>（如 <c>new CancellationTokenSource(timeout)</c>），
-    /// 不要依赖本方法自身收敛。<see cref="StopAsync"/>、运行时释放、<see cref="DiscardPendingAsync"/>
-    /// 仍会主动结束等待。
+    /// 不要依赖本方法自身收敛。
+    /// </para>
+    /// <para>
+    /// <b>下列机制只对「已经建立起来的等待」有效</b>（即本方法已进入等待阶段之后）：
+    /// <see cref="StopAsync"/>、<see cref="DiscardPendingAsync"/>、以及运行时释放（<c>Dispose</c>）
+    /// 会主动结束这些等待。<b>它们不覆盖「已释放之后再投递」</b>：
+    /// 运行时释放后调用本方法，消费循环会在取会话锁处直接退出，因此不会有任何一轮执行产生，
+    /// 该次等待<b>不会</b>被自动取消——务必先确认运行时仍可用，或依赖 <paramref name="ct"/> 兜底。
     /// </para>
     /// </remarks>
     Task<ExecutionOutcome> DeliverAndAwaitAsync(InboxMessage message, CancellationToken ct = default)

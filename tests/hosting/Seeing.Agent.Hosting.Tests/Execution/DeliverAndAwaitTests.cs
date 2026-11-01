@@ -247,41 +247,80 @@ public class DeliverAndAwaitTests
     }
 
     [Fact]
-    public void ClearCurrentExecutionIfOwned_Should_Not_Clear_Another_Loops_Record()
+    public void TeardownLoop_Should_Not_Clear_Another_Loops_Record()
     {
-        // 回归 1 的确定性单测：旧循环收尾时，若 CurrentExecution 已被**新循环**写入，
-        // 旧循环必须放手（身份不匹配）。无条件置 null 会抹掉新循环的在途记录，
-        // 使 Stop/Interrupt/Dispose 读不到 Cts、取消失效，CleanupIdleSessions 也会误判空闲。
+        // 回归 1 的**接线**单测（直接调用真实收尾入口 TeardownLoop，而不是孤立 helper）：
+        // 旧循环收尾时，若 CurrentExecution 已被**新循环**写入，旧循环必须放手（身份不匹配）。
+        // 无条件置 null 会抹掉新循环的在途记录，使 Stop/Interrupt/Dispose 读不到 Cts、
+        // 取消对该轮彻底失效，CleanupIdleSessions 也会误判空闲清掉运行态。
         var runtime = BuildRuntime(out _, out _);
 
         var oldLoopRecord = Record("exec_old");
         var newLoopRecord = Record("exec_new");
+        var oldLoopHandle = NewLoopHandle();
 
         // 场景：旧循环退出时，状态里已是新循环的记录。
         runtime.SetCurrentExecutionForTest("ses_race", newLoopRecord);
-        runtime.ClearCurrentExecutionIfOwned("ses_race", oldLoopRecord);
+        runtime.TeardownLoop("ses_race", oldLoopHandle, oldLoopRecord);
 
-        runtime.GetOverview("ses_race").CurrentExecution.Should().BeSameAs(
+        runtime.GetCurrentExecutionForTest("ses_race").Should().BeSameAs(
             newLoopRecord, "旧循环不得清掉新循环仍在途的记录");
 
         // 自己的记录仍然要能清掉（否则会永久残留，让 Stop 误以为有在途执行）。
-        runtime.ClearCurrentExecutionIfOwned("ses_race", newLoopRecord);
-        runtime.GetOverview("ses_race").CurrentExecution.Should().BeNull();
+        runtime.TeardownLoop("ses_race", oldLoopHandle, newLoopRecord);
+        runtime.GetCurrentExecutionForTest("ses_race").Should().BeNull(
+            "本循环自己的在途记录必须被清理，否则 Stop 会误以为仍有在途执行");
+    }
 
-        static ExecutionRecord Record(string executionId) => new()
-        {
-            ExecutionId = executionId,
-            SessionId = "ses_race",
-            Status = ExecutionStatus.Running,
-            StartedAt = DateTime.UtcNow
-        };
+    [Fact]
+    public void TeardownLoop_Without_Owned_Record_Must_Leave_CurrentExecution_Intact()
+    {
+        // 变异 2 的护栏：若 loopOwnedRecord 从未赋值（等价于 owned 恒为 null），
+        // 收尾就成了「永不清理」——本循环自己的记录会永久残留，Stop 之后仍报「有在途执行」。
+        // 这条断言钉住「正常的单循环退出必须清掉自己的记录」。
+        var runtime = BuildRuntime(out _, out _);
+        var handle = NewLoopHandle();
+
+        var owned = Record("exec_owned");
+        runtime.SetCurrentExecutionForTest("ses_own", owned);
+
+        // 正常路径：传入本循环的记录 → 必须清掉。
+        runtime.TeardownLoop("ses_own", handle, owned);
+        runtime.GetCurrentExecutionForTest("ses_own").Should().BeNull();
+
+        // 反向：传 null（等价 record 未赋值）时不应清别人 —— 但此时也没有「自己的记录」可留。
+        var foreign = Record("exec_foreign");
+        runtime.SetCurrentExecutionForTest("ses_own2", foreign);
+        runtime.TeardownLoop("ses_own2", handle, owned: null);
+        runtime.GetCurrentExecutionForTest("ses_own2").Should().BeSameAs(
+            foreign, "owned 为 null 时不得清空任何记录");
+    }
+
+    [Fact]
+    public async Task RunLoop_Should_Hand_Its_Own_Record_To_Teardown()
+    {
+        // 变异 2 的护栏：RunLoopAsync 必须把本循环最后创建的记录交给 TeardownLoop。
+        // 若 loopOwnedRecord 永不赋值（等价恒传 null），计数量恒为 0，本用例失败。
+        // 注意不能只靠「CurrentExecution 最终为 null」——逐轮 finally 已经清过，
+        // 外层的 null 赋值缺失会被完全掩盖。
+        var runtime = BuildRuntime(out _, out _);
+        runtime.TeardownWithOwnedCount.Should().Be(0, "初始应无收尾记录");
+
+        await runtime.DeliverAndAwaitAsync(MakeMessage("ses_wire", "hi"), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        // 等循环真正退出（无未读 → 摘除 + 收尾）。
+        await WaitUntilAsync(() => !runtime.HasAnyActiveExecution(), TimeSpan.FromSeconds(5));
+
+        runtime.TeardownWithOwnedCount.Should().BeGreaterThan(
+            0, "RunLoopAsync 必须把本轮记录交给收尾，而不是恒传 null");
     }
 
     [Fact]
     public async Task DeliverAndAwait_Should_Expose_InFlight_Execution_So_Stop_Can_Cancel_It()
     {
-        // 回归 1：旧循环退出后不得抹掉新循环的 CurrentExecution。
-        // 一旦被抹掉，StopAsync 读不到 Cts，取消对该轮彻底失效。
+        // 覆盖「在途执行对 Stop 可见且可取消」——注意：本用例**不**覆盖跨循环收尾清零回归
+        // （那条由 TeardownLoop_Should_Not_Clear_Another_Loops_Record 直接钉住接线）。
         var runtime = BuildRuntime(out _, out var runner);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -417,6 +456,30 @@ public class DeliverAndAwaitTests
 
     private static InboxSender MakeSender() =>
         new() { Kind = InboxSenderKind.System, Id = "test" };
+
+    /// <summary>轮询等待条件成立（测试内自用）。</summary>
+    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!condition())
+        {
+            if (DateTime.UtcNow >= deadline)
+                throw new TimeoutException("WaitUntil 条件超时");
+            await Task.Delay(20);
+        }
+    }
+
+    /// <summary>测试用：构造一个未被任何循环登记的句柄（TeardownLoop 需值匹配摘除，不能误删他人）。</summary>
+    private static SessionRuntime.LoopHandle NewLoopHandle() => new();
+
+    /// <summary>测试用：构造一个指定 Id 的执行记录。</summary>
+    private static ExecutionRecord Record(string executionId, string sessionId = "") => new()
+    {
+        ExecutionId = executionId,
+        SessionId = sessionId,
+        Status = ExecutionStatus.Running,
+        StartedAt = DateTime.UtcNow
+    };
 
     private static InboxMessage MakeMessage(string sessionId, string body) => new()
     {

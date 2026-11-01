@@ -372,8 +372,14 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                         // **不在同一临界区**，靠 gate 无法判对。所以这里**完全不取消等待槽**：
                         // 没有未读只是瞬时事实，消息可能已被上一轮消费（等待已兑现）。
                         // 残留等待（消息被第三方 trim/revert 删除）是已知边界，见
-                        // ISessionRuntime.DeliverAndAwaitAsync 的 remarks；
-                        // Stop 侧「已落盘但循环已退出」的窗口由投递侧复查 _stoppedSessions 兜住。
+                        // ISessionRuntime.DeliverAndAwaitAsync 的 remarks。
+                        //
+                        // Stop 窗口的闭合是**两阶段联合**，不可只归因于其中一处：
+                        //   ① StopAsync 先把会话加入 _stoppedSessions，再扫描取消等待槽（两个独立步骤）；
+                        //   ② 投递侧落盘后复查 _stoppedSessions 并主动抛取消。
+                        // 若只有 ①：循环已退出且扫描时该等待槽尚未 Persisted 会被跳过 → 漏；
+                        // 若只有 ②：等待槽在复查之前就已建立、且循环此后才退出 → 漏。
+                        // 两者叠加才闭合「已落盘但循环已退出」的窗口。
                         RemoveLoop(sessionId, handle);
                         break;
                     }
@@ -471,8 +477,13 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     finally
                     {
                         // 按身份清空：只有 CurrentExecution 仍是我这一轮的记录才清。
-                        // 无条件置 null 会把「另一条路径刚写入的记录」一并抹掉（顶层 finally 的同型缺陷）。
-                        ClearCurrentExecutionIfOwned(sessionId, record);
+                        // 无条件置 null 会把「另一条路径刚写入的记录」一并抹掉（与 TeardownLoop 同型缺陷）。
+                        if (record is not null &&
+                            _states.TryGetValue(sessionId, out var tickState) &&
+                            ReferenceEquals(tickState.CurrentExecution, record))
+                        {
+                            tickState.CurrentExecution = null;
+                        }
 
                         // 本轮终态后释放专属 CTS：RunOnceAsync 已返回（含取消路径），执行体不再持有令牌。
                         // Stop/Interrupt 与释放存在窄竞态，二者均捕获 ObjectDisposedException，视为已终态。
@@ -539,41 +550,58 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         }
         finally
         {
-            RemoveLoop(sessionId, handle);
-
-            // 清理本循环遗留的 CurrentExecution —— **只能按记录身份清**。
-            // RemoveLoop 摘除后，投递线程可立刻拉起新循环并为它写入自己的 CurrentExecution；
-            // 若此处无条件置 null，会抹掉新循环的在途记录，使 Stop/Interrupt/Dispose 读不到 Cts、
-            // 取消对该轮彻底失效，也让 CleanupIdleSessions 误判空闲清掉运行态。
-            ClearCurrentExecutionIfOwned(sessionId, loopOwnedRecord);
+            TeardownLoop(sessionId, handle, loopOwnedRecord);
         }
     }
+
+    /// <summary>
+    /// 循环收尾（**唯一**的循环退出清理入口）：摘除本循环的活跃登记 + 按记录身份清理运行态。
+    /// <para>
+    /// <b>为什么按身份清</b>：<see cref="RemoveLoop"/> 摘除后，投递线程可立刻拉起**新**循环并为它写入
+    /// 自己的 <c>CurrentExecution</c>；若此处无条件置 null，会抹掉新循环的在途记录，使
+    /// Stop/Interrupt/Dispose 读不到 <c>Cts</c>、取消对该轮彻底失效，也让 CleanupIdleSessions
+    /// 误判空闲清掉运行态。<paramref name="owned"/> 为本循环最后一次创建的记录（可能为 null）。
+    /// </para>
+    /// <para>
+    /// internal 且接收 <paramref name="handle"/> 与 <paramref name="owned"/> 而非在方法内读取：
+    /// 这样测试能直接调用**真实收尾接线**构造「旧循环收尾 vs 新循环已写入」的交错，
+    /// 而不是只测一个可被孤立的 helper（上一版正因只测 helper，回归仍无 CI 信号）。
+    /// </para>
+    /// </summary>
+    /// <param name="sessionId">会话 Id。</param>
+    /// <param name="handle">本循环的句柄（值匹配摘除，不会误删新循环条目）。</param>
+    /// <param name="owned">本循环最后创建的记录；null 表示本循环没有创建过任何记录（无需清理）。</param>
+    internal void TeardownLoop(string sessionId, LoopHandle handle, ExecutionRecord? owned)
+    {
+        RemoveLoop(sessionId, handle);
+
+        if (owned is null)
+            return;
+
+        // 接线可观测点：证明 RunLoopAsync 确实把本轮记录交给了收尾（而非恒传 null）。
+        // 缺此计数时「loopOwnedRecord 永不赋值」不会被任何断言发现——外层的防御性清理
+        // 在正常流程里被逐轮 finally 掩盖，只有这里能区分「真的接了线」与「接线被删」。
+        Interlocked.Increment(ref _teardownWithOwnedCount);
+
+        if (_states.TryGetValue(sessionId, out var state) &&
+            ReferenceEquals(state.CurrentExecution, owned))
+        {
+            state.CurrentExecution = null;
+        }
+    }
+
+    private int _teardownWithOwnedCount;
+
+    /// <summary>测试用：返回「收尾时确实带着本循环记录」的累计次数（用于钉住 RunLoopAsync 的接线）。</summary>
+    internal int TeardownWithOwnedCount => Volatile.Read(ref _teardownWithOwnedCount);
 
     /// <summary>测试用：直接写入某会话的 CurrentExecution（构造跨循环交错的确定性场景）。</summary>
     internal void SetCurrentExecutionForTest(string sessionId, ExecutionRecord record) =>
         _states.GetOrAdd(sessionId, _ => new SessionExecutionState()).CurrentExecution = record;
 
-    /// <summary>
-    /// 仅当 <c>CurrentExecution</c> 仍是 <paramref name="record"/> 本身时才清空。
-    /// <para>
-    /// 这是运行态收尾的**唯一**写 null 入口：无条件清空会跨循环误伤——
-    /// 旧循环退出与新循环启动之间没有互斥，新循环可能已经把记录写进去了。
-    /// </para>
-    /// <para>
-    /// internal 仅供测试直接钉住「按身份清空」语义（项目已对测试项目开放 InternalsVisibleTo）。
-    /// </para>
-    /// </summary>
-    internal void ClearCurrentExecutionIfOwned(string sessionId, ExecutionRecord? record)
-    {
-        if (record is null)
-            return;
-
-        if (_states.TryGetValue(sessionId, out var state) &&
-            ReferenceEquals(state.CurrentExecution, record))
-        {
-            state.CurrentExecution = null;
-        }
-    }
+    /// <summary>测试用：直接读取某会话的 CurrentExecution。</summary>
+    internal ExecutionRecord? GetCurrentExecutionForTest(string sessionId) =>
+        _states.TryGetValue(sessionId, out var state) ? state.CurrentExecution : null;
 
     /// <summary>登记等待槽：key = 入站消息 Id。调用点保证消息尚未落盘，故不可能已被消费。</summary>
     private void RegisterAwaiter(string messageId, ExecutionAwaiter awaiter)
@@ -812,8 +840,11 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         public void TrySetException(Exception ex) => Completion.TrySetException(ex);
     }
 
-    /// <summary>循环句柄：Ready 门控保证「先登记后运行」；Loop 持自身 Task 供值匹配移除。</summary>
-    private sealed class LoopHandle
+    /// <summary>
+    /// 循环句柄：Ready 门控保证「先登记后运行」；Loop 持自身 Task 供值匹配移除。
+    /// <para>internal 供测试直接构造句柄并调用 <see cref="TeardownLoop"/>（覆盖真实收尾接线）。</para>
+    /// </summary>
+    internal sealed class LoopHandle
     {
         public TaskCompletionSource Ready { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
