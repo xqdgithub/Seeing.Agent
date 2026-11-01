@@ -301,10 +301,16 @@ public class ExecutionOutcomeAssemblyTests
     public async Task RunOnce_Should_Isolate_Async_Observer_Fault_After_Await()
     {
         // 关键路径：async 方法在 await 之后抛出时，异常落在返回的 Task 上（try/catch 包不住方法体），
-        // 这正是「扇出必须 await 而非 `_ = ...`」的全部理由 —— 丢弃 Task 会让它变成未观察异常。
-        // 本用例用真实 async + await 后 throw 覆盖该路径；同步 throw 由上一个用例覆盖。
+        // 这正是「扇出必须 await 而非 `_ = ...`」的理由 —— 丢弃 Task 会让它变成未观察异常。
+        //
+        // 判别必须**确定性**，不能靠「续体大概还没跑到」的竞态：
+        // AsyncFaultingObserver 在 await Task.Delay(50) 之后才置标志并抛出；
+        // RecordingObserver 在**被调用那一刻**快照该标志。
+        //   - 实现是 await：扇出必须等故障观察者跑完（含 50ms）才轮到 RecordingObserver → 标志必为 true；
+        //   - 实现是 `_ =`：扇出不等它，同一线程立刻调用 RecordingObserver（微秒级）→ 标志必为 false。
+        // 50ms 就是这两个时刻的确定性间距。
         var asyncFaulting = new AsyncFaultingObserver();
-        var recording = new RecordingObserver();
+        var recording = new RecordingObserver { FaultProbe = asyncFaulting };
 
         var fx = BuildRunner(
             agentName: "build",
@@ -313,6 +319,9 @@ public class ExecutionOutcomeAssemblyTests
         await fx.Runner.RunOnceAsync(Record("ses_async_fault"), Batch(), CancellationToken.None);
 
         // 走到这里即证明：RunOnceAsync 未被该异常打断，且后续观察者仍被调用。
+        recording.SawFaultComplete.Should().BeTrue(
+            "后续观察者看到故障观察者已完成 ⇒ 扇出确实 await 了它；"
+            + "若这里是 false，说明扇出丢弃了 Task（`_ = ...`），异常与完成顺序都不可观测");
         asyncFaulting.ReachedAfterAwait.Should().BeTrue("观察者确实在 await 之后才抛");
         recording.Outcomes.Should().ContainSingle("异步抛出不得阻断后续观察者");
         fx.SingleOutcome().Status.Should().Be(ExecutionStatus.Completed, "观察者失败不得改变本轮终态");
@@ -351,6 +360,38 @@ public class ExecutionOutcomeAssemblyTests
         ExecutionRunner.ObserverTimeout.Should().Be(TimeSpan.FromSeconds(5));
     }
 
+    [Fact]
+    public async Task RunOnce_Should_Report_Origin_User_For_Root_Session()
+    {
+        // Origin 必须随 outcome 一起下发：观察者据此判定来源，无需回读会话（否则终态钩子上要做 I/O）。
+        var fx = BuildRunner(agentName: "build", sessionOrigin: SessionOrigin.User);
+        var record = Record("ses_origin_root");
+
+        await fx.Runner.RunOnceAsync(record, Batch(), CancellationToken.None);
+
+        fx.SingleOutcome().Origin.Should().Be(SessionOrigin.User);
+    }
+
+    [Fact]
+    public async Task RunOnce_Should_Report_Origin_Reflection_For_Reflection_Session()
+    {
+        // 复盘会话：Kind=SubAgent + Origin=Reflection。观察者（如 ReflectionObserver）必须能直接从
+        // outcome 判定「这是复盘自己产生的轮次」并跳过，而不必去磁盘读会话。
+        var fx = BuildRunner(
+            agentName: "reflection",
+            sessionKind: SessionKind.SubAgent,
+            parentSessionId: "ses_root",
+            sessionOrigin: SessionOrigin.Reflection);
+        var record = Record("ses_origin_reflection");
+
+        await fx.Runner.RunOnceAsync(record, Batch(), CancellationToken.None);
+
+        var outcome = fx.SingleOutcome();
+        outcome.Origin.Should().Be(SessionOrigin.Reflection);
+        outcome.IsTopLevel.Should().BeFalse();
+        outcome.ParentSessionId.Should().Be("ses_root");
+    }
+
     // === 测试夹具 ===
 
     /// <summary>一次执行的装配结果（供断言执行器是否被调用、事件与记录是否一致）。</summary>
@@ -373,10 +414,12 @@ public class ExecutionOutcomeAssemblyTests
         Mock<ICommandRegistry>? commandRegistry = null,
         IReadOnlyList<IExecutionOutcomeObserver>? observers = null,
         Func<Task>? onFlush = null,
-        TimeSpan? observerTimeout = null)
+        TimeSpan? observerTimeout = null,
+        SessionOrigin sessionOrigin = SessionOrigin.User)
     {
         var session = SessionData.Create();
         session.Kind = sessionKind;
+        session.Origin = sessionOrigin;
         // 执行链经 AgentSelectionResolver 解析 Agent：记录未指定 AgentId 时回落到会话选择值，
         // 避免依赖进程级「默认 Agent」配置（测试不注册该配置）。
         session.SelectedAgent = agentName;
@@ -552,6 +595,18 @@ public class ExecutionOutcomeAssemblyTests
 
         public List<ExecutionOutcome> Outcomes { get; } = [];
 
+        /// <summary>
+        /// 被调用那一刻「故障观察者是否已完成」的快照。
+        /// <para>
+        /// 用它做确定性判别：<c>await</c> 扇出必须等前一个观察者跑完才会轮到这里（必然 true）；
+        /// 丢弃 Task 的扇出会立刻轮到这里（必然 false）。标志取样与实际回调在同一同步块内完成。
+        /// </para>
+        /// </summary>
+        public bool SawFaultComplete { get; private set; }
+
+        /// <summary>故障观察者实例；设置后本观察者在回调时读取其完成标志。</summary>
+        public AsyncFaultingObserver? FaultProbe { get; init; }
+
         public bool ShouldObserve(ExecutionOutcome outcome)
         {
             ShouldObserveCalls++;
@@ -560,22 +615,34 @@ public class ExecutionOutcomeAssemblyTests
 
         public Task OnExecutionCompletedAsync(ExecutionOutcome outcome, CancellationToken ct = default)
         {
+            if (FaultProbe is not null)
+                SawFaultComplete = FaultProbe.ReachedAfterAwait;
+
             Outcomes.Add(outcome);
             return Task.CompletedTask;
         }
     }
 
-    /// <summary>在 <c>await</c> 之后抛异常的观察者：覆盖「异常落在 Task 上」的真实路径。</summary>
+    /// <summary>
+    /// 在 <c>await</c> 之后抛异常的观察者：覆盖「异常落在 Task 上」的真实路径。
+    /// <para>
+    /// 刻意在置标志前等待 <see cref="FaultDelay"/>：制造「已完成」与「尚未开始续体」之间
+    /// 足够大的确定性间距，使后续观察者能区分「扇出等过我」与「扇出丢下了我」。
+    /// </para>
+    /// </summary>
     private sealed class AsyncFaultingObserver : IExecutionOutcomeObserver
     {
-        /// <summary>是否已越过 <c>await</c>（用于证明异常确实发生在异步续体里）。</summary>
+        /// <summary>标志置位前等待的时长；远大于同线程连续调用的开销（微秒级）。</summary>
+        public static readonly TimeSpan FaultDelay = TimeSpan.FromMilliseconds(50);
+
+        /// <summary>是否已越过 <c>await</c> 并置位（用于证明异常确实发生在异步续体里）。</summary>
         public bool ReachedAfterAwait { get; private set; }
 
         public bool ShouldObserve(ExecutionOutcome outcome) => true;
 
         public async Task OnExecutionCompletedAsync(ExecutionOutcome outcome, CancellationToken ct = default)
         {
-            await Task.Yield();
+            await Task.Delay(FaultDelay, ct).ConfigureAwait(false);
             ReachedAfterAwait = true;
             throw new InvalidOperationException("异步续体中故意失败");
         }

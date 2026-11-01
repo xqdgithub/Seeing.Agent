@@ -1,6 +1,7 @@
 namespace Seeing.Agent.Abstractions.Execution;
 
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Session.Core;
 
 /// <summary>
 /// 一轮执行进入终态后的**事实快照**（不可变聚合体）。
@@ -55,6 +56,19 @@ public sealed record ExecutionOutcome
     /// <para>与 <see cref="IsTopLevel"/> 同源，均取自会话组的父子关系。</para>
     /// </summary>
     public string? ParentSessionId { get; init; }
+
+    /// <summary>
+    /// 会话来源 / 用途（与 <see cref="IsTopLevel"/> 同源，均取自会话本身）。
+    /// <para>
+    /// 供观察者按来源过滤（例如跳过复盘会话自身产生的轮次），
+    /// 使观察者无需回读会话即可判定，避免在终态钩子上做 I/O。
+    /// </para>
+    /// <para>
+    /// 读不到会话时取 <see cref="SessionOrigin.User"/>（保守默认：不把未知来源当成内部会话，
+    /// 否则可能让本该被观察的轮次被静默跳过）。
+    /// </para>
+    /// </summary>
+    public SessionOrigin Origin { get; init; } = SessionOrigin.User;
 
     /// <summary>
     /// 本轮模型循环的总步数；无模型调用（<see cref="AgentExecuted"/> 为 <c>false</c>）时为 0。

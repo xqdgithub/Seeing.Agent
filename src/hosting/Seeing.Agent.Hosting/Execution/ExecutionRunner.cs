@@ -338,8 +338,9 @@ internal sealed class ExecutionRunner : IExecutionRunner
                 // 令牌已在本方法入参绑定本记录（executionToken），BuildAgentContext 与 ExecuteAsync 共用同一令牌。
                 var loopFailed = false;
                 string? loopError = null;
-                // 已计入事实的 LoopId：终态事件的重复投递、或「Complete + Cancelled」先后到达时，
-                // 同一 LoopId 只计一次，避免成本被算两遍（与「累计」正交，两者都需要）。
+                // 已计入事实的 LoopId：同一次执行的终态事件可能重复出现（「Complete 后又来 Cancelled」、
+                // 重放/重投递），同一 LoopId 的同一批事实只计一次。
+                // ⚠ 先到先得：Cancelled 先到会占位，后续 Complete 被丢弃（少算）。当前不可达，详见下方分支注释。
                 var terminalLoopIds = new HashSet<string>(StringComparer.Ordinal);
                 await foreach (var evt in executionRouter.ExecuteAsync(
                     context.Agent,
@@ -356,10 +357,16 @@ internal sealed class ExecutionRunner : IExecutionRunner
                     }
                     else if (evt is LoopCompleteEvent loopEnd)
                     {
-                        // 步数 / 用量 / 耗时按**累计**处理：将来若出现多段终态（分片执行等），
-                        // 累计天然正确，取最后一次会系统性低估成本。
-                        // 但**同一个 LoopId 只能计一次**：终态事件的重复投递或「Complete 后紧跟 Cancelled」
-                        // 都不得把同一批事实算两遍（见下方的去重集合）。
+                        // 按 LoopId 去重 + 累加，两者正交且都必须：
+                        // ① 去重：同一次执行的终态事件可能重复出现（「Complete 后又来 Cancelled」、
+                        //    重放/重投递），同一 LoopId 的同一批事实只能计一次；
+                        // ② 累加：不同 LoopId（多轮）必须逐轮相加。
+                        //
+                        // ⚠ 去重是**先到先得**，且这里有一个已知的隐性语义：
+                        //    若 Cancelled（只带部分事实）先到、Complete 后到，Complete 会被丢弃 → **少算**。
+                        //    当前执行器不可达（OCE 分支只发 Cancelled，正常分支只发 Complete，互斥），
+                        //    但一旦将来出现「先取消后收尾」的事件序列，必须改成按事件类型排序
+                        //    （Complete 优先）而不是按到达顺序。
                         if (terminalLoopIds.Add(loopEnd.LoopId))
                         {
                             totalSteps += loopEnd.TotalSteps;
@@ -376,7 +383,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
                     else if (evt is LoopCancelledEvent loopCancelled)
                     {
                         // 取消路径**不产出** LoopCompleteEvent（AgentExecutor 的 OCE 分支只写本事件），
-                        // 部分事实只能从这里取：不累计就会把「取消前已完成的工作」全部记为 0。
+                        // 部分事实只能从这里取：不取就会把「取消前已完成的工作」全部记为 0。
                         // 与 LoopComplete 共用同一个去重集合：同一 LoopId 已有终态事实时不再重复计入。
                         if (terminalLoopIds.Add(loopCancelled.LoopId))
                         {
@@ -492,9 +499,16 @@ internal sealed class ExecutionRunner : IExecutionRunner
             }
 
             // === 组装终态事实并发布 + 扇出观察者（落盘之后：事件里的快照与磁盘一致） ===
-            // 组装所需的外部数据（会话关系）已在 ResolveSessionRelation 内部兜底（读失败按顶层），
-            // 故此处不再包一层 try/catch：真出现未预期异常时让 finally 抛出更利于暴露缺陷，
-            // 而不是把「组装失败」伪装成「一切正常的最小快照」。
+            // 组装所需的外部数据（会话关系 / 来源）已在 ResolveSessionRelation 内部兜底（读失败按顶层+用户）。
+            //
+            // ⚠ 已知边界（诚实声明，不是「更利于暴露缺陷」）：
+            //    此处**没有** try/catch。若 BuildOutcome / Publish / 扇出真的抛出，异常会逃出 finally，
+            //    后果是「双重坏」而不是「暴露缺陷」：
+            //      ① SessionRuntime 的调用点把**已成功**的 record.Status 改写成 Failed（`catch (Exception)`）；
+            //      ② ExecutionCompleteEvent **从未发布** → UI 可能一直停在「执行中」。
+            //    真正能兜住这个风险的只有 ResolveSessionRelation 内部的 catch（覆盖会话读取失败）。
+            //    要彻底消除该边界，需要把「组装 + 发布」也包上 try/catch 并降级为最小快照 —— 但那会隐瞒
+            //    发布失败，属于另一处取舍，本轮不改。
             var outcome = BuildOutcome(record, scope.ServiceProvider, agentExecuted, executedAgentName, totalSteps, usage, loopDuration);
 
             // 发布执行终态事件：UI/TUI 据此结束「执行中」态并刷新。
@@ -532,7 +546,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
         TokenUsage? usage,
         TimeSpan loopDuration)
     {
-        var (isTopLevel, parentSessionId) = ResolveSessionRelation(services, record.SessionId);
+        var (isTopLevel, parentSessionId, origin) = ResolveSessionRelation(services, record.SessionId);
         var completedAt = record.CompletedAt ?? DateTime.UtcNow;
 
         return new ExecutionOutcome
@@ -544,6 +558,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
             AgentExecuted = agentExecuted,
             IsTopLevel = isTopLevel,
             ParentSessionId = parentSessionId,
+            Origin = origin,
             TotalSteps = totalSteps,
             Usage = usage,
             Duration = loopDuration,
@@ -552,27 +567,42 @@ internal sealed class ExecutionRunner : IExecutionRunner
     }
 
     /// <summary>
-    /// 解析「是否顶层 + 父会话 Id」：真值来源是 <see cref="SessionData.Kind"/>（<c>SubAgent</c> → 非顶层）
-    /// 与会话组的父子关系，<b>不得</b>读 <c>ChatExecutionContext.IsTopLevel</c>（该字段在唯一构造点从未赋值）。
+    /// 解析「是否顶层 + 父会话 Id + 会话来源」。
+    /// <para>
+    /// 真值来源是 <see cref="SessionData.Kind"/>（<c>SubAgent</c> → 非顶层）、会话组的父子关系、
+    /// 以及 <see cref="SessionData.Origin"/>；<b>不得</b>读 <c>ChatExecutionContext.IsTopLevel</c>
+    /// （该字段在唯一构造点从未赋值）。
+    /// </para>
+    /// <para>
+    /// 三者**同一次**读取会话得出：把 <c>Origin</c> 一并下发，观察者就不必为了判定来源再回读会话
+    /// （终态钩子上不该出现第二次 I/O）。<paramref name="services"/> 是执行作用域，
+    /// <see cref="ISessionManager.Get"/> 命中内存缓存，不产生磁盘访问。
+    /// </para>
+    /// <para>读不到会话时按「顶层 + 用户来源」处理（保守：不把根会话误判成内部会话）。</para>
     /// </summary>
-    private (bool IsTopLevel, string? ParentSessionId) ResolveSessionRelation(IServiceProvider services, string sessionId)
+    private (bool IsTopLevel, string? ParentSessionId, SessionOrigin Origin) ResolveSessionRelation(
+        IServiceProvider services, string sessionId)
     {
         try
         {
             var session = services.GetService<ISessionManager>()?.Get(sessionId);
-            if (session is null || session.Kind != SessionKind.SubAgent)
-                return (true, null);
+            if (session is null)
+                return (true, null, SessionOrigin.User);
+
+            var origin = session.Origin;
+            if (session.Kind != SessionKind.SubAgent)
+                return (true, null, origin);
 
             var groupManager = services.GetService<ISessionGroupManager>();
             var parentId = groupManager is not null && groupManager.TryGetParent(sessionId, out var parent)
                 ? parent
                 : null;
-            return (false, parentId);
+            return (false, parentId, origin);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "读取会话关系失败，按顶层处理: SessionId={SessionId}", sessionId);
-            return (true, null);
+            return (true, null, SessionOrigin.User);
         }
     }
 
@@ -607,6 +637,13 @@ internal sealed class ExecutionRunner : IExecutionRunner
     /// 正常情况下 <c>await</c> 的代价是一次入队调用的开销；顺序等待保证 async 方法
     /// <c>await</c> 之后抛出的异常（落在返回的 Task 上）也能被这里捕获隔离，
     /// 而丢弃 Task（<c>_ = ...</c>）会让这类异常变成未观察异常，测试也无确定性观测点。
+    /// </para>
+    /// <para>
+    /// <b>已知边界（无总预算）：</b>超时是**每个观察者各自**的上限，不是扇出整体预算。
+    /// N 个都超时的观察者会串行耗掉约 N×<see cref="ObserverTimeout"/>，全程持有
+    /// <c>SessionRuntime</c> 的全局并发额度（<c>RunOnceAsync</c> 返回前不会释放）。
+    /// 当前观察者数量为个位数且契约要求毫秒级返回，故不引入总预算；
+    /// 若将来观察者变多或普遍慢，应改为「整轮扇出共享一个总预算」。
     /// </para>
     /// </summary>
     private async Task FanOutObserversAsync(IServiceProvider services, ExecutionOutcome outcome)

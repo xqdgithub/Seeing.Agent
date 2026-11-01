@@ -476,6 +476,12 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                             WorkingDirectory = LastNonEmptyMeta(pending, InboxMetadataKeys.WorkingDirectory)
                         };
 
+                        // ⚠ 已知边界：此处**丢弃**了 RunOnceAsync 的返回值，只承认入参 record 这一实例。
+                        //    接口签名（返回 ExecutionRecord）会诱导未来实现「new 一个新记录返回」——
+                        //    那时事实全丢（state.LastExecution / TryCompleteAwaiters 仍看旧实例）。
+                        //    当前唯一实现 ExecutionRunner 原地写 record 并原样返回，故安全；
+                        //    测试里的 FakeRunner 也返回同一实例，**测不出**这个陷阱。
+                        //    若将来要支持返回新实例，必须改成 `record = await _runner.RunOnceAsync(...)`。
                         await _runner.RunOnceAsync(record, batch, record.Cts.Token).ConfigureAwait(false);
                         state.LastExecution = record;
                         TryCompleteAwaiters(sessionId, record, awaiters);
@@ -739,7 +745,8 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
 
         // 顶层判定与父会话同源：SessionData.Kind / 会话组父子关系。
         // 不得读 ChatExecutionContext.IsTopLevel——该字段在唯一构造点从未被赋值，恒为默认 true。
-        var (isTopLevel, parentSessionId) = ResolveSessionRelation(sessionId);
+        // Origin 同一次读取得出，供观察者按来源过滤（无需回读会话）。
+        var (isTopLevel, parentSessionId, origin) = ResolveSessionRelation(sessionId);
 
         return new ExecutionOutcome
         {
@@ -754,34 +761,44 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
             Usage = record.Usage,
             IsTopLevel = isTopLevel,
             ParentSessionId = parentSessionId,
+            Origin = origin,
             Duration = duration,
             CompletedAt = completedAt
         };
     }
 
     /// <summary>
-    /// 解析「是否顶层 + 父会话 Id」。读不到会话时按顶层处理（保守：不把根会话误判为子 Agent）。
+    /// 解析「是否顶层 + 父会话 Id + 会话来源」。读不到会话时按「顶层 + 用户来源」处理
+    /// （保守：不把根会话误判为子 Agent 或内部会话）。
+    /// <para>
+    /// 三者在同一次 <see cref="ISessionManager.Get"/> 内读出（命中内存缓存，不产生磁盘访问），
+    /// 使终态观察者无需为判定来源再回读会话。
+    /// </para>
     /// </summary>
-    private (bool IsTopLevel, string? ParentSessionId) ResolveSessionRelation(string sessionId)
+    private (bool IsTopLevel, string? ParentSessionId, SessionOrigin Origin) ResolveSessionRelation(string sessionId)
     {
         try
         {
             using var scope = _services.CreateScope();
             var sessionManager = scope.ServiceProvider.GetService<ISessionManager>();
             var session = sessionManager?.Get(sessionId);
-            if (session is null || session.Kind != SessionKind.SubAgent)
-                return (true, null);
+            if (session is null)
+                return (true, null, SessionOrigin.User);
+
+            var origin = session.Origin;
+            if (session.Kind != SessionKind.SubAgent)
+                return (true, null, origin);
 
             var groupManager = scope.ServiceProvider.GetService<ISessionGroupManager>();
             var parentId = groupManager is not null && groupManager.TryGetParent(sessionId, out var parent)
                 ? parent
                 : null;
-            return (false, parentId);
+            return (false, parentId, origin);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "读取会话关系失败，按顶层处理: SessionId={SessionId}", sessionId);
-            return (true, null);
+            return (true, null, SessionOrigin.User);
         }
     }
 

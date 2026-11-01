@@ -138,6 +138,36 @@ public class DeliverAndAwaitTests
     }
 
     [Fact]
+    public async Task DeliverAndAwait_Should_Report_Origin_From_Session()
+    {
+        // Origin 必须随 outcome 下发：观察者可据它跳过复盘会话自身产生的轮次，无需回读会话。
+        var runtime = BuildRuntime(out var sessionManager, out _);
+        var session = await sessionManager.EnsureSessionAsync("ses_origin");
+        session.Origin = SessionOrigin.Reflection;
+
+        var outcome = await runtime.DeliverAndAwaitAsync(
+            MakeMessage("ses_origin", "work"), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        outcome.Origin.Should().Be(SessionOrigin.Reflection);
+    }
+
+    [Fact]
+    public async Task DeliverAndAwait_Should_Default_Origin_To_User_When_Session_Unknown()
+    {
+        // 读不到会话时保守取 User：不把未知来源当成内部会话，否则本该被观察的轮次会被静默跳过。
+        var runtime = BuildRuntime(out var sessionManager, out _);
+        var session = await sessionManager.EnsureSessionAsync("ses_user_origin");
+        session.Origin.Should().Be(SessionOrigin.User);
+
+        var outcome = await runtime.DeliverAndAwaitAsync(
+            MakeMessage("ses_user_origin", "work"), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        outcome.Origin.Should().Be(SessionOrigin.User);
+    }
+
+    [Fact]
     public async Task DeliverAndAwait_Should_Report_SubAgent_Session_As_Not_TopLevel()
     {
         // 顶层判定真值来源为 SessionData.Kind；子 Agent 会话必须报 false。

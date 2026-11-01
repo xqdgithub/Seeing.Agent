@@ -15,6 +15,10 @@ namespace Seeing.Agent.Abstractions.Execution;
 /// 也不得改变本轮执行的终态结果。<b>实现必须有界快速返回</b>（见
 /// <see cref="OnExecutionCompletedAsync"/> 的 remarks）。
 /// </para>
+/// <para>
+/// 判定所需的事实（来源、层级、父会话、步数、用量）都在 <see cref="ExecutionOutcome"/> 上，
+/// 实现应当只读它，不要回读会话或数据库来补齐信息。
+/// </para>
 /// </summary>
 public interface IExecutionOutcomeObserver
 {
@@ -33,12 +37,18 @@ public interface IExecutionOutcomeObserver
     /// <para>仅在 <see cref="ShouldObserve"/> 返回 <c>true</c> 后调用，且不得因自身失败影响执行链。</para>
     /// </summary>
     /// <remarks>
-    /// <b>时延约束（硬性）：</b>实现必须在**毫秒级返回**，禁止在此做磁盘 / 网络 I/O 或任何可能长时间阻塞的操作。
+    /// <b>时延约束（硬性）：</b>实现必须在**毫秒级返回**。
+    /// <para>
+    /// <see cref="ExecutionOutcome"/> 已携带判定所需的全部事实（含 <see cref="ExecutionOutcome.Origin"/>、
+    /// <see cref="ExecutionOutcome.IsTopLevel"/>、<see cref="ExecutionOutcome.ParentSessionId"/>），
+    /// 实现<b>不应</b>为获取这些信息而回读会话或访问数据库——那类操作会在终态钩子上引入 I/O 与不确定性。
+    /// 需要读会话正文、读磁盘文件、调模型等耗时工作的，必须把事实**入队**，由后台 worker 异步处理，
+    /// 本方法立即返回。
+    /// </para>
+    /// <para>
     /// 宿主在 <c>ExecutionRunner</c> 的 <c>finally</c> 中顺序等待本方法返回，它会连带阻塞
     /// 「等待本轮终态的调用方」（<c>DeliverAndAwaitAsync</c>）与全局执行并发额度——
     /// 一次慢调用会让整条链路一起变慢。
-    /// <para>
-    /// 需要读会话、读磁盘、调模型等耗时工作的，必须把事实**入队**，由后台 worker 异步处理，本方法立即返回。
     /// </para>
     /// <para>
     /// 超过宿主设定的观察超时（当前 5 秒）会被截断：该观察者本次调用被放弃并记一条告警，
