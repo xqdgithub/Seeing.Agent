@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
+using Seeing.Agent.Memory.Core;
 using Seeing.Agent.Memory.Core.Models;
 using Seeing.Agent.Memory.Integration.Hosting;
 using Seeing.Session.Core;
@@ -303,17 +304,24 @@ public sealed class MemoryContextSource : IContextSource, IContextSourceMessageM
                 continue;
             }
 
+            // 正文为空 = 本次读不到内容（占位节点），整条跳过而非编造指纹。
+            if (!TryExtractBody(node.Content, out var body))
+            {
+                skipped++;
+                continue;
+            }
+
             result.Add(new MemoryHitEntry(
                 path,
                 SanitizeScore(hit.Score),
-                ContentHashOf(node.Content),
+                ContentHashOf(node.Metadata?.Title, body),
                 hit));
         }
 
         if (skipped > 0)
         {
             _logger.LogDebug(
-                "记忆召回命中缺少节点或路径，已跳过：{SkippedCount}/{TotalCount}",
+                "记忆召回命中缺少节点/路径或正文不可读，已跳过：{SkippedCount}/{TotalCount}",
                 skipped,
                 hits.Count);
         }
@@ -336,10 +344,35 @@ public sealed class MemoryContextSource : IContextSource, IContextSourceMessageM
         return 0;
     }
 
-    /// <summary>正文的 SHA256 前 16 位（十六进制小写）；正文为空时也给稳定值。</summary>
-    private static string ContentHashOf(string? content) =>
-        Convert.ToHexStringLower(
-            SHA256.HashData(Encoding.UTF8.GetBytes(content ?? string.Empty)))[..16];
+    /// <summary>
+    /// 内容指纹：标题 + 正文（已剥离 frontmatter）的 SHA256 取 16 位（十六进制小写）。
+    /// <para>标题必须参与：标题来自 <c>Metadata.Title</c> 而非正文，只把正文纳入哈希会让
+    /// 「仅改标题」被误判为「值未变」，进而触发装配器的「同值不同文本」告警且基线永久停在旧值。</para>
+    /// <para>正文用 <see cref="YamlParser.ExtractMarkdownBody"/> 剥离 frontmatter，
+    /// 与同包 <c>MemorySearchTool</c> / <c>MemoryReadTool</c> 的口径一致——
+    /// 否则 YAML 头会吃掉绝大部分摘要字符预算。</para>
+    /// </summary>
+    private static string ContentHashOf(string? title, string body)
+    {
+        var material = $"{title ?? string.Empty}\n{body}";
+        return Convert.ToHexStringLower(
+            SHA256.HashData(Encoding.UTF8.GetBytes(material)))[..16];
+    }
+
+    /// <summary>
+    /// 判断命中的正文是否可用。
+    /// <para><b>正文为空即视为「本次读不到内容」</b>：索引层读取失败时返回
+    /// <c>HybridMemoryIndex.CreatePlaceholderNode</c>（<c>Content = ""</c>，标题取文件名）。
+    /// 若让占位节点进入 Canonical，一次瞬时 IO 失败就会被 <c>contentHash</c> 判成
+    /// 「记忆内容已更新」并叙述给模型——这是 <c>score</c> 时代不存在的伪造更新。</para>
+    /// <para>因此空正文的命中<b>整条跳过</b>，而不是给它一个哨兵指纹：
+    /// 跳过只会让本轮少一条记忆（可恢复），哨兵会产出一个语义上错误的「更新」叙述。</para>
+    /// </summary>
+    private static bool TryExtractBody(string? content, out string body)
+    {
+        body = YamlParser.ExtractMarkdownBody(content ?? string.Empty);
+        return !string.IsNullOrWhiteSpace(body);
+    }
 
     /// <summary>渲染用条目：canonical 事实 + 本次可用的原始命中（可能为 null）。</summary>
     private IReadOnlyList<(MemoryHitEntry Entry, SearchHit? Hit)> EntriesOf(ContextSourceValue value)
@@ -503,7 +536,10 @@ public sealed class MemoryContextSource : IContextSource, IContextSourceMessageM
 
     private static string Summarize(string? content)
     {
-        var collapsed = CollapseWhitespace(content);
+        // 摘要必须基于剥离 frontmatter 后的正文：真实记忆文件带 YAML 头（约 200 字符），
+        // 直接截断会让 YAML 吃光 SummaryCharLimit，模型看到的「摘要」几乎全是元数据噪声。
+        // 与同包 MemorySearchTool / MemoryReadTool 的口径一致。
+        var collapsed = CollapseWhitespace(YamlParser.ExtractMarkdownBody(content ?? string.Empty));
         if (collapsed.Length <= SummaryCharLimit)
             return collapsed;
 

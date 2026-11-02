@@ -130,6 +130,63 @@ public class MemoryContextSourceTests
     }
 
     [Fact]
+    public async Task Render_Should_Narrate_When_Only_Title_Changed()
+    {
+        // B3 守门：contentHash 必须含标题。只改标题时 title 变了但正文没变，
+        // 若哈希只算正文，装配器会判「值未变」→ 每轮「同值不同文本」告警且基线永久停在旧标题。
+        var source = Build(userQuery: "问题", hits: []);
+
+        var previous = WithoutPayload(await BuildWithHitsAsync("a.md", 0.9, "旧标题", "同一正文"));
+        var current = await BuildWithHitsAsync("a.md", 0.9, "新标题", "同一正文");
+
+        source.Render(previous, current).Should().NotBeNull(
+            "标题变化必须被感知，否则会触发装配器的同值不同文本告警");
+    }
+
+    [Fact]
+    public async Task Summarize_Should_Skip_Yaml_Frontmatter()
+    {
+        // B2 守门：真实记忆文件带 YAML 头（约 200 字符），240 字符预算会被吃光。
+        var content = """
+            ---
+            id: explicit-abc
+            type: daily
+            title: "用户偏好"
+            tags: [偏好]
+            importance: 1.0
+            created_at: 2026-11-02T12:14:01.5282104+00:00
+            ---
+
+            用户偏好使用 .NET 10 与 xUnit v3。
+            """;
+
+        var source = Build(userQuery: "问题", hits: [Hit("a.md", 0.9, "用户偏好", content)]);
+        var text = source.RenderInitial(await source.ReadAsync(TestContext.Current.CancellationToken));
+
+        text.Should().Contain("用户偏好使用 .NET 10 与 xUnit v3");
+        text.Should().NotContain("created_at", "摘要必须剥离 frontmatter，否则元数据吃掉全部字符预算");
+        text.Should().NotContain("importance");
+    }
+
+    [Fact]
+    public async Task ReadAsync_Should_Skip_Placeholder_Node_Instead_Of_Reporting_Content_Change()
+    {
+        // B1 守门：索引层读失败时返回占位节点（Content = ""，标题取文件名）。
+        // 若让它进入 Canonical，一次瞬时 IO 失败会被 contentHash 判成「记忆内容已更新」，
+        // 产生只有路径没有正文的伪造叙述。正确行为是整条跳过。
+        var placeholder = new SearchHit(
+            FileNode.Create("a.md", string.Empty,
+                FileMetadata.Create(Guid.NewGuid().ToString("N")[..8], MemoryType.Session, "a")),
+            0.9, 0.9, 0);
+
+        var source = Build(userQuery: "问题", hits: [placeholder]);
+        var value = await source.ReadAsync(TestContext.Current.CancellationToken);
+
+        value.State.Should().Be(ContextValueState.Unavailable,
+            "占位节点表示本次读不到内容，应视为不可用而不是产出一条「已更新」的记忆");
+    }
+
+    [Fact]
     public async Task Render_Should_Return_Null_When_Nothing_Changed()
     {
         var source = Build(userQuery: "问题", hits: []);
