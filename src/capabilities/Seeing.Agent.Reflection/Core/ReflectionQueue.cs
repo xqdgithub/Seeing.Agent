@@ -49,25 +49,25 @@ public sealed class ReflectionQueue : IReflectionQueue
     public int PendingCount => _pending.Count;
 
     /// <inheritdoc />
-    public bool TryEnqueue(ReflectionRequest request)
+    public ReflectionEnqueueResult TryEnqueue(ReflectionRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (string.IsNullOrWhiteSpace(request.SessionId))
-            return false;
+            return ReflectionEnqueueResult.Invalid;
 
-        // 已存在：覆盖内容、保留原位置，返回 false 表示「已存在已更新」。
+        // 已存在：覆盖内容、保留原位置。这是正常去重，不是失败。
         if (!_pending.TryAdd(request.SessionId, request))
         {
             _pending[request.SessionId] = request;
-            return false;
+            return ReflectionEnqueueResult.Updated;
         }
 
         if (_channel.Writer.TryWrite(request.SessionId))
-            return true;
+            return ReflectionEnqueueResult.Enqueued;
 
         // 队列满：回滚字典，保证「字典有值」与「通道有槽」严格对应。
         _pending.TryRemove(request.SessionId, out _);
-        return false;
+        return ReflectionEnqueueResult.Dropped;
     }
 
     /// <inheritdoc />

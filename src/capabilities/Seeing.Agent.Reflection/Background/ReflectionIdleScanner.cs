@@ -94,14 +94,22 @@ public sealed class ReflectionIdleScanner
             // 冷却：同一段空闲期内只投递一次。
             if (_dispatched.TryGetValue(sessionId, out var dispatchedAt) && dispatchedAt == lastActivity)
                 continue;
-            if (_queue.TryEnqueue(new ReflectionRequest(
+            var result = _queue.TryEnqueue(new ReflectionRequest(
                     sessionId,
                     string.Empty,
                     ReflectionTriggerKind.Idle,
-                    now)))
+                    now));
+
+            if (result is ReflectionEnqueueResult.Enqueued or ReflectionEnqueueResult.Updated)
             {
                 _dispatched[sessionId] = lastActivity;
-                dispatched++;
+                if (result == ReflectionEnqueueResult.Enqueued)
+                    dispatched++;
+            }
+            else if (result == ReflectionEnqueueResult.Dropped)
+            {
+                // 队列满时不记冷却：否则该会话会被永久跳过，等队列空出来也不会再试。
+                _logger?.LogDebug("空闲复盘请求因队列已满被丢弃，下轮重试：SessionId={SessionId}", sessionId);
             }
         }
 

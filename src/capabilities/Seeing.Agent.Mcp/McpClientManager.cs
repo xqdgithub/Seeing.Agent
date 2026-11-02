@@ -697,8 +697,15 @@ namespace Seeing.Agent.Mcp
 
             var coordinator = GetOrCreateCoordinator(name);
             _ = coordinator.ConnectInBackgroundAsync(config, cancellationToken);
+
+            // 返回调用方「此刻」的真实状态而不是硬编码 Connecting：
+            // 后台连接是 Task.Run 起的，瞬时完成的实现（本地进程、测试替身、已缓存握手）
+            // 会在本方法返回前就把状态推进到 Connected/Failed。硬编码 Connecting 会让
+            // 调用方读到一个已经过时的状态，且测试无法稳定断言（既可能看到 Connecting
+            // 也可能看到 Connected）。
+            var currentState = GetStatus(name)?.State ?? CoreMcpConnectionState.Connecting;
             return Task.FromResult(
-                McpOperationResult.Succeeded(name, McpOperationType.UpdateConfig, CoreMcpConnectionState.Connecting));
+                McpOperationResult.Succeeded(name, McpOperationType.UpdateConfig, currentState));
         }
 
         #endregion

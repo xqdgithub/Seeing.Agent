@@ -118,12 +118,22 @@ public sealed class ReflectionObserver : IExecutionOutcomeObserver
                 ReflectionTriggerKind.TurnNudge,
                 DateTimeOffset.UtcNow));
 
-            if (!queued)
+            switch (queued)
             {
-                // 队列满或同会话已在排队：属于正常运行态，记调试日志即可。
-                _logger?.LogDebug(
-                    "复盘请求未新增（队列已满或会话已在队列）：SessionId={SessionId}",
-                    outcome.SessionId);
+                case ReflectionEnqueueResult.Dropped:
+                    // 丢弃意味着这一轮复盘彻底丢失，必须可见（Debug 会被默认日志级别吞掉）。
+                    _logger?.LogWarning(
+                        "复盘请求因队列已满被丢弃：SessionId={SessionId}, ExecutionId={ExecutionId}",
+                        outcome.SessionId,
+                        outcome.ExecutionId);
+                    break;
+
+                case ReflectionEnqueueResult.Updated:
+                    // 同会话已在排队：属于正常去重，只更新触发信息。
+                    _logger?.LogDebug(
+                        "复盘请求已合并到排队中的同会话：SessionId={SessionId}",
+                        outcome.SessionId);
+                    break;
             }
         }
         catch (Exception ex)

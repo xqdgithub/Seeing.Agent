@@ -150,7 +150,7 @@ public sealed class ReflectionObserverTests
                 "exec-0",
                 ReflectionTriggerKind.TurnNudge,
                 DateTimeOffset.UtcNow))
-            .Should().BeTrue();
+            .Should().Be(ReflectionEnqueueResult.Enqueued);
 
         var observer = CreateObserver(
             new ReflectionOptions { Enabled = true, TurnNudgeInterval = 1 },

@@ -132,6 +132,10 @@ public sealed class ReflectionModule : ISeeingModule, IUiContribution
             return Task.CompletedTask;
 
         _activity.IsActive = false;
+
+        // 允许注入 Worker 以便取消在途复盘；缺失时（独立装配）只能等它自然结束。
+        services.GetService<Background.ReflectionWorker>()?.CancelInFlight();
+
         _logger?.LogInformation("复盘模块已停用（id={ModuleId}）", ModuleId);
         return Task.CompletedTask;
     }

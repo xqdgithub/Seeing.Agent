@@ -68,7 +68,7 @@ public class McpClientManagerDisableTests
     }
 
     [Fact]
-    public async Task EnableServer_AfterDisabled_ShouldTransitionToConnecting()
+    public async Task EnableServer_AfterDisabled_ShouldLeaveDisabledState()
     {
         // Arrange
         var manager = CreateManager();
@@ -83,11 +83,16 @@ public class McpClientManagerDisableTests
         // Assert
         result.Success.Should().BeTrue();
         result.Error.Should().BeNull();
-        result.Status.Should().Be(CoreMcpConnectionState.Connecting);
+
+        // 不能断言「恰好是 Connecting」：后台连接是 Task.Run 起的，
+        // 瞬时完成的实现会在本方法返回前就推进到 Connected。
+        // 真正要守住的是「启用成功、禁用标志被清除、状态不再是 Disabled」。
+        result.Status.Should().NotBe(CoreMcpConnectionState.Disabled,
+            "启用后不得仍是 Disabled");
 
         var status = manager.GetStatus("time");
         status!.IsDisabled.Should().BeFalse();
-        status.State.Should().Be(CoreMcpConnectionState.Connecting);
+        status.State.Should().NotBe(CoreMcpConnectionState.Disabled);
         manager.GetConfig("time")!.Disabled.Should().BeFalse();
     }
 

@@ -259,15 +259,28 @@ DI 注册从 `MemoryServiceExtensions` 移到 `SessionServiceExtensions` / `AddS
 1. **`SessionForker` 不继承 `Origin`**：分叉出的会话回落 `User`，复盘会话若被分叉会「隐身失败」→ 潜在递归复盘（靠 `AgentName != "reflection"` 兜底）。
 2. **写入的技能对所有 agent 可见**：复盘写出的项目级技能进入全局技能目录，没有「仅复盘可见」的隔离。这不影响正确性（技能本就是可复用的知识），但授权范围比必要的大。
 3. **`ReflectionModule` 可选依赖静默降级**：容器未登记 `IAgentStore` 时模块照常激活，只是不注册 agent。**已补告警日志**说明缺哪个依赖，不再完全静默。
-4. **`ReflectionWorker` 停用不取消在途复盘**：循环只用 `stoppingToken`，`IsActive=false` 只在下一次判循环条件时生效；单次 `RunAsync` 最长 `RunTimeoutMinutes`（10 分钟），停用后仍可能跑完当前这一次。
-5. **`AddSeeingReflection` 的配置节存储缺失时退回默认值**：`IConfigSectionStore` 未注册（独立装配/单元测试）时 `Enabled` 恒为 `false`，即「不工作」。
-6. **journal 写失败降级为 `SkipReason = "failed"`**：分析已跑完但结果未落盘，不报告成功。
-7. **`SuggestionCount` 为 0 与「解析失败」不可区分**：`{"action":"skip"}` 与 JSON 畸形都产出空列表，前者记 `Executed = true`，后者记 `SkipReason = "parse-failed"`——但两者在 `ReflectionRunRecord.Suggestions` 里都为空。失败快照的 `Detail` 可帮助区分。
-8. **`ExecutionUsageLedger` 单进程假设**：账本在锁内全量覆盖写；同一工作区两个宿主实例各写各的，后写者覆盖前者。预算是**按项目目录**分别计，切换工作区即重置。
-9. **`TryEnqueue` 返回 `false` 有二义性**：既表示「同会话已存在、仅更新 executionId」，也表示「队列满被丢弃」。调用方只能记一条含糊日志。
-10. **`ReflectionObserver` 先 Reset 后入队**：入队失败时本轮触发额度已清零，该会话要再等 N 轮才可能触发。
-11. **`ReflectionTurnCounter` 淘汰会让会话轮次归零**：上限 512，超限时淘汰最久未触发的会话，其触发点后移几轮。与「重启归零可接受」同类。
-12. **`ReflectionJournal` 文件名截断到 100 字符 + 8 位哈希**：超出时不同 ID 仍可能因哈希碰撞而覆盖（概率可忽略）。
+4. **`AddSeeingReflection` 的配置节存储缺失时退回默认值**：`IConfigSectionStore` 未注册（独立装配/单元测试）时 `Enabled` 恒为 `false`，即「不工作」。
+5. **journal 写失败降级为 `SkipReason = "failed"`**：分析已跑完但结果未落盘，不报告成功。
+6. **`SuggestionCount` 为 0 与「解析失败」不可区分**：`{"action":"skip"}` 与 JSON 畸形都产出空列表，前者记 `Executed = true`，后者记 `SkipReason = "parse-failed"`——但两者在 `ReflectionRunRecord.Suggestions` 里都为空。失败快照的 `Detail` 可帮助区分。
+7. **`ExecutionUsageLedger` 单进程假设**：账本在锁内全量覆盖写；同一工作区两个宿主实例各写各的，后写者覆盖前者。预算是**按项目目录**分别计，切换工作区即重置。
+8. **`ReflectionObserver` 先 Reset 后入队**：入队失败（队列满）时本轮触发额度已清零，该会话要再等 N 轮才可能触发。
+9. **`ReflectionTurnCounter` 淘汰会让会话轮次归零**：上限 512，超限时淘汰最久未触发的会话，其触发点后移几轮。与「重启归零可接受」同类。
+10. **`ReflectionJournal` 文件名截断到 100 字符 + 8 位哈希**：超出时不同 ID 仍可能因哈希碰撞而覆盖（概率可忽略）。
+
+### 6.1 已修复的边界（保留记录，避免回归）
+
+| 原问题 | 修复 |
+|---|---|
+| `ReflectionTurnCounter` 字典无界增长（`Clear` 零调用） | 容量 512 + LRU 淘汰；`Reset` 保留触发时刻避免刚触发过的会话被立刻淘汰 |
+| 三处来源门禁漂移（观察者允许定时/心跳复盘、扫描器不允许） | 拆成 `IsUserVisibleTaskOrigin`（视图）与 `IsAutomatableOrigin`（自动分析）两个谓词 |
+| 失败会话永不清理（一天最多 144 个孤儿） | 失败/超时/解析失败统一落 `*.fail.json` 后清理子会话 |
+| `Touch` 只在记忆钩子调用 → 记忆关闭时空闲触发失效 | `ExecutionRunner` 终态无条件 `Touch`；记忆侧保留 |
+| `SuggestOnly` 建议无任何出口 | WebUI `/reflection` 只读页 |
+| 复盘模型不可追溯 | `ResolveModelId` 三级回退，模型写进 journal 与页面 |
+| journal 文件名无长度上限 | 截断到 100 + 8 位哈希 |
+| Worker 停用不取消在途复盘（最长 10 分钟） | 独立 `_deactivationCts`，`Deactivate` 调 `CancelInFlight` |
+| `TryEnqueue` 的 `false` 有二义性 | 改为 `ReflectionEnqueueResult` 枚举（`Enqueued`/`Updated`/`Dropped`/`Invalid`） |
+| MCP `EnableServerAsync` 返回硬编码 `Connecting`（后台连接可能已完成） | 返回调用时刻的真实状态；测试改为断言「不再是 Disabled」 |
 
 ---
 
@@ -278,7 +291,7 @@ dotnet build Seeing.Agent.slnx --no-incremental   # 0 error
 
 # 全量（均为 VSTest，MTP 在本环境无法发现测试）
 dotnet vstest tests/spine/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Tests.dll                              # 1297
-dotnet vstest tests/capabilities/Seeing.Agent.Reflection.Tests/bin/Debug/net10.0/Seeing.Agent.Reflection.Tests.dll   # 105
+dotnet vstest tests/capabilities/Seeing.Agent.Reflection.Tests/bin/Debug/net10.0/Seeing.Agent.Reflection.Tests.dll   # 108
 dotnet vstest tests/capabilities/Seeing.Agent.Memory.Tests/bin/Debug/net10.0/Seeing.Agent.Memory.Tests.dll           # 221
 dotnet vstest tests/capabilities/Seeing.Agent.Tools.Metadata.Tests/bin/Debug/net10.0/Seeing.Agent.Tools.Metadata.Tests.dll  # 274
 dotnet vstest tests/primitives/Seeing.Session.Tests/bin/Debug/net10.0/Seeing.Session.Tests.dll                       # 285
@@ -288,7 +301,7 @@ dotnet vstest tests/apps/Seeing.Agent.Tui.Tests/bin/Debug/net10.0/Seeing.Agent.T
 dotnet vstest tests/apps/Seeing.Agent.Cli.Tests/bin/Debug/net10.0/Seeing.Agent.Cli.Tests.dll                         # 84
 ```
 
-总计 2963 用例，0 failed。
+总计 2966 用例，0 failed。
 
 **变异验证**（每次都必须 `--no-incremental`，否则 MSBuild 复用旧产物会得假结论）：
 
@@ -303,6 +316,7 @@ dotnet vstest tests/apps/Seeing.Agent.Cli.Tests/bin/Debug/net10.0/Seeing.Agent.C
 | 给 `reflection` agent 的 `AllowedTools` 塞入 `write` | `Agent_Should_Allow_Read_Tools` 红 | 1 条红（断言用 `BeEquivalentTo` 精确锁集合） |
 | 去掉写入器的 `Mode != ApplyCreate` 短路 | `Apply_Should_Not_Write_In_SuggestOnly_Mode` 红 | 2 条红（SuggestOnly / Off） |
 | 去掉轮次计数器的淘汰 | `Count_Should_Not_Exceed_Capacity` 红 | 2 条红（容量 + LRU） |
+| `TryEnqueue` 队列满时返回 `Updated` 而非 `Dropped` | `TryEnqueue_Should_Report_Dropped_When_Full` 红 | 调用方将无法区分「正常去重」与「丢弃」 |
 
 ---
 
