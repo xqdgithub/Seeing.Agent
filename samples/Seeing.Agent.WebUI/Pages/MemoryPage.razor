@@ -1,26 +1,23 @@
+@page "/memory"
 @using AntDesign
 @using Seeing.Agent.Memory.Abstractions
 @using Seeing.Agent.Memory.Core.Models
-@using Seeing.Agent.Memory.Core.Graph
 @inject IMemoryService MemoryService
 @inject IMessageService MessageService
 @inject NavigationManager Navigation
 
 <PageTitle>记忆 - Seeing</PageTitle>
 
-<WorkspacePageShell Loading="@_loading" IsEmpty="@false"
-                    EmptyTitle="记忆模块" EmptyDescription="基于文件的记忆系统，支持混合检索和知识图谱">
+<WorkspacePageShell Loading="@_loading" IsEmpty="@false">
     <Breadcrumb>
         <BreadcrumbItem>工作区</BreadcrumbItem>
         <BreadcrumbItem>记忆</BreadcrumbItem>
     </Breadcrumb>
     <Extra>
         <Space>
-            <Button OnClick="@(() => Navigation.NavigateTo("/memory/settings"))">设置</Button>
-            <Button OnClick="@(() => Navigation.NavigateTo("/memory/browse"))">目录浏览</Button>
+            <Button OnClick="@(() => Navigation.NavigateTo("/settings"))">设置</Button>
             <Button OnClick="@(() => Navigation.NavigateTo("/memory/graph"))">知识图谱</Button>
-            <Button OnClick="@(() => Navigation.NavigateTo("/memory/stats"))">统计</Button>
-            <Button Icon="@IconType.Outline.Reload" OnClick="LoadStatsAsync">刷新</Button>
+            <Button Icon="@IconType.Outline.Reload" OnClick="ReloadAsync">刷新</Button>
             <Popconfirm Title="确定清空全部记忆文件、索引与图谱？此操作不可恢复。"
                         OnConfirm="ClearAllAsync"
                         OkText="清空全部"
@@ -29,94 +26,326 @@
             </Popconfirm>
         </Space>
     </Extra>
-    <Stats>
-        <div class="stat-item">
-            <div class="stat-icon"><Icon Type="@IconType.Outline.Database" /></div>
-            <div class="stat-content">
-                <span class="stat-value">@_fileCount</span>
-                <span class="stat-label">记忆文件</span>
-            </div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-icon"><Icon Type="@IconType.Outline.Search" /></div>
-            <div class="stat-content">
-                <span class="stat-value">@_vectorCount</span>
-                <span class="stat-label">向量索引</span>
-            </div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-icon"><Icon Type="@IconType.Outline.Apartment" /></div>
-            <div class="stat-content">
-                <span class="stat-value">@_nodeCount</span>
-                <span class="stat-label">图谱节点</span>
-            </div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-icon"><Icon Type="@IconType.Outline.Link" /></div>
-            <div class="stat-content">
-                <span class="stat-value">@_edgeCount</span>
-                <span class="stat-label">图谱边</span>
-            </div>
-        </div>
-    </Stats>
-    <Filters>
-        <div class="filter-search" style="flex: 1;">
-            <Search Placeholder="搜索记忆..." @bind-Value="@_query" OnSearch="SearchAsync" AllowClear="true" EnterButton="true" />
-        </div>
-    </Filters>
     <ChildContent>
-        @if (_hits.Any())
+        @if (IsEmpty)
         {
-            <Table TItem="SearchHitRow" DataSource="@_hits" RowKey="@(m => m.Path)">
-                <PropertyColumn Property="c => c.Id" Title="ID" />
-                <PropertyColumn Property="c => c.Type" Title="类型" />
-                <PropertyColumn Property="c => c.Title" Title="标题" />
-                <PropertyColumn Property="c => c.ScoreText" Title="相关度" />
-                <PropertyColumn Property="c => c.Highlight" Title="摘要" />
-                <ActionColumn Title="操作">
-                    <Button Size="@ButtonSize.Small" OnClick="@(() => Navigation.NavigateTo($"/memory/detail/{context.EncodedPath}"))">查看</Button>
-                </ActionColumn>
-            </Table>
-        }
-        else if (!string.IsNullOrWhiteSpace(_query))
-        {
-            <div style="text-align: center; padding: 40px; color: #999;">
-                未找到匹配的记忆
+            @* 空状态必须可行动：只说「暂无数据」等于没告诉用户下一步做什么。 *@
+            <div class="empty-state">
+                <h3 class="empty-state-title">暂无记忆</h3>
+                <p class="empty-state-description">
+                    记忆在每次对话后自动抽取（默认开启，每 10 轮一次）。
+                    如果一直为空，请检查设置中的「自动捕获」与「抽取」是否被关闭。
+                </p>
+                <div class="empty-state-action">
+                    <Button Type="@ButtonType.Primary" OnClick="@(() => Navigation.NavigateTo("/settings"))">
+                        打开设置
+                    </Button>
+                </div>
             </div>
         }
         else
         {
-            <div style="text-align: center; padding: 40px; color: #999;">
-                输入关键词搜索记忆，或点击上方按钮浏览目录、查看图谱
+            @* 概览：卡片即筛选入口。旧统计页只有数字、点不动，是死胡同。 *@
+            <div class="mem-cards">
+                <button type="button" class="mem-card @(TypeFilter is null ? "is-active" : "")"
+                        @onclick="@(() => ApplyFilter(null))">
+                    <span class="mem-card-value">@Overview!.TotalCount</span>
+                    <span class="mem-card-label">全部</span>
+                </button>
+                @foreach (var card in TypeCards)
+                {
+                    <button type="button" class="mem-card @(TypeFilter == card.Type ? "is-active" : "")"
+                            @onclick="@(() => ApplyFilter(card.Type))">
+                        <span class="mem-card-value">@Overview!.CountByType[card.Type]</span>
+                        <span class="mem-card-label">@card.Label</span>
+                    </button>
+                }
             </div>
+
+            @* 时间分布：只做趋势感知，不可点击——否则与类型筛选形成二维组合态。 *@
+            <div class="mem-daily">
+                <div class="mem-daily-title">最近 @Days 天</div>
+                <div class="mem-bars">
+                    @foreach (var day in Overview!.DailyCounts)
+                    {
+                        <div class="mem-bar-slot" title="@($"{day.Date:MM-dd} · {day.Count} 条")">
+                            <div class="mem-bar @(day.Count == 0 ? "is-zero" : "")"
+                                 style="height:@(BarHeight(day.Count))px"></div>
+                        </div>
+                    }
+                </div>
+                <div class="mem-axis">
+                    <span>@Overview!.DailyCounts[0].Date.ToString("MM-dd")</span>
+                    <span>@Overview!.DailyCounts[Days / 2].Date.ToString("MM-dd")</span>
+                    <span>@Overview!.DailyCounts[^1].Date.ToString("MM-dd")</span>
+                </div>
+            </div>
+
+            <div class="page-filters">
+                <Select TItem="MemoryType?" TItemValue="MemoryType?"
+                        Value="@TypeFilter" ValueChanged="OnTypeFilterChanged"
+                        Placeholder="全部类型" AllowClear="true" Style="width: 140px;">
+                    <SelectOption TItem="MemoryType?" TItemValue="MemoryType?" Value="@((MemoryType?)null)" Label="全部类型" />
+                    <SelectOption TItem="MemoryType?" TItemValue="MemoryType?" Value="@((MemoryType?)MemoryType.Session)" Label="会话" />
+                    <SelectOption TItem="MemoryType?" TItemValue="MemoryType?" Value="@((MemoryType?)MemoryType.Daily)" Label="每日" />
+                    <SelectOption TItem="MemoryType?" TItemValue="MemoryType?" Value="@((MemoryType?)MemoryType.Digest)" Label="整合" />
+                </Select>
+                <Search Placeholder="搜索记忆（回车走语义检索）..." @bind-Value="_query"
+                        OnSearch="OnSearchAsync" AllowClear="true" EnterButton="true" Style="width: 360px;" />
+                <span class="mem-count">@ListTitle · 共 @_rowCount 条</span>
+            </div>
+
+            @if (Rows.Count == 0)
+            {
+                <div style="text-align: center; padding: 40px; color: #999;">
+                    @(string.IsNullOrWhiteSpace(_query) ? "当前筛选条件下没有记忆" : "未找到匹配的记忆")
+                </div>
+            }
+            else
+            {
+                @* 原生 table：本项目的 Table/PropertyColumn 渲染不可靠，见 AGENTS.md。 *@
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th>标题</th>
+                            <th style="width: 80px;">类型</th>
+                            <th style="width: 170px;">来源会话</th>
+                            <th style="width: 150px;">修改时间</th>
+                            <th style="width: 130px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in PagedRows)
+                        {
+                            <tr @key="row.Path">
+                                <td>
+                                    <a href="javascript:void(0)" @onclick="@(() => OpenDetail(row.Path))">@row.Title</a>
+                                </td>
+                                <td><Tag Color="@TypeColor(row.Type)">@TypeLabel(row.Type)</Tag></td>
+                                <td title="@(row.SourceSession ?? "")">@row.SourceSessionText</td>
+                                <td>@row.ModifiedText</td>
+                                <td>
+                                    <Space>
+                                        <Button Size="@ButtonSize.Small" OnClick="@(() => OpenDetail(row.Path))">查看</Button>
+                                        <Popconfirm Title="确定删除此记忆？将同步移除索引与图谱节点。"
+                                                    OnConfirm="@(() => DeleteAsync(row.Path))">
+                                            <Button Size="@ButtonSize.Small" Danger>删除</Button>
+                                        </Popconfirm>
+                                    </Space>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                @if (_rowCount > PageSize)
+                {
+                    <div style="margin-top: 16px; text-align: right;">
+                        <Pagination Current="@_page" Total="@_rowCount" PageSize="@PageSize"
+                                    ShowSizeChanger="false" OnChange="OnPageChange" />
+                    </div>
+                }
+            }
         }
     </ChildContent>
 </WorkspacePageShell>
 
 @code {
+    private const int Days = 14;
+    private const int PageSize = 20;
+
+    /// <summary>概览卡类型集合：顺序即展示顺序。</summary>
+    private static readonly (MemoryType Type, string Label)[] TypeCards =
+    [
+        (MemoryType.Session, "会话"),
+        (MemoryType.Daily, "每日"),
+        (MemoryType.Digest, "整合"),
+    ];
+
+    private MemoryOverview? Overview;
+    private IReadOnlyList<FileNode> _files = Array.Empty<FileNode>();
+    private List<SearchHit>? _semanticHits;
+    private MemoryType? TypeFilter;
     private string _query = "";
-    private bool _loading;
+    private int _page = 1;
+    private bool _loading = true;
     private bool _clearing;
-    private int _fileCount;
-    private int _vectorCount;
-    private int _nodeCount;
-    private int _edgeCount;
-    private List<SearchHitRow> _hits = new();
 
-    protected override async Task OnInitializedAsync() => await LoadStatsAsync();
+    /// <summary>空库且无检索词时显示空状态。有检索词时走列表的「无匹配」分支。</summary>
+    private bool IsEmpty => Overview is { TotalCount: 0 } && string.IsNullOrWhiteSpace(_query);
 
-    private async Task LoadStatsAsync()
+    private string ListTitle => _semanticHits is null ? "全部记忆" : "语义检索结果";
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
     {
         _loading = true;
         try
         {
-            var stats = await MemoryService.GetStatsAsync();
-            _fileCount = stats.FileCount;
-            _vectorCount = stats.Index.TotalVectors;
-            _nodeCount = stats.Graph.NodeCount;
-            _edgeCount = stats.Graph.EdgeCount;
+            // 并发但各读一次：概览给聚合，文件列表给标题/路径/来源明细。
+            var overviewTask = MemoryService.GetOverviewAsync(Days);
+            var filesTask = MemoryService.ListAsync();
+            await Task.WhenAll(overviewTask, filesTask);
+            Overview = await overviewTask;
+            _files = await filesTask;
+            RebuildRows();
         }
-        finally { _loading = false; }
+        catch (Exception ex)
+        {
+            MessageService.Error($"加载记忆失败: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        _semanticHits = null;
+        _page = 1;
+        await LoadAsync();
+    }
+
+    /// <summary>
+    /// 行数据。列表排序用 <see cref="FileNode.ModifiedTime"/>，
+    /// 时间分布用 <c>CreatedAt</c>——两个维度不能混用。
+    /// <para>
+    /// 每次渲染只算一次（<see cref="RebuildRows"/>），不能在 getter 里现算：
+    /// 一个 getter 会在同一次渲染中被读多次（总数、分页、表格），
+    /// 而过滤要遍历全部文件的 Content，代价随数据量线性增长。
+    /// </para>
+    /// </summary>
+    private List<Row> Rows { get; } = new();
+
+    private int _rowCount;
+
+    private IEnumerable<Row> PagedRows =>
+        Rows.Skip((_page - 1) * PageSize).Take(PageSize);
+
+    private void RebuildRows()
+    {
+        Rows.Clear();
+
+        if (_semanticHits is not null)
+        {
+            Rows.AddRange(_semanticHits.Select(h => ToRow(h.Node)));
+            _rowCount = Rows.Count;
+            return;
+        }
+
+        IEnumerable<FileNode> query = _files;
+
+        if (TypeFilter is { } type)
+            query = query.Where(f => f.Metadata.Type == type);
+
+        var keyword = _query?.Trim() ?? "";
+        if (!string.IsNullOrEmpty(keyword))
+        {
+            query = query.Where(f =>
+                (f.Metadata.Title?.Contains(keyword, StringComparison.OrdinalIgnoreCase) ?? false)
+                || f.Path.Contains(keyword, StringComparison.OrdinalIgnoreCase)
+                || f.Content.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+        }
+
+        Rows.AddRange(query
+            .OrderByDescending(f => f.ModifiedTime)
+            .Select(ToRow));
+
+        _rowCount = Rows.Count;
+    }
+
+    private static Row ToRow(FileNode node) => new()
+    {
+        Path = node.Path,
+        Title = node.Metadata.Title ?? Path.GetFileNameWithoutExtension(node.Path),
+        Type = node.Metadata.Type,
+        SourceSession = node.Metadata.SourceSession,
+        SourceSessionText = ShortenSession(node.Metadata.SourceSession),
+        Modified = node.ModifiedTime,
+        ModifiedText = node.ModifiedTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm"),
+    };
+
+    private static string ShortenSession(string? sessionId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return "—";
+        return sessionId.Length <= 12 ? sessionId : sessionId[..12] + "…";
+    }
+
+    private int BarHeight(int count)
+    {
+        var max = Overview?.DailyCounts.Max(d => d.Count) ?? 0;
+        if (count <= 0 || max <= 0)
+            return 2;
+        return Math.Max(4, (int)Math.Round(count / (double)max * 72));
+    }
+
+    /// <summary>点同一类型即取消筛选；语义结果与类型是不同维度，切类型时清掉。</summary>
+    private void ApplyFilter(MemoryType? type)
+    {
+        TypeFilter = TypeFilter == type ? null : type;
+        _semanticHits = null;
+        _page = 1;
+        RebuildRows();
+    }
+
+    private void OnTypeFilterChanged(MemoryType? type)
+    {
+        TypeFilter = type;
+        _semanticHits = null;
+        _page = 1;
+        RebuildRows();
+    }
+
+    private async Task OnSearchAsync()
+    {
+        var keyword = _query?.Trim() ?? "";
+        _page = 1;
+
+        if (string.IsNullOrEmpty(keyword))
+        {
+            _semanticHits = null;
+            RebuildRows();
+            return;
+        }
+
+        _loading = true;
+        try
+        {
+            var hits = await MemoryService.SearchAsync(
+                new SearchQuery(Text: keyword, Mode: SearchMode.Hybrid, Limit: 50));
+            _semanticHits = hits.ToList();
+            RebuildRows();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"检索失败: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnPageChange(PaginationEventArgs args) => _page = args.Page;
+
+    private void OpenDetail(string path) =>
+        Navigation.NavigateTo($"/memory/detail/{Uri.EscapeDataString(path)}");
+
+    private async Task DeleteAsync(string path)
+    {
+        try
+        {
+            await MemoryService.DeleteAsync(path);
+            MessageService.Success($"已删除: {path}");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"删除失败: {ex.Message}");
+        }
     }
 
     private async Task ClearAllAsync()
@@ -126,8 +355,9 @@
         {
             var count = await MemoryService.ClearAllAsync();
             MessageService.Success($"已清空全部记忆（{count} 个文件）");
-            _hits.Clear();
-            await LoadStatsAsync();
+            _semanticHits = null;
+            _page = 1;
+            await LoadAsync();
         }
         catch (Exception ex)
         {
@@ -139,37 +369,30 @@
         }
     }
 
-    private async Task SearchAsync()
+    private static string TypeLabel(MemoryType type) => type switch
     {
-        if (string.IsNullOrWhiteSpace(_query)) return;
+        MemoryType.Session => "会话",
+        MemoryType.Daily => "每日",
+        MemoryType.Digest => "整合",
+        _ => type.ToString(),
+    };
 
-        _loading = true;
-        try
-        {
-            var query = new SearchQuery(Text: _query, Mode: SearchMode.Hybrid, Limit: 20);
-            var results = await MemoryService.SearchAsync(query);
-            _hits = results.Select(h => new SearchHitRow
-            {
-                Path = h.Node.Path,
-                EncodedPath = Uri.EscapeDataString(h.Node.Path),
-                Id = h.Node.Metadata.Id,
-                Type = h.Node.Metadata.Type.ToString(),
-                Title = h.Node.Metadata.Title ?? Path.GetFileName(h.Node.Path),
-                ScoreText = $"{h.Score:P0}",
-                Highlight = h.Highlight?.Length > 100 ? h.Highlight[..100] + "..." : h.Highlight ?? ""
-            }).ToList();
-        }
-        finally { _loading = false; }
-    }
+    private static string TypeColor(MemoryType type) => type switch
+    {
+        MemoryType.Session => "blue",
+        MemoryType.Daily => "green",
+        MemoryType.Digest => "orange",
+        _ => "default",
+    };
 
-    private sealed class SearchHitRow
+    private sealed class Row
     {
         public string Path { get; set; } = "";
-        public string EncodedPath { get; set; } = "";
-        public string Id { get; set; } = "";
-        public string Type { get; set; } = "";
         public string Title { get; set; } = "";
-        public string ScoreText { get; set; } = "";
-        public string Highlight { get; set; } = "";
+        public MemoryType Type { get; set; }
+        public string? SourceSession { get; set; }
+        public string SourceSessionText { get; set; } = "";
+        public DateTimeOffset Modified { get; set; }
+        public string ModifiedText { get; set; } = "";
     }
 }
