@@ -17,7 +17,7 @@
     </Breadcrumb>
     <Extra>
         <Space>
-            <Button OnClick="@(() => Navigation.NavigateTo("/memory"))">记忆搜索</Button>
+            <Button OnClick="@(() => Navigation.NavigateTo("/memory"))">记忆总览</Button>
             <Button Icon="@IconType.Outline.Reload" OnClick="LoadGraphAsync">刷新</Button>
             <Popconfirm Title="确定清空全部图谱节点与边？此操作不可恢复。"
                         OnConfirm="ClearGraphAsync"

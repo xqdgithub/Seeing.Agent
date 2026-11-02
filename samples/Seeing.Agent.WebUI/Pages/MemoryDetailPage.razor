@@ -14,12 +14,11 @@
     <Breadcrumb>
         <BreadcrumbItem>工作区</BreadcrumbItem>
         <BreadcrumbItem Href="/memory">记忆</BreadcrumbItem>
-        <BreadcrumbItem Href="/memory/browse">目录浏览</BreadcrumbItem>
         <BreadcrumbItem>@_displayTitle</BreadcrumbItem>
     </Breadcrumb>
     <Extra>
         <Space>
-            <Button OnClick="@(() => Navigation.NavigateTo("/memory/browse"))">返回列表</Button>
+            <Button OnClick="@(() => Navigation.NavigateTo("/memory"))">返回列表</Button>
             <Button OnClick="ToggleEditMode">
                 @(_editMode ? "取消编辑" : "编辑")
             </Button>
@@ -188,7 +187,7 @@
         {
             await MemoryService.DeleteAsync(FilePath);
             MessageService.Success("已删除");
-            Navigation.NavigateTo("/memory/browse");
+            Navigation.NavigateTo("/memory");
         }
         catch (Exception ex)
         {

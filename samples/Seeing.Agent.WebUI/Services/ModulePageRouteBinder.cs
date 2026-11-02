@@ -24,12 +24,8 @@ public static class ModulePageRouteBinder
     [
         new("/memory", typeof(MemoryPage), "memory", "记忆", "database",
             NavGroups.Workspace, NavGroups.WorkspaceIcon, 50),
-        new("/memory/browse", typeof(MemoryBrowsePage), "memory", "记忆浏览", "folder",
-            NavGroups.Workspace, NavGroups.WorkspaceIcon, 52),
         new("/memory/graph", typeof(MemoryGraphPage), "memory", "知识图谱", "apartment",
             NavGroups.Workspace, NavGroups.WorkspaceIcon, 53),
-        new("/memory/stats", typeof(MemoryStatsPage), "memory", "记忆统计", "bar-chart",
-            NavGroups.Workspace, NavGroups.WorkspaceIcon, 54),
         new("/memory/detail/{*FilePath}", typeof(MemoryDetailPage), "memory", "记忆详情", "file",
             NavGroups.Workspace, NavGroups.WorkspaceIcon, 55),
         new("/cron-jobs", typeof(CronJobsPage), "scheduler", "定时任务", "clock-circle",
