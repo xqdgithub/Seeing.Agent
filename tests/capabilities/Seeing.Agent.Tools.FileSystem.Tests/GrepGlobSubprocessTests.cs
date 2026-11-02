@@ -143,6 +143,82 @@ public class GrepGlobSubprocessTests
         logger.Messages.Should().Contain(m => m.Contains("boom"));
     }
 
+    [Fact]
+    public void GlobSearch_WhenCancelledDuringTraversal_ShouldThrowOperationCanceled()
+    {
+        // 回归：托管遍历曾完全忽略取消令牌，导致 glob 在大目录上不可中断、取消后会话挂死。
+        using var cts = new CancellationTokenSource();
+        var fs = new Mock<IFileSystem>();
+        fs.Setup(f => f.EnumerateFiles(It.IsAny<string>(), "*", It.IsAny<bool>()))
+            .Returns(() =>
+            {
+                cts.Cancel(); // 遍历开始后取消（模拟用户点取消）
+                return new[] { @"C:\repo\a.cs" };
+            });
+        fs.Setup(f => f.EnumerateDirectories(It.IsAny<string>(), "*", It.IsAny<bool>()))
+            .Returns(Array.Empty<string>());
+        fs.Setup(f => f.GetLastWriteTimeUtc(It.IsAny<string>())).Returns(DateTime.UtcNow);
+
+        var act = () => FileSystemHelper.GlobSearch(fs.Object, @"C:\repo", "**/*.cs", 100, cts.Token);
+
+        act.Should().Throw<OperationCanceledException>();
+    }
+
+    [Fact]
+    public void GrepSearch_WhenCancelledDuringTraversal_ShouldThrowOperationCanceled()
+    {
+        using var cts = new CancellationTokenSource();
+        var fs = new Mock<IFileSystem>();
+        fs.Setup(f => f.EnumerateFiles(It.IsAny<string>(), "*", It.IsAny<bool>()))
+            .Returns(() =>
+            {
+                cts.Cancel();
+                return new[] { @"C:\repo\a.cs" };
+            });
+        fs.Setup(f => f.EnumerateDirectories(It.IsAny<string>(), "*", It.IsAny<bool>()))
+            .Returns(Array.Empty<string>());
+
+        var act = () => FileSystemHelper.GrepSearch(fs.Object, @"C:\repo", "needle", null, 100, cts.Token);
+
+        act.Should().Throw<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task Glob_WhenCancelledDuringManagedFallback_ShouldThrowOperationCanceled()
+    {
+        // 工具级：rg 不可用 → 托管回退期间取消必须向上穿透为 OCE（执行器据此标记「已取消」）。
+        using var cts = new CancellationTokenSource();
+        var fs = new Mock<IFileSystem>();
+        fs.Setup(f => f.Exists(It.IsAny<string>())).Returns(true);
+        fs.Setup(f => f.GetFullPath(It.IsAny<string>())).Returns((string p) => p);
+        fs.Setup(f => f.EnumerateFiles(It.IsAny<string>(), "*", It.IsAny<bool>()))
+            .Returns(() =>
+            {
+                cts.Cancel();
+                return new[] { @"C:\repo\a.cs" };
+            });
+        fs.Setup(f => f.EnumerateDirectories(It.IsAny<string>(), "*", It.IsAny<bool>()))
+            .Returns(Array.Empty<string>());
+        fs.Setup(f => f.GetLastWriteTimeUtc(It.IsAny<string>())).Returns(DateTime.UtcNow);
+
+        var subprocess = new Mock<ISubprocessFactory>();
+        subprocess.Setup(s => s.Start(It.IsAny<SubprocessSpec>()))
+            .Throws(new System.ComponentModel.Win32Exception("rg not found"));
+
+        var world = new Mock<IExecutionWorld>();
+        world.Setup(w => w.Cwd).Returns(@"C:\repo");
+        world.Setup(w => w.FileSystem).Returns(fs.Object);
+        world.Setup(w => w.Subprocess).Returns(subprocess.Object);
+
+        var tool = new GlobTool(NullLogger<GlobTool>.Instance, world.Object, AllowAllPathGate.Instance);
+
+        var act = async () => await tool.ExecuteAsync(
+            JsonSerializer.SerializeToElement(new { pattern = "**/*.cs", path = @"C:\repo" }),
+            new ToolContext { SessionId = "s", CallId = "c", CancellationToken = cts.Token });
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
     private static IExecutionWorld CreateWorld(
         Func<SubprocessSpec, ISubprocess> onStart,
         bool fsExists,

@@ -14,6 +14,7 @@ namespace Seeing.Agent.Tools.FileSystem
     /// 返回按修改时间排序的文件列表。
     /// </para>
     /// </summary>
+    [ToolCapability(ToolCapabilityKeys.TimeoutBudget, "60000")]
     public class GlobTool : ToolBase
     {
         /// <summary>

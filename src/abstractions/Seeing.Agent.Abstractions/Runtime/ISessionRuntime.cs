@@ -27,5 +27,9 @@ public interface ISessionRuntime
     bool HasAnyActiveExecution();
     IReadOnlyList<IMessageEvent> GetBufferedEvents(string sessionId);
     IAsyncEnumerable<IMessageEvent> SubscribeEvents(string sessionId, CancellationToken ct = default);
+    /// <summary>
+    /// 和解加载时残留的未完成工具调用（pending/running）：会话无活跃执行时统一收敛为 cancelled 并落盘。
+    /// task 卡片若其子会话仍在执行则跳过；普通工具调用无活跃执行即为孤儿。
+    /// </summary>
     Task<int> ReconcileIncompleteTasksAsync(string sessionId, CancellationToken ct = default);
 }

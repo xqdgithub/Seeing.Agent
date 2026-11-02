@@ -25,7 +25,12 @@ internal class ChatEventTracker
     /// <summary>
     /// 应用事件到 Session
     /// </summary>
-    public void ApplyEvent(SessionData session, IMessageEvent evt)
+    /// <returns>
+    /// 本事件是否改变了「需要落盘的状态」。只有「同状态的重复 <see cref="ToolCallEvent"/>」返回 false：
+    /// 如 bash 每 100ms 的 Running 进度快照不应触发全量落盘；新建卡片、状态迁移
+    /// （pending→running）、TaskId 首次回填仍需写盘。其余事件保持原落盘语义（返回 true）。
+    /// </returns>
+    public bool ApplyEvent(SessionData session, IMessageEvent evt)
     {
         switch (evt)
         {
@@ -107,13 +112,14 @@ internal class ChatEventTracker
             case ToolCallEvent toolCall:
                 EnsureAssistantMessage(session, evt.SessionId);
                 if (_currentAssistantMessage == null)
-                    break;
+                    return false;
 
                 var currentToolCalls = _currentAssistantMessage.ToolCalls
                     ?? ImmutableList<SessionToolCall>.Empty;
 
                 var toolCallId = toolCall.ToolCallId ?? Guid.NewGuid().ToString("N");
                 var existing = currentToolCalls.FirstOrDefault(t => t.Id == toolCallId);
+                var isNewToolCall = existing == null;
                 if (existing == null)
                 {
                     existing = new SessionToolCall
@@ -126,6 +132,7 @@ internal class ChatEventTracker
                     _currentAssistantMessage.ToolCalls = currentToolCalls.Add(existing);
                 }
 
+                var previousStatus = existing.Status;
                 existing.Status = toolCall.Status switch
                 {
                     ToolCallStatus.Pending => "pending",
@@ -148,8 +155,14 @@ internal class ChatEventTracker
                     existing.DurationMs = duration.TotalMilliseconds;
 
                 // task 工具：Task* 权威来源为 TaskTool 结果 Metadata；Running 态无 Metadata 时从 Arguments 回填展示字段。
+                var previousTaskId = existing.TaskId;
                 ApplyTaskFields(existing, toolCall);
-                break;
+
+                // 仅状态迁移（或 TaskId 首次回填）需要落盘：
+                // 同状态的重复进度快照（bash 每 100ms 的 Running 输出）不得触发全量会话写。
+                var statusChanged = !string.Equals(previousStatus, existing.Status, StringComparison.OrdinalIgnoreCase);
+                var taskIdFilled = string.IsNullOrEmpty(previousTaskId) && !string.IsNullOrEmpty(existing.TaskId);
+                return isNewToolCall || statusChanged || taskIdFilled;
 
             case ErrorEvent:
                 // 运行时观测，不进对话消息/LLM 历史；由 ErrorEvent 事件驱动 UI 与执行记录
@@ -163,6 +176,8 @@ internal class ChatEventTracker
                 session.SelectedAcpMode = modeUpdate.ModeId;
                 break;
         }
+
+        return true;
     }
 
     /// <summary>

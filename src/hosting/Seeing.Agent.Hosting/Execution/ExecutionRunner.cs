@@ -326,12 +326,13 @@ internal sealed class ExecutionRunner : IExecutionRunner
                     }
 
                     var liveSession = sessionManager.Get(record.SessionId) ?? session;
-                    eventTracker.ApplyEvent(liveSession, evt);
+                    var changed = eventTracker.ApplyEvent(liveSession, evt);
 
                     // 先投影再发布，保证 UI 读到的是已写入的 SessionData
                     _eventPublisher.Publish(record.SessionId, evt);
 
-                    if (ShouldPersistEvent(evt))
+                    // changed：同状态的重复进度事件（bash 流式输出）不落盘，避免全量会话写放大
+                    if (changed && ShouldPersistEvent(evt))
                         await sessionManager.SaveAsync(record.SessionId);
                 }
 
@@ -576,16 +577,22 @@ internal sealed class ExecutionRunner : IExecutionRunner
     }
 
     /// <summary>
-    /// 是否应在服务端落盘（UI 不负责 Save）。
+    /// 事件是否需要落盘（决定是否在投影后立刻 SaveAsync）。
+    /// <para>
+    /// <c>Running</c> 必须落盘：否则刷新/重连后从存储回放的仍只有 <c>Pending</c>，
+    /// 真正在执行中的工具会显示成「等待」。落盘后的孤儿 running/pending 由
+    /// <see cref="ISessionRuntime.ReconcileIncompleteTasksAsync"/> 在加载时收敛为已中断。
+    /// </para>
     /// </summary>
-    private static bool ShouldPersistEvent(IMessageEvent evt) => evt switch
+    internal static bool ShouldPersistEvent(IMessageEvent evt) => evt switch
     {
         SchemaSnapshotEvent => true,
         StreamCompleteEvent => true,
         ToolCallEvent
         {
-            Status: ToolCallStatus.Pending or ToolCallStatus.Success
-            or ToolCallStatus.Failed or ToolCallStatus.Rejected or ToolCallStatus.Cancelled
+            Status: ToolCallStatus.Pending or ToolCallStatus.Running
+            or ToolCallStatus.Success or ToolCallStatus.Failed
+            or ToolCallStatus.Rejected or ToolCallStatus.Cancelled
         } => true,
         LoopCompleteEvent or LoopCancelledEvent or ErrorEvent => true,
         _ => false
