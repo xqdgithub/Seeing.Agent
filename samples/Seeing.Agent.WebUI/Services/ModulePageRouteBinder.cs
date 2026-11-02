@@ -24,8 +24,6 @@ public static class ModulePageRouteBinder
     [
         new("/memory", typeof(MemoryPage), "memory", "记忆", "database",
             NavGroups.Workspace, NavGroups.WorkspaceIcon, 50),
-        new("/memory/settings", typeof(MemorySettingsPage), "memory", "记忆设置", "setting",
-            NavGroups.Workspace, NavGroups.WorkspaceIcon, 51),
         new("/memory/browse", typeof(MemoryBrowsePage), "memory", "记忆浏览", "folder",
             NavGroups.Workspace, NavGroups.WorkspaceIcon, 52),
         new("/memory/graph", typeof(MemoryGraphPage), "memory", "知识图谱", "apartment",

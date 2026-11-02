@@ -62,10 +62,10 @@ public sealed class MemoryModule : ISeeingModule, IUiContribution
     /// <inheritdoc />
     public IReadOnlyList<object> Contribute() =>
     [
+        // 记忆设置走 WebUI 侧的 SettingsCardContribution（见 CoreShellUiContribution）：
+        // NavContribution 挂在 /memory 下会被 FilterSidebarNav 的前缀规则隐藏，永远不显示。
         new NavContribution("/memory", "记忆", "database", ["memory"],
             Group: NavGroups.Workspace, GroupIcon: NavGroups.WorkspaceIcon, Order: 50),
-        new NavContribution("/memory/settings", "记忆设置", "setting", ["memory"],
-            Group: NavGroups.Workspace, GroupIcon: NavGroups.WorkspaceIcon, Order: 51),
     ];
 
     /// <inheritdoc />
