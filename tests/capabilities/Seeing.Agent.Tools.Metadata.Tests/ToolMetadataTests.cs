@@ -184,7 +184,7 @@ public class ToolMetadataTests
         // 2) id 集合仍按产品事实锁定（SystemOneTool 一个类型 → 4 个 id）。
         var ids = BuiltInToolCatalog.All().Select(t => t.Id).ToArray();
 
-        ids.Should().HaveCount(53);
+        ids.Should().HaveCount(52);
         ids.Should().OnlyHaveUniqueItems();
         ids.Should().BeEquivalentTo(new[]
         {
@@ -200,7 +200,7 @@ public class ToolMetadataTests
             "send_channel_message", "list_channel_conversations", "list_channel_users",
             "acp", "acp_status",
             "systemone_ask", "systemone_noul", "systemone_choice", "systemone_score",
-            "current_time", "question", "skill_create",
+            "current_time", "question",
         });
     }
 

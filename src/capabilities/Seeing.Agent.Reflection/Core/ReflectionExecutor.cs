@@ -33,6 +33,7 @@ public sealed class ReflectionExecutor : IReflectionExecutor
     private readonly IReflectionJournal _journal;
     private readonly IExecutionUsageLedger _ledger;
     private readonly ReflectionRateLimiter _rateLimiter;
+    private readonly ReflectionSuggestionsWriter _suggestionsWriter;
     private readonly IOptionsMonitor<ReflectionOptions> _options;
     private readonly ILogger<ReflectionExecutor> _logger;
 
@@ -44,6 +45,7 @@ public sealed class ReflectionExecutor : IReflectionExecutor
         IReflectionJournal journal,
         IExecutionUsageLedger ledger,
         ReflectionRateLimiter rateLimiter,
+        ReflectionSuggestionsWriter suggestionsWriter,
         IOptionsMonitor<ReflectionOptions> options,
         ILogger<ReflectionExecutor> logger)
     {
@@ -53,6 +55,7 @@ public sealed class ReflectionExecutor : IReflectionExecutor
         _journal = journal ?? throw new ArgumentNullException(nameof(journal));
         _ledger = ledger ?? throw new ArgumentNullException(nameof(ledger));
         _rateLimiter = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
+        _suggestionsWriter = suggestionsWriter ?? throw new ArgumentNullException(nameof(suggestionsWriter));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -202,6 +205,12 @@ public sealed class ReflectionExecutor : IReflectionExecutor
         var suggestions = Suggestions.Parse(text);
         var usage = outcome.Usage;
 
+        // 写入是执行器的职责（不是 agent 的工具）：建议清单在这里、写入结果也在这里，
+        // 审计记录与真实副作用因此天然同源。SuggestOnly 模式下本方法直接返回空。
+        var createdSkills = await _suggestionsWriter
+            .ApplyAsync(suggestions, request.SessionId, ct)
+            .ConfigureAwait(false);
+
         var journalFailed = false;
         try
         {
@@ -212,8 +221,7 @@ public sealed class ReflectionExecutor : IReflectionExecutor
                     Kind: request.Kind,
                     At: request.At,
                     Outcome: outcome.Status.ToString(),
-                    // 技能由子会话内的 skill_create 自行写入，执行器不重复记账。
-                    CreatedSkills: Array.Empty<string>(),
+                    CreatedSkills: createdSkills,
                     Suggestions: suggestions,
                     InputTokens: usage?.InputTokens ?? 0,
                     OutputTokens: usage?.OutputTokens ?? 0),
@@ -255,7 +263,7 @@ public sealed class ReflectionExecutor : IReflectionExecutor
         return new ReflectionRunResult(
             Executed: true,
             SkipReason: null,
-            CreatedSkills: Array.Empty<string>(),
+            CreatedSkills: createdSkills,
             SuggestionCount: suggestions.Count);
     }
 

@@ -4,7 +4,6 @@ using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Acp.Tools;
 using Seeing.Agent.Hosting.Tools;
 using Seeing.Agent.Memory.Integration.Tools;
-using Seeing.Agent.Reflection.Integration.Tools;
 using Seeing.Agent.Scheduler.Tools;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Tools.Basic;
@@ -86,7 +85,6 @@ internal static class BuiltInToolCatalog
         typeof(SystemOneTool),
         typeof(CurrentTimeTool),
         typeof(QuestionTool),
-        typeof(SkillCreateTool),
     ];
 
     /// <summary>登记的全部工具类型。</summary>
@@ -114,7 +112,6 @@ internal static class BuiltInToolCatalog
         typeof(GitStatusTool),     // Seeing.Agent.Tools.Git
         typeof(SendMessageTool),   // Seeing.Agent.Tools.ChannelMessaging
         typeof(SkillTool),         // Seeing.Agent.Skills
-        typeof(SkillCreateTool),   // Seeing.Agent.Reflection
     ];
 
     public static IReadOnlyList<ITool> All() => s_types.SelectMany(CreateInstances).ToList();

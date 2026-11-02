@@ -1,26 +1,24 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Abstractions.Skills;
-using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Reflection.Configuration;
 using Seeing.Agent.Reflection.Integration;
-using Seeing.Agent.Reflection.Integration.Tools;
 
 namespace Seeing.Agent.Reflection;
 
 /// <summary>
 /// 复盘能力模块 — id=<c>reflection</c>。
 /// <para>
-/// 职责：启停门控（<see cref="ReflectionModuleActivity"/>）+ 挂载复盘用的
-/// <c>skill_create</c> 工具与隐藏的 <c>reflection</c> agent。
+/// 职责：启停门控（<see cref="ReflectionModuleActivity"/>）+ 注册隐藏的 <c>reflection</c> agent。
 /// </para>
 /// <para>
-/// 所有可选依赖都写成可空参数：宿主未装配工具/Agent 能力时模块仍能解析并激活，
-/// 只是少挂一部分东西——复盘是可选能力，不能因为它缺失导致整个宿主起不来。
+/// <b>本模块不挂载任何工具</b>：复盘 agent 是纯只读的，技能写入由
+/// <see cref="Core.ReflectionSuggestionsWriter"/> 在执行器内完成。
+/// 给 agent 一个写工具会带来三重问题：与「输出 JSON 建议清单」的提示词互斥、
+/// 写入结果对执行器不可见（journal 的 <c>CreatedSkills</c> 只能是空）、
+/// 以及让只读 agent 需要写文件权限。
 /// </para>
 /// </summary>
 public sealed class ReflectionModule : ISeeingModule
@@ -30,10 +28,8 @@ public sealed class ReflectionModule : ISeeingModule
 
     private readonly ReflectionModuleActivity? _activity;
     private readonly ILogger<ReflectionModule>? _logger;
-    private readonly IToolManager? _toolManager;
     private readonly IAgentStore? _agentStore;
     private readonly IOptionsMonitor<ReflectionOptions>? _options;
-    private readonly SkillCreateTool? _skillCreateTool;
 
     /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
     public ReflectionModule()
@@ -44,24 +40,21 @@ public sealed class ReflectionModule : ISeeingModule
     public ReflectionModule(
         ReflectionModuleActivity activity,
         ILogger<ReflectionModule>? logger = null,
-        IToolManager? toolManager = null,
         IAgentStore? agentStore = null,
-        IOptionsMonitor<ReflectionOptions>? options = null,
-        SkillCreateTool? skillCreateTool = null)
+        IOptionsMonitor<ReflectionOptions>? options = null)
     {
         _activity = activity ?? throw new ArgumentNullException(nameof(activity));
         _logger = logger;
-        _toolManager = toolManager;
         _agentStore = agentStore;
         _options = options;
-        _skillCreateTool = skillCreateTool;
     }
 
     /// <inheritdoc />
     public string Id => ModuleId;
 
     /// <inheritdoc />
-    public IReadOnlyList<string> ProvidedTools { get; } = [SkillCreateTool.ToolId];
+    /// <remarks>本模块不提供工具——复盘 agent 只读，写入在宿主侧执行器内完成。</remarks>
+    public IReadOnlyList<string> ProvidedTools { get; } = Array.Empty<string>();
 
     /// <inheritdoc />
     public IReadOnlyList<string> ProvidedSeams { get; } = Array.Empty<string>();
@@ -86,31 +79,6 @@ public sealed class ReflectionModule : ISeeingModule
 
         cancellationToken.ThrowIfCancellationRequested();
         _activity.IsActive = true;
-
-        // 工具挂载：优先用构造注入的实例，其次从容器取，最后按最小依赖就地构造。
-        var tool = _skillCreateTool
-            ?? services.GetService<SkillCreateTool>()
-            ?? TryBuildTool(services);
-
-        if (_toolManager is not null && tool is not null)
-        {
-            try
-            {
-                await _toolManager.RegisterToolAsync(tool, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                // 激活失败会让整个宿主起不来；复盘是可选能力，这里只记录不抛。
-                _logger?.LogWarning(ex, "复盘工具挂载失败（tool={ToolId}）", SkillCreateTool.ToolId);
-            }
-        }
-        else
-        {
-            // 静默跳过会让「配置写对了但复盘永远跑不起来」无从排查，必须留一条明确的因由。
-            _logger?.LogWarning(
-                "复盘工具未挂载（tool={ToolId}）：ToolManager 或工具实例缺失，skill_create 将不可用",
-                SkillCreateTool.ToolId);
-        }
 
         // Agent 注册：与内置 agent 一致，注册后不在 Deactivate 注销，避免影响进行中的会话。
         var options = _options?.CurrentValue;
@@ -138,43 +106,13 @@ public sealed class ReflectionModule : ISeeingModule
     }
 
     /// <inheritdoc />
-    public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
+    public Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         if (_activity is null)
-            return;
+            return Task.CompletedTask;
 
         _activity.IsActive = false;
-
-        if (_toolManager is not null)
-        {
-            try
-            {
-                await _toolManager.UnregisterToolAsync(SkillCreateTool.ToolId, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogWarning(ex, "复盘工具卸载失败（tool={ToolId}）", SkillCreateTool.ToolId);
-            }
-        }
-
         _logger?.LogInformation("复盘模块已停用（id={ModuleId}）", ModuleId);
-    }
-
-    /// <summary>
-    /// 容器未登记 <see cref="SkillCreateTool"/> 时就地构造（写作通道按需从容器取）。
-    /// </summary>
-    private SkillCreateTool? TryBuildTool(IServiceProvider services)
-    {
-        if (_options is null)
-            return null;
-
-        var logger = services.GetService<ILoggerFactory>()?.CreateLogger<SkillCreateTool>()
-            ?? NullLogger<SkillCreateTool>.Instance;
-
-        return new SkillCreateTool(
-            logger,
-            _options,
-            services.GetService<ISkillWriter>(),
-            services.GetService<ISkillCatalog>());
+        return Task.CompletedTask;
     }
 }

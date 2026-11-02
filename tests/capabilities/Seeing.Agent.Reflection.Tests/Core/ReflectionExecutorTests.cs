@@ -92,6 +92,10 @@ public sealed class ReflectionExecutorTests
 
         public ReflectionOptionsAccessorMonitor Monitor() => new(Options);
 
+        public Mock<Seeing.Agent.Abstractions.Skills.ISkillWriter> SkillWriter { get; } = new(MockBehavior.Loose);
+
+        public Mock<Seeing.Agent.Abstractions.Skills.ISkillCatalog> SkillCatalog { get; } = new(MockBehavior.Loose);
+
         public ReflectionExecutor Build()
             => new(
                 SessionManager.Object,
@@ -100,6 +104,11 @@ public sealed class ReflectionExecutorTests
                 Journal.Object,
                 Ledger.Object,
                 RateLimiter,
+                new ReflectionSuggestionsWriter(
+                    Monitor(),
+                    NullLogger<ReflectionSuggestionsWriter>.Instance,
+                    SkillWriter.Object,
+                    SkillCatalog.Object),
                 Monitor(),
                 NullLogger<ReflectionExecutor>.Instance);
 

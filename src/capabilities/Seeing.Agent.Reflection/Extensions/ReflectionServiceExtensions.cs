@@ -81,6 +81,12 @@ public static class ReflectionServiceExtensions
             new ReflectionJournal(sp.GetRequiredService<ReflectionStorageRoot>().Path));
         services.TryAddSingleton<IExecutionUsageLedger>(sp =>
             new ExecutionUsageLedger(sp.GetRequiredService<ReflectionStorageRoot>().Path));
+        services.TryAddSingleton(sp =>
+            new ReflectionSuggestionsWriter(
+                sp.GetRequiredService<IOptionsMonitor<ReflectionOptions>>(),
+                sp.GetRequiredService<ILogger<ReflectionSuggestionsWriter>>(),
+                sp.GetService<Seeing.Agent.Abstractions.Skills.ISkillWriter>(),
+                sp.GetService<Seeing.Agent.Abstractions.Skills.ISkillCatalog>()));
         services.TryAddSingleton<IReflectionExecutor>(sp =>
             new ReflectionExecutor(
                 sp.GetRequiredService<Seeing.Session.Core.ISessionManager>(),
@@ -89,6 +95,7 @@ public static class ReflectionServiceExtensions
                 sp.GetRequiredService<IReflectionJournal>(),
                 sp.GetRequiredService<IExecutionUsageLedger>(),
                 sp.GetRequiredService<ReflectionRateLimiter>(),
+                sp.GetRequiredService<ReflectionSuggestionsWriter>(),
                 sp.GetRequiredService<IOptionsMonitor<ReflectionOptions>>(),
                 sp.GetRequiredService<ILogger<ReflectionExecutor>>()));
 

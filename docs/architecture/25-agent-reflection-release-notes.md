@@ -27,8 +27,8 @@ Agent 在回合收尾后可以**异步复盘**这一轮的执行过程，把「�
 | `Core/ExecutionUsageLedger.cs` | `usage.json`，UTC 日切，累计 `ExecutionOutcome.Usage` |
 | `Core/Prompts.cs` | 复盘系统提示词（任务定义 / 反模式清单 / 写入纪律）与用户提示词 |
 | `Core/Suggestions.cs` | 建议清单 JSON 解析（容忍围栏、丢弃无 evidence/无 reason 条目） |
-| `Integration/Tools/SkillCreateTool.cs` | 工具 id `skill_create` |
-| `Integration/ReflectionAgentDefinition.cs` | `reflection` agent 定义（`Primary` + `IsHidden`） |
+| `Core/ReflectionSuggestionsWriter.cs` | **复盘唯一的写盘出口**：按 Mode 把建议落成项目级技能，返回实际创建的名字 |
+| `Integration/ReflectionAgentDefinition.cs` | `reflection` agent 定义（`Primary` + `IsHidden`，纯只读） |
 | `Background/ReflectionWorker.cs` | `BackgroundService`：单循环排空队列 + 每 1 分钟触发一次空闲扫描 |
 | `Background/ReflectionIdleScanner.cs` | 空闲扫描策略：结构/来源门禁、二次空闲确认、同空闲期冷却 |
 
@@ -65,13 +65,46 @@ Enabled → Mode != Off → AgentExecuted → IsTopLevel
 | 项 | 值 |
 |---|---|
 | `Mode` | `Primary` + `IsHidden = true` |
-| `AllowedTools` | `read` / `grep` / `glob` / `skill` / `skill_create` |
+| `AllowedTools` | `read` / `grep` / `glob` / `skill` |
 | `DeniedTools` | `task` / `write` / `edit` / `delete` |
 | `PermissionRules` | `Allow(File, "*")` + `Deny(Shell, "*")` |
 
-**关键不变量**：`PermissionRules` 里**不得**出现 `Deny(File, "*")`。`read` 工具映射到 `PermissionKind.File`，全局 Deny 会把 `read` 一起拒掉——这是设计评审抓出的 Review Focus #3。写文件/执行命令的约束改由 `DeniedTools` 与 `Deny(Shell)` 表达。
+**纯只读**：复盘 agent **没有**任何写入通道。它的产出是结构化的建议 JSON，
+技能落盘由宿主侧的 `ReflectionSuggestionsWriter` 在执行器内完成。
+
+**为什么不用 `skill_create` 工具**（本设计曾采用该方案，已废弃）：
+
+| 问题 | 说明 |
+|---|---|
+| 与提示词互斥 | `Prompts.ReflectionSystem` 要求输出 `{"suggestions":[...]}` 或 `{"action":"skip"}`，从未提过工具。模型只能在两种表达方式之间猜；猜错则最后一条 assistant 消息不是 JSON → `parse-failed` → 子会话按设计保留为孤儿 |
+| 写入结果不可见 | 工具写盘对执行器透明，journal 的 `CreatedSkills` 只能是硬编码空数组，「这轮写入什么技能」永远查不到 |
+| 需要写文件权限 | 只读分析任务被迫申请写权限，安全边界无法论证 |
+| 白送一个全局工具 | `skill_create` 登记进 `Full` 能力集 → 任何 agent 都能调，属「工具受众维度缺失」的扩散 |
+
+收进执行器后：写入结果与审计记录同源、agent 权限面收窄到完全只读、
+工具目录回到 52 个无需维护新条目。
+
+**关键不变量**：`PermissionRules` 里**不得**出现 `Deny(File, "*")`。`read` 工具映射到
+`PermissionKind.File`，全局 Deny 会把 `read` 一起拒掉——这是设计评审抓出的 Review Focus #3。
+写文件/执行命令的约束改由 `DeniedTools` 与 `Deny(Shell)` 表达。
 
 `Mode = Primary` + `IsHidden` 的组合是刻意的：`Primary` 表达「不可被 task 委派」（可委派列表按 `Mode != Primary` 排除），`IsHidden` 表达「不显示在用户选择列表」。用 `SubAgent` + `IsHidden` 会污染可委派集合——`IsHidden` 的契约语义是「隐藏但仍可作为 SubAgent 使用」。
+
+### 2.4 写入通道
+
+`ReflectionSuggestionsWriter` 是复盘唯一的落盘路径，按 `Mode` 分流：
+
+| Mode | 行为 |
+|---|---|
+| `Off` | 不写 |
+| `SuggestOnly`（默认） | 不写。建议内容已完整保留在 journal 的 `Suggestions` 里 |
+| `ApplyCreate` | 逐条写入项目级技能，返回实际创建的名字记进 journal |
+
+逐条校验（对齐 `SkillWriter.TryValidateName` 与 `SkillFileScanner` 的既有口径，不自创）：
+名称长度/非法字符、正文长度、提示注入片段、`ISkillCatalog.Find` 查重。
+**单条失败不影响其余条目**——一条命名冲突不该让整批建议白跑。
+
+写入的 frontmatter 带 `distilled-by = seeing-reflection` 与 `source-session = <源会话 ID>`，可追溯。
 
 ---
 
@@ -174,6 +207,7 @@ DI 注册从 `MemoryServiceExtensions` 移到 `SessionServiceExtensions` / `AddS
 | `IReflectionExecutor.RunAsync` 返回 `Task<ReflectionRunResult>` | 仅包内 | 无（包为新增） |
 | `AddSeeingReflection()` 增加可选 `IConfigSectionRegistry` 参数 | 宿主组合根 | 传入 registry 才能在 WebUI 看到配置节 |
 | `ChatMemoryHandler` 构造增加可选 `ISessionManager` | 手工构造该 handler 的调用点 | 传 `null` 即保持旧行为（不做来源过滤） |
+| 删除 `skill_create` 工具（工具目录 53 → 52） | 本仓无别的调用点 | 技能写入改由执行器内的 `ReflectionSuggestionsWriter` 完成 |
 
 **不在本批次的破坏性变更**：`LlmService` 删除 `ChatBeforeStart` / `LlmSystemPrompt` 两钩子、`MemoryRecallHandler` 删除——见 [24 LlmService 纯传输层 Release Notes](24-llmservice-transport-only-release-notes.md)。
 
@@ -182,7 +216,7 @@ DI 注册从 `MemoryServiceExtensions` 移到 `SessionServiceExtensions` / `AddS
 ## 6. 已知边界（本期接受）
 
 1. **`SessionForker` 不继承 `Origin`**：分叉出的会话回落 `User`，复盘会话若被分叉会「隐身失败」→ 潜在递归复盘（靠 `AgentName != "reflection"` 兜底）。
-2. **`skill_create` 无可见范围限制**：复盘写出的技能对所有 agent 可见。这是「工具受众维度缺失」的直接后果。
+2. **写入的技能对所有 agent 可见**：复盘写出的项目级技能进入全局技能目录，没有「仅复盘可见」的隔离。这不影响正确性（技能本就是可复用的知识），但授权范围比必要的大。
 3. **`ReflectionModule` 可选依赖静默降级**：容器未登记 `IToolManager` / `IAgentStore` 时模块照常激活，只挂不上对应组件。**已补告警日志**说明缺哪个依赖，不再完全静默。
 4. **`ReflectionWorker` 停用不取消在途复盘**：循环只用 `stoppingToken`，`IsActive=false` 只在下一次判循环条件时生效；单次 `RunAsync` 最长 `RunTimeoutMinutes`（10 分钟），停用后仍可能跑完当前这一次。
 5. **`AddSeeingReflection` 的配置节存储缺失时退回默认值**：`IConfigSectionStore` 未注册（独立装配/单元测试）时 `Enabled` 恒为 `false`，即「不工作」。
@@ -201,7 +235,7 @@ dotnet build Seeing.Agent.slnx --no-incremental   # 0 error
 
 # 全量（均为 VSTest，MTP 在本环境无法发现测试）
 dotnet vstest tests/spine/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Tests.dll                              # 1297
-dotnet vstest tests/capabilities/Seeing.Agent.Reflection.Tests/bin/Debug/net10.0/Seeing.Agent.Reflection.Tests.dll   # 89
+dotnet vstest tests/capabilities/Seeing.Agent.Reflection.Tests/bin/Debug/net10.0/Seeing.Agent.Reflection.Tests.dll   # 94
 dotnet vstest tests/capabilities/Seeing.Agent.Memory.Tests/bin/Debug/net10.0/Seeing.Agent.Memory.Tests.dll           # 221
 dotnet vstest tests/capabilities/Seeing.Agent.Tools.Metadata.Tests/bin/Debug/net10.0/Seeing.Agent.Tools.Metadata.Tests.dll  # 274
 dotnet vstest tests/primitives/Seeing.Session.Tests/bin/Debug/net10.0/Seeing.Session.Tests.dll                       # 285
@@ -223,6 +257,8 @@ dotnet vstest tests/apps/Seeing.Agent.Cli.Tests/bin/Debug/net10.0/Seeing.Agent.C
 | 注释掉 `_ledger.Add` | `Run_Should_Record_Usage_To_Ledger` 红 | 该用例即为补此缺口而新增 |
 | 去掉空闲扫描的冷却判断 | `Scan_Should_Not_Reenqueue_Same_Idle_Period` 红 | 1 条红 |
 | 去掉 `ChatMemoryHandler` 的来源过滤 | `ExecuteAsync_When_Platform_Internal_Session_Should_Not_Buffer` 红 | 3 条红（三种内部来源） |
+| 给 `reflection` agent 的 `AllowedTools` 塞入 `write` | `Agent_Should_Allow_Read_Tools` 红 | 1 条红（断言用 `BeEquivalentTo` 精确锁集合） |
+| 去掉写入器的 `Mode != ApplyCreate` 短路 | `Apply_Should_Not_Write_In_SuggestOnly_Mode` 红 | 2 条红（SuggestOnly / Off） |
 
 ---
 
@@ -231,4 +267,3 @@ dotnet vstest tests/apps/Seeing.Agent.Cli.Tests/bin/Debug/net10.0/Seeing.Agent.C
 - **P4 观察期**：真实运行下的成本核对、建议质量抽检。
 - **提案通道**：修改/删除已有技能走提案而非直接写（当前只支持新建）。
 - **Layer 3 Curator**：定期梳理技能库（本期明确不做）。
-- **工具受众维度**：让 `skill_create` 只对 `reflection` agent 可见——需先补 `AgentDefinition` 的工具受众声明能力。

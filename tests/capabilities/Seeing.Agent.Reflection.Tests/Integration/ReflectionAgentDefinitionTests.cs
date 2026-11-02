@@ -36,7 +36,10 @@ public sealed class ReflectionAgentDefinitionTests
     {
         var agent = Create();
 
-        agent.AllowedTools.Should().Contain(["read", "grep", "glob", "skill", "skill_create"]);
+        // 精确锁定集合而非「包含」：多出任何一个（尤其是 write / edit）都必须被测出来。
+        // 复盘 agent 的产出是结构化建议，写盘由宿主执行器完成——它不该有任何写入通道。
+        agent.AllowedTools.Should().BeEquivalentTo(["read", "grep", "glob", "skill"],
+            "复盘 agent 纯只读，技能写入由宿主侧执行器完成");
     }
 
     [Fact]

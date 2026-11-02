@@ -11,12 +11,14 @@ namespace Seeing.Agent.Reflection.Tests.Module;
 public sealed class ReflectionModuleTests
 {
     [Fact]
-    public void Module_Id_Should_Be_Reflection_And_Provide_SkillCreate()
+    public void Module_Id_Should_Be_Reflection_And_Provide_No_Tool()
     {
         var module = new ReflectionModule();
 
         module.Id.Should().Be("reflection");
-        module.ProvidedTools.Should().Equal("skill_create");
+
+        // 复盘 agent 纯只读：技能写入在宿主侧执行器内完成，不经工具。
+        module.ProvidedTools.Should().BeEmpty();
     }
 
     [Fact]

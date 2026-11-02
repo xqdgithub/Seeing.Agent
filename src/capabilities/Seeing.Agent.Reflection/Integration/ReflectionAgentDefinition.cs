@@ -20,9 +20,14 @@ public static class ReflectionAgentDefinition
     /// <summary>
     /// 构造复盘 Agent 定义。
     /// <para>
-    /// 权限面刻意收窄到「能读、能写技能、不能 shell」：
+    /// <b>纯只读</b>：只能 <c>read</c> / <c>grep</c> / <c>glob</c> / <c>skill</c>，
+    /// 没有任何写入通道。技能落盘由宿主的
+    /// <see cref="Core.ReflectionSuggestionsWriter"/> 在执行器内完成——
+    /// 复盘 agent 的职责只是「判断有没有值得沉淀的经验」并输出结构化结论。
+    /// </para>
+    /// <para>
     /// <c>read</c> 工具映射到 <see cref="PermissionKind.File"/>，因此这里**不**加
-    /// <c>Deny(File, "*")</c>（那会把 read 一起拒掉）；写文件/执行命令的约束改由
+    /// <c>Deny(File, "*")</c>（那会把 read 一起拒掉）；写文件/执行命令的约束由
     /// <see cref="AgentDefinition.DeniedTools"/> 与 <see cref="PermissionKind.Shell"/> 表达。
     /// </para>
     /// </summary>
@@ -50,7 +55,7 @@ public static class ReflectionAgentDefinition
             Temperature = 0.2,
 
             // 只读工具 + 技能读取 + 技能沉淀；写入类工具在 DeniedTools 中显式屏蔽。
-            AllowedTools = ["read", "grep", "glob", "skill", "skill_create"],
+            AllowedTools = ["read", "grep", "glob", "skill"],
             DeniedTools = ["task", "write", "edit", "delete"],
 
             PermissionRules =
