@@ -1,12 +1,15 @@
 /* 记忆总览页：概览卡 + 时间分布柱状图。
-   刻意不引入图表库——14 根柱子的收益配不上一个前端依赖。 */
+   刻意不引入图表库——14 根柱子的收益配不上一个前端依赖。
+
+   注意：本项目未启用 scoped CSS（.razor.css 不会被引用，样式会被静默丢弃）。
+   新增样式一律放在 wwwroot/css/ 并在 Pages/_Host.cshtml 中 <link>。 */
 
 /* ========== 概览卡（可点击筛选） ========== */
 .mem-cards {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 12px;
-    margin-bottom: 16px;
+    margin-bottom: var(--space-4);
 }
 
 .mem-card {
@@ -47,7 +50,7 @@
 
 /* ========== 时间分布柱状图 ========== */
 .mem-daily {
-    margin-bottom: 16px;
+    margin-bottom: var(--space-4);
 }
 
 .mem-daily-title {
@@ -95,4 +98,10 @@
 .mem-count {
     font-size: var(--font-size-sm);
     color: var(--color-text-tertiary);
+}
+
+@media (max-width: 900px) {
+    .mem-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }

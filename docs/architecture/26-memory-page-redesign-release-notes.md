@@ -170,7 +170,7 @@ string? SourceSession = null
 | 套件 | 用例数 | 结果 |
 |---|---|---|
 | spine | 1297 | 0 failed |
-| memory | **232**（原 221，+11） | 0 failed |
+| memory | **235**（原 221，+14） | 0 failed |
 | hosting | 75 | 0 failed |
 | hostcomp | 10 | 0 failed |
 | reflection | 108 | 0 failed |
@@ -178,7 +178,7 @@ string? SourceSession = null
 | session | 285 | 0 failed |
 | tui | 617 | 0 failed |
 | cli | 84 | 0 failed |
-| **合计** | **2977** | **0 failed** |
+| **合计** | **2980** | **0 failed** |
 
 ### 6.1 变异验证
 
@@ -208,13 +208,66 @@ string? SourceSession = null
 | `/settings` 出现「记忆」页签 | ✅ 位于「调度器」之后、「模型能力」之前 |
 | 记忆页签内容 | ✅ 5 张子卡片、24 个开关、100 个数字输入框 |
 
-### 6.3 未能验证的项
+**交互验收（Playwright，14/14 通过）**：
 
-- **卡片点击筛选**、**语义检索切换**、**分页**：需要 JS 交互，`agent-browser` 在本环境不可用
-  （未安装为全局命令，`npx` 启动超时）。静态 HTML 只能验证预渲染结果。
-- **保存配置写回 `seeing.json`**：同上，需要点击。
+| 项 | 结果 |
+|---|---|
+| 概览卡 4 张 / 柱状图 14 根 / 初始 5 行 | ✅ |
+| 点「每日」筛选后 5 行且卡片高亮 | ✅ |
+| 点「会话」后 0 行 + 提示文案 | ✅ |
+| 再点同一卡片取消筛选 | ✅ |
+| 点「全部」恢复 | ✅ |
+| 输入关键词实时本地过滤（1 行） | ✅ |
+| 计数文案同步（「共 1 条」） | ✅ |
+| 清空关键词恢复 5 行 | ✅ |
+| 下拉选「会话」→ 0 行，选「全部」→ 5 行 | ✅ |
+| 无 JS 异常 | ✅ |
 
-这三项需要用户在真实浏览器里点一遍确认。
+**配置持久化验收（端到端）**：
+
+| 项 | 结果 |
+|---|---|
+| 改「每 N 轮抽取」=6、「TopK」=9 → 保存 | ✅ |
+| 刷新页面后值保持 6 / 9 | ✅ |
+| 磁盘 `memory.json` 内容正确 | ✅ `ExtractEveryNTurns=6`、`TopK=9` |
+| 保存不冲掉其它字段 | ✅ 回归测试锁定 |
+
+### 6.3 实施过程中修掉的自身缺陷
+
+以下三条都是**本次实施引入、在验证阶段发现并修复**的问题，记录以免回归：
+
+1. **`.razor.css` 被静默忽略**：本项目未启用 scoped CSS，样式必须放 `wwwroot/css/` 并在 `Pages/_Host.cshtml` 显式 `<link>`。首版把柱状图样式写在 `MemoryPage.razor.css`，结果概览卡渲染成无样式 inline 文本。已改为 `wwwroot/css/memory-page.css`。
+
+2. **`Select` 用可空枚举崩溃**：`<Select TItem="MemoryType?" TItemValue="MemoryType?">` 在 value 为 null 时抛
+   `ArgumentNullException(Parameter 'key')`，异常发生在 SignalR 渲染回调内，会**直接打断连接**（表现为点击后页面卡死）。
+   改用 `TItem="string"` + `"all"` 占位符。
+
+3. **`Search` 组件的输入回调不触发**：`OnChange`/`OnSearch` 在 Server 模式下只有回车才回调，打字时列表不刷新。
+   改用项目内既有可用模式 `Input` + `OnInput`（同 `ModelsPage`），并把语义检索独立成一个「语义检索」按钮。
+
+### 6.4 未能验证的项
+
+- **`/memory/browse` 等已删路由的直达提示**：这些路径不会被路由到 404，而是落到 `ModuleRouter` 的
+  `Fallback` 分支，渲染「当前场景未启用「页面」」。这与**完全不存在的路径**表现一致——这是既有的
+  兜底提示缺陷（提示文案会误导用户去切换场景），不是本次引入的，也不在本次范围。
+
+---
+
+## 7. 关于「保存看起来没生效」的排查记录
+
+实施时一度误判为缺陷，记录结论以免后人重复排查：
+
+- **现象**：WebUI 改配置 → 提示「记忆设置已保存」→ 但 `~/.seeing/memory.json` 与
+  `E:\ai_data\seeing-agent-wd\.seeing\memory.json` 都没变。
+- **真相**：项目级配置写到的是**进程工作区**的 `.seeing/memory.json`，即
+  `<workspace>/samples/Seeing.Agent.WebUI/.seeing/memory.json`（`dotnet run --project` 的当前目录）。
+  上述两个文件都不是它的落点。
+- **验证**：端到端确认保存后刷新值保持、磁盘内容正确（见 §6.2 末表）。
+- **教训**：验证「配置是否落盘」不能靠猜路径，要么看 `WorkspaceProvider.ProjectSeeingDirectory`，
+  要么直接搜索全盘所有同名文件并按 mtime 排序。
+
+同时补了 3 条**落盘链路回归测试**（`MemoryOptionsPersistenceTests`）——此前该链路只有 Moq 桩，
+从未验证过「改字段 → 保存 → 磁盘上真的出现」这条完整路径。
 
 ---
 
@@ -222,10 +275,11 @@ string? SourceSession = null
 
 **新增**
 - `src/capabilities/Seeing.Agent.Memory/Abstractions/MemoryOverview.cs`
-- `samples/Seeing.Agent.WebUI/Pages/MemoryPage.razor.css`
+- `samples/Seeing.Agent.WebUI/wwwroot/css/memory-page.css`
 - `samples/Seeing.Agent.WebUI/Components/Settings/MemorySettingsCard.razor`
 - `tests/capabilities/Seeing.Agent.Memory.Tests/Storage/LocalFileStoreCreatedAtTests.cs`（5 条）
 - `tests/capabilities/Seeing.Agent.Memory.Tests/Core/MemoryOverviewTests.cs`（6 条）
+- `tests/capabilities/Seeing.Agent.Memory.Tests/Configuration/MemoryOptionsPersistenceTests.cs`（3 条）
 
 **修改**
 - `src/capabilities/Seeing.Agent.Memory/Core/Storage/LocalFileStore.cs`（`ParseMetadata` 签名 + 键名 + `GetDateTime` 顺序）
@@ -236,6 +290,7 @@ string? SourceSession = null
 - `samples/Seeing.Agent.WebUI/Pages/MemoryPage.razor`（重写）
 - `samples/Seeing.Agent.WebUI/Pages/MemoryDetailPage.razor`（导航）
 - `samples/Seeing.Agent.WebUI/Pages/MemoryGraphPage.razor`（导航）
+- `samples/Seeing.Agent.WebUI/Pages/_Host.cshtml`（`<link>` 引入 `memory-page.css`）
 - `samples/Seeing.Agent.WebUI/Services/ModulePageRouteBinder.cs`（删除 3 条路由）
 - `samples/Seeing.Agent.WebUI/Services/CoreShellUiContribution.cs`（新增 SettingsCard）
 

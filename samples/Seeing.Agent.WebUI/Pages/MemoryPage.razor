@@ -82,16 +82,28 @@
             </div>
 
             <div class="page-filters">
-                <Select TItem="MemoryType?" TItemValue="MemoryType?"
-                        Value="@TypeFilter" ValueChanged="OnTypeFilterChanged"
+                @*
+                    注意：Select 的 TItem 必须是「全部类型」占位符的实际类型（string），
+                    不能用 TItem="MemoryType?"——AntDesign 的 Select 在 value 为 null 时
+                    会抛 ArgumentNullException(Parameter 'key')，且该异常发生在 WS 渲染回调里，
+                    会直接打断 SignalR 连接（表现为「页面点击后卡死」）。
+                *@
+                <Select TItem="string" TItemValue="string"
+                        Value="@TypeFilterValue" ValueChanged="OnTypeFilterValueChanged"
                         Placeholder="全部类型" AllowClear="true" Style="width: 140px;">
-                    <SelectOption TItem="MemoryType?" TItemValue="MemoryType?" Value="@((MemoryType?)null)" Label="全部类型" />
-                    <SelectOption TItem="MemoryType?" TItemValue="MemoryType?" Value="@((MemoryType?)MemoryType.Session)" Label="会话" />
-                    <SelectOption TItem="MemoryType?" TItemValue="MemoryType?" Value="@((MemoryType?)MemoryType.Daily)" Label="每日" />
-                    <SelectOption TItem="MemoryType?" TItemValue="MemoryType?" Value="@((MemoryType?)MemoryType.Digest)" Label="整合" />
+                    <SelectOption TItem="string" TItemValue="string" Value="@("all")" Label="全部类型" />
+                    <SelectOption TItem="string" TItemValue="string" Value="@("session")" Label="会话" />
+                    <SelectOption TItem="string" TItemValue="string" Value="@("daily")" Label="每日" />
+                    <SelectOption TItem="string" TItemValue="string" Value="@("digest")" Label="整合" />
                 </Select>
-                <Search Placeholder="搜索记忆（回车走语义检索）..." @bind-Value="_query"
-                        OnSearch="OnSearchAsync" AllowClear="true" EnterButton="true" Style="width: 360px;" />
+                @*
+                    实时本地过滤用 Input + OnInput（项目内既有可用模式，见 ModelsPage）。
+                    AntDesign Search 的 OnChange/OnSearch 在 Server 模式下只有回车才回调，
+                    打字时列表不刷新。
+                *@
+                <Input Value="@_query" OnInput="OnSearchInput" AllowClear="true"
+                       Placeholder="搜索记忆（标题/路径/正文）" Style="width: 360px;" />
+                <Button OnClick="OnSearchAsync" Loading="@_searching">语义检索</Button>
                 <span class="mem-count">@ListTitle · 共 @_rowCount 条</span>
             </div>
 
@@ -170,6 +182,7 @@
     private int _page = 1;
     private bool _loading = true;
     private bool _clearing;
+    private bool _searching;
 
     /// <summary>空库且无检索词时显示空状态。有检索词时走列表的「无匹配」分支。</summary>
     private bool IsEmpty => Overview is { TotalCount: 0 } && string.IsNullOrWhiteSpace(_query);
@@ -291,9 +304,30 @@
         RebuildRows();
     }
 
-    private void OnTypeFilterChanged(MemoryType? type)
+    /// <summary>Select 的值形态：空 → "all"。用字符串避免 Select 处理 null 枚举值。</summary>
+    private string TypeFilterValue => TypeFilter is { } t
+        ? t.ToString().ToLowerInvariant()
+        : "all";
+
+    private void OnTypeFilterValueChanged(string value)
     {
-        TypeFilter = type;
+        TypeFilter = value?.ToLowerInvariant() switch
+        {
+            "session" => MemoryType.Session,
+            "daily" => MemoryType.Daily,
+            "digest" => MemoryType.Digest,
+            _ => null,
+        };
+        _semanticHits = null;
+        _page = 1;
+        RebuildRows();
+    }
+
+    /// <summary>输入即时触发本地过滤（不发检索请求）。</summary>
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _query = e.Value?.ToString() ?? "";
+        // 一旦手动改词，语义结果就失效了：否则列表会停在旧检索结果上。
         _semanticHits = null;
         _page = 1;
         RebuildRows();
@@ -311,7 +345,8 @@
             return;
         }
 
-        _loading = true;
+        // 用 _searching 而不是 _loading：_loading 会整页转圈，检索是小范围刷新。
+        _searching = true;
         try
         {
             var hits = await MemoryService.SearchAsync(
@@ -325,7 +360,7 @@
         }
         finally
         {
-            _loading = false;
+            _searching = false;
         }
     }
 
