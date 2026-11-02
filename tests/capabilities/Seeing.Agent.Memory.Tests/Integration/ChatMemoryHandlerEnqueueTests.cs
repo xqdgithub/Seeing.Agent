@@ -30,6 +30,7 @@ public class ChatMemoryHandlerEnqueueTests
             filter.Object,
             MemoryTestOptions.Monitor(),
             new SessionActivityTracker(),
+            sessionManager: null,
             NullLogger<ChatMemoryHandler>.Instance);
 
         var payload = HookPayload.FireAndForget(
@@ -62,6 +63,7 @@ public class ChatMemoryHandlerEnqueueTests
                 Capture = new MemoryCaptureOptions { AutoCapture = false }
             }),
             new SessionActivityTracker(),
+            sessionManager: null,
             NullLogger<ChatMemoryHandler>.Instance);
 
         var payload = HookPayload.FireAndForget(
@@ -72,6 +74,90 @@ public class ChatMemoryHandlerEnqueueTests
         var result = await handler.ExecuteAsync(payload);
         result.Should().Be(HookResult.Success);
         buffer.GetPendingCount("session-1").Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(SessionOrigin.Reflection)]
+    [InlineData(SessionOrigin.Scheduler)]
+    [InlineData(SessionOrigin.Heartbeat)]
+    public async Task ExecuteAsync_When_Platform_Internal_Session_Should_Not_Buffer(SessionOrigin origin)
+    {
+        // 复盘会话的 assistant 输出是分析结论，不是用户对话内容。
+        // 收进记忆会污染召回，而且该会话随后会被删除——条目连会话都查不到。
+        var buffer = new SessionMemoryBuffer(MemoryTestOptions.Monitor());
+        var flush = new Mock<IMemoryFlushService>(MockBehavior.Strict);
+        var filter = new Mock<IMemoryHeuristicFilter>();
+        filter.Setup(f => f.Evaluate(It.IsAny<MemoryCandidate>()))
+            .Returns(new FilterDecision(true, null));
+
+        var sessions = new Mock<ISessionManager>();
+        sessions.Setup(m => m.Get("session-1")).Returns(new SessionData
+        {
+            Id = "session-1",
+            Kind = SessionKind.SubAgent,
+            Origin = origin
+        });
+
+        var handler = new ChatMemoryHandler(
+            buffer,
+            flush.Object,
+            filter.Object,
+            MemoryTestOptions.Monitor(),
+            new SessionActivityTracker(),
+            sessions.Object,
+            NullLogger<ChatMemoryHandler>.Instance);
+
+        var payload = HookPayload.FireAndForget(
+            HookRegistry.ChatAfterComplete,
+            "session-1",
+            result: new Dictionary<string, object?>
+            {
+                ["content"] = "复盘结论：建议把这条流程沉淀为技能，内容足够长以通过最小长度门槛"
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var result = await handler.ExecuteAsync(payload);
+
+        result.Should().Be(HookResult.Success);
+        buffer.GetPendingCount("session-1").Should().Be(0,
+            "平台内部会话的产出不得进入记忆管道");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_When_Session_Unknown_Should_Still_Buffer()
+    {
+        // 读不到会话时保守收录：不把未知来源误判为内部会话而丢掉真实用户内容。
+        var buffer = new SessionMemoryBuffer(MemoryTestOptions.Monitor());
+        var flush = new Mock<IMemoryFlushService>(MockBehavior.Strict);
+        var filter = new Mock<IMemoryHeuristicFilter>();
+        filter.Setup(f => f.Evaluate(It.IsAny<MemoryCandidate>()))
+            .Returns(new FilterDecision(true, null));
+
+        var sessions = new Mock<ISessionManager>();
+        sessions.Setup(m => m.Get(It.IsAny<string>())).Returns((SessionData?)null);
+
+        var handler = new ChatMemoryHandler(
+            buffer,
+            flush.Object,
+            filter.Object,
+            MemoryTestOptions.Monitor(),
+            new SessionActivityTracker(),
+            sessions.Object,
+            NullLogger<ChatMemoryHandler>.Instance);
+
+        var payload = HookPayload.FireAndForget(
+            HookRegistry.ChatAfterComplete,
+            "session-1",
+            result: new Dictionary<string, object?>
+            {
+                ["content"] = "用户偏好使用深色主题，并要求默认语言为中文"
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        await handler.ExecuteAsync(payload);
+
+        buffer.GetPendingCount("session-1").Should().Be(1,
+            "会话不在内存中时不得据此丢弃内容（可能是尚未加载的真实用户会话）");
     }
 }
 

@@ -29,7 +29,8 @@ Agent 在回合收尾后可以**异步复盘**这一轮的执行过程，把「�
 | `Core/Suggestions.cs` | 建议清单 JSON 解析（容忍围栏、丢弃无 evidence/无 reason 条目） |
 | `Integration/Tools/SkillCreateTool.cs` | 工具 id `skill_create` |
 | `Integration/ReflectionAgentDefinition.cs` | `reflection` agent 定义（`Primary` + `IsHidden`） |
-| `Background/ReflectionWorker.cs` | `BackgroundService`：单循环排空队列 + 每 1 分钟扫描空闲会话 |
+| `Background/ReflectionWorker.cs` | `BackgroundService`：单循环排空队列 + 每 1 分钟触发一次空闲扫描 |
+| `Background/ReflectionIdleScanner.cs` | 空闲扫描策略：结构/来源门禁、二次空闲确认、同空闲期冷却 |
 
 ### 2.1 触发
 
@@ -134,8 +135,15 @@ public static bool IsUserVisibleTaskOrigin(this SessionOrigin origin)
 三个消费方共用该谓词：`TaskStatusTool.GetChildTasksStatusAsync`、`TaskTool.GetSubAgentStatusSummaryAsync`、
 `TaskTool` 的 `task_id` 复用校验、`TuiSurfaceProvider`（递归组订阅）——共四处调用点。
 
-**空闲触发的来源门禁在 Worker 侧独立实现**：它不走 `ReflectionObserver`，
+**空闲触发的来源门禁在 `ReflectionIdleScanner` 侧独立实现**：它不走 `ReflectionObserver`，
 因此必须自带 `Kind == Root` + `IsUserVisibleTaskOrigin()` 校验，否则会对子代理会话做复盘。
+两者门禁是**两份实现**（观察者拿到终态事实，扫描器拿到会话对象，可用信息不同），
+但表达的约束必须一致——改动任一处都要同步另一处。
+
+**记忆管道同样需要来源门禁**：`ChatMemoryHandler` 消费 `ChatAfterComplete` 钩子，
+原先不区分来源。复盘会话以 `Presentation = User` 投递，其 assistant 输出会被当作记忆候选，
+而该会话随后被删除——条目既污染召回又查不到来源。现改为读内存会话，
+`!IsUserVisibleTaskOrigin()` 时跳过；读不到会话时保守收录（不误杀尚未加载的用户会话）。
 
 ### 4.2 标题生成门禁
 
@@ -165,6 +173,7 @@ DI 注册从 `MemoryServiceExtensions` 移到 `SessionServiceExtensions` / `AddS
 | `ISessionActivityTracker` 移至 `Seeing.Session` 命名空间，并新增 `TryGetLastActivity` | Memory 包外部消费者需改 `using`；自定义实现需补新成员 | 改用 `Seeing.Session.Core` / `Seeing.Session.Management` |
 | `IReflectionExecutor.RunAsync` 返回 `Task<ReflectionRunResult>` | 仅包内 | 无（包为新增） |
 | `AddSeeingReflection()` 增加可选 `IConfigSectionRegistry` 参数 | 宿主组合根 | 传入 registry 才能在 WebUI 看到配置节 |
+| `ChatMemoryHandler` 构造增加可选 `ISessionManager` | 手工构造该 handler 的调用点 | 传 `null` 即保持旧行为（不做来源过滤） |
 
 **不在本批次的破坏性变更**：`LlmService` 删除 `ChatBeforeStart` / `LlmSystemPrompt` 两钩子、`MemoryRecallHandler` 删除——见 [24 LlmService 纯传输层 Release Notes](24-llmservice-transport-only-release-notes.md)。
 
@@ -192,8 +201,8 @@ dotnet build Seeing.Agent.slnx --no-incremental   # 0 error
 
 # 全量（均为 VSTest，MTP 在本环境无法发现测试）
 dotnet vstest tests/spine/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Tests.dll                              # 1297
-dotnet vstest tests/capabilities/Seeing.Agent.Reflection.Tests/bin/Debug/net10.0/Seeing.Agent.Reflection.Tests.dll   # 77
-dotnet vstest tests/capabilities/Seeing.Agent.Memory.Tests/bin/Debug/net10.0/Seeing.Agent.Memory.Tests.dll           # 217
+dotnet vstest tests/capabilities/Seeing.Agent.Reflection.Tests/bin/Debug/net10.0/Seeing.Agent.Reflection.Tests.dll   # 89
+dotnet vstest tests/capabilities/Seeing.Agent.Memory.Tests/bin/Debug/net10.0/Seeing.Agent.Memory.Tests.dll           # 221
 dotnet vstest tests/capabilities/Seeing.Agent.Tools.Metadata.Tests/bin/Debug/net10.0/Seeing.Agent.Tools.Metadata.Tests.dll  # 274
 dotnet vstest tests/primitives/Seeing.Session.Tests/bin/Debug/net10.0/Seeing.Session.Tests.dll                       # 285
 dotnet vstest tests/hosting/Seeing.Agent.Hosting.Tests/bin/Debug/net10.0/Seeing.Agent.Hosting.Tests.dll              # 75
@@ -202,7 +211,7 @@ dotnet vstest tests/apps/Seeing.Agent.Tui.Tests/bin/Debug/net10.0/Seeing.Agent.T
 dotnet vstest tests/apps/Seeing.Agent.Cli.Tests/bin/Debug/net10.0/Seeing.Agent.Cli.Tests.dll                         # 84
 ```
 
-总计 2936 用例，0 failed。
+总计 2952 用例，0 failed。
 
 **变异验证**（每次都必须 `--no-incremental`，否则 MSBuild 复用旧产物会得假结论）：
 
@@ -212,6 +221,8 @@ dotnet vstest tests/apps/Seeing.Agent.Cli.Tests/bin/Debug/net10.0/Seeing.Agent.C
 | 删除 `ShouldObserve` 的 `AgentName` 门禁 | `ShouldObserve_Should_Gate_Correctly` 红 | 1 条红 |
 | 删除 `ShouldObserve` 的 `Mode == Off` 门禁 | `ShouldObserve_Should_Return_False_When_Mode_Is_Off` 红 | 1 条红 |
 | 注释掉 `_ledger.Add` | `Run_Should_Record_Usage_To_Ledger` 红 | 该用例即为补此缺口而新增 |
+| 去掉空闲扫描的冷却判断 | `Scan_Should_Not_Reenqueue_Same_Idle_Period` 红 | 1 条红 |
+| 去掉 `ChatMemoryHandler` 的来源过滤 | `ExecuteAsync_When_Platform_Internal_Session_Should_Not_Buffer` 红 | 3 条红（三种内部来源） |
 
 ---
 

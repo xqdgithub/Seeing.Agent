@@ -54,6 +54,13 @@ public static class ReflectionServiceExtensions
             new ReflectionQueue(sp.GetRequiredService<IOptionsMonitor<ReflectionOptions>>()));
         services.TryAddSingleton<ReflectionTurnCounter>();
         services.TryAddSingleton<ReflectionRateLimiter>();
+        services.TryAddSingleton(sp =>
+            new ReflectionIdleScanner(
+                sp.GetRequiredService<IReflectionQueue>(),
+                sp.GetRequiredService<Seeing.Session.Core.ISessionActivityTracker>(),
+                sp.GetRequiredService<IOptionsMonitor<ReflectionOptions>>(),
+                sp.GetService<Seeing.Session.Core.ISessionManager>(),
+                sp.GetService<ILogger<ReflectionIdleScanner>>()));
 
         // 复盘产物根目录：跟随工作区的项目级 .seeing，缺失时退回临时目录（仅单元测试等无宿主场景）。
         // 用专用持有类型而非裸 string 注册：裸 string 会与容器里其它字符串服务冲突。

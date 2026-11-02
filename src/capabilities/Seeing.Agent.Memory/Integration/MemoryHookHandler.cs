@@ -21,6 +21,7 @@ public sealed class ChatMemoryHandler : IHookHandler
     private readonly IMemoryHeuristicFilter _filter;
     private readonly IOptionsMonitor<MemoryOptions> _options;
     private readonly ISessionActivityTracker _activity;
+    private readonly ISessionManager? _sessionManager;
     private readonly ILogger<ChatMemoryHandler>? _logger;
 
     public HookSpec Spec => HookRegistry.ChatAfterComplete;
@@ -32,6 +33,7 @@ public sealed class ChatMemoryHandler : IHookHandler
         IMemoryHeuristicFilter filter,
         IOptionsMonitor<MemoryOptions> options,
         ISessionActivityTracker activity,
+        ISessionManager? sessionManager = null,
         ILogger<ChatMemoryHandler>? logger = null)
     {
         _buffer = buffer ?? throw new ArgumentNullException(nameof(buffer));
@@ -39,6 +41,8 @@ public sealed class ChatMemoryHandler : IHookHandler
         _filter = filter ?? throw new ArgumentNullException(nameof(filter));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _activity = activity ?? throw new ArgumentNullException(nameof(activity));
+        // 可选：缺失时无法做来源过滤（见下方注释），仅在无会话管理器的独立装配下发生。
+        _sessionManager = sessionManager;
         _logger = logger;
     }
 
@@ -57,6 +61,15 @@ public sealed class ChatMemoryHandler : IHookHandler
             var max = Math.Max(1, opts.Capture.MaxSnippetChars);
             var snippet = content.Length <= max ? content : content[..max];
             var sessionId = string.IsNullOrEmpty(payload.SessionId) ? "unknown" : payload.SessionId;
+
+            // 平台内部会话的 assistant 输出不是用户对话内容，收进记忆会污染召回：
+            // 复盘会话产出的是分析结论，且它随后会被删除——记进来的条目连会话都查不到。
+            // 这里读内存中的会话（Get 不触发磁盘加载）；读不到时保守收录（不误杀）。
+            if (_sessionManager?.Get(sessionId) is { } session
+                && !session.Origin.IsUserVisibleTaskOrigin())
+            {
+                return Task.FromResult(HookResult.Success);
+            }
 
             var candidate = new MemoryCandidate(
                 Guid.NewGuid().ToString("N"),
