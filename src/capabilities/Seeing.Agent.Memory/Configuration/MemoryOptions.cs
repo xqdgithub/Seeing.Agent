@@ -76,7 +76,16 @@ public sealed class MemoryRetrievalOptions
 {
     public MemoryRetrievalMode Mode { get; set; } = MemoryRetrievalMode.Both;
     public int TopK { get; set; } = 5;
+
+    /// <summary>
+    /// <b>已失效：全仓无任何消费者</b>。召回条数由 <see cref="TopK"/> 决定
+    /// （<c>MemoryRecallService.RecallAsync</c> 内 <c>Take(opts.TopK)</c>），
+    /// 注入文本的长度上限是字符数（<c>MemoryContextSource.BaselineCharLimit</c>，8000），与 token 无关。
+    /// 保留本属性只为不破坏既有 <c>memory.json</c> 的读入；改它不会产生任何效果。
+    /// 见 <c>docs/architecture/24-llmservice-transport-only-release-notes.md</c>。
+    /// </summary>
     public int MaxInjectTokens { get; set; } = 800;
+
     public int InjectTimeoutMs { get; set; } = 150;
     public List<string> SearchTypes { get; set; } = new() { "daily", "digest" };
 }
