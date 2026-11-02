@@ -96,6 +96,7 @@ Seeing.Agent/
 | 子 Agent / Task | `src/hosting/Seeing.Agent.Hosting/` Task 工具 | Session-first |
 | 多流 / Task 卡片 UI | `samples/Seeing.Agent.WebUI/Services/` | SessionEventStreamRouter、TaskCardAggregator |
 | WebUI 模型选择 | `samples/Seeing.Agent.WebUI/Components/Models/` | Badge+Modal（Session）/ Dropdown（配置页）；见 `docs/architecture/07-webui-model-picker.md` |
+| 记忆页面 | 契约 `src/capabilities/Seeing.Agent.Memory/Abstractions/MemoryOverview.cs`；页面 `samples/Seeing.Agent.WebUI/Pages/MemoryPage.razor`；设置卡 `Components/Settings/MemorySettingsCard.razor` | 单页总览：`GetOverviewAsync` 一次读盘出类型/时间分布；分布用 `CreatedAt`（本地日历归日），列表排序用 `ModifiedTime`；设置走 `SettingsCardContribution`（`/memory/**` 子路由会被子路由规则隐藏，不能作侧栏项）；见 `docs/architecture/26-memory-page-redesign-release-notes.md` |
 | 模型元数据覆盖 | 契约 `src/abstractions/.../Llm/ModelOverride.cs`；应用器 `src/spine/Seeing.Agent.Core/Llm/ModelOverrideApplier.cs`；节 `ModelOverrides`（`~/.seeing/model-overrides.json`，UserOnly）；UI `samples/Seeing.Agent.WebUI/Pages/ModelsPage.razor` | 用户级稀疏覆盖（含补录），diff 持久化，聚合末端应用；见 `docs/superpowers/specs/2026-10-16-model-overrides-design.md` |
 | 共享/底层支持包 | `src/support/`（`Seeing.Agent.Llm.Support`、`Seeing.Agent.Tools.Support`） | 仅依赖 Abstractions + 原语；承载启发式/工具基类等实现，禁止引用上层包 |
 | 会话文件浏览器 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Files/`；能力包 `src/capabilities/Seeing.Agent.Files/`；组件库 `samples/Seeing.Agent.WebUI.Files/`；宿主桥接 `samples/Seeing.Agent.WebUI/Services/AgentFileChangeBridge.cs` | 文件能力只描述磁盘事实，不订阅会话事件；agent 桥接在宿主层；见 `docs/architecture/16` |
