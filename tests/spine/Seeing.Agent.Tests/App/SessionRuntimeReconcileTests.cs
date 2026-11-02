@@ -145,6 +145,55 @@ public class SessionRuntimeReconcileTests
         release.SetResult();
     }
 
+    [Fact]
+    public async Task ReconcileIncompleteTasksAsync_NonTaskRunningToolCall_ShouldMarkCancelled()
+    {
+        // Running 已落盘：进程崩溃/强制关闭后，无活跃执行的 running 卡片必须收敛，否则永久停在「执行中」。
+        var sessionManager = new SessionManager(logger: NullLogger<SessionManager>.Instance);
+        var session = await sessionManager.EnsureSessionAsync("s-reconcile-nontask");
+        var msg = SessionMessage.AssistantMessage("thinking");
+        msg.ToolCalls = ImmutableList.Create(new SessionToolCall
+        {
+            Id = "g1",
+            Name = "glob",
+            Status = "running"
+        });
+        session.AddMessage(msg);
+
+        var runtime = CreateRuntime(sessionManager, out _);
+
+        var count = await runtime.ReconcileIncompleteTasksAsync(
+            session.Id, TestContext.Current.CancellationToken);
+
+        count.Should().Be(1);
+        var tc = sessionManager.Get(session.Id)!.Messages[0].ToolCalls![0];
+        tc.Status.Should().Be("cancelled");
+        tc.Error.Should().Contain("工具调用已中断");
+    }
+
+    [Fact]
+    public async Task ReconcileIncompleteTasksAsync_NonTaskPendingToolCall_ShouldMarkCancelled()
+    {
+        var sessionManager = new SessionManager(logger: NullLogger<SessionManager>.Instance);
+        var session = await sessionManager.EnsureSessionAsync("s-reconcile-pending");
+        var msg = SessionMessage.AssistantMessage("thinking");
+        msg.ToolCalls = ImmutableList.Create(new SessionToolCall
+        {
+            Id = "g2",
+            Name = "grep",
+            Status = "pending"
+        });
+        session.AddMessage(msg);
+
+        var runtime = CreateRuntime(sessionManager, out _);
+
+        var count = await runtime.ReconcileIncompleteTasksAsync(
+            session.Id, TestContext.Current.CancellationToken);
+
+        count.Should().Be(1);
+        sessionManager.Get(session.Id)!.Messages[0].ToolCalls![0].Status.Should().Be("cancelled");
+    }
+
     private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 8000)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();

@@ -438,18 +438,32 @@ namespace Seeing.Agent.Tools.FileSystem
         }
 
         /// <summary>
-        /// 递归搜索匹配 Glob 模式的文件
+        /// 递归搜索匹配 Glob 模式的文件。
+        /// <para>托管回退可能遍历整棵树（数十万文件、分钟级），因此必须响应
+        /// <paramref name="cancellationToken"/>，否则用户取消无法中断搜索。</para>
         /// </summary>
-        public static List<string> GlobSearch(IFileSystem fileSystem, string directory, string pattern, int limit = 100)
+        public static List<string> GlobSearch(
+            IFileSystem fileSystem,
+            string directory,
+            string pattern,
+            int limit = 100,
+            CancellationToken cancellationToken = default)
         {
             var files = new List<string>();
 
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 // 处理不同类型的 glob 模式
                 var regexPattern = ConvertGlobToRegex(pattern);
 
-                SearchDirectory(fileSystem, directory, regexPattern, files, limit);
+                SearchDirectory(fileSystem, directory, regexPattern, files, limit, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // 取消必须穿透：托管遍历可能持续数分钟，吞掉取消会让整个会话无法中断
+                throw;
             }
             catch (Exception)
             {
@@ -465,8 +479,16 @@ namespace Seeing.Agent.Tools.FileSystem
         /// <summary>
         /// 递归搜索目录
         /// </summary>
-        private static void SearchDirectory(IFileSystem fileSystem, string directory, string regexPattern, List<string> files, int limit)
+        private static void SearchDirectory(
+            IFileSystem fileSystem,
+            string directory,
+            string regexPattern,
+            List<string> files,
+            int limit,
+            CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (files.Count >= limit) return;
 
             try
@@ -475,6 +497,7 @@ namespace Seeing.Agent.Tools.FileSystem
                 foreach (var file in fileSystem.EnumerateFiles(directory, "*", recursive: false))
                 {
                     if (files.Count >= limit) break;
+                    cancellationToken.ThrowIfCancellationRequested();
 
                     if (Regex.IsMatch(file, regexPattern, RegexOptions.IgnoreCase, RegexTimeout))
                     {
@@ -486,12 +509,13 @@ namespace Seeing.Agent.Tools.FileSystem
                 foreach (var subDir in fileSystem.EnumerateDirectories(directory, "*", recursive: false))
                 {
                     if (files.Count >= limit) break;
+                    cancellationToken.ThrowIfCancellationRequested();
 
                     var name = Path.GetFileName(subDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
                     // 跳过隐藏目录（可选）
                     if (name.StartsWith(".")) continue;
 
-                    SearchDirectory(fileSystem, subDir, regexPattern, files, limit);
+                    SearchDirectory(fileSystem, subDir, regexPattern, files, limit, cancellationToken);
                 }
             }
             catch (UnauthorizedAccessException)
@@ -509,21 +533,29 @@ namespace Seeing.Agent.Tools.FileSystem
         }
 
         /// <summary>
-        /// Grep 搜索 - 在文件内容中搜索正则表达式模式
+        /// Grep 搜索 - 在文件内容中搜索正则表达式模式。
+        /// <para>取消必须穿透到遍历循环，不能当作"搜索失败"静默返回部分结果。</para>
         /// </summary>
         public static List<GrepMatch> GrepSearch(
             IFileSystem fileSystem,
             string directory,
             string pattern,
             string? includePattern = null,
-            int limit = 100)
+            int limit = 100,
+            CancellationToken cancellationToken = default)
         {
             var matches = new List<GrepMatch>();
             var regex = new Regex(pattern, RegexOptions.Compiled, RegexTimeout);
 
             try
             {
-                SearchDirectoryForContent(fileSystem, directory, regex, includePattern, matches, limit);
+                cancellationToken.ThrowIfCancellationRequested();
+                SearchDirectoryForContent(fileSystem, directory, regex, includePattern, matches, limit, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // 取消必须穿透：不能把中断当成"搜索失败"静默返回部分结果
+                throw;
             }
             catch (Exception)
             {
@@ -546,8 +578,11 @@ namespace Seeing.Agent.Tools.FileSystem
             Regex regex,
             string? includePattern,
             List<GrepMatch> matches,
-            int limit)
+            int limit,
+            CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (matches.Count >= limit) return;
 
             try
@@ -560,6 +595,7 @@ namespace Seeing.Agent.Tools.FileSystem
                 foreach (var file in fileSystem.EnumerateFiles(directory, "*", recursive: false))
                 {
                     if (matches.Count >= limit) break;
+                    cancellationToken.ThrowIfCancellationRequested();
 
                     // 检查 include 模式
                     if (includeRegex != null && !includeRegex.IsMatch(file))
@@ -570,19 +606,20 @@ namespace Seeing.Agent.Tools.FileSystem
                         continue;
 
                     // 搜索文件内容
-                    SearchFileContent(fileSystem, file, regex, matches, limit);
+                    SearchFileContent(fileSystem, file, regex, matches, limit, cancellationToken);
                 }
 
                 // 递归搜索子目录
                 foreach (var subDir in fileSystem.EnumerateDirectories(directory, "*", recursive: false))
                 {
                     if (matches.Count >= limit) break;
+                    cancellationToken.ThrowIfCancellationRequested();
 
                     var name = Path.GetFileName(subDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
                     // 跳过隐藏目录（可选）
                     if (name.StartsWith(".")) continue;
 
-                    SearchDirectoryForContent(fileSystem, subDir, regex, includePattern, matches, limit);
+                    SearchDirectoryForContent(fileSystem, subDir, regex, includePattern, matches, limit, cancellationToken);
                 }
             }
             catch (UnauthorizedAccessException)
@@ -607,7 +644,8 @@ namespace Seeing.Agent.Tools.FileSystem
             string filePath,
             Regex regex,
             List<GrepMatch> matches,
-            int limit)
+            int limit,
+            CancellationToken cancellationToken)
         {
             try
             {
@@ -619,6 +657,8 @@ namespace Seeing.Agent.Tools.FileSystem
                 var lineNum = 0;
                 while (true)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+
                     var line = reader.ReadLine();
                     if (line == null) break;
 
@@ -638,6 +678,11 @@ namespace Seeing.Agent.Tools.FileSystem
                         if (matches.Count >= limit) break;
                     }
                 }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // 取消不是"读取失败"：必须向上穿透
+                throw;
             }
             catch
             {

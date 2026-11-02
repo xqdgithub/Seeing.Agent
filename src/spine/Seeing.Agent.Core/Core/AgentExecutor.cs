@@ -643,7 +643,8 @@ public class AgentExecutor : IAgentExecutor
     /// <summary>
     /// 执行工具调用 - 直接写入事件流。
     /// 关键：消费端用 CancellationToken.None 排空，取消后工具终态事件（Cancelled/Success/Failed）完整送达；
-    /// 排空受 ToolDrainTimeout 保护，避免被不响应取消的工具无限阻塞。
+    /// 取消信号与排空完成竞争，避免「取消只检查一次」导致工具开始后才取消的会话永久挂起；
+    /// 取消后仍给予 <see cref="ToolDrainTimeout"/> 让配合取消的工具送出终态，超时则放弃排空并返回。
     /// </summary>
     /// <returns>本步是否存在 EndTurn 工具结果，及其透传的原因（无则 null）。</returns>
     private async Task<(bool EndTurn, string? Reason)> ExecuteToolCallsAsync(
@@ -721,31 +722,38 @@ public class AgentExecutor : IAgentExecutor
         // 排空转发：把每个工具终态事件写入 outbound，并同步追加 tool 历史。
         var forward = ForwardToolEventsAsync(channel.Reader, writer, history);
 
-        if (cancellationToken.IsCancellationRequested)
+        // 取消必须可观测：不依赖工具是否配合取消。
+        // 取消信号与「排空完成」竞争；取消后仍给予 ToolDrainTimeout 让响应取消的工具送出终态，
+        // 超时则放弃本次排空并返回，避免整个会话被不响应取消的工具挂死（只能重启进程）。
+        var drain = Task.WhenAll(forward, allDone);
+        if (cancellationToken.CanBeCanceled)
         {
-            // 取消路径：用有限排空时间兜底，避免被不响应取消的工具无限阻塞终态。
-            var drain = Task.WhenAll(forward, allDone);
-            var winner = await Task.WhenAny(drain, Task.Delay(ToolDrainTimeout, CancellationToken.None));
-            if (!ReferenceEquals(winner, drain))
+            var cancelSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var registration = cancellationToken.Register(
+                static state => ((TaskCompletionSource)state!).TrySetResult(),
+                cancelSignal);
+
+            if (!ReferenceEquals(await Task.WhenAny(drain, cancelSignal.Task).ConfigureAwait(false), drain))
             {
-                _logger.LogWarning(
-                    "[AgentExecutor] 工具终态事件排空超时({TimeoutSeconds}s)，跳过剩余工具事件",
-                    ToolDrainTimeout.TotalSeconds);
-                channel.Writer.TryComplete();
-                try { await forward.ConfigureAwait(false); } catch { /* 个别事件丢弃为已知边界 */ }
-                return (false, null); // 不等待不响应取消的工具（任务泄漏为已知边界，与修复前一致）
+                // 已取消：有限时间内等待工具终态事件送达
+                var drained = await Task.WhenAny(drain, Task.Delay(ToolDrainTimeout, CancellationToken.None))
+                    .ConfigureAwait(false);
+
+                if (!ReferenceEquals(drained, drain))
+                {
+                    _logger.LogWarning(
+                        "[AgentExecutor] 工具终态事件排空超时({TimeoutSeconds}s)，跳过剩余工具事件",
+                        ToolDrainTimeout.TotalSeconds);
+                    channel.Writer.TryComplete();
+                    try { await forward.ConfigureAwait(false); } catch { /* 个别事件丢弃为已知边界 */ }
+                    return (false, null); // 不等待不响应取消的工具（任务泄漏为已知边界，与修复前一致）
+                }
             }
-            // 排空成功：forward 与 allDone 均已结束
-            return await forward.ConfigureAwait(false);
         }
-        else
-        {
-            // 正常路径无超时（与修复前一致）：等全部工具完成并转发完毕，
-            // 保证 tool 历史完整写入，避免下一轮 LLM 因缺 tool 消息报 400。
-            // RunToolCallWithEventsAsync 内部已捕获 OCE/异常，allDone 不会 fault。
-            await allDone.ConfigureAwait(false);
-            return await forward.ConfigureAwait(false);
-        }
+
+        // 排空成功（或未启用的取消令牌）：forward 与 allDone 均已结束
+        await allDone.ConfigureAwait(false);
+        return await forward.ConfigureAwait(false);
     }
 
     /// <summary>
@@ -826,8 +834,17 @@ public class AgentExecutor : IAgentExecutor
             complete = BuildTerminalEvent(tc, name, context, loopId, ToolCallStatus.Failed, ex.Message);
         }
 
-        // 使用 CancellationToken.None 确保终态事件即使在被取消时也能写出
-        await writer.WriteAsync(complete, CancellationToken.None).ConfigureAwait(false);
+        // 使用 CancellationToken.None 确保终态事件即使在被取消时也能写出。
+        // 通道可能已被「取消后放弃排空」关闭：此任务此时已被上层放弃，写失败只记录，不得向外抛。
+        try
+        {
+            await writer.WriteAsync(complete, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (ChannelClosedException)
+        {
+            _logger.LogDebug(
+                "[AgentExecutor] 工具终态事件通道已关闭，跳过写入: {ToolName}", name);
+        }
     }
 
     private static ToolCallEvent BuildTerminalEvent(

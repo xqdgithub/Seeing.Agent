@@ -6,12 +6,14 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Prompts;
+using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Core.Tools;
 using Seeing.Agent.Llm;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Core;
@@ -83,6 +85,93 @@ public class AgentExecutorCancellationTests
         captured!.AgentName.Should().Be("capability-agent");
         captured.PermissionKind.Should().Be("tool.execute");
         captured.Resource.Should().Be("test_tool");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenToolIgnoresCancellation_ShouldEndLoopWithinDrainTimeout()
+    {
+        // 回归：取消只做一次性检查时，不响应取消的工具会让本轮执行永久挂起（只能重启进程）。
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var llm = new Mock<ILlmService>();
+        llm.Setup(s => s.CompleteStreamAsync(
+                It.IsAny<string>(), It.IsAny<ChatRequest>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Returns((string _, ChatRequest _, string? _, CancellationToken _) => StreamToolCallCompletion());
+
+        var executor = await CreateExecutorWithToolAsync(llm.Object, new UnresponsiveTool(started));
+
+        using var cts = new CancellationTokenSource();
+        var originalDrainTimeout = AgentExecutor.ToolDrainTimeout;
+        AgentExecutor.ToolDrainTimeout = TimeSpan.FromMilliseconds(300);
+        try
+        {
+            var events = new List<IMessageEvent>();
+            var consume = Task.Run(async () =>
+            {
+                await foreach (var evt in EnumerateWithCancel(executor, cts))
+                    events.Add(evt);
+            });
+
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            cts.Cancel();
+
+            var finished = await Task.WhenAny(consume, Task.Delay(TimeSpan.FromSeconds(10)));
+
+            finished.Should().BeSameAs(
+                consume,
+                "取消后必须在 ToolDrainTimeout 内结束本轮，不得被不响应取消的工具挂死");
+            await consume;
+            events.Should().Contain(e => e is LoopCancelledEvent);
+        }
+        finally
+        {
+            AgentExecutor.ToolDrainTimeout = originalDrainTimeout;
+        }
+    }
+
+    /// <summary>完全不响应取消（忽略令牌）的工具：模拟同步阻塞/无取消检查的实现。</summary>
+    private sealed class UnresponsiveTool(TaskCompletionSource started) : ITool
+    {
+        public string Id => "test_tool";
+        public string Description => "unresponsive";
+        public IReadOnlyList<string> Tags => Array.Empty<string>();
+        public ToolCategory Category => ToolCategory.General;
+        public JsonElement ParametersSchema =>
+            System.Text.Json.JsonSerializer.SerializeToElement(new { type = "object", properties = new { } });
+
+        public async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
+        {
+            started.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, CancellationToken.None);
+            return new ToolResult { Success = true, Output = "unreachable" };
+        }
+    }
+
+    private static async Task<AgentExecutor> CreateExecutorWithToolAsync(ILlmService llm, ITool tool)
+    {
+        var hookManager = new HookManager(NullLogger<HookManager>.Instance);
+        var toolManager = new ToolManager(NullLogger<ToolManager>.Instance, hookManager);
+        await toolManager.RegisterToolAsync(tool);
+
+        var agentRegistry = new Mock<IAgentRegistry>();
+
+        var permission = new Mock<IPermissionService>();
+        permission.Setup(p => p.EvaluateToolAsync(
+                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<PermissionContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(PermissionResult.Allow(default, "test-allow"));
+
+        var modelManager = new Mock<IModelManager>();
+        modelManager.Setup(m => m.ResolveNativeModel(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string>()))
+            .Returns("test-model");
+
+        return new AgentExecutor(
+            llm,
+            toolManager,
+            permission.Object,
+            hookManager,
+            agentRegistry.Object,
+            new PromptBuilder(Array.Empty<IPromptSectionContributor>()),
+            modelManager.Object,
+            NullLogger<AgentExecutor>.Instance);
     }
 
     private static async IAsyncEnumerable<StreamUpdate> StreamPlainCompletion()
