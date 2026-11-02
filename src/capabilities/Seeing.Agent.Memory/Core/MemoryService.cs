@@ -3,6 +3,11 @@ using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Core.Graph;
 using Seeing.Agent.Memory.Core.Models;
 
+// Core.MemoryType（Semantic/Episodic/...）是死枚举，且与 Models.MemoryType 同名。
+// 本文件位于 Core 命名空间内，直接用 MemoryType 会解析到死枚举，
+// 因此用没有冲突的别名 MemType 指向真正在用的那个。
+using MemType = Seeing.Agent.Memory.Core.Models.MemoryType;
+
 namespace Seeing.Agent.Memory.Core;
 
 /// <summary>
@@ -123,6 +128,55 @@ public class MemoryService : IMemoryService
             Index: indexStats,
             Graph: graphStats
         );
+    }
+
+    /// <inheritdoc />
+    public async Task<MemoryOverview> GetOverviewAsync(int days = 14, CancellationToken ct = default)
+    {
+        if (days < 1)
+            throw new ArgumentOutOfRangeException(nameof(days), days, "时间分布窗口至少 1 天");
+
+        // 只读一次盘：类型分布、时间分布都基于这一份快照。
+        var files = await _fileStore.ListAsync(ct: ct);
+        var indexStats = await _index.GetStatsAsync(ct);
+        var graphStats = await _graph.GetStatsAsync(ct);
+
+        // 三个键恒在，值为 0 也要有：前端四张卡片才能稳定渲染。
+        var countByType = new Dictionary<MemType, int>
+        {
+            [MemType.Session] = 0,
+            [MemType.Daily] = 0,
+            [MemType.Digest] = 0,
+        };
+        foreach (var file in files)
+        {
+            countByType.TryGetValue(file.Metadata.Type, out var n);
+            countByType[file.Metadata.Type] = n + 1;
+        }
+
+        // 逐日补零，长度恒为 days：前端不必补零，柱子数量也不会随数据抖动。
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var firstDay = today.AddDays(-(days - 1));
+        var buckets = new int[days];
+        foreach (var file in files)
+        {
+            // 按用户本地日历归日：UTC 跨日会把「今晚写的」算到昨天。
+            var day = DateOnly.FromDateTime(file.Metadata.CreatedAt.LocalDateTime);
+            var offset = day.DayNumber - firstDay.DayNumber;
+            if (offset >= 0 && offset < days)
+                buckets[offset]++;
+        }
+
+        var daily = new List<MemoryDailyCount>(days);
+        for (var i = 0; i < days; i++)
+            daily.Add(new MemoryDailyCount(firstDay.AddDays(i), buckets[i]));
+
+        return new MemoryOverview(
+            TotalCount: files.Count,
+            CountByType: countByType,
+            DailyCounts: daily,
+            Index: indexStats,
+            Graph: graphStats);
     }
 
     /// <summary>

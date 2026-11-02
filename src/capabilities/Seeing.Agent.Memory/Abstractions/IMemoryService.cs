@@ -50,6 +50,14 @@ public interface IMemoryService
 
     /// <summary>获取统计信息</summary>
     Task<MemoryStats> GetStatsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// 获取总览：类型/时间分布 + 索引与图谱统计。
+    /// <para>只读一次盘，供总览页单点消费。</para>
+    /// </summary>
+    /// <param name="days">时间分布窗口天数（含今天），至少 1。</param>
+    /// <param name="ct">取消令牌。</param>
+    Task<MemoryOverview> GetOverviewAsync(int days = 14, CancellationToken ct = default);
 }
 
 /// <summary>
