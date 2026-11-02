@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Core.Models;
+using System.Globalization;
 using System.Reactive.Subjects;
 using System.Text;
 
@@ -421,14 +422,17 @@ public class LocalFileStore : IFileStore, IDisposable
         var fileInfo = new FileInfo(fullPath);
         var modifiedTime = fileInfo.LastWriteTimeUtc;
 
-        // 解析元数据
-        var metadata = ParseMetadata(frontMatter, relativePath);
+        // 归一化为 '/' 分隔：ParseMetadata 内的 InferType 与来源会话推断都依赖 '/' 前缀。
+        var normalizedPath = relativePath.Replace('\\', '/');
+
+        // 解析元数据（mtime 用于「无 created_at」时的回落，见 ParseMetadata）
+        var metadata = ParseMetadata(frontMatter, normalizedPath, modifiedTime);
 
         // 解析 wikilinks
         var links = WikilinkParser.Parse(content);
 
         return new FileNode(
-            Path: relativePath.Replace('\\', '/'),
+            Path: normalizedPath,
             Content: content,
             ModifiedTime: modifiedTime,
             Metadata: metadata,
@@ -439,7 +443,13 @@ public class LocalFileStore : IFileStore, IDisposable
     /// <summary>
     /// 解析 YAML frontmatter 元数据
     /// </summary>
-    private FileMetadata ParseMetadata(Dictionary<string, object?> frontMatter, string path)
+    /// <param name="frontMatter">已解析的 frontmatter 键值对（键名保持原样）。</param>
+    /// <param name="path">'/' 分隔的相对路径。</param>
+    /// <param name="modifiedTime">文件修改时间，作为缺失 <c>created_at</c> 时的回落值。</param>
+    private FileMetadata ParseMetadata(
+        Dictionary<string, object?> frontMatter,
+        string path,
+        DateTimeOffset modifiedTime)
     {
         var id = GetString(frontMatter, "id") ?? Guid.NewGuid().ToString("N")[..8];
         var typeStr = GetString(frontMatter, "type");
@@ -447,7 +457,13 @@ public class LocalFileStore : IFileStore, IDisposable
         var tags = GetStringList(frontMatter, "tags") ?? Array.Empty<string>();
         var importance = GetDouble(frontMatter, "importance") ?? 0.5;
         var confidence = GetDouble(frontMatter, "confidence") ?? 1.0;
-        var createdAt = GetDateTime(frontMatter, "createdAt") ?? DateTimeOffset.UtcNow;
+
+        // 写入点（MemoryPipeline / MemoryWriteTool / LlmMemoryEvolution）统一写 snake_case，
+        // 历史与手工文件可能是 camelCase。两者都认，避免每个文件都回落成「当前时刻」。
+        var createdAt = GetDateTime(frontMatter, "created_at")
+                     ?? GetDateTime(frontMatter, "createdAt")
+                     ?? modifiedTime;   // 无创建时间（如 session/{id}/index.md 手写头）→ 回落文件 mtime
+
         var expiresAt = GetDateTime(frontMatter, "expiresAt");
 
         // 解析类型
@@ -457,6 +473,10 @@ public class LocalFileStore : IFileStore, IDisposable
             type = parsedType;
         }
 
+        // session/{id}/index.md 没有 source_session 字段，但路径里的 id 就是来源会话。
+        var sourceSession = GetString(frontMatter, "source_session")
+                         ?? InferSourceSessionFromPath(path);
+
         return new FileMetadata(
             Id: id,
             Type: type,
@@ -465,8 +485,25 @@ public class LocalFileStore : IFileStore, IDisposable
             Importance: importance,
             Confidence: confidence,
             CreatedAt: createdAt,
-            ExpiresAt: expiresAt
+            ExpiresAt: expiresAt,
+            SourceSession: sourceSession
         );
+    }
+
+    /// <summary>从 session/{sessionId}/index.md 推断来源会话；其它路径返回 null。</summary>
+    private static string? InferSourceSessionFromPath(string path)
+    {
+        const string prefix = "session/";
+        if (!path.StartsWith(prefix, StringComparison.Ordinal))
+            return null;
+
+        var rest = path[prefix.Length..];
+        var slash = rest.IndexOf('/');
+        if (slash <= 0)
+            return null;
+
+        var sessionId = rest[..slash];
+        return string.IsNullOrWhiteSpace(sessionId) ? null : sessionId;
     }
 
     private static ReMeMemoryType InferType(string path)
@@ -538,14 +575,25 @@ public class LocalFileStore : IFileStore, IDisposable
         if (value is DateTime dt)
             return new DateTimeOffset(dt, TimeSpan.Zero);
 
+        // YamlDotNet 对纯数字可能直接反序列化成 long：这种情况一定是 unix 毫秒。
         if (value is long ms)
             return DateTimeOffset.FromUnixTimeMilliseconds(ms);
 
-        if (long.TryParse(value.ToString(), out var parsedMs))
-            return DateTimeOffset.FromUnixTimeMilliseconds(parsedMs);
+        var text = value.ToString();
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
 
-        if (DateTimeOffset.TryParse(value.ToString(), out var parsedDto))
+        // 先按日期文本解析：8 位纯数字（如 20260101）既能被 long.TryParse 吃下，
+        // 又更可能是一个日期；当成 unix 毫秒会得到 1970 年。
+        if (DateTimeOffset.TryParse(
+                text,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var parsedDto))
             return parsedDto;
+
+        if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedMs))
+            return DateTimeOffset.FromUnixTimeMilliseconds(parsedMs);
 
         return null;
     }

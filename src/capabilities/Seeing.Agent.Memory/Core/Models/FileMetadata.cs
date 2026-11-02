@@ -11,7 +11,8 @@ public record FileMetadata(
     double Importance,              // 重要性 0.0-1.0
     double Confidence,              // 置信度 0.0-1.0
     DateTimeOffset CreatedAt,       // 创建时间
-    DateTimeOffset? ExpiresAt       // 过期时间
+    DateTimeOffset? ExpiresAt,      // 过期时间
+    string? SourceSession = null    // 来源会话 ID（daily 文件来自 frontmatter；session 索引来自路径）
 )
 {
     /// <summary>默认构造</summary>
