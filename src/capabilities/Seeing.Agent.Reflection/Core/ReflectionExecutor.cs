@@ -226,9 +226,20 @@ public sealed class ReflectionExecutor : IReflectionExecutor
             journalFailed = true;
         }
 
+        // 记账与清理必须互相独立：
+        // 记账抛异常（磁盘权限 / 编码问题）不能让已经跑完的复盘留下孤儿子会话——
+        // 两个动作都在 try 内且共用一段，任一失败就会跳过清理。
         if (usage is not null)
         {
-            _ledger.Add(usage);
+            try
+            {
+                _ledger.Add(usage);
+            }
+            catch (Exception ex)
+            {
+                // 账本影响的是「预算闸」而不是本次结果，缺一次记账顶多让预算略宽松。
+                _logger.LogWarning(ex, "复盘用量记账失败（已忽略）：SessionId={SessionId}", request.SessionId);
+            }
         }
 
         // === 阶段 5：清理（只有成功才清理；失败/超时保留子会话） ===

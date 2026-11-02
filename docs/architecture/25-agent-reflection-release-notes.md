@@ -76,7 +76,11 @@ Enabled → Mode != Off → AgentExecuted → IsTopLevel
 
 ## 3. 配置
 
-节名 `SeeingAgent:Reflection`（`.seeing/seeing.json` / `~/.seeing/seeing.json`）：
+节名 `Reflection`，存放在 **`seeing.json`**（`~/.seeing/seeing.json` 用户级 / `.seeing/seeing.json` 项目级），
+经 `IConfigSectionStore` 读取并在 `ConfigSectionRegistry` 登记（WebUI 配置页可见、纳入统一配置校验）。
+
+> **不要**把配置写到 `appsettings.json` 的 `SeeingAgent:Reflection` 节——本仓能力包配置不走
+> Microsoft 的 `IConfiguration` 管道，写在那里不会生效（这是审查抓出的原始缺陷，已修）。
 
 | 键 | 默认 | 说明 |
 |---|---|---|
@@ -92,6 +96,17 @@ Enabled → Mode != Off → AgentExecuted → IsTopLevel
 | `QueueCapacity` | `32` | 队列容量，满则丢弃 |
 | `MaxToolResultChars` | `4000` | transcript 中单条工具结果截断 |
 | `MaxTranscriptChars` | `60000` | transcript 总长上限（从尾部保留最近的） |
+
+### 3.1 两条触发来源的差异
+
+| 来源 | 门禁 |
+|---|---|
+| 轮次触发（`ReflectionObserver`） | 八重门禁全开（见 §2.1） |
+| 空闲触发（`ReflectionWorker`） | 只读内存校验：`Kind == Root` + `IsUserVisibleTaskOrigin()` + 二次确认仍空闲 + 冷却去重 |
+
+空闲触发**不**走 `ReflectionObserver`，因此必须自带等价的来源门禁——否则会对子代理会话
+甚至复盘会话自身做复盘。冷却键是「投递时的活动时刻」：用户一旦回到会话，
+`Touch` 刷新时刻，天然允许下一次空闲复盘。
 
 ---
 
@@ -116,7 +131,11 @@ public static bool IsUserVisibleTaskOrigin(this SessionOrigin origin)
 
 **为什么不能写成 `== SubAgentTask`**：`Origin` 是后加字段，升级前的历史子会话没有它 → 反序列化后是 `User`。白名单会让**所有存量 task 会话升级后从任务视图消失且无法 resume**。实测该写法让 `TaskToolAutoApproveInheritanceTests` 3 个用例失败。排除式只挡 `Reflection`/`Scheduler`/`Heartbeat`——它们必然是新代码创建的，不存在历史兼容问题。
 
-三个消费方共用该谓词：`TaskStatusTool.GetChildTasksStatusAsync`、`TaskTool.GetSubAgentStatusSummaryAsync`、`TuiSurfaceProvider`（递归组订阅）。`TaskTool` 的 `task_id` 复用校验同样改为 `Kind == SubAgent && IsUserVisibleTaskOrigin()`。
+三个消费方共用该谓词：`TaskStatusTool.GetChildTasksStatusAsync`、`TaskTool.GetSubAgentStatusSummaryAsync`、
+`TaskTool` 的 `task_id` 复用校验、`TuiSurfaceProvider`（递归组订阅）——共四处调用点。
+
+**空闲触发的来源门禁在 Worker 侧独立实现**：它不走 `ReflectionObserver`，
+因此必须自带 `Kind == Root` + `IsUserVisibleTaskOrigin()` 校验，否则会对子代理会话做复盘。
 
 ### 4.2 标题生成门禁
 
@@ -143,9 +162,9 @@ DI 注册从 `MemoryServiceExtensions` 移到 `SessionServiceExtensions` / `AddS
 
 | 变更 | 影响 | 迁移 |
 |---|---|---|
-| `ISessionActivityTracker` 移至 `Seeing.Session` 命名空间 | Memory 包外部消费者需改 `using` | 改用 `Seeing.Session.Core` / `Seeing.Session.Management` |
+| `ISessionActivityTracker` 移至 `Seeing.Session` 命名空间，并新增 `TryGetLastActivity` | Memory 包外部消费者需改 `using`；自定义实现需补新成员 | 改用 `Seeing.Session.Core` / `Seeing.Session.Management` |
 | `IReflectionExecutor.RunAsync` 返回 `Task<ReflectionRunResult>` | 仅包内 | 无（包为新增） |
-| `AddSeeingReflection(registry)` 挂载 `ReflectionModule` | 宿主组合根 | 使用 `AddSeeingFullCapabilities` 的宿主自动获得 |
+| `AddSeeingReflection()` 增加可选 `IConfigSectionRegistry` 参数 | 宿主组合根 | 传入 registry 才能在 WebUI 看到配置节 |
 
 **不在本批次的破坏性变更**：`LlmService` 删除 `ChatBeforeStart` / `LlmSystemPrompt` 两钩子、`MemoryRecallHandler` 删除——见 [24 LlmService 纯传输层 Release Notes](24-llmservice-transport-only-release-notes.md)。
 
@@ -155,11 +174,14 @@ DI 注册从 `MemoryServiceExtensions` 移到 `SessionServiceExtensions` / `AddS
 
 1. **`SessionForker` 不继承 `Origin`**：分叉出的会话回落 `User`，复盘会话若被分叉会「隐身失败」→ 潜在递归复盘（靠 `AgentName != "reflection"` 兜底）。
 2. **`skill_create` 无可见范围限制**：复盘写出的技能对所有 agent 可见。这是「工具受众维度缺失」的直接后果。
-3. **`ReflectionModule` 可选依赖静默降级**：容器未登记 `IToolManager` / `IAgentStore` 时模块照常激活，只是不挂工具与 agent。好处是宿主不会因可选能力缺失起不来，代价是配置错误不报错。
-4. **`ReflectionWorker` 停用响应最坏延迟 1 分钟**（`PeriodicTimer` tick 周期）。
-5. **`AddSeeingReflection(IConfiguration)` 的 `TryAddSingleton(configuration)`**：若 DI 中已有不同实例则静默忽略。
+3. **`ReflectionModule` 可选依赖静默降级**：容器未登记 `IToolManager` / `IAgentStore` 时模块照常激活，只挂不上对应组件。**已补告警日志**说明缺哪个依赖，不再完全静默。
+4. **`ReflectionWorker` 停用不取消在途复盘**：循环只用 `stoppingToken`，`IsActive=false` 只在下一次判循环条件时生效；单次 `RunAsync` 最长 `RunTimeoutMinutes`（10 分钟），停用后仍可能跑完当前这一次。
+5. **`AddSeeingReflection` 的配置节存储缺失时退回默认值**：`IConfigSectionStore` 未注册（独立装配/单元测试）时 `Enabled` 恒为 `false`，即「不工作」。
 6. **journal 写失败降级为 `SkipReason = "failed"`**：分析已跑完但结果未落盘，不报告成功。
 7. **`SuggestionCount` 为 0 与「解析失败」不可区分**：`{"action":"skip"}` 与 JSON 畸形都产出空列表，前者记 `Executed = true`，后者记 `SkipReason = "parse-failed"`——但两者在 `ReflectionRunRecord.Suggestions` 里都为空。
+8. **`ExecutionUsageLedger` 单进程假设**：账本在锁内全量覆盖写；同一工作区两个宿主实例各写各的，后写者覆盖前者。预算是**按项目目录**分别计，切换工作区即重置。
+9. **`TryEnqueue` 返回 `false` 有二义性**：既表示「同会话已存在、仅更新 executionId」，也表示「队列满被丢弃」。调用方只能记一条含糊日志。
+10. **`ReflectionObserver` 先 Reset 后入队**：入队失败时本轮触发额度已清零，该会话要再等 N 轮才可能触发。
 
 ---
 
@@ -170,19 +192,26 @@ dotnet build Seeing.Agent.slnx --no-incremental   # 0 error
 
 # 全量（均为 VSTest，MTP 在本环境无法发现测试）
 dotnet vstest tests/spine/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Tests.dll                              # 1297
-dotnet vstest tests/capabilities/Seeing.Agent.Reflection.Tests/bin/Debug/net10.0/Seeing.Agent.Reflection.Tests.dll   # 67
+dotnet vstest tests/capabilities/Seeing.Agent.Reflection.Tests/bin/Debug/net10.0/Seeing.Agent.Reflection.Tests.dll   # 77
 dotnet vstest tests/capabilities/Seeing.Agent.Memory.Tests/bin/Debug/net10.0/Seeing.Agent.Memory.Tests.dll           # 217
 dotnet vstest tests/capabilities/Seeing.Agent.Tools.Metadata.Tests/bin/Debug/net10.0/Seeing.Agent.Tools.Metadata.Tests.dll  # 274
-dotnet vstest tests/primitives/Seeing.Session.Tests/bin/Debug/net10.0/Seeing.Session.Tests.dll                       # 281
+dotnet vstest tests/primitives/Seeing.Session.Tests/bin/Debug/net10.0/Seeing.Session.Tests.dll                       # 285
 dotnet vstest tests/hosting/Seeing.Agent.Hosting.Tests/bin/Debug/net10.0/Seeing.Agent.Hosting.Tests.dll              # 75
 dotnet vstest tests/apps/Seeing.Agent.HostComposition.Tests/bin/Debug/net10.0/Seeing.Agent.HostComposition.Tests.dll  # 10
 dotnet vstest tests/apps/Seeing.Agent.Tui.Tests/bin/Debug/net10.0/Seeing.Agent.Tui.Tests.dll                         # 617
 dotnet vstest tests/apps/Seeing.Agent.Cli.Tests/bin/Debug/net10.0/Seeing.Agent.Cli.Tests.dll                         # 84
 ```
 
-总计 2922 用例，0 failed。
+总计 2936 用例，0 failed。
 
-**变异验证**：把 `IsUserVisibleTaskOrigin` 改成 `== SubAgentTask` 后，`SessionOriginExtensionsTests` 2 条用例变红；`TaskToolAutoApproveInheritanceTests` 3 条变红——证明存量兼容守门有效。
+**变异验证**（每次都必须 `--no-incremental`，否则 MSBuild 复用旧产物会得假结论）：
+
+| 变异 | 预期 | 实际 |
+|---|---|---|
+| `IsUserVisibleTaskOrigin` 改成 `== SubAgentTask`（白名单） | `SessionOriginExtensionsTests` 红 | 2 条红；另有 `TaskToolAutoApproveInheritanceTests` 3 条红 |
+| 删除 `ShouldObserve` 的 `AgentName` 门禁 | `ShouldObserve_Should_Gate_Correctly` 红 | 1 条红 |
+| 删除 `ShouldObserve` 的 `Mode == Off` 门禁 | `ShouldObserve_Should_Return_False_When_Mode_Is_Off` 红 | 1 条红 |
+| 注释掉 `_ledger.Add` | `Run_Should_Record_Usage_To_Ledger` 红 | 该用例即为补此缺口而新增 |
 
 ---
 

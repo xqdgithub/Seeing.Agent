@@ -27,5 +27,17 @@ namespace Seeing.Session.Core
         /// <summary>移除会话的活动记录（会话被删除/清理时调用，避免字典无限增长）。</summary>
         /// <param name="sessionId">会话 ID。</param>
         void Clear(string sessionId);
+
+        /// <summary>
+        /// 只读查询会话最后一次活动时刻，<b>不刷新时间戳</b>。
+        /// <para>
+        /// 供后台工作者做二次校验：<see cref="GetIdleSessions"/> 返回的是快照，
+        /// 从扫描到真正执行之间用户可能已经回到该会话。消费方据此确认「现在仍然空闲」。
+        /// </para>
+        /// </summary>
+        /// <param name="sessionId">会话 ID。</param>
+        /// <param name="lastActivity">最后一次活动时刻；会话不存在时为 <c>default</c>。</param>
+        /// <returns>会话是否存在活动记录。</returns>
+        bool TryGetLastActivity(string sessionId, out DateTimeOffset lastActivity);
     }
 }

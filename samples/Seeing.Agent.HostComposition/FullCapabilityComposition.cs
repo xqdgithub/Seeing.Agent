@@ -109,7 +109,7 @@ public static class FullCapabilityComposition
         services.AddSeeingModule<SkillsModule>(registry);
         services.AddSeeingModule<McpModule>(registry);
         services.AddMemoryServices(registry);
-        services.AddSeeingReflection();
+        services.AddSeeingReflection(registry);
         services.AddSeeingScheduler(registry);
         services.AddSeeingAcp(registry);
         services.AddSystemOne(registry);

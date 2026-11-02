@@ -51,7 +51,4 @@ public static class ReflectionSkipReasons
 
     /// <summary>执行成功但读不到子会话的最后一条 assistant 文本。</summary>
     public const string ParseFailed = "parse-failed";
-
-    /// <summary>占位实现（空执行器）跳过，仅用于未接入真实执行链的宿主。</summary>
-    public const string Stub = "stub";
 }

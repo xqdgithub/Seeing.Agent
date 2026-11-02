@@ -364,6 +364,56 @@ public sealed class ReflectionExecutorTests
         result.Subject.SkipReason.Should().Be(ReflectionSkipReasons.Failed);
     }
 
+    /// <summary>
+    /// 用量必须真的记进账本：它是「每日预算」闸的唯一输入端，
+    /// 记账漏了预算就永远不满，能力会一直跑下去。
+    /// </summary>
+    [Fact]
+    public async Task Run_Should_Record_Usage_To_Ledger()
+    {
+        var fixture = new Fixture();
+        fixture.SessionManager
+            .Setup(m => m.TryGetOrLoadAsync(SourceSessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fixture.Source());
+        fixture.SessionManager.Setup(m => m.Get(ChildSessionId)).Returns(fixture.Child(SuggestionJson()));
+        fixture.Runtime
+            .Setup(r => r.DeliverAndAwaitAsync(It.IsAny<InboxMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Outcome(ExecutionStatus.Completed));
+
+        await fixture.Build().RunAsync(Fixture.Request());
+
+        fixture.Ledger.Verify(
+            l => l.Add(It.Is<Seeing.Agent.Abstractions.Llm.TokenUsage>(
+                u => u.InputTokens == 100 && u.OutputTokens == 50)),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// 记账失败不得连累清理：否则磁盘权限问题会让每次复盘都留下孤儿子会话。
+    /// </summary>
+    [Fact]
+    public async Task Run_Should_Still_Cleanup_When_Ledger_Throws()
+    {
+        var fixture = new Fixture();
+        fixture.SessionManager
+            .Setup(m => m.TryGetOrLoadAsync(SourceSessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fixture.Source());
+        fixture.SessionManager.Setup(m => m.Get(ChildSessionId)).Returns(fixture.Child(SuggestionJson()));
+        fixture.Runtime
+            .Setup(r => r.DeliverAndAwaitAsync(It.IsAny<InboxMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Outcome(ExecutionStatus.Completed));
+        fixture.Ledger.Setup(l => l.Add(It.IsAny<Seeing.Agent.Abstractions.Llm.TokenUsage>()))
+            .Throws(new UnauthorizedAccessException("账本文件不可写"));
+
+        var result = await fixture.Build().RunAsync(Fixture.Request());
+
+        result.Executed.Should().BeTrue("记账是旁路动作，失败不应让已完成的复盘变成失败");
+        fixture.GroupManager.Verify(
+            g => g.RemoveSessionAsync(ChildSessionId, It.IsAny<CancellationToken>()),
+            Times.Once,
+            "记账抛异常时子会话仍必须被清理");
+    }
+
     /// <summary>构造一次终态快照。</summary>
     private static ExecutionOutcome Outcome(ExecutionStatus status)
         => new()

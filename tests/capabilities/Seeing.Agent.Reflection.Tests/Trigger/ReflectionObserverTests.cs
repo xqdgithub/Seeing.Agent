@@ -83,6 +83,44 @@ public sealed class ReflectionObserverTests
     }
 
     [Fact]
+    public void ShouldObserve_Should_Return_False_When_Mode_Is_Off()
+    {
+        // Enabled 与 Mode 是两道独立开关：只关 Mode 也必须停。
+        // 单靠 Enabled 短路会让这个分支永远不被覆盖（删掉它测试仍全绿）。
+        var observer = CreateObserver(new ReflectionOptions
+        {
+            Enabled = true,
+            Mode = ReflectionMode.Off
+        });
+
+        observer.ShouldObserve(CreateOutcome()).Should().BeFalse(
+            "Mode=Off 等价于关闭，不能因为 Enabled=true 就跑");
+    }
+
+    [Fact]
+    public void ShouldObserve_Should_Return_False_When_SessionId_Is_Blank()
+    {
+        var observer = CreateObserver(new ReflectionOptions { Enabled = true });
+
+        observer.ShouldObserve(CreateOutcome(sessionId: "   ")).Should().BeFalse(
+            "没有会话 ID 就无法定位复盘目标");
+    }
+
+    [Fact]
+    public async Task OnExecutionCompleted_Should_Not_Enqueue_When_Inactive()
+    {
+        var queue = new ReflectionQueue(capacity: 8);
+        var observer = CreateObserver(
+            new ReflectionOptions { Enabled = true, TurnNudgeInterval = 1 },
+            queue,
+            active: false);
+
+        await observer.OnExecutionCompletedAsync(CreateOutcome());
+
+        queue.PendingCount.Should().Be(0, "模块未激活时观察者不得工作");
+    }
+
+    [Fact]
     public async Task OnExecutionCompleted_Should_Not_Enqueue_Before_Interval()
     {
         var queue = new ReflectionQueue(capacity: 8);

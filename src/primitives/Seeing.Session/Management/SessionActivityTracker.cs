@@ -35,4 +35,16 @@ public sealed class SessionActivityTracker : ISessionActivityTracker
 
     /// <inheritdoc />
     public void Clear(string sessionId) => _last.TryRemove(sessionId, out _);
+
+    /// <inheritdoc />
+    public bool TryGetLastActivity(string sessionId, out DateTimeOffset lastActivity)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            lastActivity = default;
+            return false;
+        }
+
+        return _last.TryGetValue(sessionId, out lastActivity);
+    }
 }

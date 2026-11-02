@@ -104,6 +104,13 @@ public sealed class ReflectionModule : ISeeingModule
                 _logger?.LogWarning(ex, "复盘工具挂载失败（tool={ToolId}）", SkillCreateTool.ToolId);
             }
         }
+        else
+        {
+            // 静默跳过会让「配置写对了但复盘永远跑不起来」无从排查，必须留一条明确的因由。
+            _logger?.LogWarning(
+                "复盘工具未挂载（tool={ToolId}）：ToolManager 或工具实例缺失，skill_create 将不可用",
+                SkillCreateTool.ToolId);
+        }
 
         // Agent 注册：与内置 agent 一致，注册后不在 Deactivate 注销，避免影响进行中的会话。
         var options = _options?.CurrentValue;
@@ -117,6 +124,14 @@ public sealed class ReflectionModule : ISeeingModule
             {
                 _logger?.LogWarning(ex, "复盘 Agent 注册失败（agent={AgentName}）", ReflectionAgentDefinition.AgentName);
             }
+        }
+        else
+        {
+            // 缺 Agent 时后台仍会建子会话，然后因 "Agent not found" 失败并留下孤儿会话，
+            // 这是最难排查的一类静默故障，必须在激活时就说清楚。
+            _logger?.LogWarning(
+                "复盘 Agent 未注册（agent={AgentName}）：AgentStore 或配置缺失，后台复盘将无法执行",
+                ReflectionAgentDefinition.AgentName);
         }
 
         _logger?.LogInformation("复盘模块已激活（id={ModuleId}）", ModuleId);

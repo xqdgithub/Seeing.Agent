@@ -6,6 +6,7 @@ using Seeing.Agent.Reflection.Abstractions;
 using Seeing.Agent.Reflection.Configuration;
 using Seeing.Agent.Reflection.Core;
 using Seeing.Session.Core;
+using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Reflection.Background;
 
@@ -27,10 +28,22 @@ public sealed class ReflectionWorker : BackgroundService, IModuleHostedService
     private readonly IReflectionQueue _queue;
     private readonly IReflectionExecutor _executor;
     private readonly ISessionActivityTracker _activityTracker;
+    private readonly Seeing.Session.Core.ISessionManager? _sessionManager;
     private readonly ReflectionModuleActivity _moduleActivity;
     private readonly IOptionsMonitor<ReflectionOptions> _options;
     private readonly ILogger<ReflectionWorker> _logger;
     private readonly ModuleHostedRunGate _run = new();
+
+    /// <summary>
+    /// 已投递过空闲复盘的会话 → 投递时的活动时刻。
+    /// <para>
+    /// 存在的意义是<b>冷却</b>：空闲集合是一份快照，不清除的话同一个空闲会话
+    /// 每分钟都会被重新入队，直到把 <c>MaxRunsPerHour</c> 与 <c>DailyTokenBudget</c> 烧穿。
+    /// 用「活动时刻」而不是「上次复盘时刻」做键，是因为用户一旦回到会话，
+    /// <see cref="ISessionActivityTracker.Touch"/> 会刷新时刻，据此天然允许下一次空闲复盘。
+    /// </para>
+    /// </summary>
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _idleDispatched = new(StringComparer.Ordinal);
 
     public ReflectionWorker(
         IReflectionQueue queue,
@@ -38,7 +51,8 @@ public sealed class ReflectionWorker : BackgroundService, IModuleHostedService
         ISessionActivityTracker activityTracker,
         ReflectionModuleActivity moduleActivity,
         IOptionsMonitor<ReflectionOptions> options,
-        ILogger<ReflectionWorker> logger)
+        ILogger<ReflectionWorker> logger,
+        Seeing.Session.Core.ISessionManager? sessionManager = null)
     {
         _queue = queue ?? throw new ArgumentNullException(nameof(queue));
         _executor = executor ?? throw new ArgumentNullException(nameof(executor));
@@ -46,6 +60,8 @@ public sealed class ReflectionWorker : BackgroundService, IModuleHostedService
         _moduleActivity = moduleActivity ?? throw new ArgumentNullException(nameof(moduleActivity));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        // 可选：缺失时只跳过空闲触发（队列触发不依赖他），保持能力包可独立装配。
+        _sessionManager = sessionManager;
     }
 
     /// <inheritdoc cref="IModuleHostedService.ModuleId" />
@@ -102,7 +118,7 @@ public sealed class ReflectionWorker : BackgroundService, IModuleHostedService
                 try
                 {
                     await DrainQueueAsync(stoppingToken).ConfigureAwait(false);
-                    await EnqueueIdleSessionsAsync().ConfigureAwait(false);
+                    EnqueueIdleSessions();
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -160,8 +176,15 @@ public sealed class ReflectionWorker : BackgroundService, IModuleHostedService
         }
     }
 
-    /// <summary>按空闲阈值扫描会话并入队（不做空闲判定之外的触发条件过滤）。</summary>
-    private async Task EnqueueIdleSessionsAsync()
+    /// <summary>
+    /// 按空闲阈值扫描会话并入队。
+    /// <para>
+    /// 这里的过滤<b>不能只有空闲判定</b>：活动追踪器对子代理会话与复盘会话同样会 Touch，
+    /// 若不过滤来源，空闲触发会去复盘子代理甚至复盘会话自身——直接破坏
+    /// 「只复盘顶层会话」与「防递归」两条硬约束。
+    /// </para>
+    /// </summary>
+    private void EnqueueIdleSessions()
     {
         if (!_moduleActivity.IsActive)
             return;
@@ -171,18 +194,54 @@ public sealed class ReflectionWorker : BackgroundService, IModuleHostedService
             return;
 
         var idle = TimeSpan.FromMinutes(Math.Max(1, options.IdleMinutes));
+        var sessionManager = _sessionManager;
+
         foreach (var sessionId in _activityTracker.GetIdleSessions(idle))
         {
             if (!_moduleActivity.IsActive)
                 return;
 
-            _queue.TryEnqueue(new ReflectionRequest(
-                sessionId,
-                string.Empty,
-                ReflectionTriggerKind.Idle,
-                DateTimeOffset.UtcNow));
+            // 只读内存：TryGetOrLoadAsync 可能触发磁盘加载，后台扫描不应为此付出 IO。
+            // 会话不在内存中（已淘汰）说明它已经空闲很久且没有活动迹象，没有复盘价值。
+            if (sessionManager?.Get(sessionId) is not { } session)
+                continue;
+
+            // 与 ReflectionObserver.ShouldObserve 对齐的来源/结构门禁。
+            // 复盘会话是 Kind=SubAgent 且 Origin=Reflection，两道判断都会挡住它；
+            // 子代理会话（Kind=SubAgent / Origin=SubAgentTask）由 Kind 判断挡住。
+            if (session.Kind != SessionKind.Root)
+                continue;
+            if (!session.Origin.IsUserVisibleTaskOrigin())
+                continue;
+
+            // 二次确认仍然空闲：扫描到入队之间用户可能已经回到该会话。
+            if (!_activityTracker.TryGetLastActivity(sessionId, out var lastActivity))
+                continue;
+            if (DateTimeOffset.UtcNow - lastActivity < idle)
+                continue;
+
+            // 冷却：同一会话在同一段空闲期内只投递一次。
+            if (_idleDispatched.TryGetValue(sessionId, out var dispatchedAt)
+                && dispatchedAt == lastActivity)
+            {
+                continue;
+            }
+
+            if (_queue.TryEnqueue(new ReflectionRequest(
+                    sessionId,
+                    string.Empty,
+                    ReflectionTriggerKind.Idle,
+                    DateTimeOffset.UtcNow)))
+            {
+                _idleDispatched[sessionId] = lastActivity;
+            }
         }
 
-        await Task.CompletedTask.ConfigureAwait(false);
+        // 清掉已不再空闲（用户回来了）的记录，避免字典随会话数无界增长。
+        foreach (var pair in _idleDispatched)
+        {
+            if (!_activityTracker.TryGetLastActivity(pair.Key, out var last) || last != pair.Value)
+                _idleDispatched.TryRemove(pair.Key, out _);
+        }
     }
 }
