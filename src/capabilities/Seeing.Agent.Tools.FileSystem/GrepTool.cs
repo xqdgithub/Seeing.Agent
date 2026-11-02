@@ -11,6 +11,7 @@ namespace Seeing.Agent.Tools.FileSystem
     /// <summary>
     /// 内容搜索工具 - 在文件内容中搜索正则表达式模式
     /// </summary>
+    [ToolCapability(ToolCapabilityKeys.TimeoutBudget, "60000")]
     public class GrepTool : ToolBase
     {
         private const int DefaultLimit = 100;

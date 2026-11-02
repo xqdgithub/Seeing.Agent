@@ -1452,6 +1452,14 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
     public IAsyncEnumerable<IMessageEvent> SubscribeEvents(string sessionId, CancellationToken ct = default) =>
         _publisher.SubscribeAsync(sessionId, ct);
 
+    /// <summary>
+    /// 和解加载时残留的未完成工具调用：会话无活跃执行时，把 pending/running 收敛为 cancelled 并落盘。
+    /// <para>
+    /// 覆盖范围：task 卡片（含子会话仍活跃则跳过的判定）+ 普通工具调用。
+    /// <c>Running</c> 会随事件落盘（刷新后正确显示「执行中」），因此进程崩溃/强制关闭后
+    /// 必须在此收敛，否则会永久停留在执行中。
+    /// </para>
+    /// </summary>
     public async Task<int> ReconcileIncompleteTasksAsync(string sessionId, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(sessionId))
@@ -1479,18 +1487,24 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
 
             foreach (var tc in msg.ToolCalls)
             {
-                if (!IsIncompleteTaskToolCall(tc))
+                if (!IsIncompleteToolCall(tc))
                     continue;
 
-                var taskId = tc.TaskId;
-                var stillActive = !string.IsNullOrEmpty(taskId)
-                    && GetOverview(taskId).HasActiveExecution;
+                // 后台/前台 task：其子会话仍在执行时不得误判为孤儿（父会话可能已空闲）
+                if (IsTaskToolCall(tc))
+                {
+                    var taskId = tc.TaskId;
+                    var stillActive = !string.IsNullOrEmpty(taskId)
+                        && GetOverview(taskId).HasActiveExecution;
 
-                if (stillActive)
-                    continue;
+                    if (stillActive)
+                        continue;
+                }
 
                 tc.Status = "cancelled";
-                tc.Error = "任务已中断（进程关闭或取消）";
+                tc.Error = IsTaskToolCall(tc)
+                    ? "任务已中断（进程关闭或取消）"
+                    : "工具调用已中断（进程关闭或取消）";
                 count++;
             }
         }
@@ -1505,14 +1519,14 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         return count;
     }
 
-    private static bool IsIncompleteTaskToolCall(SessionToolCall tc)
+    private static bool IsTaskToolCall(SessionToolCall tc)
+        => !string.IsNullOrEmpty(tc.TaskId)
+           || string.Equals(tc.Name, "task", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>未完成（pending/running）的工具调用；无活跃执行时即孤儿，需收敛为已中断。</summary>
+    private static bool IsIncompleteToolCall(SessionToolCall tc)
     {
         if (tc == null)
-            return false;
-
-        var isTask = !string.IsNullOrEmpty(tc.TaskId)
-            || string.Equals(tc.Name, "task", StringComparison.OrdinalIgnoreCase);
-        if (!isTask)
             return false;
 
         var status = tc.Status?.ToLowerInvariant();

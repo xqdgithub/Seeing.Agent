@@ -106,7 +106,8 @@ internal static class RipgrepSearch
             }
         }
 
-        return FileSystemHelper.GrepSearch(world.FileSystem, searchPath, pattern, includePattern, limit);
+        ct.ThrowIfCancellationRequested();
+        return FileSystemHelper.GrepSearch(world.FileSystem, searchPath, pattern, includePattern, limit, ct);
     }
 
     /// <summary>Glob：rg --files 可用则走子进程，否则托管 GlobSearch。</summary>
@@ -137,7 +138,8 @@ internal static class RipgrepSearch
             }
         }
 
-        return FileSystemHelper.GlobSearch(world.FileSystem, searchPath, pattern, limit);
+        ct.ThrowIfCancellationRequested();
+        return FileSystemHelper.GlobSearch(world.FileSystem, searchPath, pattern, limit, ct);
     }
 
     /// <summary>测试用：重置 rg 探测缓存。</summary>
@@ -270,6 +272,8 @@ internal static class RipgrepSearch
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            // 用户取消：必须终止子进程，否则 rg 会继续扫盘占用 IO/CPU
+            TryKill(proc);
             throw;
         }
         catch (OperationCanceledException)
