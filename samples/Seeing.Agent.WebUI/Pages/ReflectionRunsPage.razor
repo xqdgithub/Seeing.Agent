@@ -1,0 +1,176 @@
+﻿@page "/reflection"
+@using AntDesign
+@using Seeing.Agent.Reflection.Core
+@using Seeing.Agent.Reflection.Ui
+@inject ReflectionRunReader Reader
+
+<PageTitle>复盘记录 - Seeing</PageTitle>
+
+<WorkspacePageShell Loading="@_loading" IsEmpty="@(_runs.Count == 0 && !_loading)">
+    <Breadcrumb>
+        <BreadcrumbItem>工作区</BreadcrumbItem>
+        <BreadcrumbItem>复盘记录</BreadcrumbItem>
+    </Breadcrumb>
+    <Extra>
+        <Space>
+            <Checkbox TItemValue="bool" Value="@_onlyFailures" ValueChanged="OnFilterChanged">仅失败</Checkbox>
+            <Button Icon="@IconType.Outline.Reload" OnClick="LoadAsync">刷新</Button>
+        </Space>
+    </Extra>
+    <ChildContent>
+        @if (_runs.Count == 0)
+        {
+            <Empty Description="@EmptyDescription" />
+        }
+        else
+        {
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px;">
+                <Card Title="记录总数"><Statistic Value="@_runs.Count" /></Card>
+                <Card Title="失败数"><Statistic Value="@_runs.Count(x => x.IsFailure)" /></Card>
+                <Card Title="产出建议"><Statistic Value="@_runs.Sum(x => x.Suggestions.Count)" /></Card>
+                <Card Title="创建技能"><Statistic Value="@_runs.Sum(x => x.CreatedSkills.Count)" /></Card>
+            </div>
+
+            <table class="items-table">
+                <thead>
+                    <tr>
+                        <th style="width: 110px;">时间</th>
+                        <th style="width: 90px;">触发</th>
+                        <th style="width: 150px;">结果</th>
+                        <th style="width: 70px;">建议</th>
+                        <th style="width: 70px;">技能</th>
+                        <th style="width: 80px;">Token</th>
+                        <th>模型</th>
+                        <th style="width: 70px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var run in Filtered)
+                    {
+                        <tr @key="run.FilePath">
+                            <td>@run.At.ToLocalTime().ToString("MM-dd HH:mm")</td>
+                            <td>@KindLabel(run.Kind)</td>
+                            <td><Tag Color="@OutcomeColor(run)">@run.Outcome</Tag></td>
+                            <td>@run.Suggestions.Count</td>
+                            <td>@run.CreatedSkills.Count</td>
+                            <td>@run.TotalTokens</td>
+                            <td>@(run.ModelId ?? "（继承）")</td>
+                            <td>
+                                <Button Type="@ButtonType.Link" Size="@ButtonSize.Small"
+                                        OnClick="@(() => ToggleDetail(run))">
+                                    @(ReferenceEquals(_detail, run) ? "收起" : "查看")
+                                </Button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            @if (_detail is not null)
+            {
+                <Divider />
+                <Card Title="@($"复盘详情 · {_detail.ExecutionId}")">
+                    <Descriptions Bordered Column="2">
+                        <DescriptionsItem Title="源会话">@_detail.SessionId</DescriptionsItem>
+                        <DescriptionsItem Title="触发方式">@KindLabel(_detail.Kind)</DescriptionsItem>
+                        <DescriptionsItem Title="结果">@_detail.Outcome</DescriptionsItem>
+                        <DescriptionsItem Title="模型">@(_detail.ModelId ?? "（继承源会话）")</DescriptionsItem>
+                        <DescriptionsItem Title="Token">
+                            @($"{_detail.InputTokens} 输入 / {_detail.OutputTokens} 输出")
+                        </DescriptionsItem>
+                        <DescriptionsItem Title="文件">@_detail.FilePath</DescriptionsItem>
+                    </Descriptions>
+
+                    @if (!string.IsNullOrWhiteSpace(_detail.Detail))
+                    {
+                        <Divider>失败详情</Divider>
+                        <pre style="white-space: pre-wrap; font-size: 12px;">@_detail.Detail</pre>
+                    }
+
+                    @if (_detail.Suggestions.Count > 0)
+                    {
+                        <Divider>建议清单</Divider>
+                        @foreach (var suggestion in _detail.Suggestions)
+                        {
+                            <Card Style="margin-bottom: 12px;">
+                                <div style="font-weight: 600;">@suggestion.Target</div>
+                                <div style="font-size: 12px; color: #666; margin: 4px 0;">
+                                    @suggestion.Reason
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(suggestion.SuggestedContent))
+                                {
+                                    <pre style="white-space: pre-wrap; font-size: 12px; margin: 8px 0 0;">@suggestion.SuggestedContent</pre>
+                                }
+                                <div style="font-size: 12px; color: #999; margin-top: 8px;">
+                                    依据：@string.Join("；", suggestion.Evidence)
+                                </div>
+                            </Card>
+                        }
+                    }
+
+                    @if (_detail.CreatedSkills.Count > 0)
+                    {
+                        <Divider>本次写入的技能</Divider>
+                        @foreach (var skill in _detail.CreatedSkills)
+                        {
+                            <Tag Color="@("blue")">@skill</Tag>
+                        }
+                    }
+                </Card>
+            }
+        }
+    </ChildContent>
+</WorkspacePageShell>
+
+@code {
+    private const int MaxRuns = 200;
+
+    private IReadOnlyList<ReflectionRunSummary> _runs = Array.Empty<ReflectionRunSummary>();
+    private ReflectionRunSummary? _detail;
+    private bool _loading = true;
+    private bool _onlyFailures;
+
+    /// <summary>经过「仅失败」过滤后的展示集合。</summary>
+    private IEnumerable<ReflectionRunSummary> Filtered =>
+        _onlyFailures ? _runs.Where(x => x.IsFailure) : _runs;
+
+    private string EmptyDescription =>
+        "还没有复盘记录。复盘默认关闭：在 seeing.json 的 Reflection 节把 Enabled 设为 true 后，"
+        + "回合收尾会异步复盘并把结论写到这里。";
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _runs = await Reader.ListAsync(MaxRuns);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnFilterChanged(bool onlyFailures)
+    {
+        _onlyFailures = onlyFailures;
+        _detail = null;
+    }
+
+    /// <summary>再点一次同一行则收起：列表页空间有限，详情是可选的展开层。</summary>
+    private void ToggleDetail(ReflectionRunSummary run)
+        => _detail = ReferenceEquals(_detail, run) ? null : run;
+
+    private static string OutcomeColor(ReflectionRunSummary run)
+        => run.IsFailure ? "red" : "green";
+
+    private static string KindLabel(ReflectionTriggerKind kind) => kind switch
+    {
+        ReflectionTriggerKind.TurnNudge => "轮次",
+        ReflectionTriggerKind.Idle => "空闲",
+        ReflectionTriggerKind.Manual => "手动",
+        _ => kind.ToString()
+    };
+}

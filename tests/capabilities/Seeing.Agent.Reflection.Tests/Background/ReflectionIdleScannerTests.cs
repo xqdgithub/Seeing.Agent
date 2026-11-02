@@ -41,9 +41,7 @@ public sealed class ReflectionIdleScannerTests
     [Theory]
     [InlineData(SessionKind.SubAgent, SessionOrigin.SubAgentTask, "子代理会话")]
     [InlineData(SessionKind.SubAgent, SessionOrigin.Reflection, "复盘会话自身")]
-    [InlineData(SessionKind.Root, SessionOrigin.Scheduler, "定时任务会话")]
-    [InlineData(SessionKind.Root, SessionOrigin.Heartbeat, "心跳会话")]
-    public void Scan_Should_Skip_Non_User_Visible_Sessions(
+    public void Scan_Should_Skip_Non_Automatable_Sessions(
         SessionKind kind,
         SessionOrigin origin,
         string reason)
@@ -54,6 +52,21 @@ public sealed class ReflectionIdleScannerTests
 
         f.Scanner.Scan(Now).Should().Be(0, $"{reason}不应被空闲触发复盘");
         f.Queue.PendingCount.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(SessionOrigin.Scheduler, "定时任务会话")]
+    [InlineData(SessionOrigin.Heartbeat, "心跳会话")]
+    public void Scan_Should_Include_Platform_Scheduled_Sessions(SessionOrigin origin, string reason)
+    {
+        // 定时 / 心跳会话不出现在任务视图（IsUserVisibleTaskOrigin 为 false），
+        // 但它们是真实的 agent 执行，可能产出可复用经验——因此应当可复盘。
+        // 这正是「可被自动处理」与「用户可见」必须是两个谓词的原因。
+        var f = new Fixture();
+        f.AddSession(RootId, SessionKind.Root, origin);
+        f.Backdate(RootId, TimeSpan.FromHours(1));
+
+        f.Scanner.Scan(Now).Should().Be(1, $"{reason}是真实执行，应当可复盘");
     }
 
     [Fact]

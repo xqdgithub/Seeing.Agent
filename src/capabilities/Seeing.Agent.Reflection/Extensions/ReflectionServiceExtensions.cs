@@ -79,6 +79,9 @@ public static class ReflectionServiceExtensions
 
         services.TryAddSingleton<IReflectionJournal>(sp =>
             new ReflectionJournal(sp.GetRequiredService<ReflectionStorageRoot>().Path));
+        services.TryAddSingleton(sp =>
+            new Seeing.Agent.Reflection.Ui.ReflectionRunReader(
+                sp.GetRequiredService<ReflectionStorageRoot>().Path));
         services.TryAddSingleton<IExecutionUsageLedger>(sp =>
             new ExecutionUsageLedger(sp.GetRequiredService<ReflectionStorageRoot>().Path));
         services.TryAddSingleton(sp =>

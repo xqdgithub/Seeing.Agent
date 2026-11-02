@@ -56,6 +56,8 @@ public static class ModulePageRouteBinder
             NavGroups.Workspace, NavGroups.WorkspaceIcon, 12),
         new("/tools", typeof(ToolsPage), "basic", "工具", "tool",
             NavGroups.Workspace, NavGroups.WorkspaceIcon, 20),
+        new("/reflection", typeof(ReflectionRunsPage), "reflection", "复盘记录", "bulb",
+            NavGroups.Workspace, NavGroups.WorkspaceIcon, 60),
     ];
 
     /// <summary>

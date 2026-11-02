@@ -152,6 +152,11 @@ public sealed class ReflectionExecutor : IReflectionExecutor
             Kind = "reflection"
         };
 
+        // 实际使用的模型：显式配置优先，其次继承源会话，最后为 null（进程默认）。
+        // 记进 journal 是为了让「这次复盘烧了哪个模型的成本」事后可查——
+        // 不强制要求配置 Model，但必须可追溯。
+        var modelId = ResolveModelId(options.Model, source.SelectedModel);
+
         ExecutionOutcome outcome;
         using (var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
         {
@@ -163,21 +168,27 @@ public sealed class ReflectionExecutor : IReflectionExecutor
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                // 只有外层未取消时，才说明是本执行器的业务超时；子会话保留供诊断。
+                // 只有外层未取消时，才说明是本执行器的业务超时。
                 _logger.LogWarning(
-                    "复盘执行超时（{TimeoutMinutes} 分钟），保留子会话：SessionId={SessionId}, ChildSessionId={ChildSessionId}",
+                    "复盘执行超时（{TimeoutMinutes} 分钟）：SessionId={SessionId}, ChildSessionId={ChildSessionId}",
                     options.RunTimeoutMinutes,
                     request.SessionId,
                     child.Id);
+                await RecordFailureAndCleanupAsync(
+                    request, child.Id, ReflectionSkipReasons.Timeout, null, "业务超时", modelId, source.Id, ct)
+                    .ConfigureAwait(false);
                 return ReflectionRunResult.Skipped(ReflectionSkipReasons.Timeout);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(
                     ex,
-                    "复盘投递失败，保留子会话：SessionId={SessionId}, ChildSessionId={ChildSessionId}",
+                    "复盘投递失败：SessionId={SessionId}, ChildSessionId={ChildSessionId}",
                     request.SessionId,
                     child.Id);
+                await RecordFailureAndCleanupAsync(
+                    request, child.Id, ReflectionSkipReasons.Failed, null, ex.Message, modelId, source.Id, ct)
+                    .ConfigureAwait(false);
                 return ReflectionRunResult.Skipped(ReflectionSkipReasons.Failed);
             }
         }
@@ -185,10 +196,15 @@ public sealed class ReflectionExecutor : IReflectionExecutor
         if (outcome.Status != ExecutionStatus.Completed)
         {
             _logger.LogWarning(
-                "复盘执行未成功（Status={Status}），保留子会话：SessionId={SessionId}, ChildSessionId={ChildSessionId}",
+                "复盘执行未成功（Status={Status}）：SessionId={SessionId}, ChildSessionId={ChildSessionId}",
                 outcome.Status,
                 request.SessionId,
                 child.Id);
+            var partial = await ReadLastAssistantTextAsync(child.Id, ct).ConfigureAwait(false);
+            await RecordFailureAndCleanupAsync(
+                request, child.Id, ReflectionSkipReasons.Failed, partial,
+                "子会话终态为 " + outcome.Status, modelId, source.Id, ct)
+                .ConfigureAwait(false);
             return ReflectionRunResult.Skipped(ReflectionSkipReasons.Failed);
         }
 
@@ -197,8 +213,12 @@ public sealed class ReflectionExecutor : IReflectionExecutor
         if (string.IsNullOrWhiteSpace(text))
         {
             _logger.LogWarning(
-                "复盘子会话没有可解析的 assistant 文本，保留子会话：ChildSessionId={ChildSessionId}",
+                "复盘子会话没有可解析的 assistant 文本：ChildSessionId={ChildSessionId}",
                 child.Id);
+            await RecordFailureAndCleanupAsync(
+                request, child.Id, ReflectionSkipReasons.ParseFailed, null,
+                "子会话没有 assistant 文本", modelId, source.Id, ct)
+                .ConfigureAwait(false);
             return ReflectionRunResult.Skipped(ReflectionSkipReasons.ParseFailed);
         }
 
@@ -224,7 +244,8 @@ public sealed class ReflectionExecutor : IReflectionExecutor
                     CreatedSkills: createdSkills,
                     Suggestions: suggestions,
                     InputTokens: usage?.InputTokens ?? 0,
-                    OutputTokens: usage?.OutputTokens ?? 0),
+                    OutputTokens: usage?.OutputTokens ?? 0,
+                    ModelId: modelId),
                 ct).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -266,6 +287,77 @@ public sealed class ReflectionExecutor : IReflectionExecutor
             CreatedSkills: createdSkills,
             SuggestionCount: suggestions.Count);
     }
+
+    /// <summary>
+    /// 失败路径的统一出口：把诊断信息落进 journal，然后清理子会话。
+    /// <para>
+    /// <b>为什么失败也要清理</b>：原先「保留供诊断」的设计没有任何回收机制，
+    /// 持续失败时每小时最多 6 个孤儿会话堆积在 <c>.seeing/sessions/</c>。
+    /// 诊断真正需要的只有「模型输出了什么」——把它落到 <c>.fail.json</c> 后，
+    /// 会话本身就没有保留价值了。
+    /// </para>
+    /// <para>
+    /// 本方法<b>不抛异常</b>：失败路径已经在处理错误，再抛会把原始原因盖掉。
+    /// </para>
+    /// </summary>
+    private async Task RecordFailureAndCleanupAsync(
+        ReflectionRequest request,
+        string childSessionId,
+        string skipReason,
+        string? transcript,
+        string? detail,
+        string? modelId,
+        string sourceSessionId,
+        CancellationToken ct)
+    {
+        try
+        {
+            await _journal.AppendFailureAsync(
+                new ReflectionFailureRecord(
+                    SessionId: request.SessionId,
+                    ExecutionId: request.ExecutionId,
+                    Kind: request.Kind,
+                    At: request.At,
+                    SkipReason: skipReason,
+                    ChildSessionId: childSessionId,
+                    // 截断到与正常路径同一上限：失败快照不该成为磁盘炸弹。
+                    Transcript: Truncate(transcript, FailureTranscriptLimit),
+                    Detail: detail,
+                    ModelId: modelId),
+                ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // 快照写不进去只影响可诊断性，不能因此跳过清理。
+            _logger.LogWarning(ex, "复盘失败快照写入失败：SessionId={SessionId}", request.SessionId);
+        }
+
+        await CleanupChildAsync(childSessionId, ct).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "复盘失败已记录并清理子会话：SessionId={SourceSessionId}, ChildSessionId={ChildSessionId}, Reason={Reason}",
+            sourceSessionId,
+            childSessionId,
+            skipReason);
+    }
+
+    /// <summary>
+    /// 解析本次复盘实际使用的模型。
+    /// <para>
+    /// 显式配置 → 源会话已选模型 → <c>null</c>（交给运行时进程默认）。
+    /// 不强制要求配置：多数场景继承父会话就是对的；但记录到 journal 才能事后核对成本。
+    /// </para>
+    /// </summary>
+    private static string? ResolveModelId(string? configured, string? sourceSelected)
+    {
+        if (!string.IsNullOrWhiteSpace(configured))
+            return configured;
+
+        return string.IsNullOrWhiteSpace(sourceSelected) ? null : sourceSelected;
+    }
+
+    /// <summary>失败快照里 transcript 的字符上限。</summary>
+    private const int FailureTranscriptLimit = 20_000;
 
     /// <summary>
     /// 读取子会话最后一条 assistant 文本；读不到会话或无文本时返回 <c>null</c>。

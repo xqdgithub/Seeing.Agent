@@ -79,9 +79,10 @@ public sealed class ReflectionIdleScanner
             if (session.Kind != SessionKind.Root)
                 continue;
 
-            // 来源门禁：复盘 / 定时 / 心跳属平台内部会话，不参与用户任务复盘，
-            // 其中 Origin=Reflection 还是防递归的第 2 重（避免复盘会话自身再触发复盘）。
-            if (!session.Origin.IsUserVisibleTaskOrigin())
+            // 来源门禁：复盘自身必须排除（防递归）。用 IsAutomatableOrigin 而不是
+            // IsUserVisibleTaskOrigin——定时 / 心跳会话虽然不出现在任务视图，
+            // 但它们是真实的 agent 执行，同样可能产出可复用经验。
+            if (!session.Origin.IsAutomatableOrigin())
                 continue;
 
             // 二次确认仍然空闲：扫描到入队之间用户可能已经回到该会话。

@@ -132,4 +132,102 @@ public sealed class ReflectionJournalTests
             TryDelete(directory);
         }
     }
+
+    [Fact]
+    public async Task Journal_Should_Truncate_Long_ExecutionId_With_Hash()
+    {
+        // 超长 ID 必须截断（Windows 单路径段 255 上限），且截断后要补哈希：
+        // 只截断会让「前缀相同」的不同 ID 指向同一文件，静默覆盖。
+        var directory = CreateTempDirectory();
+        try
+        {
+            var journal = new ReflectionJournal(directory);
+            var prefix = new string('a', ReflectionJournal.MaxFileNameLength + 50);
+
+            await journal.AppendAsync(Record(prefix + "-one"));
+            await journal.AppendAsync(Record(prefix + "-two"));
+
+            var files = Directory.GetFiles(Path.Combine(directory, "runs"), "*.json", SearchOption.AllDirectories);
+
+            files.Should().HaveCount(2, "前缀相同的两个长 ID 必须落到两个不同文件");
+            files.Should().OnlyHaveUniqueItems();
+
+            foreach (var file in files)
+            {
+                var name = Path.GetFileNameWithoutExtension(file);
+                name.Length.Should().BeLessThanOrEqualTo(
+                    ReflectionJournal.MaxFileNameLength + 9,
+                    "截断到上限 + 1 个连字符 + 8 位哈希");
+            }
+        }
+        finally
+        {
+            TryDelete(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Failure_Should_Write_Separate_Suffix()
+    {
+        // 同一次执行可能既有成功记录、又有失败重试：后缀不同才不会互相覆盖。
+        var directory = CreateTempDirectory();
+        try
+        {
+            var journal = new ReflectionJournal(directory);
+
+            await journal.AppendAsync(Record("exec-x"));
+            await journal.AppendFailureAsync(new ReflectionFailureRecord(
+                SessionId: "session-1",
+                ExecutionId: "exec-x",
+                Kind: ReflectionTriggerKind.Manual,
+                At: DateTimeOffset.UtcNow,
+                SkipReason: "timeout",
+                ChildSessionId: "child-1",
+                Transcript: "模型输出",
+                Detail: "业务超时"));
+
+            var files = Directory.GetFiles(Path.Combine(directory, "runs"), "*.json", SearchOption.AllDirectories);
+
+            files.Should().HaveCount(2);
+            files.Should().Contain(path => path.EndsWith("exec-x.json", StringComparison.Ordinal));
+            files.Should().Contain(path => path.EndsWith("exec-x.fail.json", StringComparison.Ordinal));
+        }
+        finally
+        {
+            TryDelete(directory);
+        }
+    }
+
+    [Fact]
+    public async Task Failure_Record_Should_Contain_Diagnostics()
+    {
+        // 失败会话被清理，诊断只能靠这份快照——transcript 必须真的落进去。
+        var directory = CreateTempDirectory();
+        try
+        {
+            var journal = new ReflectionJournal(directory);
+
+            await journal.AppendFailureAsync(new ReflectionFailureRecord(
+                SessionId: "session-1",
+                ExecutionId: "exec-f",
+                Kind: ReflectionTriggerKind.Idle,
+                At: DateTimeOffset.UtcNow,
+                SkipReason: "parse-failed",
+                ChildSessionId: "child-9",
+                Transcript: "模型实际输出的内容",
+                Detail: "子会话没有 assistant 文本"));
+
+            var file = Directory.GetFiles(
+                Path.Combine(directory, "runs"), "*.fail.json", SearchOption.AllDirectories).Single();
+            var text = File.ReadAllText(file);
+
+            text.Should().Contain("模型实际输出的内容");
+            text.Should().Contain("parse-failed");
+            text.Should().Contain("child-9");
+        }
+        finally
+        {
+            TryDelete(directory);
+        }
+    }
 }

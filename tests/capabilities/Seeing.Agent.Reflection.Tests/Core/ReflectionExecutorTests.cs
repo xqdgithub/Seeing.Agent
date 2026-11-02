@@ -330,7 +330,7 @@ public sealed class ReflectionExecutorTests
     }
 
     [Fact]
-    public async Task Run_Should_Keep_Session_On_Timeout()
+    public async Task Run_Should_Record_Failure_And_Cleanup_Session_On_Timeout()
     {
         var fixture = new Fixture();
         fixture.SessionManager
@@ -340,14 +340,24 @@ public sealed class ReflectionExecutorTests
             .Setup(r => r.DeliverAndAwaitAsync(It.IsAny<InboxMessage>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OperationCanceledException());
 
-        await fixture.Build().RunAsync(Fixture.Request());
+        var result = await fixture.Build().RunAsync(Fixture.Request());
 
+        result.SkipReason.Should().Be(ReflectionSkipReasons.Timeout);
+
+        // 失败也要清理：原先「保留供诊断」没有回收机制，持续失败会不断堆积孤儿会话。
+        // 诊断信息改落 .fail.json。
         fixture.GroupManager.Verify(
             g => g.RemoveSessionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never);
+            Times.Once);
         fixture.SessionManager.Verify(
             m => m.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never);
+            Times.Once);
+        fixture.Journal.Verify(
+            j => j.AppendFailureAsync(
+                It.Is<Seeing.Agent.Reflection.Abstractions.ReflectionFailureRecord>(
+                    r => r.SkipReason == ReflectionSkipReasons.Timeout),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

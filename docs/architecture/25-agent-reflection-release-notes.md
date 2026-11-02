@@ -28,7 +28,9 @@ Agent 在回合收尾后可以**异步复盘**这一轮的执行过程，把「�
 | `Core/Prompts.cs` | 复盘系统提示词（任务定义 / 反模式清单 / 写入纪律）与用户提示词 |
 | `Core/Suggestions.cs` | 建议清单 JSON 解析（容忍围栏、丢弃无 evidence/无 reason 条目） |
 | `Core/ReflectionSuggestionsWriter.cs` | **复盘唯一的写盘出口**：按 Mode 把建议落成项目级技能，返回实际创建的名字 |
+| `Core/ReflectionTurnCounter.cs` | 轮次计数（有界 LRU，上限 512） |
 | `Integration/ReflectionAgentDefinition.cs` | `reflection` agent 定义（`Primary` + `IsHidden`，纯只读） |
+| `Ui/ReflectionRunReader.cs` | 只读查询历史复盘记录（供 WebUI） |
 | `Background/ReflectionWorker.cs` | `BackgroundService`：单循环排空队列 + 每 1 分钟触发一次空闲扫描 |
 | `Background/ReflectionIdleScanner.cs` | 空闲扫描策略：结构/来源门禁、二次空闲确认、同空闲期冷却 |
 
@@ -43,8 +45,20 @@ Agent 在回合收尾后可以**异步复盘**这一轮的执行过程，把「�
 
 ```
 Enabled → Mode != Off → AgentExecuted → IsTopLevel
-→ AgentName != "reflection" → Origin != Reflection → Status == Completed → SessionId 非空
+→ AgentName != "reflection" → IsAutomatableOrigin() → Status == Completed → SessionId 非空
 ```
+
+**来源门禁用 `IsAutomatableOrigin()` 而非 `IsUserVisibleTaskOrigin()`**：
+定时 / 心跳会话不出现在任务视图，但它们是真实的 agent 执行，可能产出可复用经验，
+应当可复盘。两个谓词回答两个不同问题，不能合并：
+
+| 谓词 | 语义 | 消费方 |
+|---|---|---|
+| `IsUserVisibleTaskOrigin()` | 用户是否该在任务列表看到 | `TaskTool` / `TaskStatusTool` / `TUI` / 记忆管道 |
+| `IsAutomatableOrigin()` | 是否允许被自动分析（只排除复盘自身） | `ReflectionObserver` / `ReflectionIdleScanner` |
+
+**空闲触发的活动时间戳来自主执行链**：`ExecutionRunner` 在终态无条件 `Touch`。
+原先只有 `ChatMemoryHandler` 会 Touch，导致「记忆捕获关闭 → 空闲触发永久失效」的隐性耦合。
 
 前两条是配置闸，中间两条排除命令短路与子代理，第 5/6 条是**双重重递归防护**（见 §4.1），最后两条是数据有效性。
 
@@ -90,7 +104,34 @@ Enabled → Mode != Off → AgentExecuted → IsTopLevel
 
 `Mode = Primary` + `IsHidden` 的组合是刻意的：`Primary` 表达「不可被 task 委派」（可委派列表按 `Mode != Primary` 排除），`IsHidden` 表达「不显示在用户选择列表」。用 `SubAgent` + `IsHidden` 会污染可委派集合——`IsHidden` 的契约语义是「隐藏但仍可作为 SubAgent 使用」。
 
-### 2.4 写入通道
+### 2.5 失败处理
+
+**失败 / 超时一律清理子会话**，诊断信息落到 `runs/{date}/{executionId}.fail.json`：
+
+| 字段 | 内容 |
+|---|---|
+| `SkipReason` | `timeout` / `failed` / `parse-failed` |
+| `Transcript` | 复盘子会话的 assistant 文本（截断到 20,000 字符） |
+| `Detail` | 异常消息或终态描述 |
+| `ModelId` | 实际使用的模型 |
+
+**为什么不再「保留子会话」**：原设计让失败会话留在 `.seeing/sessions/` 供诊断，
+但没有任何回收机制——持续失败时每小时最多 6 个、一天 144 个孤儿会话。
+诊断真正需要的只有「模型输出了什么」，把它落成文本后会话本身没有保留价值。
+
+### 2.6 查看历史复盘
+
+WebUI `/reflection` 页（工作区导航「复盘记录」）列出 `runs/` 下的全部记录：
+
+- 汇总：记录数 / 失败数 / 产出建议数 / 创建技能数
+- 列表：时间、触发方式、结果、建议数、技能数、Token、实际模型
+- 展开：失败详情、建议清单（含依据）、本次写入的技能
+- 可按「仅失败」过滤
+
+这条出口是 `SuggestOnly` 模式的**唯一可见面**——没有它，用户开了 `Enabled=true`
+只能得到硬盘上的 JSON，功能感知上等于不存在。
+
+### 2.7 写入通道
 
 `ReflectionSuggestionsWriter` 是复盘唯一的落盘路径，按 `Mode` 分流：
 
@@ -217,14 +258,16 @@ DI 注册从 `MemoryServiceExtensions` 移到 `SessionServiceExtensions` / `AddS
 
 1. **`SessionForker` 不继承 `Origin`**：分叉出的会话回落 `User`，复盘会话若被分叉会「隐身失败」→ 潜在递归复盘（靠 `AgentName != "reflection"` 兜底）。
 2. **写入的技能对所有 agent 可见**：复盘写出的项目级技能进入全局技能目录，没有「仅复盘可见」的隔离。这不影响正确性（技能本就是可复用的知识），但授权范围比必要的大。
-3. **`ReflectionModule` 可选依赖静默降级**：容器未登记 `IToolManager` / `IAgentStore` 时模块照常激活，只挂不上对应组件。**已补告警日志**说明缺哪个依赖，不再完全静默。
+3. **`ReflectionModule` 可选依赖静默降级**：容器未登记 `IAgentStore` 时模块照常激活，只是不注册 agent。**已补告警日志**说明缺哪个依赖，不再完全静默。
 4. **`ReflectionWorker` 停用不取消在途复盘**：循环只用 `stoppingToken`，`IsActive=false` 只在下一次判循环条件时生效；单次 `RunAsync` 最长 `RunTimeoutMinutes`（10 分钟），停用后仍可能跑完当前这一次。
 5. **`AddSeeingReflection` 的配置节存储缺失时退回默认值**：`IConfigSectionStore` 未注册（独立装配/单元测试）时 `Enabled` 恒为 `false`，即「不工作」。
 6. **journal 写失败降级为 `SkipReason = "failed"`**：分析已跑完但结果未落盘，不报告成功。
-7. **`SuggestionCount` 为 0 与「解析失败」不可区分**：`{"action":"skip"}` 与 JSON 畸形都产出空列表，前者记 `Executed = true`，后者记 `SkipReason = "parse-failed"`——但两者在 `ReflectionRunRecord.Suggestions` 里都为空。
+7. **`SuggestionCount` 为 0 与「解析失败」不可区分**：`{"action":"skip"}` 与 JSON 畸形都产出空列表，前者记 `Executed = true`，后者记 `SkipReason = "parse-failed"`——但两者在 `ReflectionRunRecord.Suggestions` 里都为空。失败快照的 `Detail` 可帮助区分。
 8. **`ExecutionUsageLedger` 单进程假设**：账本在锁内全量覆盖写；同一工作区两个宿主实例各写各的，后写者覆盖前者。预算是**按项目目录**分别计，切换工作区即重置。
 9. **`TryEnqueue` 返回 `false` 有二义性**：既表示「同会话已存在、仅更新 executionId」，也表示「队列满被丢弃」。调用方只能记一条含糊日志。
 10. **`ReflectionObserver` 先 Reset 后入队**：入队失败时本轮触发额度已清零，该会话要再等 N 轮才可能触发。
+11. **`ReflectionTurnCounter` 淘汰会让会话轮次归零**：上限 512，超限时淘汰最久未触发的会话，其触发点后移几轮。与「重启归零可接受」同类。
+12. **`ReflectionJournal` 文件名截断到 100 字符 + 8 位哈希**：超出时不同 ID 仍可能因哈希碰撞而覆盖（概率可忽略）。
 
 ---
 
@@ -235,7 +278,7 @@ dotnet build Seeing.Agent.slnx --no-incremental   # 0 error
 
 # 全量（均为 VSTest，MTP 在本环境无法发现测试）
 dotnet vstest tests/spine/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Tests.dll                              # 1297
-dotnet vstest tests/capabilities/Seeing.Agent.Reflection.Tests/bin/Debug/net10.0/Seeing.Agent.Reflection.Tests.dll   # 94
+dotnet vstest tests/capabilities/Seeing.Agent.Reflection.Tests/bin/Debug/net10.0/Seeing.Agent.Reflection.Tests.dll   # 105
 dotnet vstest tests/capabilities/Seeing.Agent.Memory.Tests/bin/Debug/net10.0/Seeing.Agent.Memory.Tests.dll           # 221
 dotnet vstest tests/capabilities/Seeing.Agent.Tools.Metadata.Tests/bin/Debug/net10.0/Seeing.Agent.Tools.Metadata.Tests.dll  # 274
 dotnet vstest tests/primitives/Seeing.Session.Tests/bin/Debug/net10.0/Seeing.Session.Tests.dll                       # 285
@@ -245,7 +288,7 @@ dotnet vstest tests/apps/Seeing.Agent.Tui.Tests/bin/Debug/net10.0/Seeing.Agent.T
 dotnet vstest tests/apps/Seeing.Agent.Cli.Tests/bin/Debug/net10.0/Seeing.Agent.Cli.Tests.dll                         # 84
 ```
 
-总计 2952 用例，0 failed。
+总计 2963 用例，0 failed。
 
 **变异验证**（每次都必须 `--no-incremental`，否则 MSBuild 复用旧产物会得假结论）：
 
@@ -259,6 +302,7 @@ dotnet vstest tests/apps/Seeing.Agent.Cli.Tests/bin/Debug/net10.0/Seeing.Agent.C
 | 去掉 `ChatMemoryHandler` 的来源过滤 | `ExecuteAsync_When_Platform_Internal_Session_Should_Not_Buffer` 红 | 3 条红（三种内部来源） |
 | 给 `reflection` agent 的 `AllowedTools` 塞入 `write` | `Agent_Should_Allow_Read_Tools` 红 | 1 条红（断言用 `BeEquivalentTo` 精确锁集合） |
 | 去掉写入器的 `Mode != ApplyCreate` 短路 | `Apply_Should_Not_Write_In_SuggestOnly_Mode` 红 | 2 条红（SuggestOnly / Off） |
+| 去掉轮次计数器的淘汰 | `Count_Should_Not_Exceed_Capacity` 红 | 2 条红（容量 + LRU） |
 
 ---
 

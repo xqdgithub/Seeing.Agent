@@ -506,7 +506,6 @@ internal sealed class ExecutionRunner : IExecutionRunner
             }
 
             // === 组装终态事实并发布 + 扇出观察者（落盘之后：事件里的快照与磁盘一致） ===
-            // 组装所需的外部数据（会话关系 / 来源）已在 ResolveSessionRelation 内部兜底（读失败按顶层+用户）。
             //
             // ⚠ 已知边界（诚实声明，不是「更利于暴露缺陷」）：
             //    此处**没有** try/catch。若 BuildOutcome / Publish / 扇出真的抛出，异常会逃出 finally，
@@ -516,6 +515,19 @@ internal sealed class ExecutionRunner : IExecutionRunner
             //    真正能兜住这个风险的只有 ResolveSessionRelation 内部的 catch（覆盖会话读取失败）。
             //    要彻底消除该边界，需要把「组装 + 发布」也包上 try/catch 并降级为最小快照 —— 但那会隐瞒
             //    发布失败，属于另一处取舍，本轮不改。
+            // 会话活动时间戳：主链事实，不依赖任何可选能力是否开启。
+            // 原先只有记忆钩子会 Touch，导致「记忆捕获关闭 → 复盘的 idle 触发永久失效」——
+            // 这是隐性耦合：后台扫描器靠这个时间戳判定空闲，而它不该由某个可选能力决定是否存在。
+            try
+            {
+                scope.ServiceProvider.GetService<ISessionActivityTracker>()?.Touch(record.SessionId);
+            }
+            catch (Exception ex)
+            {
+                // 活跃度只影响后台扫描的时机，不能让它影响执行终态。
+                _logger.LogDebug(ex, "记录会话活跃度失败（已忽略）: SessionId={SessionId}", record.SessionId);
+            }
+
             var outcome = BuildOutcome(record, scope.ServiceProvider, agentExecuted, executedAgentName, totalSteps, usage, loopDuration);
 
             // 发布执行终态事件：UI/TUI 据此结束「执行中」态并刷新。

@@ -74,7 +74,9 @@ public sealed class ReflectionObserver : IExecutionOutcomeObserver
             return false;
 
         // 6. 防递归第 2 重：来源为复盘的会话一律跳过（即使 Agent 名不同）。
-        if (outcome.Origin == SessionOrigin.Reflection)
+        // 用 IsAutomatableOrigin 而非 IsUserVisibleTaskOrigin：定时 / 心跳是真实的 agent 执行，
+        // 可能产出可复用经验，应当可复盘；只有复盘自身必须排除。
+        if (!outcome.Origin.IsAutomatableOrigin())
             return false;
 
         // 7. 失败 / 取消的轮次不复盘：那些轮次的事实不完整，复盘只会得出错误结论。

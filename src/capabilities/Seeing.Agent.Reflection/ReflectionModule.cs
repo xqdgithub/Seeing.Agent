@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Reflection.Configuration;
 using Seeing.Agent.Reflection.Integration;
 
@@ -11,7 +12,8 @@ namespace Seeing.Agent.Reflection;
 /// <summary>
 /// 复盘能力模块 — id=<c>reflection</c>。
 /// <para>
-/// 职责：启停门控（<see cref="ReflectionModuleActivity"/>）+ 注册隐藏的 <c>reflection</c> agent。
+/// 职责：启停门控（<see cref="ReflectionModuleActivity"/>）+ 注册隐藏的 <c>reflection</c> agent
+/// + 提供只读的复盘记录页导航。
 /// </para>
 /// <para>
 /// <b>本模块不挂载任何工具</b>：复盘 agent 是纯只读的，技能写入由
@@ -21,7 +23,7 @@ namespace Seeing.Agent.Reflection;
 /// 以及让只读 agent 需要写文件权限。
 /// </para>
 /// </summary>
-public sealed class ReflectionModule : ISeeingModule
+public sealed class ReflectionModule : ISeeingModule, IUiContribution
 {
     /// <summary>模块 id。</summary>
     public const string ModuleId = "reflection";
@@ -30,6 +32,7 @@ public sealed class ReflectionModule : ISeeingModule
     private readonly ILogger<ReflectionModule>? _logger;
     private readonly IAgentStore? _agentStore;
     private readonly IOptionsMonitor<ReflectionOptions>? _options;
+    private readonly IUiContributionRegistry? _ui;
 
     /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
     public ReflectionModule()
@@ -41,16 +44,21 @@ public sealed class ReflectionModule : ISeeingModule
         ReflectionModuleActivity activity,
         ILogger<ReflectionModule>? logger = null,
         IAgentStore? agentStore = null,
-        IOptionsMonitor<ReflectionOptions>? options = null)
+        IOptionsMonitor<ReflectionOptions>? options = null,
+        IUiContributionRegistry? uiRegistry = null)
     {
         _activity = activity ?? throw new ArgumentNullException(nameof(activity));
         _logger = logger;
         _agentStore = agentStore;
         _options = options;
+        _ui = uiRegistry;
     }
 
     /// <inheritdoc />
     public string Id => ModuleId;
+
+    /// <inheritdoc />
+    string IUiContribution.ModuleId => ModuleId;
 
     /// <inheritdoc />
     /// <remarks>本模块不提供工具——复盘 agent 只读，写入在宿主侧执行器内完成。</remarks>
@@ -61,6 +69,17 @@ public sealed class ReflectionModule : ISeeingModule
 
     /// <inheritdoc />
     public IReadOnlyList<string> DependsOn { get; } = Array.Empty<string>();
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// 只读导航项：复盘产物是磁盘上的 JSON，用户需要一个入口才能看到建议，
+    /// 否则 <c>SuggestOnly</c> 模式下功能感知上等于不存在。
+    /// </remarks>
+    public IReadOnlyList<object> Contribute() =>
+    [
+        new NavContribution("/reflection", "复盘记录", "bulb", [ModuleId],
+            Group: NavGroups.Workspace, GroupIcon: NavGroups.WorkspaceIcon, Order: 60),
+    ];
 
     /// <inheritdoc />
     public void ConfigureServices(IServiceCollection services)
@@ -79,6 +98,7 @@ public sealed class ReflectionModule : ISeeingModule
 
         cancellationToken.ThrowIfCancellationRequested();
         _activity.IsActive = true;
+        _ui?.Register(this);
 
         // Agent 注册：与内置 agent 一致，注册后不在 Deactivate 注销，避免影响进行中的会话。
         var options = _options?.CurrentValue;

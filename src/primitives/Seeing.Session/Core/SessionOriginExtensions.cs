@@ -27,5 +27,25 @@ namespace Seeing.Session.Core
         /// <returns><c>true</c> 表示用户在任务视图中应当看到该会话。</returns>
         public static bool IsUserVisibleTaskOrigin(this SessionOrigin origin)
             => origin is SessionOrigin.User or SessionOrigin.SubAgentTask;
+
+        /// <summary>
+        /// 该来源是否允许被<b>自动能力</b>处理（复盘等后台分析）。
+        /// <para>
+        /// 与 <see cref="IsUserVisibleTaskOrigin"/> 是两个不同的问题，不能合并：
+        /// </para>
+        /// <list type="bullet">
+        /// <item>「用户能否在任务列表里看到」——定时 / 心跳会话是平台自己创建的，不该混进任务视图。</item>
+        /// <item>「这轮执行有没有值得沉淀的经验」——定时 / 心跳是**真实的 agent 执行**，
+        /// 完全可能产出可复用流程，应当可复盘。</item>
+        /// </list>
+        /// <para>
+        /// 只排除 <see cref="SessionOrigin.Reflection"/>：那是复盘自身，必须防递归
+        /// （否则复盘会话的终态又会触发下一次复盘，形成自我繁殖）。
+        /// </para>
+        /// </summary>
+        /// <param name="origin">会话来源。</param>
+        /// <returns><c>true</c> 表示该会话的终态可被自动分析能力处理。</returns>
+        public static bool IsAutomatableOrigin(this SessionOrigin origin)
+            => origin != SessionOrigin.Reflection;
     }
 }
