@@ -143,7 +143,8 @@ public static class MemoryServiceExtensions
         services.TryAddSingleton<IMemoryPipeline, Core.Pipeline.MemoryPipeline>();
         services.TryAddSingleton<ISessionMemoryBuffer, SessionMemoryBuffer>();
         services.TryAddSingleton<IMemoryFlushService, MemoryFlushService>();
-        services.TryAddSingleton<ISessionActivityTracker, SessionActivityTracker>();
+        // ISessionActivityTracker 已在 Seeing.Session（AddSessionManager / AddSeeingCore）注册，
+        // 本包不再重复登记——避免内存与复盘包各持一份导致空闲判定分裂。
         services.TryAddSingleton<IMemoryEvolutionService, Core.Evolution.LlmMemoryEvolution>();
         services.TryAddSingleton<IMemoryRecallService, Core.Recall.MemoryRecallService>();
 

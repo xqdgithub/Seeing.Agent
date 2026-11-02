@@ -195,8 +195,12 @@ internal sealed class ExecutionRunner : IExecutionRunner
                 scope.ServiceProvider);
 
             // 旁路生成标题（不阻塞主对话；命令不生成标题）
-            // 标题门控按「本批含 Presentation=User 输入」：纯系统/子会话通知批次不生成标题
-            if (batch.HasUserInput && !IsCommandInput(record.Input?.Text))
+            // 标题门控按「本批含 Presentation=User 输入」：纯系统/子会话通知批次不生成标题。
+            // 平台内部会话（复盘 / 定时 / 心跳）即使以 User 呈现也不生成标题——
+            // 它们的标题是创建时显式给定的，再生成一次纯属浪费一次 LLM 调用。
+            if (batch.HasUserInput
+                && session.Origin == SessionOrigin.User
+                && !IsCommandInput(record.Input?.Text))
             {
                 var titleSource = ResolveTitleSourceText(record.Input);
                 if (!string.IsNullOrWhiteSpace(titleSource))

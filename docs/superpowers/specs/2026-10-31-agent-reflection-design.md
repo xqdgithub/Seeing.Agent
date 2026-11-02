@@ -170,31 +170,37 @@ Task<ExecutionOutcome> DeliverAndAwaitAsync(InboxMessage message, CancellationTo
 
 **顺带收益**：4 个既有轮询调用点可逐步迁移。
 
-### 3.3 记忆注入：修复 `ChatBeforeStart` 触发（**方案已改**，2026-11-01）
+### 3.3 记忆注入：`MemoryContextSource`（**方案已两次推翻，2026-11-01 最终定稿**）
+
+> **本节前半部分（"修复 `ChatBeforeStart` 触发"、"`MemoryRecallHandler` 保持不变"）已全部作废。**
+> 实际交付的方案见本节末尾「最终方案」。保留作废记录是为了说明两次错误推理的路径。
 
 **问题**：记忆自动注入是死路径。`MemoryRecallHandler`（`Spec => HookRegistry.ChatBeforeStart`）读 `userMessage`/`message`/`content`（`:40-42`），但两处触发（`LlmService.cs:330-338`、`:459-468`）**只传 `modelId`/`provider`**，且 `mutable` 传的是 `null`（`cancellationToken:` 命名参数跳过）。因此 handler 恒在 `:43` 提前返回。即便它写入 `Mutable["systemPrompt"]`，**也没有任何消费方**——系统提示词走另一条 `LlmSystemPrompt` + 局部 `promptOutput`（`:511-530`）。
 
-**原方案（错误，已撤销）**：把记忆注入迁移到 `IContextSource`，与 `SkillsContextSource` 同构。
+**第一次尝试（已撤销）**：把记忆注入迁移到 `IContextSource`，与 `SkillsContextSource` 同构。
 
-**为什么错**：`IContextSource` 的契约是**无状态纯函数**：
+当时的否决理由：`IContextSource` 的契约是**无状态纯函数**（「同一值重复渲染逐字节相等」「`RenderInitial` 须为纯函数」「`Canonical` 落盘做 diff」），而记忆召回是**查询依赖**的，每次查询文本变化都会让 `Canonical` 变化 → 触发「记忆已更新」的增量消息 → 污染历史。
 
-- 「同一值重复渲染**逐字节相等**」
-- 「`RenderInitial` 须为纯函数」
-- `Canonical` 落盘做 diff，值变化才叙述增量
+**第二次尝试（已撤销）**：修复 `ChatBeforeStart` 的两处触发，补齐 `userMessage` input 与 `mutable` 字典。
 
-而记忆召回是**查询依赖**的：同一会话里，用户问不同问题应召回不同记忆。若按 ContextSource 实现，每次查询文本变化都会让 `Canonical` 变化 → 触发「记忆已更新」的增量消息 → **污染历史**，且违反字节稳定约束。两者语义不兼容，不是实现难度问题。
+否决理由：这等于给一个**即将被删除的 hook 契约续命**。`LlmService` 的职责应当是纯传输层，不该承载 prompt 改写。且该方案需要同时维护 `ChatBeforeStart` 与 `LlmSystemPrompt` 两套改写通道，属于结构性重复。
 
-**正确方案**：修复 `ChatBeforeStart` 的两处触发，补齐它本就该传的事实。
+**最终方案（已实施）**：
 
-1. `LlmService.CompleteAsync`（`:330-338`）与 `CompleteStreamAsync`（`:459-468`）：
-   - `input` 增加 `["userMessage"] = <本请求最后一条 user 消息文本>`（从 `ChatRequest.Messages` 取，`ChatRequest` 在作用域内）
-   - 创建一个 `var promptOutput = new Dictionary<string, object?> { ["systemPrompt"] = request.SystemPrompt ?? "" }`，作为 `mutable` 传入
-2. 触发后，若 handler 修改了 `promptOutput["systemPrompt"]`，**写回** `request.SystemPrompt`（与 `LlmSystemPrompt` 的处理方式一致，见 `:529`）
-3. `MemoryRecallHandler` 保持不变（它读 `userMessage` 与 `Mutable["systemPrompt"]` 的逻辑本来就是对的）
+1. **删除 `LlmService` 的 prompt 改写能力**：移除 `ChatBeforeStart` 触发与 `LlmSystemPrompt` 钩子，`LlmService` 收敛为纯传输层（不再读改写 `SystemPrompt`）。
+2. **删除 `MemoryRecallHandler`** 及其 DI 注册。
+3. **新增 `MemoryContextSource`**（`src/capabilities/Seeing.Agent.Memory/Integration/MemoryContextSource.cs`），`Target = Message` 而非 `System`。
+4. **`IContextExecutionScope` 增加 `UserQuery`**，供查询依赖的源读取本轮用户输入（源不读会话，只读执行级作用域）。
 
-**约束**：`ChatBeforeStart` 是 `Blocking` 策略，召回有 150ms 超时兜底（`MemoryRecallOptions.InjectTimeoutMs`），不会显著拖慢。但必须在 `MemoryRecallHandler` 里保证异常不外抛（已有 try/catch）。
+**为什么这次成立**：`Target = Message` 走的是「每轮新增一条消息」的通道，而不是「System 基线 + 增量叙述」。`ContextAssembler` 对 `System` 源只在首次建立时渲染基线、之后只叙述 delta——那正是查询依赖内容会污染历史的地方。改成 `Message` 后，每轮召回结果天然是一条独立消息，不参与基线 diff。
 
-**测试**：给 `LlmService` 补断言——`ChatBeforeStart` 的 `input` 含 `userMessage`，`mutable` 非 null；`MemoryRecallHandler` 在收到真实 payload 时能注入并回写。
+**已知代价**（已登记）：
+- `MaxInjectTokens` 对记忆注入失效（条数由 `TopK` 决定）。
+- `Message` 目标每轮值变化新增一条消息，长会话会稀释历史（用户已裁决接受）。
+- Scheduler / Heartbeat 旁路不填 `UserQuery` → 定时任务里记忆永不注入。
+- `ValueSchemaVersion = 2` 会让旧基线重建（安全，但历史会多一条初始消息）。
+
+**测试**：`tests/capabilities/Seeing.Agent.Memory.Tests/Integration/MemoryContextSourceTests.cs`（召回渲染、增量守门、frontmatter 剥离、占位节点跳过、指纹含标题）。
 
 
 ### 3.4 会话用途正交维度
@@ -227,6 +233,23 @@ public enum SessionOrigin
 - `TuiSurfaceProvider`（`:146-157`）——递归把子会话加入 active group 订阅
 
 同时修 `TaskTool.cs:117` 的 `Kind != SubAgent` 判定改为显式白名单（`Kind == SubAgent && Origin == SubAgentTask`）。
+
+**实施修正（2026-11-02）**：上面写的「显式白名单 `Origin == SubAgentTask`」**是错的**，已改为排除式判定，收敛在
+`SessionOriginExtensions.IsUserVisibleTaskOrigin()`（`src/primitives/Seeing.Session/Core/`）：
+
+```csharp
+public static bool IsUserVisibleTaskOrigin(this SessionOrigin origin)
+    => origin is SessionOrigin.User or SessionOrigin.SubAgentTask;
+```
+
+**为什么白名单不成立**：`Origin` 字段是后加的，升级前的历史子会话落盘时没有该字段，反序列化后为默认值
+`SessionOrigin.User`。若要求 `== SubAgentTask`，所有存量 task 会话升级后会集体从任务视图消失，且用户无法 resume。
+实测该写法导致 `TaskToolAutoApproveInheritanceTests` 3 个用例失败——正是「存量兼容」被破坏的信号。
+
+排除式判定只挡 `Reflection` / `Scheduler` / `Heartbeat`——它们一定是新代码创建的，必然带正确标记，不存在历史兼容问题。
+
+**标题生成门禁**：`ExecutionRunner` 的 `EnsureTitleFireAndForgetAsync` 触发条件加 `session.Origin == SessionOrigin.User`。
+理由：复盘会话以 `Presentation = User` 投递，会让 `batch.HasUserInput = true`，从而每轮多烧一次标题 LLM 调用。
 
 ### 3.5 ~~`GetTaskableAgentsAsync` 补 `IsHidden` 过滤~~（已撤销，2026-11-01）
 
@@ -674,9 +697,9 @@ dotnet vstest tests/spine/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Test
 |---|---|---|---|
 | **P0-a** | `ExecutionOutcome` + `ExecutionRecord` 扩字段（删 `ProcessedMessageCount`）+ `ExecutionCompleteEvent` 携带 + `IExecutionOutcomeObserver` 扇出 + 捕获 `LoopCompleteEvent.Usage/Steps` | 终态事实有唯一出口；成本统计/审计可接入 | 无 |
 | **P0-b** | `ISessionRuntime.DeliverAndAwaitAsync` + TCS 表 | 收掉 4 处轮询 | 无 |
-| **P0-c** | `MemoryContextSource` + 删 `MemoryRecallHandler` | 记忆自动注入真正生效 | 无 |
+| **P0-c** | `MemoryContextSource` + 删 `MemoryRecallHandler` + `LlmService` 收缩为纯传输层 | 记忆自动注入真正生效 | 无 |
 | **P0-d** | `SessionOrigin` + `CreateInternalAsync` + 三处视图过滤 + 不生成标题 | 内部会话不再污染任务视图 | 无 |
-| **P0-e** | `GetTaskableAgentsAsync` 加 `IsHidden` 过滤 | 修 `build`/`summary` 误入委托列表 | 无 |
+| **P0-e** | ~~`GetTaskableAgentsAsync` 加 `IsHidden` 过滤~~（已撤销，见 §3.5） | — | — |
 | **P0-f** | `ISessionActivityTracker` 下沉 primitives | 消除复制 | 无 |
 | **P0-g** | 删 Memory 死账本（`ITokenTracker`/`IQuotaManager`/`SqliteTokenTracker`/`DailyQuotaManager`） | 净减代码 | P0-a |
 | **P0-h** | `AgentTurnMemoryHandler` 改 `IExecutionOutcomeObserver` | `ExtractEveryNTurns` 真正生效且口径正确 | P0-a |
@@ -714,6 +737,14 @@ P1–P3 建议一个 PR。P4 是观察期。
 7. **`ITokenUsageLedger` 缺失**：本期先修数据源（`ExecutionOutcome.Usage`）；出现第二个消费者（WebUI 成本页/全局配额）再抽。
 8. **工具受众维度缺失**：`skill_create` 全局可见是这个缺口的表象，不是个例。
 9. **`Memory` 的 `Retrieval.Mode` 默认 `Both` 但注入路径到 §3.3 才真正生效**——修复后需核对文档与 UI 描述。
+
+## 9.1 实施期新增的已知边界（2026-11-02）
+
+1. **`SessionForker` 不继承 `Origin`**：分叉出的会话回落默认 `User`，复盘会话若被分叉会「隐身失败」→ 潜在递归复盘（靠 `AgentName != "reflection"` 兜底）。
+2. **`SkillCreateTool` 无可见范围限制**：`reflection` agent 写出的技能对所有 agent 可见。这是「工具受众维度缺失」的直接后果，属已接受的残留风险。
+3. **`ReflectionModule` 的可选依赖静默降级**：容器未登记 `IToolManager` / `IAgentStore` 时模块照常激活，只是不挂工具与 agent。好处是宿主不会因可选能力缺失起不来；代价是配置错误不报错。
+4. **`ReflectionWorker` 停用响应最坏延迟 1 分钟**（`PeriodicTimer` tick 周期），未实现停用哨兵。
+5. **`AddSeeingReflection(IConfiguration)` 的 `TryAddSingleton(configuration)`**：若 DI 中已有不同 `IConfiguration` 实例则被静默忽略，provider 实际读容器里那个。
 
 ---
 

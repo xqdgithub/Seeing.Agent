@@ -7,6 +7,8 @@ using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Background;
 using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Integration.Hosting;
+using Seeing.Session.Core;
+using Seeing.Session.Management;
 using Xunit;
 
 namespace Seeing.Agent.Memory.Tests.Background;

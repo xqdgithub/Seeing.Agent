@@ -35,6 +35,15 @@ A-1 与 A-2 之间，**记忆注入完全不生效**。
 `MemoryContextSource`（`src/capabilities/Seeing.Agent.Memory/Integration/MemoryContextSource.cs`）以 `Target = Message` 注入本轮召回，由 `AddMemoryServices` 以
 `services.TryAddEnumerable(ServiceDescriptor.Scoped<IContextSource, MemoryContextSource>())` 登记。
 
+### `ValueSchemaVersion` 1 → 2 的副作用
+
+本改为 `Target = Message` 并更换了 `Canonical` 形状，因此 `ValueSchemaVersion` 从 1 提到 2。
+
+**副作用（安全但可见）**：装配器发现版本不匹配会**丢弃该源的既有基线状态并全量重建**——
+会话历史里会多出一条记忆初始渲染消息，旧的记忆块不会消失（历史消息不可变）。
+
+这是预期行为（缓存失效），不是 bug；但升级后第一次执行会发现历史里多一条消息。
+
 ### 已失效的配置
 
 `MemoryRetrievalOptions.MaxInjectTokens` **对记忆注入没有任何效果**（全仓零消费者）。
@@ -48,10 +57,18 @@ A-1 与 A-2 之间，**记忆注入完全不生效**。
 
 ### 值结构与消息元数据
 
-- `Canonical` = `{"hits":[{"path","score","contentHash"}]}`（`contentHash` 为正文 SHA256 前 16 位）。
+- `Canonical` = `{"hits":[{"path","score","contentHash"}]}`（`contentHash` 为**标题 + 正文（剥离 frontmatter）**的 SHA256 前 16 位）。
   **`contentHash` 不可省**：`score` 是 RRF 分数、由排名决定，记忆正文更新后排名常常不变 →
   分数逐位相同。缺了指纹，正文更新就永远是「值未变」，模型拿到的正文永久停在旧值，
   且每轮触发装配器的「同值不同文本」告警。
+  **标题必须参与哈希**：标题来自 `Metadata.Title` 而非正文，只算正文会让「仅改标题」被判为值未变 →
+  每轮告警且基线永久停在旧标题。
+  **正文必须先剥离 YAML frontmatter**（`YamlParser.ExtractMarkdownBody`）：真实记忆文件头约 200 字符，
+  `SummaryCharLimit = 240` 会被吃光，模型看到的「摘要」几乎全是元数据噪声。口径与同包
+  `MemorySearchTool` / `MemoryReadTool` 一致。
+  **正文为空即整条跳过**：索引层读失败返回 `Content = ""` 的占位节点，若让它进入 `Canonical`，
+  一次瞬时 IO 失败会被 `contentHash` 判成「记忆内容已更新」并叙述给模型——这是 `score` 时代不存在的伪造更新。
+  跳过只让本轮少一条记忆（可恢复），伪造叙述会污染历史。
 - 初始渲染消息带 `SessionMetadataKeys.ContextUpdate`（`bool`）与
   `SessionMetadataKeys.ContextUpdateSources`（`string[]`）——**复用既有键**，不是新造：
   `SessionTitleService.IsIntentionalUserMessage` 与 WebUI `MessageViewModelFactory` 已按此判定机器注入。

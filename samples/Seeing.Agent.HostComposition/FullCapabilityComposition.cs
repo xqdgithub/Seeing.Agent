@@ -16,6 +16,7 @@ using Seeing.Agent.Llm.ModelCatalog.Builtin;
 using Seeing.Agent.Llm.OpenAI;
 using Seeing.Agent.Mcp;
 using Seeing.Agent.Memory.Extensions;
+using Seeing.Agent.Reflection.Extensions;
 using Seeing.Agent.Scheduler.Extensions;
 using Seeing.Agent.Skills;
 using Seeing.Agent.SystemOne.Extensions;
@@ -108,6 +109,7 @@ public static class FullCapabilityComposition
         services.AddSeeingModule<SkillsModule>(registry);
         services.AddSeeingModule<McpModule>(registry);
         services.AddMemoryServices(registry);
+        services.AddSeeingReflection();
         services.AddSeeingScheduler(registry);
         services.AddSeeingAcp(registry);
         services.AddSystemOne(registry);

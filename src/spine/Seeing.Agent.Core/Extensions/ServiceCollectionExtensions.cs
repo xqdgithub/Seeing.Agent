@@ -566,6 +566,10 @@ namespace Seeing.Agent.Core.Extensions
             services.AddSingleton<ISessionGroupEventBus, ChannelSessionGroupEventBus>();
             services.AddHostedService<SessionGroupEventBridge>();
 
+            // 会话活动追踪：后台工作者（记忆抽取 / 复盘触发）据此按空闲窗口惰性扫描。
+            // 与 SessionManager 同为进程级单例——活动时刻是全进程共享的事实。
+            services.TryAddSingleton<ISessionActivityTracker, SessionActivityTracker>();
+
             // 工具输出落盘服务（超限工具输出写会话 ref 目录）
             services.AddSingleton<Seeing.Agent.Core.Output.IToolOutputStore>(sp =>
                 new Seeing.Agent.Core.Output.SessionToolOutputStore(

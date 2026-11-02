@@ -7,6 +7,8 @@ using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Core;
 using Seeing.Agent.Memory.Core.Models;
 using Seeing.Agent.Memory.Integration;
+using Seeing.Session.Core;
+using Seeing.Session.Management;
 using Xunit;
 
 namespace Seeing.Agent.Memory.Tests.Integration;

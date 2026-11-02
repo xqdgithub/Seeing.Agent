@@ -5,6 +5,7 @@ using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Integration.Hosting;
+using Seeing.Session.Core;
 using System.Threading.Channels;
 
 namespace Seeing.Agent.Memory.Background;

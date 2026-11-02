@@ -37,6 +37,7 @@
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Skills\Seeing.Agent.Skills.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Mcp\Seeing.Agent.Mcp.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Memory\Seeing.Agent.Memory.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Reflection\Seeing.Agent.Reflection.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Scheduler\Seeing.Agent.Scheduler.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Acp\Seeing.Agent.Acp.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.SystemOne\Seeing.Agent.SystemOne.csproj" />

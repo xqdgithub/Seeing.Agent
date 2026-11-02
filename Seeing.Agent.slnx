@@ -46,6 +46,7 @@
     <Project Path="src/capabilities/Seeing.Agent.Llm.OpenAI/Seeing.Agent.Llm.OpenAI.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Mcp/Seeing.Agent.Mcp.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Memory/Seeing.Agent.Memory.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Reflection/Seeing.Agent.Reflection.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Scheduler/Seeing.Agent.Scheduler.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Skills/Seeing.Agent.Skills.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.SystemOne/Seeing.Agent.SystemOne.csproj" />
@@ -100,6 +101,7 @@
     <Project Path="tests/capabilities/Seeing.Agent.Llm.OpenAI.Tests/Seeing.Agent.Llm.OpenAI.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Mcp.Tests/Seeing.Agent.Mcp.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Memory.Tests/Seeing.Agent.Memory.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Reflection.Tests/Seeing.Agent.Reflection.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Scheduler.Tests/Seeing.Agent.Scheduler.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Skills.Tests/Seeing.Agent.Skills.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.SystemOne.Tests/Seeing.Agent.SystemOne.Tests.csproj" />

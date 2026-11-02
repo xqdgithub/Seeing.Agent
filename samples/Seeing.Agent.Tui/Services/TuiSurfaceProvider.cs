@@ -150,6 +150,14 @@ public sealed class TuiSurfaceProvider : ISurfaceProvider, IDisposable
             {
                 if (child is null || string.IsNullOrEmpty(child.Id))
                     continue;
+
+                // 平台内部会话（复盘 / 定时 / 心跳）不是用户可见的「子任务」。
+                // Origin 过滤必须在这里做：它们 Kind 仍是 SubAgent（组不变量要求），
+                // 只按 Kind 判断会把它们混进任务组订阅。
+                // 排除式判定：存量 task 会话缺 Origin 字段（默认 User），白名单会让它们消失。
+                if (!child.Origin.IsUserVisibleTaskOrigin())
+                    continue;
+
                 members.Add(child.Id);
                 if (visited.Add(child.Id))
                     queue.Enqueue(child.Id);

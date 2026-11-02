@@ -99,6 +99,7 @@ public static class BuiltInCapabilitySets
         "question.tools",
         "web",
         "memory",
+        "reflection",
         "scheduler",
         "skills",
         "mcp",

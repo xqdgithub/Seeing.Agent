@@ -80,6 +80,8 @@
         {
             "SkillsContextSource" => "技能清单",
             "ProjectInstructionsContextSource" => "项目指令",
+            // 记忆召回源：Target=Message，每轮查询变化时以增量消息呈现
+            "MemoryContextSource" => "记忆",
             _ => sourceKey
         };
     }

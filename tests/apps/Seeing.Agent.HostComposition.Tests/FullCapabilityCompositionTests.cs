@@ -78,6 +78,42 @@ public class FullCapabilityCompositionTests
             relativePath);
     }
 
+    /// <summary>复盘能力必须进 Full 档并随组合根一起登记（否则宿主开着却永远不触发）。</summary>
+    [Fact]
+    public void Full_CapabilitySet_Should_Include_Reflection()
+    {
+        BuiltInCapabilitySets.Full.Should().Contain("reflection");
+    }
+
+    /// <summary>组合根解析出的模块集合里必须有 reflection 模块实例。</summary>
+    [Fact]
+    public async Task Fully_Composed_Host_Should_Register_Reflection_Module()
+    {
+        await using var provider = BuildProvider(includeGatewayServer: false);
+
+        provider.GetServices<ISeeingModule>()
+            .Should().Contain(m => m.Id == "reflection");
+    }
+
+    /// <summary>
+    /// 复盘能力默认不得自行启用：Enabled 默认 false，
+    /// 用户不显式开启时不应产生任何后台模型调用（成本闸）。
+    /// </summary>
+    [Fact]
+    public async Task Reflection_Should_Be_Disabled_By_Default()
+    {
+        await using var provider = BuildProvider(includeGatewayServer: false);
+
+        var options = provider.GetRequiredService<
+            Microsoft.Extensions.Options.IOptionsMonitor<Seeing.Agent.Reflection.Configuration.ReflectionOptions>>();
+
+        options.CurrentValue.Enabled.Should().BeFalse(
+            "复盘会产生额外的模型调用，必须由用户显式开启");
+        options.CurrentValue.Mode.Should().Be(
+            Seeing.Agent.Reflection.Configuration.ReflectionMode.SuggestOnly,
+            "默认模式只产出建议、不写盘");
+    }
+
     private static ServiceProvider BuildProvider(bool includeGatewayServer)
     {
         var services = new ServiceCollection();

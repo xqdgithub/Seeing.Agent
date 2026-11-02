@@ -27,6 +27,8 @@
 - [单一权威写入者 Release Notes](docs/architecture/13-single-writer-release-notes.md)
 - [会话入站运行时 Release Notes](docs/architecture/14-session-inbox-runtime-release-notes.md)
 - [工具上下文预算与分层暴露 Release Notes](docs/architecture/19-tool-context-budgeting-release-notes.md)
+- [LlmService 纯传输层 Release Notes](docs/architecture/24-llmservice-transport-only-release-notes.md)
+- [Agent 自动反思 Release Notes](docs/architecture/25-agent-reflection-release-notes.md)
 
 设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
 

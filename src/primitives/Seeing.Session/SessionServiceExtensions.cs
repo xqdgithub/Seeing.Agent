@@ -141,6 +141,10 @@ public static class SessionServiceExtensions
         services.TryAddSingleton<ISessionGroupManager>(sp =>
             sp.GetRequiredService<SessionGroupManager>());
 
+        // 会话活动追踪：primitives 归属，独立使用 Seeing.Session 的宿主也可直接解析。
+        // 已在 AddSeeingCore 注册时此处为 no-op（TryAddSingleton），保证全进程单实例。
+        services.TryAddSingleton<ISessionActivityTracker, SessionActivityTracker>();
+
         return services;
     }
 }

@@ -7,6 +7,7 @@ using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Core.Models;
 using Seeing.Agent.Memory.Integration.Hosting;
 using Seeing.Session.Core;
+using Seeing.Session.Management;
 
 namespace Seeing.Agent.Memory.Integration;
 

@@ -240,6 +240,13 @@ public class TaskStatusTool : ToolBase
 
         foreach (var child in children)
         {
+            // 平台内部会话（复盘 / 定时 / 心跳）不参与任务视图。
+            // 它们 Kind 仍是 SubAgent（组不变量要求），只能靠 Origin 区分。
+            // 用排除式判定而非白名单：存量子会话缺 Origin 字段（默认 User），
+            // 白名单会让升级后所有历史 task 会话从视图消失。
+            if (!child.Origin.IsUserVisibleTaskOrigin())
+                continue;
+
             var overview = _runtime.GetOverview(child.Id);
             var current = overview.CurrentExecution;
             var last = overview.LastExecution;

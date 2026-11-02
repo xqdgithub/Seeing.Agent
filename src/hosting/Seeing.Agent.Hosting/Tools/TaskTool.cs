@@ -114,8 +114,11 @@ public class TaskTool : ToolBase
                 session = await _sessionManager.TryGetOrLoadAsync(taskId)
                     ?? throw new InvalidOperationException($"未找到 task_id: {taskId}");
 
-                if (session.Kind != SessionKind.SubAgent)
-                    return Failure($"task_id '{taskId}' 不是 SubAgent 会话");
+                // 平台内部会话（复盘 / 定时 / 心跳）不可被 task 复用/续跑。
+                // 用排除式判定：存量 task 会话缺 Origin 字段（默认 User）必须仍可续跑。
+                if (session.Kind != SessionKind.SubAgent
+                    || !session.Origin.IsUserVisibleTaskOrigin())
+                    return Failure($"task_id '{taskId}' 不是可复用的子任务会话");
 
                 if (!string.Equals(
                         await _groupManager.GetParentAsync(session.Id, context.CancellationToken),
@@ -361,6 +364,11 @@ public class TaskTool : ToolBase
 
         foreach (var child in children)
         {
+            // 平台内部会话（复盘 / 定时 / 心跳）不参与任务视图，不能计入「其他子代理」摘要。
+            // 用排除式判定而非白名单：存量 task 会话缺 Origin 字段（默认 User）。
+            if (!child.Origin.IsUserVisibleTaskOrigin())
+                continue;
+
             // 当前正在完成的子任务标记为已完成
             if (string.Equals(child.Id, currentChildId, StringComparison.Ordinal))
             {
