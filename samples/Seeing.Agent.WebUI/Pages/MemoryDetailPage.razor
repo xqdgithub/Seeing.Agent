@@ -83,7 +83,8 @@
                     <Table TItem="GraphNode" DataSource="@_relatedNodes" RowKey="@(n => n.Path)" Size="@TableSize.Small">
                         <PropertyColumn Property="c => c.Title" Title="标题" />
                         <PropertyColumn Property="c => c.Path" Title="路径">
-                            <a href="javascript:void(0)" @onclick="@(() => Navigation.NavigateTo($"/memory/detail/{context.Path}"))">@context.Path</a>
+                            <button type="button" class="mem-title-link" style="font-family: monospace; font-size: 12px;"
+                                    @onclick="@(() => Navigation.NavigateTo($"/memory/detail/{context.Path}"))">@context.Path</button>
                         </PropertyColumn>
                         <PropertyColumn Property="c => c.Degree" Title="度数" Width="80" />
                     </Table>
@@ -206,17 +207,22 @@
     {
         if (string.IsNullOrEmpty(content)) return "<p>（空内容）</p>";
 
-        // 简单的 Markdown 渲染：使用 Markdig
+        // 先剥离 YAML frontmatter：记忆文件都带一段元数据头，
+        // 直接交给 Markdig 时，闭合的 "---" 会被当成 setext 标题下划线，
+        // 把整段元数据渲染成一个巨大的标题（用户看到的是 id/type/tags 满屏）。
+        var body = Seeing.Agent.Memory.Core.YamlParser.ExtractMarkdownBody(content);
+        if (string.IsNullOrWhiteSpace(body))
+            body = content;   // 没有 frontmatter（或剥离后为空）时按原文渲染
+
         try
         {
             var pipeline = new Markdig.MarkdownPipelineBuilder().Build();
-            var html = Markdig.Markdown.ToHtml(content, pipeline);
-            return html;
+            return Markdig.Markdown.ToHtml(body, pipeline);
         }
         catch
         {
             // 降级为纯文本显示（HTML 转义）
-            return "<pre>" + System.Net.WebUtility.HtmlEncode(content) + "</pre>";
+            return "<pre>" + System.Net.WebUtility.HtmlEncode(body) + "</pre>";
         }
     }
 

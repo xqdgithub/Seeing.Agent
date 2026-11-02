@@ -173,12 +173,13 @@ string? SourceSession = null
 | memory | **235**（原 221，+14） | 0 failed |
 | hosting | 75 | 0 failed |
 | hostcomp | 10 | 0 failed |
+| webui | **36**（原 31，+5） | 0 failed |
 | reflection | 108 | 0 failed |
 | metadata | 269 | 0 failed |
 | session | 285 | 0 failed |
 | tui | 617 | 0 failed |
 | cli | 84 | 0 failed |
-| **合计** | **2980** | **0 failed** |
+| **合计** | **3030** | **0 failed** |
 
 ### 6.1 变异验证
 
@@ -234,7 +235,7 @@ string? SourceSession = null
 
 ### 6.3 实施过程中修掉的自身缺陷
 
-以下三条都是**本次实施引入、在验证阶段发现并修复**的问题，记录以免回归：
+以下四条都是**本次实施引入、在验证阶段发现并修复**的问题，记录以免回归：
 
 1. **`.razor.css` 被静默忽略**：本项目未启用 scoped CSS，样式必须放 `wwwroot/css/` 并在 `Pages/_Host.cshtml` 显式 `<link>`。首版把柱状图样式写在 `MemoryPage.razor.css`，结果概览卡渲染成无样式 inline 文本。已改为 `wwwroot/css/memory-page.css`。
 
@@ -245,7 +246,27 @@ string? SourceSession = null
 3. **`Search` 组件的输入回调不触发**：`OnChange`/`OnSearch` 在 Server 模式下只有回车才回调，打字时列表不刷新。
    改用项目内既有可用模式 `Input` + `OnInput`（同 `ModelsPage`），并把语义检索独立成一个「语义检索」按钮。
 
-### 6.4 未能验证的项
+4. **详情页链接用了 `href="javascript:void(0)"`**：悬停时浏览器左下角显示 `javascript:void(0)`
+   （用户实际截图里可见），且依赖 JS 伪协议（CSP 下会被拦）。改为 `<button class="mem-title-link">`
+   ——语义上也更准确：它不导航，只触发 Blazor 事件。同时清掉详情页与图谱页的同类写法。
+
+### 6.4 详情页「文件不存在」的四层根因
+
+用户报「点标题进详情显示文件不存在」。逐层查下来是**四个独立缺陷叠加**：
+
+| # | 根因 | 症状 | 修法 |
+|---|---|---|---|
+| 1 | `Uri.EscapeDataString` 把 `/` 编成 `%2F` | 相对路径塌成单段，`{*FilePath}` 捕获到 `daily%2F2026-10-18%2Fxxx.md` 字面量，`GetAsync` 读不到文件 | 去掉编码，直接拼原始路径 |
+| 2 | 路由解析器不解码 | 即使编码了也不该由解析器解码（它只负责切段） | 用测试钉住「捕获值是编码后字面量」这一事实 |
+| 3 | `MapFallbackToPage` 跳过含扩展名的路径 | 详情 URL 以 `.md` 结尾 → 服务端 **404** → 整页空白（刷新/分享链接必现） | 显式 `app.MapFallbackToPage("/memory/detail/{*FilePath}", "/_Host")` |
+| 4 | Markdown 渲染未剥离 frontmatter | YAML 头的闭合 `---` 被 Markdig 当成 setext 标题下划线，整段元数据渲染成巨型标题 | 用 `YamlParser.ExtractMarkdownBody` 先剥离 |
+
+第 1 层只影响站内点击；第 3 层只影响刷新/直链。两者叠加才让「点进去看不到、刷新更白屏」同时成立——
+单独修任一层都会被另一层掩盖。
+
+新增 5 条 `ModuleRouteResolverCatchAllTests` 锁定通配段行为（该文件此前**零测试覆盖**）。
+
+### 6.5 未能验证的项
 
 - **`/memory/browse` 等已删路由的直达提示**：这些路径不会被路由到 404，而是落到 `ModuleRouter` 的
   `Fallback` 分支，渲染「当前场景未启用「页面」」。这与**完全不存在的路径**表现一致——这是既有的
@@ -280,6 +301,7 @@ string? SourceSession = null
 - `tests/capabilities/Seeing.Agent.Memory.Tests/Storage/LocalFileStoreCreatedAtTests.cs`（5 条）
 - `tests/capabilities/Seeing.Agent.Memory.Tests/Core/MemoryOverviewTests.cs`（6 条）
 - `tests/capabilities/Seeing.Agent.Memory.Tests/Configuration/MemoryOptionsPersistenceTests.cs`（3 条）
+- `tests/apps/Seeing.Agent.WebUI.Tests/Services/ModuleRouteResolverCatchAllTests.cs`（5 条）
 
 **修改**
 - `src/capabilities/Seeing.Agent.Memory/Core/Storage/LocalFileStore.cs`（`ParseMetadata` 签名 + 键名 + `GetDateTime` 顺序）
@@ -291,6 +313,7 @@ string? SourceSession = null
 - `samples/Seeing.Agent.WebUI/Pages/MemoryDetailPage.razor`（导航）
 - `samples/Seeing.Agent.WebUI/Pages/MemoryGraphPage.razor`（导航）
 - `samples/Seeing.Agent.WebUI/Pages/_Host.cshtml`（`<link>` 引入 `memory-page.css`）
+- `samples/Seeing.Agent.WebUI/Program.cs`（补 `/memory/detail/{*FilePath}` 的 fallback 映射）
 - `samples/Seeing.Agent.WebUI/Services/ModulePageRouteBinder.cs`（删除 3 条路由）
 - `samples/Seeing.Agent.WebUI/Services/CoreShellUiContribution.cs`（新增 SettingsCard）
 

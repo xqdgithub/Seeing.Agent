@@ -61,7 +61,8 @@
                 <Table TItem="GraphNodeDisplay" DataSource="@_filteredNodes" RowKey="@(n => n.Path)">
                     <PropertyColumn Property="c => c.Title" Title="标题" />
                     <PropertyColumn Property="c => c.Path" Title="路径">
-                        <a href="javascript:void(0)" @onclick="@(() => Navigation.NavigateTo($"/memory/detail/{context.Path}"))">@context.Path</a>
+                        <button type="button" class="mem-title-link" style="font-family: monospace; font-size: 12px;"
+                                @onclick="@(() => Navigation.NavigateTo($"/memory/detail/{context.Path}"))">@context.Path</button>
                     </PropertyColumn>
                     <PropertyColumn Property="c => c.Degree" Title="度数" Width="100" />
                     <PropertyColumn Property="c => c.NeighborPreview" Title="关联节点" />
@@ -82,10 +83,12 @@
             <TabPane Key="edges" Tab="边列表">
                 <Table TItem="GraphEdgeDisplay" DataSource="@_filteredEdges" RowKey="@(e => $"{e.SourcePath}->{e.TargetPath}:{e.Type}")">
                     <PropertyColumn Property="c => c.SourcePath" Title="源节点">
-                        <a href="javascript:void(0)" @onclick="@(() => Navigation.NavigateTo($"/memory/detail/{context.SourcePath}"))">@context.SourcePath</a>
+                        <button type="button" class="mem-title-link" style="font-family: monospace; font-size: 12px;"
+                                @onclick="@(() => Navigation.NavigateTo($"/memory/detail/{context.SourcePath}"))">@context.SourcePath</button>
                     </PropertyColumn>
                     <PropertyColumn Property="c => c.TargetPath" Title="目标节点">
-                        <a href="javascript:void(0)" @onclick="@(() => Navigation.NavigateTo($"/memory/detail/{context.TargetPath}"))">@context.TargetPath</a>
+                        <button type="button" class="mem-title-link" style="font-family: monospace; font-size: 12px;"
+                                @onclick="@(() => Navigation.NavigateTo($"/memory/detail/{context.TargetPath}"))">@context.TargetPath</button>
                     </PropertyColumn>
                     <PropertyColumn Property="c => c.Type" Title="类型" Width="100" />
                     <PropertyColumn Property="c => c.Weight" Title="权重" Width="80" />

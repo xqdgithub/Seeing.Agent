@@ -131,7 +131,12 @@
                         {
                             <tr @key="row.Path">
                                 <td>
-                                    <a href="javascript:void(0)" @onclick="@(() => OpenDetail(row.Path))">@row.Title</a>
+                                    @* 用 button 而非 <a href="javascript:void(0)">：
+                                       后者悬停时浏览器状态栏会显示 "javascript:void(0)"，
+                                       且依赖 JS 伪协议（CSP 下会被拦）。button 语义也更准确——
+                                       它不导航，只触发一个 Blazor 事件。 *@
+                                    <button type="button" class="mem-title-link"
+                                            @onclick="@(() => OpenDetail(row.Path))">@row.Title</button>
                                 </td>
                                 <td><Tag Color="@TypeColor(row.Type)">@TypeLabel(row.Type)</Tag></td>
                                 <td title="@(row.SourceSession ?? "")">@row.SourceSessionText</td>
@@ -366,8 +371,17 @@
 
     private void OnPageChange(PaginationEventArgs args) => _page = args.Page;
 
+    /// <summary>
+    /// 打开详情页。
+    /// <para>
+    /// <b>不能对路径做 <see cref="Uri.EscapeDataString"/> 编码</b>：它会把 <c>/</c> 编成 <c>%2F</c>，
+    /// 整个相对路径塌缩成单段，<c>{*FilePath}</c> 的捕获值就成了字面量
+    /// <c>daily%2F2026-10-18%2Fxxx.md</c>，而路由解析器不做解码，于是详情页读不到文件。
+    /// 逐段保留 <c>/</c> 才能让通配段正确捕获多级路径。
+    /// </para>
+    /// </summary>
     private void OpenDetail(string path) =>
-        Navigation.NavigateTo($"/memory/detail/{Uri.EscapeDataString(path)}");
+        Navigation.NavigateTo($"/memory/detail/{path}");
 
     private async Task DeleteAsync(string path)
     {

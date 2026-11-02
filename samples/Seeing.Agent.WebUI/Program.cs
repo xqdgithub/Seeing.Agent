@@ -224,6 +224,12 @@ app.UseRouting();
 
 app.MapBlazorHub();
 app.MapUploadEndpoints();
+
+// 记忆详情路由的路径以 .md 结尾（/memory/detail/daily/xxx.md）。
+// MapFallbackToPage 对「看起来像文件」的请求不生效：ASP.NET Core 的 fallback 会跳过
+// 含扩展名的路径，于是这些深链接在浏览器里直接刷新会得到 404（表现为整页空白）。
+// 先按模板精确映射记忆详情，命中则交给 Blazor 的 _Host 渲染；未命中的仍走通用 fallback。
+app.MapFallbackToPage("/memory/detail/{*FilePath}", "/_Host");
 app.MapFallbackToPage("/_Host");
 
 app.Run();
