@@ -28,8 +28,10 @@
 
 <div class="home-dashboard">
     <section class="home-hero">
-        <img src="ai.svg" alt="Seeing" class="home-hero-logo" />
-        <h1 class="home-hero-title">Seeing</h1>
+        <div class="home-hero-brand">
+            <img src="ai.svg" alt="Seeing" class="home-hero-logo" />
+            <h1 class="home-hero-title">Seeing</h1>
+        </div>
         <p class="home-hero-tagline">行到水穷处，坐看云起时</p>
         <p class="home-hero-desc">会话、定时任务与待办审批一屏总览；点卡片进入对应页面。</p>
         <Space Size="@("middle")">
@@ -178,7 +180,7 @@
             </DashboardCard>
 
             @* 合并卡：同类计数放一张卡，数字本身即入口 *@
-            <DashboardCard Title="概览">
+            <DashboardCard Title="概览" Class="card-overview">
                 <div class="home-stat-grid">
                     <div class="home-stat" role="button" tabindex="0"
                          @onclick="@(() => Navigation.NavigateTo("/sessions"))"
@@ -293,31 +295,41 @@
 
     .home-hero {
         text-align: center;
-        padding: 24px 0 28px;
+        /* 竖向节奏：品牌 → 标语 → 描述 → 按钮 四段逐级放宽，
+           但整体高度受控，避免把下方「总览」挤到折叠线以下。 */
+        padding: 28px 0 22px;
+    }
+
+    /* 品牌横排：logo 在 Seeing 左侧，基线视觉对齐 */
+    .home-hero-brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
     }
 
     .home-hero-logo {
-        width: 56px;
-        height: 56px;
-        display: inline-block;
+        width: 44px;
+        height: 44px;
+        display: block;
     }
 
     .home-hero-title {
-        margin: 10px 0 6px;
+        margin: 0;
         font-size: 28px;
         font-weight: 600;
         color: #1890ff;
         letter-spacing: .5px;
+        line-height: 1.1;
     }
 
     .home-hero-tagline {
-        margin: 0;
+        margin: 18px 0 0;
         font-size: 14px;
         color: #8c8c8c;
     }
 
     .home-hero-desc {
-        margin: 10px 0 18px;
+        margin: 12px 0 20px;
         font-size: 13px;
         color: #bfbfbf;
     }
@@ -335,19 +347,26 @@
         color: #262626;
     }
 
-    /* 等尺寸卡片网格：最多 3 列，宽屏也不散开 */
+    /* 2 列网格：左列「最近会话 + 概览」上下叠放，右列「定时任务」占满两行。
+       原本是 3 列 + 定时任务跨 2×2，但只有 3 张卡 → 右下角必留一格空白。
+       2 列正好装下，没有空格。行高 148 让首屏能同时看到品牌区与网格。 */
     .home-board {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        grid-auto-rows: 168px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-auto-rows: 148px;
         grid-auto-flow: dense;
-        gap: 16px;
+        gap: 14px;
     }
 
-    /* 定时任务大卡：跨 2 列 2 行（尺寸仍固定） */
+    /* 定时任务大卡：右侧整列，跨 2 行 */
     .home-board .card-schedule {
-        grid-column: span 2;
+        grid-column: span 1;
         grid-row: span 2;
+    }
+
+    /* 概览卡：跟「最近会话」同列，下方占 1 行 */
+    .home-board .card-overview {
+        grid-row: span 1;
     }
 
     /* 24 小时格子：有任务的时段整格高亮 */
@@ -446,11 +465,13 @@
         font-weight: 500;
     }
 
-    /* 合并卡里的多个计数：每个数字都是独立入口 */
+    /* 合并卡里的多个计数：每个数字都是独立入口。
+       7 项排成一行（7 列）：卡内容区高 84px，单个统计项 56px，
+       两行（120px）会溢出被裁切，一行才装得下。 */
     .home-stat-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
-        gap: 4px;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 0 2px;
     }
 
     .home-stat {
