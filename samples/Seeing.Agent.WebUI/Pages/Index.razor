@@ -23,6 +23,7 @@
 @inject UiOverlayService Overlays
 @inject IServiceProvider Services
 @inject NavigationManager Navigation
+@inject Seeing.Agent.Scheduler.Abstractions.IScheduleRepository ScheduleRepository
 
 <PageTitle>总览 - Seeing</PageTitle>
 
@@ -173,9 +174,32 @@
                         }
                     }
                 </div>
-                @if (_expiredCount > 0)
+                @if (_todayExecutions.Count > 0)
                 {
-                    <div class="home-card-foot">已过期 @_expiredCount 个</div>
+                    @* 今日已执行：执行历史，不是「任务已作废」。
+                       逐条列出（弱化样式）：用户需要确认今天到底跑了什么、成没成功。 *@
+                    <div class="home-card-foot">今日已执行 @_todayExecutions.Count 次</div>
+                    <div class="sched-executed-list">
+                        @foreach (var ex in _todayExecutions)
+                        {
+                            <div class="home-dash-row is-executed"
+                                 role="button"
+                                 tabindex="0"
+                                 title="@(ex.Duration is { } d ? $"耗时 {d.TotalSeconds:0.#}s" : "")"
+                                 @onclick="@(() => Navigation.NavigateTo($"/cron-jobs/{ex.JobId}"))"
+                                 @onkeydown="@(args => NavigateOnKey(args, $"/cron-jobs/{ex.JobId}"))"
+                                 @onclick:stopPropagation="true">
+                                <span class="title">@JobTitle(ex.JobId)</span>
+                                <span class="meta">
+                                    @ex.StartedAt.ToString("HH:mm")
+                                    @if (!ex.IsSuccess)
+                                    {
+                                        <span class="exec-failed"> · @ex.Status</span>
+                                    }
+                                </span>
+                            </div>
+                        }
+                    </div>
                 }
             </DashboardCard>
 
@@ -420,6 +444,40 @@
         margin-top: 8px;
     }
 
+    /* 今日已执行列表：弱化（灰字、缩小），但仍可点进任务详情。
+       与「待触发」列表同结构，只降视觉权重——它是已发生的事实，不是待办。 */
+    .sched-executed-list {
+        margin-top: 2px;
+    }
+
+        .sched-executed-list .home-dash-row.is-executed {
+            cursor: pointer;
+            font-size: 12px;
+            color: #8c8c8c;
+        }
+
+            .sched-executed-list .home-dash-row.is-executed:hover {
+                background: #fafafa;
+            }
+
+            .sched-executed-list .home-dash-row.is-executed:focus-visible {
+                outline: 2px solid #d9d9d9;
+                outline-offset: 1px;
+            }
+
+            .sched-executed-list .home-dash-row.is-executed .title {
+                color: #8c8c8c;
+            }
+
+            .sched-executed-list .home-dash-row.is-executed .meta {
+                color: #bfbfbf;
+            }
+
+    /* 执行失败：仅状态文字着色，整行仍弱化 */
+    .exec-failed {
+        color: #ff7875;
+    }
+
     .home-dash-row {
         display: flex;
         justify-content: space-between;
@@ -559,6 +617,8 @@
     private IReadOnlyList<TodayRun> _todayRuns = Array.Empty<TodayRun>();
     private IReadOnlyList<int> _hourLoads = new int[24];
     private TodayRun? _nextRun;
+    private IReadOnlyList<TodayExecution> _todayExecutions = Array.Empty<TodayExecution>();
+    private IReadOnlyDictionary<string, string> _jobTitles = new Dictionary<string, string>();
     private int _sessionCount;
     private int _agentCount;
     private int _modelCount;
@@ -566,13 +626,22 @@
     private int _toolCount;
     private int _mcpCount;
     private int _acpCount;
-    private int _expiredCount;
     private int _pendingApprovals;
     private int _pendingQuestions;
     private int _recentFailures;
     private bool _loading = true;
     private string? _error;
     private DateTime _now = DateTime.Now;
+
+    /// <summary>单个任务最多回读多少条历史。当天可能多次触发，留足余量即可。</summary>
+    private const int MaxHistoryPerJob = 50;
+
+    /// <summary>首页最多展示多少条今日执行，避免卡片被撑爆。</summary>
+    private const int MaxTodayExecutions = 20;
+
+    /// <summary>按 jobId 取任务名（历史记录里只有 jobId）。</summary>
+    private string JobTitle(string jobId) =>
+        _jobTitles.TryGetValue(jobId, out var title) ? title : jobId;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -621,7 +690,30 @@
             _todayRuns = HomeDashboardView.TodayRuns(jobs, jobStatuses, _now);
             _hourLoads = HomeDashboardView.HourLoads(_todayRuns);
             _nextRun = HomeDashboardView.NextRunAfter(jobs, jobStatuses, _now);
-            _expiredCount = HomeDashboardView.CountExpired(jobs, jobStatuses, _now, status.IsStarted);
+
+            // 今日已执行：读执行历史（不是「任务已作废」）。
+            // 历史按 job 分文件存储，逐个任务查再合并；
+            // 单 job 只取最近若干条足够覆盖当天，避免把整年历史读进内存。
+            _jobTitles = jobs
+                .GroupBy(j => j.Id, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => string.IsNullOrWhiteSpace(g.First().Name) ? g.Key : g.First().Name.Trim(),
+                    StringComparer.Ordinal);
+
+            var executions = new List<JobExecutionRecord>();
+            foreach (var job in jobs)
+            {
+                try
+                {
+                    var history = await ScheduleRepository.GetHistoryAsync(job.Id, MaxHistoryPerJob, ct: default);
+                    executions.AddRange(history);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // 单个任务历史损坏不影响整体首页
+                }
+            }
+
+            _todayExecutions = HomeDashboardView.TodayExecutions(executions, _now, MaxTodayExecutions);
 
             _pendingApprovals = PermissionInboxService.TotalCount;
             _pendingQuestions = QuestionInboxService.TotalCount;

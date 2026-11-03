@@ -76,6 +76,9 @@ public static class HomeDashboardView
                 continue;
 
             var status = statuses.GetValueOrDefault(job.Id);
+
+            // 这里只铺「还会触发」的任务。任务本身已过期（以后不会再跑）不该占用时间轴位置：
+            // 它在未来没有任何落点，铺出来只会让人误以为今天还有安排。
             if (JobExpiry.IsExpired(job, status, now, schedulerStarted: true))
                 continue;
 
@@ -164,7 +167,13 @@ public static class HomeDashboardView
         return best;
     }
 
-    /// <summary>已过期任务数（口径同 <see cref="JobExpiry"/>）。</summary>
+    /// <summary>
+    /// 已过期任务数（口径同 <see cref="JobExpiry"/>）。
+    /// <para>
+    /// <b>注意</b>：这里指的是「任务本身再也不会触发」（一次性任务已过点、cron 无后续），
+    /// 与首页「今日已执行」是两个不同概念。首页展示已执行记录，不要用本方法。
+    /// </para>
+    /// </summary>
     public static int CountExpired(
         IReadOnlyList<ScheduledJobSpec> jobs,
         IReadOnlyDictionary<string, JobStatus> statuses,
@@ -178,9 +187,61 @@ public static class HomeDashboardView
             JobExpiry.IsExpired(job, statuses.GetValueOrDefault(job.Id), now, schedulerStarted));
     }
 
+    /// <summary>
+    /// 筛选「今天已经执行过」的记录，按开始时间降序（最近的在前）。
+    /// <para>
+    /// 口径是<b>执行历史</b>：今天 00:00 之后、且已结束（<see cref="JobExecutionRecord.CompletedAt"/> 非空）
+    /// 的执行。进行中的不算「已执行」。
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<TodayExecution> TodayExecutions(
+        IEnumerable<JobExecutionRecord> records,
+        DateTime now,
+        int limit = 20)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+
+        var dayStart = now.Date;
+        var dayEnd = dayStart.AddDays(1);
+
+        return records
+            .Where(r => r.StartedAt >= dayStart && r.StartedAt < dayEnd)
+            .Where(r => r.CompletedAt is not null)
+            .OrderByDescending(r => r.StartedAt)
+            .Take(Math.Max(0, limit))
+            .Select(r => new TodayExecution(
+                r.StartedAt,
+                r.CompletedAt,
+                r.JobId,
+                r.Status,
+                r.TaskType))
+            .ToList();
+    }
+
     private static string TitleOrId(ScheduledJobSpec job) =>
         string.IsNullOrWhiteSpace(job.Name) ? job.Id : job.Name.Trim();
 }
 
 /// <summary>当天的一个触发点（今日时间轴上的一个标记）。</summary>
 public sealed record TodayRun(DateTime When, string Title);
+
+/// <summary>
+/// 今天的一条执行记录。
+/// <para>
+/// 用于「已执行」列表：用户可以确认今天到底跑了什么、成没成功。
+/// </para>
+/// </summary>
+public sealed record TodayExecution(
+    DateTime StartedAt,
+    DateTime? CompletedAt,
+    string JobId,
+    string Status,
+    string? TaskType)
+{
+    /// <summary>执行是否成功（<c>success</c>）。</summary>
+    public bool IsSuccess =>
+        string.Equals(Status, "success", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>耗时；未结束时为 null。</summary>
+    public TimeSpan? Duration => CompletedAt is { } done ? done - StartedAt : null;
+}

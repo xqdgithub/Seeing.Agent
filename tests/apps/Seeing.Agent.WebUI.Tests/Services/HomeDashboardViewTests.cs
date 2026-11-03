@@ -137,6 +137,8 @@ public class HomeDashboardViewTests
             Schedule = new ScheduleSpec { Type = ScheduleTypes.Once, RunAt = Now.AddHours(2) }
         };
 
+        // 时间轴只铺「还会触发」的任务：任务本身已作废（以后不再跑）不该占位，
+        // 否则会让人误以为今天还有安排。「今日已执行」走执行历史，见 TodayExecutions。
         HomeDashboardView.TodayRuns([expiredOnce, disabled], new Dictionary<string, JobStatus>(), Now, perJobLimit: 5)
             .Should().BeEmpty();
     }
@@ -261,6 +263,62 @@ public class HomeDashboardViewTests
 
         HomeDashboardView.CountExpired([once], new Dictionary<string, JobStatus>(), Now, schedulerStarted: false)
             .Should().Be(1, "一次性任务的 runAt 已过去，与调度器是否启动无关");
+    }
+
+    [Fact]
+    public void TodayExecutions_ShouldKeepOnlyTodayAndCompleted()
+    {
+        var records = new List<JobExecutionRecord>
+        {
+            new() { JobId = "a", StartedAt = Now.Date.AddHours(7), CompletedAt = Now.Date.AddHours(7).AddSeconds(3), Status = "success" },
+            new() { JobId = "b", StartedAt = Now.Date.AddHours(9), CompletedAt = null, Status = "running" },   // 进行中：不算已执行
+            new() { JobId = "c", StartedAt = Now.Date.AddDays(-1).AddHours(22), CompletedAt = Now.Date.AddDays(-1).AddHours(22), Status = "success" }  // 昨天
+        };
+
+        var result = HomeDashboardView.TodayExecutions(records, Now);
+
+        result.Should().ContainSingle("只保留今天且已结束的执行");
+        result[0].JobId.Should().Be("a");
+        result[0].IsSuccess.Should().BeTrue();
+        result[0].Duration.Should().Be(TimeSpan.FromSeconds(3));
+    }
+
+    [Fact]
+    public void TodayExecutions_ShouldOrderByLatestFirst_AndRespectLimit()
+    {
+        var records = new List<JobExecutionRecord>
+        {
+            new() { JobId = "early", StartedAt = Now.Date.AddHours(1), CompletedAt = Now.Date.AddHours(1), Status = "success" },
+            new() { JobId = "late",  StartedAt = Now.Date.AddHours(20), CompletedAt = Now.Date.AddHours(20), Status = "success" },
+            new() { JobId = "mid",   StartedAt = Now.Date.AddHours(12), CompletedAt = Now.Date.AddHours(12), Status = "success" }
+        };
+
+        var all = HomeDashboardView.TodayExecutions(records, Now);
+        all.Select(x => x.JobId).Should().Equal("late", "mid", "early");
+
+        HomeDashboardView.TodayExecutions(records, Now, limit: 2)
+            .Select(x => x.JobId).Should().Equal("late", "mid");
+    }
+
+    [Fact]
+    public void TodayExecutions_FailedStatus_ShouldNotBeSuccess()
+    {
+        var records = new List<JobExecutionRecord>
+        {
+            new() { JobId = "f", StartedAt = Now.Date.AddHours(8), CompletedAt = Now.Date.AddHours(8), Status = "failed" }
+        };
+
+        var result = HomeDashboardView.TodayExecutions(records, Now);
+
+        result.Should().ContainSingle();
+        result[0].IsSuccess.Should().BeFalse("失败记录要能让 UI 标红");
+        result[0].Status.Should().Be("failed");
+    }
+
+    [Fact]
+    public void TodayExecutions_EmptyInput_ShouldReturnEmpty()
+    {
+        HomeDashboardView.TodayExecutions(Array.Empty<JobExecutionRecord>(), Now).Should().BeEmpty();
     }
 
     [Fact]
