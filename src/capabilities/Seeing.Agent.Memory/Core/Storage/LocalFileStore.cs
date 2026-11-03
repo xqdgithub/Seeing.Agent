@@ -46,9 +46,13 @@ public class LocalFileStore : IFileStore, IDisposable
     }
 
     /// <summary>
-    /// 获取默认记忆目录路径 (~/.seeing/memory)
+    /// 获取默认记忆目录路径 (<c>~/.seeing/memory</c>)。
+    /// <para>
+    /// 目录约定的单点：SQLite 索引库（<c>memory.db</c>）也放在这里，
+    /// 见 <c>MemoryServiceExtensions.ResolveConnectionString</c>。改这里即两处同时生效。
+    /// </para>
     /// </summary>
-    private static string GetDefaultMemoryDirectory()
+    public static string GetDefaultMemoryDirectory()
     {
         var homeDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return Path.Combine(homeDir, ".seeing", "memory");

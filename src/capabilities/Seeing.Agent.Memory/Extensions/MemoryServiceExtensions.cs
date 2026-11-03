@@ -206,17 +206,24 @@ public static class MemoryServiceExtensions
     }
 
     /// <summary>
-    /// 解析 SQLite 连接字符串。未显式传入时，默认使用项目级 .seeing 隐藏目录下的 memory.db。
+    /// 解析 SQLite 连接字符串。未显式传入时放在用户级 <c>~/.seeing/memory/memory.db</c>。
+    /// <para>
+    /// 与 Markdown 记忆文件同目录（见 <see cref="Core.Storage.LocalFileStore.GetDefaultMemoryDirectory"/>）：
+    /// 索引是这些文件的派生数据，放一起才能整体备份 / 迁移 / 清理。
+    /// </para>
+    /// <para>
+    /// 记忆文件本身固定在用户目录、不随工作区变化，索引也必须跟随它——否则换个工作区就有
+    /// 一份空索引，看起来像「记忆全丢了」。旧版把 memory.db 丢在 <c>&lt;工作区&gt;/.seeing/</c> 根下，
+    /// 既与配置文件混在一起，又和工作区绑定。
+    /// </para>
     /// </summary>
     private static string ResolveConnectionString(IServiceProvider sp, string? connectionString)
     {
         if (!string.IsNullOrWhiteSpace(connectionString))
             return connectionString;
 
-        var dirs = sp.GetService<ISeeingDirectories>();
-        var dbDir = dirs?.ProjectSeeingDirectory
-            // 兜底：无工作区提供者时回退到当前目录的 .seeing
-            ?? Path.Combine(Directory.GetCurrentDirectory(), ".seeing");
+        // 目录约定单点：直接复用文件存储的那条路径，避免两处各写一遍。
+        var dbDir = Core.Storage.LocalFileStore.GetDefaultMemoryDirectory();
 
         Directory.CreateDirectory(dbDir);
         return $"Data Source={Path.Combine(dbDir, "memory.db")}";
