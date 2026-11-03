@@ -142,12 +142,18 @@
 
                 @{
                     var remaining = _todayRuns.Where(r => r.When >= _now).Take(6).ToList();
+                    // 时间轴为空时，说「今天没有定时任务」会和下方「今日已执行 N 次」自相矛盾：
+                    // 那些执行可能来自手动触发的一次性任务（runAt 已过、不再自动排期）。
+                    // 只要今天有执行记录，就把话说准确。
+                    var idleText = _todayExecutions.Count > 0
+                        ? "今天没有待触发的定时任务"
+                        : "今天没有定时任务";
                 }
                 <div class="sched-list">
                     @if (_todayRuns.Count == 0)
                     {
                         <div class="home-dash-row">
-                            <span class="home-muted">今天没有定时任务</span>
+                            <span class="home-muted">@idleText</span>
                         </div>
                         @if (_nextRun is not null)
                         {
