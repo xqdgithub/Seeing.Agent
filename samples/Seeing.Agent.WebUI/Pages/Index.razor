@@ -142,19 +142,20 @@
 
                 @{
                     var remaining = _todayRuns.Where(r => r.When >= _now).Take(6).ToList();
-                    // 时间轴为空时，说「今天没有定时任务」会和下方「今日已执行 N 次」自相矛盾：
-                    // 那些执行可能来自手动触发的一次性任务（runAt 已过、不再自动排期）。
-                    // 只要今天有执行记录，就把话说准确。
-                    var idleText = _todayExecutions.Count > 0
-                        ? "今天没有待触发的定时任务"
-                        : "今天没有定时任务";
+                    // 时间轴为空但今天已有执行记录时，不显示占位文案：
+                    // 「今天没有待触发的定时任务」对用户没有信息量，下面的执行列表已经说明了情况，
+                    // 那行字还会挤占列表的可视高度（卡片是固定行高）。
+                    var showIdleText = _todayRuns.Count == 0 && _todayExecutions.Count == 0;
                 }
                 <div class="sched-list">
                     @if (_todayRuns.Count == 0)
                     {
-                        <div class="home-dash-row">
-                            <span class="home-muted">@idleText</span>
-                        </div>
+                        @if (showIdleText)
+                        {
+                            <div class="home-dash-row">
+                                <span class="home-muted">今天没有定时任务</span>
+                            </div>
+                        }
                         @if (_nextRun is not null)
                         {
                             <div class="home-dash-row">
@@ -185,6 +186,8 @@
                     @* 今日已执行：执行历史，不是「任务已作废」。
                        逐条列出（弱化样式）：用户需要确认今天到底跑了什么、成没成功。 *@
                     <div class="home-card-foot">今日已执行 @_todayExecutions.Count 次</div>
+                    @* 独立滚动区：执行记录可能几十条，超出时在本区域内滚动，
+                       不撑破卡片、也不触发整卡跳转（行自身可点，stopPropagation）。 *@
                     <div class="sched-executed-list">
                         @foreach (var ex in _todayExecutions)
                         {
@@ -392,6 +395,19 @@
     .home-board .card-schedule {
         grid-column: span 1;
         grid-row: span 2;
+        /* 内部纵向 flex：让「今日已执行」列表吃掉剩余高度并独立滚动。
+           否则固定行高 + .dash-card 的 overflow:hidden 会直接把超出部分裁掉。 */
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    /* 时间轴 / 待触发列表 / 脚注 / 卡片头不参与压缩，保证时间轴始终完整可见 */
+    .card-schedule .dash-card-head,
+    .card-schedule .sched-strip,
+    .card-schedule .sched-list,
+    .card-schedule .home-card-foot {
+        flex: 0 0 auto;
     }
 
     /* 概览卡：跟「最近会话」同列，下方占 1 行 */
@@ -404,8 +420,9 @@
         display: flex;
         align-items: flex-end;
         gap: 3px;
-        height: 56px;
-        margin: 6px 0 20px;
+        /* 44px：给下方「今日已执行」滚动区多让出可视高度（卡片是固定行高） */
+        height: 44px;
+        margin: 6px 0 18px;
     }
 
     .sched-cell {
@@ -451,9 +468,15 @@
     }
 
     /* 今日已执行列表：弱化（灰字、缩小），但仍可点进任务详情。
-       与「待触发」列表同结构，只降视觉权重——它是已发生的事实，不是待办。 */
+       与「待触发」列表同结构，只降视觉权重——它是已发生的事实，不是待办。
+       作为唯一的弹性项独立滚动：执行条数可能几十上百，
+       不滚动就会被 .dash-card 的 overflow:hidden 裁掉且无法查看。 */
     .sched-executed-list {
         margin-top: 2px;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
     }
 
         .sched-executed-list .home-dash-row.is-executed {
@@ -603,6 +626,13 @@
         .home-board .card-schedule {
             grid-column: span 1;
             grid-row: span 1;
+        }
+
+        /* 窄屏卡片高度自适应，弹性区没有参照高度：
+           退回固定上限滚动，避免几十条执行记录把整页拉长。 */
+        .sched-executed-list {
+            flex: 0 0 auto;
+            max-height: 200px;
         }
 
         .dash-card {
