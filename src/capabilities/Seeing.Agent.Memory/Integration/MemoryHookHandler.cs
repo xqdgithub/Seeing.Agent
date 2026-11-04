@@ -12,7 +12,7 @@ using Seeing.Session.Management;
 namespace Seeing.Agent.Memory.Integration;
 
 /// <summary>
-/// Chat Hook：过滤后写入会话缓冲，不立即抽取。
+/// LLM Hook：过滤后写入会话缓冲，不立即抽取。
 /// </summary>
 public sealed class ChatMemoryHandler : IHookHandler
 {
@@ -24,7 +24,7 @@ public sealed class ChatMemoryHandler : IHookHandler
     private readonly ISessionManager? _sessionManager;
     private readonly ILogger<ChatMemoryHandler>? _logger;
 
-    public HookSpec Spec => HookRegistry.ChatAfterComplete;
+    public HookSpec Spec => HookRegistry.LlmAfterComplete;
     public int Priority => 10;
 
     public ChatMemoryHandler(
@@ -54,7 +54,7 @@ public sealed class ChatMemoryHandler : IHookHandler
             if (!opts.Capture.AutoCapture || !opts.Capture.CaptureChat)
                 return Task.FromResult(HookResult.Success);
 
-            var content = HookDataContract.ChatAfterComplete.Content.GetFrom(payload.Result);
+            var content = HookDataContract.LlmAfterComplete.Content.GetFrom(payload.Result);
             if (string.IsNullOrWhiteSpace(content))
                 return Task.FromResult(HookResult.Success);
 

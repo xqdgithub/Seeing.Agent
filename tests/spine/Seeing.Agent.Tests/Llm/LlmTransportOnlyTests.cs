@@ -48,9 +48,9 @@ public class LlmTransportOnlyTests
 
         await llm.CompleteAsync("m1", MakeRequest(), "ses_1", TestContext.Current.CancellationToken);
 
-        hooks.TriggeredPoints.Should().Contain("chat.params");
-        hooks.TriggeredPoints.Should().Contain("chat.headers");
-        hooks.TriggeredPoints.Should().Contain("chat.after_complete");
+        hooks.TriggeredPoints.Should().Contain("llm.params");
+        hooks.TriggeredPoints.Should().Contain("llm.headers");
+        hooks.TriggeredPoints.Should().Contain("llm.after_complete");
     }
 
     [Fact]

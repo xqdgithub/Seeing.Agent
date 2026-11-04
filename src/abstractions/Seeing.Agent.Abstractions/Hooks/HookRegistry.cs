@@ -21,22 +21,26 @@ public static class HookRegistry
 
     #endregion
 
-    #region Chat 生命周期
+    #region LLM 生命周期（全能力：chat / embedding / decision / speech…）
 
-    /// <summary>Chat 参数处理 - 阻塞策略</summary>
-    public static readonly HookSpec ChatParams = new(HookPolicy.Blocking, "chat.params");
+    /// <summary>
+    /// LLM 参数处理 - 阻塞策略。
+    /// <para>原 <c>chat.params</c>；载荷统一带 <c>capability</c>（点分格式），
+    /// 能力特化键见 spec §7.6。</para>
+    /// </summary>
+    public static readonly HookSpec LlmParams = new(HookPolicy.Blocking, "llm.params");
 
-    /// <summary>Chat 请求头处理 - 阻塞策略</summary>
-    public static readonly HookSpec ChatHeaders = new(HookPolicy.Blocking, "chat.headers");
+    /// <summary>LLM 请求头处理 - 阻塞策略（原 <c>chat.headers</c>）</summary>
+    public static readonly HookSpec LlmHeaders = new(HookPolicy.Blocking, "llm.headers");
 
-    /// <summary>Chat 完成后 - 非阻塞策略</summary>
-    public static readonly HookSpec ChatAfterComplete = new(HookPolicy.FireAndForget, "chat.after_complete");
+    /// <summary>LLM 完成后 - 非阻塞策略（原 <c>chat.after_complete</c>，载荷经适配器组装）</summary>
+    public static readonly HookSpec LlmAfterComplete = new(HookPolicy.FireAndForget, "llm.after_complete");
 
-    /// <summary>Chat 消息处理 - 并行策略</summary>
-    public static readonly HookSpec ChatMessage = new(HookPolicy.Parallel, "chat.message");
+    /// <summary>LLM 消息处理 - 并行策略（原 <c>chat.message</c>）</summary>
+    public static readonly HookSpec LlmMessage = new(HookPolicy.Parallel, "llm.message");
 
-    /// <summary>Chat 错误处理 - 非阻塞策略</summary>
-    public static readonly HookSpec ChatOnError = new(HookPolicy.FireAndForget, "chat.on_error");
+    /// <summary>LLM 错误处理 - 非阻塞策略（原 <c>chat.on_error</c>，仅在重试耗尽后触发一次）</summary>
+    public static readonly HookSpec LlmOnError = new(HookPolicy.FireAndForget, "llm.on_error");
 
     #endregion
 

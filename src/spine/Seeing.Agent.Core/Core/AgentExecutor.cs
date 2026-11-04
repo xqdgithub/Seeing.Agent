@@ -370,7 +370,7 @@ public class AgentExecutor : IAgentExecutor
                     errorMessage = llmException.Message;
 
                     _hooks.TriggerFireAndForget(
-                        HookRegistry.ChatOnError,
+                        HookRegistry.LlmOnError,
                         context.SessionId,
                         new Dictionary<string, object?>
                         {

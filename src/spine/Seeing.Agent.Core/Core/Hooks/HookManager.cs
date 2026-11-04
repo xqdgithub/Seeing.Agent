@@ -14,6 +14,21 @@ public class HookManager : IHookManager
     private long _version;
 
     /// <summary>
+    /// 已改名为 <c>llm.*</c> 的历史 Hook 点 → 新点名（spec §7.6）。
+    /// <para>插件 dll 是编译产物：重命名常量不会让它编译失败，只会让它的注册静默失效。
+    /// 这里在登记处显式告警并跳过登记，把「静默不触发」变成「启动即报」。</para>
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> s_legacyLlmPoints =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["chat.params"] = "llm.params",
+            ["chat.headers"] = "llm.headers",
+            ["chat.message"] = "llm.message",
+            ["chat.after_complete"] = "llm.after_complete",
+            ["chat.on_error"] = "llm.on_error",
+        };
+
+    /// <summary>
     /// 构造 Hook 管理器。
     /// </summary>
     public HookManager(ILogger<HookManager> logger) => _logger = logger;
@@ -29,7 +44,9 @@ public class HookManager : IHookManager
     public void Register(IHookHandler handler)
     {
         if (handler == null) { _logger.LogWarning("尝试注册空 Handler"); return; }
-        AddHandler(handler.Spec.Point, handler);
+        // 废弃点：告警后跳过登记（版本号不递增——登记未生效，无缓存需要失效）。
+        if (!AddHandler(handler.Spec.Point, handler)) return;
+
         Interlocked.Increment(ref _version);
         _logger.LogDebug("注册 Handler: {Point}, Priority={Priority}", handler.Spec.Point, handler.Priority);
     }
@@ -41,8 +58,9 @@ public class HookManager : IHookManager
     {
         if (handler == null) { _logger.LogWarning("尝试注册空多点 Handler"); return; }
 
-        foreach (var spec in handler.Specs) AddHandler(spec.Point, handler);
-        if (handler.Specs.Count > 0) Interlocked.Increment(ref _version);
+        var registered = false;
+        foreach (var spec in handler.Specs) registered |= AddHandler(spec.Point, handler);
+        if (registered) Interlocked.Increment(ref _version);
         _logger.LogDebug("注册多点 Handler: Points={Count}", handler.Specs.Count);
     }
 
@@ -133,14 +151,28 @@ public class HookManager : IHookManager
         CancellationToken cancellationToken = default) =>
         TriggerAsync(HookPayload.Parallel(spec, sessionId, input, cancellationToken));
 
-    private void AddHandler(string point, object handler)
+    /// <summary>
+    /// 把处理器挂到指定钩子点；<paramref name="point"/> 是已改名的废弃 <c>chat.*</c> 点时
+    /// 打告警并跳过登记，返回 <c>false</c>。
+    /// </summary>
+    private bool AddHandler(string point, object handler)
     {
+        if (s_legacyLlmPoints.TryGetValue(point, out var renamed))
+        {
+            _logger.LogWarning(
+                "Hook 点 {Point} 已改名为 llm.*（现为 {Renamed}），本次注册不会触发，请改订阅新点",
+                point, renamed);
+            return false;
+        }
+
         var list = _handlers.GetOrAdd(point, _ => new List<object>());
         lock (list)
         {
             list.Add(handler);
             list.Sort((a, b) => GetPriority(a).CompareTo(GetPriority(b)));
         }
+
+        return true;
     }
 
     private bool RemoveHandler(string point, object handler)

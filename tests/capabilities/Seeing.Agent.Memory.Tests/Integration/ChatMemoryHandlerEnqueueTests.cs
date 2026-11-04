@@ -34,7 +34,7 @@ public class ChatMemoryHandlerEnqueueTests
             NullLogger<ChatMemoryHandler>.Instance);
 
         var payload = HookPayload.FireAndForget(
-            HookRegistry.ChatAfterComplete,
+            HookRegistry.LlmAfterComplete,
             "session-1",
             result: new Dictionary<string, object?>
             {
@@ -67,7 +67,7 @@ public class ChatMemoryHandlerEnqueueTests
             NullLogger<ChatMemoryHandler>.Instance);
 
         var payload = HookPayload.FireAndForget(
-            HookRegistry.ChatAfterComplete,
+            HookRegistry.LlmAfterComplete,
             "session-1",
             result: new Dictionary<string, object?> { ["content"] = "anything long enough" }, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -108,7 +108,7 @@ public class ChatMemoryHandlerEnqueueTests
             NullLogger<ChatMemoryHandler>.Instance);
 
         var payload = HookPayload.FireAndForget(
-            HookRegistry.ChatAfterComplete,
+            HookRegistry.LlmAfterComplete,
             "session-1",
             result: new Dictionary<string, object?>
             {
@@ -146,7 +146,7 @@ public class ChatMemoryHandlerEnqueueTests
             NullLogger<ChatMemoryHandler>.Instance);
 
         var payload = HookPayload.FireAndForget(
-            HookRegistry.ChatAfterComplete,
+            HookRegistry.LlmAfterComplete,
             "session-1",
             result: new Dictionary<string, object?>
             {

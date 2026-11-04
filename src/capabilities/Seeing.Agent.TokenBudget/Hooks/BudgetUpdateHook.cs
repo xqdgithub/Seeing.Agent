@@ -19,9 +19,9 @@ public class BudgetUpdateHook : IHookHandler
     private readonly ILogger<BudgetUpdateHook>? _logger;
 
     /// <summary>
-    /// Hook 规格 - Chat 完成后
+    /// Hook 规格 - LLM 完成后（原 <c>chat.after_complete</c>）
     /// </summary>
-    public HookSpec Spec => HookRegistry.ChatAfterComplete;
+    public HookSpec Spec => HookRegistry.LlmAfterComplete;
 
     /// <summary>
     /// 优先级 - 高优先级

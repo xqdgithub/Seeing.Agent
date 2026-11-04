@@ -48,16 +48,16 @@ public class MemoryModuleHookLifecycleTests
         var ct = TestContext.Current.CancellationToken;
 
         await module.ActivateAsync(provider, ct);
-        hooks.Count(HookRegistry.ChatAfterComplete).Should().Be(1);
-        // 记忆注入已迁 IContextSource 管道；模块不再登记任何 chat 前置钩子
-        hooks.Count(HookRegistry.ChatParams).Should().Be(0);
+        hooks.Count(HookRegistry.LlmAfterComplete).Should().Be(1);
+        // 记忆注入已迁 IContextSource 管道；模块不再登记任何 llm 前置钩子
+        hooks.Count(HookRegistry.LlmParams).Should().Be(0);
 
         await hooks.TriggerAsync(ChatPayload("session-1"));
         buffer.GetPendingCount("session-1").Should().Be(1);
 
         await module.DeactivateAsync(provider, ct);
-        hooks.Count(HookRegistry.ChatAfterComplete).Should().Be(0);
-        hooks.Count(HookRegistry.ChatParams).Should().Be(0);
+        hooks.Count(HookRegistry.LlmAfterComplete).Should().Be(0);
+        hooks.Count(HookRegistry.LlmParams).Should().Be(0);
 
         await hooks.TriggerAsync(ChatPayload("session-1"));
         buffer.GetPendingCount("session-1").Should().Be(1, "停用后 Hook 已移除，不应再写入缓冲");
@@ -92,17 +92,17 @@ public class MemoryModuleHookLifecycleTests
         await module.DeactivateAsync(provider, ct);
         await module.ActivateAsync(provider, ct);
 
-        hooks.Count(HookRegistry.ChatAfterComplete).Should().Be(1);
+        hooks.Count(HookRegistry.LlmAfterComplete).Should().Be(1);
         hooks.Count(HookRegistry.ToolExecuteAfter).Should().Be(1);
         // 轮次触发已迁移至 IExecutionOutcomeObserver，不再登记 agent.after_invoke 钩子
         hooks.Count(HookRegistry.AgentAfterInvoke).Should().Be(0);
-        // 不再登记 chat 前置钩子（记忆注入已迁 ContextSource 管道）
-        hooks.Count(HookRegistry.ChatParams).Should().Be(0);
+        // 不再登记 llm 前置钩子（记忆注入已迁 ContextSource 管道）
+        hooks.Count(HookRegistry.LlmParams).Should().Be(0);
     }
 
     private static HookPayload ChatPayload(string sessionId) =>
         HookPayload.FireAndForget(
-            HookRegistry.ChatAfterComplete,
+            HookRegistry.LlmAfterComplete,
             sessionId,
             result: new Dictionary<string, object?> { ["content"] = "用户偏好使用深色主题，并要求默认语言为中文。" },
             cancellationToken: TestContext.Current.CancellationToken);
