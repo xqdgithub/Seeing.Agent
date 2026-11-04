@@ -1013,7 +1013,7 @@
 
     /// <summary>
     /// 会话未指定 Agent/Model 时，按会话有效场景 defaultAgent（再回退配置 DefaultAgent）解析并同步到 UI。
-    /// Native：空 SelectedModel 回填 Agent.Model / DefaultModel；ACP 不回退 Native DefaultModel。
+    /// Native：空 SelectedModel 回填 Agent.Model / 全局 chat 默认模型（DefaultModels.chat）；ACP 不回退 Native 默认模型。
     /// </summary>
     private async Task EnsureDefaultAgentSelectionAsync()
     {

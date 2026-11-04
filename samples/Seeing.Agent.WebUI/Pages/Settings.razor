@@ -93,13 +93,24 @@
                             仅影响新会话默认工作模式与会话滤镜，不缩启动集。编辑模块清单请打开「工作模式」页签。
                         </div>
                     </FormItem>
-                    <FormItem Label="默认模型">
-                        <ModelSelectDropdown @bind-Value="@_options.DefaultModel"
-                                             FilterType="ModelType.Text"
-                                             AllowClear="true"
-                                             Placeholder="选择默认模型（格式: provider/model）" />
-                    </FormItem>
-                    
+                    <Divider Orientation="@DividerOrientation.Left">默认模型（按能力）</Divider>
+                    @* 决议 11/13：默认值按能力各配一格，留空即「未配置」，脊柱不回落、不猜测。 *@
+                    @foreach (var capability in CapabilityLabels.All)
+                    {
+                        <FormItem Label="@CapabilityLabels.Label(capability)">
+                            <ModelSelectDropdown @key="@($"default-model-{LlmCapabilityMap.ToConfigKey(capability)}")"
+                                                 Value="@GetCapabilityDefault(capability)"
+                                                 ValueChanged="@(value => SetCapabilityDefault(capability, value))"
+                                                 FilterType="@CapabilityLabels.FilterTypeFor(capability)"
+                                                 AllowClear="true"
+                                                 Placeholder="留空 = 未配置该能力的默认模型（格式: provider/model）"
+                                                 Style="width: 100%;" />
+                        </FormItem>
+                    }
+                    <div style="margin-bottom: 8px; font-size: 12px; color: #888;">
+                        写入 <c>seeing.json</c> 的 <c>DefaultModels</c> 字典（键为能力配置键）。
+                        记忆向量检索用的模型请在「记忆」页签显式配置，不读这里的 <c>embedding</c>。
+                    </div>
                     <Divider Orientation="@DividerOrientation.Left">工作区设置</Divider>
                     
                     <FormItem Label="当前工作区">
@@ -331,6 +342,51 @@
         BuildPluginRows();
     }
 
+    /// <summary>
+    /// 能力默认值字典的可写入口（后端同样容忍配置里显式写 null，这里补空字典避免 UI 取值崩溃）。
+    /// </summary>
+    private Dictionary<string, string> DefaultModels
+    {
+        get
+        {
+            var models = _options.DefaultModels;
+            if (models is null)
+            {
+                models = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                _options.DefaultModels = models;
+            }
+
+            return models;
+        }
+    }
+
+    /// <summary>
+    /// 读取某能力已配置的默认模型引用（<c>DefaultModels</c> 字典按配置键取值）。
+    /// </summary>
+    private string? GetCapabilityDefault(LlmCapabilityKind capability)
+    {
+        var key = LlmCapabilityMap.ToConfigKey(capability);
+        return DefaultModels.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
+            ? value.Trim()
+            : null;
+    }
+
+    /// <summary>
+    /// 写入某能力的默认模型；留空即移除该键（决议 13：未配置就是没有默认值，不做回落）。
+    /// </summary>
+    private void SetCapabilityDefault(LlmCapabilityKind capability, string? value)
+    {
+        var key = LlmCapabilityMap.ToConfigKey(capability);
+        var models = DefaultModels;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            models.Remove(key);
+            return;
+        }
+
+        models[key] = value.Trim();
+    }
+
     private async Task SaveCurrentTab()
     {
         try
@@ -342,7 +398,8 @@
                     await ConfigService.SaveLevelSectionsAsync(_saveLevel, new Dictionary<string, object?>
                     {
                         ["DefaultAgent"] = _options.DefaultAgent,
-                        ["DefaultModel"] = _options.DefaultModel,
+                        // 空字典写 null：整节从 seeing.json 移除，避免留下 "{}" 噪声
+                        ["DefaultModels"] = DefaultModels.Count > 0 ? DefaultModels : null,
                         ["Boot"] = string.IsNullOrWhiteSpace(_options.Boot) ? null : _options.Boot.Trim(),
                         ["Scenario"] = string.IsNullOrWhiteSpace(_options.Scenario) ? null : _options.Scenario.Trim()
                     });

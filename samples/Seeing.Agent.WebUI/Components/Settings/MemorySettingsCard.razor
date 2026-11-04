@@ -43,7 +43,7 @@
                                      ValueChanged="OnExtractionKeyChanged"
                                      FilterType="ModelType.Text"
                                      AllowClear="true"
-                                     Placeholder="空则使用 DefaultModel"
+                                     Placeholder="空则使用 chat 默认模型"
                                      Style="width: 100%;" />
             </FormItem>
         </Card>
@@ -54,13 +54,22 @@
             <FormItem Label="Digest 重要性阈值"><AntDesign.InputNumber @bind-Value="@_options.Evolution.PromoteToDigestMinImportance" Min="0" Max="1" Step="0.1" /></FormItem>
         </Card>
         <Card Title="Embedding" Style="margin-bottom: 16px;">
+            <FormItem Label="启用向量检索">
+                <Switch @bind-Value="@_options.Embedding.Enabled" />
+                <div style="color:#888;font-size:12px;margin-top:4px;">
+                    默认关闭。向量索引一开跑就有后台成本，必须显式开启（决议 10）
+                </div>
+            </FormItem>
             <FormItem Label="Embedding 模型">
                 <ModelSelectDropdown Value="@_embeddingKey"
                                      ValueChanged="OnEmbeddingKeyChanged"
                                      FilterType="ModelType.Embedding"
                                      AllowClear="true"
-                                     Placeholder="选择 Embedding 模型"
+                                     Placeholder="空则不启用向量检索"
                                      Style="width: 100%;" />
+                <div style="color:#888;font-size:12px;margin-top:4px;">
+                    必须显式选择 <c>provider/model</c>；不读全局 embedding 默认值，也不自动挑模型。
+                </div>
             </FormItem>
             @if (!ModelManager.GetModelsByType(ModelType.Embedding).Any())
             {
@@ -69,11 +78,12 @@
                        ShowIcon="true"
                        Style="margin-bottom: 12px;" />
             }
-            else if (!string.IsNullOrEmpty(_options.Embedding.Provider))
+            else if (_embeddingModelUnresolved)
             {
-                <div style="margin-bottom: 12px; color: #888; font-size: 12px;">
-                    当前: @_options.Embedding.Provider / @_options.Embedding.Model
-                </div>
+                <Alert Type="@AlertType.Warning"
+                       Message="@($"已配置的向量模型不在模型目录中：{_embeddingKey}（请重新选择或清空）")"
+                       ShowIcon="true"
+                       Style="margin-bottom: 12px;" />
             }
             <FormItem Label="连接测试">
                 <Space>
@@ -81,6 +91,11 @@
                     @if (!string.IsNullOrEmpty(_embeddingTestMessage))
                     {
                         <span style="@(_embeddingTestOk ? "color: #389e0d;" : "color: #cf1322;")">@_embeddingTestMessage</span>
+                    }
+                    @if (_embeddingTestDimensions is int dims)
+                    {
+                        @* 维度只展示：配置项已删除，不再落盘（探测值随模型而变，写死反而会漂移） *@
+                        <span style="color: #888;">维度: @dims（仅探测结果，不写入配置）</span>
                     }
                 </Space>
             </FormItem>
@@ -115,8 +130,11 @@
     private bool _testingEmbedding;
     private bool _embeddingTestOk;
     private string? _embeddingTestMessage;
+    private int? _embeddingTestDimensions;
     private string? _embeddingKey;
     private string? _extractionKey;
+    /// <summary>配置里的向量模型引用在目录中找不到（只提示，不自动改写配置）。</summary>
+    private bool _embeddingModelUnresolved;
 
     protected override void OnInitialized()
     {
@@ -128,28 +146,26 @@
     {
         if (_options is null) return;
 
-        _embeddingKey = ResolveEmbeddingKey(
-            _options.Embedding.Provider,
-            _options.Embedding.Model);
+        _embeddingKey = ResolveEmbeddingKey(_options.Embedding.ModelId);
         _extractionKey = ResolveExtractionKey(_options.Extraction.Model);
     }
 
-    private string? ResolveEmbeddingKey(string? provider, string? model)
+    /// <summary>
+    /// 回填向量模型下拉：<c>Embedding.ModelId</c> 本身就是 <c>provider/model</c> 引用，
+    /// 经 <see cref="IModelConfigManager.GetModel"/> 校验存在性；找不到也原样回显，
+    /// 让下拉显示「（不可用）」并给出告警——静默清空配置等于替用户做决定。
+    /// </summary>
+    private string? ResolveEmbeddingKey(string? modelId)
     {
-        if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(model))
+        if (string.IsNullOrWhiteSpace(modelId))
+        {
+            _embeddingModelUnresolved = false;
             return null;
+        }
 
-        var exact = $"{provider}/{model}";
-        if (ModelManager.GetModel(exact) is not null)
-            return exact;
-
-        return ModelManager.GetModelsByType(ModelType.Embedding)
-            .FirstOrDefault(kv =>
-            {
-                var cfg = kv.Value;
-                return cfg.Provider.Equals(provider, StringComparison.OrdinalIgnoreCase)
-                       && cfg.Id.Equals(model, StringComparison.OrdinalIgnoreCase);
-            }).Key;
+        var reference = modelId.Trim();
+        _embeddingModelUnresolved = ModelManager.GetModel(reference) is null;
+        return reference;
     }
 
     private string? ResolveExtractionKey(string? model)
@@ -180,22 +196,26 @@
         _options.Extraction.Model = cfg?.Id ?? value;
     }
 
-    private void OnEmbeddingKeyChanged(string value)
+    /// <summary>只写 <c>Embedding.ModelId</c>（Provider / Model / Dimensions 配置项已删除）。</summary>
+    private void OnEmbeddingKeyChanged(string? value)
     {
         _embeddingKey = value;
         if (_options is null) return;
 
+        // 换了模型就丢掉上一次探测结果，避免把旧维度当成当前模型的结论
+        _embeddingTestMessage = null;
+        _embeddingTestDimensions = null;
+
         if (string.IsNullOrEmpty(value))
         {
-            _options.Embedding.Provider = null;
-            _options.Embedding.Model = null;
+            _embeddingModelUnresolved = false;
+            _options.Embedding.ModelId = null;
             return;
         }
 
-        var cfg = ModelManager.GetModel(value);
-        if (cfg is null) return;
-        _options.Embedding.Provider = cfg.Provider;
-        _options.Embedding.Model = cfg.Id;
+        var reference = value.Trim();
+        _embeddingModelUnresolved = ModelManager.GetModel(reference) is null;
+        _options.Embedding.ModelId = reference;
     }
 
     private async Task SaveAsync()
@@ -224,15 +244,16 @@
         if (_options is null) return;
         _testingEmbedding = true;
         _embeddingTestMessage = null;
+        _embeddingTestDimensions = null;
         try
         {
+            // 探针按 ModelId 发（空则由 tester 按配置判定失败，不自动挑模型）；维度只展示不落盘
             var result = await EmbeddingTester.TestAsync(
-                _options.Embedding.Provider,
-                _options.Embedding.Model);
+                _options.Embedding.ModelId,
+                CancellationToken.None);
             _embeddingTestOk = result.Success;
             _embeddingTestMessage = result.Message;
-            if (result.Success && result.Dimensions is int dims)
-                _options.Embedding.Dimensions = dims;
+            _embeddingTestDimensions = result.Dimensions;
         }
         catch (Exception ex)
         {

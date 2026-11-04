@@ -32,7 +32,7 @@
     <FormItem Label="默认 Model">
         <Input Value="@ModelId"
                ValueChanged="@ModelIdChanged"
-               Placeholder="@(_isAcpPassthrough ? "留空则使用 ACP 后端默认 model" : "留空则按 Agent / 全局 DefaultModel 解析")" />
+               Placeholder="@(_isAcpPassthrough ? "留空则使用 ACP 后端默认 model" : "留空则按 Agent / 全局 chat 默认模型解析")" />
     </FormItem>
     <Divider>Gateway 连接</Divider>
     <FormItem Label="服务地址" Required="true">
