@@ -1,88 +1,85 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Llm;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using System.Text.Json.Serialization;
 
 namespace Seeing.Agent.Memory.Core.Embedding;
 
+/// <summary>
+/// 向量连通性测试：经 <see cref="ILlmInvoker"/> 发一次单条 <see cref="IEmbeddingClient.EmbedAsync"/>
+/// 真实探针（spec §7.2 决议 25），返回维度。
+/// <para>旧的裸 HTTP 实现（自己拼 <c>{baseUrl}/embeddings</c>、依赖
+/// <see cref="IEmbeddingConnectionTester"/> 之外的 <c>IProviderEndpointLookup</c>）已删除：
+/// 那条路径绕过了重试、代理、Hook 与用量统计。</para>
+/// </summary>
 public sealed class EmbeddingConnectionTester : IEmbeddingConnectionTester
 {
-    private readonly IHttpClientFactory _httpClientFactory;
+    /// <summary>探针文本：够短、能反映真实维度。</summary>
+    private const string ProbeText = "seeing-memory-embedding-probe";
+
+    private readonly ILlmInvoker _invoker;
+    private readonly IModelConfigManager _models;
     private readonly IOptionsMonitor<MemoryOptions> _options;
-    private readonly IProviderEndpointLookup _providers;
     private readonly ILogger<EmbeddingConnectionTester>? _logger;
 
     public EmbeddingConnectionTester(
-        IHttpClientFactory httpClientFactory,
+        ILlmInvoker invoker,
+        IModelConfigManager models,
         IOptionsMonitor<MemoryOptions> options,
-        IProviderEndpointLookup providers,
         ILogger<EmbeddingConnectionTester>? logger = null)
     {
-        _httpClientFactory = httpClientFactory;
-        _options = options;
-        _providers = providers;
+        _invoker = invoker ?? throw new ArgumentNullException(nameof(invoker));
+        _models = models ?? throw new ArgumentNullException(nameof(models));
+        _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger;
     }
 
+    /// <inheritdoc />
     public async Task<EmbeddingConnectionTestResult> TestAsync(
-        string? provider = null,
-        string? model = null,
+        string? modelId = null,
         CancellationToken ct = default)
     {
-        provider ??= _options.CurrentValue.Embedding.Provider;
-        model ??= _options.CurrentValue.Embedding.Model;
+        // 只接受显式引用：入参为空则回落到配置的 ModelId，配置也为空即失败——绝不挑模型。
+        var modelRef = string.IsNullOrWhiteSpace(modelId)
+            ? _options.CurrentValue.Embedding.ModelId
+            : modelId;
 
-        if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(model))
-            return new EmbeddingConnectionTestResult(false, "请先填写 Embedding Provider 与 Model");
+        if (string.IsNullOrWhiteSpace(modelRef))
+            return new EmbeddingConnectionTestResult(false, "请先填写 Embedding ModelId（留空则不启用向量检索）");
 
-        if (!_providers.TryGet(provider, out var endpoint) || endpoint is null)
-            return new EmbeddingConnectionTestResult(false, $"Providers 中未找到 '{provider}'");
+        var wireModelId = EmbeddingModelReference.ToWireModelId(_models, modelRef);
 
         try
         {
-            var baseUrl = (endpoint.BaseUrl ?? "https://api.openai.com/v1").TrimEnd('/');
-            var client = _httpClientFactory.CreateClient(nameof(EmbeddingConnectionTester));
-            using var req = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/embeddings");
-            if (!string.IsNullOrEmpty(endpoint.ApiKey))
-                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", endpoint.ApiKey);
+            var response = await _invoker.InvokeAsync<IEmbeddingClient, EmbeddingResponse>(
+                modelRef,
+                (client, call, token) => client.EmbedAsync(
+                    new EmbeddingRequest
+                    {
+                        Model = wireModelId,
+                        Inputs = new[] { ProbeText },
+                    },
+                    call,
+                    token),
+                options: new LlmInvocationOptions(),
+                cancellationToken: ct).ConfigureAwait(false);
 
-            req.Content = JsonContent.Create(new { model, input = "seeing-memory-embedding-probe" });
-
-            using var resp = await client.SendAsync(req, ct);
-            var body = await resp.Content.ReadAsStringAsync(ct);
-            if (!resp.IsSuccessStatusCode)
-                return new EmbeddingConnectionTestResult(false, $"HTTP {(int)resp.StatusCode}: {Truncate(body, 200)}");
-
-            var parsed = System.Text.Json.JsonSerializer.Deserialize<ProbeResponse>(body);
-            var dims = parsed?.Data?.FirstOrDefault()?.Embedding?.Length;
-            if (dims is null or 0)
+            if (response.Dimensions <= 0)
                 return new EmbeddingConnectionTestResult(false, "响应成功但未返回向量");
 
-            return new EmbeddingConnectionTestResult(true, $"连接成功，维度={dims}", dims);
+            return new EmbeddingConnectionTestResult(true, $"连接成功，维度={response.Dimensions}", response.Dimensions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Embedding connection test failed");
+            // 连接测试的失败即结果本体：转成 Success=false 供 UI 呈现，不是吞异常。
+            _logger?.LogWarning(ex, "Embedding connection test failed for {ModelRef}", modelRef);
             return new EmbeddingConnectionTestResult(false, ex.Message);
         }
-    }
-
-    private static string Truncate(string s, int max) =>
-        s.Length <= max ? s : s[..max] + "…";
-
-    private sealed class ProbeResponse
-    {
-        [JsonPropertyName("data")]
-        public List<ProbeItem>? Data { get; set; }
-    }
-
-    private sealed class ProbeItem
-    {
-        [JsonPropertyName("embedding")]
-        public float[]? Embedding { get; set; }
     }
 }

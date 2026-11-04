@@ -9,9 +9,14 @@ public sealed class MemoryOptions
     public MemoryEmbeddingOptions Embedding { get; set; } = new();
     public MemoryRetrievalOptions Retrieval { get; set; } = new();
 
+    /// <summary>
+    /// 向量检索是否已配置。<b>只看配置本身，不查模型目录</b>：目录是异步填充的，
+    /// DI 期检查会产生启动竞态（首次解析早于目录刷新 → 永久 Null 服务直到重启）。
+    /// <para>目录中是否存在该模型由 <see cref="Core.Embedding.ConfigurableEmbeddingStatus"/>
+    /// 在调用/呈现期判定。</para>
+    /// </summary>
     public bool IsEmbeddingConfigured =>
-        !string.IsNullOrWhiteSpace(Embedding.Provider)
-        && !string.IsNullOrWhiteSpace(Embedding.Model);
+        Embedding.Enabled && !string.IsNullOrWhiteSpace(Embedding.ModelId);
 }
 
 public sealed class MemoryCaptureOptions
@@ -63,11 +68,25 @@ public sealed class MemoryEvolutionOptions
     public double PromoteToDigestMinImportance { get; set; } = 0.8;
 }
 
+/// <summary>
+/// 记忆向量检索配置（<c>memory.json</c> 的 <c>Embedding</c> 节）。
+/// <para><b>必须显式配置</b>（spec §0 决议 10 / §13 原则 1）：不读全局
+/// <c>DefaultModels.embedding</c>，也绝不从目录里“挑第一个 Embedding 模型”。
+/// 未配置即不启用向量索引——记忆索引一开跑就有后台成本，不应被隐式激活。</para>
+/// </summary>
 public sealed class MemoryEmbeddingOptions
 {
-    public string? Provider { get; set; }
-    public string? Model { get; set; }
-    public int? Dimensions { get; set; }
+    /// <summary>
+    /// 是否启用向量检索。<b>默认 <c>false</c></b>：升级即自动开跑向量索引是明令禁止的行为，
+    /// “没配 ModelId 就不启用”已在结构上兜住，本默认值是第二道保险。
+    /// </summary>
+    public bool Enabled { get; set; } = false;
+
+    /// <summary>
+    /// 向量模型引用，必须带 Provider 前缀（如 <c>openai/text-embedding-3-small</c>）。
+    /// <para>空 = 不启用向量检索（不回落到任何默认模型）。</para>
+    /// </summary>
+    public string? ModelId { get; set; }
 }
 
 public enum MemoryRetrievalMode { AutoInject, ToolsOnly, Both }

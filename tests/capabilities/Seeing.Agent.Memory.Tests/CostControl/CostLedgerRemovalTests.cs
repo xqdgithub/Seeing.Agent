@@ -127,6 +127,8 @@ public sealed class CostLedgerRemovalTests
         services.AddSingleton<IConfigSectionStore>(new StubConfigSectionStore());
         // 先登记替身：AddMemoryServices 使用 TryAdd，不会覆盖，避免写入用户主目录
         services.AddSingleton(Mock.Of<IFileStore>());
+        // 向量调用走统一 LLM 基础设施（ILlmInvoker / IModelManager），最小容器需补齐替身
+        services.AddLlmInfraDoubles();
     }
 
     private sealed class StubConfigSectionStore : IConfigSectionStore

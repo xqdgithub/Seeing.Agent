@@ -80,17 +80,17 @@ public static class MemoryServiceExtensions
         services.TryAddSingleton<IFileStore, Core.Storage.LocalFileStore>();
 
         services.TryAddSingleton<IEmbeddingStatus, ConfigurableEmbeddingStatus>();
+
+        // DI 期不再二选一（旧的「按 IsEmbeddingConfigured 决定注册真实现还是 NullEmbeddingService」已废除）：
+        // 始终注册 RouterEmbeddingService，未启用/解析失败在调用期抛明确异常。
+        // 是否建向量索引由 IEmbeddingStatus 决定，与这里的注册无关。
+        services.TryAddSingleton<RouterEmbeddingService>();
         services.TryAddSingleton<IEmbeddingService>(sp =>
         {
-            var options = sp.GetRequiredService<IOptions<MemoryOptions>>().Value;
-            if (options.IsEmbeddingConfigured && sp.GetService<IHttpClientFactory>() is not null)
-            {
-                var inner = ActivatorUtilities.CreateInstance<ProviderEmbeddingService>(sp);
-                var cache = sp.GetService<IEmbeddingCache>();
-                var logger = sp.GetService<ILogger<EmbeddingService>>();
-                return new EmbeddingService(inner, cache, logger);
-            }
-            return new NullEmbeddingService();
+            var inner = sp.GetRequiredService<RouterEmbeddingService>();
+            var cache = sp.GetService<IEmbeddingCache>();
+            var logger = sp.GetService<ILogger<EmbeddingService>>();
+            return new EmbeddingService(inner, cache, logger);
         });
 
         services.TryAddSingleton<IVectorIndex>(sp =>
