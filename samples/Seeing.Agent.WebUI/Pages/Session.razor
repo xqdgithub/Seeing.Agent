@@ -141,9 +141,17 @@
                 </ErrorBoundary>
             }
         </div>
-        @if (_sidebarSections.Count > 0)
+        @if (ShowSidebar)
         {
             <div class="session-side-area">
+                @* 侧栏折叠按钮（1C：工具栏之外的第二个入口，紧贴侧栏左缘更容易发现） *@
+                <button type="button"
+                        class="session-side-toggle session-side-toggle--collapse"
+                        title="收起侧栏"
+                        aria-label="收起侧栏"
+                        @onclick="ToggleSidebar">
+                    <Icon Type="@IconType.Outline.Right" />
+                </button>
                 @foreach (var sec in _sidebarSections)
                 {
                     <div class="session-side-section @($"session-side-section--{sec.Section}")" @key="sec.Section">
@@ -175,6 +183,18 @@
                     </div>
                 }
             </div>
+        }
+        else if (_sidebarSections.Count > 0)
+        {
+            @* 侧栏收起后的展开入口：贴右缘的竖条（1C 的第一条入口） *@
+            <button type="button"
+                    class="session-side-toggle session-side-toggle--expand"
+                    title="展开侧栏"
+                    aria-label="展开侧栏"
+                    @onclick="ToggleSidebar">
+                <Icon Type="@IconType.Outline.Left" />
+                <span class="session-side-toggle__count">@_sidebarSections.Sum(s => s.Entries.Count)</span>
+            </button>
         }
     </div>
 
@@ -223,6 +243,14 @@
 
     /// <summary>执行态收集（sessionId → isExecuting）：由各 SessionWindow 回调上报，不写入 registry。</summary>
     private readonly Dictionary<string, bool> _executionStates = new(StringComparer.Ordinal);
+
+    /// <summary>侧栏可见性状态机（按组记忆隐藏/自动展开）。</summary>
+    private readonly Services.SessionSidebarVisibility _sidebarVisibility = new();
+
+    /// <summary>当前侧栏是否应显示（渲染时读取，避免模板里写条件表达式刺穿可读性）。</summary>
+    private bool ShowSidebar =>
+        _sidebarSections.Count > 0
+        && _sidebarVisibility.ShouldShow(SidebarGroupKey, _sidebarSections.Sum(s => s.Entries.Count));
 
     // ---- 重命名弹窗（关系抽屉 Rename 动作触发）----
     private string? _renameSessionId;
@@ -368,7 +396,20 @@
                 w.IsActive,
                 PermissionView.CountBySession(w.SessionId)));
         _sidebarSections = SessionSidebarView.Build(entries);
+
+        // 观察组成员变化：检测到新增子 Agent 时自动展开侧栏（用户手动收起后也生效）
+        _sidebarVisibility.Observe(SidebarGroupKey, _windows.Select(w => w.SessionId));
     }
+
+    /// <summary>
+    /// 侧栏可见性的记忆键。
+    /// <para>
+    /// 优先用组 Id；组快照尚未就绪时回退主会话 Id。二者不会同时切换
+    /// （组 Id 由主会话派生），因此不会出现「隐藏记录写到两处」的问题。
+    /// </para>
+    /// </summary>
+    private string? SidebarGroupKey =>
+        _currentGroup?.Id ?? _mainSessionId ?? _activeSessionId;
 
     /// <summary>组快照（GetGroupForSessionAsync）→ 顶条 / 抽屉的关系树模型。</summary>
     private async Task RefreshRelationAsync()
@@ -439,9 +480,21 @@
             return;
 
         _executionStates[state.SessionId] = state.IsExecuting;
+
+        // 子会话开始执行时自动展开侧栏（用户收起后也能看到正在干活的任务）
+        if (state.IsExecuting)
+            _sidebarVisibility.NotifyExecuting(state.SessionId, isExecuting: true, SidebarGroupKey);
+
         RebuildSidebar();
         if (_currentGroup is not null)
             _relationModel = BuildRelationModel(_currentGroup);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>切换侧栏可见性（用户点击隐藏/展开按钮）。</summary>
+    private void ToggleSidebar()
+    {
+        _sidebarVisibility.Toggle(SidebarGroupKey);
         _ = InvokeAsync(StateHasChanged);
     }
 

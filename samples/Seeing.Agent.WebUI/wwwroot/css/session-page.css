@@ -46,6 +46,60 @@
     overflow-y: auto;
     border-left: 1px solid var(--color-border);
     padding-left: 8px;
+    position: relative;
+}
+
+/*
+ * 侧栏显隐入口
+ *
+ * 两条入口（1C）：
+ *   --collapse：展开态时贴在侧栏左上角，点击收起；
+ *   --expand：收起态时贴在页面右缘的窄竖条，显示子会话数量，点击展开。
+ * 显隐本身不改变侧栏内部状态（SessionWindow 实例被卸载，但可见性记忆在
+ * SessionSidebarVisibility 里，重新展开时按需重建）。
+ */
+.session-side-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
+    color: var(--color-text-secondary);
+    border-radius: var(--radius-sm, 4px);
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 12px;
+    line-height: 1.4;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+
+.session-side-toggle:hover {
+    color: var(--color-primary);
+    background: var(--color-bg-secondary, #f5f5f5);
+}
+
+/* 收起：贴在侧栏顶端右侧，不占额外行高 */
+.session-side-toggle--collapse {
+    align-self: flex-end;
+    margin-bottom: -4px;
+}
+
+/* 展开：收起后贴右缘的窄竖条 */
+.session-side-toggle--expand {
+    align-self: stretch;
+    width: 28px;
+    min-width: 28px;
+    flex-direction: column;
+    padding: 8px 0;
+    margin-left: 4px;
+    border-radius: var(--radius-sm, 4px);
+}
+
+.session-side-toggle__count {
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+    color: var(--color-text-tertiary);
 }
 
 .session-side-area .session-window--summary {
