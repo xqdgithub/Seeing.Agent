@@ -158,8 +158,8 @@ public class OpenAiEmbeddingClientTests
         });
 
         using var doc = JsonDocument.Parse(handler.Requests[0].Body);
-        doc.RootElement.TryGetProperty("dimensions").Should().BeFalse();
-        doc.RootElement.TryGetProperty("encoding_format").Should().BeFalse();
+        doc.RootElement.TryGetProperty("dimensions", out _).Should().BeFalse();
+        doc.RootElement.TryGetProperty("encoding_format", out _).Should().BeFalse();
     }
 
     [Fact]

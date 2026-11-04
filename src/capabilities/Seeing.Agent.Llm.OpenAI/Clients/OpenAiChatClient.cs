@@ -7,10 +7,10 @@ using System.Text.Json;
 namespace Seeing.Agent.Llm.OpenAI.Clients;
 
 /// <summary>
-/// OpenAI Chat Completions API 客户端（原生 HTTP 实现）。
+/// OpenAI Chat Completions API 客户端（原生 HTTP 实现，<see cref="IChatCompletionClient"/>）。
 /// 直接解析 SSE 流，正确提取 choices[0].delta.reasoning_content。
 /// </summary>
-public class OpenAiChatClient : ILlmClient, IDisposable
+public class OpenAiChatClient : IChatCompletionClient, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
@@ -193,9 +193,17 @@ public class OpenAiChatClient : ILlmClient, IDisposable
 
     public async Task<bool> TestConnectionAsync(
         string modelId,
+        LlmCapabilityKind capability,
         LlmCallContext? call = null,
         CancellationToken ct = default)
     {
+        // 决议 15/25：本客户端只服务 Chat 能力；连接测试维持既有真实探针——发一次 5 token 补全
+        if (!capability.HasFlag(LlmCapabilityKind.Chat))
+        {
+            _logger.LogWarning("OpenAiChatClient 只服务 Chat 能力，收到 {Capability} 连接测试请求", capability);
+            return false;
+        }
+
         try
         {
             var req = new ChatRequest

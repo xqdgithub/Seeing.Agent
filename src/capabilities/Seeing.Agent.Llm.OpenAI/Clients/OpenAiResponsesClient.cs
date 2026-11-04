@@ -7,11 +7,12 @@ using System.Text.Json;
 namespace Seeing.Agent.Llm.OpenAI.Clients;
 
 /// <summary>
-/// OpenAI Responses API 客户端（原生 HTTP 实现）。
+/// OpenAI Responses API 客户端（原生 HTTP 实现，<see cref="IChatCompletionClient"/>）。
 /// 发送到 POST /responses，解析 event: + data: 双行 SSE。
-/// 映射到 ILlmClient 的统一 StreamUpdate / ChatResponse 接口。
+/// <para>决议 7：<c>openai-responses</c> 是独立协议，不是 <c>openai</c> 的变体写法，
+/// 因此 <see cref="ProviderType"/> 报 <see cref="ProviderTypes.OpenAiResponses"/>。</para>
 /// </summary>
-public class OpenAiResponsesClient : ILlmClient, IDisposable
+public class OpenAiResponsesClient : IChatCompletionClient, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
@@ -20,7 +21,7 @@ public class OpenAiResponsesClient : ILlmClient, IDisposable
     private readonly bool _ownsHttpClient;
 
     public string ProviderId => _config.Id;
-    public string ProviderType => ProviderTypes.OpenAi;
+    public string ProviderType => ProviderTypes.OpenAiResponses;
 
     public OpenAiResponsesClient(
         ProviderConfig config,
@@ -197,9 +198,17 @@ public class OpenAiResponsesClient : ILlmClient, IDisposable
 
     public async Task<bool> TestConnectionAsync(
         string modelId,
+        LlmCapabilityKind capability,
         LlmCallContext? call = null,
         CancellationToken ct = default)
     {
+        // 决议 15/25：本客户端只服务 Chat 能力；连接测试发一次真实的最小补全请求
+        if (!capability.HasFlag(LlmCapabilityKind.Chat))
+        {
+            _logger.LogWarning("OpenAiResponsesClient 只服务 Chat 能力，收到 {Capability} 连接测试请求", capability);
+            return false;
+        }
+
         try
         {
             var req = new ChatRequest

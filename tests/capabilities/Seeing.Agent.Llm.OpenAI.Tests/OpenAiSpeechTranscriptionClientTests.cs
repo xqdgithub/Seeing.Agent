@@ -162,16 +162,17 @@ public class OpenAiSpeechTranscriptionClientTests
         request.Content!.Headers.ContentType!.MediaType.Should().Be("multipart/form-data");
 
         var text = Decode(body);
-        text.Should().Contain("name=\"model\"");
+        // 注：.NET MultipartFormDataContent 对纯 ASCII 字段名不加引号（name=model 而非 name="model"）
+        text.Should().Contain("name=model");
         text.Should().Contain("whisper-1");
-        text.Should().Contain("name=\"language\"");
+        text.Should().Contain("name=language");
         text.Should().Contain("zh");
-        text.Should().Contain("name=\"response_format\"");
+        text.Should().Contain("name=response_format");
         text.Should().Contain("verbose_json");
-        text.Should().Contain("name=\"file\"");
+        text.Should().Contain("name=file");
         // 无显式文件名时按 MIME 推断扩展名；MimeType 未给 → 兜底 mp3
-        text.Should().Contain("filename=\"audio.mp3\"");
-        text.Should().NotContain("name=\"stream\"");
+        text.Should().Contain("filename=audio.mp3");
+        text.Should().NotContain("name=stream");
     }
 
     [Fact]
@@ -188,7 +189,7 @@ public class OpenAiSpeechTranscriptionClientTests
         });
 
         var text = Decode(handler.Requests[0].Body);
-        text.Should().Contain("filename=\"meeting.wav\"");
+        text.Should().Contain("filename=meeting.wav");
         text.Should().Contain("Content-Type: audio/wav");
     }
 
@@ -282,8 +283,8 @@ public class OpenAiSpeechTranscriptionClientTests
         ok.Should().BeTrue();
         handler.Requests.Should().HaveCount(1);
         var text = Decode(handler.Requests[0].Body);
-        text.Should().Contain("name=\"file\"");
-        text.Should().Contain("filename=\"connection-probe.wav\"");
+        text.Should().Contain("name=file");
+        text.Should().Contain("filename=connection-probe.wav");
     }
 
     [Fact]
