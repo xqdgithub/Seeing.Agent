@@ -58,6 +58,7 @@
     private sealed class SegmentCache
     {
         public required string MessageId { get; init; }
+        public required string IdPrefix { get; init; }
         public int Revision { get; set; }
         public required List<RenderFragment> Fragments { get; set; }
     }
@@ -68,19 +69,26 @@
         var structureChanged = _lastStructureRevision != StructureRevision
                                || _segments.Count != ordered.Count;
 
+        // Id 前缀分配表必须跨消息共享（重复 MessageId 要按 Loop 内出现次序消歧），
+        // 因此每次重建全部分段时先用完整消息集合算好前缀，再逐段构建。
+        var prefixes = structureChanged
+            ? AllocatePrefixes(ordered)
+            : null;
+
         if (structureChanged)
         {
             _segments.Clear();
-            foreach (var message in ordered)
-                _segments.Add(NewSegment(message));
+            for (var i = 0; i < ordered.Count; i++)
+                _segments.Add(NewSegment(ordered[i], prefixes![i]));
         }
         else
         {
-            // 结构未变：只重建版本变化的单条消息（避免每次 delta 重建整个 Loop）
+            // 结构未变：只重建版本变化的单条消息（避免每次 delta 重建整个 Loop）。
+            // 前缀沿用上一次分配的集合，保持块 Id 稳定。
             for (var i = 0; i < ordered.Count; i++)
             {
                 if (_segments[i].MessageId != ordered[i].Id || _segments[i].Revision != ordered[i].Revision)
-                    _segments[i] = NewSegment(ordered[i]);
+                    _segments[i] = NewSegment(ordered[i], _segments[i].IdPrefix);
             }
         }
 
@@ -100,15 +108,26 @@
         };
     }
 
+    /// <summary>为 Loop 内全部消息分配 Id 前缀（重复 MessageId 追加 <c>#{n}</c> 消歧）。</summary>
+    private static string[] AllocatePrefixes(List<MessageViewModel> ordered)
+    {
+        var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+        var prefixes = new string[ordered.Count];
+        for (var i = 0; i < ordered.Count; i++)
+            prefixes[i] = ContentBlockBuilder.AllocateIdPrefix(ordered[i], i, seen);
+        return prefixes;
+    }
+
     /// <summary>为单条消息构建渲染片段（该消息版本变化时才调用）。</summary>
-    private SegmentCache NewSegment(MessageViewModel message)
+    private SegmentCache NewSegment(MessageViewModel message, string idPrefix)
     {
         var context = Pipeline.BuildContext(message, GetRenderOptions(), null, OnToolClick);
-        var blocks = ContentBlockBuilder.BuildFromMessage(message, message.Id);
+        var blocks = ContentBlockBuilder.BuildFromMessage(message, idPrefix);
 
         return new SegmentCache
         {
             MessageId = message.Id,
+            IdPrefix = idPrefix,
             Revision = message.Revision,
             Fragments = blocks
                 .OrderBy(b => b.SortIndex)

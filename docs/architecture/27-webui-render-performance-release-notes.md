@@ -31,8 +31,8 @@
 ### 渲染粒度（Loop 分段缓存）
 
 - `TimelineItem` 新增 `StructureRevision` + `TouchStructure()`；`MessageViewModel` 新增 `Revision` + `Touch()`。
-- `ContentBlockBuilder.BuildLoopSegments()`：按 Step 分段，块 Id 以消息 Id 为前缀（重复 Id 追加 `#{n}` 消歧），保证 Loop 内唯一且跨次构建稳定。
-- `LoopGroupItem` 改为按消息分段缓存：结构版本不变时只重建内容版本变化的那条消息。
+- `ContentBlockBuilder.BuildLoopSegments()`：按 Step 分段，块 Id 以消息 Id 为前缀（重复 Id 追加 `#{n}` 消歧），保证 Loop 内唯一且跨次构建稳定。Id 前缀分配逻辑抽为 `AllocateIdPrefix()`，**生产渲染路径（`LoopGroupItem`）与 `BuildLoopSegments` 共用同一实现**，两条路径的块 Id 口径一致。
+- `LoopGroupItem` 改为按消息分段缓存：结构版本不变时只重建内容版本变化的那条消息。Id 前缀在结构变化时按完整消息集合统一分配（跨消息共享计数表），单条重建时沿用上次分配的前缀以保持块 Id 稳定。
 - `IMessageRenderPipeline` 新增 `RenderBlock`/`GetLoopContainerClass`/`GetLoopStatus`/`BuildLoopTags`/`BuildLoopMetaItems`；`RenderLoop` 改用 `BuildLoopSegments`，每段用自己消息的 `RenderContext`（修复了原先整个 Loop 共用首条消息导致 Markdown 缓存键撞车的既有缺陷）。
 - 删除 `BuildFromLoopMessages` / `GetAdditionalKey`。
 
@@ -46,8 +46,8 @@
 
 - `SessionData.Messages` 改为**写时失效的锁内快照**（同版本返回同一实例）；新增 `TryGetMessage()` 按 Id 查（锁内惰性建索引）。9 处写点全部挂失效。
 - `MessageTimelineStore` 加 3 个索引：`_turnByKey`（轮次 key → 条目）、`_itemByMessageId`（消息 Id → 条目，null 表示排队）、`_pendingOrphanKeys`（待认领的 `single-*`）。去掉每 delta 的全表扫描；`RenumberLoopIndexes` 移出吸收循环。
-- 新增 `RenderCoalescer`：33ms 合并窗口，封顶高频 delta 的渲染速率。
-- 新增 `ScrollInteropThrottle`：40ms 限流滚动 JS 往返，配 `_scrollDirty` 补偿避免贴底落后。
+- 新增 `RenderCoalescer`：33ms 合并窗口，封顶高频 delta 的渲染速率。**注意**：`MessageList` 保持自渲染（未启用 `SelfRender=false`，因为父级传给它的参数在流式期全等，Blazor 可能跳过 `SetParametersAsync` 导致不推进），因此合并器主要封顶 `SessionWindow` 整树；最贵的 `MessageList → TimelineItemView` 子树仍按 delta 频率自渲染，其成本由 `TimelineItemView.ShouldRender` + Loop 分段缓存压低。
+- 新增 `ScrollInteropThrottle` + `ScrollInteropBudget`：40ms 限流滚动 JS 往返。**贴底判定与懒加载判定共享一次窗口分配**（`ScrollInteropBudget.Allocate`），避免先执行的一方消费窗口导致另一方永久饿死；配 `_scrollDirty` 补偿避免贴底落后。
 - 新增 `SerialGate`：`TaskCardAggregator` 的 `SemaphoreSlim._writeLock` 改为 Monitor 实现（可重入）。
 - 聚合器回调经 `RenderCoalescer` 统一驱动渲染。
 
@@ -58,7 +58,7 @@
 ## 已知边界
 
 1. **`RenderCoalescer` 是每窗口独立**，多 agent 场景下 N 个 Full 窗口各自 33ms 一次；circuit 级统一渲染调度未做。
-2. **`TryLoadMoreAsync` 与贴底判定共享同一个限流窗口**，极端快速滚动时懒加载触发可能延后一个窗口（≤40ms）。
+2. **`TryLoadMoreAsync` 与贴底判定共享同一个限流窗口分配**（`ScrollInteropBudget.Allocate`）：两者都在同一次渲染通道内执行且只按窗口放行一次，因此「本次渲染贴底 + 下次渲染懒加载」的交替节奏下，极端快速滚动时懒加载触发可能延后一个窗口（≤40ms）。不会永久饿死（有专门的守门测试）。
 3. **`SerialGate` 用 `Monitor`，可重入**（`SemaphoreSlim` 不可重入）。这是有意的语义变更。另外 `Monitor` 同样阻塞线程 —— 真实收益是去掉异步等待状态机与 `Task` 分配，不是「不阻塞」。
 4. **`SessionData.Messages` 是只读视图但运行时类型仍是 `List`**。调用方 Cast 后就地修改会污染会话真相且不失效缓存。契约靠 XML 注释 + `GetActiveMessages` 的独立副本语义共同维护。
 5. **`TryGetMessage` 不感知元素 Id 的后续改写**。索引只跟踪容器成员变化；若将来仍需在 UI 层补写消息 Id，必须同时失效索引。
@@ -89,10 +89,22 @@
 | `SessionSwitchStateTests` | 2 | 切换时执行态与 CTS 重置 |
 | `StreamingRenderTests` | 6 | 流式/完成态的 Markdown 策略 |
 | `ContentBlockBuilderTests` | 7 | 分段 Id 唯一性、稳定性、流式标记 |
-| `TimelineRevisionTests` | 4 | 版本语义 + `CompleteTurn` 的 VM.Touch 守门 |
+| `TimelineRevisionTests` | 6 | 版本语义 + `CompleteTurn` 的 VM.Touch 守门 + 仅思考态变化也 Touch + 工具耗时变化也 Touch |
 | `MessageTimelineStoreIndexTests` | 8 | 索引化行为锁（同步/认领/幂等/折叠） |
 | `RenderCoalescerTests` | 8 | 合并/尾随/异常不外溢/释放语义 |
 | `SerialGateTests` | 3 | 互斥/异常后可复用/可重入 |
 | `ScrollInteropThrottleTests` | 4 | 限流窗口/重置 |
+| `ScrollInteropBudgetTests` | 6 | 贴底与懒加载共享窗口的分配（含「不饿死」守门） |
 | `SessionMessageSnapshotTests` | 9 | 快照复用/失效/Id 索引/副本独立性 |
 | `SessionRelationModelCacheTests` | 6 | 预计算稳定性与语义等价 |
+
+## 最后审查修复（2026-11-04）
+
+一次全分支审查（fresh reviewer）发现并修复：
+
+- **Critical** 懒加载被限流器饿死 —— `MessageList` 里贴底判定先消费窗口，`TryLoadMoreAsync` 必然被拒，长会话永久无法加载更早消息。抽 `ScrollInteropBudget.Allocate` 让两者共享一次分配，且只在实际需要时消费窗口。守门测试 `ScrollInteropBudgetTests` 6 个用例。
+- **Critical** 切换会话时输入草稿与附件跨会话串台 —— `PromptInput` 新增 `SessionKey` 参数，变化时清空 `InputText`/`Attachments`（附件按旧会话目录上传，混入新会话属数据串台）。
+- **Important** `IsReasoningComplete` 变化未 `Touch()` → 思考块可能永久停留纯文本。`CompleteTurn` 改为「任何可见字段变化都 Touch」。守门测试 `CompleteTurn_WhenOnlyReasoningCompletenessChanges_ShouldBumpRevision`。
+- **Important** `ToolsVisiblyChanged` 漏比对 `Description`/`DurationMs` → 工具卡耗时永久陈旧。补齐比较。守门测试 `SyncAssistantMessage_WhenOnlyToolDurationChanges_ShouldBumpRevision`。
+- **Important** 重复 `MessageId` 的 Id 消歧只存在于无调用者的 `BuildLoopSegments`，生产路径 `LoopGroupItem` 会产出重复块 Id。抽 `ContentBlockBuilder.AllocateIdPrefix` 供两条路径共用。
+- **Important** 切换会话残留上一会话的错误横幅 / 模型无效红框 / 预算 —— `ResetLocalExecutionState` 一并重置。

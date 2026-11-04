@@ -193,6 +193,7 @@
                         <SlotHost SlotName="session_prompt"
                                   SessionScenario="@SessionState.CurrentSession?.Scenario" />
                         <PromptInput IsProcessing="@SessionState.HasActiveExecution"
+                                     SessionKey="@SessionState.SessionId"
                                      Placeholder="@GetPlaceholderText()"
                                      HelpText="@GetHelpText()"
                                      AvailableCommands="@_availableCommands"
@@ -554,13 +555,32 @@
     }
 
     /// <summary>
-    /// 切换会话前重置本地执行态（状态字段 + 取消令牌 + 执行锁）。
+    /// 切换会话前重置本地执行态与上一会话残留的展示态。
+    /// <para>
+    /// 复用窗口实例后，`@key` 时代「整窗重建自动归零」的字段必须显式重置，
+    /// 否则 A 会话的模型无效红框 / 错误横幅 / 预算会挂到 B 会话上。
+    /// </para>
     /// </summary>
     private void ResetLocalExecutionState()
     {
         SessionState.ResetExecutionState();
         _reportedExecuting = null;
         _executionStartedAtUtc = null;
+
+        // 上一会话的展示残留
+        _modelInvalid = false;
+        ErrorMessage = null;
+        _renderedTitle = null;
+        SessionState.UpdateBudgetStatus(new Seeing.Agent.TokenBudget.Api.Responses.BudgetStatusResponse
+        {
+            SessionId = string.Empty,
+            CurrentTokens = 0,
+            MaxTokens = 0,
+            AvailableTokens = 0,
+            UsagePercentage = 0,
+            Level = "normal",
+            NeedsCompaction = false
+        });
     }
 
     /// <summary>

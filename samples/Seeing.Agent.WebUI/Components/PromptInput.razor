@@ -248,6 +248,16 @@
     public int MaxAttachments { get; set; } = 10;
 
     /// <summary>
+    /// 会话标识：值变化时清空输入草稿与已上传附件。
+    /// <para>
+    /// 窗口实例复用（切换会话不再整窗重建）后，输入框与附件列表不会自动归零；
+    /// 附件是按旧会话目录上传的，混入新会话会跨会话串台，必须在切换时清空。
+    /// </para>
+    /// </summary>
+    [Parameter]
+    public string? SessionKey { get; set; }
+
+    /// <summary>
     /// 单文件最大大小（字节）
     /// </summary>
     [Parameter]
@@ -311,6 +321,9 @@
     /// 附件列表
     /// </summary>
     private List<AttachmentViewModel> Attachments { get; set; } = new();
+
+    /// <summary>已绑定的会话标识；用于检测会话切换并清空草稿/附件。</summary>
+    private string? _boundSessionKey;
 
     /// <summary>
     /// Textarea 元素 ID
@@ -1170,6 +1183,16 @@
     /// </summary>
     protected override void OnParametersSet()
     {
+        // 会话切换：清空上一会话的输入草稿与已上传附件（附件按旧会话目录上传，混入新会话会串台）
+        if (!string.Equals(_boundSessionKey, SessionKey, StringComparison.Ordinal))
+        {
+            _boundSessionKey = SessionKey;
+            if (!string.IsNullOrEmpty(InputText))
+                InputText = string.Empty;
+            if (Attachments.Count > 0)
+                Attachments.Clear();
+        }
+
         // 检测执行结束（处理中 -> 空闲），标记渲染后聚焦输入框
         if (_prevIsProcessing && !IsProcessing)
             _pendingRefocus = true;

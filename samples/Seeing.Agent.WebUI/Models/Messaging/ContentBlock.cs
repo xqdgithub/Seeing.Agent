@@ -285,6 +285,34 @@ public class ContentBlockBuilder
     }
 
     /// <summary>
+    /// 为 Loop 内容块分配唯一前缀：消息 Id 重复时（分叉复制/历史数据）追加 <c>#{n}</c> 消歧，
+    /// 序号按传入顺序确定，因此同一输入每次分配结果一致。
+    /// <para>生产渲染路径（<c>LoopGroupItem</c> 按消息增量重建）与
+    /// <see cref="BuildLoopSegments"/> 必须共用此方法，否则重复 Id 下的块 Id 会撞车。</para>
+    /// </summary>
+    /// <param name="message">消息视图模型。</param>
+    /// <param name="ordinal">该消息在 Loop 内的位置（用于空 Id 的兜底与重复 Id 计数）。</param>
+    /// <param name="seen">跨消息共享的计数表（同一次 Loop 构建内复用同一个实例）。</param>
+    public static string AllocateIdPrefix(
+        MessageViewModel message,
+        int ordinal,
+        IDictionary<string, int> seen)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        ArgumentNullException.ThrowIfNull(seen);
+
+        var prefix = string.IsNullOrEmpty(message.Id) ? $"anon-{ordinal}" : message.Id;
+        if (seen.TryGetValue(prefix, out var count))
+        {
+            seen[prefix] = count + 1;
+            return $"{prefix}#{count + 1}";
+        }
+
+        seen[prefix] = 0;
+        return prefix;
+    }
+
+    /// <summary>
     /// 按 Step 顺序构建 Loop 的分段内容块。
     /// <para>块 Id 以消息 Id 为前缀，保证 Loop 内唯一且同一消息跨次构建稳定，
     /// 从而渲染层可按消息粒度缓存，避免每次 delta 重建整个 Loop。</para>
@@ -300,18 +328,7 @@ public class ContentBlockBuilder
         for (var i = 0; i < ordered.Count; i++)
         {
             var message = ordered[i];
-            var prefix = string.IsNullOrEmpty(message.Id) ? $"anon-{i}" : message.Id;
-
-            if (seen.TryGetValue(prefix, out var count))
-            {
-                seen[prefix] = count + 1;
-                prefix = $"{prefix}#{count + 1}";
-            }
-            else
-            {
-                seen[prefix] = 0;
-            }
-
+            var prefix = AllocateIdPrefix(message, i, seen);
             segments.Add(new ContentBlockSegment(message, BuildFromMessage(message, prefix)));
         }
 

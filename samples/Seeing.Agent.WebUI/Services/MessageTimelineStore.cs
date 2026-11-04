@@ -188,16 +188,24 @@ public sealed class MessageTimelineStore
         item.Turn.IsComplete = true;
         foreach (var msg in item.Turn.Messages)
         {
+            var visibleChanged = false;
+
             if (!msg.IsComplete)
             {
                 msg.IsComplete = true;
-                // 消息自身的版本必须递增：LoopGroupItem 的分段缓存按 MessageViewModel.Revision 判定，
-                // 不递增会复用流式期的纯文本片段，导致完成后永久停留未格式化状态。
-                msg.Touch();
+                visibleChanged = true;
             }
 
             if (!string.IsNullOrEmpty(msg.Reasoning) && !msg.IsReasoningComplete)
+            {
                 msg.IsReasoningComplete = true;
+                visibleChanged = true;
+            }
+
+            // 消息自身的版本必须递增：LoopGroupItem 的分段缓存按 MessageViewModel.Revision 判定，
+            // 不递增会复用流式期的纯文本片段，导致完成后永久停留未格式化状态。
+            if (visibleChanged)
+                msg.Touch();
         }
 
         item.Touch();
@@ -347,6 +355,8 @@ public sealed class MessageTimelineStore
                 || !string.Equals(cur.Error, tc.Error, StringComparison.Ordinal)
                 || !string.Equals(cur.Parameters, tc.Parameters, StringComparison.Ordinal)
                 || !string.Equals(cur.Name, tc.Name, StringComparison.Ordinal)
+                || !string.Equals(cur.Description, tc.Description, StringComparison.Ordinal)
+                || cur.DurationMs != tc.DurationMs
                 || !string.Equals(cur.TaskId, tc.TaskId, StringComparison.Ordinal)
                 || !string.Equals(cur.TaskAgent, tc.TaskAgent, StringComparison.Ordinal)
                 || !string.Equals(cur.TaskDescription, tc.TaskDescription, StringComparison.Ordinal)

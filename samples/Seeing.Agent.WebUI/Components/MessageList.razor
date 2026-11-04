@@ -246,11 +246,17 @@
         if (contentGrew)
             _scrollDirty = true;
 
-        // 强制贴底与 prepend 恢复必须立即执行；常规增长走限流窗口。
-        // 注意：限流跳过时 _scrollDirty 保持 true，下一次渲染会补偿，避免「内容增长后再也不贴底」。
-        var mustScroll = _pendingForcePin
-                         || _pendingPrependHeight.HasValue
-                         || _scrollThrottle.ShouldInvoke(DateTime.UtcNow);
+        // 贴底判定与懒加载判定共享一次窗口分配：若各自独立调用 ShouldInvoke，
+        // 先执行的一方会消费窗口，另一方必然被拒 —— 长会话的「向上加载更早消息」会永久饿死。
+        var grant = Services.ScrollInteropBudget.Allocate(
+            _scrollThrottle,
+            DateTime.UtcNow,
+            scrollNeeded: _scrollDirty || _pendingForcePin || _pendingPrependHeight.HasValue,
+            loadMorePossible: !_pendingForcePin && !_loadMoreInProgress
+                              && !_pendingPrependHeight.HasValue && _windowStart > 0);
+
+        // 强制贴底与 prepend 恢复必须立即执行，不受窗口限制
+        var mustScroll = _pendingForcePin || _pendingPrependHeight.HasValue || grant.AllowScroll;
 
         if (_scrollDirty && mustScroll)
         {
@@ -278,7 +284,7 @@
         }
 
         // Avoid load-more while force-pinning: near-top would expand upward and leave viewport at top.
-        if (!_pendingForcePin)
+        if (grant.AllowLoadMore)
             await TryLoadMoreAsync();
     }
 
@@ -301,10 +307,6 @@
     private async Task TryLoadMoreAsync()
     {
         if (_loadMoreInProgress || _pendingPrependHeight.HasValue || _windowStart <= 0)
-            return;
-
-        // 与贴底判定共享同一个限流窗口，避免长会话下每次渲染都多一次 isNearTop 往返
-        if (!_scrollThrottle.ShouldInvoke(DateTime.UtcNow))
             return;
 
         try
