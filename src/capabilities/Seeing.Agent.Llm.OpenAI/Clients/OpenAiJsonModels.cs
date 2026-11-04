@@ -595,3 +595,69 @@ internal class SpeechSynthesisApiRequest
 }
 
 #endregion
+
+#region Audio Transcriptions 请求/响应
+
+/// <summary>ASR 响应体（verbose_json；POST {baseUrl}/audio/transcriptions，spec §7.10）。</summary>
+internal class TranscriptionApiResponse
+{
+    [JsonPropertyName("text")]
+    public string? Text { get; set; }
+
+    [JsonPropertyName("language")]
+    public string? Language { get; set; }
+
+    [JsonPropertyName("duration")]
+    public double? Duration { get; set; }
+
+    /// <summary>细粒度段落；仅 verbose_json 提供，缺省为 null。</summary>
+    [JsonPropertyName("segments")]
+    public List<TranscriptionApiSegment>? Segments { get; set; }
+
+    /// <summary>token 用量（gpt-4o-transcribe 系返回；whisper 系通常为空）。</summary>
+    [JsonPropertyName("usage")]
+    public OpenAiTranscriptionUsage? Usage { get; set; }
+}
+
+/// <summary>ASR verbose_json 段落条目。</summary>
+internal class TranscriptionApiSegment
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    /// <summary>起始秒。</summary>
+    [JsonPropertyName("start")]
+    public double Start { get; set; }
+
+    /// <summary>结束秒。</summary>
+    [JsonPropertyName("end")]
+    public double End { get; set; }
+
+    [JsonPropertyName("text")]
+    public string? Text { get; set; }
+}
+
+/// <summary>ASR token 用量。</summary>
+internal class OpenAiTranscriptionUsage
+{
+    [JsonPropertyName("input_tokens")]
+    public int InputTokens { get; set; }
+
+    [JsonPropertyName("output_tokens")]
+    public int OutputTokens { get; set; }
+
+    [JsonPropertyName("total_tokens")]
+    public int TotalTokens { get; set; }
+}
+
+/// <summary>ASR 流式 SSE 增量条目（stream=true：delta 文本，结束行带 finish_reason）。</summary>
+internal class TranscriptionStreamDelta
+{
+    [JsonPropertyName("delta")]
+    public string? Delta { get; set; }
+
+    [JsonPropertyName("finish_reason")]
+    public string? FinishReason { get; set; }
+}
+
+#endregion
