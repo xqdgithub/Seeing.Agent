@@ -1,14 +1,18 @@
 using Microsoft.Extensions.DependencyInjection;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.SystemOne;
 using Seeing.Agent.Llm.SystemOne.Clients;
+using Seeing.Agent.Llm.SystemOne.Runtime;
 
 namespace Seeing.Agent.Llm.SystemOne;
 
 /// <summary>
 /// SystemOne（TypeSafe / Jev）能力模块 — id=<c>llm.systemone</c>。
 /// <para>原平行栈（<c>systemone.json</c> 配置节、<c>SYSTEMONE_*</c> 环境变量、自有 provider 注册表与热重载）
-/// 已删除：provider 改由框架 <c>Providers.typesafe</c> 配置驱动，本模块只登记协议客户端工厂（spec §7.9）。</para>
+/// 已删除：provider 改由框架 <c>Providers.typesafe</c> 配置驱动，本模块只登记协议客户端工厂与门面（spec §7.9）。</para>
+/// <para>工厂经 <see cref="ILlmClientFactory"/> 汇入 Core 的 <c>ProviderManager</c>（<c>IEnumerable</c> 聚合），
+/// 无需宿主额外登记。</para>
 /// </summary>
 public sealed class SystemOneModule : ISeeingModule
 {
@@ -27,7 +31,8 @@ public sealed class SystemOneModule : ISeeingModule
     /// <inheritdoc />
     public void ConfigureServices(IServiceCollection services)
     {
-        services.AddSingleton<ISystemOneClientFactory, TypeSafeSystemOneClientFactory>();
+        services.AddSingleton<ILlmClientFactory, TypeSafeSystemOneClientFactory>();
+        services.AddSingleton<ISystemOneService, SystemOneService>();
     }
 
     /// <inheritdoc />

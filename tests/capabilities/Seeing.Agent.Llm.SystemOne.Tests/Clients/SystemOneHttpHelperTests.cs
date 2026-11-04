@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.SystemOne;
 using Seeing.Agent.Llm.SystemOne.Clients;
 using System.Net;
@@ -11,7 +12,7 @@ namespace Seeing.Agent.Llm.SystemOne.Tests.Clients;
 /// <summary>
 /// 序列化、鉴权头与错误映射用例。
 /// <para>429/529 退避重试用例已随客户端自带重试删除而移除（spec §6.3）：
-/// 退避由框架装饰器链统一负责，此处只锁定「单次请求 + 原始错误上抛」。</para>
+/// 退避由框架装饰器链统一施加（工厂内），此处只锁定「单次请求 + 原始错误上抛」。</para>
 /// </summary>
 public class SystemOneHttpHelperTests
 {
@@ -25,11 +26,12 @@ public class SystemOneHttpHelperTests
         var config = Config();
         config.Headers = new Dictionary<string, string> { ["X-Tenant"] = "acme" };
 
-        await SystemOneHttpHelper.PostAsync<SystemOneRequest, SystemOneResponse>(
+        await SystemOneHttpHelper.PostAsync<DecisionRequestWire, DecisionResponseWire>(
             http,
             config,
-            SystemOneDefaults.EvaluatePath,
-            new SystemOneRequest { State = "hello", Model = "m" },
+            TypeSafeProtocol.EvaluatePath,
+            new DecisionRequestWire { State = "hello", Model = "m" },
+            call: null,
             TestContext.Current.CancellationToken);
 
         handler.LastRequest!.Headers.GetValues("Authorization").Should().ContainSingle().Which.Should().Be("Bearer test-key");
@@ -42,13 +44,46 @@ public class SystemOneHttpHelperTests
     }
 
     [Fact]
+    public async Task PostAsync_ConfigAuthorization_OverridesDefaultBearer()
+    {
+        var handler = new CapturingHandler("""{"answers":{}}""");
+        using var http = new HttpClient(handler);
+        var config = Config();
+        config.Headers = new Dictionary<string, string> { ["Authorization"] = "Bearer custom" };
+
+        await SystemOneHttpHelper.PostAsync<DecisionRequestWire, DecisionResponseWire>(
+            http, config, TypeSafeProtocol.EvaluatePath,
+            new DecisionRequestWire { State = "s", Model = "m" },
+            call: null, TestContext.Current.CancellationToken);
+
+        handler.LastRequest!.Headers.GetValues("Authorization")
+            .Should().ContainSingle().Which.Should().Be("Bearer custom");
+    }
+
+    [Fact]
+    public async Task PostAsync_CallContextHeaders_AreAppliedPerRequest()
+    {
+        var handler = new CapturingHandler("""{"answers":{}}""");
+        using var http = new HttpClient(handler);
+        var call = new LlmCallContext();
+        call.ExtraHeaders["X-Trace"] = "t-1";
+
+        await SystemOneHttpHelper.PostAsync<DecisionRequestWire, DecisionResponseWire>(
+            http, Config(), TypeSafeProtocol.EvaluatePath,
+            new DecisionRequestWire { State = "s", Model = "m" },
+            call, TestContext.Current.CancellationToken);
+
+        handler.LastRequest!.Headers.GetValues("X-Trace").Should().ContainSingle().Which.Should().Be("t-1");
+    }
+
+    [Fact]
     public async Task GetAsync_On429_ThrowsImmediatelyWithoutRetry()
     {
         var handler = new SequenceHandler(Json("rate limited", HttpStatusCode.TooManyRequests));
         using var http = new HttpClient(handler);
 
-        var act = () => SystemOneHttpHelper.GetAsync<SystemOneModelsResponse>(
-            http, Config(), SystemOneDefaults.ModelsPath, TestContext.Current.CancellationToken);
+        var act = () => SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
+            http, Config(), TypeSafeProtocol.ModelsPath, call: null, TestContext.Current.CancellationToken);
 
         var ex = await act.Should().ThrowAsync<SystemOneException>();
         ex.Which.StatusCode.Should().Be(429);
@@ -62,8 +97,8 @@ public class SystemOneHttpHelperTests
         var handler = new SequenceHandler(Json("overloaded", (HttpStatusCode)529));
         using var http = new HttpClient(handler);
 
-        var act = () => SystemOneHttpHelper.GetAsync<SystemOneModelsResponse>(
-            http, Config(), SystemOneDefaults.ModelsPath, TestContext.Current.CancellationToken);
+        var act = () => SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
+            http, Config(), TypeSafeProtocol.ModelsPath, call: null, TestContext.Current.CancellationToken);
 
         var ex = await act.Should().ThrowAsync<SystemOneException>();
         ex.Which.StatusCode.Should().Be(529);
@@ -76,8 +111,8 @@ public class SystemOneHttpHelperTests
         var handler = new SequenceHandler(Json("unauthorized", HttpStatusCode.Unauthorized));
         using var http = new HttpClient(handler);
 
-        var act = () => SystemOneHttpHelper.GetAsync<SystemOneModelsResponse>(
-            http, Config(), SystemOneDefaults.ModelsPath, TestContext.Current.CancellationToken);
+        var act = () => SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
+            http, Config(), TypeSafeProtocol.ModelsPath, call: null, TestContext.Current.CancellationToken);
 
         var ex = await act.Should().ThrowAsync<SystemOneException>();
         ex.Which.StatusCode.Should().Be(401);
@@ -90,8 +125,8 @@ public class SystemOneHttpHelperTests
         var handler = new SequenceHandler(Json("not-json"));
         using var http = new HttpClient(handler);
 
-        var act = () => SystemOneHttpHelper.GetAsync<SystemOneModelsResponse>(
-            http, Config(), SystemOneDefaults.ModelsPath, TestContext.Current.CancellationToken);
+        var act = () => SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
+            http, Config(), TypeSafeProtocol.ModelsPath, call: null, TestContext.Current.CancellationToken);
 
         var ex = await act.Should().ThrowAsync<SystemOneException>();
         ex.Which.StatusCode.Should().Be(200);
@@ -107,17 +142,32 @@ public class SystemOneHttpHelperTests
         var handler = new CancelingHandler(cts);
         using var http = new HttpClient(handler);
 
-        var act = () => SystemOneHttpHelper.GetAsync<SystemOneModelsResponse>(
-            http, Config(), SystemOneDefaults.ModelsPath, cts.Token);
+        var act = () => SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
+            http, Config(), TypeSafeProtocol.ModelsPath, call: null, cts.Token);
 
         await act.Should().ThrowAsync<TaskCanceledException>();
         handler.RequestCount.Should().Be(1);
     }
 
-    private static SystemOneProviderConfig Config()
+    [Fact]
+    public async Task GetAsync_WithoutBaseUrl_UsesProtocolDefaultHost()
+    {
+        var handler = new SequenceHandler(Json(ModelsJson));
+        using var http = new HttpClient(handler);
+        var config = Config();
+        config.BaseUrl = null;
+
+        await SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
+            http, config, TypeSafeProtocol.ModelsPath, call: null, TestContext.Current.CancellationToken);
+
+        handler.LastRequest!.RequestUri.Should().Be(new Uri("https://api.typesafe.ai/v1/models"));
+    }
+
+    private static ProviderConfig Config()
         => new()
         {
             Id = "typesafe",
+            Type = ProviderTypes.TypeSafe,
             BaseUrl = "http://systemone.test",
             ApiKey = "test-key"
         };
@@ -135,12 +185,14 @@ public class SystemOneHttpHelperTests
         public SequenceHandler(params HttpResponseMessage[] responses)
             => _responses = new Queue<HttpResponseMessage>(responses);
 
+        public HttpRequestMessage? LastRequest { get; private set; }
         public int RequestCount { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
             RequestCount++;
+            LastRequest = request;
             var response = _responses.Count > 0 ? _responses.Dequeue() : Json("{}");
             return Task.FromResult(response);
         }

@@ -1,27 +1,29 @@
 using FluentAssertions;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.SystemOne;
+using Seeing.Agent.Llm.SystemOne.Clients;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Xunit;
 
 namespace Seeing.Agent.Llm.SystemOne.Tests;
 
+/// <summary>
+/// Decision DTO ↔ TypeSafe wire 的序列化契约（原 SystemOne 序列化用例随合流改造）。
+/// <para>wire 键名必须保持小写（<c>state/model/questions/type/instructions/criteria</c>
+/// 与 <c>noul/choice/score/legend/probabilities/confidence/usage.input_tokens/release_date</c>）：
+/// 能力端口 DTO 不带 wire 注解，协议字段名是本包的私有事实。</para>
+/// </summary>
 public class SystemOneSerializationTests
 {
-    private static readonly JsonSerializerOptions Opts = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
+    private static JsonSerializerOptions Opts => TypeSafeWireMap.JsonOptions;
 
     [Fact]
     public void Serialize_StateAsString_WritesRawString()
     {
-        var request = new SystemOneRequest { State = "hello", Model = "jev-latest" };
+        var wire = TypeSafeWireMap.FromRequest(
+            new DecisionRequest { State = "hello", Model = "jev-latest" }, "jev-latest");
 
-        var json = JsonSerializer.Serialize(request, Opts);
-
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(wire, Opts));
         doc.RootElement.GetProperty("state").GetString().Should().Be("hello");
         doc.RootElement.GetProperty("model").GetString().Should().Be("jev-latest");
     }
@@ -29,59 +31,63 @@ public class SystemOneSerializationTests
     [Fact]
     public void Serialize_StateAsObject_WritesObject()
     {
-        var request = new SystemOneRequest { State = new { text = "hi", level = 3 } };
+        var request = new DecisionRequest
+        {
+            State = new Dictionary<string, object?> { ["text"] = "hi", ["level"] = 3 },
+            Model = "jev-latest"
+        };
 
-        var json = JsonSerializer.Serialize(request, Opts);
+        var wire = TypeSafeWireMap.FromRequest(request, "jev-latest");
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(wire, Opts));
 
-        using var doc = JsonDocument.Parse(json);
         var state = doc.RootElement.GetProperty("state");
         state.GetProperty("text").GetString().Should().Be("hi");
         state.GetProperty("level").GetInt32().Should().Be(3);
     }
 
     [Fact]
-    public void Serialize_StateAsArray_WritesArray()
+    public void Serialize_StateAsJsonElement_WritesVerbatim()
     {
-        var request = new SystemOneRequest { State = new object[] { "a", 1 } };
+        using var state = JsonDocument.Parse("""{"ticket":"x","tags":["a","b"]}""");
+        var wire = TypeSafeWireMap.FromRequest(
+            new DecisionRequest { State = state.RootElement.Clone(), Model = "m" }, "m");
 
-        var json = JsonSerializer.Serialize(request, Opts);
-
-        using var doc = JsonDocument.Parse(json);
-        var state = doc.RootElement.GetProperty("state");
-        state.ValueKind.Should().Be(JsonValueKind.Array);
-        state.GetArrayLength().Should().Be(2);
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(wire, Opts));
+        var element = doc.RootElement.GetProperty("state");
+        element.GetProperty("ticket").GetString().Should().Be("x");
+        element.GetProperty("tags").GetArrayLength().Should().Be(2);
     }
 
     [Fact]
     public void Serialize_ThreeQuestionTypes_PreserveTypeAndCriteria()
     {
-        var request = new SystemOneRequest
+        var request = new DecisionRequest
         {
             Model = "jev-latest",
             State = "x",
-            Questions = new Dictionary<string, SystemOneQuestion>
+            Questions = new Dictionary<string, DecisionQuestion>(StringComparer.Ordinal)
             {
-                ["isHappy"] = new SystemOneQuestion
+                ["isHappy"] = new DecisionQuestion
                 {
-                    Type = SystemOneQuestionTypes.Noul,
+                    Type = DecisionQuestionTypes.Noul,
                     Instructions = "Is the user happy?"
                 },
-                ["mood"] = new SystemOneQuestion
+                ["mood"] = new DecisionQuestion
                 {
-                    Type = SystemOneQuestionTypes.Choice,
+                    Type = DecisionQuestionTypes.Choice,
                     Criteria = new Dictionary<string, string> { ["a"] = "Happy", ["b"] = "Sad" }
                 },
-                ["rating"] = new SystemOneQuestion
+                ["rating"] = new DecisionQuestion
                 {
-                    Type = SystemOneQuestionTypes.Score,
+                    Type = DecisionQuestionTypes.Score,
                     Criteria = new object[] { "low", "high" }
                 }
             }
         };
 
-        var json = JsonSerializer.Serialize(request, Opts);
+        using var doc = JsonDocument.Parse(
+            JsonSerializer.Serialize(TypeSafeWireMap.FromRequest(request, "jev-latest"), Opts));
 
-        using var doc = JsonDocument.Parse(json);
         var questions = doc.RootElement.GetProperty("questions");
         questions.GetProperty("isHappy").GetProperty("type").GetString().Should().Be("noul");
         questions.GetProperty("isHappy").GetProperty("instructions").GetString().Should().Be("Is the user happy?");
@@ -89,6 +95,31 @@ public class SystemOneSerializationTests
         questions.GetProperty("mood").GetProperty("criteria").GetProperty("a").GetString().Should().Be("Happy");
         questions.GetProperty("rating").GetProperty("type").GetString().Should().Be("score");
         questions.GetProperty("rating").GetProperty("criteria").GetArrayLength().Should().Be(2);
+    }
+
+    [Fact]
+    public void Serialize_CriterionKeys_AreNotRenamed()
+    {
+        // choice 的候选 label 是数据键，不得被任何命名策略改写
+        var request = new DecisionRequest
+        {
+            Model = "m",
+            State = "s",
+            Questions = new Dictionary<string, DecisionQuestion>(StringComparer.Ordinal)
+            {
+                ["Q1"] = new DecisionQuestion
+                {
+                    Type = DecisionQuestionTypes.Choice,
+                    Criteria = new Dictionary<string, string> { ["MyLabel"] = "v" }
+                }
+            }
+        };
+
+        using var doc = JsonDocument.Parse(
+            JsonSerializer.Serialize(TypeSafeWireMap.FromRequest(request, "m"), Opts));
+
+        doc.RootElement.GetProperty("questions").GetProperty("Q1")
+            .GetProperty("criteria").GetProperty("MyLabel").GetString().Should().Be("v");
     }
 
     [Fact]
@@ -104,10 +135,10 @@ public class SystemOneSerializationTests
         }
         """;
 
-        var response = JsonSerializer.Deserialize<SystemOneResponse>(json, Opts);
+        var response = TypeSafeWireMap.ToResponse(
+            JsonSerializer.Deserialize<DecisionResponseWire>(json, Opts)!);
 
-        response.Should().NotBeNull();
-        response!.Model.Should().Be("jev-latest");
+        response.Model.Should().Be("jev-latest");
         var answer = response.Answers["isHappy"];
         answer.Type.Should().Be("noul");
         answer.Noul.Should().BeApproximately(0.83, 1e-9);
@@ -132,9 +163,10 @@ public class SystemOneSerializationTests
         }
         """;
 
-        var response = JsonSerializer.Deserialize<SystemOneResponse>(json, Opts);
+        var response = TypeSafeWireMap.ToResponse(
+            JsonSerializer.Deserialize<DecisionResponseWire>(json, Opts)!);
 
-        var answer = response!.Answers["mood"];
+        var answer = response.Answers["mood"];
         answer.Type.Should().Be("choice");
         answer.Choice.Should().Be("a");
         answer.Legend!["a"].Should().Be("Happy");
@@ -145,98 +177,68 @@ public class SystemOneSerializationTests
     [Fact]
     public void Deserialize_ScoreAnswer_ReadsScore()
     {
-        const string json = """
-        { "answers": { "rating": { "type": "score", "score": 4.2 } } }
-        """;
+        const string json = """{ "answers": { "rating": { "type": "score", "score": 4.2 } } }""";
 
-        var response = JsonSerializer.Deserialize<SystemOneResponse>(json, Opts);
+        var response = TypeSafeWireMap.ToResponse(
+            JsonSerializer.Deserialize<DecisionResponseWire>(json, Opts)!);
 
-        var answer = response!.Answers["rating"];
+        var answer = response.Answers["rating"];
         answer.Type.Should().Be("score");
         answer.Score.Should().BeApproximately(4.2, 1e-9);
     }
 
     [Fact]
-    public void Deserialize_ProviderConfig_MapsJsonPropertyNames()
-    {
-        const string json = """
-        {
-          "id": "typesafe",
-          "type": "typesafe",
-          "name": "TypeSafe Jev",
-          "baseURL": "https://example.test",
-          "apiKey": "ts-123",
-          "model": "jev-latest",
-          "timeout": 15000,
-          "max_retries": 3,
-          "retry_base_delay": 250,
-          "retry_max_delay": 4000
-        }
-        """;
-
-        var config = JsonSerializer.Deserialize<SystemOneProviderConfig>(json, Opts);
-
-        config.Should().NotBeNull();
-        config!.Id.Should().Be("typesafe");
-        config.Type.Should().Be("typesafe");
-        config.Name.Should().Be("TypeSafe Jev");
-        config.BaseUrl.Should().Be("https://example.test");
-        config.ApiKey.Should().Be("ts-123");
-        config.Model.Should().Be("jev-latest");
-        config.Timeout.Should().Be(15000);
-        config.MaxRetries.Should().Be(3);
-        config.RetryBaseDelayMs.Should().Be(250);
-        config.RetryMaxDelayMs.Should().Be(4000);
-    }
-
-    [Fact]
-    public void ProviderConfig_Defaults_MatchContract()
-    {
-        var config = new SystemOneProviderConfig();
-
-        config.Id.Should().Be("typesafe");
-        config.Type.Should().Be(SystemOneProviderTypes.TypeSafe);
-        config.Model.Should().Be("jev-latest");
-        config.Timeout.Should().Be(10000);
-        config.MaxRetries.Should().Be(2);
-        config.RetryBaseDelayMs.Should().Be(500);
-        config.RetryMaxDelayMs.Should().Be(5000);
-    }
-
-    [Theory]
-    [InlineData("TypeSafe", "typesafe")]
-    [InlineData("  TYPESAFE ", "typesafe")]
-    [InlineData("other", "other")]
-    [InlineData("", "")]
-    [InlineData(null, "")]
-    public void Normalize_ReturnsCanonicalLowercase(string? input, string expected)
-    {
-        SystemOneProviderTypes.Normalize(input).Should().Be(expected);
-    }
-
-    [Fact]
-    public void Defaults_MatchContract()
-    {
-        SystemOneDefaults.DefaultBaseUrl.Should().Be("https://api.typesafe.ai");
-        SystemOneDefaults.DefaultModel.Should().Be("jev-latest");
-        SystemOneDefaults.EvaluatePath.Should().Be("/v1/systemone");
-        SystemOneDefaults.ModelsPath.Should().Be("/v1/models");
-        SystemOneDefaults.DefaultTimeoutMs.Should().Be(10000);
-    }
-
-    [Fact]
-    public void Deserialize_ModelsResponse_ReadsModels()
+    public void Deserialize_ModelsResponse_MapsToDecisionModels()
     {
         const string json = """
         { "models": [ { "name": "jev-latest", "description": "default", "release_date": "2026-01-01" } ] }
         """;
 
-        var response = JsonSerializer.Deserialize<SystemOneModelsResponse>(json, Opts);
+        var models = TypeSafeWireMap.ToDecisionModels(
+            JsonSerializer.Deserialize<ModelsResponseWire>(json, Opts)!);
 
-        response!.Models.Should().HaveCount(1);
-        response.Models[0].Name.Should().Be("jev-latest");
-        response.Models[0].Description.Should().Be("default");
-        response.Models[0].ReleaseDate.Should().Be("2026-01-01");
+        models.Should().ContainSingle();
+        models[0].Name.Should().Be("jev-latest");
+        models[0].Description.Should().Be("default");
+        models[0].ReleaseDate.Should().Be("2026-01-01");
+    }
+
+    [Fact]
+    public void ToModelConfig_MarksDecisionTypeAndOwnsProvider()
+    {
+        var config = TypeSafeWireMap.ToModelConfig(
+            new DecisionModel { Name = "jev-latest", Description = "default", ReleaseDate = "2026-01-01" },
+            "typesafe");
+
+        config.Id.Should().Be("jev-latest");
+        config.Provider.Should().Be("typesafe");
+        config.Types.Should().Equal(ModelType.Decision);
+        config.Metadata!["description"].Should().Be("default");
+        config.Metadata["releaseDate"].Should().Be("2026-01-01");
+    }
+
+    [Fact]
+    public void ToModelConfig_WithoutOptionalFields_LeavesMetadataNull()
+    {
+        var config = TypeSafeWireMap.ToModelConfig(new DecisionModel { Name = "jev" }, "typesafe");
+
+        config.Metadata.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(DecisionQuestionTypes.Noul, "noul")]
+    [InlineData(DecisionQuestionTypes.Choice, "choice")]
+    [InlineData(DecisionQuestionTypes.Score, "score")]
+    public void QuestionTypes_AreWireNames(string constant, string expected)
+    {
+        constant.Should().Be(expected);
+    }
+
+    [Fact]
+    public void DecisionConfigKey_IsLowerCamelWireName()
+    {
+        // 配置端能力键由 LlmCapabilityMap 投影：typesafe 的 provider 配置写 "decision"
+        LlmCapabilityMap.ToConfigKey(LlmCapabilityKind.Decision).Should().Be("decision");
     }
 
     [Fact]
