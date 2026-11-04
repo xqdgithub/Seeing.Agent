@@ -97,7 +97,8 @@ namespace Seeing.Agent.Tests.Hooks
                 .ReturnsAsync(HookResult.Success);
 
             _manager.Register(handler.Object);
-            await _manager.TriggerBlockingAsync(HookRegistry.LlmParams, "session-1");
+            await _manager.TriggerBlockingAsync(
+                HookRegistry.LlmParams, "session-1", cancellationToken: TestContext.Current.CancellationToken);
 
             fired.Should().BeFalse();
             handler.Verify(h => h.ExecuteAsync(It.IsAny<HookPayload>()), Times.Never);
@@ -358,6 +359,6 @@ namespace Seeing.Agent.Tests.Hooks
                     It.Is<It.IsAnyType>((state, _) => state.ToString()!.Contains(fragment)),
                     It.IsAny<Exception?>(),
                     (Func<It.IsAnyType, Exception?, string>)It.IsAny<object>()),
-                expected ?? Times.Once);
+                expected ?? Times.Once());
     }
 }
