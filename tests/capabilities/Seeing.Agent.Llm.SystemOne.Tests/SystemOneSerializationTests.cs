@@ -1,6 +1,6 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Abstractions.SystemOne;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.SystemOne.Clients;
 using System.Text.Json;
 using Xunit;
@@ -246,7 +246,7 @@ public class SystemOneSerializationTests
     {
         var inner = new IOException("boom");
 
-        var exception = new SystemOneException(429, "{\"error\":\"rate\"}", "限流", inner);
+        var exception = new DecisionProtocolException(429, "{\"error\":\"rate\"}", "限流", inner);
 
         exception.StatusCode.Should().Be(429);
         exception.ResponseBody.Should().Be("{\"error\":\"rate\"}");

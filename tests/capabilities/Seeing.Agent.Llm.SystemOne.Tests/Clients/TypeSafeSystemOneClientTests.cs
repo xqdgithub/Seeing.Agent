@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Abstractions.SystemOne;
 using Seeing.Agent.Llm.SystemOne.Clients;
 using System.Net;
 using System.Text;

@@ -45,6 +45,7 @@
 | 24 | Speech 缺 `Modalities` | **报错要求补**，不按单能力推断 |
 | 25 | 非 chat 连接测试 | **每种能力发真实探针** |
 | 26 | 语音工具 | **本次不接** `speak`/`listen`，只出契约与客户端实现 |
+| 27 | `ILlmRouter` 的定位 | **保留 public 与 `Resolve<T>`**；边界按 §7.4.1：常规单次调用走 `ILlmInvoker`，探针/长生命周期/框架内部走 Router。`SystemOneTool`/`SystemOneService` 改走 Invoker |
 
 ---
 
@@ -588,6 +589,23 @@ public interface ILlmRouter
 
 **不做运行期试错**：模型声明正确但端点不支持 → 让 HTTP 400 冒出来，那是配置错误。
 
+#### 7.4.1 Router 与 Invoker 的适用边界（必须遵守）
+
+**`ILlmRouter` 保持 public 且保留 `Resolve<T>`**——有三个真实场景需要绕过 Invoker 直接取客户端。但**常规单次调用必须走 `ILlmInvoker`**。
+
+| 场景 | 用哪个 | 理由 |
+|---|---|---|
+| **常规单次业务调用**（chat 一轮、embedding 一批、TTS 一段、decision 一次） | **`ILlmInvoker`** | 只有它触发 `llm.params`/`llm.headers`/`llm.after_complete`/`llm.on_error`、合并出站头、计算耗时 |
+| **连接测试探针**（`TestConnectionAsync`） | **`ILlmRouter`** | 探针不应产生业务副作用。走 Invoker 会让"点一下测试按钮"污染预算账与审计日志 |
+| **长生命周期调用**（video `Submit` + N 次 `GetStatus`/`Poll`） | **`ILlmRouter`** | 一次任务解析一次、多次调用。走 Invoker 会记 N 次 `after_complete`，语义错误 |
+| **框架内部**（`LlmInvoker` 自身、`ModelConfigManager.TryResolveDefault`、`IProviderManager`） | **`ILlmRouter`** | 这些是 Invoker 的依赖，无法自举 |
+
+**判别口诀**：**这次调用该不该被观测成"一次 LLM 调用"？** 该 → Invoker；不该（探针、轮询、内部装配）→ Router。
+
+**已知违反**：`SystemOneTool` / `SystemOneService` 曾直连 Router，导致 decision 的 Hook 全不触发。已改为走 Invoker（决议 27）。
+
+`ILlmRouter` 与 `ILlmInvoker` 的 XML 注释必须互相点名，把这条边界写在使用处，而不是只写在本文档里。
+
 ### 7.5 横切层：`ILlmInvoker`
 
 v1 把 Hook 触发留在 `LlmService`，又让非 chat 调用方"直接用 Router"，导致"横切对所有能力生效"无落点。本层补上：
@@ -944,7 +962,11 @@ UI 的"测试连接"按钮针对**当前正在编辑/查看的能力**发测，�
 
 **问题**：现状只能配一个 `SeeingAgent.DefaultModel`（`SeeingAgentOptions.cs:16`），且 `CanSetAsDefaultModel` 硬性要求 `ModelType.Text`（`ModelConfigManager.cs:188-192`）。"指定 embedding 默认用哪个模型"无处可配。
 
-**证据**：`TitleGeneration.Model`（`SeeingAgentOptions.cs:120`）就是这类需求的历史遗留——**全仓零消费者**，`SessionTitleService` 实际用的仍是 `DefaultModel`（`TextCompletionService.cs:63,97`）。它是个死配置，正好说明"按用途指定模型却没有生效路径"是真实痛点。
+**证据**：`TitleGeneration.Model`（`SeeingAgentOptions.cs:120`）**并非死配置**——`SessionTitleService.cs:166,198` 有真实消费者（`var model = options.Model ?? fallbackModelId;`）。spec 早期版本称其"全仓零消费者"是**事实错误**，此处更正。
+
+**但它不能被接进 `ITextCompletion` 的回落链**：`ITextCompletion` 是共享旁路（标题、`LlmSummarizer`、`LlmMemoryExtractor/Evolution` 都用它）。若写成 `model ?? TitleGeneration.Model ?? GetDefaultModel(Chat)`，给标题配一个便宜模型会**静默改掉会话压缩与记忆抽取的模型**——这正是 §13 原则 1 反对的隐式策略。
+
+正确做法：标题生成在 `SessionTitleService` 内部自己用它（现状即如此，无需改动）；共享旁路只回落 `GetDefaultModel(Chat)`。
 
 #### 7.14.1 配置形状
 
@@ -1045,7 +1067,7 @@ public interface IModelConfigManager
 |---|---|
 | `Memory` | **不读 `DefaultModels.embedding`**（决议 10）：必须显式配 `MemoryOptions.Embedding.ModelId`。唯一例外——记忆索引一开跑就有后台成本，不应被全局默认隐式激活 |
 | `SystemOne` 工具 | `GetDefaultModel(Decision)` → 有则用；无则从目录挑（§7.9） |
-| `TextCompletionService` | 改用 `GetDefaultModel(Chat)`；顺带修 `TitleGeneration.Model` 死配置——它优先于 chat 默认，未配时回落 `GetDefaultModel(Chat)` |
+| `TextCompletionService` | 改用 `GetDefaultModel(Chat)`；**不接 `TitleGeneration.Model`**——它是 `SessionTitleService` 专用的，接进共享旁路会污染摘要与记忆抽取（§7.14.4 说明） |
 | 未来的 TTS/ASR 工具 | `GetDefaultModel(SpeechSynthesis)` / `GetDefaultModel(SpeechTranscription)` |
 
 > `TitleGeneration.Model` 的修复是**顺带**的：它现在是纯死配置，接成"标题生成优先用它，未配则用 chat 默认"，成本几乎为零。若不想扩大范围可留作后续，但必须标注它是已知死配置。

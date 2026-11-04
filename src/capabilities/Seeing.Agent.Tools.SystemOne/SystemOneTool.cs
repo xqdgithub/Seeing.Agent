@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Abstractions.SystemOne;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Tools.Support;
@@ -109,7 +109,7 @@ public sealed class SystemOneTool : BuiltInToolBase
             };
             return Success("SystemOne 判别", FormatOutput(response), metadata);
         }
-        catch (SystemOneException ex)
+        catch (DecisionProtocolException ex)
         {
             return Failure($"SystemOne 调用失败: HTTP {ex.StatusCode} {ex.Message}");
         }

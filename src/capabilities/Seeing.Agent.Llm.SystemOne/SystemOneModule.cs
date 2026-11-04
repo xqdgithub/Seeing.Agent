@@ -1,9 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Abstractions.SystemOne;
 using Seeing.Agent.Llm.SystemOne.Clients;
-using Seeing.Agent.Llm.SystemOne.Runtime;
 
 namespace Seeing.Agent.Llm.SystemOne;
 
@@ -32,7 +30,6 @@ public sealed class SystemOneModule : ISeeingModule
     public void ConfigureServices(IServiceCollection services)
     {
         services.AddSingleton<ILlmClientFactory, TypeSafeSystemOneClientFactory>();
-        services.AddSingleton<ISystemOneService, SystemOneService>();
     }
 
     /// <inheritdoc />

@@ -1,5 +1,5 @@
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Abstractions.SystemOne;
+using Seeing.Agent.Abstractions.Llm;
 using System.Text;
 using System.Text.Json;
 
@@ -71,11 +71,11 @@ internal static class SystemOneHttpHelper
                 try
                 {
                     return JsonSerializer.Deserialize<TResp>(responseBody, JsonOpts)
-                        ?? throw new SystemOneException(statusCode, responseBody, "SystemOne 响应反序列化为空");
+                        ?? throw new DecisionProtocolException(statusCode, responseBody, "SystemOne 响应反序列化为空");
                 }
                 catch (JsonException ex)
                 {
-                    throw new SystemOneException(
+                    throw new DecisionProtocolException(
                         statusCode,
                         responseBody,
                         $"SystemOne 响应反序列化失败: {ex.Message}",
@@ -84,18 +84,18 @@ internal static class SystemOneHttpHelper
             }
 
             // 非 2xx：直接映射为带状态码与响应体的异常；是否重试由上层装饰器决定
-            throw new SystemOneException(
+            throw new DecisionProtocolException(
                 statusCode,
                 responseBody,
                 $"SystemOne 请求失败: HTTP {statusCode} {response.ReasonPhrase}");
         }
-        catch (SystemOneException)
+        catch (DecisionProtocolException)
         {
             throw;
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            throw new SystemOneException(0, null, $"SystemOne 网络请求失败: {ex.Message}", ex);
+            throw new DecisionProtocolException(0, null, $"SystemOne 网络请求失败: {ex.Message}", ex);
         }
     }
 

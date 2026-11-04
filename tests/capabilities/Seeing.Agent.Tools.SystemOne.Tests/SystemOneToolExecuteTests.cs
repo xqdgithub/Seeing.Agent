@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Abstractions.SystemOne;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Llm;
 using System.Text.Json;
@@ -198,9 +198,9 @@ public class SystemOneToolExecuteTests
     }
 
     [Fact]
-    public async Task SystemOneException_应失败带状态码()
+    public async Task DecisionProtocolException_应失败带状态码()
     {
-        var client = new FakeDecisionClient { Throw = new SystemOneException(429, "rate", "限流") };
+        var client = new FakeDecisionClient { Throw = new DecisionProtocolException(429, "rate", "限流") };
         var (tool, context, _) = Create(SystemOneToolKind.Noul, client);
 
         var result = await tool.ExecuteAsync(

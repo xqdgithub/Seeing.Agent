@@ -1,6 +1,6 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Abstractions.SystemOne;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.SystemOne.Clients;
 using System.Net;
 using System.Text;
@@ -85,7 +85,7 @@ public class SystemOneHttpHelperTests
         var act = () => SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
             http, Config(), TypeSafeProtocol.ModelsPath, call: null, TestContext.Current.CancellationToken);
 
-        var ex = await act.Should().ThrowAsync<SystemOneException>();
+        var ex = await act.Should().ThrowAsync<DecisionProtocolException>();
         ex.Which.StatusCode.Should().Be(429);
         ex.Which.ResponseBody.Should().Be("rate limited");
         handler.RequestCount.Should().Be(1);
@@ -100,7 +100,7 @@ public class SystemOneHttpHelperTests
         var act = () => SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
             http, Config(), TypeSafeProtocol.ModelsPath, call: null, TestContext.Current.CancellationToken);
 
-        var ex = await act.Should().ThrowAsync<SystemOneException>();
+        var ex = await act.Should().ThrowAsync<DecisionProtocolException>();
         ex.Which.StatusCode.Should().Be(529);
         handler.RequestCount.Should().Be(1);
     }
@@ -114,7 +114,7 @@ public class SystemOneHttpHelperTests
         var act = () => SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
             http, Config(), TypeSafeProtocol.ModelsPath, call: null, TestContext.Current.CancellationToken);
 
-        var ex = await act.Should().ThrowAsync<SystemOneException>();
+        var ex = await act.Should().ThrowAsync<DecisionProtocolException>();
         ex.Which.StatusCode.Should().Be(401);
         handler.RequestCount.Should().Be(1);
     }
@@ -128,7 +128,7 @@ public class SystemOneHttpHelperTests
         var act = () => SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
             http, Config(), TypeSafeProtocol.ModelsPath, call: null, TestContext.Current.CancellationToken);
 
-        var ex = await act.Should().ThrowAsync<SystemOneException>();
+        var ex = await act.Should().ThrowAsync<DecisionProtocolException>();
         ex.Which.StatusCode.Should().Be(200);
         ex.Which.ResponseBody.Should().Be("not-json");
         ex.Which.InnerException.Should().BeOfType<JsonException>();
