@@ -87,12 +87,18 @@
                     }
                     else
                     {
-                        @* 切换会话中：不渲染旧会话的消息列表，改渲染骨架占位。
-                           复用窗口实例后旧内容会一直挂着直到新内容就绪（实测 1~1.9s），
-                           用户会误以为卡死；骨架屏给出即时反馈。
-                           仅由 _showSwitchSkeleton 驱动（一次切换只闪一次），不用 IsLoadingSession ——
-                           后者被多入口反复置位会导致同一次切换内多次闪烁。 *@
-                        @if (_showSwitchSkeleton)
+                        @* 切换会话中：骨架覆盖在消息列表之上，而不是替换它。
+                           若替换（@if/else 切换 DOM），MessageList 会被销毁重建，
+                           新的滚动容器 scrollTop 从 0 开始 —— 表现为「先跳到开头再跳到底」。
+                           骨架用绝对定位叠加，MessageList 实例保持不变，滚动位置不受影响。
+                           显示条件由 SessionLoadState 的不变式决定（加载中 且 已有旧内容）。 *@
+                        <MessageList AutoScroll="true"
+                                     Timeline="@Timeline"
+                                     OnToolClick="@OnToolClick"
+                                     CompactionInProgress="@_sync.CompactionInProgress"
+                                     CompactionReasoning="@_sync.CompactionReasoning"
+                                     CompactionProgress="@_sync.CompactionProgress" />
+                        @if (_loadState.ShowSkeleton)
                         {
                             <div class="message-list-skeleton" aria-busy="true" aria-label="正在加载会话">
                                 @for (var i = 0; i < 6; i++)
@@ -107,15 +113,6 @@
                                     </div>
                                 }
                             </div>
-                        }
-                        else
-                        {
-                            <MessageList AutoScroll="true"
-                                         Timeline="@Timeline"
-                                         OnToolClick="@OnToolClick"
-                                         CompactionInProgress="@_sync.CompactionInProgress"
-                                         CompactionReasoning="@_sync.CompactionReasoning"
-                                         CompactionProgress="@_sync.CompactionProgress" />
                         }
                     }
                 </div>
@@ -372,7 +369,6 @@
     private System.Timers.Timer? _retryTimer;
     private string? _boundSessionId;
     private Action<IMessageEvent?>? _onHandlerChangedCallback;
-    private string? _loadedSessionId;
     private string? _parentSessionId;
     private SessionRelation _relation = SessionRelation.None;
     private bool _isAnchor;
@@ -397,15 +393,13 @@
     private Services.SessionSummarySnapshot? _summarySnapshot;
 
     /// <summary>
-    /// 切换会话时的骨架屏标志（仅主窗 Full 模式使用）。
+    /// 会话装载状态（目标会话 / 已装载会话 / 是否加载中 / 是否显示骨架）。
     /// <para>
-    /// 与 <see cref="IsLoadingSession"/> 分开：后者是「正在加载数据」的通用标志，
-    /// 会被多个入口（首次挂载、切换、Summary 加载）反复置位，直接用它驱动骨架
-    /// 会导致同一次切换内多次闪烁。本标志只在「切换分支开始 → 新内容首帧渲染完成」
-    /// 之间为 true，是一次性的。
+    /// 骨架显示条件由状态机内部不变式保证（加载中 且 已有旧内容），
+    /// 不再依赖散落的布尔字段互相牵制。
     /// </para>
     /// </summary>
-    private bool _showSwitchSkeleton;
+    private readonly Services.SessionLoadState _loadState = new();
 
     /// <summary>组件是否已销毁：渲染回调必须据此短路，避免在已销毁组件上排队渲染。</summary>
     private bool _disposed;
@@ -468,32 +462,13 @@
             // 加载命令列表（从后端）
             await LoadCommandsFromBackend();
 
-            // 加载会话（选项就绪后再加载，避免 Select 在 DataSource 为空时渲染）
-            if (!string.IsNullOrEmpty(SessionId))
-            {
-                await LoadSessionByIdAsync(SessionId);
-                _loadedSessionId = SessionId;
-            }
-            else
-            {
-                // 无路由参数时，确保有会话可用（迁移自原 LoadSessionAsync）
-                effectiveSessionId = await LoadRecentOrEmptyAsync();
-            }
-
-            if (!string.IsNullOrEmpty(effectiveSessionId))
-            {
-                // 建立事件流绑定（Router 已订阅父会话流，页面不再自写 await foreach 消费循环）
-                EnsureStreamBinding(effectiveSessionId);
-
-                // 检查是否有正在进行的执行（页面刷新恢复）
-                RestoreExecutionFromOverview(effectiveSessionId);
-            }
+            // 会话装载统一走 EnsureSessionLoadedAsync：与 OnParametersSetAsync 共用同一路径，
+            // 避免两处各写一遍导致重复全量重建（表现为「闪两下」）。
+            effectiveSessionId = await EnsureSessionLoadedAsync(SessionId);
 
             // Subscribe to Budget status updates
             SubscribeToBudgetUpdates();
             SubscribeToSessionEvents();
-
-            Context.SessionId = effectiveSessionId ?? "";
         }
         else
         {
@@ -562,57 +537,77 @@
             await InvokeAsync(StateHasChanged);
         }
 
-        if (!string.IsNullOrEmpty(SessionId) && SessionId != _loadedSessionId)
+        if (!string.IsNullOrEmpty(SessionId) && SessionId != _loadState.LoadedSessionId)
         {
-            // 复用窗口实例切换会话：必须先清空本地执行态，否则新会话会继承旧会话的
-            // IsExecuting / ExecutionStatus / 取消令牌（表现为「空闲会话显示执行中」，
-            // 且点「取消」会停掉上一个会话）。
-            ResetLocalExecutionState();
+            await EnsureSessionLoadedAsync(SessionId);
+        }
+    }
 
-            // 先把「切换中」骨架推给浏览器，再让出一次批处理：
-            // ApplySessionAsync 之后是同步阻塞的（加载 + 全量重建时间线 + 首帧渲染
-            // 全在同一 Dispatcher 批次里），若不先渲染骨架，用户会在整个过程中看到
-            // 上一会话的旧内容僵在那里（实测 1~1.9s 无任何视觉反馈）。
-            //
-            // 用独立的 _showSwitchSkeleton 而非 IsLoadingSession：后者被多个入口反复置位，
-            // 会导致同一次切换内骨架多次闪烁。骨架只在「主窗 + 切换」场景出现。
-            if (ViewMode == Services.SessionWindowMode.Full)
+    /// <summary>
+    /// 会话装载的唯一入口（首次挂载、参数变更、路由切换共用）。
+    /// <para>
+    /// 职责链：状态机判定 → （需要时）渲染骨架 → 装载数据 → 绑定事件流 → 恢复执行态 →
+    /// 重绑预算与命令列表。骨架的显示/撤下完全由 <see cref="Services.SessionLoadState"/>
+    /// 的不变式驱动，调用方无需任何额外开关。
+    /// </para>
+    /// <para>
+    /// 幂等：目标会话与已装载一致时直接返回，不重复全量重建。
+    /// </para>
+    /// </summary>
+    /// <returns>实际生效的会话 Id（无会话时为 null）。</returns>
+    private async Task<string?> EnsureSessionLoadedAsync(string? sessionId)
+    {
+        // 无显式会话 Id（无路由参数模式）：沿用「取最近会话」的旧行为
+        if (string.IsNullOrEmpty(sessionId))
+            return await LoadRecentOrEmptyAsync();
+
+        if (!_loadState.Begin(sessionId))
+            return _loadState.LoadedSessionId;
+
+        // 切换会话：必须先清空本地执行态，否则新会话会继承旧会话的
+        // IsExecuting / ExecutionStatus / 取消令牌（表现为「空闲会话显示执行中」，
+        // 且点「取消」会停掉上一个会话）。
+        ResetLocalExecutionState();
+
+        try
+        {
+            // 骨架：状态机保证「仅在已有旧内容时才显示」，首次进入不会闪
+            if (ViewMode == Services.SessionWindowMode.Full && _loadState.ShowSkeleton)
             {
-                _showSwitchSkeleton = true;
                 await InvokeAsync(StateHasChanged);
                 await Task.Yield();
             }
 
-            try
-            {
-                EnsureSyncForSession(SessionId);
-                await ApplySessionAsync(SessionId);
-                _loadedSessionId = SessionId;
+            EnsureSyncForSession(sessionId);
+            await ApplySessionAsync(sessionId);
 
-                // 切换到正在执行的会话（含子会话）：重新绑定事件流（Router 已订阅，无需自起循环）
-                // 并恢复执行状态，实时渲染最新消息
-                EnsureStreamBinding(SessionId);
-                RestoreExecutionFromOverview(SessionId);
+            // 装载成功：状态机记为已装载并退出加载态
+            _loadState.Complete(sessionId);
 
-                if (ViewMode == Services.SessionWindowMode.Full)
-                {
-                    // 以下 3 项原先只在本窗首次挂载时执行；复用窗口时必须补上，否则 UI 指向旧会话：
-                    Context.SessionId = SessionId;      // 工具栏文件面板等按它定位会话
-                    SubscribeToBudgetUpdates();          // 预算徽标重绑到新会话
-                    await LoadCommandsFromBackend();     // 命令列表按新 Agent 的 Runtime 重新过滤
-                }
-            }
-            finally
+            // 事件流绑定与执行态恢复（Router 已订阅，无需自起循环）
+            EnsureStreamBinding(sessionId);
+            RestoreExecutionFromOverview(sessionId);
+
+            if (ViewMode == Services.SessionWindowMode.Full)
             {
-                // 无论成功还是异常/提前 return，都必须撤下骨架，否则界面会永久卡在占位状态。
-                // 放在 finally（而非 try 末尾）正是为了覆盖 ApplySessionAsync 的早退分支。
-                if (_showSwitchSkeleton)
-                {
-                    _showSwitchSkeleton = false;
-                    // 显式渲染一次：撤骨架本身也是可见变化，不能等下一次事件驱动。
-                    await InvokeAsync(StateHasChanged);
-                }
+                Context.SessionId = sessionId;
+                SubscribeToBudgetUpdates();
+                await LoadCommandsFromBackend();
             }
+
+            return sessionId;
+        }
+        catch
+        {
+            // 失败：退出加载态但不记为已装载，下次参数变更会重试
+            _loadState.Fail(sessionId);
+            throw;
+        }
+        finally
+        {
+            // 无论成败都要让骨架撤下（状态机已退出加载态，此处只需触发一次渲染）
+            if (ViewMode == Services.SessionWindowMode.Full)
+                await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -665,7 +660,6 @@
         {
             var id = sessions.First().Id;
             await LoadSessionByIdAsync(id);
-            _loadedSessionId = id;
             return id;
         }
 
@@ -871,7 +865,6 @@
         }
 
         SessionState.SetSession(sessionData);
-        _loadedSessionId = SessionId;
 
         // 组快照一次拿全：成员关系、锚点、父会话都从同一份成员表推导，
         // 避免额外一次 GetParentAsync 往返（切换时 N 个 Summary 窗口会各付一次）。
@@ -1144,7 +1137,7 @@
     }
 
     /// <summary>窗口实际绑定的会话 ID（无路由参数时经 LoadRecentOrEmptyAsync 解析为真实 id）</summary>
-    private string EffectiveSessionId => !string.IsNullOrEmpty(SessionId) ? SessionId : (_loadedSessionId ?? "");
+    private string EffectiveSessionId => !string.IsNullOrEmpty(SessionId) ? SessionId : (_loadState.LoadedSessionId ?? "");
 
     /// <summary>Summary 模式：是否为聚合器主会话（用于侧栏卡片主/子会话样式区分）</summary>
     private bool IsMainSession =>
@@ -1198,7 +1191,7 @@
     {
         if (!string.IsNullOrEmpty(AggregatorSessionId))
             return AggregatorSessionId;
-        return _loadedSessionId ?? SessionId;
+        return _loadState.LoadedSessionId ?? SessionId;
     }
 
     /// <summary>

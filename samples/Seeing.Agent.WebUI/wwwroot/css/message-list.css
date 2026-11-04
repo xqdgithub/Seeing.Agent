@@ -5,18 +5,22 @@
 /*
  * 会话切换骨架屏
  *
- * 复用窗口实例后，切换期间旧会话内容会一直挂着直到新内容就绪（实测 1~1.9s，
- * 取决于消息条数与浏览器绘制成本）。骨架屏提供即时视觉反馈，避免「点了没反应」。
+ * 叠加在 MessageList 之上（绝对定位），而不是替换它：
+ * 替换会销毁重建 MessageList 的 DOM，新滚动容器的 scrollTop 从 0 开始，
+ * 表现为「先跳到开头、再跳到底」的两次跳动。叠加层不影响滚动容器的生命周期。
  *
  * 动画只用 opacity（合成层属性），不触发布局与重绘，避免加重切换期的浏览器负担。
  */
 .message-list-skeleton {
-    flex: 1;
+    position: absolute;
+    inset: 0;
+    z-index: 5;
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
     padding: var(--space-4);
     overflow: hidden;
+    background: var(--color-bg);
 }
 
 .message-skeleton-item {

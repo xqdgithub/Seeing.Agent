@@ -650,14 +650,22 @@
     /// <summary>点击侧栏卡片：经组管理器切换组 active（URL 不变，组事件回流刷新窗口）</summary>
     private async Task OnTileClick(string sessionId)
     {
+        if (string.IsNullOrEmpty(sessionId)
+            || string.Equals(sessionId, _activeSessionId, StringComparison.Ordinal))
+            return;
+
+        // 乐观更新：先切本地 active 并立即渲染，再走组管理器的异步切换。
+        // SetActiveAsync 涉及组锁与落盘，若等它返回才渲染，用户点击后会盯着旧内容几百毫秒。
+        // 本地更新后 SessionWindow 立刻收到新 SessionId，装载状态机随即进入「加载中」并显示骨架。
         _activeSessionId = sessionId;
         RebuildSidebar();
         if (_currentGroup is not null)
             _relationModel = BuildRelationModel(_currentGroup);
+        await InvokeAsync(StateHasChanged);
+
         var groupId = _registry?.GroupId;
         if (!string.IsNullOrEmpty(groupId))
             await GroupManager.SetActiveAsync(groupId, sessionId);
-        await InvokeAsync(StateHasChanged);
     }
 
     protected override void OnAfterRender(bool firstRender)
