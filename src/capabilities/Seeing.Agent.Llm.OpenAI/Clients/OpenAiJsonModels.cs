@@ -568,3 +568,30 @@ internal class EmbeddingApiItem
 }
 
 #endregion
+
+#region Audio Speech 请求/响应
+
+/// <summary>TTS 请求体（POST {baseUrl}/audio/speech，spec §7.10）。响应体是原始音频字节，无 JSON 模型。</summary>
+internal class SpeechSynthesisApiRequest
+{
+    [JsonPropertyName("model")]
+    public string Model { get; set; } = "";
+
+    /// <summary>待合成文本（OpenAI 协议字段名为 input）。</summary>
+    [JsonPropertyName("input")]
+    public string Input { get; set; } = "";
+
+    [JsonPropertyName("voice")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Voice { get; set; }
+
+    [JsonPropertyName("response_format")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ResponseFormat { get; set; }
+
+    [JsonPropertyName("speed")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? Speed { get; set; }
+}
+
+#endregion
