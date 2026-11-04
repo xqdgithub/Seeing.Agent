@@ -19,7 +19,7 @@ using Seeing.Agent.Memory.Extensions;
 using Seeing.Agent.Reflection.Extensions;
 using Seeing.Agent.Scheduler.Extensions;
 using Seeing.Agent.Skills;
-using Seeing.Agent.SystemOne.Extensions;
+using Seeing.Agent.Llm.SystemOne.Extensions;
 using Seeing.Agent.TokenBudget.Extensions;
 using Seeing.Agent.Tools.Basic;
 using Seeing.Agent.Tools.ChannelMessaging;
