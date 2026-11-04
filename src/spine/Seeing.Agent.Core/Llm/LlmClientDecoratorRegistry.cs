@@ -35,8 +35,10 @@ public sealed class LlmClientDecoratorRegistry : ILlmClientDecoratorRegistry
 
     /// <summary>
     /// 按 Order 升序将全部装饰器依次包裹到客户端外层，返回装饰后的客户端。
+    /// <para>类型是 <see cref="ILlmCapabilityClient"/>（spec §7.7）：八个能力端口都走同一出口，
+    /// 具体端口形态由各装饰器内部按 <c>is</c> 分派决定。</para>
     /// </summary>
-    public ILlmClient Apply(ILlmClient client, ProviderConfig config)
+    public ILlmCapabilityClient Apply(ILlmCapabilityClient client, ProviderConfig config)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(config);
