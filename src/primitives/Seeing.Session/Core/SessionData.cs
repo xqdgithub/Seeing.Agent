@@ -98,11 +98,25 @@ namespace Seeing.Session.Core
         private List<SessionMessage> _messages = new();
         private readonly object _messagesGate = new();
 
+        /// <summary>消息列表快照缓存：任何容器写入后失效（<see cref="InvalidateMessagesCache"/>）。</summary>
+        private IReadOnlyList<SessionMessage>? _messagesSnapshot;
+
+        /// <summary>消息 Id → 消息索引（锁内惰性构建，任何容器写入后失效）。</summary>
+        private Dictionary<string, SessionMessage>? _messagesById;
+
+        /// <summary>失效快照与索引（必须在 <see cref="_messagesGate"/> 内调用）。</summary>
+        private void InvalidateMessagesCache()
+        {
+            _messagesSnapshot = null;
+            _messagesById = null;
+        }
+
         /// <summary>
-        /// 消息列表（锁内快照）。写入请使用 <see cref="AddMessage"/> 等统一编辑 API，
-        /// 它们会为消息补写 <see cref="SessionMessage.SessionId"/> 归属。
-        /// <para>返回快照而非活列表：调用方（Timer 落盘、UI 遍历等）持有后不会与并发
-        /// <see cref="AddMessage"/> 竞争同一 List，避免枚举/拷贝异常。需要观察后续变化请重新读取。</para>
+        /// 消息列表（写时失效的锁内快照）。
+        /// <para><b>只读视图</b>：同一版本内多次读取返回同一实例，调用方不得 Cast 为 <see cref="List{T}"/>
+        /// 或就地修改 —— 任何修改都不会经过 <see cref="InvalidateMessagesCache"/>，会污染会话真相。
+        /// 写入请使用 <see cref="AddMessage"/> 等统一编辑 API。</para>
+        /// <para>返回值不是活列表：持有后不会与并发 <see cref="AddMessage"/> 竞争枚举，但也不会观察到后续变化。</para>
         /// <para>保留 public setter：System.Text.Json 反序列化旧会话文件需要。</para>
         /// </summary>
         public IReadOnlyList<SessionMessage> Messages
@@ -110,7 +124,7 @@ namespace Seeing.Session.Core
             get
             {
                 lock (_messagesGate)
-                    return _messages.ToList();
+                    return _messagesSnapshot ??= _messages.ToList();
             }
             set
             {
@@ -119,7 +133,40 @@ namespace Seeing.Session.Core
                     _messages = value is List<SessionMessage> list
                         ? list
                         : value?.ToList() ?? new List<SessionMessage>();
+                    InvalidateMessagesCache();
                 }
+            }
+        }
+
+        /// <summary>
+        /// 按消息 Id 取会话消息（锁内惰性建索引，任何容器写入后失效）。
+        /// <para><b>注意</b>：索引只跟踪「容器成员」，不感知元素 Id 的后续改写。
+        /// 需要按 Id 查找前，应确保消息 Id 已稳定（不要先建索引再补写 Id）。</para>
+        /// </summary>
+        public bool TryGetMessage(string? messageId, out SessionMessage message)
+        {
+            message = null!;
+            if (string.IsNullOrEmpty(messageId))
+                return false;
+
+            lock (_messagesGate)
+            {
+                if (_messagesById is null)
+                {
+                    var index = new Dictionary<string, SessionMessage>(_messages.Count, StringComparer.Ordinal);
+                    foreach (var m in _messages)
+                    {
+                        if (!string.IsNullOrEmpty(m.Id))
+                            index[m.Id] = m;
+                    }
+                    _messagesById = index;
+                }
+
+                if (!_messagesById.TryGetValue(messageId, out var found))
+                    return false;
+
+                message = found;
+                return true;
             }
         }
 
@@ -130,13 +177,13 @@ namespace Seeing.Session.Core
         /// 无需额外标记——位置约束天然可靠，不受分支共享、旧数据缺失标记等影响。</para>
         /// <para>无摘要时（未压缩过或摘要被移除）返回全部消息。</para>
         /// <para>完整历史（含已压缩部分）仍通过 <see cref="Messages"/> 展示。</para>
+        /// <para><b>返回值是独立副本</b>，调用方可安全持有与修改。</para>
         /// </summary>
         public List<SessionMessage> GetActiveMessages()
         {
-            // 锁内快照：避免与并发 AddMessage 竞态（List 构造走 CopyTo，无版本检查但仍可能因增长抛 ArgumentException）
-            List<SessionMessage> snapshot;
-            lock (_messagesGate)
-                snapshot = new List<SessionMessage>(_messages);
+            // 基于缓存的 Messages 快照遍历：避免为「找最后一个摘要」额外复制一次全表。
+            // 注意返回的仍是独立副本（本方法对外承诺可变 List，与 Messages 的只读视图语义不同）。
+            var snapshot = Messages;
 
             var lastSummaryIndex = -1;
             for (var i = snapshot.Count - 1; i >= 0; i--)
@@ -150,7 +197,7 @@ namespace Seeing.Session.Core
 
             if (lastSummaryIndex < 0)
             {
-                return snapshot;
+                return new List<SessionMessage>(snapshot);
             }
 
             return snapshot.Skip(lastSummaryIndex).ToList();
@@ -259,7 +306,10 @@ namespace Seeing.Session.Core
             if (string.IsNullOrEmpty(message.SessionId))
                 message.SessionId = Id;
             lock (_messagesGate)
+            {
                 _messages.Add(message);
+                InvalidateMessagesCache();
+            }
             UpdatedAt = DateTime.Now;
             LastActiveAt = DateTime.Now;
         }
@@ -281,6 +331,8 @@ namespace Seeing.Session.Core
                     _messages.Add(message);
                     added = true;
                 }
+                if (added)
+                    InvalidateMessagesCache();
             }
 
             if (!added)
@@ -298,7 +350,10 @@ namespace Seeing.Session.Core
             if (message == null) throw new ArgumentNullException(nameof(message));
             message.SessionId ??= Id;
             lock (_messagesGate)
+            {
                 _messages.Insert(index, message);
+                InvalidateMessagesCache();
+            }
             UpdatedAt = DateTime.Now;
             LastActiveAt = DateTime.Now;
         }
@@ -325,6 +380,7 @@ namespace Seeing.Session.Core
             {
                 if (!_messages.Remove(message))
                     return false;
+                InvalidateMessagesCache();
             }
 
             UpdatedAt = DateTime.Now;
@@ -346,6 +402,7 @@ namespace Seeing.Session.Core
                         continue;
 
                     _messages.RemoveAt(i);
+                    InvalidateMessagesCache();
                     UpdatedAt = DateTime.Now;
                     return true;
                 }
@@ -363,7 +420,11 @@ namespace Seeing.Session.Core
 
             int removed;
             lock (_messagesGate)
+            {
                 removed = _messages.RemoveAll(match);
+                if (removed > 0)
+                    InvalidateMessagesCache();
+            }
             if (removed > 0)
                 UpdatedAt = DateTime.Now;
 
@@ -390,6 +451,7 @@ namespace Seeing.Session.Core
                     message.SessionId = Id;
                     _messages.Add(message);
                 }
+                InvalidateMessagesCache();
             }
 
             UpdatedAt = DateTime.Now;
@@ -430,7 +492,10 @@ namespace Seeing.Session.Core
         public void ClearMessages()
         {
             lock (_messagesGate)
+            {
                 _messages.Clear();
+                InvalidateMessagesCache();
+            }
             // 清空消息 = 新 epoch：上下文基线必须失效重建
             Metadata.Remove(SessionMetadataKeys.ContextBaseline);
             // 清空会话应同时去掉运行时上下文（如 todos），否则下次首条消息会因未完成 todo 再续一轮

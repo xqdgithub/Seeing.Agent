@@ -321,12 +321,12 @@ namespace Seeing.Agent.WebUI.Services
                 return null;
 
             if (_currentAssistantMessage != null &&
-                !string.IsNullOrEmpty(_currentAssistantMessage.Id))
+                !string.IsNullOrEmpty(_currentAssistantMessage.Id) &&
+                cached.TryGetMessage(_currentAssistantMessage.Id, out var same) &&
+                string.Equals(same.Role, "assistant", StringComparison.OrdinalIgnoreCase) &&
+                !ReferenceEquals(same, _currentAssistantMessage))
             {
-                var same = cached.Messages.FirstOrDefault(m =>
-                    m.Id == _currentAssistantMessage.Id && m.Role == "assistant");
-                if (same != null && !ReferenceEquals(same, _currentAssistantMessage))
-                    _currentAssistantMessage = same;
+                _currentAssistantMessage = same;
             }
 
             return cached;
