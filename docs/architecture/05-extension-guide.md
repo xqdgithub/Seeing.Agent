@@ -47,7 +47,7 @@
 | 用途 | 载体 | 说明 |
 |------|------|------|
 | 静态连接头（UA 等） | `ProviderConfig.Headers` | 客户端创建时写入 DefaultRequestHeaders |
-| 通用、多订阅、全 provider 头 | `chat.headers` Hook → `LlmCallContext.ExtraHeaders` | 编排层；流式/非流式均应用 |
+| 通用、多订阅、全 provider 头 | `llm.headers` Hook → `LlmCallContext.ExtraHeaders` | 编排层；流式/非流式均应用 |
 | provider 专属出站塑形 | `ILlmCallInterceptor`（`AppliesTo`） | 如 OpenCode `x-opencode-session`；协议客户端**每次发送前** `Resolve`，经 `OutboundPipeline` 写入本次请求（非 Create 快照） |
 | 横切（重试） | `ILlmClientDecorator` / `RetryLlmClientDecorator` | 镜像工具装饰器；工厂 Create 后包装 |
 | 调用期身份 | `ILlmClient.Complete*(request, LlmCallContext? call, …)` | **不**塞进 `ChatRequest` |

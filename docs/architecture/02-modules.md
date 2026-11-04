@@ -47,8 +47,8 @@
 | `Seeing.Agent.Comms` | `comms` | 渠道目录、出站投递、适配器注册表；`ChannelDeliveryScheduleDispatcher` 只按 `SessionData.ChannelRoute` 出站 |
 | `Seeing.Agent.Tools.ChannelMessaging` | `channel-messaging` | `send_channel_message`（文本 + 工作区附件）/ 列用户 / 列对话；`DependsOn: io.local`；无宿主时 no-op sink |
 | `Seeing.Agent.Memory` | `memory` | 记忆 |
-| `Seeing.Agent.SystemOne` | `systemone` | SystemOne 集成（ReloadHandler 挂接式；provider owner=systemone） |
-| `Seeing.Agent.Tools.SystemOne` | `systemone.tools` | SystemOne 工具；`DependsOn: systemone` |
+| `Seeing.Agent.Llm.SystemOne` | `llm.systemone` | SystemOne（TypeSafe/Jev）decision 能力；只登记 `ILlmClientFactory`（协议 `typesafe`），provider 走 `Providers.typesafe` 配置驱动 |
+| `Seeing.Agent.Tools.SystemOne` | `llm.systemone.tools` | SystemOne 工具；`DependsOn: llm.systemone`；经 `ILlmInvoker` 调用 |
 | `Seeing.Agent.Acp` | `acp` | ACP 执行实现 |
 | `Seeing.Agent.TokenBudget` | — | Token 预算 Hook（可无模块 id；经扩展方法挂 Hook） |
 | `Seeing.Provider.DeepSeek`（`plugs/providers/`） | `provider.deepseek` | DeepSeek 网关 Provider；`DependsOn: llm.openai` |
@@ -62,7 +62,7 @@
 
 **Support 包注意：** Hosting 可引用 `Tools.Support` 以复用 Task/Todo 基类；**不得**因此再引用 `Tools.FileSystem` 等具体能力包。
 
-**ACP Hook 面差异（明示）：** ACP 执行路径（`AcpPassthroughExecutor`）**不触发 chat 级 Hook**（如 `chat.on_error`）——Native 路径的横切能力在 ACP 路径缺位；取消路径已对齐 Native（产出 `LoopCancelledEvent`）。属已知差异，不做行为增强，详见 [`08 §7.3`](08-permission-authorization-release-notes.md)。
+**ACP Hook 面差异（明示）：** ACP 执行路径（`AcpPassthroughExecutor`）**不触发 chat 级 Hook**（如 `llm.on_error`）——Native 路径的横切能力在 ACP 路径缺位；取消路径已对齐 Native（产出 `LoopCancelledEvent`）。属已知差异，不做行为增强，详见 [`08 §7.3`](08-permission-authorization-release-notes.md)。
 
 ## 4. Gateway 族（`src/gateway/`）
 

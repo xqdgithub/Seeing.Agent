@@ -15,7 +15,7 @@ public sealed record AcpExecutionOverrides(string? ModelId, string? ModeId);
 public static class AcpExecutionContextBuilder
 {
     /// <summary>
-    /// 解析 ACP 透传使用的 model / mode（不回退 Native DefaultModel）。
+    /// 解析 ACP 透传使用的 model / mode（不回退 Native 默认模型）。
     /// </summary>
     public static AcpExecutionOverrides Resolve(
         IModelManager modelManager,

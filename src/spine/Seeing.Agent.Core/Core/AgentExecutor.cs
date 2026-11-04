@@ -1147,8 +1147,8 @@ public class AgentExecutor : IAgentExecutor
             return resolved;
 
         throw new InvalidOperationException(
-            $"Agent '{agent.Name}' 未配置模型，且未设置全局默认模型 (SeeingAgent:DefaultModel)。" +
-            $"请在 Agent 定义中设置 Model，或在配置中设置 DefaultModel。");
+            $"Agent '{agent.Name}' 未配置模型，且未设置 chat 能力的全局默认模型（SeeingAgent:DefaultModels.chat）。" +
+            $"请在 Agent 定义中设置 Model，或在配置中设置 DefaultModels[\"chat\"]。");
     }
 
     /// <summary>

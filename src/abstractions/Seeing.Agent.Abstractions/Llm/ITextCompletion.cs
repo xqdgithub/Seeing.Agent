@@ -10,7 +10,7 @@ public interface ITextCompletion
     /// </summary>
     /// <param name="systemPrompt">系统提示</param>
     /// <param name="userPrompt">用户提示</param>
-    /// <param name="model">模型 ID；空则使用配置的 DefaultModel</param>
+    /// <param name="model">模型 ID；空则使用 chat 能力的全局默认模型（<c>DefaultModels.chat</c>，未配则抛错）</param>
     /// <param name="maxTokens">生成上限；null 则使用实现默认值（当前 2048）</param>
     /// <param name="ct">取消令牌</param>
     Task<string> CompleteAsync(
@@ -25,7 +25,7 @@ public interface ITextCompletion
     /// </summary>
     /// <param name="systemPrompt">系统提示</param>
     /// <param name="messages">用户提示</param>
-    /// <param name="model">模型 ID；空则使用配置的 DefaultModel</param>
+    /// <param name="model">模型 ID；空则使用 chat 能力的全局默认模型（<c>DefaultModels.chat</c>，未配则抛错）</param>
     /// <param name="maxTokens">生成上限；null 则使用实现默认值（当前 2048）</param>
     /// <param name="ct">取消令牌</param>
     Task<string> CompleteAsync(
@@ -40,7 +40,7 @@ public interface ITextCompletion
     /// </summary>
     /// <param name="systemPrompt">系统提示</param>
     /// <param name="messages">用户提示</param>
-    /// <param name="model">模型 ID；空则使用配置的 DefaultModel</param>
+    /// <param name="model">模型 ID；空则使用 chat 能力的全局默认模型（<c>DefaultModels.chat</c>，未配则抛错）</param>
     /// <param name="maxTokens">生成上限；null 则使用实现默认值（当前 2048）</param>
     /// <param name="ct">取消令牌</param>
     IAsyncEnumerable<StreamUpdate> StreamCompleteAsync(

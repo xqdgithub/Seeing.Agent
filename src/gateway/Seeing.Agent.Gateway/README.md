@@ -34,7 +34,7 @@ await host.RunAsync();
 
 ## 配置（`.seeing/seeing.json`）
 
-Gateway 节仅配置**服务行为**；默认 Agent / Model 使用根级 `DefaultAgent` / `DefaultModel`（ACP / Native 由 Agent 的 `Runtime` 自动分流）。
+Gateway 节仅配置**服务行为**；默认 Agent / Model 使用根级 `DefaultAgent` / `DefaultModels.chat`（ACP / Native 由 Agent 的 `Runtime` 自动分流）。
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
