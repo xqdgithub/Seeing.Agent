@@ -3,7 +3,10 @@
 @using Seeing.Session.Core
 @using Seeing.Agent.WebUI.Services
 
-@if (Model is not null && Model.HasRelatedSessions)
+@* 顶部关系条只在存在交接链时渲染。
+   交接链的链式顺序（前任 → 锚点）是它不可替代的价值；纯子会话/纯分叉已由右侧侧栏
+   完整覆盖（成员卡片 + 卡片内操作），不再重复占用垂直空间，也不再提供抽屉入口。 *@
+@if (Model is not null && Model.HasHandoffChain)
 {
     <div class="session-relation-bar" data-testid="session-relation-bar">
         @if (Model.BarOverflow > 0)
@@ -38,7 +41,7 @@
         <div class="session-relation-bar__spacer"></div>
         <div role="button" tabindex="0"
                 class="relation-chip relation-chip--drawer"
-                title="打开关系抽屉"
+                title="打开关系抽屉（交接链详情）"
                 @onclick="OpenDrawerAsync">
             关系 ▸
         </div>

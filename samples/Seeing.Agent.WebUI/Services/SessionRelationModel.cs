@@ -79,8 +79,18 @@ public sealed class RelationTreeModel
     public IReadOnlyList<RelationRow> Rows { get; init; } = Array.Empty<RelationRow>();
 
     /// <summary>
-    /// 是否存在需要展示的关系（主线历史 &gt; 1 段，或存在派生/子会话）。
-    /// 单一独立会话时为 false，顶部关系条不渲染。
+    /// 是否存在需要顶部关系条展示的关系。
+    /// <para>
+    /// **仅交接链**（主线历史 &gt; 1 段）才在顶部展示：链式顺序是关系条不可替代的价值。
+    /// 纯子会话 / 纯分叉场景已由右侧侧栏分区完整覆盖（成员卡片 + 计数 + 抽屉入口），
+    /// 顶部条只会重复同一批信息并挤占垂直空间，故不再展示。
+    /// </para>
+    /// </summary>
+    public bool HasHandoffChain => MainLine.Count > 1;
+
+    /// <summary>
+    /// 是否存在任意关系（主线历史 &gt; 1 段，或存在派生/子会话）。
+    /// <para>用于关系抽屉的可用性判断；顶部关系条请用 <see cref="HasHandoffChain"/>。</para>
     /// </summary>
     public bool HasRelatedSessions => MainLine.Count > 1 || DerivedCount > 0 || ChildCount > 0;
 

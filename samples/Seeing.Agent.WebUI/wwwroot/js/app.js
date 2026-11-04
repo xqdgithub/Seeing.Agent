@@ -551,6 +551,20 @@ window.bashTerminalIsNearBottom = bashTerminalIsNearBottom;
 window.bashTerminalStickBottom = bashTerminalStickBottom;
 
 /**
+ * 主动让当前焦点元素失焦。
+ * 用于「hover 才显现的操作按钮」场景：点过按钮后焦点会留在按钮上，
+ * 导致按钮组持续显示（粘住）。Razor 里没有直接失焦的手段，需要走这里。
+ */
+function blurActiveElement() {
+    const active = document.activeElement;
+    if (active && typeof active.blur === 'function') {
+        active.blur();
+    }
+}
+
+window.blurActiveElement = blurActiveElement;
+
+/**
  * 检查是否应该自动滚动
  */
 function shouldAutoScroll() {

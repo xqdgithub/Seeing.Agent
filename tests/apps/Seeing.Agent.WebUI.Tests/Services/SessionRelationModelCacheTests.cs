@@ -87,4 +87,46 @@ public class SessionRelationModelCacheTests
                 new SidebarEntry("a", "A", SessionRelation.None, true, false, null, null, false, 2),
                 new SidebarEntry("b", "B", SessionRelation.Child, false, false, "a", null, false, 3)])
             .Sum(s => s.PendingPermissionTotal).Should().Be(5);
+
+    /// <summary>
+    /// 顶部关系条只在存在交接链时渲染：纯子会话/纯分叉交给侧栏，避免重复信息占垂直空间。
+    /// </summary>
+    [Fact]
+    public void HasHandoffChain_SingleAnchorWithChildren_ShouldBeFalse()
+    {
+        var model = SampleModel(); // 1 锚点 + 2 子会话
+
+        model.HasHandoffChain.Should().BeFalse("无交接链，顶部条应让位给侧栏");
+        model.HasRelatedSessions.Should().BeTrue("仍有关系，需要抽屉入口");
+    }
+
+    [Fact]
+    public void HasHandoffChain_WithHandoffChain_ShouldBeTrue()
+    {
+        var model = RelationTreeModel.Build(FiveHandoffChain());
+
+        model.HasHandoffChain.Should().BeTrue("交接链的链式顺序是顶部条不可替代的价值");
+    }
+
+    [Fact]
+    public void HasHandoffChain_LoneSession_ShouldBeFalse()
+    {
+        var model = RelationTreeModel.Build(new[] { Node("a", SessionRelation.None, isAnchor: true) });
+
+        model.HasHandoffChain.Should().BeFalse();
+        model.HasRelatedSessions.Should().BeFalse("单一独立会话无任何关系");
+    }
+
+    [Fact]
+    public void HasHandoffChain_DerivedOnly_ShouldBeFalse()
+    {
+        var model = RelationTreeModel.Build(new[]
+        {
+            Node("a", SessionRelation.None, isAnchor: true),
+            Node("b", SessionRelation.Fork, isAnchor: false, parent: "a"),
+        });
+
+        model.HasHandoffChain.Should().BeFalse("纯分叉不算交接链");
+        model.HasRelatedSessions.Should().BeTrue();
+    }
 }

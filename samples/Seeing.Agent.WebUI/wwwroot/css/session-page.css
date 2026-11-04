@@ -200,6 +200,70 @@
     flex-shrink: 0;
 }
 
+/*
+ * 侧栏条目操作（重命名 / 新标签）
+ *
+ * 低频操作，尽量不打扰：
+ *   - 绝对定位浮在卡片右上角，不参与布局（卡片尺寸与位置完全不变）；
+ *   - 默认 opacity: 0 且 pointer-events: none（不可见也不可误触）；
+ *   - hover / 键盘聚焦时才淡入，且浮在卡片内容之上而非挤压它。
+ * 点按钮用 stopPropagation，不会触发卡片的「切换 active」。
+ */
+.session-side-entry {
+    position: relative;
+    display: flex;
+    width: 100%;
+    min-width: 0;
+}
+
+.session-side-entry__actions {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+    z-index: 2;
+}
+
+/*
+ * 显示条件：
+ *   :hover                —— 鼠标在卡片上
+ *   :has(:focus-visible)  —— 键盘 Tab 聚焦（可访问性）
+ * 不用 :focus-within：它会匹配鼠标点击后的焦点，导致点过一次按钮就永久显示（"粘住"）。
+ */
+.session-side-entry:hover .session-side-entry__actions,
+.session-side-entry:has(:focus-visible) .session-side-entry__actions {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.session-side-entry__action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm, 4px);
+    /* 半透明背景：既遮挡卡片文字保证图标可读，又不显得突兀。
+       先给纯色降级，再用 color-mix 覆盖（不支持的浏览器忽略第二行）。 */
+    background: var(--color-bg);
+    background: color-mix(in srgb, var(--color-bg) 88%, transparent);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    font-size: 11px;
+    transition: color 0.12s ease, background 0.12s ease;
+}
+
+.session-side-entry__action:hover {
+    color: var(--color-primary);
+    background: var(--color-bg-secondary, #f5f5f5);
+}
+
 .session-side-section__count,
 .conference-side-section__count {
     font-weight: 400;

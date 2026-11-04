@@ -161,15 +161,38 @@
                         @foreach (var entry in sec.Entries)
                         {
                             <ErrorBoundary>
-                                <Badge Count="@entry.PendingPermissions" Style="width: 100%;">
-                                    <SessionWindow @key="@entry.SessionId"
-                                                   SessionId="@entry.SessionId"
-                                                   ViewMode="Services.SessionWindowMode.Summary"
-                                                   AggregatorSessionId="@_mainSessionId"
-                                                   GlobalSessionState="@GlobalSessionState"
-                                                   OnClick="@OnTileClick"
-                                                   OnExecutionStateChanged="@OnExecutionStateChanged" />
-                                </Badge>
+                                <div class="session-side-entry">
+                                    <Badge Count="@entry.PendingPermissions" Style="width: 100%;">
+                                        <SessionWindow @key="@entry.SessionId"
+                                                       SessionId="@entry.SessionId"
+                                                       ViewMode="Services.SessionWindowMode.Summary"
+                                                       AggregatorSessionId="@_mainSessionId"
+                                                       GlobalSessionState="@GlobalSessionState"
+                                                       OnClick="@OnTileClick"
+                                                       OnExecutionStateChanged="@OnExecutionStateChanged" />
+                                    </Badge>
+                                    @* 条目操作：绝对定位浮在卡片右上角，默认透明不占布局；
+                                       hover / 键盘聚焦时淡入。stopPropagation 保证不触发卡片的「切换 active」。
+                                       点击后主动失焦：否则焦点留在按钮上，按钮组会一直显示（粘住）。 *@
+                                    <div class="session-side-entry__actions">
+                                        <button type="button"
+                                                class="session-side-entry__action"
+                                                title="重命名"
+                                                aria-label="重命名"
+                                                @onclick="() => RenameTileAsync(entry.SessionId)"
+                                                @onclick:stopPropagation="true">
+                                            <Icon Type="@IconType.Outline.Edit" />
+                                        </button>
+                                        <button type="button"
+                                                class="session-side-entry__action"
+                                                title="在新标签打开"
+                                                aria-label="在新标签打开"
+                                                @onclick="() => OpenTileInNewTab(entry.SessionId)"
+                                                @onclick:stopPropagation="true">
+                                            <Icon Type="@IconType.Outline.Link" />
+                                        </button>
+                                    </div>
+                                </div>
                             </ErrorBoundary>
                         }
                     </div>
@@ -498,6 +521,45 @@
     }
 
     private void OpenRelationDrawer() => _relationDrawerOpen = true;
+
+    /// <summary>重命名侧栏条目：先失焦再开弹窗，避免操作按钮因残留焦点而持续显示。</summary>
+    private async Task RenameTileAsync(string sessionId)
+    {
+        await BlurActiveElementAsync();
+        OpenRename(sessionId);
+    }
+
+    /// <summary>在新标签打开指定会话。</summary>
+    private async Task OpenTileInNewTab(string sessionId)
+    {
+        if (string.IsNullOrEmpty(sessionId))
+            return;
+
+        await BlurActiveElementAsync();
+
+        try
+        {
+            await JS.InvokeVoidAsync("open", $"/session/{sessionId}", "_blank");
+        }
+        catch (Exception ex)
+        {
+            // JS 互操作在 circuit 断开时会抛错；不影响主流程
+            MessageService.Error($"打开新标签失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>主动失焦（失败不影响主流程：多数场景 CSS 的 :hover 规则已足够）。</summary>
+    private async Task BlurActiveElementAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("blurActiveElement");
+        }
+        catch
+        {
+            // JS 互操作不可用（circuit 断开 / 尚未初始化）时忽略
+        }
+    }
 
     /// <summary>关系抽屉节点操作：切换/重命名/新标签/删除（删除确认已在抽屉内完成）。</summary>
     private async Task OnRelationNodeAction((string SessionId, RelationNodeAction Action) action)
