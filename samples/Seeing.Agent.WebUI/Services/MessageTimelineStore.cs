@@ -119,7 +119,8 @@ public sealed class MessageTimelineStore
                 {
                     existingTurn.Turn!.Messages.Add(vm);
                     existingTurn.Turn.IsComplete = existingTurn.Turn.Messages.All(m => m.IsComplete);
-                    existingTurn.Touch();
+                    // 轮次内新增消息 → 结构变化
+                    existingTurn.TouchStructure();
                     continue;
                 }
 
@@ -164,8 +165,15 @@ public sealed class MessageTimelineStore
         item.Turn.IsComplete = true;
         foreach (var msg in item.Turn.Messages)
         {
-            msg.IsComplete = true;
-            if (!string.IsNullOrEmpty(msg.Reasoning))
+            if (!msg.IsComplete)
+            {
+                msg.IsComplete = true;
+                // 消息自身的版本必须递增：LoopGroupItem 的分段缓存按 MessageViewModel.Revision 判定，
+                // 不递增会复用流式期的纯文本片段，导致完成后永久停留未格式化状态。
+                msg.Touch();
+            }
+
+            if (!string.IsNullOrEmpty(msg.Reasoning) && !msg.IsReasoningComplete)
                 msg.IsReasoningComplete = true;
         }
 
@@ -212,7 +220,8 @@ public sealed class MessageTimelineStore
             {
                 list.Add(incoming);
                 item.Turn.IsComplete = list.All(m => m.IsComplete);
-                item.Touch();
+                // 轮次内新增了消息 → 结构变化（分段缓存需重建全部分段）
+                item.TouchStructure();
                 RefreshTailHint();
                 RaiseChanged();
                 return;
@@ -268,6 +277,8 @@ public sealed class MessageTimelineStore
         if (!changed)
             return;
 
+        // 消息自身的版本必须递增（分段缓存按 MessageViewModel.Revision 判定）
+        existing.Touch();
         item.Touch();
         RefreshTailHint();
         RaiseChanged();
@@ -434,6 +445,7 @@ public sealed class MessageTimelineStore
                 if (existing?.Message != null && existing.Message.IsCompacted != isCompacted)
                 {
                     existing.Message.IsCompacted = isCompacted;
+                    // 折叠态属于条目级展示变化（非 Loop 内分段），Touch 即可
                     existing.Touch();
                     added = true;
                 }
@@ -681,7 +693,8 @@ public sealed class MessageTimelineStore
 
                 existing.Turn.IsComplete = existing.Turn.Messages.All(m => m.IsComplete);
                 existing.Turn.LoopId = loopId;
-                existing.Touch();
+                // 消息并入既有轮次 → 结构变化
+                existing.TouchStructure();
             }
 
             _items.RemoveAt(idx);
@@ -699,7 +712,8 @@ public sealed class MessageTimelineStore
             rekeyed.Turn.LoopId = loopId;
 
         _items[idx] = rekeyed;
-        rekeyed.Touch();
+        // 换 Key 后视图必须整段重建（@key 变化，旧的 @key 缓存全部失效）
+        rekeyed.TouchStructure();
         return rekeyed;
     }
 
@@ -742,6 +756,8 @@ public sealed class MessageTimelineStore
         target.Turn.LoopId = loopId;
         target.Turn.IsComplete = target.Turn.Messages.All(m => m.IsComplete);
         RenumberLoopIndexes();
+        // 吸收 orphan 会改变轮次内消息集合 → 结构变化
+        target.TouchStructure();
     }
 
     private TimelineItem CreateAssistantTurn(

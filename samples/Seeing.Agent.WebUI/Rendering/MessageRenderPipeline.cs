@@ -127,10 +127,9 @@ public class MessageRenderPipeline : IMessageRenderPipeline
             return builder => { };
         }
 
-        var firstMessage = loop.Messages.First();
-        var context = BuildContext(firstMessage, options, serviceProvider, onToolClick);
-
-        var blocks = ContentBlockBuilder.BuildFromLoopMessages(loop.Messages.ToList());
+        // 内容块按消息分段构建（块 Id 带消息前缀，保证 Loop 内唯一且跨次构建稳定）。
+        // 与 LoopGroupItem 的分段缓存共用同一构建入口，避免两套实现漂移。
+        var segments = ContentBlockBuilder.BuildLoopSegments(loop.Messages);
 
         return builder =>
         {
@@ -144,13 +143,25 @@ public class MessageRenderPipeline : IMessageRenderPipeline
             builder.AddAttribute(4, "Timestamp", loop.StartTime ?? DateTime.Now);
             builder.AddAttribute(5, "Status", DetermineLoopStatus(loop));
             builder.AddAttribute(6, "ShowStatusIndicator", loop.IsExecuting);
-            builder.AddAttribute(7, "Tags", BuildLoopTags(loop));
-            builder.AddAttribute(8, "MetaItems", BuildLoopMetaItems(loop));
+            builder.AddAttribute(7, "Tags", BuildLoopTagsCore(loop));
+            builder.AddAttribute(8, "MetaItems", BuildLoopMetaItemsCore(loop));
             builder.AddAttribute(9, "CustomRoleName", "助手");
             builder.CloseComponent();
 
-            // 渲染内容块
-            builder.AddContent(10, RenderContentBlocks(blocks, context));
+            // 渲染内容块：每段用自己的消息作为渲染上下文，避免整 Loop 共用首条消息的缓存键
+            var regionSeq = 10;
+#pragma warning disable ASP0006
+            foreach (var segment in segments)
+            {
+                var segmentContext = BuildContext(segment.Message, options, serviceProvider, onToolClick);
+                foreach (var block in segment.Blocks.OrderBy(b => b.SortIndex))
+                {
+                    builder.OpenRegion(regionSeq++);
+                    builder.AddContent(0, RenderBlock(block, segmentContext));
+                    builder.CloseRegion();
+                }
+            }
+#pragma warning restore ASP0006
 
             // 渲染错误信息
             if (!string.IsNullOrEmpty(loop.Error))
@@ -220,59 +231,74 @@ public class MessageRenderPipeline : IMessageRenderPipeline
             var regionSeq = 0;
             foreach (var block in blocks.OrderBy(b => b.SortIndex))
             {
-                _logger.LogDebug("Rendering block: Type={Type}, Id={Id}, ToolCall={ToolCallId}",
-                    block.Type, block.Id, block.ToolCall?.Id ?? "null");
-
 #pragma warning disable ASP0006
                 builder.OpenRegion(regionSeq++);
-
-                if (_componentRegistry.TryGetComponent(block, out var component))
-                {
-                    _logger.LogDebug("Found component: {ComponentName} for block {BlockType}", component!.Name, block.Type);
-
-                    builder.OpenComponent(0, component.GetComponentType());
-                    builder.SetKey(block.Id);
-                    var attrSeq = 1;
-                    var parameters = component.GetComponentParameters(block, context);
-                    foreach (var param in parameters)
-                    {
-                        builder.AddAttribute(attrSeq++, param.Key, param.Value);
-                    }
-                    builder.CloseComponent();
-                }
-                else if (_registry.TryRender(block, context, out var fragment))
-                {
-                    _logger.LogDebug("Using renderer fallback for block {BlockType}", block.Type);
-                    builder.AddContent(0, fragment);
-                }
-                else
-                {
-                    _logger.LogWarning("No component or renderer found for block {BlockType}", block.Type);
-                }
-
-                // 工具块后内联槽位：由各 provider 按 Order 追加渲染（管线不持有槽位状态）
-                if (block.Type == ContentBlockType.ToolCall && !string.IsNullOrEmpty(block.ToolCall?.Id))
-                {
-                    var slotSeq = 100;
-                    foreach (var slotProvider in _slotProviders)
-                    {
-                        var slotType = slotProvider.GetSlotComponentType(block.ToolCall!.Id);
-                        if (slotType is null)
-                        {
-                            continue;
-                        }
-
-                        builder.OpenComponent(slotSeq++, slotType);
-                        builder.AddAttribute(slotSeq++, "CallId", block.ToolCall!.Id);
-                        builder.CloseComponent();
-                    }
-                }
-
+                builder.AddContent(0, RenderBlock(block, context));
                 builder.CloseRegion();
 #pragma warning restore ASP0006
             }
         };
     }
+
+    /// <inheritdoc/>
+    public RenderFragment RenderBlock(ContentBlock block, RenderContext context)
+    {
+        return builder =>
+        {
+            _logger.LogDebug("Rendering block: Type={Type}, Id={Id}, ToolCall={ToolCallId}",
+                block.Type, block.Id, block.ToolCall?.Id ?? "null");
+
+            if (_componentRegistry.TryGetComponent(block, out var component))
+            {
+                builder.OpenComponent(0, component.GetComponentType());
+                builder.SetKey(block.Id);
+                var attrSeq = 1;
+                var parameters = component.GetComponentParameters(block, context);
+                foreach (var param in parameters)
+                {
+                    builder.AddAttribute(attrSeq++, param.Key, param.Value);
+                }
+                builder.CloseComponent();
+            }
+            else if (_registry.TryRender(block, context, out var fragment))
+            {
+                builder.AddContent(0, fragment);
+            }
+            else
+            {
+                _logger.LogWarning("No component or renderer found for block {BlockType}", block.Type);
+            }
+
+            // 工具块后内联槽位：由各 provider 按 Order 追加渲染（管线不持有槽位状态）
+            if (block.Type == ContentBlockType.ToolCall && !string.IsNullOrEmpty(block.ToolCall?.Id))
+            {
+                var slotSeq = 100;
+                foreach (var slotProvider in _slotProviders)
+                {
+                    var slotType = slotProvider.GetSlotComponentType(block.ToolCall!.Id);
+                    if (slotType is null)
+                        continue;
+
+                    builder.OpenComponent(slotSeq++, slotType);
+                    builder.AddAttribute(slotSeq++, "CallId", block.ToolCall!.Id);
+                    builder.CloseComponent();
+                }
+            }
+        };
+    }
+
+    /// <inheritdoc/>
+    public string GetLoopContainerClass(LoopGroupViewModel loop) => GetLoopClass(loop);
+
+    /// <inheritdoc/>
+    public MessageStatus GetLoopStatus(LoopGroupViewModel loop) => DetermineLoopStatus(loop);
+
+    /// <inheritdoc/>
+    public List<MessageHeader.MessageTag> BuildLoopTags(LoopGroupViewModel loop) => BuildLoopTagsCore(loop);
+
+    /// <inheritdoc/>
+    public List<MessageHeader.MessageMetaItem> BuildLoopMetaItems(LoopGroupViewModel loop)
+        => BuildLoopMetaItemsCore(loop);
 
     /// <summary>
     /// 渲染消息列表内部实现（封装循环）
@@ -371,7 +397,7 @@ public class MessageRenderPipeline : IMessageRenderPipeline
         return loop.Success ? MessageStatus.Complete : MessageStatus.Error;
     }
 
-    private static List<MessageHeader.MessageTag> BuildLoopTags(LoopGroupViewModel loop)
+    private static List<MessageHeader.MessageTag> BuildLoopTagsCore(LoopGroupViewModel loop)
     {
         var tags = new List<MessageHeader.MessageTag>();
 
@@ -396,7 +422,7 @@ public class MessageRenderPipeline : IMessageRenderPipeline
         return tags;
     }
 
-    private static List<MessageHeader.MessageMetaItem> BuildLoopMetaItems(LoopGroupViewModel loop)
+    private static List<MessageHeader.MessageMetaItem> BuildLoopMetaItemsCore(LoopGroupViewModel loop)
     {
         var items = new List<MessageHeader.MessageMetaItem>();
 

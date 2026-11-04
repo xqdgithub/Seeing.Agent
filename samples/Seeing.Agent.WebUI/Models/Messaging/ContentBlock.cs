@@ -248,6 +248,11 @@ public class ContentBlock
 }
 
 /// <summary>
+/// Loop 内单条消息的内容块段（用于分段缓存）。
+/// </summary>
+public readonly record struct ContentBlockSegment(MessageViewModel Message, List<ContentBlock> Blocks);
+
+/// <summary>
 /// 消息内容块列表构建器 - 将消息转换为有序的内容块列表
 /// </summary>
 public class ContentBlockBuilder
@@ -257,6 +262,64 @@ public class ContentBlockBuilder
     /// 推理过程 -> 工具调用 -> 文本内容
     /// </summary>
     public static List<ContentBlock> BuildFromMessage(MessageViewModel message)
+    {
+        var blocks = BuildFromMessageCore(message);
+        return blocks;
+    }
+
+    /// <summary>
+    /// 从消息构建内容块，并为块 Id 加前缀以保证跨消息唯一。
+    /// </summary>
+    /// <param name="message">消息视图模型</param>
+    /// <param name="idPrefix">块 Id 前缀（通常为消息 Id）；null 表示不加前缀</param>
+    public static List<ContentBlock> BuildFromMessage(MessageViewModel message, string? idPrefix)
+    {
+        var blocks = BuildFromMessageCore(message);
+        if (idPrefix is null)
+            return blocks;
+
+        for (var i = 0; i < blocks.Count; i++)
+            blocks[i].Id = $"{idPrefix}:{blocks[i].Id}";
+
+        return blocks;
+    }
+
+    /// <summary>
+    /// 按 Step 顺序构建 Loop 的分段内容块。
+    /// <para>块 Id 以消息 Id 为前缀，保证 Loop 内唯一且同一消息跨次构建稳定，
+    /// 从而渲染层可按消息粒度缓存，避免每次 delta 重建整个 Loop。</para>
+    /// <para>消息 Id 重复时（分叉复制/历史数据）追加 <c>#{n}</c> 后缀消歧；
+    /// 序号按 Step 排序后的出现次序确定，因此同一输入每次构建结果一致。</para>
+    /// </summary>
+    public static List<ContentBlockSegment> BuildLoopSegments(IReadOnlyList<MessageViewModel> messages)
+    {
+        var ordered = messages.OrderBy(m => m.Step).ToList();
+        var segments = new List<ContentBlockSegment>(ordered.Count);
+        var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var message = ordered[i];
+            var prefix = string.IsNullOrEmpty(message.Id) ? $"anon-{i}" : message.Id;
+
+            if (seen.TryGetValue(prefix, out var count))
+            {
+                seen[prefix] = count + 1;
+                prefix = $"{prefix}#{count + 1}";
+            }
+            else
+            {
+                seen[prefix] = 0;
+            }
+
+            segments.Add(new ContentBlockSegment(message, BuildFromMessage(message, prefix)));
+        }
+
+        return segments;
+    }
+
+    /// <summary>构建内容块列表（无前缀版本的核心实现）。</summary>
+    private static List<ContentBlock> BuildFromMessageCore(MessageViewModel message)
     {
         var blocks = new List<ContentBlock>();
         var index = 0;
@@ -327,48 +390,5 @@ public class ContentBlockBuilder
         }
 
         return blocks;
-    }
-
-    /// <summary>
-    /// 从 Loop 消息列表构建内容块列表（按 Step 排序）
-    /// </summary>
-    public static List<ContentBlock> BuildFromLoopMessages(List<MessageViewModel> messages)
-    {
-        var blocks = new List<ContentBlock>();
-        var globalIndex = 0;
-
-        // 按 Step 排序
-        foreach (var message in messages.OrderBy(m => m.Step))
-        {
-            // 每条消息的内容块
-            var messageBlocks = BuildFromMessage(message);
-
-            // 重新设置全局索引和 ID
-            foreach (var block in messageBlocks)
-            {
-                block.SortIndex = globalIndex;
-                // 重新生成 ID 以确保全局唯一性
-                block.Id = ContentBlock.GenerateId(block.Type, globalIndex, GetAdditionalKey(block));
-                globalIndex++;
-                blocks.Add(block);
-            }
-        }
-
-        return blocks;
-    }
-
-    /// <summary>
-    /// 获取内容块的额外 key（用于 ID 生成）
-    /// </summary>
-    private static string? GetAdditionalKey(ContentBlock block)
-    {
-        return block.Type switch
-        {
-            ContentBlockType.ToolCall => block.ToolCall?.Id,
-            ContentBlockType.Attachment or ContentBlockType.Image => block.Attachment?.FileName,
-            ContentBlockType.Error => block.Extensions?.TryGetValue("errorId", out var id) == true ? id?.ToString() : null,
-            ContentBlockType.SubAgent => block.Extensions?.TryGetValue("subAgentName", out var name) == true ? name?.ToString() : null,
-            _ => null
-        };
     }
 }

@@ -1,11 +1,27 @@
 @using AntDesign
+@using Seeing.Agent.WebUI.Components.Messaging
 @using Seeing.Agent.WebUI.Models
 @using Seeing.Agent.WebUI.Models.Messaging
 @using Seeing.Agent.WebUI.Rendering.Abstractions
 @inject IMessageRenderPipeline Pipeline
 
-@* Loop 分组组件 - 使用渲染管线 *@
-@_body
+@* Loop 分组：头部每次重建（轻量），内容块按消息分段缓存 *@
+<div class="@Pipeline.GetLoopContainerClass(Loop)">
+    <MessageHeader Role="assistant"
+                   Timestamp="@(Loop.StartTime ?? DateTime.Now)"
+                   Status="@Pipeline.GetLoopStatus(Loop)"
+                   ShowStatusIndicator="@Loop.IsExecuting"
+                   Tags="@Pipeline.BuildLoopTags(Loop)"
+                   MetaItems="@Pipeline.BuildLoopMetaItems(Loop)"
+                   CustomRoleName="助手" />
+    @_body
+    @if (!string.IsNullOrEmpty(Loop.Error))
+    {
+        <div class="loop-error" style="padding: var(--space-2) var(--space-3); background: var(--color-error-bg); border: 1px solid var(--color-error-border); border-radius: var(--radius-sm); margin-top: var(--space-2); color: var(--color-error);">
+            @Loop.Error
+        </div>
+    }
+</div>
 
 @code {
     /// <summary>
@@ -15,10 +31,16 @@
     public LoopGroupViewModel Loop { get; set; } = new();
 
     /// <summary>
-    /// 与 TimelineItem.Revision 同步；变更时重建内容块。
+    /// 与 TimelineItem.Revision 同步；内容变化时重建变化的单条消息分段。
     /// </summary>
     [Parameter]
     public int ContentRevision { get; set; }
+
+    /// <summary>
+    /// 与 TimelineItem.StructureRevision 同步；轮次内消息增删/重排时重建全部分段。
+    /// </summary>
+    [Parameter]
+    public int StructureRevision { get; set; }
 
     /// <summary>
     /// 工具点击事件回调
@@ -26,16 +48,73 @@
     [Parameter]
     public EventCallback<ToolCallViewModel> OnToolClick { get; set; }
 
-    private int _blocksRevision = int.MinValue;
+    private int _lastStructureRevision = int.MinValue;
+    private readonly List<SegmentCache> _segments = new();
     private RenderFragment? _body;
+
+    /// <summary>
+    /// 单条消息的渲染缓存。只允许在 Blazor Dispatcher 线程读写。
+    /// </summary>
+    private sealed class SegmentCache
+    {
+        public required string MessageId { get; init; }
+        public int Revision { get; set; }
+        public required List<RenderFragment> Fragments { get; set; }
+    }
 
     protected override void OnParametersSet()
     {
-        if (_body == null || _blocksRevision != ContentRevision)
+        var ordered = Loop.Messages.OrderBy(m => m.Step).ToList();
+        var structureChanged = _lastStructureRevision != StructureRevision
+                               || _segments.Count != ordered.Count;
+
+        if (structureChanged)
         {
-            _blocksRevision = ContentRevision;
-            _body = Pipeline.RenderLoop(Loop, GetRenderOptions(), null, OnToolClick);
+            _segments.Clear();
+            foreach (var message in ordered)
+                _segments.Add(NewSegment(message));
         }
+        else
+        {
+            // 结构未变：只重建版本变化的单条消息（避免每次 delta 重建整个 Loop）
+            for (var i = 0; i < ordered.Count; i++)
+            {
+                if (_segments[i].MessageId != ordered[i].Id || _segments[i].Revision != ordered[i].Revision)
+                    _segments[i] = NewSegment(ordered[i]);
+            }
+        }
+
+        _lastStructureRevision = StructureRevision;
+
+        // 快照后再捕获：RenderFragment 只看到本次构建时的分段，
+        // 避免后续 OnParametersSet 原地改 _segments 时旧片段读到新内容。
+        var snapshot = _segments.ToArray();
+        _body = builder =>
+        {
+            var seq = 0;
+            foreach (var segment in snapshot)
+            {
+                foreach (var fragment in segment.Fragments)
+                    builder.AddContent(seq++, fragment);
+            }
+        };
+    }
+
+    /// <summary>为单条消息构建渲染片段（该消息版本变化时才调用）。</summary>
+    private SegmentCache NewSegment(MessageViewModel message)
+    {
+        var context = Pipeline.BuildContext(message, GetRenderOptions(), null, OnToolClick);
+        var blocks = ContentBlockBuilder.BuildFromMessage(message, message.Id);
+
+        return new SegmentCache
+        {
+            MessageId = message.Id,
+            Revision = message.Revision,
+            Fragments = blocks
+                .OrderBy(b => b.SortIndex)
+                .Select(b => Pipeline.RenderBlock(b, context))
+                .ToList()
+        };
     }
 
     /// <summary>

@@ -4,7 +4,10 @@
 
 @if (Item.Kind == TimelineModel.TimelineItemKind.AssistantTurn && Item.Turn != null)
 {
-    <LoopGroupItem Loop="@Item.Turn" ContentRevision="@Item.Revision" OnToolClick="@OnToolClick" />
+    <LoopGroupItem Loop="@Item.Turn"
+                   ContentRevision="@Item.Revision"
+                   StructureRevision="@Item.StructureRevision"
+                   OnToolClick="@OnToolClick" />
 }
 else if (Item.Message != null)
 {

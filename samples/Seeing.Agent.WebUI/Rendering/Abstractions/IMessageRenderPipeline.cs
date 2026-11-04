@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Components;
+using Seeing.Agent.WebUI.Components.Messaging;
 using Seeing.Agent.WebUI.Models;
+using Seeing.Agent.WebUI.Models.Messaging;
 
 namespace Seeing.Agent.WebUI.Rendering.Abstractions;
 
@@ -54,6 +56,25 @@ public interface IMessageRenderPipeline
         RenderOptions? options = null,
         IServiceProvider? serviceProvider = null,
         EventCallback<ToolCallViewModel> onToolClick = default);
+
+    /// <summary>
+    /// 渲染单个内容块（含工具后内联槽位），供 Loop 分段缓存复用。
+    /// </summary>
+    /// <param name="block">内容块</param>
+    /// <param name="context">渲染上下文</param>
+    RenderFragment RenderBlock(ContentBlock block, RenderContext context);
+
+    /// <summary>Loop 容器 CSS 类。</summary>
+    string GetLoopContainerClass(LoopGroupViewModel loop);
+
+    /// <summary>Loop 状态。</summary>
+    MessageStatus GetLoopStatus(LoopGroupViewModel loop);
+
+    /// <summary>Loop 标签（Loop #N / N 步骤）。</summary>
+    List<MessageHeader.MessageTag> BuildLoopTags(LoopGroupViewModel loop);
+
+    /// <summary>Loop 元信息项（工具数 / 耗时 / Token）。</summary>
+    List<MessageHeader.MessageMetaItem> BuildLoopMetaItems(LoopGroupViewModel loop);
 }
 
 /// <summary>

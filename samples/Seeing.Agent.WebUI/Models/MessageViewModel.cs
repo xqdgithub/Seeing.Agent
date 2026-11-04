@@ -189,4 +189,10 @@ public class MessageViewModel
             return string.Join("\n", lines);
         }
     }
+
+    /// <summary>视图模型版本：内容被就地更新时递增，供 LoopGroupItem 做分段缓存。</summary>
+    public int Revision { get; private set; }
+
+    /// <summary>标记内容变化。</summary>
+    public void Touch() => Revision++;
 }
