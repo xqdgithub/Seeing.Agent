@@ -2,6 +2,10 @@
 
 /* ========== 会话页面容器 ========== */
 .session-page-container {
+    /* 侧栏宽度与悬浮显隐按钮的定位共享同一变量，避免「改宽度忘改按钮」的漂移。
+       定义在页容器上，因为按钮是 .session-side-area 的兄弟节点，取不到局部变量。 */
+    --session-side-width: 320px;
+
     display: flex !important;
     flex-direction: column !important;
     height: 100vh !important;
@@ -38,7 +42,7 @@
 }
 
 .session-side-area {
-    width: 320px;
+    width: var(--session-side-width, 320px);
     min-width: 280px;
     display: flex;
     flex-direction: column;
@@ -58,48 +62,86 @@
  * 显隐本身不改变侧栏内部状态（SessionWindow 实例被卸载，但可见性记忆在
  * SessionSidebarVisibility 里，重新展开时按需重建）。
  */
-.session-side-toggle {
+/*
+ * 侧栏显隐入口（悬浮圆钮）
+ *
+ * 用 position: fixed 脱离布局流 —— 不占宽度、不撑高容器，侧栏收起时主区占满整宽。
+ * 同一按钮在展开态显示「收起」，收起态显示「展开」+ 数量角标，位置保持一致，
+ * 避免用户寻找入口。
+ */
+.session-side-toggle--float {
+    position: fixed;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 36px;
+    height: 36px;
+    padding: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
     border: 1px solid var(--color-border);
     background: var(--color-bg);
     color: var(--color-text-secondary);
-    border-radius: var(--radius-sm, 4px);
+    border-radius: 50%;
     cursor: pointer;
-    padding: 2px 6px;
-    font-size: 12px;
-    line-height: 1.4;
-    transition: color 0.15s ease, background 0.15s ease;
+    z-index: 20;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+    transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
 }
 
-.session-side-toggle:hover {
+.session-side-toggle--float:hover {
     color: var(--color-primary);
     background: var(--color-bg-secondary, #f5f5f5);
+    transform: translateY(-50%) scale(1.08);
 }
 
-/* 收起：贴在侧栏顶端右侧，不占额外行高 */
-.session-side-toggle--collapse {
-    align-self: flex-end;
-    margin-bottom: -4px;
+/* 展开态（侧栏可见）：按钮贴住侧栏左缘，并降低存在感避免干扰阅读 */
+.session-side-toggle--float.is-expanded {
+    right: calc(var(--session-side-width, 320px) + 20px);
+    opacity: 0.45;
 }
 
-/* 展开：收起后贴右缘的窄竖条 */
-.session-side-toggle--expand {
-    align-self: stretch;
-    width: 28px;
-    min-width: 28px;
-    flex-direction: column;
-    padding: 8px 0;
-    margin-left: 4px;
-    border-radius: var(--radius-sm, 4px);
+.session-side-toggle--float.is-expanded:hover {
+    opacity: 1;
 }
 
+/* 收起态：保持明显，作为唯一入口 */
+.session-side-toggle--float.is-collapsed {
+    opacity: 1;
+}
+
+/* 数量角标：圆钮右上角 */
 .session-side-toggle__count {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    background: var(--color-primary);
+    color: #fff;
+    font-size: 10px;
     font-variant-numeric: tabular-nums;
-    font-size: 11px;
-    color: var(--color-text-tertiary);
+    line-height: 1;
+    box-shadow: 0 0 0 1px var(--color-bg);
+}
+
+/* 窄屏：侧栏改为浮层场景下按钮贴边，避免遮挡内容 */
+@media (max-width: 768px) {
+    .session-side-toggle--float {
+        right: 6px;
+        width: 32px;
+        height: 32px;
+    }
+
+    .session-side-toggle--float.is-expanded {
+        right: 6px;
+    }
 }
 
 .session-side-area .session-window--summary {

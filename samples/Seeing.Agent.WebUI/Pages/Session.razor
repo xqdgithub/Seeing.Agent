@@ -144,14 +144,6 @@
         @if (ShowSidebar)
         {
             <div class="session-side-area">
-                @* 侧栏折叠按钮（1C：工具栏之外的第二个入口，紧贴侧栏左缘更容易发现） *@
-                <button type="button"
-                        class="session-side-toggle session-side-toggle--collapse"
-                        title="收起侧栏"
-                        aria-label="收起侧栏"
-                        @onclick="ToggleSidebar">
-                    <Icon Type="@IconType.Outline.Right" />
-                </button>
                 @foreach (var sec in _sidebarSections)
                 {
                     <div class="session-side-section @($"session-side-section--{sec.Section}")" @key="sec.Section">
@@ -184,16 +176,23 @@
                 }
             </div>
         }
-        else if (_sidebarSections.Count > 0)
+
+        @* 侧栏显隐入口（悬浮，不占布局）：
+           展开态 = 贴右缘的圆形「收起」钮；收起态 = 同一位置的圆形「展开」钮 + 数量角标。
+           用 position: fixed 脱离布局流，侧栏收起时页面内容可占满整宽。 *@
+        @if (_sidebarSections.Count > 0)
         {
-            @* 侧栏收起后的展开入口：贴右缘的竖条（1C 的第一条入口） *@
             <button type="button"
-                    class="session-side-toggle session-side-toggle--expand"
-                    title="展开侧栏"
-                    aria-label="展开侧栏"
+                    class="session-side-toggle session-side-toggle--float @(ShowSidebar ? "is-expanded" : "is-collapsed")"
+                    title="@(ShowSidebar ? "收起侧栏" : "展开侧栏")"
+                    aria-label="@(ShowSidebar ? "收起侧栏" : "展开侧栏")"
+                    aria-expanded="@ShowSidebar"
                     @onclick="ToggleSidebar">
-                <Icon Type="@IconType.Outline.Left" />
-                <span class="session-side-toggle__count">@_sidebarSections.Sum(s => s.Entries.Count)</span>
+                <Icon Type="@(ShowSidebar ? IconType.Outline.Right : IconType.Outline.Left)" />
+                @if (!ShowSidebar)
+                {
+                    <span class="session-side-toggle__count">@_sidebarSections.Sum(s => s.Entries.Count)</span>
+                }
             </button>
         }
     </div>
