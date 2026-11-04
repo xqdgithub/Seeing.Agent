@@ -31,7 +31,7 @@ public class GatewaySessionServiceTests
             .ReturnsAsync(buildAgent);
 
         var modelManager = CreateModelManager(
-            new SeeingAgentOptions { DefaultModel = "openai/gpt-4o" },
+            new SeeingAgentOptions { DefaultModels = { ["chat"] = "openai/gpt-4o" } },
             buildAgent);
 
         var manager = CreateSessionManager();
@@ -121,7 +121,9 @@ public class GatewaySessionServiceTests
         AgentDefinition agent)
     {
         var catalog = new Mock<IModelConfigManager>();
-        catalog.Setup(c => c.GetDefaultModel()).Returns(options.DefaultModel);
+        catalog.Setup(c => c.GetDefaultModel(It.IsAny<LlmCapabilityKind>()))
+            .Returns((LlmCapabilityKind k) =>
+                options.DefaultModels.TryGetValue(LlmCapabilityMap.ToConfigKey(k), out var v) ? v : null);
         catalog.Setup(c => c.GetModel(It.IsAny<string>())).Returns((string _) => null);
         catalog.Setup(c => c.GetModels()).Returns(new Dictionary<string, ModelConfig>());
 

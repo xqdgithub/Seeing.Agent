@@ -16,7 +16,7 @@ public class AcpExecutionContextBuilderTests
     [Fact]
     public void Resolve_ShouldPreferRequestModelAndMode()
     {
-        var modelManager = CreateModelManager(new SeeingAgentOptions { DefaultModel = "anthropic/GLM-5" });
+        var modelManager = CreateModelManager(new SeeingAgentOptions { DefaultModels = { ["chat"] = "anthropic/GLM-5" } });
         var resolver = new AgentSelectionResolver(new Mock<IAgentRuntimeManager>().Object);
         var session = new SessionData
         {
@@ -63,7 +63,9 @@ public class AcpExecutionContextBuilderTests
     private static IModelManager CreateModelManager(SeeingAgentOptions options)
     {
         var catalog = new Mock<IModelConfigManager>();
-        catalog.Setup(c => c.GetDefaultModel()).Returns(options.DefaultModel);
+        catalog.Setup(c => c.GetDefaultModel(It.IsAny<LlmCapabilityKind>()))
+            .Returns((LlmCapabilityKind k) =>
+                options.DefaultModels.TryGetValue(LlmCapabilityMap.ToConfigKey(k), out var v) ? v : null);
         catalog.Setup(c => c.GetModels()).Returns(new Dictionary<string, ModelConfig>());
         return new ModelManager(catalog.Object, new Mock<IAgentStore>().Object);
     }

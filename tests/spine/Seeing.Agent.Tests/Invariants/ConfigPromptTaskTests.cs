@@ -44,7 +44,7 @@ public class ConfigPromptTaskTests
             "Boot",
             "CapabilitySets",
             "DefaultAgent",
-            "DefaultModel",
+            "DefaultModels",
             "GlobalWorkspaceRoot",
             "ModelOverrides",
             "ModelSelection",
