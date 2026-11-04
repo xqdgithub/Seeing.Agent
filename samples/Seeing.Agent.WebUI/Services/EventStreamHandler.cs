@@ -439,13 +439,19 @@ namespace Seeing.Agent.WebUI.Services
         {
             if (_currentAssistantMessage == null)
             {
-                // 如果没有当前消息，尝试从绑定会话获取最后一条助手消息
+                // 如果没有当前消息，尝试从绑定会话获取最后一条助手消息。
+                // 倒序短路扫描：避免 Where(...).LastOrDefault() 的两次全表遍历。
                 var session = _sessionManager.Get(SessionId);
-                if (session?.Messages != null)
+                if (session?.Messages is { Count: > 0 } messages)
                 {
-                    _currentAssistantMessage = session.Messages
-                        .Where(m => m.Role == "assistant")
-                        .LastOrDefault();
+                    for (var i = messages.Count - 1; i >= 0; i--)
+                    {
+                        if (string.Equals(messages[i].Role, "assistant", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _currentAssistantMessage = messages[i];
+                            break;
+                        }
+                    }
                 }
 
                 if (_currentAssistantMessage == null)
@@ -761,6 +767,11 @@ namespace Seeing.Agent.WebUI.Services
 
         /// <summary>
         /// 事件流消费者入口（Router 广播回调）。fire-and-forget 处理事件。
+        /// <para>
+        /// <b>不变量：<see cref="ProcessEventAsync"/> 必须全程同步完成（不得出现 await）。</b>
+        /// 当前实现满足此前提，因此事件按广播顺序处理、不会乱序也不会堆积 Task。
+        /// 若将来需要引入 await，必须改为串行队列消费，否则会出现事件乱序与无界并发。
+        /// </para>
         /// </summary>
         public void OnEvent(IMessageEvent evt)
         {

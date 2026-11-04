@@ -16,8 +16,12 @@ namespace Seeing.Agent.WebUI.Services;
 /// <para>并发写契约：只写 TaskSteps/Error/TaskId，不碰 Status/Result（Status 以父工具状态为准）。</para>
 /// <para>
 /// 并发安全：多个子流 consume loop 可能并行进入 OnEvent 聚合同一父 toolCall.TaskSteps
-/// （读-改-写整体替换），用 _writeLock 串行化 MergeStep/FailStep 与 _tasks 挂载/清理；
+/// （读-改-写整体替换），用 _writeGate 串行化 MergeStep/FailStep 与 _tasks 挂载/清理；
 /// AssistantChanged 在锁外触发，避免持锁回调。
+/// <para>
+/// _writeGate 用 <see cref="Monitor"/> 实现（可重入），替代原 SemaphoreSlim 的同步等待，
+/// 省掉异步等待状态机与 Task 分配。保护异步落盘的 _saveLock 仍保留 SemaphoreSlim。
+/// </para>
 /// </para>
 /// </summary>
 public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
@@ -27,7 +31,7 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
     private readonly TaskSessionResolver _taskResolver;
     private readonly ConcurrentDictionary<string, TaskCardState> _tasks = new();
     private readonly object _persistLock = new();
-    private readonly SemaphoreSlim _writeLock = new(1, 1);
+    private readonly SerialGate _writeGate = new();
     private readonly SemaphoreSlim _saveLock = new(1, 1);
     private readonly ConcurrentDictionary<string, byte> _retrying = new();
     private System.Threading.Timer? _persistTimer;
@@ -61,14 +65,9 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
                 _router.DetachConsumer(taskId, this);
         }
 
-        _writeLock.Wait();
-        try
+        using (_writeGate.Enter())
         {
             _tasks.Clear();
-        }
-        finally
-        {
-            _writeLock.Release();
         }
 
         ParentSessionId = parentSessionId;
@@ -117,8 +116,7 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
         {
             var changed = false;
             var terminal = false;
-            _writeLock.Wait();
-            try
+            using (_writeGate.Enter())
             {
                 if (state.Detached)
                     return;
@@ -132,10 +130,6 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
                     state.Detached = true;
                     terminal = true;
                 }
-            }
-            finally
-            {
-                _writeLock.Release();
             }
 
             if (changed)
@@ -184,8 +178,7 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
     /// </summary>
     private bool TryMountTask(string taskId, SessionToolCall toolCall, SessionMessage owner)
     {
-        _writeLock.Wait();
-        try
+        using (_writeGate.Enter())
         {
             // 幂等：同一子会话已挂载（未终态）时跳过
             if (_tasks.TryGetValue(taskId, out var existing) && !existing.Detached)
@@ -196,10 +189,6 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
             toolCall.TaskId = taskId;
             _tasks[taskId] = new TaskCardState(taskId, toolCall, owner);
             return true;
-        }
-        finally
-        {
-            _writeLock.Release();
         }
     }
 
@@ -284,7 +273,7 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
         if (existing != null) steps[steps.IndexOf(existing)] = merged;
         else steps.Add(merged);
 
-        // 并发写契约：整体替换不可变列表引用（调用方 _writeLock 串行化）
+        // 并发写契约：整体替换不可变列表引用（调用方 _writeGate 串行化）
         toolCall.TaskSteps = steps.ToImmutableList();
         return true;
     }
@@ -399,7 +388,6 @@ public sealed class TaskCardAggregator : IStreamConsumer, IDisposable
             return; // 已被并发路径释放，忽略
         }
 
-        _writeLock.Dispose();
         _saveLock.Dispose();
         _persistTimer?.Dispose();
         _persistTimer = null;
