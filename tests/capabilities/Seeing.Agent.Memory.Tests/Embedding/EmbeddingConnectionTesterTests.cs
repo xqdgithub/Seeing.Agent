@@ -40,10 +40,42 @@ public class EmbeddingConnectionTesterTests
                 => call(_client.Object, new LlmCallContext(), ct));
     }
 
+    /// <summary>
+    /// 连接测试是「点一下按钮验证连通」的探针，不得把一次人工验证污染成业务调用观测。
+    /// <para>它可走 Invoker（复用五层校验），但必须 <c>EmitHooks = false</c>，
+    /// 否则会触发 <c>llm.params</c>/<c>llm.after_complete</c>（spec §7.4.1）。</para>
+    /// </summary>
+    [Fact]
+    public async Task TestAsync_ShouldNotEmitLlmHooks()
+    {
+        LlmInvocationOptions? captured = null;
+        _invoker
+            .Setup(i => i.InvokeAsync<IEmbeddingClient, EmbeddingResponse>(
+                It.IsAny<string>(),
+                It.IsAny<Func<IEmbeddingClient, LlmCallContext, CancellationToken, Task<EmbeddingResponse>>>(),
+                It.IsAny<LlmInvocationOptions?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback((string _, Func<IEmbeddingClient, LlmCallContext, CancellationToken, Task<EmbeddingResponse>> call,
+                LlmInvocationOptions? opts, CancellationToken ct) => captured = opts)
+            .Returns((string _, Func<IEmbeddingClient, LlmCallContext, CancellationToken, Task<EmbeddingResponse>> call,
+                LlmInvocationOptions? opts, CancellationToken ct)
+                => call(_client.Object, new LlmCallContext(), ct));
+
+        var sut = CreateTester(new MemoryOptions
+        {
+            Embedding = new MemoryEmbeddingOptions { Enabled = true, ModelId = "openai/text-embedding-3-small" }
+        });
+
+        await sut.TestAsync(null, TestContext.Current.CancellationToken);
+
+        captured.Should().NotBeNull();
+        captured!.EmitHooks.Should().BeFalse(
+            "探针不得触发 llm.* Hook——否则「测试连接」会污染预算账与审计日志");
+    }
+
     [Fact]
     public async Task TestAsync_WhenNoModelIdAnywhere_ShouldFailWithoutCallingInvoker()
-    {
-        var sut = CreateTester(new MemoryOptions());
+    {        var sut = CreateTester(new MemoryOptions());
 
         var result = await sut.TestAsync(null, TestContext.Current.CancellationToken);
 

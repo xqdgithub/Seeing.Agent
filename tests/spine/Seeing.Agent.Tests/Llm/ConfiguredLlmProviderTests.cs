@@ -197,6 +197,33 @@ public class ConfiguredLlmProviderTests
         models.Should().OnlyContain(m => m.Provider == "configured");
     }
 
+    /// <summary>
+    /// 多能力 Provider：只有 decision 客户端真正带远端目录，chat 客户端返回空集。
+    /// <para>装饰基类无条件实现 <see cref="IModelCatalogClient"/>（不实现的内层也返回空集），
+    /// 所以「首个命中即返回」会让 chat 永远挡住 decision——jev 模型就查不到。</para>
+    /// </summary>
+    [Fact]
+    public async Task GetModelsAsync_MultipleCapabilities_ShouldUseFirstNonEmptyCatalog()
+    {
+        var config = Config(
+            capabilities: ["chat", "decision"],
+            listModels: true);
+
+        var emptyCatalog = new CatalogChatClient([]);
+        var decisionCatalog = new CatalogDecisionClient([new ModelConfig { Id = "jev-latest" }]);
+
+        var factory = CreateFactory(new Dictionary<LlmCapabilityKind, ILlmCapabilityClient>
+        {
+            [LlmCapabilityKind.Chat] = emptyCatalog,
+            [LlmCapabilityKind.Decision] = decisionCatalog
+        });
+        var sut = CreateProvider(factory.Object, config);
+
+        var models = await sut.GetModelsAsync(TestContext.Current.CancellationToken);
+
+        models.Select(m => m.Id).Should().ContainSingle().Which.Should().Be("jev-latest");
+    }
+
     [Fact]
     public async Task GetModelsAsync_ListModelsFalse_ShouldIgnoreRemoteCatalog()
     {
@@ -409,6 +436,35 @@ public class ConfiguredLlmProviderTests
             => Task.FromResult(true);
 
         public Task<IReadOnlyList<ModelConfig>> ListModelsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<ModelConfig>>(remote);
+    }
+
+    /// <summary>带远端目录的 decision 客户端（用于验证多能力时不会被子目录空集挡住）。</summary>
+    private sealed class CatalogDecisionClient(ModelConfig[] remote)
+        : IDecisionClient, IModelCatalogClient
+    {
+        public string ProviderId => "configured";
+
+        public string ProviderType => ProviderTypes.TypeSafe;
+
+        public Task<DecisionResponse> EvaluateAsync(
+            DecisionRequest request,
+            LlmCallContext? call = null,
+            CancellationToken ct = default)
+            => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<DecisionModel>> ListModelsAsync(CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<DecisionModel>>([]);
+
+        public Task<bool> TestConnectionAsync(
+            string modelId,
+            LlmCapabilityKind capability,
+            LlmCallContext? call = null,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(true);
+
+        Task<IReadOnlyList<ModelConfig>> IModelCatalogClient.ListModelsAsync(
+            CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<ModelConfig>>(remote);
     }
 

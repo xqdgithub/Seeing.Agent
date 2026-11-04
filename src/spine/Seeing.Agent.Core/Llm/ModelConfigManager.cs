@@ -772,7 +772,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         // （spec §7.9：jev 的模型应动态出现在目录里，而不是只靠手写静态表）。
         // 远端失败时回落到已装载的静态表，不阻塞其余 Provider。
         var catalogLoads = _registry.GetProviders()
-            .Where(pair => ShouldLoadProviderCatalog(pair.Key, pair.Value))
+            .Where(pair => ShouldLoadProviderCatalog(pair.Key))
             .Select(pair => LoadProviderCatalogAsync(pair.Key, pair.Value, ct));
         var catalogModels = await Task.WhenAll(catalogLoads).ConfigureAwait(false);
 
@@ -886,6 +886,23 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
                 models[ModelRef.Format(providerId, modelId)] = CloneModelConfig(providerId, modelId, config);
         }
 
+        // 与全量刷新同一口径：声明 listModels 的配置驱动 Provider 也要合并远端目录，
+        // 否则「刷新当前 Provider」与每次模型 CRUD 都会把远端模型（如 jev）从目录里抹掉，
+        // 直到手动全量刷新才恢复。
+        if (ShouldLoadProviderCatalog(providerId)
+            && _registry.GetProvider(providerId) is { } catalogProvider)
+        {
+            var loaded = await LoadProviderCatalogAsync(providerId, catalogProvider, ct).ConfigureAwait(false);
+            foreach (var config in loaded.Value)
+            {
+                if (string.IsNullOrWhiteSpace(config.Id))
+                    continue;
+
+                config.Provider = providerId;
+                models[ModelRef.Format(providerId, config.Id)] = config;
+            }
+        }
+
         return models;
     }
 
@@ -951,14 +968,15 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
 
     /// <summary>
     /// 该 Provider 是否需要在目录聚合时拉取远端模型表。
-    /// <para><b>扩展注册</b>的 Provider 一律拉（它们没有静态配置表）。</para>
+    /// <para><b>扩展注册</b>的 Provider <b>不由本方法负责</b>——它们由调用方的
+    /// <c>extensionLoads</c> 分支统一处理；此处返回 <c>false</c> 避免重复拉取。</para>
     /// <para><b>配置驱动</b>的 Provider 仅在 <c>Providers[id].listModels = true</c> 时拉——
     /// 否则每次刷新都对所有 OpenAI 兼容网关发一次 <c>/v1/models</c>，属无谓开销。</para>
     /// </summary>
-    private bool ShouldLoadProviderCatalog(string providerId, ILlmProvider provider)
+    private bool ShouldLoadProviderCatalog(string providerId)
     {
         if (_registry.GetOwnerExtensionId(providerId) is not null)
-            return true; // 扩展 Provider 由下一段统一处理，这里返回 true 只为口径完整
+            return false; // 扩展 Provider 走 extensionLoads 分支，不能在此重复拉取
 
         return GetUserProviders().TryGetValue(providerId, out var config)
                && config.ListModels;
@@ -1007,7 +1025,8 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         string providerId,
         ILlmProvider provider,
         CancellationToken ct)
-    {        try
+    {
+        try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(ExtensionModelsLoadTimeout);

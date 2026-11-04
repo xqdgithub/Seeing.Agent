@@ -206,9 +206,33 @@ public class TypeSafeSystemOneClientTests
         client.ProviderType.Should().Be(ProviderTypes.TypeSafe);
     }
 
+    /// <summary>
+    /// 目录引用 <c>provider/model</c> 必须在出站前剥成裸模型名。
+    /// <para>TypeSafe 端点只认 <c>jev-latest</c>；把目录键 <c>typesafe/jev-latest</c>
+    /// 原样发出去会 400。embedding 侧有同样口径的剥离（<c>EmbeddingModelReference</c>）。</para>
+    /// </summary>
+    [Theory]
+    [InlineData("typesafe/jev-latest", "jev-latest")]
+    [InlineData("TypeSafe/jev-latest", "jev-latest")]
+    [InlineData("jev-latest", "jev-latest")]
+    [InlineData("Qwen/Qwen3-8B", "Qwen/Qwen3-8B")]
+    public async Task Evaluate_ShouldStripOwnProviderPrefixBeforeWire(
+        string modelRef, string expectedWireModel)
+    {
+        var handler = new CapturingHandler("""{"model":"x","answers":{}}""");
+        var client = CreateClient(handler);
+
+        await ((IDecisionClient)client).EvaluateAsync(
+            new DecisionRequest { State = "s", Model = modelRef },
+            call: null,
+            TestContext.Current.CancellationToken);
+
+        using var doc = JsonDocument.Parse(handler.LastRequestBody!);
+        doc.RootElement.GetProperty("model").GetString().Should().Be(expectedWireModel);
+    }
+
     private static TypeSafeSystemOneClient CreateClient(
-        HttpMessageHandler handler, ProviderConfig? config = null)
-        => new(
+        HttpMessageHandler handler, ProviderConfig? config = null)        => new(
             config ?? Config(),
             new HttpClient(handler) { BaseAddress = null },
             NullLogger.Instance);

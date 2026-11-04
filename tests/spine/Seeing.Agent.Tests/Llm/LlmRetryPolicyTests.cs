@@ -49,6 +49,28 @@ public class LlmRetryPolicyTests
         LlmRetryPolicy.IsRetryable(new TimeoutException(), CancellationToken.None).Should().BeTrue();
     }
 
+    /// <summary>
+    /// Decision 协议异常必须按 HTTP 状态码判定，与 <see cref="HttpRequestException"/> 同口径。
+    /// <para>缺了这条，decision 的 429/5xx 会一次即抛——旧 SystemOne 自带的退避已删除
+    /// （统一由装饰器承担），不认这个异常等于该路径彻底失去重试。</para>
+    /// </summary>
+    [Theory]
+    [InlineData(429, true)]   // 限流
+    [InlineData(500, true)]   // 服务端错误
+    [InlineData(503, true)]
+    [InlineData(0, true)]     // 无响应的网络/超时
+    [InlineData(408, true)]
+    [InlineData(400, false)]  // 请求本身有问题，重试无意义
+    [InlineData(401, false)]
+    [InlineData(404, false)]
+    public void IsRetryable_DecisionProtocolException_ShouldFollowStatusCode(
+        int statusCode, bool expected)
+    {
+        var ex = new DecisionProtocolException(statusCode, null, "probe");
+
+        LlmRetryPolicy.IsRetryable(ex, CancellationToken.None).Should().Be(expected);
+    }
+
     [Fact]
     public void ComputeDelay_ShouldFollowExponentialSequence_AndRespectCap()
     {
