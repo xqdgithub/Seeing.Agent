@@ -20,24 +20,30 @@ public class SharedWriteLockTests : IDisposable
         await ws.WriteAsync(file, "v0");
 
         var order = new List<string>();
+        var toolEntered = new SemaphoreSlim(0, 1);
+        var toolMayExit = new SemaphoreSlim(0, 1);
 
         // 模拟文件工具持有同一路径锁进行读-改-写
         var toolTask = Task.Run(async () =>
         {
             using var _ = await shared.AcquireAsync(file, CancellationToken.None);
             lock (order) order.Add("tool-enter");
-            await Task.Delay(80);
-            await File.WriteAllTextAsync(file, "tool");
+            // 明确等待「facade 已发起」再退出临界区，替代固定 sleep
+            toolEntered.Release();
+            await toolMayExit.WaitAsync(TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(file, "tool", TestContext.Current.CancellationToken);
             lock (order) order.Add("tool-exit");
         });
 
-        await Task.Delay(20); // 确保工具先拿到锁
+        await toolEntered.WaitAsync(TestContext.Current.CancellationToken);
         var facadeTask = Task.Run(async () =>
         {
             var r = await ws.WriteAsync(file, "facade");
             lock (order) order.Add("facade-done");
         });
 
+        // facade 已在等锁；让工具退出，验证临界区串行而非交错
+        toolMayExit.Release();
         await Task.WhenAll(toolTask, facadeTask);
 
         // 工具的临界区必须完整先于 facade 写（不交错）

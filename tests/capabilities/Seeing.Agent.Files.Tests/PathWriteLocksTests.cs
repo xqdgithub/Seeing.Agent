@@ -11,15 +11,19 @@ public class ProcessPathWriteLockTests
     {
         var locks = new ProcessPathWriteLock();
         var order = new List<string>();
+        var secondEntered = new SemaphoreSlim(0, 1);
 
         var first = await locks.AcquireAsync("a.txt", CancellationToken.None);
         var secondTask = Task.Run(async () =>
         {
+            // 先声明「我已开始等待」，再阻塞在锁上；主线程据此判断竞争已就绪，
+            // 无需 sleep 一段固定时长。
+            secondEntered.Release();
             using var _ = await locks.AcquireAsync("a.txt", CancellationToken.None);
             lock (order) order.Add("second");
         });
 
-        await Task.Delay(50);
+        await secondEntered.WaitAsync(TestContext.Current.CancellationToken);
         lock (order) order.Add("first-release");
         first.Dispose();
         await secondTask;

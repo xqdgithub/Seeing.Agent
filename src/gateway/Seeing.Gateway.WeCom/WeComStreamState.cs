@@ -21,6 +21,8 @@ public sealed class WeComStreamState : IAsyncDisposable, IWeComActiveStreamHandl
     private readonly WeComOptions _options;
     private readonly WeComActiveStreamRegistry? _registry;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+    /// <summary>时间源；测试注入 FakeTimeProvider 以避免真实等待。</summary>
+    private readonly TimeProvider _timeProvider;
 
     private string? _streamId;
     private WeComWsFrame _replyFrame;
@@ -52,7 +54,8 @@ public sealed class WeComStreamState : IAsyncDisposable, IWeComActiveStreamHandl
         WeComAibotWsClient? client,
         WeComWsFrame requestFrame,
         WeComOptions options,
-        WeComActiveStreamRegistry? registry = null)
+        WeComActiveStreamRegistry? registry = null,
+        TimeProvider? timeProvider = null)
     {
         _sender = sender;
         _client = client;
@@ -60,6 +63,7 @@ public sealed class WeComStreamState : IAsyncDisposable, IWeComActiveStreamHandl
         _replyFrame = requestFrame;
         _options = options;
         _registry = registry;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public int ReconnectWaits => _reconnectWaits;
@@ -139,7 +143,7 @@ public sealed class WeComStreamState : IAsyncDisposable, IWeComActiveStreamHandl
         await StopKeepaliveAsync().ConfigureAwait(false);
 
         var throttleMs = _options.EffectiveDeltaThrottleMilliseconds;
-        var now = DateTime.Now;
+        var now = _timeProvider.GetLocalNow().DateTime;
         if ((now - _lastDeltaSentUtc).TotalMilliseconds < throttleMs)
             return;
 
@@ -163,7 +167,7 @@ public sealed class WeComStreamState : IAsyncDisposable, IWeComActiveStreamHandl
             : $"{_visibleText.TrimEnd()}\n\n{trimmed}";
         await StopKeepaliveAsync().ConfigureAwait(false);
         await SendAsync(finish: false, cancellationToken).ConfigureAwait(false);
-        _lastDeltaSentUtc = DateTime.Now;
+        _lastDeltaSentUtc = _timeProvider.GetLocalNow().DateTime;
     }
 
     /// <summary>发送最终正文并结束流（finish=true）。</summary>
@@ -258,7 +262,7 @@ public sealed class WeComStreamState : IAsyncDisposable, IWeComActiveStreamHandl
 
                 try
                 {
-                    await Task.Delay(throttle, cancellationToken).ConfigureAwait(false);
+                    await Task.Delay(throttle, _timeProvider, cancellationToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -270,7 +274,7 @@ public sealed class WeComStreamState : IAsyncDisposable, IWeComActiveStreamHandl
                 if (_completed || !_hasContent)
                     continue;
 
-                var now = DateTime.Now;
+                var now = _timeProvider.GetLocalNow().DateTime;
                 if ((now - _lastDeltaSentUtc).TotalMilliseconds < throttle.TotalMilliseconds)
                     continue;
 
@@ -341,7 +345,7 @@ public sealed class WeComStreamState : IAsyncDisposable, IWeComActiveStreamHandl
                     return;
 
                 _reconnectWaits++;
-                await Task.Delay(TimeSpan.FromMilliseconds(500), timeoutCts.Token).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(500), _timeProvider, timeoutCts.Token).ConfigureAwait(false);
             }
         }
 
@@ -432,7 +436,7 @@ public sealed class WeComStreamState : IAsyncDisposable, IWeComActiveStreamHandl
 
         try
         {
-            using var timer = new PeriodicTimer(refreshInterval);
+            using var timer = new PeriodicTimer(refreshInterval, _timeProvider);
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
                 if (_hasContent || _connectionDegraded)

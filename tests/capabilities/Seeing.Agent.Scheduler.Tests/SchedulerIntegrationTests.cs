@@ -69,12 +69,7 @@ public class SchedulerIntegrationTests
         result.Should().BeOfType<TriggerResult.Accepted>();
 
         // 等待任务实际执行完成（Quartz 异步执行）
-        for (int i = 0; i < 30; i++)
-        {
-            await Task.Delay(200, TestContext.Current.CancellationToken);
-            if (executedPrompts.Count > 0)
-                break;
-        }
+        await WaitUntilAsync(() => executedPrompts.Count > 0, "任务应被执行", timeoutMs: 3000);
 
         Console.WriteLine($"Executed prompts: {string.Join(", ", executedPrompts)}");
 
@@ -135,8 +130,8 @@ public class SchedulerIntegrationTests
         var result = await manager.RunJobOnceAsync("text-job", TestContext.Current.CancellationToken);
         result.Should().BeOfType<TriggerResult.Accepted>();
 
-        // 等待异步执行完成
-        await Task.Delay(2000, TestContext.Current.CancellationToken);
+        // 等待异步派发完成（轮询到条件达成即返回，不盲等）
+        await WaitUntilAsync(() => dispatched.Count > 0, "text 任务应被派发", timeoutMs: 3000);
 
         await manager.StopAsync(TestContext.Current.CancellationToken);
     }
@@ -176,11 +171,6 @@ public class SchedulerIntegrationTests
         // 触发 job
         var result = await manager.RunJobOnceAsync(SchedulerConstants.HeartbeatJobId, TestContext.Current.CancellationToken);
         result.Should().BeOfType<TriggerResult.Accepted>();
-
-        // 等待执行完成（Quartz 异步执行）
-        await Task.Delay(3000, TestContext.Current.CancellationToken);
-
-        Console.WriteLine($"Executed prompts: {string.Join(", ", executedPrompts)}");
 
         await manager.StopAsync(TestContext.Current.CancellationToken);
     }
@@ -222,9 +212,6 @@ public class SchedulerIntegrationTests
 
         // 验证触发成功
         result.Should().BeOfType<TriggerResult.Accepted>();
-
-        // 等待执行
-        await Task.Delay(2000, TestContext.Current.CancellationToken);
 
         await manager.StopAsync(TestContext.Current.CancellationToken);
     }
@@ -320,6 +307,27 @@ public class SchedulerIntegrationTests
         {
             await manager.StopAsync(TestContext.Current.CancellationToken);
         }
+    }
+
+    /// <summary>
+    /// 轮询等待条件达成；命中即返回，<paramref name="timeoutMs"/> 只是安全上限。
+    /// <para>Quartz 的执行是异步的，断言前必须等「副作用已发生」；轮询比固定 <c>Task.Delay</c>
+    /// 既更快（通常 20–100ms）又更稳（不受机器负载影响）。</para>
+    /// </summary>
+    private static async Task WaitUntilAsync(
+        Func<bool> condition,
+        string because,
+        int timeoutMs = 3000)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < deadline)
+        {
+            if (condition())
+                return;
+            await Task.Delay(20, TestContext.Current.CancellationToken).ConfigureAwait(false);
+        }
+
+        condition().Should().BeTrue(because);
     }
 
     private static (ScheduleManager Manager, QuartzSchedulerEngine Engine, IServiceProvider ServiceProvider) CreateScheduleManagerWithServices(

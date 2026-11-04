@@ -16,8 +16,12 @@ namespace Seeing.Agent.Skills.Tests;
 /// </summary>
 public sealed class SkillRootWatcherTests : IDisposable
 {
-    /// <summary>去抖窗口（与生产默认值一致）。</summary>
-    private static readonly TimeSpan Debounce = TimeSpan.FromMilliseconds(400);
+    /// <summary>
+    /// 去抖窗口：刻意显著小于生产默认 400ms。
+    /// <para>去抖是<b>时长语义</b>（事件成串时只留最后一次），测试只需验证「合并行为」而非「等满 400ms」，
+    /// 故用 50ms 保留同样的语义、把等待压缩一个数量级。</para>
+    /// </summary>
+    private static readonly TimeSpan Debounce = TimeSpan.FromMilliseconds(50);
 
     /// <summary>单次等待上限（计划要求 5s 封顶）。</summary>
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
