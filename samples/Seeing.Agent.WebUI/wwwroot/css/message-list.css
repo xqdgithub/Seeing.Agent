@@ -2,6 +2,70 @@
  * MessageList 组件样式
  */
 
+/*
+ * 会话切换骨架屏
+ *
+ * 复用窗口实例后，切换期间旧会话内容会一直挂着直到新内容就绪（实测 1~1.9s，
+ * 取决于消息条数与浏览器绘制成本）。骨架屏提供即时视觉反馈，避免「点了没反应」。
+ *
+ * 动画只用 opacity（合成层属性），不触发布局与重绘，避免加重切换期的浏览器负担。
+ */
+.message-list-skeleton {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    overflow: hidden;
+}
+
+.message-skeleton-item {
+    display: flex;
+    gap: var(--space-3);
+    align-items: flex-start;
+}
+
+.message-skeleton-avatar {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--color-bg-secondary, #f0f0f0);
+    animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.message-skeleton-lines {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+.message-skeleton-line {
+    height: 10px;
+    border-radius: var(--radius-sm, 4px);
+    background: var(--color-bg-secondary, #f0f0f0);
+    animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.message-skeleton-line--short {
+    width: 28%;
+}
+
+@keyframes skeleton-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+}
+
+/* 尊重系统「减少动态效果」偏好 */
+@media (prefers-reduced-motion: reduce) {
+    .message-skeleton-avatar,
+    .message-skeleton-line {
+        animation: none;
+    }
+}
+
 .message-list {
     height: 100%;
     min-height: 0;  /* 修复：允许 flex 子项收缩，防止被挤压 */
@@ -52,6 +116,32 @@
     flex-direction: column;
     gap: var(--space-4);
     width: 100%;
+}
+
+/*
+ * 长列表渲染隔离（针对浏览器「上色 / 渲染」耗时）
+ *
+ * 消息条目（含工具卡片、Markdown 渲染结果）是重 DOM 子树。默认情况下浏览器会对
+ * 所有已挂载条目做样式重算、布局与绘制 —— 窗口保持 80 条时，每次流式增量都会
+ * 触发整屏重算，实测 Paint 高达 1816ms / Recalc 1578ms。
+ *
+ * contain-intrinsic-size 提供占位高度（避免滚动条跳动），content-visibility:auto
+ * 让浏览器跳过屏外条目的渲染工作。四类时间线条目的根元素 class 不同，需分别覆盖。
+ *
+ * 注意：streaming 条目必须排除 —— 它正在持续变化，跳过渲染会让增量不可见。
+ */
+.message-list-content > .message-item,
+.message-list-content > .project-instructions,
+.message-list-content > .system-reminder,
+.message-list-content > .context-update {
+    content-visibility: auto;
+    /* 估算高度：一般消息约 3~5 行文本；过小会导致滚动条抖动，过大会浪费留白 */
+    contain-intrinsic-size: auto 120px;
+}
+
+/* 流式中的条目必须实时渲染（上面规则会跳过屏外元素） */
+.message-list-content > .message-item.message-streaming {
+    content-visibility: visible;
 }
 
 /* 移动端隐藏助手消息中的 Loop # / 步骤 标签 和 工具调用次数（保留耗时） */

@@ -342,7 +342,11 @@
                 _activeSessionId = active;
             RebuildSidebar();
             StateHasChanged();
-            // 组快照随 WindowsChanged 重新拉取（在同步上下文内 await，续体保持在 UI 线程）
+
+            // 关系刷新必须让出首帧：切换 active 时组内 N 个 Summary 窗口会同时挂载并排队加载，
+            // 若在此同步 await，续体会插到主窗首帧之前（实测 9 个 Summary 时主区延迟 1.2s）。
+            // 先让出批处理，保证主窗与侧栏骨架先渲染，关系条随后补齐。
+            await Task.Yield();
             await RefreshRelationSafelyAsync();
         });
     }

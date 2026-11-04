@@ -42,10 +42,17 @@ public sealed class MessageTimelineStore
     public IReadOnlyList<MessageViewModel> PendingMessages => _pending;
 
     /// <summary>
-    /// Incremented on each <see cref="ResetFromSession"/> so views can detect structural rebuilds
-    /// even when the first item Key happens to stay the same.
+    /// 结构性重建代次。仅当 <see cref="ResetFromSession"/> 的目标会话**发生变化**时递增。
+    /// <para>
+    /// 视图（<c>MessageList</c>）据此判断是否重算窗口起点。若每次 Reset 都递增，
+    /// 同一会话内的重建（压缩完成等）也会触发窗口重算 + 强制贴底 + 整棵子树重建，
+    /// 这是切换卡顿的主要来源之一。
+    /// </para>
     /// </summary>
     public int Generation { get; private set; }
+
+    /// <summary>当前时间线绑定的会话 Id；用于判断 <see cref="Generation"/> 是否需要递增。</summary>
+    private string? _boundSessionId;
 
     /// <summary>Tail identity for cheap dirty checks (null when empty).</summary>
     public string? TailKey { get; private set; }
@@ -176,7 +183,14 @@ public sealed class MessageTimelineStore
             _itemByMessageId[vm.Id] = plainItem;
         }
 
-        Generation++;
+        // 仅当换会话时才递增 Generation：同会话内的重建（压缩完成等）不应触发
+        // 视图的窗口重算与整棵子树重建。
+        if (!string.Equals(_boundSessionId, sessionId, StringComparison.Ordinal))
+        {
+            _boundSessionId = sessionId;
+            Generation++;
+        }
+
         RefreshTailHint();
         RaiseChanged();
     }

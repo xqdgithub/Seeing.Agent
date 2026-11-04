@@ -87,20 +87,34 @@
                     }
                     else
                     {
-                        <MessageList AutoScroll="true"
-                                     Timeline="@Timeline"
-                                     OnToolClick="@OnToolClick"
-                                     CompactionInProgress="@_sync.CompactionInProgress"
-                                     CompactionReasoning="@_sync.CompactionReasoning"
-                                     CompactionProgress="@_sync.CompactionProgress" />
-                    }
-
-                    @* 加载状态指示器 *@
-                    @if (IsLoadingSession)
-                    {
-                        <div Class="loading-overlay">
-                            <Spin Size="@SpinSize.Large" Tip="加载会话..." />
-                        </div>
+                        @* 切换会话中：不渲染旧会话的消息列表，改渲染骨架占位。
+                           复用窗口实例后旧内容会一直挂着直到新内容就绪（实测 1~1.9s），
+                           用户会误以为卡死；骨架屏给出即时反馈。 *@
+                        @if (IsLoadingSession)
+                        {
+                            <div class="message-list-skeleton" aria-busy="true" aria-label="正在加载会话">
+                                @for (var i = 0; i < 6; i++)
+                                {
+                                    <div class="message-skeleton-item">
+                                        <div class="message-skeleton-avatar"></div>
+                                        <div class="message-skeleton-lines">
+                                            <div class="message-skeleton-line message-skeleton-line--short"></div>
+                                            <div class="message-skeleton-line"></div>
+                                            <div class="message-skeleton-line"></div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <MessageList AutoScroll="true"
+                                         Timeline="@Timeline"
+                                         OnToolClick="@OnToolClick"
+                                         CompactionInProgress="@_sync.CompactionInProgress"
+                                         CompactionReasoning="@_sync.CompactionReasoning"
+                                         CompactionProgress="@_sync.CompactionProgress" />
+                        }
                     }
                 </div>
 
@@ -471,7 +485,13 @@
         else
         {
             // Summary 卡片：只加载会话快照 + 摘要投影，不建时间线、不跑预算；
-            // 事件流仍绑定但由 OnHandlerChanged 按 ViewMode 过滤，只保留执行态/标题类事件
+            // 事件流仍绑定但由 OnHandlerChanged 按 ViewMode 过滤，只保留执行态/标题类事件。
+            //
+            // **必须先让出首帧**：切换 active 时组内 N 个 Summary 窗口会同时挂载，
+            // 若同步跑加载，N 份 await 续体会全部排进 Dispatcher 队列，把主窗的首帧顶到队尾
+            // （实测 9 个 Summary 时主区延迟 1.2s）。Task.Yield 把本窗加载推迟一个批处理，
+            // 让主窗先完成首帧渲染，侧栏随后补齐。
+            await Task.Yield();
             await LoadSummaryOnlyAsync();
             SubscribeToSessionEvents();
         }
@@ -535,6 +555,14 @@
             // IsExecuting / ExecutionStatus / 取消令牌（表现为「空闲会话显示执行中」，
             // 且点「取消」会停掉上一个会话）。
             ResetLocalExecutionState();
+
+            // 先把「切换中」骨架推给浏览器，再让出一次批处理：
+            // ApplySessionAsync 之后是同步阻塞的（加载 + 全量重建时间线 + 首帧渲染
+            // 全在同一 Dispatcher 批次里），若不先渲染骨架，用户会在整个过程中看到
+            // 上一会话的旧内容僵在那里（实测 1~1.9s 无任何视觉反馈）。
+            IsLoadingSession = true;
+            await InvokeAsync(StateHasChanged);
+            await Task.Yield();
 
             EnsureSyncForSession(SessionId);
             await ApplySessionAsync(SessionId);
@@ -812,13 +840,15 @@
         SessionState.SetSession(sessionData);
         _loadedSessionId = SessionId;
 
+        // 组快照一次拿全：成员关系、锚点、父会话都从同一份成员表推导，
+        // 避免额外一次 GetParentAsync 往返（切换时 N 个 Summary 窗口会各付一次）。
         var group = await GroupManager.GetGroupForSessionAsync(SessionId);
         _groupMember = group?.Members.FirstOrDefault(m => string.Equals(m.SessionId, SessionId, StringComparison.Ordinal));
         _relation = _groupMember?.Relation
             ?? (sessionData.Kind == SessionKind.SubAgent ? SessionRelation.Child : SessionRelation.None);
         _currentGroup = group;
         _isAnchor = _groupMember?.IsAnchor ?? false;
-        _parentSessionId = await GroupManager.GetParentAsync(SessionId);
+        _parentSessionId = _groupMember?.ParentSessionId;
 
         _renderedTitle = sessionData.Title;
         RebuildSummarySnapshot();

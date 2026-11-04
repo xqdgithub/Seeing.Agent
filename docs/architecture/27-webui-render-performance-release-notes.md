@@ -64,8 +64,10 @@
 5. **`TryGetMessage` 不感知元素 Id 的后续改写**。契约是「Id 由写者在入列前确定，索引建立后不得再改」；缺 Id 的消息不入索引、也不进时间线。UI 层已无任何 Id 写入点（原先两处归一化已删除）。
 6. **Summary 窗口仍保留事件流订阅**（执行态事件是卡片状态唯一可靠来源）。收益来自掐掉时间线管道，而非取消订阅 —— `SessionEventStreamRouter` 已按 `sessionId` 共享 loop，不同子会话的 loop 任何方案都省不掉。
 7. **`SyncContextState()` 保持即时渲染**，不走合并器。它承载 AntDesign Select 受控值同步，延迟会放大回滚窗口。
-8. **`MessageList` 的挂载上限（`MaxMounted = 80`）只在贴底时生效**：用户滚到中间位置时窗口不再滑动，若持续有消息进来，DOM 挂载数会超过 80，直到用户滚回底部。属既有行为，本次未改动。
-9. **全量构建（`ResetFromSession`）仍处理全部消息**，渲染层只画窗口内的 40~80 条。触发点仅 4 处（会话切换、`SessionUpdatedEvent`【无发布者】、命令刷新、压缩完成/失败），**流式输出期间不触发**。500 条消息单次约 5~15ms（主要是对象分配）。压缩后改走增量、VM 级缓存属后续独立课题。
+8. **`MessageList` 的挂载上限（`MaxMounted = 20`）只在贴底时生效**：用户滚到中间位置时窗口不再滑动，若持续有消息进来，DOM 挂载数会超过 20，直到用户滚回底部。属既有行为，本次未改动。
+9. **全量构建（`ResetFromSession`）仍处理全部消息**，渲染层只画窗口内的 ≤20 条。触发点仅 4 处（会话切换、`SessionUpdatedEvent`【无发布者】、命令刷新、压缩完成/失败），**流式输出期间不触发**。单次耗时与消息数几乎无关（12 条 33ms vs 67 条 1ms —— 差异来自 GC 与 Dispatcher 抢占，非对象构建），因此**不是**热路径。
+10. **切换会话的 Painted 成本下限由「必须重建的条目数」决定**：换会话后消息 Id 全变，`@key` 失效，20 个条目必然全部新建。`content-visibility` 对首次渲染无效，故该场景只能靠压低挂载数控制。若需进一步改善，方向是骨架屏（已做）或虚拟滚动（未做）。
+11. **`content-visibility: auto` 只在流式输出时生效**：它依赖「已渲染过一次」记住尺寸；切换会话时全部条目首次渲染，不享受此优化。若滚动时出现短暂空白，调大 `contain-intrinsic-size` 或改用 `contain: layout style paint`。
 
 ## 契约变更清单
 
@@ -121,3 +123,11 @@
   - 守门测试：`ReleasePaths_HighContention_ShouldNotThrowSemaphoreFull`（300 轮 × 3 线程用 `Barrier` 同步起跑），修复前稳定 FAIL，修复后 PASS。
 - **小清理** 删除已成死代码的 `RelationTreeModel.BuildRows()`；`RenderLoop` 补注释说明「生产路径已改 `RenderBlock` 分段，本方法保留为接口契约」；`Conference.razor` 同步改用 `PendingPermissionTotal`；Summary 事件白名单移除无处理逻辑的 `LoopCompleteEvent`。
 - **消除重复全表遍历** 删除 `CompactionCompleted` / `CompactionFailed` / `CommandResultEvent.NeedsRefresh` 三个分支里紧随 `ResetFromSession()` 的 `ReconcileAppendFromSession()`。`ResetFromSession` 是全量重建，其后的增量对账语义上是空操作（所有消息已在时间线内），只会额外付一次 `ToList()` + 摘要倒扫 + 全表遍历。行为锁测试 `SessionWindowTimelineSyncTests`（5 个用例）证明「一次 Reset 后时间线已完整」，删除前后均绿。
+- **切换卡顿实测优化（2026-11-04 追加）** 基于浏览器 Performance 实测（Paint 1816ms / Render 1578ms / 服务端切换仅 0~1ms），定位为**浏览器绘制成本**而非服务端计算：
+  - `MaxMounted` 80 → 40 → **20**；Paint 降至 1396ms（-23%）。降幅与挂载数近似线性。
+  - 长列表加 `content-visibility: auto` + `contain-intrinsic-size: auto 120px`（首条消息类重 DOM 子树）。**注意**：切换会话时所有条目都是新建组件，首次渲染不受此优化影响；它只在流式输出期间生效。
+  - `Generation` 语义修正：从「每次 `ResetFromSession` 递增」改为「**仅会话 Id 变化时递增**」。原实现让同会话内的重建（压缩完成、命令刷新）也触发窗口重算 + 强制贴底 + 子树重建。
+  - 切换时先渲染**骨架屏**再加载：原实现整个切换过程（加载 + 全量重建 + 首帧）在同一 Dispatcher 批次内同步阻塞，用户看到旧内容僵住 1~1.9s 无任何反馈。骨架动画只用 `opacity`（合成层属性，不触发布局/重绘），并遵循 `prefers-reduced-motion`。
+  - `OnWindowsChanged` 与 Summary 窗口加载各加一次 `Task.Yield()`，避免组内 N 个侧栏窗口的 `await` 续体插到主窗首帧之前。
+  - `LoadSummaryOnlyAsync` 用组快照的 `ParentSessionId` 替代单独一次 `GetParentAsync()` 往返。
+  - 新增 `MessageListWindowTests`（12 个用例），含两条守门：`InitialWindowSize == MaxMounted`（防首屏与上限不一致导致贴底跳动）、`MaxMounted <= 40`（防无意上调挂载数回归 Paint 成本）。
