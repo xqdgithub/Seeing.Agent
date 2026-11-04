@@ -446,8 +446,8 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
             if (!LlmCapabilityMap.TryParseConfigKey(candidate, out var kind))
             {
                 throw new ArgumentException(
-                    $"未识别的能力名 '{candidate}'。合法值：chat, embedding, rerank, decision, "
-                    + "speechSynthesis, speechTranscription, imageGeneration, videoGeneration",
+                    $"未识别的能力名 '{candidate}'。合法值："
+                    + string.Join(", ", LlmCapabilityMap.ConfigKeys),
                     key);
             }
 

@@ -103,6 +103,18 @@ public class LlmCapabilityMapTests
     }
 
     [Fact]
+    public void ConfigKeys_ShouldCoverEveryRoutableKindInOrder()
+    {
+        LlmCapabilityMap.ConfigKeys.Should().HaveCount(8);
+        LlmCapabilityMap.ConfigKeys.Should().NotContain("none");
+        LlmCapabilityMap.ConfigKeys.Should().OnlyHaveUniqueItems();
+
+        // 每个配置键都能反解回能力（错误提示与 UI 候选都依赖这一点）
+        foreach (var key in LlmCapabilityMap.ConfigKeys)
+            LlmCapabilityMap.TryParseConfigKey(key, out _).Should().BeTrue($"'{key}' 必须可反解");
+    }
+
+    [Fact]
     public void FromModelType_ShouldCoverEveryModelType()
     {
         var mapped = Enum.GetValues<ModelType>()

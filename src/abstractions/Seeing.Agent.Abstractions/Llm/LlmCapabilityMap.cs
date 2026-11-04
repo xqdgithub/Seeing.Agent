@@ -80,6 +80,10 @@ public static class LlmCapabilityMap
     public static LlmCapabilityKind DefaultCapabilities(string protocol) =>
         ProviderCapabilityDefaults.Resolve(protocol);
 
+    /// <summary>全部合法配置键（小驼峰，不含 <c>none</c>），按枚举位顺序。用于错误提示与 UI 候选。</summary>
+    public static IReadOnlyList<string> ConfigKeys { get; } =
+        s_singleKindsWithoutNone.Select(kind => s_configKeys[kind]).ToArray();
+
     /// <summary>能力 → 配置键（小驼峰，如 <c>speechSynthesis</c>）。</summary>
     public static string ToConfigKey(LlmCapabilityKind kind) => Project(kind, s_configKeys);
 
