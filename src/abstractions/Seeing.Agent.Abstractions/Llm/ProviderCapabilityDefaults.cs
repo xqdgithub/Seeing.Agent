@@ -16,9 +16,10 @@ public static class ProviderCapabilityDefaults
         new(StringComparer.OrdinalIgnoreCase)
         {
             [ProviderTypes.OpenAi] = LlmCapabilityKind.Chat,
-            [ProviderTypes.OpenAiResponses] = LlmCapabilityKind.Chat,
+            // 协议路由键；ProviderTypes 对应常量随 Wave 0 的 Provider 契约改造补齐（Task C-3）
+            ["openai-responses"] = LlmCapabilityKind.Chat,
             [ProviderTypes.Anthropic] = LlmCapabilityKind.Chat,
-            [ProviderTypes.TypeSafe] = LlmCapabilityKind.Decision,
+            ["typesafe"] = LlmCapabilityKind.Decision,
         };
 
     /// <summary>协议到缺省能力的只读视图（键不区分大小写）。</summary>

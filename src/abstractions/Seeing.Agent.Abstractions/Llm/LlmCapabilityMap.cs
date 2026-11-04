@@ -99,7 +99,7 @@ public static class LlmCapabilityMap
         if ((kind & (kind - 1)) == 0)
             return table.TryGetValue(kind, out var single) ? single : kind.ToString()!;
 
-        var parts = s_singleKindsWithoutNone.Where(kind.HasFlag).Select(f => table[f]).ToArray();
+        var parts = s_singleKindsWithoutNone.Where(f => kind.HasFlag(f)).Select(f => table[f]).ToArray();
         return parts.Length > 0 ? string.Join(",", parts) : kind.ToString()!;
     }
 }
