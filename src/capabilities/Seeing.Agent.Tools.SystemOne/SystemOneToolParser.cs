@@ -1,4 +1,4 @@
-using Seeing.Agent.Abstractions.SystemOne;
+using Seeing.Agent.Abstractions.Llm;
 using System.Text.Json;
 
 namespace Seeing.Agent.Tools.SystemOne;
@@ -188,17 +188,17 @@ internal static class SystemOneToolParser
         {
             type = kind switch
             {
-                SystemOneToolKind.Noul => SystemOneQuestionTypes.Noul,
-                SystemOneToolKind.Choice => SystemOneQuestionTypes.Choice,
-                SystemOneToolKind.Score => SystemOneQuestionTypes.Score,
-                _ => SystemOneQuestionTypes.Noul
+                SystemOneToolKind.Noul => DecisionQuestionTypes.Noul,
+                SystemOneToolKind.Choice => DecisionQuestionTypes.Choice,
+                SystemOneToolKind.Score => DecisionQuestionTypes.Score,
+                _ => DecisionQuestionTypes.Noul
             };
             return true;
         }
 
         var rawType = GetString(item, "type");
         var normalized = rawType?.Trim().ToLowerInvariant();
-        if (normalized is not (SystemOneQuestionTypes.Noul or SystemOneQuestionTypes.Choice or SystemOneQuestionTypes.Score))
+        if (normalized is not (DecisionQuestionTypes.Noul or DecisionQuestionTypes.Choice or DecisionQuestionTypes.Score))
         {
             error = $"问题 {id} 的 type 非法：{rawType}（可选 noul/choice/score）";
             type = string.Empty;
@@ -214,7 +214,7 @@ internal static class SystemOneToolParser
     {
         error = null;
 
-        if (type == SystemOneQuestionTypes.Choice)
+        if (type == DecisionQuestionTypes.Choice)
         {
             if (options.Count < MinChoiceOptions || options.Count > MaxChoiceOptions)
             {
@@ -238,7 +238,7 @@ internal static class SystemOneToolParser
                 return false;
             }
         }
-        else if (type == SystemOneQuestionTypes.Score)
+        else if (type == DecisionQuestionTypes.Score)
         {
             if (!levelsAllStrings)
             {
