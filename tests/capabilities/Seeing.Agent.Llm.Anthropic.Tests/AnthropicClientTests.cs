@@ -165,4 +165,47 @@ public class AnthropicClientTests
         handler.Disposed.Should().BeFalse();
         httpClient.Timeout.Should().Be(TimeSpan.FromSeconds(100));
     }
+
+    [Fact]
+    public async Task TestConnectionAsync_Chat_ShouldSendMinimalRealProbe()
+    {
+        // Arrange
+        var handler = new StubHandler(() => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """{"id":"msg_1","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":1,"output_tokens":1}}""",
+                Encoding.UTF8,
+                "application/json")
+        });
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost/") };
+        using var client = new AnthropicClient(CreateConfig(), httpClient, NullLogger.Instance);
+
+        // Act：决议 25——发最小真实请求，而不是只探端点
+        var connected = await client.TestConnectionAsync(
+            "claude-test",
+            LlmCapabilityKind.Chat,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        connected.Should().BeTrue();
+        handler.Requests.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task TestConnectionAsync_NonChatCapability_ShouldReturnFalseWithoutHttpRequest()
+    {
+        // Arrange：AnthropicClient 是 chat 端口实现，无法为其它能力发探针
+        var handler = new StubHandler(() => new HttpResponseMessage(HttpStatusCode.OK));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost/") };
+        using var client = new AnthropicClient(CreateConfig(), httpClient, NullLogger.Instance);
+
+        // Act
+        var connected = await client.TestConnectionAsync(
+            "claude-test",
+            LlmCapabilityKind.Embedding,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert：明确 false（不抛、不发请求），由 Router/Provider 层给出可操作提示
+        connected.Should().BeFalse();
+        handler.Requests.Should().BeEmpty();
+    }
 }

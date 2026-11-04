@@ -11,7 +11,7 @@ namespace Seeing.Agent.Llm.Anthropic.Clients;
 /// Anthropic 客户端 - 使用 HTTP API 发送请求
 /// 只负责发送请求和接收响应，不负责模型定义
 /// </summary>
-public class AnthropicClient : ILlmClient, IDisposable
+public class AnthropicClient : IChatCompletionClient, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
@@ -363,13 +363,24 @@ public class AnthropicClient : ILlmClient, IDisposable
     }
 
     /// <summary>
-    /// 测试连接
+    /// 在指定能力上测试连通性（决议 25：发最小真实请求，而非只探端点）。
+    /// <para>本客户端只实现 chat 端口，其余能力一律返回 false——能力的真相在
+    /// <see cref="ProviderConfig.Capabilities"/>，由 Router/Provider 给出可操作提示，客户端不猜也不抛。</para>
     /// </summary>
     public async Task<bool> TestConnectionAsync(
         string modelId,
+        LlmCapabilityKind capability,
         LlmCallContext? call = null,
         CancellationToken cancellationToken = default)
     {
+        if (capability != LlmCapabilityKind.Chat)
+        {
+            _logger.LogWarning(
+                "Anthropic 客户端仅支持 Chat 能力，无法在 {Capability} 上测试连接: {ProviderId}",
+                capability, ProviderId);
+            return false;
+        }
+
         try
         {
             var testRequest = new ChatRequest
