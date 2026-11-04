@@ -29,7 +29,7 @@ public class SessionDirectoryCreateSessionTests
         var options = Options.Create(new SeeingAgentOptions
         {
             DefaultAgent = "build",
-            DefaultModel = "openai/gpt-4o"
+            DefaultModels = { ["chat"] = "openai/gpt-4o" }
         });
 
         var registry = new Mock<IAgentRegistry>();
@@ -60,7 +60,7 @@ public class SessionDirectoryCreateSessionTests
         var options = Options.Create(new SeeingAgentOptions
         {
             DefaultAgent = "acp-cursor",
-            DefaultModel = "openai/gpt-4o"
+            DefaultModels = { ["chat"] = "openai/gpt-4o" }
         });
 
         var registry = new Mock<IAgentRegistry>();
@@ -90,7 +90,7 @@ public class SessionDirectoryCreateSessionTests
         var options = Options.Create(new SeeingAgentOptions
         {
             DefaultAgent = "build",
-            DefaultModel = "openai/gpt-4o"
+            DefaultModels = { ["chat"] = "openai/gpt-4o" }
         });
 
         var registry = new Mock<IAgentRegistry>();
@@ -120,7 +120,7 @@ public class SessionDirectoryCreateSessionTests
         var options = Options.Create(new SeeingAgentOptions
         {
             DefaultAgent = "build",
-            DefaultModel = "openai/gpt-4o",
+            DefaultModels = { ["chat"] = "openai/gpt-4o" },
             Scenario = "code",
         });
 
@@ -177,7 +177,8 @@ public class SessionDirectoryCreateSessionTests
         AgentDefinition agent)
     {
         var catalog = new Mock<IModelConfigManager>();
-        catalog.Setup(c => c.GetDefaultModel()).Returns(options.DefaultModel);
+        catalog.Setup(c => c.GetDefaultModel(It.IsAny<LlmCapabilityKind>()))
+            .Returns((LlmCapabilityKind k) => options.DefaultModels.TryGetValue(LlmCapabilityMap.ToConfigKey(k), out var v) ? v : null);
         catalog.Setup(c => c.GetModel(It.IsAny<string>())).Returns((string _) => null);
         catalog.Setup(c => c.GetModels()).Returns(new Dictionary<string, ModelConfig>());
 

@@ -46,10 +46,10 @@ public class ModelTypeFilterTests
         {
             Id = "multi",
             Provider = "openai",
-            Types = [ModelType.Text, ModelType.Image]
+            Types = [ModelType.Text, ModelType.ImageGeneration]
         };
         ModelTypeRules.Matches(multi, ModelType.Text).Should().BeTrue();
-        ModelTypeRules.Matches(multi, ModelType.Image).Should().BeTrue();
+        ModelTypeRules.Matches(multi, ModelType.ImageGeneration).Should().BeTrue();
         ModelTypeRules.Matches(multi, ModelType.Embedding).Should().BeFalse();
     }
 

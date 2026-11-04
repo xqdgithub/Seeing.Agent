@@ -97,7 +97,7 @@ public class LlmTransportOnlyTests
         var modelManager = new Mock<IModelManager>();
         modelManager.Setup(m => m.GetModel("m1")).Returns(modelConfig);
 
-        var client = new Mock<ILlmClient>();
+        var client = new Mock<IChatCompletionClient>();
         client.SetupGet(c => c.ProviderId).Returns("p1");
         client.SetupGet(c => c.ProviderType).Returns("openai");
         client.Setup(c => c.CompleteAsync(
@@ -112,7 +112,6 @@ public class LlmTransportOnlyTests
             .Returns(EmptyStream());
 
         var providerManager = new Mock<IProviderManager>();
-        providerManager.Setup(p => p.GetClient("p1")).Returns(client.Object);
 
         var workspace = new Mock<IWorkspaceProvider>();
         var configManager = new UnifiedConfigManager(
@@ -121,11 +120,34 @@ public class LlmTransportOnlyTests
             ConfigSectionRegistry.CreateWithSpine());
 
         var hooks = new RecordingHookManager();
+
+        // A-1 之后 LlmService 不再直接触发 Hook：Hook 生命周期由 LlmInvoker 承担。
+        // 这里用桩 Router 把解析结果固定到 m1 的 chat 客户端，让 LlmInvoker 走真实流程。
+        var router = new Mock<ILlmRouter>();
+        router.Setup(r => r.Resolve<IChatCompletionClient>("m1")).Returns(client.Object);
+        router.Setup(r => r.TryResolve<IChatCompletionClient>(
+                It.IsAny<string>(), out It.Ref<IChatCompletionClient?>.IsAny, out It.Ref<string?>.IsAny))
+            .Returns((string _, out IChatCompletionClient? c, out string? reason) =>
+            {
+                c = client.Object;
+                reason = null;
+                return true;
+            });
+
+        var adapters = new Seeing.Agent.Core.Llm.Hooks.LlmHookPayloadAdapterRegistry(
+            Array.Empty<ILlmHookPayloadAdapter>(),
+            NullLogger<Seeing.Agent.Core.Llm.Hooks.LlmHookPayloadAdapterRegistry>.Instance);
+
+        var invoker = new LlmInvoker(
+            router.Object,
+            hooks,
+            adapters,
+            NullLogger<LlmInvoker>.Instance);
+
         var llm = new LlmService(
             providerManager.Object,
             modelManager.Object,
-            configManager,
-            hooks,
+            invoker,
             NullLogger<LlmService>.Instance);
 
         return (llm, hooks);

@@ -100,10 +100,10 @@ public class ProviderConfigMigrationTests : IDisposable
 
         var configManager = await CreateConfigManagerAsync(userSeeing);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(f => f.SupportsType(It.IsAny<string>()))
+        factory.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
             .Returns((string t) => string.Equals(t, ProviderTypes.OpenAi, StringComparison.OrdinalIgnoreCase));
-        factory.Setup(f => f.Create(It.IsAny<ProviderConfig>()))
-            .Returns(Mock.Of<ILlmClient>());
+        factory.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
+            .Returns(Mock.Of<IChatCompletionClient>());
 
         using var sut = new ProviderManager(
             configManager,
