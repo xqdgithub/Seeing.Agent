@@ -109,7 +109,13 @@ public class MessageRenderPipeline : IMessageRenderPipeline
     }
 
     /// <summary>
-    /// 渲染 Loop 分组
+    /// 渲染完整 Loop 分组。
+    /// <para>
+    /// <b>注意</b>：生产渲染路径已改为 <c>LoopGroupItem</c> 按消息分段调 <see cref="RenderBlock"/>，
+    /// 以实现「结构与内容版本分离」的增量缓存。本方法保留为接口契约成员（对外仍可用），
+    /// 内部实现同样走 <c>BuildLoopSegments</c> + <see cref="RenderBlock"/>，两者口径一致。
+    /// 新代码请优先使用 <see cref="RenderBlock"/> 分段渲染。
+    /// </para>
     /// </summary>
     /// <param name="loop">Loop 分组视图模型</param>
     /// <param name="options">渲染选项（可选）</param>

@@ -64,9 +64,9 @@
                                 <span>@sec.Title</span>
                                 <span class="conference-side-section__count">
                                     @sec.Entries.Count
-                                    @if (sec.Entries.Any(e => e.PendingPermissions > 0))
+                                    @if (sec.PendingPermissionTotal > 0)
                                     {
-                                        <text> · 待批 @sec.Entries.Sum(e => e.PendingPermissions)</text>
+                                        <text> · 待批 @sec.PendingPermissionTotal</text>
                                     }
                                 </span>
                             </div>

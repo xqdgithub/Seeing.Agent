@@ -1177,10 +1177,12 @@
         // Summary 卡片只关心执行态与标题；其余事件在最外层丢弃，不进入 Dispatcher 队列。
         // 订阅建立时的历史回放（≤100 条）会走到这里并在此被拦掉，不产生渲染开销。
         // 真正的开销来源是 _sync.ProcessEvent（时间线同步 + Markdown 重建 + 分段渲染）。
+        // 白名单只列「Summary 分支真正会处理的事件」：LoopCompleteEvent 在下方没有任何
+        // Summary 处理逻辑（仅 Full 的 _sync.ProcessEvent 消费），放行只会无谓唤醒渲染。
         var isFull = ViewMode == Services.SessionWindowMode.Full;
         if (!isFull
             && evt is not (ExecutionStartedEvent or ExecutionCompleteEvent
-                           or LoopCompleteEvent or SessionTitleChangedEvent))
+                           or SessionTitleChangedEvent))
             return;
 
         // 事件流由后台线程广播（Router.ConsumeLoopAsync → OnStateChanged）；

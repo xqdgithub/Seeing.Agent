@@ -114,3 +114,8 @@
   - 理由：Id 由上层写者保证（`ChatEventTracker.EnsureAssistantMessage` 赋 `{loopId}_step{n}`，`SessionMessage` 的 8 个工厂方法均赋 `NewId()`），投影层生成随机 Id 会让同一消息在不同加载路径得到不同 `@key`，导致时间线整段重建。
   - 守门测试：`ResetFromSession_WithEmptyIdMessage_ShouldNotMutateSessionMessage`、`ReconcileAppendFromSession_WithEmptyIdMessage_ShouldNotMutateSessionMessage` RED→GREEN。
 - **日志规范** `SessionWindow` 的 3 处 `Debug.WriteLine` 改为 `ILogger`（`Logger.LogDebug` / `LogWarning`）。原因：`Debug.WriteLine` 带 `[Conditional("DEBUG")]`，Release 构建下整条语句被编译掉，等同静默吞异常，违反 `04-development-standards.md` 反模式。
+- **并发安全** `SessionState` 的执行态字段收敛到 `_tokenGate` 互斥门；执行锁释放改幂等（`ReleaseExecutionLock` 兜 `SemaphoreFullException` / `ObjectDisposedException`）。
+  - 触发条件：`CancelExecution`（UI 线程）、`CompleteExecution`（事件流后台线程）、`ResetExecutionState`（参数更新）三路并发。
+  - 修复前实测两个缺陷：① `_cancellationTokenSource` 的「判空 → 调用」TOCTOU → `NullReferenceException`（`CancelExecution`）；② `CurrentCount == 0` 与 `Release()` 之间 TOCTOU → `SemaphoreFullException` 打崩 circuit。
+  - 守门测试：`ReleasePaths_HighContention_ShouldNotThrowSemaphoreFull`（300 轮 × 3 线程用 `Barrier` 同步起跑），修复前稳定 FAIL，修复后 PASS。
+- **小清理** 删除已成死代码的 `RelationTreeModel.BuildRows()`；`RenderLoop` 补注释说明「生产路径已改 `RenderBlock` 分段，本方法保留为接口契约」；`Conference.razor` 同步改用 `PendingPermissionTotal`；Summary 事件白名单移除无处理逻辑的 `LoopCompleteEvent`。

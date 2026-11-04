@@ -88,13 +88,10 @@ public sealed class RelationTreeModel
     public const string SourceMissingText = "来源已删除";
 
     /// <summary>
-    /// 展平关系树：主线链（含各前任）为 0 层，每个主线节点下挂其派生/子会话为 1 层；
+    /// 展平关系树（构建期一次性计算）：主线链（含各前任）为 0 层，每个主线节点下挂其派生/子会话为 1 层；
     /// 未被主线节点直接挂载的派生/子会话按输入顺序追加，来源是否缺失基于**全部节点**
     /// （主线 + 派生 + 子会话）判定——父为 Fork/Child 时不算缺失。
     /// </summary>
-    public IReadOnlyList<RelationRow> BuildRows() => Rows;
-
-    /// <summary>展平关系树（构建期一次性计算）。</summary>
     private static IReadOnlyList<RelationRow> ComputeRows(
         IReadOnlyList<RelationNode> mainLine,
         IReadOnlyList<RelationNode> derived,

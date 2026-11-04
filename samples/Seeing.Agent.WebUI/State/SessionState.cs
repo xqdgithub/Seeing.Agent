@@ -19,6 +19,18 @@ namespace Seeing.Agent.WebUI.State
         private readonly SemaphoreSlim _executionLock = new SemaphoreSlim(1, 1);
 
         /// <summary>
+        /// 取消令牌源读写互斥门。
+        /// <para>
+        /// 提交（<see cref="TryStartExecution"/>）、取消（<see cref="CancelExecution"/>）、
+        /// 完成（<see cref="CompleteExecution"/>）、会话切换（<see cref="ResetExecutionState"/>）、
+        /// 服务端恢复（<see cref="SyncExecutionStarted"/>）分布在 UI 点击、事件流后台线程、
+        /// 参数更新三条线程上，会并发读写同一字段。裸的「读字段 → 判空 → 调用」会因字段被
+        /// 并发置空而抛 <see cref="NullReferenceException"/>，故统一走本门串行化。
+        /// </para>
+        /// </summary>
+        private readonly object _tokenGate = new();
+
+        /// <summary>
         /// 是否已释放（防重入）
         /// </summary>
         private bool _disposed;
@@ -192,15 +204,28 @@ namespace Seeing.Agent.WebUI.State
         private CancellationTokenSource? _cancellationTokenSource;
 
         /// <summary>
-        /// 获取当前取消令牌
+        /// 获取当前取消令牌（无令牌时返回 <see cref="CancellationToken.None"/>）。
         /// </summary>
-        public CancellationToken CancellationToken =>
-            _cancellationTokenSource?.Token ?? CancellationToken.None;
+        public CancellationToken CancellationToken
+        {
+            get
+            {
+                lock (_tokenGate)
+                    return _cancellationTokenSource?.Token ?? CancellationToken.None;
+            }
+        }
 
         /// <summary>
-        /// 获取取消令牌源（供 UI 绑定）
+        /// 获取取消令牌源（供 UI 绑定）。
         /// </summary>
-        public CancellationTokenSource? CancellationTokenSource => _cancellationTokenSource;
+        public CancellationTokenSource? CancellationTokenSource
+        {
+            get
+            {
+                lock (_tokenGate)
+                    return _cancellationTokenSource;
+            }
+        }
 
         /// <summary>
         /// 尝试开始执行 - 如果已有任务执行则返回 false
@@ -213,16 +238,14 @@ namespace Seeing.Agent.WebUI.State
                 return false;
             }
 
-            // 取消之前的执行（如果有）
-            if (_cancellationTokenSource != null && !_cancellationTokenSource.IsCancellationRequested)
+            lock (_tokenGate)
             {
-                _cancellationTokenSource.Cancel();
-                _cancellationTokenSource.Dispose();
+                // 取消之前的执行（如果有）
+                ReplaceCancellationTokenSourceLocked(cancelPrevious: true);
+                IsExecuting = true;
+                IsCompleted = false;
             }
 
-            _cancellationTokenSource = new CancellationTokenSource();
-            IsExecuting = true;
-            IsCompleted = false;
             return true;
         }
 
@@ -234,15 +257,13 @@ namespace Seeing.Agent.WebUI.State
             // 等待获取锁
             _executionLock.Wait();
 
-            // 取消之前的执行
-            if (_cancellationTokenSource != null && !_cancellationTokenSource.IsCancellationRequested)
+            lock (_tokenGate)
             {
-                _cancellationTokenSource.Cancel();
-                _cancellationTokenSource.Dispose();
+                // 取消之前的执行
+                ReplaceCancellationTokenSourceLocked(cancelPrevious: true);
+                IsExecuting = true;
+                IsCompleted = false;
             }
-            _cancellationTokenSource = new CancellationTokenSource();
-            IsExecuting = true;
-            IsCompleted = false;
         }
 
         /// <summary>
@@ -252,17 +273,14 @@ namespace Seeing.Agent.WebUI.State
         {
             if (_disposed)
                 return;
-            if (_cancellationTokenSource != null && !_cancellationTokenSource.IsCancellationRequested)
-            {
-                _cancellationTokenSource.Cancel();
-            }
-            IsExecuting = false;
 
-            // 释放锁
-            if (_executionLock.CurrentCount == 0)
+            lock (_tokenGate)
             {
-                _executionLock.Release();
+                CancelTokenSourceLocked();
+                IsExecuting = false;
             }
+
+            ReleaseExecutionLock();
         }
 
         /// <summary>
@@ -278,51 +296,99 @@ namespace Seeing.Agent.WebUI.State
             if (_disposed)
                 return;
 
-            IsExecuting = false;
-            IsCompleted = false;
-            ExecutionStatus = null;
-            CurrentExecutionId = null;
-            PendingInputCount = 0;
-
-            var previous = _cancellationTokenSource;
-            _cancellationTokenSource = null;
-            if (previous is not null)
+            lock (_tokenGate)
             {
-                try
-                {
-                    previous.Cancel();
-                }
-                catch (ObjectDisposedException)
-                {
-                    // 已释放，忽略
-                }
-                previous.Dispose();
+                IsExecuting = false;
+                IsCompleted = false;
+                ExecutionStatus = null;
+                CurrentExecutionId = null;
+                PendingInputCount = 0;
+
+                CancelTokenSourceLocked();
             }
 
-            // 释放执行锁，否则下一会话的 StartExecution 会永久阻塞
-            if (_executionLock.CurrentCount == 0)
-            {
-                _executionLock.Release();
-            }
+            ReleaseExecutionLock();
         }
 
         /// <summary>
         /// 完成执行
         /// </summary>
-        public void CompleteExecution()        {
-            if (_cancellationTokenSource != null)
+        public void CompleteExecution()
+        {
+            lock (_tokenGate)
             {
-                _cancellationTokenSource.Dispose();
+                _cancellationTokenSource?.Dispose();
+                _cancellationTokenSource = null;
+                IsExecuting = false;
+                IsCompleted = true;
             }
-            _cancellationTokenSource = null;
-            IsExecuting = false;
-            IsCompleted = true;
 
-            // 释放锁
-            if (_executionLock.CurrentCount == 0)
+            ReleaseExecutionLock();
+        }
+
+        /// <summary>
+        /// 释放执行锁（幂等）。
+        /// <para>
+        /// <see cref="CancelExecution"/> / <see cref="CompleteExecution"/> /
+        /// <see cref="ResetExecutionState"/> 可能并发执行，<c>CurrentCount</c> 的检查与
+        /// <see cref="SemaphoreSlim.Release()"/> 之间存在 TOCTOU 窗口，双释放会抛
+        /// <see cref="SemaphoreFullException"/> 且无上层兜底（会打崩 circuit）。
+        /// 此处以异常兜底保证幂等；正常情况下最多释放到 1，不影响后续 <c>Wait</c>。
+        /// </para>
+        /// </summary>
+        private void ReleaseExecutionLock()
+        {
+            try
             {
-                _executionLock.Release();
+                if (_executionLock.CurrentCount == 0)
+                    _executionLock.Release();
             }
+            catch (SemaphoreFullException)
+            {
+                // 并发路径已完成释放：幂等语义，忽略
+            }
+            catch (ObjectDisposedException)
+            {
+                // 会话状态已释放：无需再归还
+            }
+        }
+
+        /// <summary>
+        /// 取消并释放当前取消令牌源（调用方必须持有 <see cref="_tokenGate"/>）。
+        /// </summary>
+        private void CancelTokenSourceLocked()
+        {
+            var previous = _cancellationTokenSource;
+            if (previous is null)
+                return;
+
+            try
+            {
+                previous.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // 已释放，忽略
+            }
+            catch (AggregateException)
+            {
+                // 回调抛错不影响取消失败语义
+            }
+
+            previous.Dispose();
+            _cancellationTokenSource = null;
+        }
+
+        /// <summary>
+        /// 替换取消令牌源（调用方必须持有 <see cref="_tokenGate"/>）。
+        /// </summary>
+        /// <param name="cancelPrevious">是否先取消并释放旧令牌源。</param>
+        private void ReplaceCancellationTokenSourceLocked(bool cancelPrevious)
+        {
+            if (cancelPrevious)
+                CancelTokenSourceLocked();
+
+            _cancellationTokenSource = new CancellationTokenSource();
         }
 
         /// <summary>
@@ -344,10 +410,10 @@ namespace Seeing.Agent.WebUI.State
                 TryStartExecution();
 
             // 令牌缺失/已取消时补建，保证取消按钮可用（如取消后服务端 resume 场景）
-            if (_cancellationTokenSource == null || _cancellationTokenSource.IsCancellationRequested)
+            lock (_tokenGate)
             {
-                _cancellationTokenSource?.Dispose();
-                _cancellationTokenSource = new CancellationTokenSource();
+                if (_cancellationTokenSource is null || _cancellationTokenSource.IsCancellationRequested)
+                    ReplaceCancellationTokenSourceLocked(cancelPrevious: true);
             }
         }
 
