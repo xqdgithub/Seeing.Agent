@@ -79,8 +79,8 @@ public sealed class SystemOneTool : BuiltInToolBase
         if (!SystemOneToolParser.TryParse(arguments, _kind, out var input, out var error))
             return Failure(error!);
 
-        var router = context.Services?.GetService<ILlmRouter>();
-        if (router is null)
+        var invoker = context.Services?.GetService<ILlmInvoker>();
+        if (invoker is null)
             return Failure("SystemOne 能力未接入（请启用 llm.systemone 模块）");
 
         // 模型解析四步链（spec §7.9）：工具参数 → DefaultModels.decision → 目录唯一 Decision → 报错列候选
@@ -96,10 +96,12 @@ public sealed class SystemOneTool : BuiltInToolBase
 
         try
         {
-            var client = router.Resolve<IDecisionClient>(modelId);
-            var response = await client.EvaluateAsync(
-                BuildRequest(input, modelId),
-                BuildCallContext(context),
+            // 走 ILlmInvoker（决议 27）：只有它触发 llm.params/headers/after_complete/on_error、
+            // 合并出站头并计算耗时；直连 Router 会让 decision 调用在观测面上彻底隐形。
+            var response = await invoker.InvokeAsync<IDecisionClient, DecisionResponse>(
+                modelId,
+                (client, call, ct) => client.EvaluateAsync(BuildRequest(input, modelId), call, ct),
+                new LlmInvocationOptions { SessionId = context.SessionId },
                 context.CancellationToken).ConfigureAwait(false);
 
             var metadata = new Dictionary<string, object>
@@ -164,12 +166,6 @@ public sealed class SystemOneTool : BuiltInToolBase
             $"未指定 Decision 模型，且模型目录中存在 {candidates.Count} 个候选："
             + $"{string.Join(", ", candidates)}；请显式传入 model，或在设置中指定 DefaultModels.decision");
     }
-
-    /// <summary>把会话身份带进出站上下文（Hook / 拦截器可读）；无会话时不给上下文。</summary>
-    private static LlmCallContext? BuildCallContext(ToolContext context)
-        => string.IsNullOrWhiteSpace(context.SessionId)
-            ? null
-            : new LlmCallContext { SessionId = context.SessionId, CorrelationId = context.CallId };
 
     /// <summary>把解析结果映射为 Decision 请求（model 用已解析出的模型 ID）。</summary>
     internal static DecisionRequest BuildRequest(SystemOneToolInput input, string modelId)

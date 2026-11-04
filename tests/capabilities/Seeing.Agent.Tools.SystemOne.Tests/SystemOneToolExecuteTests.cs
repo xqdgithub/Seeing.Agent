@@ -34,7 +34,7 @@ public class SystemOneToolExecuteTests
 
         result.Success.Should().BeTrue(result.Error);
         result.Output.Should().Contain("<<<SYSTEMONE_ANSWERS_BEGIN>>>").And.Contain("<<<SYSTEMONE_ANSWERS_END>>>");
-        router.Verify(r => r.Resolve<IDecisionClient>("typesafe/jev-latest"), Times.Once);
+        router.LastModelId.Should().Be("typesafe/jev-latest");
         client.LastRequest!.Questions.Should().HaveCount(3);
         client.LastRequest.Questions["c"].Criteria.Should().BeOfType<Dictionary<string, object?>>();
         client.LastRequest.Questions["s"].Criteria.Should().BeOfType<string[]>();
@@ -121,7 +121,7 @@ public class SystemOneToolExecuteTests
             Args("""{"state":"s","questions":[{"instructions":"x"}]}"""), context);
 
         result.Success.Should().BeTrue(result.Error);
-        router.Verify(r => r.Resolve<IDecisionClient>("typesafe/jev-default"), Times.Once);
+        router.LastModelId.Should().Be("typesafe/jev-default");
         client.LastRequest!.Model.Should().Be("typesafe/jev-default");
         // 第 2 步命中即止：不再翻目录
         models.Verify(m => m.GetModelsByType(ModelType.Decision, null), Times.Never);
@@ -141,7 +141,7 @@ public class SystemOneToolExecuteTests
             Args("""{"state":"s","questions":[{"instructions":"x"}]}"""), context);
 
         result.Success.Should().BeTrue(result.Error);
-        router.Verify(r => r.Resolve<IDecisionClient>("typesafe/jev-only"), Times.Once);
+        router.LastModelId.Should().Be("typesafe/jev-only");
     }
 
     [Fact]
@@ -164,7 +164,7 @@ public class SystemOneToolExecuteTests
         // 不静默选：报错并列出候选
         result.Success.Should().BeFalse();
         result.Error.Should().Contain("2 个候选").And.Contain("typesafe/jev-a").And.Contain("typesafe/jev-b");
-        router.Verify(r => r.Resolve<IDecisionClient>(It.IsAny<string>()), Times.Never);
+        router.LastModelId.Should().BeNull("解析失败时不应发起任何 LLM 调用");
     }
 
     [Fact]
@@ -213,12 +213,20 @@ public class SystemOneToolExecuteTests
     [Fact]
     public async Task 路由能力错配_应失败并给出原因()
     {
-        var router = new Mock<ILlmRouter>();
-        router.Setup(r => r.Resolve<IDecisionClient>(It.IsAny<string>()))
-            .Throws(new LlmCapabilityMismatchException(
+        // Invoker 内部走 Router 五层校验；这里让 Invoker 直接抛能力错配异常，
+        // 验证工具把它翻译成可读失败而非崩溃。
+        var invoker = new Mock<ILlmInvoker>();
+        invoker
+            .Setup(i => i.InvokeAsync<IDecisionClient, DecisionResponse>(
+                It.IsAny<string>(),
+                It.IsAny<Func<IDecisionClient, LlmCallContext, CancellationToken, Task<DecisionResponse>>>(),
+                It.IsAny<LlmInvocationOptions?>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new LlmCapabilityMismatchException(
                 "typesafe/jev-latest", LlmCapabilityKind.Decision, "Provider 未声明 decision 能力"));
+
         var services = new ServiceCollection()
-            .AddSingleton(router.Object)
+            .AddSingleton(invoker.Object)
             .AddSingleton(new Mock<IModelConfigManager>().Object)
             .BuildServiceProvider();
         var tool = new SystemOneTool(SystemOneToolKind.Noul, NullLogger<SystemOneTool>.Instance);
@@ -251,10 +259,9 @@ public class SystemOneToolExecuteTests
     public async Task 会话身份_随调用上下文透传()
     {
         var client = new FakeDecisionClient();
-        var router = new Mock<ILlmRouter>();
-        router.Setup(r => r.Resolve<IDecisionClient>(It.IsAny<string>())).Returns(client);
+        var invoker = new StubLlmInvoker(client);
         var services = new ServiceCollection()
-            .AddSingleton(router.Object)
+            .AddSingleton<ILlmInvoker>(invoker)
             .AddSingleton(new Mock<IModelConfigManager>().Object)
             .BuildServiceProvider();
         var tool = new SystemOneTool(SystemOneToolKind.Noul, NullLogger<SystemOneTool>.Instance);
@@ -268,21 +275,66 @@ public class SystemOneToolExecuteTests
         await tool.ExecuteAsync(
             Args("""{"state":"s","model":"m","questions":[{"instructions":"x"}]}"""), context);
 
+        // 工具经 LlmInvocationOptions 传会话身份，Invoker 再落到 LlmCallContext
+        invoker.LastSessionId.Should().Be("session-1");
         client.LastCall!.SessionId.Should().Be("session-1");
     }
 
     private static JsonElement Args(string json) => JsonDocument.Parse(json).RootElement;
 
-    private static (SystemOneTool Tool, ToolContext Context, Mock<ILlmRouter> Router) Create(
+    /// <summary>
+    /// 最小可用的 <see cref="ILlmInvoker"/> 替身：直接调用传入的委托，并如实把
+    /// <see cref="LlmInvocationOptions.SessionId"/> 透传成 <see cref="LlmCallContext.SessionId"/>。
+    /// <para>工具已改为经 Invoker 调用（决议 27），故测试不再 mock Router——那样会让
+    /// 「Hook/出站头/耗时是否生效」这类真实行为无法被覆盖。</para>
+    /// </summary>
+    private sealed class StubLlmInvoker : ILlmInvoker
+    {
+        private readonly IDecisionClient _client;
+
+        public StubLlmInvoker(IDecisionClient client) => _client = client;
+
+        /// <summary>本次调用收到的模型 ID（null = 未被调用）。用于断言模型解析链的结果。</summary>
+        public string? LastModelId { get; private set; }
+
+        /// <summary>本次调用收到的会话 ID。</summary>
+        public string? LastSessionId { get; private set; }
+
+        public Task<TResponse> InvokeAsync<TClient, TResponse>(
+            string modelId,
+            Func<TClient, LlmCallContext, CancellationToken, Task<TResponse>> call,
+            LlmInvocationOptions? options = null,
+            CancellationToken cancellationToken = default)
+            where TClient : class, ILlmCapabilityClient
+        {
+            LastModelId = modelId;
+            LastSessionId = options?.SessionId;
+
+            var ctx = new LlmCallContext
+            {
+                SessionId = string.IsNullOrWhiteSpace(options?.SessionId) ? null : options.SessionId
+            };
+            return call((TClient)(object)_client, ctx, cancellationToken);
+        }
+
+        public IAsyncEnumerable<TChunk> StreamAsync<TClient, TChunk>(
+            string modelId,
+            Func<TClient, LlmCallContext, CancellationToken, IAsyncEnumerable<TChunk>> stream,
+            LlmInvocationOptions? options = null,
+            CancellationToken cancellationToken = default)
+            where TClient : class, ILlmCapabilityClient
+            => throw new NotSupportedException("SystemOne 工具不使用流式调用");
+    }
+
+    private static (SystemOneTool Tool, ToolContext Context, StubLlmInvoker Invoker) Create(
         SystemOneToolKind kind,
         FakeDecisionClient client,
         IModelConfigManager? models = null)
     {
-        var router = new Mock<ILlmRouter>();
-        router.Setup(r => r.Resolve<IDecisionClient>(It.IsAny<string>())).Returns(client);
+        var invoker = new StubLlmInvoker(client);
 
         var services = new ServiceCollection();
-        services.AddSingleton(router.Object);
+        services.AddSingleton<ILlmInvoker>(invoker);
         services.AddSingleton(models ?? new Mock<IModelConfigManager>().Object);
 
         var context = new ToolContext
@@ -290,7 +342,7 @@ public class SystemOneToolExecuteTests
             Services = services.BuildServiceProvider(),
             CancellationToken = CancellationToken.None
         };
-        return (new SystemOneTool(kind, NullLogger<SystemOneTool>.Instance), context, router);
+        return (new SystemOneTool(kind, NullLogger<SystemOneTool>.Instance), context, invoker);
     }
 
     /// <summary>记录请求与调用上下文、可回放固定应答或抛异常的 Decision 客户端替身。</summary>
