@@ -65,6 +65,12 @@
     private int _forcePinRetriesRemaining;
     private bool _subscribed;
 
+    /// <summary>滚动 JS 往返限流（40ms）：与高频渲染解耦，避免「渲染—往返」串行排队。</summary>
+    private readonly Services.ScrollInteropThrottle _scrollThrottle = new(TimeSpan.FromMilliseconds(40));
+
+    /// <summary>限流跳过时置位：下次渲染必须补偿一次滚动判定，否则内容增长后不再贴底。</summary>
+    private bool _scrollDirty;
+
     private IReadOnlyList<TimelineModel.TimelineItem> Items => Store.Items;
 
     /// <summary>可选：外部传入的时间线 store（参数优先，回退 DI 注入）</summary>
@@ -116,6 +122,9 @@
     private void OnPinRequested()
     {
         RequestForcePin(retries: 2);
+        // 强制贴底必须立即生效：重置限流窗口并标记待补偿
+        _scrollThrottle.Reset();
+        _scrollDirty = true;
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -235,7 +244,17 @@
         _trackedTailRevision = tailRevision;
 
         if (contentGrew)
+            _scrollDirty = true;
+
+        // 强制贴底与 prepend 恢复必须立即执行；常规增长走限流窗口。
+        // 注意：限流跳过时 _scrollDirty 保持 true，下一次渲染会补偿，避免「内容增长后再也不贴底」。
+        var mustScroll = _pendingForcePin
+                         || _pendingPrependHeight.HasValue
+                         || _scrollThrottle.ShouldInvoke(DateTime.UtcNow);
+
+        if (_scrollDirty && mustScroll)
         {
+            _scrollDirty = false;
             try
             {
                 var pinned = await JSRuntime.InvokeAsync<bool>("shouldAutoScroll");
@@ -254,7 +273,7 @@
             }
             catch
             {
-                // ignore
+                // 滚动为 UI 增强：JS 不可用时不阻断渲染
             }
         }
 
@@ -282,6 +301,10 @@
     private async Task TryLoadMoreAsync()
     {
         if (_loadMoreInProgress || _pendingPrependHeight.HasValue || _windowStart <= 0)
+            return;
+
+        // 与贴底判定共享同一个限流窗口，避免长会话下每次渲染都多一次 isNearTop 往返
+        if (!_scrollThrottle.ShouldInvoke(DateTime.UtcNow))
             return;
 
         try
