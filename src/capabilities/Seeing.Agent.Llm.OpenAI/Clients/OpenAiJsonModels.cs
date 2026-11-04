@@ -513,3 +513,58 @@ internal class ModelInfo
 }
 
 #endregion
+
+#region Embeddings 请求/响应
+
+/// <summary>Embeddings API 请求体（POST {baseUrl}/embeddings，spec §7.8）。</summary>
+internal class EmbeddingApiRequest
+{
+    [JsonPropertyName("model")]
+    public string Model { get; set; } = "";
+
+    /// <summary>输入文本数组；服务端以 index 回显与输入的对应关系。</summary>
+    [JsonPropertyName("input")]
+    public List<string> Input { get; set; } = new();
+
+    /// <summary>期望维度（仅 text-embedding-3-* 等支持该参数的模型生效）。</summary>
+    [JsonPropertyName("dimensions")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? Dimensions { get; set; }
+
+    /// <summary>编码格式（float / base64）。</summary>
+    [JsonPropertyName("encoding_format")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? EncodingFormat { get; set; }
+}
+
+/// <summary>Embeddings API 响应体。</summary>
+internal class EmbeddingApiResponse
+{
+    [JsonPropertyName("model")]
+    public string? Model { get; set; }
+
+    /// <summary>
+    /// 向量条目。<b>index 可能乱序</b>（服务端并行批处理），客户端须按 Index 升序回排。
+    /// </summary>
+    [JsonPropertyName("data")]
+    public List<EmbeddingApiItem>? Data { get; set; }
+
+    [JsonPropertyName("usage")]
+    public OpenAiUsage? Usage { get; set; }
+}
+
+/// <summary>Embeddings 单条向量条目。</summary>
+internal class EmbeddingApiItem
+{
+    /// <summary>对应输入序号；乱序响应以此为准排序。</summary>
+    [JsonPropertyName("index")]
+    public int Index { get; set; }
+
+    [JsonPropertyName("object")]
+    public string? Object { get; set; }
+
+    [JsonPropertyName("embedding")]
+    public List<float>? Embedding { get; set; }
+}
+
+#endregion
