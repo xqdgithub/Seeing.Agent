@@ -238,12 +238,11 @@ var policy = new AgentPermissionPolicy
 
 | Hook 点 | 触发时机 | 可修改数据 |
 |---------|----------|------------|
-| `chat.after_complete` | LLM 请求完成后 | response |
-| `chat.before_retry` | LLM 调用重试前 | - |
-| `chat.on_error` | LLM 调用异常时 | - |
-| `chat.message` | 收到 LLM 响应消息 | message, role |
-| `chat.params` | LLM 请求参数设置 | temperature, topP, maxTokens |
-| `chat.headers` | LLM 请求 Headers | headers |
+| `llm.after_complete` | LLM 请求完成后（载荷带 `capability`） | response, usage |
+| `llm.on_error` | LLM 调用异常时（重试耗尽后一次） | - |
+| `llm.message` | 收到 LLM 响应消息 | message, role |
+| `llm.params` | LLM 请求参数设置（按能力特化键） | temperature, topP, maxTokens 等 |
+| `llm.headers` | LLM 请求 Headers | headers |
 | `tool.before_register` | 工具注册前（可拦截） | toolId, description |
 | `tool.after_register` | 工具注册后 | - |
 | `tool.definition` | 获取工具 Schema 时 | description, parameters |
@@ -303,7 +302,9 @@ Seeing.Agent 从 **用户级** `~/.seeing/seeing.json` 与 **项目级** `./.see
 ```json
 {
   "SeeingAgent": {
-    "DefaultModel": "openai/gpt-4",
+    "DefaultModels": {
+      "chat": "openai/gpt-4"
+    },
     "DefaultAgent": "sisyphus",
     "SkillPaths": [ "./skills", "./.agents/skills" ],
     "Providers": {

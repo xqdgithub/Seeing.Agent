@@ -21,7 +21,7 @@
 | `Scenarios` | 工作模式字典（`Modules` / `DefaultAgent` / `Seams` / `Tools.Disabled`） |
 | `Modules` | `Disabled`（boot 全局模块黑名单）+ `Tools.Disabled`（工具层全局裁剪）；**不再**消费 `Enabled` |
 | `Seams` | 进程级 seam 绑定覆盖（如 `executionWorld` → 模块 id）；与 `HostDefaultSeams` 合并 |
-| `DefaultAgent` / `DefaultModel` | 全局默认 |
+| `DefaultAgent` / `DefaultModels` | 全局默认（`DefaultModels` 是按能力索引的字典：`chat` / `embedding` / `decision` / …） |
 | `Tools.Exposure` | 工具暴露策略（见下） |
 | `ToolOutput` | 工具输出限长（`MaxInlineBytes` 等） |
 | `Permission` / `Workspace` / … | 各域配置 |

@@ -31,6 +31,7 @@
 - [Agent 自动反思 Release Notes](docs/architecture/25-agent-reflection-release-notes.md)
 - [记忆页面重设计 Release Notes](docs/architecture/26-memory-page-redesign-release-notes.md)
 - [WebUI 渲染性能 Release Notes](docs/architecture/27-webui-render-performance-release-notes.md)
+- [LLM 能力抽象 Release Notes](docs/architecture/28-llm-capability-abstraction-release-notes.md)
 
 设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
 

@@ -28,7 +28,7 @@
 
 ### 协议工厂（OpenAI / Anthropic 类）
 
-1. 实现 `ILlmClientFactory`，`SupportedTypes` 声明类型字符串（小写，如 `openai`）。  
+1. 实现 `ILlmClientFactory`，`SupportedProtocols` 声明协议字符串（小写，如 `openai`），`Create(config, capability)` 按能力返回对应客户端（不支持返回 `null`，不抛）。  
 2. 包放 `src/capabilities/Seeing.Agent.Llm.Xxx/`。  
 3. 模块 `ConfigureServices` 登记工厂；由 Core `ProviderManager` 聚合。  
 4. 旧 `providers.json` PascalCase 由 `ProviderTypes.Normalize` 兼容；写盘用小写。
@@ -50,7 +50,11 @@
 | 通用、多订阅、全 provider 头 | `llm.headers` Hook → `LlmCallContext.ExtraHeaders` | 编排层；流式/非流式均应用 |
 | provider 专属出站塑形 | `ILlmCallInterceptor`（`AppliesTo`） | 如 OpenCode `x-opencode-session`；协议客户端**每次发送前** `Resolve`，经 `OutboundPipeline` 写入本次请求（非 Create 快照） |
 | 横切（重试） | `ILlmClientDecorator` / `RetryLlmClientDecorator` | 镜像工具装饰器；工厂 Create 后包装 |
-| 调用期身份 | `ILlmClient.Complete*(request, LlmCallContext? call, …)` | **不**塞进 `ChatRequest` |
+| 调用期身份 | `ILlmCapabilityClient.*(request, LlmCallContext? call, …)` | **不**塞进 `ChatRequest` |
+
+**常规单次业务调用必须经 `ILlmInvoker`**（才是触发 `llm.*` Hook、合并出站头、计算耗时的唯一路径）。
+只有连接测试探针、video 轮询、框架内部装配才直接 `ILlmRouter.Resolve<T>(modelId)`——判别口诀是
+「这次调用该不该被观测成一次 LLM 调用」。见 `docs/architecture/28-llm-capability-abstraction-release-notes.md` §7.4.1。
 
 公共扩展点用**类型化接口**（非 Func）。详见 `docs/superpowers/specs/2026-09-09-llm-provider-abstraction-redesign.md`。
 
