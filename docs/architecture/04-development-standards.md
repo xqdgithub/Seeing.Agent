@@ -123,7 +123,16 @@ Core 程序集内命名空间须为 `Seeing.Agent.Core.*`（契约仍可在 Abst
 2. 读取方（Dispatcher 渲染、LLM 出站构造、落盘、工具）直接持引用枚举，无需锁；后台写者发布新快照，读者持旧快照不受影响。
 3. 元素标量字段（`SessionToolCall.Status/Result` 等）仍为原子引用/值写，允许；不构成集合破坏。
 
-与 `SessionData.Messages` 的"锁内快照"契约互补：前者覆盖元素级集合，后者覆盖消息列表容器。详见 [`2026-10-08-session-message-immutable-concurrency-design.md`](../superpowers/specs/2026-10-08-session-message-immutable-concurrency-design.md)。
+与 `SessionData.Messages` 的「写时失效快照」契约互补：前者覆盖元素级集合，后者覆盖消息列表容器。
+
+**消息列表容器契约（2026-11-04 更新）：**
+
+1. `SessionData.Messages` 返回锁内**缓存快照**：同一版本内多次读取返回**同一实例**（避免热路径反复 `ToList`）；任何容器写入（`AddMessage`/`InsertMessage`/`RemoveMessage`/`RemoveMessages`/`ReplaceMessages`/`ClearMessages` 等）都会使其失效。
+2. 该返回值是**只读视图**：调用方不得 Cast 为 `List<SessionMessage>` 或就地修改 —— 修改不会经过失效逻辑，会污染会话真相。
+3. `SessionData.GetActiveMessages()` 仍返回**独立副本**（对外承诺可变 `List`），调用方可安全持有与修改。
+4. `SessionData.TryGetMessage(id, out msg)` 按 Id 查（锁内惰性建索引，容器写入后失效）。注意它**只跟踪容器成员**，不感知元素 Id 的后续改写。
+
+详见 [`2026-10-08-session-message-immutable-concurrency-design.md`](../superpowers/specs/2026-10-08-session-message-immutable-concurrency-design.md) 与 [`27-webui-render-performance-release-notes.md`](27-webui-render-performance-release-notes.md)。
 
 ### 5.2 单一权威写入者契约
 
