@@ -148,6 +148,67 @@ public class LlmCapabilityMapTests
     public void DefaultCapabilities_ShouldFollowProviderDefaultsTable(string protocol, LlmCapabilityKind expected)
         => LlmCapabilityMap.DefaultCapabilities(protocol).Should().Be(expected);
 
+    // ---- 关卡 1 修复：字符串反向解析与类型反查（B1） ----
+
+    [Fact]
+    public void TryParseConfigKey_ShouldRoundTripEveryKind()
+    {
+        foreach (var kind in Enum.GetValues<LlmCapabilityKind>().Where(k => k != LlmCapabilityKind.None))
+        {
+            LlmCapabilityMap.TryParseConfigKey(LlmCapabilityMap.ToConfigKey(kind), out var parsed)
+                .Should().BeTrue();
+            parsed.Should().Be(kind);
+        }
+    }
+
+    [Fact]
+    public void TryParseConfigKey_UnknownOrNumeric_ShouldReturnFalse()
+    {
+        LlmCapabilityMap.TryParseConfigKey("notACapability", out _).Should().BeFalse();
+        LlmCapabilityMap.TryParseConfigKey("8", out _).Should().BeFalse();
+        LlmCapabilityMap.TryParseConfigKey(null, out _).Should().BeFalse();
+        LlmCapabilityMap.TryParseConfigKey("", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void TryParseConfigKey_ShouldBeCaseInsensitive()
+    {
+        LlmCapabilityMap.TryParseConfigKey("SpeechSynthesis", out var kind).Should().BeTrue();
+        kind.Should().Be(LlmCapabilityKind.SpeechSynthesis);
+    }
+
+    [Fact]
+    public void ParseCapabilities_NullOrEmpty_ShouldFallBackToProtocolDefault()
+    {
+        LlmCapabilityMap.ParseCapabilities(null, "openai").Should().Be(LlmCapabilityKind.Chat);
+        LlmCapabilityMap.ParseCapabilities(Array.Empty<string>(), "typesafe")
+            .Should().Be(LlmCapabilityKind.Decision);
+    }
+
+    [Fact]
+    public void ParseCapabilities_UnknownName_ShouldThrowNotSilentlyIgnore()
+    {
+        var act = () => LlmCapabilityMap.ParseCapabilities(new[] { "chat", "embeding" }, "openai");
+        act.Should().Throw<ArgumentException>().WithMessage("*embeding*");
+    }
+
+    [Fact]
+    public void ParseCapabilities_ShouldUnionMultipleKinds()
+        => LlmCapabilityMap.ParseCapabilities(new[] { "chat", "embedding" }, "openai")
+            .Should().Be(LlmCapabilityKind.Chat | LlmCapabilityKind.Embedding);
+
+    [Fact]
+    public void TryGetKindFromClientType_ShouldMapEveryPortBack()
+    {
+        foreach (var (kind, type) in LlmCapabilityMap.ClientTypes)
+        {
+            LlmCapabilityMap.TryGetKindFromClientType(type, out var back).Should().BeTrue();
+            back.Should().Be(kind);
+        }
+
+        LlmCapabilityMap.TryGetKindFromClientType(typeof(ILlmCapabilityClient), out _).Should().BeFalse();
+    }
+
     [Fact]
     public void DefaultCapabilities_OpenAi_ShouldNotIncludeEmbedding()
     {

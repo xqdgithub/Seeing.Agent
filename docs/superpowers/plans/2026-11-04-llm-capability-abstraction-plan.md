@@ -58,6 +58,8 @@
 | `src/spine/.../CapabilitySets/BuiltInCapabilitySets.cs`、`Seeing.Agent.slnx` | **S** SystemOne | 1 |
 | `src/capabilities/Seeing.Agent.Memory/**` | **E** Embedding | 1 |
 | `src/capabilities/Seeing.Agent.TokenBudget/**`、`Memory/Integration/MemoryHookHandler.cs` | **H** Hook | 1 |
+| `src/support/Seeing.Agent.Llm.Support/Inference/ModelTypeInference.cs` | **R** 运行时 | 1 |
+| `src/abstractions/.../Llm/IProviderEndpointLookup.cs`（整组删除） | **R** 运行时 | 1 |
 | `samples/Seeing.Agent.WebUI/**` | **W** WebUI | 2 |
 | `docs/architecture/**` | **R** 运行时（收尾） | 3 |
 
@@ -65,6 +67,7 @@
 - `MemoryHookHandler.cs` 物理在 Memory 包内，但属 **H** 轨道；**E** 轨道不得修改它。
 - `BuiltInCapabilitySets.cs` / `slnx` 由 **S** 轨道改，**R** 轨道不得碰。
 - 所有 DI 登记集中在 **R** 轨道的 `ServiceCollectionExtensions.cs`；其他轨道若需登记，写进「跨轨道请求」。
+- **`ModelTypeInference.cs` 与 `IProviderEndpointLookup.cs` 是 Wave 0 报告发现的属主空缺**：前者不改则 `Llm.Support` 永远编译不过（`ModelType.Image` 已删）；后者 spec §9.1 要求整组删除，但它是 `Memory` 待删类的唯一消费者，删除必须与 E 轨道同步。两者都归 **R** 轨道（R 是唯一有能力协调 Core + Memory 交界的轨道）。
 
 ---
 
@@ -205,14 +208,14 @@ git add -A && git commit -m "feat(llm): add capability ports and DTOs"
 
 **Files:**
 - Create: `src/abstractions/.../Llm/ILlmRouter.cs`、`ILlmInvoker.cs`、`LlmInvocationOptions.cs`、`LlmCapabilityMismatchException.cs`、`Hooks/ILlmHookPayloadAdapter.cs`、`Hooks/ILlmHookPayloadAdapterRegistry.cs`
-- Modify: `src/abstractions/.../Llm/ILlmProvider.cs`、`ILlmClientFactory.cs`、`ILlmClientDecorator.cs`、`ProviderConfig.cs`、`ProviderInfo.cs`、`LlmClientFactoryResolver.cs`
+- Modify: `src/abstractions/.../Llm/ILlmProvider.cs`、`ILlmClientFactory.cs`、`ILlmClientDecorator.cs`、`ProviderConfig.cs`、`ProviderInfo.cs`、`LlmClientFactoryResolver.cs`、`IModelConfigManager.cs`
 - Test: `tests/spine/Seeing.Agent.Tests/Llm/LlmProviderContractTests.cs`
 
 **Interfaces:**
 - Produces: spec §7.3（`ILlmProvider` / `ILlmClientFactory`）、§7.4（`ILlmRouter`）、§7.5（`ILlmInvoker` / `LlmInvocationOptions` / 适配器）。
 - `ProviderConfig`：**新增** `List<string>? Capabilities`、`bool ListModels`；**删除** `DefaultModel`。`ProviderTypes` 加 `TypeSafe = "typesafe"`、`OpenAiResponses = "openai-responses"`，`Normalize` 同步。
 
-> **`IModelConfigManager` 的六个默认模型成员不在此任务**——它牵动 `ModelConfigManager`/`ModelManager` 两个 Core 实现类与十几个测试，放进 Wave 0 会污染契约层的编译边界。改由 **Task M-1** 在自己的轨道内一次性完成接口+实现+测试（属主为 M 轨道，文件不冲突）。本任务只保证 Wave 0 结束时可编译。
+> **`IModelConfigManager` 的六个默认模型成员在 Wave 0 只落「签名」**（关卡 1 审查要求：S 轨道要用 `GetDefaultModel(Decision)`，签名必须前置）。**实现与测试仍归 Task M-1**，M 轨道不得再改接口文件。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -253,6 +256,24 @@ git add -A && git commit -m "feat(llm): add provider/factory/router/invoker cont
 
 > **Wave 0 的编译边界**：本任务之后 `ProviderConfig.DefaultModel` 已删但 `ConfiguredLlmProvider`/`ProviderManager` 仍引用它，`ILlmProvider.GetClient()` 已改签名但 5 个实现类未改。**Wave 0 结束时 `dotnet build Seeing.Agent.slnx` 必然失败，这是设计好的**——由 Task I-1 统一收口。不要在 Wave 0 试图让它编译通过，那会诱使你在契约层加兼容重载。
 
+### Task C-4: 关卡 1 审查修复（已由主控预先落地，Wave 1 只需知晓）
+
+**本节记录关卡 1 审查发现的四个阻塞项及其修复，属已完成状态。** Wave 1 的实现者需要知道这些 API 已经存在，不要重复实现。
+
+| 阻塞项 | 修复 | 落地位置 |
+|---|---|---|
+| **B1** 缺「字符串 → 能力」反向解析，三轨会各写一份 `Enum.TryParse` 导致语义分叉 | 新增 `TryParseConfigKey` / `TryParseHookValue` / `TryGetKindFromClientType` / `ParseCapabilities(values, protocol)`。`ParseCapabilities` 遇未登记名字**抛 `ArgumentException`**，禁止静默忽略 | `LlmCapabilityMap.cs` |
+| **B2** `LlmPayloadContext` 缺 `messageId` / `step`，H-2 无法产出 spec §7.6 要求的键 | 新增 `MessageId` / `Step` / `StreamedContent` / `StreamedReasoning` / `StreamedToolCalls` 五个字段 | `Hooks/ILlmHookPayloadAdapter.cs` |
+| **B3** `ILlmInvoker.StreamAsync` 承诺「累计用量触发终态 Hook」但契约无承载 | 在 XML 注释里钉死累计规则：`StreamUpdate` 累计 Id/Content/Reasoning/ToolCalls/Usage 并填入上述字段；其余 chunk 类型**不承诺**累计语义 | `ILlmInvoker.cs` |
+| **B4** S 轨道依赖 `GetDefaultModel(Decision)` 但签名在 M-1 | 六个成员**签名前置到 Wave 0**，实现仍留 M-1 | `IModelConfigManager.cs` |
+
+**已裁定的待议项**：`Llm/Rerank/RerankModels.cs`（`RerankRequest` / `RerankHit` / `RerankResponse`）**保留**。它是 spec §7.2 的 `IRerankClient` 的必需依赖，且 spec §7.2.2 的 DTO 块漏列了 Rerank。形状与 Cohere/Voyage/Jina 的公共子集对齐，`RerankHit(Index, Score, Document)` 的 `Index` 指回原下标，与 `EmbeddingVector` 风格一致。
+
+**Wave 1 必须知道的三条派发顺序（关卡 1 审查补充）**：
+1. **H-1 必须先于 R-2 落地** —— R-2 消费 H-1 产出的 `llm.*` 常量。若同批启动，R-2 需按 Wave 0 已定的点分字符串自测，等 H-1 合入后再联调。
+2. **S-3 依赖 M-1 的实现**（签名已在 Wave 0）—— S-3 若先完成，用 Moq 桩住 `IModelConfigManager` 即可，不阻塞。
+3. **D-1 的装饰器靠 `is` 判断能力**，因决议 15 删了客户端自述。**前提：每个客户端实例恰好实现一个能力端口**——这是隐含契约，D-1 与 O-4 必须一致遵守。
+
 ---
 
 ## 审查关卡 1（Wave 0 结束后，唯一的契约审查）
@@ -261,8 +282,10 @@ git add -A && git commit -m "feat(llm): add provider/factory/router/invoker cont
 
 检查清单：
 - [ ] 8 个能力端口签名齐全，且 `ILlmCapabilityClient` 无 `Capabilities`
-- [ ] `LlmCapabilityMap` 五个方法齐全（`FromModelType` / `ClientTypes` / `DefaultCapabilities` / `ToConfigKey` / `ToHookValue`）
+- [ ] `LlmCapabilityMap` **七个**方法齐全（`FromModelType` / `ClientTypes` / `DefaultCapabilities` / `ToConfigKey` / `ToHookValue` / `TryParseConfigKey` / `ParseCapabilities` / `TryGetKindFromClientType`）
 - [ ] `ILlmRouter` / `ILlmInvoker` / `ILlmHookPayloadAdapter(Registry)` 齐全
+- [ ] `LlmPayloadContext` 含 `MessageId` / `Step` / `StreamedContent` / `StreamedReasoning` / `StreamedToolCalls`
+- [ ] `IModelConfigManager` 六个成员**签名**齐全（实现留 M-1）
 - [ ] `ProviderConfig` 有 `Capabilities`/`ListModels`、无 `DefaultModel`
 - [ ] `ModelType` 中无 `Image`，有 `Decision` / `ImageGeneration`
 - [ ] `ILlmProvider.GetClient` 与 `TestConnectionAsync` 均带 `LlmCapabilityKind` 参数
@@ -271,6 +294,8 @@ git add -A && git commit -m "feat(llm): add provider/factory/router/invoker cont
 **判定方法**：构建失败信息中，任何错误若指向 `src/abstractions/**` 内部，则是契约写错，必须修；若指向 `src/spine/**` 或 `src/capabilities/**` 的实现类，属预期。
 
 审查不通过则只改契约层，不进入 Wave 1。
+
+**关卡 1 已执行完毕**（审查者：`deepseek-v4.1-flash`）。结论 `PASS_WITH_FIXES`，4 个阻塞项已全部修复并记录在 Task C-4。**Wave 1 已可启动。**
 
 ---
 
@@ -438,6 +463,35 @@ public void SaveThenLoad_ShouldPreserveCapabilitiesAndListModels()
 > 这条正是 Review Focus #5，缺了它"保存一次抹掉配置"会静默发生。
 
 - [ ] **Step 2-4: TDD 循环**
+- [ ] **Step 5: Commit**
+
+### Task R-7: Llm.Support 推断修正与端点查询整组删除
+
+**Files:**
+- Modify: `src/support/Seeing.Agent.Llm.Support/Inference/ModelTypeInference.cs`
+- Delete: `src/abstractions/Seeing.Agent.Abstractions/Llm/IProviderEndpointLookup.cs`
+- Modify: `src/spine/Seeing.Agent.Core/Llm/OptionsProviderEndpointLookup.cs`（删除，R-4 已列）
+- Test: `tests/spine/Seeing.Agent.Tests/Llm/ModelTypeInferenceTests.cs`（若无则新建）
+
+**Interfaces:**
+- `ModelTypeInference.InferTypes` 对 `stable-diffusion` / `sdxl` / `flux` / `dall-e` / `-image` / `image-` **全部**返回 `[ModelType.ImageGeneration]`（含糊模式也归生成，因为 `Image` 值已删）。
+- `IProviderEndpointLookup` / `ProviderEndpoint` / `IProviderEndpointInfo` 三类型整组删除。
+
+> **这是 Wave 0 发现的两个属主空缺**。`ModelTypeInference.cs` 不改则 `Llm.Support` 永远编译不过；`IProviderEndpointLookup` 的唯一生产消费者是 E 轨道待删的两个 Memory 类，**删除时机必须是 E-1 完成之后**，否则会留下悬空引用。
+
+- [ ] **Step 1: 写失败测试**
+
+```csharp
+[Theory]
+[InlineData("dall-e-3", ModelType.ImageGeneration)]
+[InlineData("flux-pro", ModelType.ImageGeneration)]
+[InlineData("sdxl-turbo", ModelType.ImageGeneration)]
+[InlineData("stable-diffusion-xl", ModelType.ImageGeneration)]
+public void InferTypes_ImageModels_ShouldReturnImageGeneration(string id, ModelType expected)
+    => ModelTypeInference.InferTypes(id).Should().ContainSingle().Which.Should().Be(expected);
+```
+
+- [ ] **Step 2-4: TDD 循环**（`IProviderEndpointLookup` 的删除须在 E-1 合入后执行；若 E-1 未完成，先只改 `ModelTypeInference.cs`，删除留给 Task I-1）
 - [ ] **Step 5: Commit**
 
 ---

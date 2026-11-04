@@ -46,8 +46,14 @@ public interface IModelConfigManager
     /// </param>
     ModelConfig? GetModel(string modelId);
 
-    /// <summary>获取默认模型 ID</summary>
-    string? GetDefaultModel();
+    /// <summary>
+    /// 获取指定能力的全局默认模型引用。
+    /// <para><b>严格查表</b>：未配置返回 null，不回落到其他能力、不查目录猜（决议 13）。</para>
+    /// </summary>
+    string? GetDefaultModel(LlmCapabilityKind capability);
+
+    /// <summary>获取全部已配置的能力默认值（只含已配置项）。</summary>
+    IReadOnlyDictionary<LlmCapabilityKind, string> GetAllDefaultModels();
 
     /// <summary>获取指定 Provider 下「已启用」的模型列表。</summary>
     IReadOnlyDictionary<string, ModelConfig> GetModelsByProvider(string providerId);
@@ -69,8 +75,8 @@ public interface IModelConfigManager
         ModelType type = ModelType.Text,
         string? providerId = null);
 
-    /// <summary>是否可作为默认对话模型（有效类型含 Text）</summary>
-    bool CanSetAsDefaultModel(string modelId);
+    /// <summary>某模型能否被设为该能力的默认（不再硬编码 Text 类型）。</summary>
+    bool CanSetAsDefaultModel(string modelId, LlmCapabilityKind capability);
 
     /// <summary>
     /// 重新聚合模型目录并等待本次刷新生效。
@@ -116,8 +122,13 @@ public interface IModelConfigManager
         ConfigLevel level = ConfigLevel.User,
         CancellationToken ct = default);
 
-    /// <summary>设置默认模型</summary>
+    /// <summary>
+    /// 设置某能力的默认模型。
+    /// <para>写时校验（决议 14 / 21）：引用必须带 <c>provider/</c> 前缀、模型存在、
+    /// 且模型的有效类型映射到该能力。任一不满足抛 <see cref="ArgumentException"/>。</para>
+    /// </summary>
     Task SetDefaultModelAsync(
+        LlmCapabilityKind capability,
         string? modelId,
         ConfigLevel level = ConfigLevel.User,
         CancellationToken ct = default);
@@ -163,6 +174,23 @@ public interface IModelConfigManager
         string providerId,
         string modelId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// 便捷解析：查默认值 → 经 <see cref="ILlmRouter"/> 解析客户端。
+    /// <para>未配置返回 false 且 reason 说明"未配置该能力的默认模型"；
+    /// 配置了但解析失败返回 false 并带 Router 的失败原因。</para>
+    /// </summary>
+    bool TryResolveDefault<TClient>(
+        LlmCapabilityKind capability,
+        out TClient? client,
+        out string? reason)
+        where TClient : class, ILlmCapabilityClient;
+
+    /// <summary>
+    /// 校验全部默认值：模型是否仍存在、是否仍具备所声明的能力。
+    /// <para>返回每项的问题描述（空字典 = 全部有效）。<b>只报告，不自动清除</b>（决议 23）。</para>
+    /// </summary>
+    IReadOnlyDictionary<LlmCapabilityKind, string> ValidateDefaultModels();
 
     #endregion
 

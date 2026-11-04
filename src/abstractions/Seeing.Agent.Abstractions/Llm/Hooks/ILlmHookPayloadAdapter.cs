@@ -19,6 +19,8 @@ public interface ILlmHookPayloadAdapter
 
 /// <summary>
 /// 组装 <c>llm.after_complete</c> 载荷所需的上下文。
+/// <para>字段与 spec §7.6 的 result 超集表一一对应：适配器只负责把
+/// <see cref="Response"/> 里的响应 DTO 摊平到这些字段，不做额外推断。</para>
 /// </summary>
 public sealed record LlmPayloadContext
 {
@@ -45,4 +47,25 @@ public sealed record LlmPayloadContext
 
     /// <summary>是否来自流式调用。</summary>
     public bool Streaming { get; init; }
+
+    /// <summary>
+    /// 响应消息 ID（仅 chat 有意义）。流式时由 Invoker 从首个 chunk 的
+    /// <c>StreamUpdate.Id</c> 捕获；非流式取自 <c>ChatResponse.Id</c>。
+    /// </summary>
+    public string? MessageId { get; init; }
+
+    /// <summary>执行轮次序号（仅 chat 有意义）；无归属时为 null。</summary>
+    public int? Step { get; init; }
+
+    /// <summary>
+    /// 流式调用的累计正文（仅 chat 有意义）：Invoker 在转发过程中累积
+    /// <c>StreamUpdate.ContentDelta</c> 后填入，使适配器无需重新遍历流。
+    /// </summary>
+    public string? StreamedContent { get; init; }
+
+    /// <summary>流式调用的累计推理内容（仅 chat 有意义）。</summary>
+    public string? StreamedReasoning { get; init; }
+
+    /// <summary>流式调用的累计工具调用（仅 chat 有意义）。</summary>
+    public IReadOnlyList<ToolCall>? StreamedToolCalls { get; init; }
 }

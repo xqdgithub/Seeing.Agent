@@ -86,6 +86,87 @@ public static class LlmCapabilityMap
     /// <summary>能力 → Hook 载荷值（点分，如 <c>speech.synthesis</c>）。</summary>
     public static string ToHookValue(LlmCapabilityKind kind) => Project(kind, s_hookValues);
 
+    /// <summary>配置键 → 能力（小驼峰）。未登记的名字返回 false，不抛。</summary>
+    public static bool TryParseConfigKey(string? value, out LlmCapabilityKind kind)
+        => TryParse(value, s_configKeys, out kind);
+
+    /// <summary>Hook 载荷值 → 能力（点分）。未登记的名字返回 false，不抛。</summary>
+    public static bool TryParseHookValue(string? value, out LlmCapabilityKind kind)
+        => TryParse(value, s_hookValues, out kind);
+
+    /// <summary>客户端接口类型 → 能力。<c>Resolve&lt;T&gt;</c> 与装饰器定位能力的唯一反查出口。</summary>
+    public static bool TryGetKindFromClientType(Type clientType, out LlmCapabilityKind kind)
+    {
+        ArgumentNullException.ThrowIfNull(clientType);
+        foreach (var (candidate, type) in ClientTypes)
+        {
+            if (type == clientType)
+            {
+                kind = candidate;
+                return true;
+            }
+        }
+
+        kind = LlmCapabilityKind.None;
+        return false;
+    }
+
+    /// <summary>
+    /// 把 <see cref="ProviderConfig.Capabilities"/> 这类字符串集合解析为位集。
+    /// <para><b>语义钉死（决议 19）</b>：集合为 null 或空 → 回落到
+    /// <see cref="DefaultCapabilities"/>（按协议缺省）；<b>遇到未登记的名字必须抛
+    /// <see cref="ArgumentException"/></b>，禁止静默忽略——否则拼错的
+    /// <c>"embedding"</c> 会退化成"没有该能力"，用户拿不到任何线索。</para>
+    /// </summary>
+    public static LlmCapabilityKind ParseCapabilities(IEnumerable<string>? values, string protocol)
+    {
+        if (values is null)
+            return DefaultCapabilities(protocol);
+
+        var result = LlmCapabilityKind.None;
+        var any = false;
+        foreach (var raw in values)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                continue;
+
+            if (!TryParseConfigKey(raw, out var kind))
+            {
+                throw new ArgumentException(
+                    $"未识别的能力名 '{raw}'。合法值：{string.Join(", ", s_configKeys.Values.Distinct())}",
+                    nameof(values));
+            }
+
+            result |= kind;
+            any = true;
+        }
+
+        return any ? result : DefaultCapabilities(protocol);
+    }
+
+    private static bool TryParse(
+        string? value,
+        IReadOnlyDictionary<LlmCapabilityKind, string> table,
+        out LlmCapabilityKind kind)
+    {
+        kind = LlmCapabilityKind.None;
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var trimmed = value.Trim();
+        foreach (var (candidate, text) in table)
+        {
+            if (candidate != LlmCapabilityKind.None &&
+                string.Equals(text, trimmed, StringComparison.OrdinalIgnoreCase))
+            {
+                kind = candidate;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>
     /// 单一能力查表投影；<paramref name="kind"/> 为复合位集时逐位展开并以逗号连接
     /// （仅供诊断呈现，配置解析端不接受这种形状）。未登记的位原样回落到 <c>ToString()</c>。

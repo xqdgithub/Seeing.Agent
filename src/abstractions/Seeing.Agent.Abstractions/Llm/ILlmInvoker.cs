@@ -26,7 +26,21 @@ public interface ILlmInvoker
         CancellationToken cancellationToken = default)
         where TClient : class, ILlmCapabilityClient;
 
-    /// <summary>流式版本：终态 Hook 在流结束时以累计用量触发。</summary>
+    /// <summary>
+    /// 流式版本：终态 Hook 在流结束时以累计用量触发。
+    /// <para><b>累计规则（契约，实现必须遵守）</b>：</para>
+    /// <list type="bullet">
+    /// <item><c>TChunk</c> 为 <see cref="StreamUpdate"/> 时，实现累积 <c>Id</c> /
+    /// <c>ContentDelta</c> / <c>ReasoningDelta</c> / <c>ToolCallDeltas</c> / <c>Usage</c>，
+    /// 并在 <see cref="LlmPayloadContext"/> 中填 <c>MessageId</c> / <c>StreamedContent</c> /
+    /// <c>StreamedReasoning</c> / <c>StreamedToolCalls</c> / <c>Usage</c>。</item>
+    /// <item>其余 chunk 类型（<see cref="AudioChunk"/> / <see cref="TranscriptSegment"/> /
+    /// <see cref="MediaJobStatus"/>）<b>不承诺</b>累计语义：
+    /// <c>Usage</c> 为 null，三个流式累计字段（<c>StreamedContent</c> /
+    /// <c>StreamedReasoning</c> / <c>StreamedToolCalls</c>）为 null，适配器只能产出通用键。</item>
+    /// </list>
+    /// <para>流式重试边界在客户端内部（装饰器）：<b>一旦产出过 chunk 绝不重试</b>。</para>
+    /// </summary>
     IAsyncEnumerable<TChunk> StreamAsync<TClient, TChunk>(
         string modelId,
         Func<TClient, LlmCallContext, CancellationToken, IAsyncEnumerable<TChunk>> stream,
