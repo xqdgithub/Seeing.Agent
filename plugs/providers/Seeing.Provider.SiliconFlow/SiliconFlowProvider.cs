@@ -19,7 +19,7 @@ public sealed class SiliconFlowProvider : ILlmProvider, IConfigurableLlmProvider
     private readonly ILogger<SiliconFlowProvider> _logger;
     private readonly object _gate = new();
     private string? _apiKey;
-    private ILlmClient? _client;
+    private ILlmCapabilityClient? _client;
     private IReadOnlyList<ModelConfig>? _modelsCache;
     private DateTimeOffset _modelsCachedAt;
     private int _disposed;
@@ -44,6 +44,16 @@ public sealed class SiliconFlowProvider : ILlmProvider, IConfigurableLlmProvider
 
     public string? Name => "SiliconFlow";
 
+    /// <inheritdoc />
+    /// <remarks>SiliconFlow 提供 OpenAI 兼容端点，故协议为 <c>openai</c>。</remarks>
+    public string Protocol => ProviderTypes.OpenAi;
+
+    /// <summary>
+    /// 只供 chat（<see cref="ProviderConfig.Capabilities"/> 的运行时投影）：
+    /// embedding 等能力未经协议工厂实现，虚报会让 Router 在第 5 层报错。
+    /// </summary>
+    public LlmCapabilityKind Capabilities => LlmCapabilityKind.Chat;
+
     public int MaxRetries => 3;
 
     public async Task WarmupAsync(CancellationToken ct = default)
@@ -55,8 +65,12 @@ public sealed class SiliconFlowProvider : ILlmProvider, IConfigurableLlmProvider
         }
     }
 
-    public ILlmClient GetClient()
+    public ILlmCapabilityClient? GetClient(LlmCapabilityKind capability)
     {
+        // 不供出的能力返回 null（契约规定不抛、不回退）
+        if (capability != LlmCapabilityKind.Chat)
+            return null;
+
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
         lock (_gate)
@@ -131,7 +145,7 @@ public sealed class SiliconFlowProvider : ILlmProvider, IConfigurableLlmProvider
             new SiliconFlowOptions { ApiKey = apiKey },
             cancellationToken).ConfigureAwait(false);
 
-        ILlmClient? oldClient;
+        ILlmCapabilityClient? oldClient;
         lock (_gate)
         {
             _apiKey = apiKey;
@@ -144,22 +158,29 @@ public sealed class SiliconFlowProvider : ILlmProvider, IConfigurableLlmProvider
         _registry.Register(this, ExtensionId);
     }
 
-    public Task<bool> TestConnectionAsync(
+    public async Task<bool> TestConnectionAsync(
         string modelId,
+        LlmCapabilityKind capability,
         CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
             if (string.IsNullOrWhiteSpace(_apiKey))
-                return Task.FromResult(false);
+                return false;
         }
 
-        return GetClient().TestConnectionAsync(modelId, call: null, cancellationToken);
+        // Provider 不推导、不猜能力：直接取该能力客户端，不供出即 false（spec §7.3 / 决议 9）
+        var client = GetClient(capability);
+        if (client is null)
+            return false;
+
+        return await client.TestConnectionAsync(
+            modelId, capability, call: null, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()
     {
-        ILlmClient? client;
+        ILlmCapabilityClient? client;
         lock (_gate)
         {
             if (_disposed != 0)
@@ -173,19 +194,21 @@ public sealed class SiliconFlowProvider : ILlmProvider, IConfigurableLlmProvider
         await DisposeClientAsync(client).ConfigureAwait(false);
     }
 
-    private ILlmClient CreateClient()
+    private ILlmCapabilityClient? CreateClient()
     {
         try
         {
-            var factory = LlmClientFactoryResolver.Require(_factories, ProviderTypes.OpenAi);
+            var factory = LlmClientFactoryResolver.Require(_factories, Protocol);
+            // 装饰器（重试 / 429 退避）由工厂在返回前应用，本 Provider 只原样交出（spec §7.3）。
+            // plug provider 直接调工厂、不经 ConfiguredLlmProvider，故不可把 Apply 上移。
             return factory.Create(new ProviderConfig
             {
                 Id = Id,
-                Type = ProviderTypes.OpenAi,
+                Type = Protocol,
                 Name = Name,
                 BaseUrl = SiliconFlowModelsClient.DefaultBaseUrl,
                 ApiKey = _apiKey
-            });
+            }, LlmCapabilityKind.Chat);
         }
         catch (Exception ex)
         {
@@ -194,14 +217,14 @@ public sealed class SiliconFlowProvider : ILlmProvider, IConfigurableLlmProvider
         }
     }
 
-    private ILlmClient? InvalidateClient()
+    private ILlmCapabilityClient? InvalidateClient()
     {
         var oldClient = _client;
         _client = null;
         return oldClient;
     }
 
-    private async ValueTask DisposeClientAsync(ILlmClient? client)
+    private async ValueTask DisposeClientAsync(ILlmCapabilityClient? client)
     {
         if (client is null)
             return;

@@ -23,7 +23,7 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
     private readonly ILogger<OpenCodeZenProvider> _logger;
     private readonly object _gate = new();
     private string? _apiKey;
-    private ILlmClient? _client;
+    private ILlmCapabilityClient? _client;
     private IReadOnlyList<ModelConfig>? _modelsCache;
     private DateTimeOffset _modelsCachedAt;
     private int _disposed;
@@ -48,6 +48,16 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
 
     public string? Name => "OpenCode Zen";
 
+    /// <inheritdoc />
+    /// <remarks>OpenCode Zen 是 OpenAI 兼容网关，故协议为 <c>openai</c>。</remarks>
+    public string Protocol => ProviderTypes.OpenAi;
+
+    /// <summary>
+    /// 只供 chat（<see cref="ProviderConfig.Capabilities"/> 的运行时投影）：
+    /// embedding 等能力未经协议工厂实现，虚报会让 Router 在第 5 层报错。
+    /// </summary>
+    public LlmCapabilityKind Capabilities => LlmCapabilityKind.Chat;
+
     public int MaxRetries => 3;
 
     public async Task WarmupAsync(CancellationToken ct = default)
@@ -59,8 +69,12 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
         }
     }
 
-    public ILlmClient GetClient()
+    public ILlmCapabilityClient? GetClient(LlmCapabilityKind capability)
     {
+        // 不供出的能力返回 null（契约规定不抛、不回退）
+        if (capability != LlmCapabilityKind.Chat)
+            return null;
+
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
         lock (_gate)
@@ -173,7 +187,7 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
         options.ApiKey = apiKey;
         await _store.SaveAsync(options, cancellationToken).ConfigureAwait(false);
 
-        ILlmClient? oldClient;
+        ILlmCapabilityClient? oldClient;
         lock (_gate)
         {
             _apiKey = apiKey;
@@ -186,14 +200,23 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
         _registry.Register(this, ExtensionId);
     }
 
-    public Task<bool> TestConnectionAsync(
+    public async Task<bool> TestConnectionAsync(
         string modelId,
+        LlmCapabilityKind capability,
         CancellationToken cancellationToken = default)
-        => GetClient().TestConnectionAsync(modelId, call: null, cancellationToken);
+    {
+        // 免认证网关：免费模型无需 API Key 也可测连；不供出的能力直接 false 且不建客户端
+        var client = GetClient(capability);
+        if (client is null)
+            return false;
+
+        return await client.TestConnectionAsync(
+            modelId, capability, call: null, cancellationToken).ConfigureAwait(false);
+    }
 
     public async ValueTask DisposeAsync()
     {
-        ILlmClient? client;
+        ILlmCapabilityClient? client;
         lock (_gate)
         {
             if (_disposed != 0)
@@ -207,17 +230,19 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
         await DisposeClientAsync(client).ConfigureAwait(false);
     }
 
-    private ILlmClient CreateClient()
+    private ILlmCapabilityClient? CreateClient()
     {
         try
         {
             // Console 免费层校验：x-opencode-session 由 OpenCodeZenCallInterceptor 按调用注入；
             // User-Agent / x-opencode-client 为静态识别头。免费模型可无 API Key。
-            var factory = LlmClientFactoryResolver.Require(_factories, ProviderTypes.OpenAi);
+            // 装饰器（重试 / 429 退避）由工厂在返回前应用，本 Provider 只原样交出（spec §7.3）。
+            // plug provider 直接调工厂、不经 ConfiguredLlmProvider，故不可把 Apply 上移。
+            var factory = LlmClientFactoryResolver.Require(_factories, Protocol);
             return factory.Create(new ProviderConfig
             {
                 Id = Id,
-                Type = ProviderTypes.OpenAi,
+                Type = Protocol,
                 Name = Name,
                 BaseUrl = OpenCodeZenModelsClient.DefaultBaseUrl,
                 ApiKey = _apiKey,
@@ -227,7 +252,7 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
                     ["User-Agent"] = "opencode/1.18.29",
                     ["x-opencode-client"] = "cli"
                 }
-            });
+            }, LlmCapabilityKind.Chat);
         }
         catch (Exception ex)
         {
@@ -236,14 +261,14 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
         }
     }
 
-    private ILlmClient? InvalidateClient()
+    private ILlmCapabilityClient? InvalidateClient()
     {
         var oldClient = _client;
         _client = null;
         return oldClient;
     }
 
-    private async ValueTask DisposeClientAsync(ILlmClient? client)
+    private async ValueTask DisposeClientAsync(ILlmCapabilityClient? client)
     {
         if (client is null)
             return;

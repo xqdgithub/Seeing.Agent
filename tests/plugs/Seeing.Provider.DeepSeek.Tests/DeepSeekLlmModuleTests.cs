@@ -23,7 +23,7 @@ public class DeepSeekLlmModuleTests
         services.AddSingleton(registry.Object);
 
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(f => f.SupportsType(ProviderTypes.OpenAi)).Returns(true);
+        factory.Setup(f => f.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         services.AddSingleton(factory.Object);
 
         var capability = new Mock<IModelCapabilityManager>();
