@@ -37,6 +37,7 @@ using Seeing.Agent.Core.Host;
 using Seeing.Agent.Core.Hosting;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Llm;
+using Seeing.Agent.Core.Llm.Hooks;
 using Seeing.Agent.Core.Middlewares;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Modules;
@@ -755,11 +756,22 @@ namespace Seeing.Agent.Core.Extensions
             services.AddSingleton<ProviderManager>();
             services.AddSingleton<IProviderManager>(sp => sp.GetRequiredService<ProviderManager>());
 
-            // LLM 服务（调用层）
+            // LLM 横切层：Router 做「模型 ↔ 能力」五层校验，Invoker 统一 Hook / 出站头 / 耗时 / 载荷组装
+            services.AddSingleton<ILlmRouter, LlmRouter>();
+            services.AddSingleton<ILlmInvoker, LlmInvoker>();
+
+            // llm.after_complete 载荷适配器注册表：
+            // 内置五个适配器由 LlmHookPayloadAdapterRegistry 自身的基线供给（缺位才补），
+            // 因此这里<b>不</b>在 DI 里预登记内置项——模块的适配器在 AddSeeingCore 之前登记，
+            // 若在 DI 里后登记内置五个就会反过来覆盖插件，违反「插件注册同能力适配器 → 后注册胜」（决议 3）。
+            services.AddSingleton<ILlmHookPayloadAdapterRegistry>(sp => new LlmHookPayloadAdapterRegistry(
+                sp.GetServices<ILlmHookPayloadAdapter>(),
+                sp.GetService<ILogger<LlmHookPayloadAdapterRegistry>>()));
+
+            // LLM 服务（chat 门面：目录归一化后交给 ILlmInvoker）
             services.AddSingleton<ILlmService, LlmService>();
             services.AddSingleton<IModelConfigLookup>(sp => sp.GetRequiredService<ILlmService>());
             services.AddSingleton<ITextCompletion, TextCompletionService>();
-            services.AddSingleton<IProviderEndpointLookup, OptionsProviderEndpointLookup>();
 
             // 应用层轮次重试策略（默认无限重试；可由宿主覆盖）
             services.AddSingleton<Seeing.Agent.Abstractions.Llm.ILlmTurnRetryPolicy>(
