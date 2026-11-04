@@ -148,7 +148,7 @@
 
     private RelationNode? _pendingDelete;
 
-    private IReadOnlyList<RelationRow> Rows => Model?.BuildRows() ?? Array.Empty<RelationRow>();
+    private IReadOnlyList<RelationRow> Rows => Model?.Rows ?? Array.Empty<RelationRow>();
 
     private Task SelectAsync(string sessionId) => OnSelect.InvokeAsync(sessionId);
 

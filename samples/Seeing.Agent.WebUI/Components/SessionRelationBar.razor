@@ -6,16 +6,16 @@
 @if (Model is not null && Model.HasRelatedSessions)
 {
     <div class="session-relation-bar" data-testid="session-relation-bar">
-        @if (Bar.Overflow > 0)
+        @if (Model.BarOverflow > 0)
         {
             <div role="button" tabindex="0"
                     class="relation-chip relation-chip--overflow"
                     title="查看更早的主线会话"
                     @onclick="OpenDrawerAsync">
-                +@Bar.Overflow 个更早
+                +@Model.BarOverflow 个更早
             </div>
         }
-        @foreach (var node in Bar.Visible)
+        @foreach (var node in Model.BarVisible)
         {
             <div role="button" tabindex="0"
                     class="relation-chip @(node.IsAnchor ? "relation-chip--anchor" : "") @(node.IsActive ? "relation-chip--active" : "")"
@@ -51,11 +51,6 @@
     [Parameter] public EventCallback<string> OnSelect { get; set; }
 
     [Parameter] public EventCallback OnOpenDrawer { get; set; }
-
-    private (IReadOnlyList<RelationNode> Visible, int Overflow) Bar =>
-        Model is null
-            ? (Array.Empty<RelationNode>(), 0)
-            : RelationTreeModel.BarItems(Model.MainLine);
 
     private Task SelectAsync(string sessionId) => OnSelect.InvokeAsync(sessionId);
 

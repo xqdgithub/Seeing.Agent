@@ -69,6 +69,15 @@ public sealed class RelationTreeModel
     /// <summary>子代理会话数量。</summary>
     public int ChildCount => Children.Count;
 
+    /// <summary>顶部关系条可见项（构建期预计算；主线 ≤3 时全部，否则「首个 + 锚点」）。</summary>
+    public IReadOnlyList<RelationNode> BarVisible { get; init; } = Array.Empty<RelationNode>();
+
+    /// <summary>顶部关系条的溢出计数（未展示的主线节点数）。</summary>
+    public int BarOverflow { get; init; }
+
+    /// <summary>抽屉展平行（构建期预计算，避免每次渲染跑 O(M²) LINQ）。</summary>
+    public IReadOnlyList<RelationRow> Rows { get; init; } = Array.Empty<RelationRow>();
+
     /// <summary>
     /// 是否存在需要展示的关系（主线历史 &gt; 1 段，或存在派生/子会话）。
     /// 单一独立会话时为 false，顶部关系条不渲染。
@@ -83,36 +92,42 @@ public sealed class RelationTreeModel
     /// 未被主线节点直接挂载的派生/子会话按输入顺序追加，来源是否缺失基于**全部节点**
     /// （主线 + 派生 + 子会话）判定——父为 Fork/Child 时不算缺失。
     /// </summary>
-    public IReadOnlyList<RelationRow> BuildRows()
+    public IReadOnlyList<RelationRow> BuildRows() => Rows;
+
+    /// <summary>展平关系树（构建期一次性计算）。</summary>
+    private static IReadOnlyList<RelationRow> ComputeRows(
+        IReadOnlyList<RelationNode> mainLine,
+        IReadOnlyList<RelationNode> derived,
+        IReadOnlyList<RelationNode> children)
     {
         var rows = new List<RelationRow>();
-        var mainIds = new HashSet<string>(MainLine.Select(n => n.SessionId), StringComparer.Ordinal);
+        var mainIds = new HashSet<string>(mainLine.Select(n => n.SessionId), StringComparer.Ordinal);
         var nested = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var node in MainLine)
+        foreach (var node in mainLine)
         {
             rows.Add(new RelationRow(node, 0, null));
 
-            foreach (var child in Derived.Where(n => Matches(n.ParentSessionId, node.SessionId)))
+            foreach (var child in derived.Where(n => Matches(n.ParentSessionId, node.SessionId)))
             {
                 rows.Add(new RelationRow(child, 1, null));
                 nested.Add(child.SessionId);
             }
 
-            foreach (var child in Children.Where(n => Matches(n.ParentSessionId, node.SessionId)))
+            foreach (var child in children.Where(n => Matches(n.ParentSessionId, node.SessionId)))
             {
                 rows.Add(new RelationRow(child, 1, null));
                 nested.Add(child.SessionId);
             }
         }
 
-        // 剩余节点（未挂在主线节点下）：父存在则不标缺失，否则标“来源已删除”
-        foreach (var orphan in Derived.Concat(Children).Where(n => !nested.Contains(n.SessionId)))
+        // 剩余节点（未挂在主线节点下）：父存在则不标缺失，否则标「来源已删除」
+        foreach (var orphan in derived.Concat(children).Where(n => !nested.Contains(n.SessionId)))
         {
             var sourceExists = !string.IsNullOrEmpty(orphan.ParentSessionId)
                                && (mainIds.Contains(orphan.ParentSessionId!)
-                                   || Derived.Any(n => string.Equals(n.SessionId, orphan.ParentSessionId, StringComparison.Ordinal))
-                                   || Children.Any(n => string.Equals(n.SessionId, orphan.ParentSessionId, StringComparison.Ordinal)));
+                                   || derived.Any(n => string.Equals(n.SessionId, orphan.ParentSessionId, StringComparison.Ordinal))
+                                   || children.Any(n => string.Equals(n.SessionId, orphan.ParentSessionId, StringComparison.Ordinal)));
             rows.Add(new RelationRow(orphan, 1, sourceExists ? null : SourceMissingText));
         }
 
@@ -130,12 +145,18 @@ public sealed class RelationTreeModel
         var all = ResolveSuccessorTitles(nodes.ToList());
         var lookup = BuildLookup(all);
         var mainLine = BuildMainLine(all, lookup);
+        var derived = all.Where(n => n.Relation == SessionRelation.Fork && !n.IsAnchor).ToList();
+        var children = all.Where(n => n.Relation == SessionRelation.Child && !n.IsAnchor).ToList();
+        var (visible, overflow) = BarItems(mainLine);
 
         return new RelationTreeModel
         {
             MainLine = mainLine,
-            Derived = all.Where(n => n.Relation == SessionRelation.Fork && !n.IsAnchor).ToList(),
-            Children = all.Where(n => n.Relation == SessionRelation.Child && !n.IsAnchor).ToList()
+            Derived = derived,
+            Children = children,
+            BarVisible = visible,
+            BarOverflow = overflow,
+            Rows = ComputeRows(mainLine, derived, children)
         };
     }
 

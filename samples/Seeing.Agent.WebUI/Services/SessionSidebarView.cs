@@ -27,10 +27,12 @@ public sealed record SidebarEntry(
 /// <param name="Title">分区标题。</param>
 /// <param name="Section">分区枚举。</param>
 /// <param name="Entries">分区内条目（执行中置顶，其余保持输入顺序）。</param>
+/// <param name="PendingPermissionTotal">分区内待批总数（构建期预计算，供标题行展示）。</param>
 public sealed record SidebarSection(
     string Title,
     SessionSection Section,
-    IReadOnlyList<SidebarEntry> Entries);
+    IReadOnlyList<SidebarEntry> Entries,
+    int PendingPermissionTotal = 0);
 
 /// <summary>
 /// 侧栏分区的纯映射逻辑（无 DI、无副作用，便于单测）。
@@ -77,6 +79,6 @@ public static class SessionSidebarView
             .ToList();
 
         if (matched.Count > 0)
-            sections.Add(new SidebarSection(title, section, matched));
+            sections.Add(new SidebarSection(title, section, matched, matched.Sum(e => e.PendingPermissions)));
     }
 }
