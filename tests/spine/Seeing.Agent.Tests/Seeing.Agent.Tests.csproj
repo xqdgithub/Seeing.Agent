@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\spine\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
+    <ProjectReference Include="..\..\..\src\support\Seeing.Agent.Llm.Support\Seeing.Agent.Llm.Support.csproj" />
     <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Agents.BuiltIn\Seeing.Agent.Agents.BuiltIn.csproj" />
     <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Skills\Seeing.Agent.Skills.csproj" />
     <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Mcp\Seeing.Agent.Mcp.csproj" />
