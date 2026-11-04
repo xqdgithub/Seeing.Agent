@@ -4,12 +4,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>Seeing.Agent.SystemOne</RootNamespace>
-    <Description>System One（TypeSafe/Jev）typed-question 客户端与工厂模块</Description>
+    <RootNamespace>Seeing.Agent.Llm.SystemOne</RootNamespace>
+    <Description>TypeSafe（Jev）Decision 能力客户端与工厂模块——原 SystemOne 平行栈合流进统一 LLM 注册表</Description>
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Seeing.Agent.SystemOne.Tests" />
+    <InternalsVisibleTo Include="Seeing.Agent.Llm.SystemOne.Tests" />
   </ItemGroup>
 
   <ItemGroup>

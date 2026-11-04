@@ -20,7 +20,7 @@ public sealed class SystemOneToolsModule : ISeeingModule
     private readonly List<string> _registeredSkillNames = new();
 
     /// <inheritdoc />
-    public string Id => "systemone.tools";
+    public string Id => "llm.systemone.tools";
 
     /// <inheritdoc />
     public IReadOnlyList<string> ProvidedTools => s_providedTools;
@@ -29,7 +29,7 @@ public sealed class SystemOneToolsModule : ISeeingModule
     public IReadOnlyList<string> ProvidedSeams { get; } = Array.Empty<string>();
 
     /// <inheritdoc />
-    public IReadOnlyList<string> DependsOn { get; } = new[] { "systemone" };
+    public IReadOnlyList<string> DependsOn { get; } = new[] { "llm.systemone" };
 
     /// <inheritdoc />
     public void ConfigureServices(IServiceCollection services)

@@ -10,10 +10,10 @@ public class SystemOneToolsModuleTests
     {
         var module = new SystemOneToolsModule();
 
-        module.Id.Should().Be("systemone.tools");
+        module.Id.Should().Be("llm.systemone.tools");
         module.ProvidedTools.Should().BeEquivalentTo(
             new[] { "systemone_ask", "systemone_noul", "systemone_choice", "systemone_score" });
         module.ProvidedSeams.Should().BeEmpty();
-        module.DependsOn.Should().Equal("systemone");
+        module.DependsOn.Should().Equal("llm.systemone");
     }
 }

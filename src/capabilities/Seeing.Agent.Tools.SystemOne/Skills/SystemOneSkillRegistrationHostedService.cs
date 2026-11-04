@@ -8,7 +8,7 @@ namespace Seeing.Agent.Tools.SystemOne.Skills;
 internal static class SystemOneSkillRegistrar
 {
     /// <summary>注册通道的提供方标识。</summary>
-    public const string ProviderId = "systemone.tools";
+    public const string ProviderId = "llm.systemone.tools";
 
     private static readonly Regex FrontmatterRegex = new(
         @"^---[\r]?[\n](.*?)[\r]?[\n]---[\r]?[\n]?",

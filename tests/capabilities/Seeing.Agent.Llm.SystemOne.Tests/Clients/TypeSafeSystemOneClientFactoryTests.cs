@@ -1,10 +1,10 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.SystemOne;
-using Seeing.Agent.SystemOne.Clients;
+using Seeing.Agent.Llm.SystemOne.Clients;
 using Xunit;
 
-namespace Seeing.Agent.SystemOne.Tests.Clients;
+namespace Seeing.Agent.Llm.SystemOne.Tests.Clients;
 
 public class TypeSafeSystemOneClientFactoryTests
 {

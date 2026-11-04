@@ -1,16 +1,16 @@
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.SystemOne.Configuration;
 
-namespace Seeing.Agent.SystemOne.Extensions;
+namespace Seeing.Agent.Llm.SystemOne.Extensions;
 
-/// <summary>SystemOne 包 DI 注册扩展。</summary>
+/// <summary>Seeing.Agent.Llm.SystemOne 包 DI 注册扩展。</summary>
 public static class SystemOneServiceExtensions
 {
     /// <summary>
-    /// 注册 Seeing.Agent.SystemOne 全部服务并登记 <c>SystemOne</c> 配置节。
+    /// 注册 <see cref="SystemOneModule"/>（TypeSafe / Decision 协议客户端工厂）。
     /// 须在 <c>AddSeeingCore</c> 之前调用。
+    /// <para>原 <c>SystemOne</c> 配置节登记已随平行栈删除：provider 走 <c>Providers.typesafe</c>。</para>
     /// </summary>
     public static IServiceCollection AddSystemOne(
         this IServiceCollection services,
@@ -20,7 +20,6 @@ public static class SystemOneServiceExtensions
         ArgumentNullException.ThrowIfNull(registry);
 
         services.EnsureConfigSectionRegistry(registry);
-        registry.Register(SystemOneConfigStore.SectionMeta);
 
         var module = new SystemOneModule();
         module.ConfigureServices(services);

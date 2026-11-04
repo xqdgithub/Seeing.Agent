@@ -1,15 +1,18 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.SystemOne;
-using Seeing.Agent.SystemOne.Clients;
-using System.Diagnostics;
+using Seeing.Agent.Llm.SystemOne.Clients;
 using System.Net;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Xunit;
 
-namespace Seeing.Agent.SystemOne.Tests.Clients;
+namespace Seeing.Agent.Llm.SystemOne.Tests.Clients;
 
+/// <summary>
+/// 序列化、鉴权头与错误映射用例。
+/// <para>429/529 退避重试用例已随客户端自带重试删除而移除（spec §6.3）：
+/// 退避由框架装饰器链统一负责，此处只锁定「单次请求 + 原始错误上抛」。</para>
+/// </summary>
 public class SystemOneHttpHelperTests
 {
     private const string ModelsJson = """{"models":[{"name":"jev-latest"}]}""";
@@ -39,47 +42,32 @@ public class SystemOneHttpHelperTests
     }
 
     [Fact]
-    public async Task GetAsync_On429Then200_RetriesAndReturnsBody()
+    public async Task GetAsync_On429_ThrowsImmediatelyWithoutRetry()
     {
-        var handler = new SequenceHandler(Json("rate limited", HttpStatusCode.TooManyRequests), Json(ModelsJson));
-        using var http = new HttpClient(handler);
-
-        var result = await SystemOneHttpHelper.GetAsync<SystemOneModelsResponse>(
-            http, Config(), SystemOneDefaults.ModelsPath, TestContext.Current.CancellationToken);
-
-        result.Models.Should().ContainSingle().Which.Name.Should().Be("jev-latest");
-        handler.RequestCount.Should().Be(2);
-    }
-
-    [Fact]
-    public async Task GetAsync_On529Then200_RetriesAndReturnsBody()
-    {
-        var handler = new SequenceHandler(Json("overloaded", (HttpStatusCode)529), Json(ModelsJson));
-        using var http = new HttpClient(handler);
-
-        var result = await SystemOneHttpHelper.GetAsync<SystemOneModelsResponse>(
-            http, Config(), SystemOneDefaults.ModelsPath, TestContext.Current.CancellationToken);
-
-        result.Models.Should().ContainSingle();
-        handler.RequestCount.Should().Be(2);
-    }
-
-    [Fact]
-    public async Task GetAsync_On429BeyondMaxRetries_ThrowsSystemOneException()
-    {
-        var handler = new SequenceHandler(
-            Json("rate limited", HttpStatusCode.TooManyRequests),
-            Json("rate limited", HttpStatusCode.TooManyRequests),
-            Json("rate limited", HttpStatusCode.TooManyRequests));
+        var handler = new SequenceHandler(Json("rate limited", HttpStatusCode.TooManyRequests));
         using var http = new HttpClient(handler);
 
         var act = () => SystemOneHttpHelper.GetAsync<SystemOneModelsResponse>(
-            http, Config(maxRetries: 2), SystemOneDefaults.ModelsPath, TestContext.Current.CancellationToken);
+            http, Config(), SystemOneDefaults.ModelsPath, TestContext.Current.CancellationToken);
 
         var ex = await act.Should().ThrowAsync<SystemOneException>();
         ex.Which.StatusCode.Should().Be(429);
         ex.Which.ResponseBody.Should().Be("rate limited");
-        handler.RequestCount.Should().Be(3);
+        handler.RequestCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GetAsync_On529_ThrowsImmediatelyWithoutRetry()
+    {
+        var handler = new SequenceHandler(Json("overloaded", (HttpStatusCode)529));
+        using var http = new HttpClient(handler);
+
+        var act = () => SystemOneHttpHelper.GetAsync<SystemOneModelsResponse>(
+            http, Config(), SystemOneDefaults.ModelsPath, TestContext.Current.CancellationToken);
+
+        var ex = await act.Should().ThrowAsync<SystemOneException>();
+        ex.Which.StatusCode.Should().Be(529);
+        handler.RequestCount.Should().Be(1);
     }
 
     [Fact]
@@ -94,26 +82,6 @@ public class SystemOneHttpHelperTests
         var ex = await act.Should().ThrowAsync<SystemOneException>();
         ex.Which.StatusCode.Should().Be(401);
         handler.RequestCount.Should().Be(1);
-    }
-
-    [Fact]
-    public async Task GetAsync_On429_RespectsRetryAfterHeader()
-    {
-        var retryAfter = TimeSpan.FromMilliseconds(80);
-        var tooMany = Json("rate limited", HttpStatusCode.TooManyRequests);
-        tooMany.Headers.RetryAfter = new RetryConditionHeaderValue(retryAfter);
-        var handler = new SequenceHandler(tooMany, Json(ModelsJson));
-        using var http = new HttpClient(handler);
-        // 基础退避压到 1ms，确保测得延迟来自 Retry-After
-        var config = Config(retryBaseDelayMs: 1, retryMaxDelayMs: 1);
-
-        var stopwatch = Stopwatch.StartNew();
-        await SystemOneHttpHelper.GetAsync<SystemOneModelsResponse>(
-            http, config, SystemOneDefaults.ModelsPath, TestContext.Current.CancellationToken);
-        stopwatch.Stop();
-
-        stopwatch.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(60));
-        handler.RequestCount.Should().Be(2);
     }
 
     [Fact]
@@ -133,29 +101,25 @@ public class SystemOneHttpHelperTests
     }
 
     [Fact]
-    public async Task GetAsync_WhenCallerCancels_DoesNotRetryAndPropagates()
+    public async Task GetAsync_WhenCallerCancels_DoesNotWrapAndPropagates()
     {
         using var cts = new CancellationTokenSource();
         var handler = new CancelingHandler(cts);
         using var http = new HttpClient(handler);
 
         var act = () => SystemOneHttpHelper.GetAsync<SystemOneModelsResponse>(
-            http, Config(maxRetries: 3), SystemOneDefaults.ModelsPath, cts.Token);
+            http, Config(), SystemOneDefaults.ModelsPath, cts.Token);
 
         await act.Should().ThrowAsync<TaskCanceledException>();
         handler.RequestCount.Should().Be(1);
     }
 
-    private static SystemOneProviderConfig Config(
-        int maxRetries = 2, int retryBaseDelayMs = 1, int retryMaxDelayMs = 1)
+    private static SystemOneProviderConfig Config()
         => new()
         {
             Id = "typesafe",
             BaseUrl = "http://systemone.test",
-            ApiKey = "test-key",
-            MaxRetries = maxRetries,
-            RetryBaseDelayMs = retryBaseDelayMs,
-            RetryMaxDelayMs = retryMaxDelayMs
+            ApiKey = "test-key"
         };
 
     private static HttpResponseMessage Json(string body, HttpStatusCode status = HttpStatusCode.OK)

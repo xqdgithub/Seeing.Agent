@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Xunit;
 
-namespace Seeing.Agent.SystemOne.Tests;
+namespace Seeing.Agent.Llm.SystemOne.Tests;
 
 public class SystemOneModuleTests
 {
@@ -10,7 +10,7 @@ public class SystemOneModuleTests
     {
         var module = new SystemOneModule();
 
-        module.Id.Should().Be("systemone");
+        module.Id.Should().Be("llm.systemone");
         module.ProvidedTools.Should().BeEmpty();
         module.ProvidedSeams.Should().BeEmpty();
         module.DependsOn.Should().BeEmpty();

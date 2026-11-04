@@ -4,7 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Xunit;
 
-namespace Seeing.Agent.SystemOne.Tests;
+namespace Seeing.Agent.Llm.SystemOne.Tests;
 
 public class SystemOneSerializationTests
 {

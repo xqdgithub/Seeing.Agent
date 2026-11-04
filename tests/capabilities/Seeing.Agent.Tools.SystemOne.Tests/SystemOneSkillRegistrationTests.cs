@@ -43,7 +43,7 @@ public class SystemOneSkillRegistrationTests
         captured.Content.Should().Contain("systemone_ask");
         captured.Content.Should().Contain("systemone_noul");
         captured.Location.Should().StartWith("systemone/");
-        providerId.Should().Be("systemone.tools");
+        providerId.Should().Be("llm.systemone.tools");
 
         await module.DeactivateAsync(provider);
 

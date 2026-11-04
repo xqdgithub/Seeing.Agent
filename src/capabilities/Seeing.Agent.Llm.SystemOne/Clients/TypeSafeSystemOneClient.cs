@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.SystemOne;
 
-namespace Seeing.Agent.SystemOne.Clients;
+namespace Seeing.Agent.Llm.SystemOne.Clients;
 
 /// <summary>TypeSafe（Jev）System One 协议客户端。</summary>
 public sealed class TypeSafeSystemOneClient : ISystemOneClient, IDisposable

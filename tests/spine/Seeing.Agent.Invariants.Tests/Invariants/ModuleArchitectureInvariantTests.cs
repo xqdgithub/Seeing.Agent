@@ -30,7 +30,7 @@ public class ModuleArchitectureInvariantTests
 
         // 扫描器自检：若程序集加载全部失败而返回空集，下面的差集断言会失去守门意义
         implemented.Should().Contain(
-            ["filesystem", "memory", "scheduler", "acp", "systemone", "systemone.tools"],
+            ["filesystem", "memory", "scheduler", "acp", "llm.systemone", "llm.systemone.tools"],
             "扫描器应能从 src 构建产物反射发现内置模块");
 
         var missing = implemented
