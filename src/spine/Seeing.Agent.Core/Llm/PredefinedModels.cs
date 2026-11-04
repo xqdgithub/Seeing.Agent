@@ -175,7 +175,6 @@ public static class PredefinedProviders
         Name = "OpenAI",
         BaseUrl = "https://api.openai.com/v1",
         ApiKey = apiKey,
-        DefaultModel = "gpt-4o",
         Models = PredefinedModels.OpenAI
     };
 
@@ -187,7 +186,6 @@ public static class PredefinedProviders
         Name = "Anthropic",
         BaseUrl = "https://api.anthropic.com/v1",
         ApiKey = apiKey,
-        DefaultModel = "claude-sonnet-4-20250514",
         Models = PredefinedModels.Anthropic
     };
 }
