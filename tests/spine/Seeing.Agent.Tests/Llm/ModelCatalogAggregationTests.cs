@@ -548,15 +548,21 @@ public sealed class ModelCatalogAggregationTests : IDisposable
 
         public string Id { get; }
         public string? Name => Id;
+        public string Protocol => ProviderTypes.OpenAi;
+        public LlmCapabilityKind Capabilities => LlmCapabilityKind.Chat;
         public int MaxRetries => 3;
-        public ILlmClient GetClient() => throw new NotSupportedException();
+        public ILlmCapabilityClient? GetClient(LlmCapabilityKind capability) =>
+            capability == LlmCapabilityKind.Chat ? Mock.Of<IChatCompletionClient>() : null;
 
         public Task<IReadOnlyList<ModelConfig>> GetModelsAsync(CancellationToken cancellationToken)
             => _error is null
                 ? Task.FromResult(_models)
                 : Task.FromException<IReadOnlyList<ModelConfig>>(_error);
 
-        public Task<bool> TestConnectionAsync(string modelId, CancellationToken cancellationToken)
+        public Task<bool> TestConnectionAsync(
+            string modelId,
+            LlmCapabilityKind capability,
+            CancellationToken cancellationToken)
             => Task.FromResult(true);
     }
 
@@ -567,6 +573,8 @@ public sealed class ModelCatalogAggregationTests : IDisposable
 
         public string Id { get; } = id;
         public string? Name => Id;
+        public string Protocol => ProviderTypes.OpenAi;
+        public LlmCapabilityKind Capabilities => LlmCapabilityKind.Chat;
         public int MaxRetries => 3;
         public int CallCount { get; private set; }
 
@@ -576,7 +584,8 @@ public sealed class ModelCatalogAggregationTests : IDisposable
                 _models = models;
         }
 
-        public ILlmClient GetClient() => throw new NotSupportedException();
+        public ILlmCapabilityClient? GetClient(LlmCapabilityKind capability) =>
+            capability == LlmCapabilityKind.Chat ? Mock.Of<IChatCompletionClient>() : null;
 
         public Task<IReadOnlyList<ModelConfig>> GetModelsAsync(CancellationToken cancellationToken)
         {
@@ -585,7 +594,10 @@ public sealed class ModelCatalogAggregationTests : IDisposable
                 return Task.FromResult(_models);
         }
 
-        public Task<bool> TestConnectionAsync(string modelId, CancellationToken cancellationToken)
+        public Task<bool> TestConnectionAsync(
+            string modelId,
+            LlmCapabilityKind capability,
+            CancellationToken cancellationToken)
             => Task.FromResult(true);
     }
 
@@ -594,13 +606,16 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         private int _calls;
         public string Id => "sequence";
         public string? Name => Id;
+        public string Protocol => ProviderTypes.OpenAi;
+        public LlmCapabilityKind Capabilities => LlmCapabilityKind.Chat;
         public int MaxRetries => 3;
         public TaskCompletionSource FirstCallStarted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ReleaseFirstCall { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public ILlmClient GetClient() => throw new NotSupportedException();
+        public ILlmCapabilityClient? GetClient(LlmCapabilityKind capability) =>
+            capability == LlmCapabilityKind.Chat ? Mock.Of<IChatCompletionClient>() : null;
 
         public async Task<IReadOnlyList<ModelConfig>> GetModelsAsync(CancellationToken cancellationToken)
         {
@@ -614,7 +629,10 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             return [new ModelConfig { Id = "latest" }];
         }
 
-        public Task<bool> TestConnectionAsync(string modelId, CancellationToken cancellationToken)
+        public Task<bool> TestConnectionAsync(
+            string modelId,
+            LlmCapabilityKind capability,
+            CancellationToken cancellationToken)
             => Task.FromResult(true);
     }
 
@@ -643,9 +661,12 @@ public sealed class ModelCatalogAggregationTests : IDisposable
     {
         public string Id { get; } = id;
         public string? Name => Id;
+        public string Protocol => ProviderTypes.OpenAi;
+        public LlmCapabilityKind Capabilities => LlmCapabilityKind.Chat;
         public int MaxRetries => 3;
 
-        public ILlmClient GetClient() => throw new NotSupportedException();
+        public ILlmCapabilityClient? GetClient(LlmCapabilityKind capability) =>
+            capability == LlmCapabilityKind.Chat ? Mock.Of<IChatCompletionClient>() : null;
 
         public async Task<IReadOnlyList<ModelConfig>> GetModelsAsync(CancellationToken cancellationToken)
         {
@@ -653,7 +674,10 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             return models;
         }
 
-        public Task<bool> TestConnectionAsync(string modelId, CancellationToken cancellationToken)
+        public Task<bool> TestConnectionAsync(
+            string modelId,
+            LlmCapabilityKind capability,
+            CancellationToken cancellationToken)
             => Task.FromResult(true);
     }
 }
