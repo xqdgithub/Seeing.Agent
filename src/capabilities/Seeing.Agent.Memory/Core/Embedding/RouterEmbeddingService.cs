@@ -116,10 +116,15 @@ public sealed class RouterEmbeddingService : IEmbeddingService
         _dimensions = response.Dimensions;
 
         var results = new List<EmbeddingResult>(response.Vectors.Count);
-        foreach (var vector in response.Vectors)
+        for (var i = 0; i < response.Vectors.Count; i++)
         {
-            // Index 是服务端回显的输入序号：越界时回落到位次，避免整批失败。
-            var text = vector.Index >= 0 && vector.Index < texts.Count ? texts[vector.Index] : vector.Text;
+            var vector = response.Vectors[i];
+            // Index 是服务端回显的输入序号（响应可能乱序）；序号缺失或越界时按位次回落，
+            // 位次也不可用时才用客户端回显的原文——总有一条能对上，不让整批失败。
+            var index = vector.Index >= 0 && vector.Index < texts.Count
+                ? vector.Index
+                : (i < texts.Count ? i : -1);
+            var text = index >= 0 ? texts[index] : vector.Text;
             results.Add(new EmbeddingResult(text, vector.Values, tokens, modelRef));
         }
 

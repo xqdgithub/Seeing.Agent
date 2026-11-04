@@ -176,6 +176,33 @@ public class RouterEmbeddingServiceTests
         result.Vector.Should().HaveCount(3);
     }
 
+    [Fact]
+    public async Task EmbedBatchAsync_WhenResponseOutOfOrder_ShouldMapTextByIndex()
+    {
+        // O 轨道契约：Vectors 可能乱序，Index 是输入序号——原文必须按 Index 对齐，不按响应位次猜。
+        _models.Setup(m => m.GetModel(ModelRef)).Returns(new ModelConfig { Id = "text-embedding-3-small" });
+        _client.Setup(c => c.EmbedAsync(
+                It.IsAny<EmbeddingRequest>(),
+                It.IsAny<LlmCallContext>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmbeddingResponse
+            {
+                Vectors = new[]
+                {
+                    new EmbeddingVector(string.Empty, new[] { 3f }, 2),
+                    new EmbeddingVector(string.Empty, new[] { 1f }, 0),
+                    new EmbeddingVector(string.Empty, new[] { 2f }, 1),
+                },
+            });
+
+        var sut = Create(enabled: true, modelId: ModelRef);
+
+        var results = await sut.EmbedBatchAsync(new[] { "甲", "乙", "丙" }, TestContext.Current.CancellationToken);
+
+        results.Select(r => r.Text).Should().Equal("丙", "甲", "乙");
+        results.Select(r => r.Vector[0]).Should().Equal(3f, 1f, 2f);
+    }
+
     private RouterEmbeddingService Create(bool enabled, string? modelId) =>
         new(
             _invoker.Object,
