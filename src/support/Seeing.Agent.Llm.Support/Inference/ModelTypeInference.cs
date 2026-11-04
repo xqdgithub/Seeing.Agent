@@ -29,7 +29,7 @@ public static class ModelTypeInference
             return [ModelType.Speech];
 
         if (ContainsAny(id, "stable-diffusion", "sdxl", "flux", "dall-e", "kolors", "-image", "image-"))
-            return [ModelType.Image];
+            return [ModelType.ImageGeneration];
 
         if (ContainsAny(id, "cogvideo", "wan2", "-video", "video-"))
             return [ModelType.Video];
