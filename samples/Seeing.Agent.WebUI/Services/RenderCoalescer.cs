@@ -16,9 +16,10 @@ public sealed class RenderCoalescer : IDisposable
     private readonly Action _render;
     private readonly TimeSpan _window;
     private readonly bool _flushOnDispose;
+    private readonly TimeProvider _timeProvider;
     private readonly object _gate = new();
 
-    private Timer? _timer;
+    private ITimer? _timer;
     private bool _pending;
     private bool _disposed;
     private int _requestCount;
@@ -30,11 +31,20 @@ public sealed class RenderCoalescer : IDisposable
     /// 释放时是否尾随执行一次待处理渲染。默认 <c>false</c>：组件销毁后这次渲染没有观察者，
     /// 且在 circuit 已关闭时调用 <c>InvokeAsync(StateHasChanged)</c> 会抛异常。
     /// </param>
-    public RenderCoalescer(Action render, TimeSpan window, bool flushOnDispose = false)
+    /// <param name="timeProvider">
+    /// 可选时间源，默认 <see cref="TimeProvider.System"/>。测试注入 <c>FakeTimeProvider</c>
+    /// 后可用 <c>Advance</c> 立即推进窗口，无需真实等待。
+    /// </param>
+    public RenderCoalescer(
+        Action render,
+        TimeSpan window,
+        bool flushOnDispose = false,
+        TimeProvider? timeProvider = null)
     {
         _render = render ?? throw new ArgumentNullException(nameof(render));
         _window = window;
         _flushOnDispose = flushOnDispose;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     /// <summary>累计请求次数（诊断用）。</summary>
@@ -53,7 +63,8 @@ public sealed class RenderCoalescer : IDisposable
 
             Interlocked.Increment(ref _requestCount);
             _pending = true;
-            _timer ??= new Timer(OnTimerElapsed, null, _window, Timeout.InfiniteTimeSpan);
+            _timer ??= _timeProvider.CreateTimer(
+                OnTimerElapsed, state: null, _window, Timeout.InfiniteTimeSpan);
         }
     }
 
