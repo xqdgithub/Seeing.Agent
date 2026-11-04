@@ -321,7 +321,13 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
 
             try
             {
-                return await catalog.ListModelsAsync(cancellationToken).ConfigureAwait(false);
+                var models = await catalog.ListModelsAsync(cancellationToken).ConfigureAwait(false);
+
+                // 装饰基类无条件实现该端口：未实现目录的内层客户端会返回空集。
+                // 因此不能「首个命中即返回」，否则第一个能力（枚举顺序常为 Chat）
+                // 会把真正带目录的客户端（如 decision/typesafe）永远挡住。
+                if (models.Count > 0)
+                    return models;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -329,16 +335,17 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
             }
             catch (Exception ex)
             {
-                // 远端目录不可用不能让整张模型表消失：记警告后保留静态目录
+                // 远端目录不可用不能让整张模型表消失：记警告后继续试下一个能力，
+                // 全部失败时由调用方保留静态目录。
                 _logger.LogWarning(
                     ex,
-                    "远端模型目录拉取失败，保留静态目录: {ProviderId}",
-                    Id);
-                return null;
+                    "远端模型目录拉取失败，尝试下一个能力: {ProviderId} {Capability}",
+                    Id,
+                    LlmCapabilityMap.ToConfigKey(capability));
             }
         }
 
-        _logger.LogDebug("Provider 未实现动态模型目录端口: {ProviderId}", Id);
+        _logger.LogDebug("Provider 未提供非空远端模型目录: {ProviderId}", Id);
         return null;
     }
 

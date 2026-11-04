@@ -768,6 +768,26 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
                     CloneModelConfig(configuredProviderId, modelId, config);
         }
 
+        // 配置驱动 Provider 声明了 listModels 时，也要走 GetModelsAsync 拿远端目录
+        // （spec §7.9：jev 的模型应动态出现在目录里，而不是只靠手写静态表）。
+        // 远端失败时回落到已装载的静态表，不阻塞其余 Provider。
+        var catalogLoads = _registry.GetProviders()
+            .Where(pair => ShouldLoadProviderCatalog(pair.Key, pair.Value))
+            .Select(pair => LoadProviderCatalogAsync(pair.Key, pair.Value, ct));
+        var catalogModels = await Task.WhenAll(catalogLoads).ConfigureAwait(false);
+
+        foreach (var (catalogProviderId, configurations) in catalogModels)
+        {
+            foreach (var config in configurations)
+            {
+                if (string.IsNullOrWhiteSpace(config.Id))
+                    continue;
+
+                config.Provider = catalogProviderId;
+                models[ModelRef.Format(catalogProviderId, config.Id)] = config;
+            }
+        }
+
         var extensionLoads = _registry.GetProviders()
             .Where(pair => _registry.GetOwnerExtensionId(pair.Key) is not null)
             .Select(pair => LoadProviderModelsAsync(pair.Key, pair.Value, ct));
@@ -929,12 +949,65 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
             completion.TrySetCanceled();
     }
 
-    private async Task<KeyValuePair<string, IReadOnlyList<ModelConfig>>> LoadProviderModelsAsync(
+    /// <summary>
+    /// 该 Provider 是否需要在目录聚合时拉取远端模型表。
+    /// <para><b>扩展注册</b>的 Provider 一律拉（它们没有静态配置表）。</para>
+    /// <para><b>配置驱动</b>的 Provider 仅在 <c>Providers[id].listModels = true</c> 时拉——
+    /// 否则每次刷新都对所有 OpenAI 兼容网关发一次 <c>/v1/models</c>，属无谓开销。</para>
+    /// </summary>
+    private bool ShouldLoadProviderCatalog(string providerId, ILlmProvider provider)
+    {
+        if (_registry.GetOwnerExtensionId(providerId) is not null)
+            return true; // 扩展 Provider 由下一段统一处理，这里返回 true 只为口径完整
+
+        return GetUserProviders().TryGetValue(providerId, out var config)
+               && config.ListModels;
+    }
+
+    /// <summary>
+    /// 拉取「配置驱动 + listModels」Provider 的远端目录。
+    /// <para>失败/超时返回空集并记 Warning，不抛——单个 Provider 的目录不可用
+    /// 不应让整个目录刷新失败（静态表已在调用方装载）。</para>
+    /// </summary>
+    private async Task<KeyValuePair<string, IReadOnlyList<ModelConfig>>> LoadProviderCatalogAsync(
         string providerId,
         ILlmProvider provider,
         CancellationToken ct)
     {
         try
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(ExtensionModelsLoadTimeout);
+            var models = await provider.GetModelsAsync(timeoutCts.Token).ConfigureAwait(false);
+            return new KeyValuePair<string, IReadOnlyList<ModelConfig>>(providerId, models);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning(
+                "拉取 Provider {ProviderId} 远端模型目录超时（{Timeout}ms），回落静态表",
+                providerId,
+                ExtensionModelsLoadTimeout.TotalMilliseconds);
+            return new KeyValuePair<string, IReadOnlyList<ModelConfig>>(providerId, []);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "拉取 Provider {ProviderId} 远端模型目录失败，回落静态表",
+                providerId);
+            return new KeyValuePair<string, IReadOnlyList<ModelConfig>>(providerId, []);
+        }
+    }
+
+    private async Task<KeyValuePair<string, IReadOnlyList<ModelConfig>>> LoadProviderModelsAsync(
+        string providerId,
+        ILlmProvider provider,
+        CancellationToken ct)
+    {        try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(ExtensionModelsLoadTimeout);

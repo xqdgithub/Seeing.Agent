@@ -128,22 +128,41 @@ public sealed class TypeSafeSystemOneClient : IDecisionClient, IModelCatalogClie
             _http, _config, TypeSafeProtocol.ModelsPath, call: null, ct).ConfigureAwait(false);
 
     /// <summary>
-    /// 模型补全：<see cref="DecisionRequest.Model"/> 留空时用 Provider 自身配置的模型。
-    /// <para>Provider 未配模型或配了多个时<b>直接报错</b>，不做「取首个」的启发式（spec §13 原则 1）。</para>
+    /// 解析出站模型 ID：剥掉 <c>provider/</c> 前缀后交给 wire。
+    /// <para><b>为什么必须剥离</b>：目录键是 <c>ProviderId/ModelId</c>（如 <c>typesafe/jev-latest</c>），
+    /// 而 TypeSafe 端点只认裸模型名（<c>jev-latest</c>）。参数字面量写着 <c>provider/model</c>
+    /// 是目录约定，不是 wire 约定——embedding 侧有同样的剥离
+    /// （<c>RouterEmbeddingService</c> → <c>EmbeddingModelReference.ToWireModelId</c>），此处保持同一口径。</para>
+    /// <para>留空时用 Provider 自身配置的模型；未配或配了多个时<b>直接报错</b>，
+    /// 不做「取首个」的启发式（spec §13 原则 1）。</para>
     /// </summary>
     private string ResolveModel(string? requested)
     {
         if (!string.IsNullOrWhiteSpace(requested))
-            return requested!;
+            return ToWireModelId(requested);
 
         var configured = _config.Models;
         if (configured is { Count: 1 })
-            return configured.Keys.First();
+            return ToWireModelId(configured.Keys.First());
 
         var detail = configured is { Count: > 1 }
             ? $"Provider '{_config.Id}' 配置了 {configured.Count} 个模型（{string.Join(", ", configured.Keys)}）"
             : $"Provider '{_config.Id}' 未配置任何模型";
         throw new InvalidOperationException(
             $"Decision 请求未指定 model，且{detail}；无法唯一确定模型。请显式传入 model，或设置 DefaultModels.decision。");
+    }
+
+    /// <summary>
+    /// 把目录引用 <c>ProviderId/ModelId</c> 归一为 wire 上的裸模型 ID。
+    /// <para>只剥本 Provider 自己的前缀；不带前缀或前缀属别家时原样返回，
+    /// 避免把含 <c>/</c> 的 HuggingFace 风格模型名（如 <c>Qwen/Qwen3-8B</c>）误剥。</para>
+    /// </summary>
+    private string ToWireModelId(string modelRef)
+    {
+        var trimmed = modelRef.Trim();
+        var prefix = _config.Id + "/";
+        return trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? trimmed[prefix.Length..]
+            : trimmed;
     }
 }

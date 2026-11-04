@@ -287,20 +287,32 @@ public class LlmInvokerTests
         hooks.Inputs["llm.params"][HookDataContract.LlmAfterComplete.Capability.Name].Should().Be("embedding");
     }
 
+    /// <summary>未在 <see cref="LlmCapabilityMap.ClientTypes"/> 登记的自定义端口。</summary>
+    private interface IUnregisteredClient : ILlmCapabilityClient
+    {
+        Task PingAsync(CancellationToken ct = default);
+    }
+
     [Fact]
     public async Task Invoke_ShouldFailFastForUnregisteredPort()
     {
         var hooks = new RecordingHookManager();
+        var router = new Mock<ILlmRouter>();
         var sut = new LlmInvoker(
-            new Mock<ILlmRouter>().Object, hooks, new TestAdapterRegistry(), NullLogger<LlmInvoker>.Instance);
+            router.Object, hooks, new TestAdapterRegistry(), NullLogger<LlmInvoker>.Instance);
 
-        var act = () => sut.InvokeAsync<IVideoGenerationClient, MediaJobStatus>(
+        var act = () => sut.InvokeAsync<IUnregisteredClient, string>(
             "p/m",
-            (_, _, _) => Task.FromResult(new MediaJobStatus(MediaJobState.Queued, null, null, null)),
+            (_, _, _) => Task.FromResult("ok"),
             cancellationToken: TestContext.Current.CancellationToken);
 
-        // 端口在 ClientTypes 里有登记（video），因此不会因端口解析失败；这里断言 Router 未被配置时的正常抛出
-        await act.Should().ThrowAsync<Exception>();
+        // 未登记端口必须在解析阶段就失败（ArgumentException），而不是走到 Router
+        await act.Should().ThrowAsync<ArgumentException>();
+        router.Verify(
+            r => r.Resolve<IUnregisteredClient>(It.IsAny<string>()),
+            Times.Never,
+            "端口未登记时不应进入 Router 解析");
+        hooks.Points.Should().BeEmpty("解析失败不应触发任何 Hook");
     }
 
     private static async IAsyncEnumerable<StreamUpdate> Updates()

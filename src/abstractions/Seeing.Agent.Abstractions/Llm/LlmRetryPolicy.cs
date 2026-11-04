@@ -63,9 +63,27 @@ public static class LlmRetryPolicy
             return true;
         }
 
+        // 能力包自定义协议异常：只有它带 HTTP 状态码，须按同一口径判定。
+        // 缺了这条，decision 的 429/5xx 会一次即抛——旧 SystemOne 自带的退避已被删除
+        // （spec §7.7 要求统一由装饰器承担），不补这里等于该路径彻底失去重试。
+        if (ex is DecisionProtocolException decisionEx)
+            return IsRetryableStatusCode(decisionEx.StatusCode);
+
         // 对齐旧 IsTransientException：超时 CTS 触发的 OCE（token 未请求）可重试
         return ex is TimeoutException
             or IOException
             or OperationCanceledException;
     }
+
+    /// <summary>
+    /// 按 HTTP 状态码判定是否瞬时故障（可重试）。
+    /// <para><c>0</c> 表示无响应的网络/超时失败——可重试；
+    /// <c>408</c>/<c>429</c>/<c>5xx</c> 可重试；其余 4xx 属请求本身有问题，重试无意义。</para>
+    /// </summary>
+    public static bool IsRetryableStatusCode(int statusCode) => statusCode switch
+    {
+        0 or 408 or 429 => true,
+        >= 500 and <= 599 => true,
+        _ => false
+    };
 }

@@ -7,6 +7,7 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Llm;
+using System.Reflection;
 using System.Text.Json;
 using Xunit;
 
@@ -124,16 +125,52 @@ public class ProviderConfigRoundTripTests : IDisposable
     [Fact]
     public void ProviderConfig_CloningSites_ShouldCoverEveryWritableProperty()
     {
-        // 结构性守门：任何新增到 ProviderConfig 的可写属性都必须进克隆清单
-        // （清单里出现的名字与属性名一一对应，新增字段忘了登记 → 本测试立刻红）
+        // 结构性守门（Review Focus #5）：Provider 表单「导出 → 写回」链路
+        // （ConfiguredLlmProvider.LoadConfigAsync ↔ ApplyValues）漏一处字段，
+        // 就会出现「保存一次配置就静默抹掉该字段」。
+        var config = new ProviderConfig { Id = "p", Type = ProviderTypes.OpenAi };
+        var probe = BuildProbeSession(config);
+
+        probe.Import(probe.NonDefaultValues);
+
+        foreach (var (name, expected) in probe.NonDefaultValues)
+        {
+            var actual = probe.Read(name);
+            actual.Should().BeEquivalentTo(expected,
+                $"{name} 未在 Provider 表单往返链路中保留——检查 ConfiguredLlmProvider 的 " +
+                "LoadConfigAsync / ApplyValues / CloneConfig 与 ProviderManager.CloneConfig");
+        }
+    }
+
+    [Fact]
+    public void ProviderConfig_NewWritableProperty_ShouldBeRegisteredOrExplicitlyExcluded()
+    {
+        // 守门元测试：白名单必须覆盖「除显式排除项外的全部可写属性」。
+        // 新增 ProviderConfig 属性却忘了改 ApplyValues/LoadConfigAsync 时，这里会红。
+        var excluded = new HashSet<string>(StringComparer.Ordinal)
+        {
+            nameof(ProviderConfig.Id),        // 身份字段，按配置键固定
+            nameof(ProviderConfig.Models),    // 走模型 CRUD（SaveModelsAsync）
+            nameof(ProviderConfig.Options),   // Provider 私有扩展，不走表单往返
+        };
+
         var writable = typeof(ProviderConfig)
             .GetProperties()
             .Where(p => p.CanWrite)
             .Select(p => p.Name)
+            .Where(name => !excluded.Contains(name))
             .ToHashSet(StringComparer.Ordinal);
 
-        writable.Should().Contain(new[] { "Capabilities", "ListModels" });
-        writable.Should().NotContain("DefaultModel", "决议 22：Provider 级默认模型已删除");
+        writable.Should().BeSubsetOf(FormManagedFields,
+            "每个可写属性要么进 Provider 表单往返链路（加到 FormManagedFields + ApplyValues + LoadConfigAsync），" +
+            "要么显式列入本测试的 excluded 并说明它走哪条专门通道");
+    }
+
+    [Fact]
+    public void ProviderConfig_ShouldNotHaveProviderLevelDefaultModel()
+    {
+        // 决议 22：默认模型只在全局 DefaultModels 一处，Provider 级已删除。
+        typeof(ProviderConfig).GetProperty("DefaultModel").Should().BeNull();
     }
 
     private static ConfiguredLlmProvider CreateProvider(
@@ -152,6 +189,111 @@ public class ProviderConfigRoundTripTests : IDisposable
             saveAsync ?? ((_, _, _) => Task.CompletedTask),
             NullModelCapabilityManager.Instance);
     }
+
+    /// <summary>
+    /// 克隆链路探针：验证 <c>ConfiguredLlmProvider</c> 的表单「导出 → 写回」链路
+    /// 是否覆盖 <see cref="ProviderConfig"/> 的全部<b>表单可写字段</b>。
+    /// <para>用反射遍历属性，但以 <see cref="FormManagedFields"/> 白名单为口径——
+    /// 白名单必须与 <c>ConfiguredLlmProvider.ApplyValues</c> 实际处理的字段一一对应；
+    /// 新增字段若只加属性不加白名单，本测试会因「白名单缺字段」而失败（见下方断言）。</para>
+    /// </summary>
+    private static CloneProbeSession BuildProbeSession(ProviderConfig config)
+    {
+        var provider = CreateProvider(config);
+
+        var configField = typeof(ConfiguredLlmProvider)
+            .GetField("_config", BindingFlags.NonPublic | BindingFlags.Instance);
+        if (configField is null)
+            throw new InvalidOperationException("ConfiguredLlmProvider._config 字段缺失，克隆守门测试已失效");
+
+        var values = new Dictionary<string, object?>(StringComparer.Ordinal);
+
+        foreach (var property in typeof(ProviderConfig).GetProperties().Where(p => p.CanWrite))
+        {
+            if (!FormManagedFields.Contains(property.Name))
+                continue;
+
+            values[property.Name] = BuildNonDefaultValue(property.Name, property.PropertyType);
+        }
+
+        return new CloneProbeSession(
+            Import: v => provider.SaveConfigAsync(v, ConfigLevel.User).GetAwaiter().GetResult(),
+            Read: name => ((ProviderConfig)configField.GetValue(provider)!).GetType()
+                .GetProperty(name)!.GetValue(configField.GetValue(provider)),
+            NonDefaultValues: values);
+    }
+
+    /// <summary>
+    /// Provider 表单链路（<c>LoadConfigAsync</c> ↔ <c>ApplyValues</c>）管理的字段集。
+    /// <para><b>不含</b> <c>Id</c>（身份，按配置键固定）、<c>Models</c>（走模型 CRUD）、
+    /// <c>Options</c>（Provider 私有扩展，不走表单往返）——它们各有专门通道。</para>
+    /// </summary>
+    private static readonly HashSet<string> FormManagedFields = new(StringComparer.Ordinal)
+    {
+        nameof(ProviderConfig.Name),
+        nameof(ProviderConfig.Type),
+        nameof(ProviderConfig.BaseUrl),
+        nameof(ProviderConfig.ApiKey),
+        nameof(ProviderConfig.Proxy),
+        nameof(ProviderConfig.UseProxy),
+        nameof(ProviderConfig.Headers),
+        nameof(ProviderConfig.Timeout),
+        nameof(ProviderConfig.MaxRetries),
+        nameof(ProviderConfig.RetryBaseDelayMs),
+        nameof(ProviderConfig.RetryMaxDelayMs),
+        nameof(ProviderConfig.RetryTotalBudgetMs),
+        nameof(ProviderConfig.Capabilities),
+        nameof(ProviderConfig.ListModels),
+    };
+
+    /// <summary>给定属性造一个「明显不同于默认值」的样本，用于往返比对。</summary>
+    /// <remarks>
+    /// <c>Capabilities</c> 必须是合法能力名——写入会经 <c>ParseCapabilities</c> 校验，
+    /// 用 "probe" 会被正确地拒绝（这本身说明守门有效，但会让本测试测不到克隆链）。
+    /// </remarks>
+    private static object? BuildNonDefaultValue(string propertyName, Type type)
+    {
+        if (propertyName == nameof(ProviderConfig.Capabilities))
+            return new List<string>
+            {
+                LlmCapabilityMap.ToConfigKey(LlmCapabilityKind.Chat),
+                LlmCapabilityMap.ToConfigKey(LlmCapabilityKind.Embedding)
+            };
+
+        if (type == typeof(string))
+            return "probe-value";
+
+        if (type == typeof(bool))
+            return true;
+
+        if (type == typeof(int))
+            return 42;
+
+        if (type == typeof(int?))
+            return 42;
+
+        if (type == typeof(List<string>))
+            return new List<string> { "probe" };
+
+        if (type == typeof(Dictionary<string, string>))
+            return new Dictionary<string, string> { ["probe"] = "1" };
+
+        if (type == typeof(Dictionary<string, object>))
+            return new Dictionary<string, object> { ["probe"] = 1 };
+
+        if (type == typeof(Dictionary<string, ModelConfig>))
+            return new Dictionary<string, ModelConfig>
+            {
+                ["probe-model"] = new() { Id = "probe-model" }
+            };
+
+        return null;
+    }
+
+    private sealed record CloneProbeSession(
+        Action<IReadOnlyDictionary<string, object?>> Import,
+        Func<string, object?> Read,
+        IReadOnlyDictionary<string, object?> NonDefaultValues);
 
     private async Task<UnifiedConfigManager> CreateConfigManagerAsync(SeeingAgentOptions options)
     {

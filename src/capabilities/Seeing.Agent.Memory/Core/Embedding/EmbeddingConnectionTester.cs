@@ -53,6 +53,9 @@ public sealed class EmbeddingConnectionTester : IEmbeddingConnectionTester
 
         try
         {
+            // 连接测试是「点一下按钮验证连通」的探针，不是业务调用：
+            // 走 Invoker 以复用五层校验与重试，但 EmitHooks=false 避免把探针
+            // 污染成 llm.params/after_complete 观测（spec §7.4.1）。
             var response = await _invoker.InvokeAsync<IEmbeddingClient, EmbeddingResponse>(
                 modelRef,
                 (client, call, token) => client.EmbedAsync(
@@ -63,7 +66,7 @@ public sealed class EmbeddingConnectionTester : IEmbeddingConnectionTester
                     },
                     call,
                     token),
-                options: new LlmInvocationOptions(),
+                options: new LlmInvocationOptions { EmitHooks = false },
                 cancellationToken: ct).ConfigureAwait(false);
 
             if (response.Dimensions <= 0)
