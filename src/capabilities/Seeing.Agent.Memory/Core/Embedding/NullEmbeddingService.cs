@@ -10,6 +10,7 @@ public sealed class NullEmbeddingService : IEmbeddingService
 {
     public int Dimensions => 0;
     public string ProviderName => "null";
+    public string ModelFingerprint => "null";
 
     public Task<EmbeddingResult> EmbedAsync(string text, CancellationToken ct = default)
         => throw new InvalidOperationException("Embedding is not configured");

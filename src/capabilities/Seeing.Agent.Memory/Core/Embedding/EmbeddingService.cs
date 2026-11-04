@@ -30,13 +30,18 @@ public class EmbeddingService : IEmbeddingService
     public string ProviderName => _inner.ProviderName;
 
     /// <inheritdoc />
+    public string ModelFingerprint => _inner.ModelFingerprint;
+
+    /// <inheritdoc />
     public async Task<EmbeddingResult> EmbedAsync(string text, CancellationToken ct = default)
     {
-        // 尝试从缓存获取
+        var hash = ComputeHash(text);
+        var fingerprint = _inner.ModelFingerprint;
+
+        // 尝试从缓存获取（键含模型指纹：换模型即换向量空间，旧向量不可复用）
         if (_cache != null)
         {
-            var hash = ComputeHash(text);
-            var cached = await _cache.GetAsync(hash, ct);
+            var cached = await _cache.GetAsync(hash, fingerprint, ct);
             if (cached != null)
             {
                 _logger?.LogDebug("Embedding 缓存命中: {Text}", text[..Math.Min(20, text.Length)]);
@@ -49,10 +54,7 @@ public class EmbeddingService : IEmbeddingService
 
         // 写入缓存
         if (_cache != null)
-        {
-            var hash = ComputeHash(text);
-            await _cache.SetAsync(hash, result, ct);
-        }
+            await _cache.SetAsync(hash, fingerprint, result, ct);
 
         return result;
     }
@@ -62,10 +64,13 @@ public class EmbeddingService : IEmbeddingService
         IReadOnlyList<string> texts,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(texts);
+
         if (_cache == null)
-        {
             return await _inner.EmbedBatchAsync(texts, ct);
-        }
+
+        var fingerprint = _inner.ModelFingerprint;
+        var hashes = texts.Select(ComputeHash).ToList();
 
         var results = new EmbeddingResult[texts.Count];
         var uncachedIndices = new List<int>();
@@ -74,8 +79,7 @@ public class EmbeddingService : IEmbeddingService
         // 检查缓存
         for (var i = 0; i < texts.Count; i++)
         {
-            var hash = ComputeHash(texts[i]);
-            var cached = await _cache.GetAsync(hash, ct);
+            var cached = await _cache.GetAsync(hashes[i], fingerprint, ct);
             if (cached != null)
             {
                 results[i] = cached;
@@ -98,8 +102,7 @@ public class EmbeddingService : IEmbeddingService
                 results[idx] = newResults[i];
 
                 // 写入缓存
-                var hash = ComputeHash(texts[idx]);
-                await _cache.SetAsync(hash, newResults[i], ct);
+                await _cache.SetAsync(hashes[idx], fingerprint, newResults[i], ct);
             }
         }
 

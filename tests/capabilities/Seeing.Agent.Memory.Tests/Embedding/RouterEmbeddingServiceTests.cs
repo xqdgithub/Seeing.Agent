@@ -157,6 +157,14 @@ public class RouterEmbeddingServiceTests
     }
 
     [Fact]
+    public void ModelFingerprint_ShouldBeConfiguredModelRef()
+    {
+        // 缓存键第二段：用完整引用（含 provider），同名跨 provider 也不串味。
+        Create(enabled: true, modelId: ModelRef).ModelFingerprint.Should().Be(ModelRef);
+        Create(enabled: false, modelId: null).ModelFingerprint.Should().Be("unconfigured");
+    }
+
+    [Fact]
     public async Task EmbedAsync_SingleText_ShouldDelegateToBatch()
     {
         _models.Setup(m => m.GetModel(ModelRef)).Returns(new ModelConfig { Id = "text-embedding-3-small" });

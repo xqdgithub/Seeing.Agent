@@ -194,7 +194,9 @@ public class VectorIndex : IVectorIndex
                 var path = reader.GetString(0);
                 var vectorBytes = (byte[])reader.GetValue(1);
                 var vector = DeserializeVector(vectorBytes);
-                list.Add((path, CosineSimilarity(queryVector, vector)));
+                // 维数不一致（模型变更后的陈旧向量）跳过该条，不抛：一次检索不该因一条旧向量整体失败
+                if (CosineSimilarity(queryVector, vector, path) is { } similarity)
+                    list.Add((path, similarity));
             }
 
             return list;
@@ -239,7 +241,9 @@ public class VectorIndex : IVectorIndex
 
                 var vectorBytes = (byte[])reader.GetValue(1);
                 var vector = DeserializeVector(vectorBytes);
-                list.Add((path, CosineSimilarity(queryVector, vector)));
+                // 维数不一致（模型变更后的陈旧向量）跳过该条，不抛：一次检索不该因一条旧向量整体失败
+                if (CosineSimilarity(queryVector, vector, path) is { } similarity)
+                    list.Add((path, similarity));
             }
 
             return list;
@@ -291,17 +295,29 @@ public class VectorIndex : IVectorIndex
         return vector;
     }
 
-    private static double CosineSimilarity(float[] vector1, float[] vector2)
+    /// <summary>
+    /// 余弦相似度。
+    /// <para>维数不等返回 <c>null</c> = <b>跳过该条</b>并写 Warning，而不是抛
+    /// <see cref="ArgumentException"/>（spec §7.8.1）：模型更换后索引里会残留旧向量空间的条目，
+    /// 一次检索不该因一条陈旧向量而整体失败。</para>
+    /// </summary>
+    private double? CosineSimilarity(float[] queryVector, float[] storedVector, string path)
     {
-        if (vector1.Length != vector2.Length)
-            throw new ArgumentException("Vectors must have the same dimension");
+        if (queryVector.Length != storedVector.Length)
+        {
+            _logger?.LogWarning(
+                "向量维数不一致，跳过该条: {Path}, 查询 {QueryDims} 维, 存量 {StoredDims} 维"
+                + "（通常是 embedding 模型变更后索引未重建所致）",
+                path, queryVector.Length, storedVector.Length);
+            return null;
+        }
 
         double dotProduct = 0, magnitude1 = 0, magnitude2 = 0;
-        for (var i = 0; i < vector1.Length; i++)
+        for (var i = 0; i < queryVector.Length; i++)
         {
-            dotProduct += vector1[i] * vector2[i];
-            magnitude1 += vector1[i] * vector1[i];
-            magnitude2 += vector2[i] * vector2[i];
+            dotProduct += queryVector[i] * storedVector[i];
+            magnitude1 += queryVector[i] * queryVector[i];
+            magnitude2 += storedVector[i] * storedVector[i];
         }
 
         magnitude1 = Math.Sqrt(magnitude1);

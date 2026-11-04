@@ -53,6 +53,20 @@ public sealed class RouterEmbeddingService : IEmbeddingService
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// 指纹 = 配置的模型引用本身（含 provider 前缀）：同名模型跨 provider 的向量也不可信为同构。
+    /// 未配置时以 <c>unconfigured</c> 占位，此时调用链会先抛「未启用」，不会污染缓存。
+    /// </remarks>
+    public string ModelFingerprint
+    {
+        get
+        {
+            var modelRef = _options.CurrentValue.Embedding.ModelId;
+            return string.IsNullOrWhiteSpace(modelRef) ? "unconfigured" : modelRef;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<EmbeddingResult> EmbedAsync(string text, CancellationToken ct = default)
     {
         var batch = await EmbedBatchAsync(new[] { text }, ct).ConfigureAwait(false);
@@ -106,7 +120,7 @@ public sealed class RouterEmbeddingService : IEmbeddingService
         {
             // Index 是服务端回显的输入序号：越界时回落到位次，避免整批失败。
             var text = vector.Index >= 0 && vector.Index < texts.Count ? texts[vector.Index] : vector.Text;
-            results.Add(new EmbeddingResult(text, vector.Values, tokens));
+            results.Add(new EmbeddingResult(text, vector.Values, tokens, modelRef));
         }
 
         if (results.Count == 0)

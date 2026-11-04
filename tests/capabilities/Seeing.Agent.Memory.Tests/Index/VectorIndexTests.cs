@@ -282,6 +282,60 @@ public class VectorIndexTests : IDisposable
         // Cosine similarity should be between -1 and 1, but for non-negative vectors typically 0-1
         results[0].Score.Should().BeInRange(-1.0, 1.0);
     }
+
+    /// <summary>
+    /// 维数容错（spec §7.8.1）：换 embedding 模型后索引里会残留旧向量空间的条目，
+    /// 一次检索必须跳过它们，而不是抛 <c>ArgumentException</c> 让整条搜索链失败。
+    /// </summary>
+    [Fact]
+    public async Task CosineSimilarity_DimensionMismatch_ShouldSkipNotThrow()
+    {
+        // Arrange：128 维模型索引了一条文档
+        await _index.IndexAsync(
+            CreateTestNode("daily/wide.md", "Machine learning basics."),
+            TestContext.Current.CancellationToken);
+
+        // 换模型：查询向量变成 8 维，共用同一个库
+        var migrated = new VectorIndex(
+            _connection, new SqliteConnectionGate(), new MockEmbeddingService(dimensions: 8));
+
+        // Act / Assert：不抛，且陈旧条目被跳过
+        IReadOnlyList<VectorSearchResult> results = Array.Empty<VectorSearchResult>();
+        Func<Task> act = async () => results = await migrated.SearchAsync(
+            "machine learning", ct: TestContext.Current.CancellationToken);
+
+        await act.Should().NotThrowAsync("维数不等应跳过该条而不是抛 ArgumentException");
+        results.Should().BeEmpty();
+
+        // 新模型写入的同维度条目照常可检索
+        await migrated.IndexAsync(
+            CreateTestNode("daily/narrow.md", "Machine learning basics."),
+            TestContext.Current.CancellationToken);
+
+        results = await migrated.SearchAsync(
+            "machine learning", limit: 10, ct: TestContext.Current.CancellationToken);
+        results.Should().ContainSingle().Which.Path.Should().Be("daily/narrow.md");
+    }
+
+    /// <summary>带路径过滤的检索走的是另一条比较分支，同样要跳过维数不一致的条目。</summary>
+    [Fact]
+    public async Task SearchWithFilterAsync_DimensionMismatch_ShouldSkipNotThrow()
+    {
+        await _index.IndexAsync(
+            CreateTestNode("daily/wide.md", "Machine learning basics."),
+            TestContext.Current.CancellationToken);
+
+        var migrated = new VectorIndex(
+            _connection, new SqliteConnectionGate(), new MockEmbeddingService(dimensions: 16));
+
+        var results = await migrated.SearchWithFilterAsync(
+            "machine learning",
+            path => true,
+            limit: 10,
+            ct: TestContext.Current.CancellationToken);
+
+        results.Should().BeEmpty();
+    }
 }
 
 /// <summary>
@@ -310,11 +364,14 @@ public class MockEmbeddingService : IEmbeddingService
     public string ProviderName => "MockEmbedding";
 
     /// <inheritdoc />
+    public string ModelFingerprint => $"mock-{_dimensions}";
+
+    /// <inheritdoc />
     public Task<EmbeddingResult> EmbedAsync(string text, CancellationToken ct = default)
     {
         var vector = GenerateMockVector(text);
         var tokenCount = EstimateTokenCount(text);
-        return Task.FromResult(new EmbeddingResult(text, vector, tokenCount));
+        return Task.FromResult(new EmbeddingResult(text, vector, tokenCount, ModelFingerprint));
     }
 
     /// <inheritdoc />
@@ -326,7 +383,7 @@ public class MockEmbeddingService : IEmbeddingService
         {
             var vector = GenerateMockVector(text);
             var tokenCount = EstimateTokenCount(text);
-            return new EmbeddingResult(text, vector, tokenCount);
+            return new EmbeddingResult(text, vector, tokenCount, ModelFingerprint);
         }).ToList();
 
         return Task.FromResult<IReadOnlyList<EmbeddingResult>>(results);

@@ -25,6 +25,10 @@ public class RandomEmbeddingService : IEmbeddingService
     public int Dimensions => _dimensions;
     public string ProviderName => "Random";
 
+    /// <inheritdoc />
+    /// <remarks>本地确定性向量：维度参与指纹，避免 384 维与 1536 维的伪向量互相冒名。</remarks>
+    public string ModelFingerprint => $"random-{_dimensions}";
+
     public Task<EmbeddingResult> EmbedAsync(string text, CancellationToken ct = default)
     {
         var vector = GenerateDeterministicVector(text);
