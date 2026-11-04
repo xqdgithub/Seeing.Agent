@@ -140,8 +140,10 @@ namespace Seeing.Session.Core
 
         /// <summary>
         /// 按消息 Id 取会话消息（锁内惰性建索引，任何容器写入后失效）。
-        /// <para><b>注意</b>：索引只跟踪「容器成员」，不感知元素 Id 的后续改写。
-        /// 需要按 Id 查找前，应确保消息 Id 已稳定（不要先建索引再补写 Id）。</para>
+        /// <para><b>契约</b>：消息 <see cref="SessionMessage.Id"/> 由写者在入列前确定，
+        /// 索引建立后<b>不得再改写</b>元素 Id；缺 Id 的消息不入索引。
+        /// 上层写者（<c>ChatEventTracker</c> / <c>SessionMessage</c> 工厂）已保证 Id 非空，
+        /// 投影层只读不写（见 <c>docs/architecture/04</c> §5.2）。</para>
         /// </summary>
         public bool TryGetMessage(string? messageId, out SessionMessage message)
         {

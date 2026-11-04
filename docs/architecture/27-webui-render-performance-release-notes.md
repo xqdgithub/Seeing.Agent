@@ -61,7 +61,7 @@
 2. **`TryLoadMoreAsync` 与贴底判定共享同一个限流窗口分配**（`ScrollInteropBudget.Allocate`）：两者都在同一次渲染通道内执行且只按窗口放行一次，因此「本次渲染贴底 + 下次渲染懒加载」的交替节奏下，极端快速滚动时懒加载触发可能延后一个窗口（≤40ms）。不会永久饿死（有专门的守门测试）。
 3. **`SerialGate` 用 `Monitor`，可重入**（`SemaphoreSlim` 不可重入）。这是有意的语义变更。另外 `Monitor` 同样阻塞线程 —— 真实收益是去掉异步等待状态机与 `Task` 分配，不是「不阻塞」。
 4. **`SessionData.Messages` 是只读视图但运行时类型仍是 `List`**。调用方 Cast 后就地修改会污染会话真相且不失效缓存。契约靠 XML 注释 + `GetActiveMessages` 的独立副本语义共同维护。
-5. **`TryGetMessage` 不感知元素 Id 的后续改写**。索引只跟踪容器成员变化；若将来仍需在 UI 层补写消息 Id，必须同时失效索引。
+5. **`TryGetMessage` 不感知元素 Id 的后续改写**。契约是「Id 由写者在入列前确定，索引建立后不得再改」；缺 Id 的消息不入索引、也不进时间线。UI 层已无任何 Id 写入点（原先两处归一化已删除）。
 6. **Summary 窗口仍保留事件流订阅**（执行态事件是卡片状态唯一可靠来源）。收益来自掐掉时间线管道，而非取消订阅 —— `SessionEventStreamRouter` 已按 `sessionId` 共享 loop，不同子会话的 loop 任何方案都省不掉。
 7. **`SyncContextState()` 保持即时渲染**，不走合并器。它承载 AntDesign Select 受控值同步，延迟会放大回滚窗口。
 8. **`GiveSummaryMode` 的 `ExecutionStarted` 分支会调 `SyncContextState()`，其中会 `RebuildSummarySnapshot()`**，加载 Summary 时有一次重复计算（O(M)，可忽略）。
@@ -108,3 +108,9 @@
 - **Important** `ToolsVisiblyChanged` 漏比对 `Description`/`DurationMs` → 工具卡耗时永久陈旧。补齐比较。守门测试 `SyncAssistantMessage_WhenOnlyToolDurationChanges_ShouldBumpRevision`。
 - **Important** 重复 `MessageId` 的 Id 消歧只存在于无调用者的 `BuildLoopSegments`，生产路径 `LoopGroupItem` 会产出重复块 Id。抽 `ContentBlockBuilder.AllocateIdPrefix` 供两条路径共用。
 - **Important** 切换会话残留上一会话的错误横幅 / 模型无效红框 / 预算 —— `ResetLocalExecutionState` 一并重置。
+- **架构债清理** UI 层不再回写执行期消息字段（`docs/architecture/04` §5.2）：
+  - `MessageTimelineStore` 删除两处 `msg.Id = Guid.NewGuid()`（`ResetFromSession` / `ReconcileAppendFromSession`），改为**缺 Id 即跳过**；
+  - `MessageViewModelFactory` 删除 `msg.Id ?? Guid.NewGuid()` 的随机兜底，改为 `?? string.Empty`；
+  - 理由：Id 由上层写者保证（`ChatEventTracker.EnsureAssistantMessage` 赋 `{loopId}_step{n}`，`SessionMessage` 的 8 个工厂方法均赋 `NewId()`），投影层生成随机 Id 会让同一消息在不同加载路径得到不同 `@key`，导致时间线整段重建。
+  - 守门测试：`ResetFromSession_WithEmptyIdMessage_ShouldNotMutateSessionMessage`、`ReconcileAppendFromSession_WithEmptyIdMessage_ShouldNotMutateSessionMessage` RED→GREEN。
+- **日志规范** `SessionWindow` 的 3 处 `Debug.WriteLine` 改为 `ILogger`（`Logger.LogDebug` / `LogWarning`）。原因：`Debug.WriteLine` 带 `[Conditional("DEBUG")]`，Release 构建下整条语句被编译掉，等同静默吞异常，违反 `04-development-standards.md` 反模式。

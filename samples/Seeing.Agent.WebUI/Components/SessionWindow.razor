@@ -45,6 +45,7 @@
 @inject ISessionEventPublisher SessionEventPublisher
 @inject Microsoft.Extensions.Options.IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
 @inject Seeing.Agent.Core.Scenarios.IScenarioCatalog ScenarioCatalog
+@inject ILogger<SessionWindow> Logger
 @implements IDisposable
 
 <div Class="@($"session-window session-window--{ModeCss}{(IsCompactSummary ? " session-window--compact" : "")}")">
@@ -752,7 +753,7 @@
         catch (Exception ex)
         {
             // circuit 已断开：渲染无接收方，不应影响宿主
-            System.Diagnostics.Debug.WriteLine($"[SessionWindow] 渲染跳过: {ex.Message}");
+            Logger.LogDebug("[SessionWindow] 渲染跳过（组件已销毁或 circuit 已断开）: {Reason}", ex.Message);
         }
     }    private void ReconcileTimelineFromSession() => _sync.ReconcileAppendFromSession();
     private void CompleteCurrentTimelineTurn() => _sync.CompleteTurn();
@@ -940,8 +941,8 @@
         }
         catch (Exception ex)
         {
-            // 预算为增强信息：失败不阻断会话展示。记录以便诊断（禁止静默吞异常）。
-            System.Diagnostics.Debug.WriteLine($"[SessionWindow] 预算状态更新失败: {ex.Message}");
+            // 预算为增强信息：失败不阻断会话展示
+            Logger.LogWarning(ex, "[SessionWindow] 预算状态更新失败: SessionId={SessionId}", SessionState.SessionId);
         }
     }
 
@@ -1852,7 +1853,7 @@
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SessionWindow] 未完成任务和解失败: {ex.Message}");
+            Logger.LogWarning(ex, "[SessionWindow] 未完成任务和解失败: SessionId={SessionId}", sessionId);
         }
     }
 

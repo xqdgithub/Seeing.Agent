@@ -13,7 +13,10 @@ public static class MessageViewModelFactory
     {
         var viewModel = new MessageViewModel
         {
-            Id = msg.Id ?? Guid.NewGuid().ToString("N")[..8],
+            // Id 由上层写者保证非空（ChatEventTracker / SessionMessage 工厂）；
+            // 此处不再兜底生成随机值 —— 随机值会让同一消息在不同加载路径得到不同 @key，
+            // 导致时间线整段重建（见 docs/architecture/04 §5.2 与 27-webui-render-performance-release-notes）。
+            Id = msg.Id ?? string.Empty,
             SessionId = msg.SessionId ?? sessionId,
             LoopId = msg.LoopId,
             Step = msg.Step,

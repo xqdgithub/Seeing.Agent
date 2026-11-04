@@ -130,7 +130,8 @@ Core 程序集内命名空间须为 `Seeing.Agent.Core.*`（契约仍可在 Abst
 1. `SessionData.Messages` 返回锁内**缓存快照**：同一版本内多次读取返回**同一实例**（避免热路径反复 `ToList`）；任何容器写入（`AddMessage`/`InsertMessage`/`RemoveMessage`/`RemoveMessages`/`ReplaceMessages`/`ClearMessages` 等）都会使其失效。
 2. 该返回值是**只读视图**：调用方不得 Cast 为 `List<SessionMessage>` 或就地修改 —— 修改不会经过失效逻辑，会污染会话真相。
 3. `SessionData.GetActiveMessages()` 仍返回**独立副本**（对外承诺可变 `List`），调用方可安全持有与修改。
-4. `SessionData.TryGetMessage(id, out msg)` 按 Id 查（锁内惰性建索引，容器写入后失效）。注意它**只跟踪容器成员**，不感知元素 Id 的后续改写。
+4. `SessionData.TryGetMessage(id, out msg)` 按 Id 查（锁内惰性建索引，容器写入后失效）。
+   **契约**：消息 Id 由写者在入列前确定（`ChatEventTracker` 赋 `{loopId}_step{n}`；`SessionMessage` 工厂方法赋 `NewId()`），索引建立后**不得再改写**元素 Id；缺 Id 的消息不入索引，也进不了 UI 时间线。宿主层**禁止**为补齐 Id 而回写 `SessionMessage`（会同时破坏索引与 `@key` 稳定性）。
 
 详见 [`2026-10-08-session-message-immutable-concurrency-design.md`](../superpowers/specs/2026-10-08-session-message-immutable-concurrency-design.md) 与 [`27-webui-render-performance-release-notes.md`](27-webui-render-performance-release-notes.md)。
 

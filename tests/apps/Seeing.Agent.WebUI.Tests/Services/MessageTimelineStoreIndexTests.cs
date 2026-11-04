@@ -119,4 +119,47 @@ public class MessageTimelineStoreIndexTests
         store.Items[0].Message!.Id.Should().Be("u1");
         store.Items[1].Key.Should().Be("loop1");
     }
+
+    /// <summary>
+    /// Review Focus 守门：UI 层不得回写执行期消息字段（docs/architecture/04 §5.2）。
+    /// ResetFromSession 遇到空 Id 消息时只能跳过 + 记录，不得修改 SessionData 的对象。
+    /// </summary>
+    [Fact]
+    public void ResetFromSession_WithEmptyIdMessage_ShouldNotMutateSessionMessage()
+    {
+        var store = new MessageTimelineStore();
+        var legacy = new SessionMessage { Id = "", Role = MessageRole.User, Content = "无 Id" };
+
+        store.ResetFromSession([legacy], "s1");
+
+        legacy.Id.Should().BeEmpty("UI 投影层禁止回写执行期消息字段");
+        store.Items.Should().BeEmpty("缺少 Id 的消息无法稳定标识，不进入时间线");
+    }
+
+    /// <summary>ReconcileAppendFromSession 同样不得回写 Id。</summary>
+    [Fact]
+    public void ReconcileAppendFromSession_WithEmptyIdMessage_ShouldNotMutateSessionMessage()
+    {
+        var store = new MessageTimelineStore();
+        store.ResetFromSession(Array.Empty<SessionMessage>(), "s1");
+        var legacy = new SessionMessage { Id = "", Role = MessageRole.User, Content = "无 Id" };
+
+        store.ReconcileAppendFromSession([legacy], "s1");
+
+        legacy.Id.Should().BeEmpty("UI 投影层禁止回写执行期消息字段");
+        store.Items.Should().BeEmpty();
+    }
+
+    /// <summary>正常消息（有 Id）不受影响。</summary>
+    [Fact]
+    public void ResetFromSession_WithIdMessage_ShouldRenderNormally()
+    {
+        var store = new MessageTimelineStore();
+        var msg = new SessionMessage { Id = "m1", Role = MessageRole.User, Content = "有 Id" };
+
+        store.ResetFromSession([msg], "s1");
+
+        store.Items.Should().ContainSingle();
+        store.Items[0].Message!.Id.Should().Be("m1");
+    }
 }

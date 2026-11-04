@@ -75,9 +75,11 @@ public sealed class MessageTimelineStore
         var indexById = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var msg in messages)
         {
-            // 空 Id 归一化：保证 vm.Id == msg.Id 恒成立，索引语义才稳定
+            // 缺 Id 的消息无法稳定标识（@key / 增量对账都依赖它），跳过而非回写：
+            // 上层写者（ChatEventTracker / SessionMessage 工厂）保证 Id 非空，
+            // 投影层不得修改执行期消息字段（docs/architecture/04 §5.2）。
             if (string.IsNullOrEmpty(msg.Id))
-                msg.Id = Guid.NewGuid().ToString("N")[..12];
+                continue;
 
             var id = msg.Id;
             if (indexById.TryGetValue(id, out var existing))
@@ -444,10 +446,10 @@ public sealed class MessageTimelineStore
             if (IsSchemaSnapshotCarrier(msg))
                 continue;
 
-            // Persist an Id when missing so subsequent reconciles / refresh stay stable.
-            // (Legacy messages and some create paths omitted Id; Reset still showed them.)
+            // 缺 Id 的消息无法稳定标识（@key / 增量对账都依赖它），跳过而非回写：
+            // 上层写者保证 Id 非空，投影层不得修改执行期消息字段（docs/architecture/04 §5.2）。
             if (string.IsNullOrEmpty(msg.Id))
-                msg.Id = Guid.NewGuid().ToString("N")[..12];
+                continue;
 
             var id = msg.Id!;
             var isCompacted = lastSummaryIndex >= 0 && indexInSession < lastSummaryIndex;
