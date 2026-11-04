@@ -27,6 +27,15 @@ public sealed class MessageTimelineStore
     /// <summary>排队中（已入站、尚未被消费）的 user 消息投影；不进主时间线，输入框上方独立展示。</summary>
     private readonly List<MessageViewModel> _pending = new();
 
+    /// <summary>Assistant 轮次索引：turn key（loopId 或 single-*）→ 时间线条目。</summary>
+    private readonly Dictionary<string, TimelineItem> _turnByKey = new(StringComparer.Ordinal);
+
+    /// <summary>消息 Id → 所属条目（值为 null 表示排队消息，条目尚未建立）。</summary>
+    private readonly Dictionary<string, TimelineItem?> _itemByMessageId = new(StringComparer.Ordinal);
+
+    /// <summary>尚未被认领的 single-* 轮次 key（通常为空，避免每 delta 全表扫描）。</summary>
+    private readonly HashSet<string> _pendingOrphanKeys = new(StringComparer.Ordinal);
+
     public IReadOnlyList<TimelineItem> Items => _items;
 
     /// <summary>排队中消息（按入站顺序）；被消费后移入 <see cref="Items"/>。</summary>
@@ -57,21 +66,27 @@ public sealed class MessageTimelineStore
     {
         _items.Clear();
         _pending.Clear();
+        _turnByKey.Clear();
+        _itemByMessageId.Clear();
+        _pendingOrphanKeys.Clear();
 
         // Dedupe by Id keeping last occurrence (later wins).
         var deduped = new List<SessionMessage>();
         var indexById = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var msg in messages)
         {
+            // 空 Id 归一化：保证 vm.Id == msg.Id 恒成立，索引语义才稳定
+            if (string.IsNullOrEmpty(msg.Id))
+                msg.Id = Guid.NewGuid().ToString("N")[..12];
+
             var id = msg.Id;
-            if (!string.IsNullOrEmpty(id) && indexById.TryGetValue(id, out var existing))
+            if (indexById.TryGetValue(id, out var existing))
             {
                 deduped[existing] = msg;
                 continue;
             }
 
-            if (!string.IsNullOrEmpty(id))
-                indexById[id] = deduped.Count;
+            indexById[id] = deduped.Count;
             deduped.Add(msg);
         }
 
@@ -105,6 +120,7 @@ public sealed class MessageTimelineStore
             if (vm.IsPendingInbox)
             {
                 _pending.Add(vm);
+                _itemByMessageId[vm.Id] = null;
                 continue;
             }
 
@@ -121,6 +137,7 @@ public sealed class MessageTimelineStore
                     existingTurn.Turn.IsComplete = existingTurn.Turn.Messages.All(m => m.IsComplete);
                     // 轮次内新增消息 → 结构变化
                     existingTurn.TouchStructure();
+                    _itemByMessageId[vm.Id] = existingTurn;
                     continue;
                 }
 
@@ -140,15 +157,21 @@ public sealed class MessageTimelineStore
                 };
                 assistantByKey[key] = item;
                 _items.Add(item);
+                _turnByKey[key] = item;
+                _itemByMessageId[vm.Id] = item;
+                if (key.StartsWith("single-", StringComparison.Ordinal))
+                    _pendingOrphanKeys.Add(key);
                 continue;
             }
 
-            _items.Add(new TimelineItem
+            var plainItem = new TimelineItem
             {
                 Key = vm.Id,
                 Kind = kind,
                 Message = vm
-            });
+            };
+            _items.Add(plainItem);
+            _itemByMessageId[vm.Id] = plainItem;
         }
 
         Generation++;
@@ -222,6 +245,7 @@ public sealed class MessageTimelineStore
                 item.Turn.IsComplete = list.All(m => m.IsComplete);
                 // 轮次内新增了消息 → 结构变化（分段缓存需重建全部分段）
                 item.TouchStructure();
+                _itemByMessageId[incoming.Id] = item;
                 RefreshTailHint();
                 RaiseChanged();
                 return;
@@ -430,12 +454,14 @@ public sealed class MessageTimelineStore
 
                     _pending.RemoveAt(pendingIndex);
                     pendingVm.IsCompacted = isCompacted;
-                    _items.Add(new TimelineItem
+                    var promoted = new TimelineItem
                     {
                         Key = pendingVm.Id,
                         Kind = ResolveKind(pendingVm),
                         Message = pendingVm
-                    });
+                    };
+                    _items.Add(promoted);
+                    _itemByMessageId[pendingVm.Id] = promoted;
                     added = true;
                     continue;
                 }
@@ -459,6 +485,7 @@ public sealed class MessageTimelineStore
             if (vm.IsPendingInbox)
             {
                 _pending.Add(vm);
+                _itemByMessageId[vm.Id] = null;
                 knownIds.Add(id);
                 added = true;
                 continue;
@@ -474,12 +501,14 @@ public sealed class MessageTimelineStore
                 continue;
             }
 
-            _items.Add(new TimelineItem
+            var plainItem = new TimelineItem
             {
                 Key = vm.Id,
                 Kind = kind,
                 Message = vm
-            });
+            };
+            _items.Add(plainItem);
+            _itemByMessageId[vm.Id] = plainItem;
             knownIds.Add(id);
             added = true;
         }
@@ -492,25 +521,10 @@ public sealed class MessageTimelineStore
     }
 
     /// <summary>
-    /// 在时间线中按消息 Id 查找对应的展示项（含 Loop 组内的消息）。
+    /// 在时间线中按消息 Id 查找对应的展示项。
     /// </summary>
-    private TimelineItem? FindItemForMessageId(string id)
-    {
-        foreach (var item in _items)
-        {
-            if (string.Equals(item.Message?.Id, id, StringComparison.Ordinal))
-                return item;
-
-            if (item.Turn?.Messages == null)
-                continue;
-            foreach (var m in item.Turn.Messages)
-            {
-                if (string.Equals(m.Id, id, StringComparison.Ordinal))
-                    return item;
-            }
-        }
-        return null;
-    }
+    private TimelineItem? FindItemForMessageId(string id) =>
+        _itemByMessageId.TryGetValue(id, out var item) ? item : null;
 
     private void RefreshTailHint()
     {
@@ -526,33 +540,11 @@ public sealed class MessageTimelineStore
         TailRevision = tail.Revision;
     }
 
-    private HashSet<string> CollectKnownMessageIds()
-    {
-        var ids = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var item in _items)
-        {
-            if (!string.IsNullOrEmpty(item.Message?.Id))
-                ids.Add(item.Message.Id);
-
-            if (item.Turn?.Messages == null)
-                continue;
-
-            foreach (var m in item.Turn.Messages)
-            {
-                if (!string.IsNullOrEmpty(m.Id))
-                    ids.Add(m.Id);
-            }
-        }
-
-        // 排队消息也视为已知，避免增量 reconcile 时被当作"未知"重复追加到主时间线
-        foreach (var pending in _pending)
-        {
-            if (!string.IsNullOrEmpty(pending.Id))
-                ids.Add(pending.Id);
-        }
-
-        return ids;
-    }
+    /// <summary>
+    /// 已知消息 Id 集合（含排队消息：索引里值为 null 的条目）。
+    /// </summary>
+    private HashSet<string> CollectKnownMessageIds() =>
+        new(_itemByMessageId.Keys, StringComparer.Ordinal);
 
     /// <summary>
     /// Resolve the assistant turn for a streaming/reconcile sync, adopting orphan <c>single-*</c>
@@ -640,8 +632,7 @@ public sealed class MessageTimelineStore
     }
 
     private TimelineItem? FindTurnByKey(string key) =>
-        _items.LastOrDefault(i =>
-            i.Kind == TimelineItemKind.AssistantTurn && i.Key == key);
+        _turnByKey.TryGetValue(key, out var item) ? item : null;
 
     private TimelineItem? FindLastOpenAssistantTurn() =>
         _items.LastOrDefault(i =>
@@ -695,9 +686,15 @@ public sealed class MessageTimelineStore
                 existing.Turn.LoopId = loopId;
                 // 消息并入既有轮次 → 结构变化
                 existing.TouchStructure();
+
+                // 索引维护：orphan 条目移除，其消息改指向既有轮次
+                foreach (var m in old.Turn.Messages)
+                    _itemByMessageId[m.Id] = existing;
             }
 
             _items.RemoveAt(idx);
+            _turnByKey.Remove(old.Key);
+            _pendingOrphanKeys.Remove(old.Key);
             RenumberLoopIndexes();
             return existing;
         }
@@ -712,6 +709,17 @@ public sealed class MessageTimelineStore
             rekeyed.Turn.LoopId = loopId;
 
         _items[idx] = rekeyed;
+        // 索引维护：旧 key 移除、新 key 登记；消息改指向新条目
+        _turnByKey.Remove(old.Key);
+        _turnByKey[loopId] = rekeyed;
+        _pendingOrphanKeys.Remove(old.Key);
+        _pendingOrphanKeys.Remove(loopId);
+        if (rekeyed.Turn?.Messages != null)
+        {
+            foreach (var m in rekeyed.Turn.Messages)
+                _itemByMessageId[m.Id] = rekeyed;
+        }
+
         // 换 Key 后视图必须整段重建（@key 变化，旧的 @key 缓存全部失效）
         rekeyed.TouchStructure();
         return rekeyed;
@@ -722,39 +730,51 @@ public sealed class MessageTimelineStore
         if (target.Turn == null)
             return;
 
-        for (var i = _items.Count - 1; i >= 0; i--)
+        if (_pendingOrphanKeys.Count > 0)
         {
-            var item = _items[i];
-            if (ReferenceEquals(item, target))
-                continue;
-            if (item.Kind != TimelineItemKind.AssistantTurn || item.Turn?.Messages == null)
-                continue;
-            if (!item.Key.StartsWith("single-", StringComparison.Ordinal)
-                && !string.IsNullOrEmpty(item.Turn.LoopId)
-                && !string.Equals(item.Turn.LoopId, loopId, StringComparison.Ordinal))
+            foreach (var key in _pendingOrphanKeys.ToList())
             {
-                continue;
+                if (!_turnByKey.TryGetValue(key, out var item))
+                {
+                    _pendingOrphanKeys.Remove(key);
+                    continue;
+                }
+                if (ReferenceEquals(item, target))
+                {
+                    _pendingOrphanKeys.Remove(key);
+                    continue;
+                }
+                if (item.Kind != TimelineItemKind.AssistantTurn || item.Turn?.Messages == null)
+                    continue;
+
+                // 仅吸收未完成、或消息已归属此 LoopId、或就是当前正在 sync 的 message
+                var shouldAbsorb = !item.Turn.IsComplete
+                    || item.Turn.Messages.Any(m =>
+                        string.Equals(m.LoopId, loopId, StringComparison.Ordinal)
+                        || m.Id == currentMessageId);
+                if (!shouldAbsorb)
+                    continue;
+
+                foreach (var m in item.Turn.Messages)
+                {
+                    if (target.Turn.Messages.All(x => x.Id != m.Id))
+                        target.Turn.Messages.Add(m);
+                    _itemByMessageId[m.Id] = target;
+                }
+
+                var idx = _items.IndexOf(item);
+                if (idx >= 0)
+                    _items.RemoveAt(idx);
+                _turnByKey.Remove(key);
+                _pendingOrphanKeys.Remove(key);
             }
-
-            // 仅吸收未完成、或消息已归属此 LoopId、或就是当前正在 sync 的 message
-            var shouldAbsorb = !item.Turn.IsComplete
-                || item.Turn.Messages.Any(m =>
-                    string.Equals(m.LoopId, loopId, StringComparison.Ordinal)
-                    || m.Id == currentMessageId);
-            if (!shouldAbsorb)
-                continue;
-
-            foreach (var m in item.Turn.Messages)
-            {
-                if (target.Turn.Messages.All(x => x.Id != m.Id))
-                    target.Turn.Messages.Add(m);
-            }
-
-            _items.RemoveAt(i);
         }
 
         target.Turn.LoopId = loopId;
         target.Turn.IsComplete = target.Turn.Messages.All(m => m.IsComplete);
+        _turnByKey[loopId] = target;
+        _pendingOrphanKeys.Remove(loopId);
+        // 移出循环，只调一次
         RenumberLoopIndexes();
         // 吸收 orphan 会改变轮次内消息集合 → 结构变化
         target.TouchStructure();
@@ -782,6 +802,11 @@ public sealed class MessageTimelineStore
             Turn = turn
         };
         _items.Add(item);
+        _turnByKey[key] = item;
+        if (seedVm != null)
+            _itemByMessageId[seedVm.Id] = item;
+        if (key.StartsWith("single-", StringComparison.Ordinal))
+            _pendingOrphanKeys.Add(key);
         return item;
     }
 
