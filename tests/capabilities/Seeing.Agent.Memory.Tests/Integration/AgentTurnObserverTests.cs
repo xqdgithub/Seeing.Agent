@@ -212,6 +212,12 @@ public class AgentTurnObserverTests
         services.AddSingleton(Mock.Of<IFileStore>());
         // flush 链路最终会实例化 LlmMemoryExtractor（抽取器），需要 LLM 补全端口占位
         services.AddSingleton(Mock.Of<Seeing.Agent.Abstractions.Llm.ITextCompletion>());
+        // ConfigurableEmbeddingStatus 依赖模型目录做「指定模型是否存在」判定（spec §7.8）：
+        // 空目录 + 未配 ModelId 时 IsAvailable=false，与生产行为一致。
+        services.AddSingleton(Mock.Of<Seeing.Agent.Llm.IModelManager>());
+        // RouterEmbeddingService 经 ILlmInvoker 发起 embedding 调用（spec §7.8）。
+        services.AddSingleton(Mock.Of<Seeing.Agent.Abstractions.Llm.ILlmInvoker>());
+        services.AddSingleton(Mock.Of<Seeing.Agent.Llm.IModelConfigManager>());
     }
 
     /// <summary>读取 CurrentValue 即抛的配置监视器，用于验证门禁异常被隔离。</summary>
