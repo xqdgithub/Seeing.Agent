@@ -31,6 +31,21 @@ public class TextBlockRenderer : IContentBlockRenderer
     {
         // ✅ 捕获不可变数据
         var content = block.Content ?? string.Empty;
+
+        // 流式中：纯文本渲染，避免每次增量都做全文 Markdown 重解析（成本随长度平方增长）。
+        // block.IsStreaming 转 false 后（消息完成）会重新走下面的 Markdown 分支。
+        if (!RenderMarkdownPolicy.ShouldUseMarkdown(block))
+        {
+            return builder =>
+            {
+                builder.OpenElement(0, "div");
+                builder.AddAttribute(1, "class", "content-block-text message-content message-content--streaming");
+                // 直接输出字符串由 Blazor 自动 HTML 编码；换行保留由 CSS white-space: pre-wrap 负责
+                builder.AddContent(2, content);
+                builder.CloseElement();
+            };
+        }
+
         var cacheKey = context.GetMarkdownCacheKey(block);
 
         return builder =>

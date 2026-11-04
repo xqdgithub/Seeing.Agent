@@ -1,10 +1,19 @@
+@using Seeing.Agent.WebUI.Models.Messaging
+@using Seeing.Agent.WebUI.Rendering
 @using Seeing.Agent.WebUI.Rendering.Abstractions
 
-@* 文本消息组件 - 渲染 Markdown 文本内容 *@
+@* 文本消息组件 - 流式中纯文本（保留空白），完成后 Markdown *@
 
-<div style="margin-left:15px">
-    @((MarkupString)HtmlContent)
-    </div>
+<div style="margin-left:15px" class="@(UseMarkdown ? "" : "message-content--streaming")">
+    @if (UseMarkdown)
+    {
+        @((MarkupString)HtmlContent)
+    }
+    else
+    {
+        @Content
+    }
+</div>
 
 @code {
     /// <summary>
@@ -12,23 +21,28 @@
     /// </summary>
     [Parameter]
     public string Content { get; set; } = string.Empty;
-    
+
     /// <summary>
     /// 渲染上下文
     /// </summary>
     [Parameter]
     public RenderContext Context { get; set; } = default!;
-    
+
     /// <summary>
     /// 内容块
     /// </summary>
     [Parameter]
     public ContentBlock Block { get; set; } = default!;
-    
+
+    /// <summary>
+    /// 是否走 Markdown：流式中跳过全文重解析，完成后一次性渲染
+    /// </summary>
+    private bool UseMarkdown => Block is null || RenderMarkdownPolicy.ShouldUseMarkdown(Block);
+
     /// <summary>
     /// 渲染后的 HTML 内容
     /// </summary>
-    private string HtmlContent => string.IsNullOrEmpty(Content) 
-        ? string.Empty 
+    private string HtmlContent => string.IsNullOrEmpty(Content)
+        ? string.Empty
         : Context.Cache?.GetOrCreateMarkdown(Content, Context.GetMarkdownCacheKey(Block)) ?? Content;
 }

@@ -270,6 +270,16 @@
     word-wrap: break-word;
 }
 
+/* 流式中的纯文本：HTML 默认会折叠换行与连续空格，必须显式保留，
+   否则流式期间的段落/列表/代码会挤成一整段。
+   消息完成后 block.IsStreaming 转 false，走 Markdown 渲染并移除该类。 */
+.message-content--streaming {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    font-family: inherit;
+}
+
 .message-content p {
     margin-bottom: var(--space-2);
 }

@@ -26,7 +26,15 @@
     @* 内容区域 *@
     <div class="reasoning-content">
         <div class="reasoning-content-scroll @(IsComplete ? "is-complete" : "is-streaming")" style="font-size: 12px; color: var(--color-text-tertiary); overflow-y: auto; overflow-x: hidden; word-break: break-word; overflow-wrap: break-word;">
-            @((MarkupString)HtmlContent)
+            @if (UseMarkdown)
+            {
+                @((MarkupString)HtmlContent)
+            }
+            else
+            {
+                @* 流式中：纯文本（Blazor 自动 HTML 编码），换行由 pre-wrap 保留 *@
+                <span class="message-content--streaming">@Content</span>
+            }
         </div>
     </div>
 </div>
@@ -49,6 +57,9 @@
 
     /// <summary>是否已完成</summary>
     private bool IsComplete => Block.IsComplete;
+
+    /// <summary>是否走 Markdown：流式中跳过全文重解析，完成后一次性渲染</summary>
+    private bool UseMarkdown => Block is null || Rendering.RenderMarkdownPolicy.ShouldUseMarkdown(Block);
 
     /// <summary>渲染后的 HTML 内容</summary>
     private string HtmlContent => string.IsNullOrEmpty(Content) 
