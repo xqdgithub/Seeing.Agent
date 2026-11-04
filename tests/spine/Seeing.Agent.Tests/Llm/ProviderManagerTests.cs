@@ -64,6 +64,71 @@ public class ProviderManagerTests : IDisposable
     }
 
     [Fact]
+    public void RequiresRebuild_CapabilityAdded_ReturnsTrue()
+    {
+        var previous = new ProviderConfig
+        {
+            Id = "p",
+            Type = ProviderTypes.OpenAi,
+            Capabilities = ["chat"]
+        };
+        var current = new ProviderConfig
+        {
+            Id = "p",
+            Type = ProviderTypes.OpenAi,
+            Capabilities = ["chat", "embedding"]
+        };
+
+        ProviderManager.RequiresRebuild(previous, current).Should().BeTrue("能力集变化必须重建客户端束");
+    }
+
+    [Fact]
+    public void RequiresRebuild_CapabilityOrderOrCaseDiffers_ReturnsFalse()
+    {
+        var previous = new ProviderConfig
+        {
+            Id = "p",
+            Type = ProviderTypes.OpenAi,
+            Capabilities = ["chat", "embedding"]
+        };
+        var current = new ProviderConfig
+        {
+            Id = "p",
+            Type = ProviderTypes.OpenAi,
+            Capabilities = ["Embedding", "Chat"]
+        };
+
+        ProviderManager.RequiresRebuild(previous, current).Should().BeFalse("能力集等价（大小写/顺序无关）");
+    }
+
+    [Fact]
+    public void RequiresRebuild_ListModelsChanged_ReturnsTrue()
+    {
+        var previous = new ProviderConfig { Id = "p", Type = ProviderTypes.OpenAi, ListModels = false };
+        var current = new ProviderConfig { Id = "p", Type = ProviderTypes.OpenAi, ListModels = true };
+
+        ProviderManager.RequiresRebuild(previous, current).Should().BeTrue("动态目录开关变化必须重建");
+    }
+
+    [Fact]
+    public void RequiresRebuild_ShouldNotCompareDefaultModel()
+    {
+        // 决议 22：ProviderConfig.DefaultModel 已删除；重建判定只看连接与能力字段
+        typeof(ProviderConfig).GetProperty("DefaultModel").Should().BeNull();
+
+        var baseline = new ProviderConfig { Id = "p", Type = ProviderTypes.OpenAi };
+        ProviderManager.RequiresRebuild(baseline, Clone(baseline)).Should().BeFalse();
+
+        static ProviderConfig Clone(ProviderConfig source) => new()
+        {
+            Id = source.Id,
+            Type = source.Type,
+            BaseUrl = source.BaseUrl,
+            ApiKey = source.ApiKey
+        };
+    }
+
+    [Fact]
     public async Task ProviderReloadHandler_配置变更触发刷新()
     {
         var providers = new Dictionary<string, ProviderConfig>
@@ -71,11 +136,11 @@ public class ProviderManagerTests : IDisposable
             ["provider"] = PredefinedProviders.OpenAI("sk-original")
         };
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
-        var firstClient = Mock.Of<ILlmClient>();
-        var secondClient = Mock.Of<ILlmClient>();
+        var firstClient = Mock.Of<IChatCompletionClient>();
+        var secondClient = Mock.Of<IChatCompletionClient>();
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
-        factory.SetupSequence(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
+        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
+        factory.SetupSequence(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns(firstClient)
             .Returns(secondClient);
         using var sut = new ProviderManager(
@@ -87,7 +152,7 @@ public class ProviderManagerTests : IDisposable
             NullLogger<ProviderManager>.Instance);
         var handler = new ProviderReloadHandler(sut);
 
-        _ = sut.GetClient("provider");
+        _ = sut.GetClient("provider", LlmCapabilityKind.Chat);
         await configManager.SaveSectionAsync(
             "Providers",
             new Dictionary<string, ProviderConfig>
@@ -100,8 +165,8 @@ public class ProviderManagerTests : IDisposable
             new ConfigChange { ChangedSections = new[] { "Providers" } },
             TestContext.Current.CancellationToken);
 
-        sut.GetClient("provider").Should().BeSameAs(secondClient);
-        factory.Verify(candidate => candidate.Create(It.IsAny<ProviderConfig>()), Times.Exactly(2));
+        sut.GetClient("provider", LlmCapabilityKind.Chat).Should().BeSameAs(secondClient);
+        factory.Verify(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()), Times.Exactly(2));
     }
 
     [Fact]
@@ -114,7 +179,7 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
+        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         using var sut = new ProviderManager(
             configManager,
             [factory.Object],
@@ -140,6 +205,9 @@ public class ProviderManagerTests : IDisposable
         {
             Id = "provider",
             Name = "provider",
+            // LlmProviderBase 基线投影：未声明协议为空串，能力缺省只给 Chat
+            Protocol = string.Empty,
+            Capabilities = LlmCapabilityKind.Chat,
             Source = ProviderSource.Extension,
             OwnerExtensionId = "test-extension",
             MaxRetries = 3
@@ -156,7 +224,7 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
+        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         using var sut = new ProviderManager(
             configManager,
             [factory.Object],
@@ -182,10 +250,11 @@ public class ProviderManagerTests : IDisposable
         provider.SetupGet(candidate => candidate.Id).Returns("provider");
         provider.Setup(candidate => candidate.TestConnectionAsync(
                 "model",
+                LlmCapabilityKind.Chat,
                 TestContext.Current.CancellationToken))
             .ReturnsAsync(true);
-        provider.Setup(candidate => candidate.GetClient())
-            .Returns(Mock.Of<ILlmClient>());
+        provider.Setup(candidate => candidate.GetClient(It.IsAny<LlmCapabilityKind>()))
+            .Returns(Mock.Of<IChatCompletionClient>());
         registry.Register(provider.Object, ownerExtensionId: "test-extension");
         using var sut = new ProviderManager(
             configManager,
@@ -198,11 +267,13 @@ public class ProviderManagerTests : IDisposable
         var connected = await sut.TestConnectionAsync(
             "provider",
             "model",
+            LlmCapabilityKind.Chat,
             TestContext.Current.CancellationToken);
 
         connected.Should().BeTrue();
         provider.Verify(candidate => candidate.TestConnectionAsync(
             "model",
+            LlmCapabilityKind.Chat,
             TestContext.Current.CancellationToken), Times.Once);
     }
 
@@ -216,9 +287,9 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
-        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
-            .Returns(Mock.Of<ILlmClient>());
+        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
+        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
+            .Returns(Mock.Of<IChatCompletionClient>());
         using var sut = new ProviderManager(
             configManager,
             [factory.Object],
@@ -234,6 +305,9 @@ public class ProviderManagerTests : IDisposable
         {
             Id = "openai",
             Name = "OpenAI",
+            // 配置驱动 Provider：协议取 config.Type，能力缺省只给 Chat（决议 15/§7.1）
+            Protocol = ProviderTypes.OpenAi,
+            Capabilities = LlmCapabilityKind.Chat,
             Source = ProviderSource.Configured,
             MaxRetries = 0
         });
@@ -249,9 +323,9 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
-        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
-            .Returns(Mock.Of<ILlmClient>());
+        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
+        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
+            .Returns(Mock.Of<IChatCompletionClient>());
         using var sut = new ProviderManager(
             configManager,
             [factory.Object],
@@ -342,12 +416,12 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         string? capturedApiKey = null;
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
-        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
-            .Returns((ProviderConfig cfg) =>
+        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
+        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
+            .Returns((ProviderConfig cfg, LlmCapabilityKind _) =>
             {
                 capturedApiKey = cfg.ApiKey;
-                return Mock.Of<ILlmClient>();
+                return Mock.Of<IChatCompletionClient>();
             });
         using var sut = new ProviderManager(
             configManager,
@@ -358,7 +432,7 @@ public class ProviderManagerTests : IDisposable
             NullLogger<ProviderManager>.Instance);
 
         live.ApiKey = "sk-mutated-before-client";
-        _ = sut.GetClient("provider");
+        _ = sut.GetClient("provider", LlmCapabilityKind.Chat);
 
         capturedApiKey.Should().Be("sk-original");
     }
@@ -374,8 +448,8 @@ public class ProviderManagerTests : IDisposable
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var disposableClient = new DisposableClient();
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
-        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
+        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
+        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns(disposableClient);
         using var sut = new ProviderManager(
             configManager,
@@ -385,7 +459,7 @@ public class ProviderManagerTests : IDisposable
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
-        _ = sut.GetClient("provider");
+        _ = sut.GetClient("provider", LlmCapabilityKind.Chat);
         registry.Unregister("provider");
 
         disposableClient.Disposed.Should().BeTrue();
@@ -409,9 +483,9 @@ public class ProviderManagerTests : IDisposable
         };
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
-        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
-            .Returns(Mock.Of<ILlmClient>());
+        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
+        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
+            .Returns(Mock.Of<IChatCompletionClient>());
         using var sut = new ProviderManager(
             configManager,
             [factory.Object],
@@ -449,9 +523,9 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(ProviderTypes.OpenAi)).Returns(true);
-        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
-            .Returns(Mock.Of<ILlmClient>());
+        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
+        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
+            .Returns(Mock.Of<IChatCompletionClient>());
         using var sut = new ProviderManager(
             configManager,
             [factory.Object],
@@ -510,18 +584,18 @@ public class ProviderManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task ResolveFactory_TwoFactories_SupportsTypeIsCaseInsensitive()
+    public async Task ResolveFactory_TwoFactories_SupportsProtocolIsCaseInsensitive()
     {
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions());
         var openAi = new Mock<ILlmClientFactory>();
-        openAi.SetupGet(f => f.SupportedTypes)
+        openAi.SetupGet(f => f.SupportedProtocols)
             .Returns(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ProviderTypes.OpenAi });
-        openAi.Setup(f => f.SupportsType(It.IsAny<string>()))
+        openAi.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
             .Returns((string type) => string.Equals(type, ProviderTypes.OpenAi, StringComparison.OrdinalIgnoreCase));
         var anthropic = new Mock<ILlmClientFactory>();
-        anthropic.SetupGet(f => f.SupportedTypes)
+        anthropic.SetupGet(f => f.SupportedProtocols)
             .Returns(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ProviderTypes.Anthropic });
-        anthropic.Setup(f => f.SupportsType(It.IsAny<string>()))
+        anthropic.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
             .Returns((string type) => string.Equals(type, ProviderTypes.Anthropic, StringComparison.OrdinalIgnoreCase));
 
         using var sut = new ProviderManager(
@@ -542,9 +616,9 @@ public class ProviderManagerTests : IDisposable
     {
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions());
         var first = new Mock<ILlmClientFactory>();
-        first.Setup(f => f.SupportsType(ProviderTypes.OpenAi)).Returns(true);
+        first.Setup(f => f.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         var second = new Mock<ILlmClientFactory>();
-        second.Setup(f => f.SupportsType(ProviderTypes.OpenAi)).Returns(true);
+        second.Setup(f => f.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
 
         using var sut = new ProviderManager(
             configManager,
@@ -565,11 +639,11 @@ public class ProviderManagerTests : IDisposable
             ["claude"] = PredefinedProviders.Anthropic("sk-anthropic")
         };
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
-        var expected = Mock.Of<ILlmClient>(c => c.ProviderType == ProviderTypes.Anthropic);
+        var expected = Mock.Of<IChatCompletionClient>(c => c.ProviderType == ProviderTypes.Anthropic);
         var anthropic = new Mock<ILlmClientFactory>();
-        anthropic.Setup(f => f.SupportsType(It.IsAny<string>()))
+        anthropic.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
             .Returns((string type) => string.Equals(type, ProviderTypes.Anthropic, StringComparison.OrdinalIgnoreCase));
-        anthropic.Setup(f => f.Create(It.IsAny<ProviderConfig>())).Returns(expected);
+        anthropic.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>())).Returns(expected);
 
         using var sut = new ProviderManager(
             configManager,
@@ -579,8 +653,8 @@ public class ProviderManagerTests : IDisposable
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
-        sut.GetClient("claude").Should().BeSameAs(expected);
-        anthropic.Verify(f => f.Create(It.IsAny<ProviderConfig>()), Times.Once);
+        sut.GetClient("claude", LlmCapabilityKind.Chat).Should().BeSameAs(expected);
+        anthropic.Verify(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()), Times.Once);
     }
 
     [Fact]
@@ -592,18 +666,18 @@ public class ProviderManagerTests : IDisposable
             ["claude"] = PredefinedProviders.Anthropic("sk-anthropic")
         };
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
-        var openAiClient = Mock.Of<ILlmClient>(c => c.ProviderType == ProviderTypes.OpenAi);
-        var anthropicClient = Mock.Of<ILlmClient>(c => c.ProviderType == ProviderTypes.Anthropic);
+        var openAiClient = Mock.Of<IChatCompletionClient>(c => c.ProviderType == ProviderTypes.OpenAi);
+        var anthropicClient = Mock.Of<IChatCompletionClient>(c => c.ProviderType == ProviderTypes.Anthropic);
 
         var openAi = new Mock<ILlmClientFactory>();
-        openAi.Setup(f => f.SupportsType(It.IsAny<string>()))
+        openAi.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
             .Returns((string type) => string.Equals(type, ProviderTypes.OpenAi, StringComparison.OrdinalIgnoreCase));
-        openAi.Setup(f => f.Create(It.IsAny<ProviderConfig>())).Returns(openAiClient);
+        openAi.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>())).Returns(openAiClient);
 
         var anthropic = new Mock<ILlmClientFactory>();
-        anthropic.Setup(f => f.SupportsType(It.IsAny<string>()))
+        anthropic.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
             .Returns((string type) => string.Equals(type, ProviderTypes.Anthropic, StringComparison.OrdinalIgnoreCase));
-        anthropic.Setup(f => f.Create(It.IsAny<ProviderConfig>())).Returns(anthropicClient);
+        anthropic.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>())).Returns(anthropicClient);
 
         using var sut = new ProviderManager(
             configManager,
@@ -613,10 +687,10 @@ public class ProviderManagerTests : IDisposable
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
-        sut.GetClient("openai").Should().BeSameAs(openAiClient);
-        sut.GetClient("claude").Should().BeSameAs(anthropicClient);
-        openAi.Verify(f => f.Create(It.Is<ProviderConfig>(c => c.Type == ProviderTypes.OpenAi)), Times.Once);
-        anthropic.Verify(f => f.Create(It.Is<ProviderConfig>(c => c.Type == ProviderTypes.Anthropic)), Times.Once);
+        sut.GetClient("openai", LlmCapabilityKind.Chat).Should().BeSameAs(openAiClient);
+        sut.GetClient("claude", LlmCapabilityKind.Chat).Should().BeSameAs(anthropicClient);
+        openAi.Verify(f => f.Create(It.Is<ProviderConfig>(c => c.Type == ProviderTypes.OpenAi), It.IsAny<LlmCapabilityKind>()), Times.Once);
+        anthropic.Verify(f => f.Create(It.Is<ProviderConfig>(c => c.Type == ProviderTypes.Anthropic), It.IsAny<LlmCapabilityKind>()), Times.Once);
     }
 
     private sealed class TestProvider(string id) : LlmProviderBase
@@ -625,13 +699,14 @@ public class ProviderManagerTests : IDisposable
 
         public override string? Name => Id;
 
-        public override ILlmClient GetClient() => Mock.Of<ILlmClient>();
+        public override ILlmCapabilityClient? GetClient(LlmCapabilityKind capability)
+            => capability == LlmCapabilityKind.Chat ? Mock.Of<IChatCompletionClient>() : null;
 
         public override Task<IReadOnlyList<ModelConfig>> GetModelsAsync(CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<ModelConfig>>([]);
     }
 
-    private sealed class DisposableClient : ILlmClient, IAsyncDisposable
+    private sealed class DisposableClient : IChatCompletionClient, IAsyncDisposable
     {
         public bool Disposed { get; private set; }
 
@@ -653,6 +728,7 @@ public class ProviderManagerTests : IDisposable
 
         public Task<bool> TestConnectionAsync(
             string modelId,
+            LlmCapabilityKind capability,
             LlmCallContext? call = null,
             CancellationToken cancellationToken = default)
             => Task.FromResult(true);

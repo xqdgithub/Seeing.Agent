@@ -65,22 +65,22 @@ public class LlmAndExecutorTests : IDisposable
             ConfigSectionRegistry.CreateWithSpine());
         await configManager.LoadAsync(TestContext.Current.CancellationToken);
 
-        var openAiClient = Mock.Of<ILlmClient>(c => c.ProviderType == ProviderTypes.OpenAi);
-        var anthropicClient = Mock.Of<ILlmClient>(c => c.ProviderType == ProviderTypes.Anthropic);
+        var openAiClient = Mock.Of<IChatCompletionClient>(c => c.ProviderType == ProviderTypes.OpenAi);
+        var anthropicClient = Mock.Of<IChatCompletionClient>(c => c.ProviderType == ProviderTypes.Anthropic);
 
         var openAi = new Mock<ILlmClientFactory>();
-        openAi.SetupGet(f => f.SupportedTypes)
+        openAi.SetupGet(f => f.SupportedProtocols)
             .Returns(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ProviderTypes.OpenAi });
-        openAi.Setup(f => f.SupportsType(It.IsAny<string>()))
+        openAi.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
             .Returns((string t) => string.Equals(t, ProviderTypes.OpenAi, StringComparison.OrdinalIgnoreCase));
-        openAi.Setup(f => f.Create(It.IsAny<ProviderConfig>())).Returns(openAiClient);
+        openAi.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>())).Returns(openAiClient);
 
         var anthropic = new Mock<ILlmClientFactory>();
-        anthropic.SetupGet(f => f.SupportedTypes)
+        anthropic.SetupGet(f => f.SupportedProtocols)
             .Returns(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ProviderTypes.Anthropic });
-        anthropic.Setup(f => f.SupportsType(It.IsAny<string>()))
+        anthropic.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
             .Returns((string t) => string.Equals(t, ProviderTypes.Anthropic, StringComparison.OrdinalIgnoreCase));
-        anthropic.Setup(f => f.Create(It.IsAny<ProviderConfig>())).Returns(anthropicClient);
+        anthropic.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>())).Returns(anthropicClient);
 
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         using var sut = new ProviderManager(
@@ -91,8 +91,8 @@ public class LlmAndExecutorTests : IDisposable
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
-        sut.GetClient("claude").Should().BeSameAs(anthropicClient);
-        sut.GetClient("openai").Should().BeSameAs(openAiClient);
+        sut.GetClient("claude", LlmCapabilityKind.Chat).Should().BeSameAs(anthropicClient);
+        sut.GetClient("openai", LlmCapabilityKind.Chat).Should().BeSameAs(openAiClient);
 
         // 「关 openai」= 仅 anthropic 工厂仍可解析 anthropic 路径（并列独立）
         using var anthropicOnly = new ProviderManager(
@@ -103,7 +103,7 @@ public class LlmAndExecutorTests : IDisposable
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
-        anthropicOnly.GetClient("claude").Should().BeSameAs(anthropicClient);
+        anthropicOnly.GetClient("claude", LlmCapabilityKind.Chat).Should().BeSameAs(anthropicClient);
         anthropicOnly.ResolveFactory(ProviderTypes.OpenAi).Should().BeNull();
         anthropicOnly.ResolveFactory(ProviderTypes.Anthropic).Should().BeSameAs(anthropic.Object);
     }
@@ -185,19 +185,19 @@ public class LlmAndExecutorTests : IDisposable
     }
 
     [Fact]
-    public void ProviderConfig_Type_Is_String_And_ThirdParty_Factory_Uses_SupportedTypes()
+    public void ProviderConfig_Type_Is_String_And_ThirdParty_Factory_Uses_SupportedProtocols()
     {
         typeof(ProviderConfig).GetProperty(nameof(ProviderConfig.Type))!
             .PropertyType.Should().Be(typeof(string));
 
         // 路由键是 string，不是 ProviderType 枚举
         typeof(ProviderConfig).Assembly.GetType("Seeing.Agent.Abstractions.Llm.ProviderType")
-            .Should().BeNull("第三方经 SupportedTypes 声明，不改 Abstractions ProviderType 枚举");
+            .Should().BeNull("第三方经 SupportedProtocols 声明，不改 Abstractions ProviderType 枚举");
 
         ILlmClientFactory factory = new ThirdPartyFactory();
-        factory.SupportedTypes.Should().Contain("custom-vendor");
-        factory.SupportsType("Custom-Vendor").Should().BeTrue();
-        factory.SupportsType(ProviderTypes.OpenAi).Should().BeFalse();
+        factory.SupportedProtocols.Should().Contain("custom-vendor");
+        factory.SupportsProtocol("Custom-Vendor").Should().BeTrue();
+        factory.SupportsProtocol(ProviderTypes.OpenAi).Should().BeFalse();
     }
 
     private static async IAsyncEnumerable<IMessageEvent> EmptyStream()
@@ -214,13 +214,13 @@ public class LlmAndExecutorTests : IDisposable
 
     private sealed class ThirdPartyFactory : ILlmClientFactory
     {
-        public IReadOnlySet<string> SupportedTypes { get; } =
+        public IReadOnlySet<string> SupportedProtocols { get; } =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "custom-vendor" };
 
-        public bool SupportsType(string type) =>
-            !string.IsNullOrWhiteSpace(type) && SupportedTypes.Contains(type);
+        public bool SupportsProtocol(string protocol) =>
+            !string.IsNullOrWhiteSpace(protocol) && SupportedProtocols.Contains(protocol);
 
-        public ILlmClient Create(ProviderConfig config) =>
+        public ILlmCapabilityClient? Create(ProviderConfig config, LlmCapabilityKind capability) =>
             throw new NotSupportedException();
     }
 }

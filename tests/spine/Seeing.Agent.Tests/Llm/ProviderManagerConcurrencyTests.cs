@@ -36,9 +36,9 @@ public class ProviderManagerConcurrencyTests : IDisposable
         var configManager = await CreateConfigManagerAsync(providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(It.IsAny<string>())).Returns(true);
-        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
-            .Returns(Mock.Of<ILlmClient>());
+        factory.Setup(candidate => candidate.SupportsProtocol(It.IsAny<string>())).Returns(true);
+        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
+            .Returns(Mock.Of<IChatCompletionClient>());
         using var sut = new ProviderManager(
             configManager,
             [factory.Object],
@@ -108,7 +108,8 @@ public class ProviderManagerConcurrencyTests : IDisposable
 
         public override string? Name => Id;
 
-        public override ILlmClient GetClient() => Mock.Of<ILlmClient>();
+        public override ILlmCapabilityClient? GetClient(LlmCapabilityKind capability)
+            => capability == LlmCapabilityKind.Chat ? Mock.Of<IChatCompletionClient>() : null;
 
         public override Task<IReadOnlyList<ModelConfig>> GetModelsAsync(CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<ModelConfig>>([]);

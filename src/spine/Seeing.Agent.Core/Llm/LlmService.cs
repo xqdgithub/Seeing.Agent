@@ -1,16 +1,17 @@
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Llm;
 using System.Runtime.CompilerServices;
-using System.Text;
 using System.Threading.Channels;
 
 namespace Seeing.Agent.Core.Llm;
 
 /// <summary>
-/// LLM 服务接口 - 统一管理模型配置和客户端调用
+/// LLM 服务接口 - chat 专用门面。
+/// <para>横切职责（Hook 生命周期、出站头合并、耗时统计、载荷组装）全部在
+/// <see cref="ILlmInvoker"/>；本层只保留 chat 独有的目录归一化：
+/// <c>MaxTokens</c> / <c>ThinkingEffort</c> / <c>Temperature</c>（spec §7.5）。</para>
+/// <para>非 chat 调用方直接调 <see cref="ILlmInvoker"/>（配 <see cref="ILlmRouter"/>），不要绕经本门面。</para>
 /// </summary>
 public interface ILlmService : IModelConfigLookup
 {
@@ -21,11 +22,11 @@ public interface ILlmService : IModelConfigLookup
     /// <summary>
     /// 获取指定模型所属 Provider 的客户端，未找到返回 null。
     /// </summary>
-    ILlmClient? GetClientForModel(string modelId);
+    ILlmCapabilityClient? GetClientForModel(string modelId, LlmCapabilityKind capability);
     /// <summary>
-    /// 获取指定 Provider 的客户端，未找到返回 null。
+    /// 获取指定 Provider 在指定能力上的客户端，未找到返回 null。
     /// </summary>
-    ILlmClient? GetClient(string providerId);
+    ILlmCapabilityClient? GetClient(string providerId, LlmCapabilityKind capability);
     /// <summary>
     /// 非流式完成聊天补全，触发完整 Hook 链。
     /// </summary>
@@ -51,36 +52,38 @@ public interface ILlmService : IModelConfigLookup
     /// </summary>
     IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(string modelId, ChatRequest request, string? sessionId, CancellationToken cancellationToken = default);
     /// <summary>
-    /// 测试指定 Provider 与模型的连通性。
+    /// 测试指定 Provider 与模型在指定能力上的连通性。
     /// </summary>
-    Task<bool> TestConnectionAsync(string providerId, string modelId, CancellationToken cancellationToken = default);
+    Task<bool> TestConnectionAsync(
+        string providerId,
+        string modelId,
+        LlmCapabilityKind capability = LlmCapabilityKind.Chat,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// LLM 服务实现 - 调用编排层：构造 Call、跑 Hook；重试由客户端装饰器负责。
+/// LLM 服务实现 - chat 门面：做目录归一化后把调用交给 <see cref="ILlmInvoker"/>。
+/// <para>重试由客户端装饰器负责（工厂内部），因此 <c>llm.on_error</c> 只在重试耗尽后由横切层触发一次。</para>
 /// </summary>
 public class LlmService : ILlmService
 {
     private readonly IProviderManager _providerManager;
     private readonly IModelManager _modelManager;
-    private readonly UnifiedConfigManager _configManager;
-    private readonly IHookManager _hookManager;
+    private readonly ILlmInvoker _invoker;
     private readonly ILogger _logger;
 
     /// <summary>
-    /// 注入 Provider/模型管理器、配置与 Hook 依赖构造 LLM 服务。
+    /// 注入 Provider/模型管理器与横切调用层构造 chat 门面。
     /// </summary>
     public LlmService(
         IProviderManager providerManager,
         IModelManager modelManager,
-        UnifiedConfigManager configManager,
-        IHookManager hookManager,
+        ILlmInvoker invoker,
         ILogger<LlmService> logger)
     {
         _providerManager = providerManager;
         _modelManager = modelManager;
-        _configManager = configManager;
-        _hookManager = hookManager;
+        _invoker = invoker;
         _logger = logger;
     }
 
@@ -99,14 +102,14 @@ public class LlmService : ILlmService
     /// <summary>
     /// 获取指定模型所属 Provider 的客户端。
     /// </summary>
-    public ILlmClient? GetClientForModel(string modelId)
-        => _providerManager.GetClientForModel(modelId);
+    public ILlmCapabilityClient? GetClientForModel(string modelId, LlmCapabilityKind capability)
+        => _providerManager.GetClientForModel(modelId, capability);
 
     /// <summary>
-    /// 获取指定 Provider 的客户端。
+    /// 获取指定 Provider 在指定能力上的客户端。
     /// </summary>
-    public ILlmClient? GetClient(string providerId)
-        => _providerManager.GetClient(providerId);
+    public ILlmCapabilityClient? GetClient(string providerId, LlmCapabilityKind capability)
+        => _providerManager.GetClient(providerId, capability);
 
     /// <summary>
     /// 非流式补全（无会话上下文的便捷重载）。
@@ -125,9 +128,14 @@ public class LlmService : ILlmService
         ChatRequest request,
         CancellationToken cancellationToken = default)
     {
-        var (client, apiModelId, _) = PrepareClientRequest(modelId, request);
-        _logger.LogDebug("发送旁路聊天请求(无 Hook): Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
-        return await client.CompleteAsync(request, call: null, cancellationToken).ConfigureAwait(false);
+        var modelConfig = PrepareRequest(modelId, request);
+        _logger.LogDebug("发送旁路聊天请求(无 Hook): Model={Model}", modelConfig.Id);
+
+        return await _invoker.InvokeAsync<IChatCompletionClient, ChatResponse>(
+            modelId,
+            (client, call, token) => client.CompleteAsync(request, call, token),
+            new LlmInvocationOptions { EmitHooks = false },
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -138,14 +146,26 @@ public class LlmService : ILlmService
         ChatRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var (client, apiModelId, _) = PrepareClientRequest(modelId, request);
-        _logger.LogDebug("发送旁路流式请求(无 Hook): Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
+        var modelConfig = PrepareRequest(modelId, request);
+        _logger.LogDebug("发送旁路流式请求(无 Hook): Model={Model}", modelConfig.Id);
 
-        await foreach (var update in client.CompleteStreamAsync(request, call: null, cancellationToken).ConfigureAwait(false))
+        await foreach (var update in _invoker
+            .StreamAsync<IChatCompletionClient, StreamUpdate>(
+                modelId,
+                (client, call, token) => client.CompleteStreamAsync(request, call, token),
+                new LlmInvocationOptions { EmitHooks = false },
+                cancellationToken)
+            .ConfigureAwait(false))
+        {
             yield return update;
+        }
     }
 
-    private (ILlmClient Client, string ApiModelId, ModelConfig ModelConfig) PrepareClientRequest(string modelId, ChatRequest request)
+    /// <summary>
+    /// chat 独有的目录归一化：补 MaxTokens、按目录夹紧思考档位、把请求模型换成 API ID。
+    /// <para>客户端由 <see cref="ILlmInvoker"/> 经五层校验后供出，本层不再自己找客户端。</para>
+    /// </summary>
+    private ModelConfig PrepareRequest(string modelId, ChatRequest request)
     {
         var modelConfig = _modelManager.GetModel(modelId)
             ?? throw new InvalidOperationException($"未找到模型配置: {modelId}");
@@ -158,12 +178,8 @@ public class LlmService : ILlmService
 
         ApplyThinkingCatalog(modelConfig, request, _logger);
 
-        var client = _providerManager.GetClient(modelConfig.Provider)
-            ?? throw new InvalidOperationException($"未找到模型 {modelId} 的客户端");
-
-        var apiModelId = string.IsNullOrEmpty(modelConfig.Id) ? modelId : modelConfig.Id;
-        request.Model = apiModelId;
-        return (client, apiModelId, modelConfig);
+        request.Model = string.IsNullOrEmpty(modelConfig.Id) ? modelId : modelConfig.Id;
+        return modelConfig;
     }
 
     /// <summary>
@@ -246,77 +262,85 @@ public class LlmService : ILlmService
         return null;
     }
 
-    private static void ApplyChatParamsToRequest(ChatRequest request, IDictionary<string, object?> paramsOutput, ModelConfig modelConfig, ILogger logger)
+    /// <summary>
+    /// 把 <c>llm.params</c> 可变参数袋里钩子改写过的值落到 chat 请求上。
+    /// <para>顺序与改造前一致：钩子值 &gt; 请求值 &gt; 框架缺省（temperature 0.7 / topP 1.0 / maxTokens 目录上限）。
+    /// 思考档位落在请求上之后再过一次目录夹紧——钩子给了个模型不支持的 key 时回落缺省档，
+    /// 而不是把非法 key 直接发出站。</para>
+    /// </summary>
+    private void ApplyParamsHookOutput(ChatRequest request, LlmCallContext call, ModelConfig modelConfig)
     {
-        if (paramsOutput.TryGetValue("temperature", out var t) && t is not null)
-            request.Temperature = Convert.ToDouble(t);
-        if (paramsOutput.TryGetValue("topP", out var p) && p is not null)
-            request.TopP = Convert.ToDouble(p);
-        if (paramsOutput.TryGetValue("maxTokens", out var m) && m is not null)
-            request.MaxTokens = Convert.ToInt32(m);
-
-        if (paramsOutput.TryGetValue("thinkingEffort", out var effort) && effort is not null)
-            request.ThinkingEffort = effort.ToString();
-
-        ApplyThinkingCatalog(modelConfig, request, logger);
-    }
-
-    private static LlmCallContext CreateCallContext(string? sessionId)
-        => new()
+        if (call.Items.TryGetValue(LlmInvoker.ParamsItemKey, out var raw) &&
+            raw is IDictionary<string, object?> bag)
         {
-            SessionId = string.IsNullOrWhiteSpace(sessionId) ? null : sessionId,
-            CorrelationId = Guid.NewGuid().ToString("N")
-        };
+            if (TryConvert<double>(bag, "temperature", out var temperature))
+                request.Temperature = temperature;
 
-    private static void MergeHeadersHookOutput(LlmCallContext call, IDictionary<string, object?> headersOutput)
-    {
-        if (!headersOutput.TryGetValue("headers", out var raw) || raw is null)
-            return;
+            if (TryConvert<double>(bag, "topP", out var topP))
+                request.TopP = topP;
 
-        IEnumerable<KeyValuePair<string, string>>? pairs = raw switch
-        {
-            IDictionary<string, string> dict => dict,
-            IReadOnlyDictionary<string, string> readOnly => readOnly,
-            _ => null
-        };
+            if (TryConvert<int>(bag, "maxTokens", out var maxTokens))
+                request.MaxTokens = maxTokens;
 
-        if (pairs is null)
-            return;
-
-        foreach (var (key, value) in pairs)
-        {
-            if (!string.IsNullOrWhiteSpace(key))
-                call.ExtraHeaders[key] = value;
+            if (TryConvert<string>(bag, "thinkingEffort", out var effort) && !string.IsNullOrWhiteSpace(effort))
+                request.ThinkingEffort = effort;
         }
+
+        // 与改造前逐字对齐的缺省回落：钩子与请求都没给时仍按框架缺省出站
+        request.Temperature ??= 0.7;
+        request.TopP ??= 1.0;
+        request.MaxTokens ??= ModelLimitDefaults.Output;
+
+        ApplyThinkingCatalog(modelConfig, request, _logger);
     }
 
-    private void FireChatOnError(
-        string modelId,
-        string providerId,
-        string? sessionId,
-        LlmCallContext call,
-        Exception ex)
+    private bool TryConvert<T>(IDictionary<string, object?> bag, string key, out T value)
     {
-        var attempt = call.Items.TryGetValue(LlmRetryPolicy.AttemptItemKey, out var a) ? a : 1;
-        var maxRetries = call.Items.TryGetValue(LlmRetryPolicy.MaxRetriesItemKey, out var m) ? m : 1;
-        var willRetry = call.Items.TryGetValue(LlmRetryPolicy.WillRetryItemKey, out var w) && w is true;
+        value = default!;
+        if (!bag.TryGetValue(key, out var raw) || raw is null)
+            return false;
 
-        _hookManager.TriggerFireAndForget(
-            HookRegistry.ChatOnError,
-            sessionId ?? string.Empty,
-            new Dictionary<string, object?>
+        try
+        {
+            if (raw is T typed)
             {
-                ["modelId"] = modelId,
-                ["provider"] = providerId,
-                ["error"] = ex,
-                ["attempt"] = attempt,
-                ["maxRetries"] = maxRetries,
-                ["willRetry"] = willRetry
-            });
+                value = typed;
+                return true;
+            }
+
+            var target = typeof(T);
+            if (target == typeof(double))
+            {
+                value = (T)(object)Convert.ToDouble(raw, System.Globalization.CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            if (target == typeof(int))
+            {
+                value = (T)(object)Convert.ToInt32(raw, System.Globalization.CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            if (target == typeof(string))
+            {
+                value = (T)(object)(raw.ToString() ?? string.Empty);
+                return true;
+            }
+        }
+        catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException)
+        {
+            // 钩子写了放不进请求的类型：忽略该键、保留请求原值，但必须留痕（禁止静默吞异常）
+            _logger.LogWarning(
+                ex,
+                "llm.params 的 {Key} 无法落到 chat 请求，已忽略该覆盖",
+                key);
+        }
+
+        return false;
     }
 
     /// <summary>
-    /// 非流式补全：依次跑参数/请求头 Hook 后调用客户端，响应与失败经观测 Hook 上报。
+    /// 非流式补全：交给横切层跑「解析 → 前置 Hook → 调用 → 终态 Hook」，本层只在闭包里落 chat 参数。
     /// </summary>
     public async Task<ChatResponse> CompleteAsync(
         string modelId,
@@ -324,85 +348,18 @@ public class LlmService : ILlmService
         string? sessionId,
         CancellationToken cancellationToken = default)
     {
-        var (client, apiModelId, modelConfig) = PrepareClientRequest(modelId, request);
-        var call = CreateCallContext(sessionId);
+        var modelConfig = PrepareRequest(modelId, request);
 
-        var paramsOutput = new Dictionary<string, object?>
-        {
-            ["temperature"] = request.Temperature ?? 0.7,
-            ["topP"] = request.TopP ?? 1.0,
-            ["topK"] = 0,
-            ["maxTokens"] = request.MaxTokens ?? ModelLimitDefaults.Output,
-            ["thinkingEffort"] = request.ThinkingEffort
-        };
-
-        await _hookManager.TriggerBlockingAsync(
-            HookRegistry.ChatParams,
-            sessionId ?? string.Empty,
-            new Dictionary<string, object?>
+        return await _invoker.InvokeAsync<IChatCompletionClient, ChatResponse>(
+            modelId,
+            (client, call, token) =>
             {
-                ["modelId"] = modelId,
-                ["provider"] = client.ProviderId
+                ApplyParamsHookOutput(request, call, modelConfig);
+                _logger.LogDebug("发送聊天请求: Model={Model}, Provider={Provider}", request.Model, client.ProviderId);
+                return client.CompleteAsync(request, call, token);
             },
-            paramsOutput,
+            new LlmInvocationOptions { SessionId = sessionId },
             cancellationToken).ConfigureAwait(false);
-
-        ApplyChatParamsToRequest(request, paramsOutput, modelConfig, _logger);
-        var headersOutput = new Dictionary<string, object?>
-        {
-            ["headers"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        };
-
-        await _hookManager.TriggerBlockingAsync(
-            HookRegistry.ChatHeaders,
-            sessionId ?? string.Empty,
-            new Dictionary<string, object?>
-            {
-                ["modelId"] = modelId,
-                ["provider"] = client.ProviderId
-            },
-            headersOutput,
-            cancellationToken).ConfigureAwait(false);
-
-        MergeHeadersHookOutput(call, headersOutput);
-
-        _logger.LogDebug("发送聊天请求: Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
-
-        ChatResponse response;
-        try
-        {
-            response = await client.CompleteAsync(request, call, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            FireChatOnError(modelId, client.ProviderId, sessionId, call, ex);
-            throw;
-        }
-
-        await _hookManager.TriggerParallelAsync(
-            HookRegistry.ChatMessage,
-            sessionId ?? string.Empty,
-            new Dictionary<string, object?>
-            {
-                ["messageId"] = response.Id,
-                ["modelId"] = modelId
-            },
-            cancellationToken).ConfigureAwait(false);
-
-        _hookManager.TriggerFireAndForget(
-            HookRegistry.ChatAfterComplete,
-            sessionId ?? string.Empty,
-            new Dictionary<string, object?>
-            {
-                ["modelId"] = modelId,
-                ["messageId"] = response.Id
-            },
-            new Dictionary<string, object?>
-            {
-                ["response"] = response
-            });
-
-        return response;
     }
 
     /// <summary>
@@ -418,7 +375,7 @@ public class LlmService : ILlmService
     }
 
     /// <summary>
-    /// 流式补全：跑参数/请求头 Hook 后经通道转发增量，失败时包装为 Llm 异常抛出，结束触发完成 Hook。
+    /// 流式补全：横切层负责 Hook 与累计，本层负责把失败包装成 chat 专用异常类型。
     /// </summary>
     public async IAsyncEnumerable<StreamUpdate> CompleteStreamAsync(
         string modelId,
@@ -426,57 +383,11 @@ public class LlmService : ILlmService
         string? sessionId,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var (client, apiModelId, modelConfig) = PrepareClientRequest(modelId, request);
-        var call = CreateCallContext(sessionId);
+        var modelConfig = PrepareRequest(modelId, request);
+        LlmCallContext? call = null;
+        string? providerId = null;
 
-        var paramsOutput = new Dictionary<string, object?>
-        {
-            ["temperature"] = request.Temperature ?? 0.7,
-            ["topP"] = request.TopP ?? 1.0,
-            ["maxTokens"] = request.MaxTokens ?? ModelLimitDefaults.Output,
-            ["thinkingEffort"] = request.ThinkingEffort
-        };
-
-        await _hookManager.TriggerBlockingAsync(
-            HookRegistry.ChatParams,
-            sessionId ?? string.Empty,
-            new Dictionary<string, object?>
-            {
-                ["modelId"] = modelId,
-                ["provider"] = client.ProviderId,
-                ["streaming"] = true
-            },
-            paramsOutput,
-            cancellationToken).ConfigureAwait(false);
-
-        ApplyChatParamsToRequest(request, paramsOutput, modelConfig, _logger);
-
-        var headersOutput = new Dictionary<string, object?>
-        {
-            ["headers"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        };
-
-        await _hookManager.TriggerBlockingAsync(
-            HookRegistry.ChatHeaders,
-            sessionId ?? string.Empty,
-            new Dictionary<string, object?>
-            {
-                ["modelId"] = modelId,
-                ["provider"] = client.ProviderId,
-                ["streaming"] = true
-            },
-            headersOutput,
-            cancellationToken).ConfigureAwait(false);
-
-        MergeHeadersHookOutput(call, headersOutput);
-
-        _logger.LogDebug("发送流式聊天请求: Model={Model}, Provider={Provider}", apiModelId, client.ProviderId);
-        var startTime = DateTime.Now;
-        var streamedContent = new StringBuilder();
-        var streamedReasoning = new StringBuilder();
-        var streamedToolCalls = new List<ToolCall>();
-        TokenUsage? streamedUsage = null;
-
+        // 迭代器里 yield 不能与 catch 同块：沿用通道泵把流的异常与转发解耦
         var channel = Channel.CreateUnbounded<StreamUpdate>();
         var writer = channel.Writer;
         Exception? capturedException = null;
@@ -486,92 +397,65 @@ public class LlmService : ILlmService
         {
             try
             {
-                await foreach (var update in client.CompleteStreamAsync(request, call, cancellationToken))
+                await foreach (var update in _invoker
+                    .StreamAsync<IChatCompletionClient, StreamUpdate>(
+                        modelId,
+                        (client, ctx, token) =>
+                        {
+                            call = ctx;
+                            providerId = client.ProviderId;
+                            ApplyParamsHookOutput(request, ctx, modelConfig);
+                            _logger.LogDebug(
+                                "发送流式聊天请求: Model={Model}, Provider={Provider}",
+                                request.Model,
+                                client.ProviderId);
+                            return client.CompleteStreamAsync(request, ctx, token);
+                        },
+                        new LlmInvocationOptions { SessionId = sessionId },
+                        cancellationToken)
+                    .ConfigureAwait(false))
+                {
                     await writer.WriteAsync(update, cancellationToken).ConfigureAwait(false);
+                }
 
                 writer.Complete();
             }
             catch (Exception ex)
             {
                 capturedException = ex;
-                if (call.Items.TryGetValue(LlmRetryPolicy.AttemptItemKey, out var attemptObj) &&
+                if (call?.Items.TryGetValue(LlmRetryPolicy.AttemptItemKey, out var attemptObj) == true &&
                     attemptObj is int attempt && attempt > 1)
+                {
                     retryCount = attempt - 1;
+                }
 
-                _logger.LogError(ex, "流式聊天请求失败: Model={Model}", apiModelId);
-                FireChatOnError(modelId, client.ProviderId, sessionId, call, ex);
+                _logger.LogError(ex, "流式聊天请求失败: Model={Model}", request.Model);
                 writer.Complete(ex);
             }
         }, cancellationToken);
 
         await foreach (var update in channel.Reader.ReadAllAsync(cancellationToken))
-        {
-            if (!string.IsNullOrEmpty(update.ContentDelta))
-                streamedContent.Append(update.ContentDelta);
-
-            if (!string.IsNullOrEmpty(update.ReasoningDelta))
-                streamedReasoning.Append(update.ReasoningDelta);
-
-            if (update.ToolCallDeltas != null && update.ToolCallDeltas.Count > 0)
-            {
-                foreach (var toolCall in update.ToolCallDeltas)
-                {
-                    var existingCall = streamedToolCalls.FirstOrDefault(tc => tc.Id == toolCall.Id);
-                    if (existingCall != null)
-                    {
-                        if (toolCall.Function != null)
-                        {
-                            existingCall.Function ??= new FunctionCall();
-                            if (!string.IsNullOrEmpty(toolCall.Function.Name))
-                                existingCall.Function.Name += toolCall.Function.Name;
-                            if (!string.IsNullOrEmpty(toolCall.Function.Arguments))
-                                existingCall.Function.Arguments += toolCall.Function.Arguments;
-                        }
-                    }
-                    else
-                    {
-                        streamedToolCalls.Add(toolCall);
-                    }
-                }
-            }
-
-            if (update.Usage != null)
-                streamedUsage = update.Usage;
-
             yield return update;
-        }
 
         await processTask.ConfigureAwait(false);
 
-        if (capturedException != null)
+        if (capturedException is null)
+            yield break;
+
+        var resolvedProviderId = providerId ?? string.Empty;
+        throw capturedException switch
         {
-            throw capturedException switch
-            {
-                OperationCanceledException oce when !oce.CancellationToken.IsCancellationRequested
-                    => new LlmTimeoutException(timeout: TimeSpan.FromMinutes(5), oce)
-                    { ModelId = apiModelId, ProviderId = client.ProviderId, RetryCount = retryCount },
+            OperationCanceledException oce when !oce.CancellationToken.IsCancellationRequested
+                => new LlmTimeoutException(timeout: TimeSpan.FromMinutes(5), oce)
+                { ModelId = request.Model, ProviderId = resolvedProviderId, RetryCount = retryCount },
 
-                IOException ioEx
-                    => new LlmStreamingException("流式响应读取失败", ioEx)
-                    { ModelId = apiModelId, ProviderId = client.ProviderId, RetryCount = retryCount },
+            IOException ioEx
+                => new LlmStreamingException("流式响应读取失败", ioEx)
+                { ModelId = request.Model, ProviderId = resolvedProviderId, RetryCount = retryCount },
 
-                _ => new LlmException($"LLM 请求失败: {capturedException.Message}", capturedException)
-                { ModelId = apiModelId, ProviderId = client.ProviderId, IsRetryable = false, RetryCount = retryCount }
-            };
-        }
-
-        _hookManager.TriggerFireAndForget(
-            HookRegistry.ChatAfterComplete,
-            sessionId ?? "",
-            input: new Dictionary<string, object?> { ["modelId"] = modelId, ["streaming"] = true },
-            result: new Dictionary<string, object?>
-            {
-                ["content"] = streamedContent.ToString(),
-                ["reasoning"] = streamedReasoning.ToString(),
-                ["usage"] = streamedUsage,
-                ["toolCalls"] = streamedToolCalls,
-                ["duration"] = DateTime.Now - startTime
-            });
+            _ => new LlmException($"LLM 请求失败: {capturedException.Message}", capturedException)
+            { ModelId = request.Model, ProviderId = resolvedProviderId, IsRetryable = false, RetryCount = retryCount }
+        };
     }
 
     /// <summary>
@@ -580,6 +464,9 @@ public class LlmService : ILlmService
     public async Task<bool> TestConnectionAsync(
         string providerId,
         string modelId,
+        LlmCapabilityKind capability = LlmCapabilityKind.Chat,
         CancellationToken cancellationToken = default)
-        => await _providerManager.TestConnectionAsync(providerId, modelId, cancellationToken).ConfigureAwait(false);
+        => await _providerManager
+            .TestConnectionAsync(providerId, modelId, capability, cancellationToken)
+            .ConfigureAwait(false);
 }

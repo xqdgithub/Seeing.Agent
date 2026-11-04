@@ -3,6 +3,7 @@ using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Llm;
+
 namespace Seeing.Agent.Core.Llm;
 
 /// <summary>
@@ -55,10 +56,10 @@ public class ProviderManager : IProviderManager, IDisposable
     }
 
     /// <summary>
-    /// 解析支持指定类型的首个工厂（同类型多工厂时 first wins）。
+    /// 解析支持指定协议的首个工厂（同协议多工厂时 first wins）。
     /// </summary>
-    internal ILlmClientFactory? ResolveFactory(string type)
-        => _clientFactories.FirstOrDefault(factory => factory.SupportsType(type));
+    internal ILlmClientFactory? ResolveFactory(string protocol)
+        => _clientFactories.FirstOrDefault(factory => factory.SupportsProtocol(protocol));
 
     #region 查询
 
@@ -93,12 +94,19 @@ public class ProviderManager : IProviderManager, IDisposable
 
     #region 客户端管理
 
-    /// <summary>获取指定 Provider 的客户端</summary>
-    public ILlmClient? GetClient(string providerId)
-        => _registry.GetProvider(providerId)?.GetClient();
+    /// <summary>获取指定 Provider 在指定能力上的客户端；Provider 未注册或未供出该能力返回 null。</summary>
+    public ILlmCapabilityClient? GetClient(string providerId, LlmCapabilityKind capability)
+        => _registry.GetProvider(providerId)?.GetClient(capability);
 
-    /// <summary>根据模型 ID 解析对应的客户端</summary>
-    public ILlmClient? GetClientForModel(string modelId)
+    /// <summary>根据模型 ID 与能力解析对应的客户端</summary>
+    /// <remarks>
+    /// 解析逻辑：
+    /// 1. 从 IModelConfigManager 获取模型配置
+    /// 2. 根据 ModelConfig.Provider 取该能力的客户端
+    /// <para>本出口只按 Provider 声明供客户端，<b>不校验模型类型</b>；需要「模型 ↔ 能力」五层校验时
+    /// 走 <see cref="ILlmRouter"/>（spec §7.4）。</para>
+    /// </remarks>
+    public ILlmCapabilityClient? GetClientForModel(string modelId, LlmCapabilityKind capability)
     {
         var modelConfig = _modelManager.GetModel(modelId);
         if (modelConfig == null)
@@ -107,15 +115,23 @@ public class ProviderManager : IProviderManager, IDisposable
             return null;
         }
 
-        return GetClient(modelConfig.Provider);
+        return GetClient(modelConfig.Provider, capability);
     }
 
     #endregion
 
     #region 连接测试
 
-    /// <summary>测试 Provider 连接</summary>
-    public async Task<bool> TestConnectionAsync(string providerId, string modelId, CancellationToken ct = default)
+    /// <summary>
+    /// 测试 Provider 在指定能力上的连接（决议 9：能力由调用方给定，Provider 不推导、不猜）。
+    /// <para>缺省 <see cref="LlmCapabilityKind.Chat"/> 只为兼容既有调用点；
+    /// UI 的「测试连接」应针对当前查看/编辑的能力显式传参（spec §7.13）。</para>
+    /// </summary>
+    public async Task<bool> TestConnectionAsync(
+        string providerId,
+        string modelId,
+        LlmCapabilityKind capability = LlmCapabilityKind.Chat,
+        CancellationToken ct = default)
     {
         var provider = _registry.GetProvider(providerId);
         if (provider is null)
@@ -126,7 +142,7 @@ public class ProviderManager : IProviderManager, IDisposable
 
         try
         {
-            return await provider.TestConnectionAsync(modelId, ct);
+            return await provider.TestConnectionAsync(modelId, capability, ct);
         }
         catch (Exception ex)
         {
@@ -339,16 +355,43 @@ public class ProviderManager : IProviderManager, IDisposable
             return;
         }
 
-        var provider = new ConfiguredLlmProvider(
-            ownedConfig,
-            clientFactory,
-            _logger,
-            saveAsync: (cfg, level, token) => SaveProviderAsync(cfg.Id, cfg, level, token),
-            _capabilityManager.Value);
+        var provider = CreateConfiguredProvider(ownedConfig, clientFactory);
+        if (provider is null)
+            return;
+
         _registry.Register(provider, ownerExtensionId: null);
         _configuredProviders[providerId] = provider;
         _configuredProviderConfigs[providerId] = CloneConfig(ownedConfig);
         _logger.LogDebug("已注册配置驱动 Provider: {ProviderId} ({Type})", providerId, ownedConfig.Type);
+    }
+
+    /// <summary>
+    /// 构造配置驱动 Provider。
+    /// <para>能力名写错时 <c>LlmCapabilityMap.ParseCapabilities</c> 抛 <see cref="ArgumentException"/>（决议 19：
+    /// 禁止静默忽略）。这里把错误限定在单个 Provider 上——记 Error 后跳过它，
+    /// 一个拼错的 <c>capabilities</c> 不该让整台宿主起不来。</para>
+    /// </summary>
+    private ConfiguredLlmProvider? CreateConfiguredProvider(ProviderConfig ownedConfig, ILlmClientFactory clientFactory)
+    {
+        try
+        {
+            return new ConfiguredLlmProvider(
+                ownedConfig,
+                clientFactory,
+                _logger,
+                saveAsync: (cfg, level, token) => SaveProviderAsync(cfg.Id, cfg, level, token),
+                _capabilityManager.Value);
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogError(
+                ex,
+                "Provider 配置非法，已跳过注册: {ProviderId} ({Type}) — {Message}",
+                ownedConfig.Id,
+                ownedConfig.Type,
+                ex.Message);
+            return null;
+        }
     }
 
     private async Task<Dictionary<string, ProviderConfig>> LoadProvidersAtLevelAsync(
@@ -373,6 +416,9 @@ public class ProviderManager : IProviderManager, IDisposable
         {
             Id = provider.Id,
             Name = provider.Name,
+            // 协议与能力投影：诊断「这个 Provider 到底供出什么」的唯一去处（决议 15）
+            Protocol = provider.Protocol,
+            Capabilities = provider.Capabilities,
             Source = ownerExtensionId is null ? ProviderSource.Configured : ProviderSource.Extension,
             OwnerExtensionId = ownerExtensionId,
             MaxRetries = provider.MaxRetries
@@ -399,8 +445,39 @@ public class ProviderManager : IProviderManager, IDisposable
            previous.RetryBaseDelayMs != current.RetryBaseDelayMs ||
            previous.RetryMaxDelayMs != current.RetryMaxDelayMs ||
            previous.RetryTotalBudgetMs != current.RetryTotalBudgetMs ||
-           !string.Equals(previous.DefaultModel, current.DefaultModel, StringComparison.Ordinal) ||
+           previous.ListModels != current.ListModels ||
+           !CapabilitySetsEqual(previous.Capabilities, current.Capabilities) ||
            !DictionaryEqual(previous.Options, current.Options);
+
+    /// <summary>
+    /// 能力清单是否等价：大小写与顺序无关（配置键经 <c>LlmCapabilityMap</c> 规范化后比较）。
+    /// <para>名字非法时按原文比较——让改动仍然触发重建，新配置在构造期被大声拒绝而不是悄悄沿用旧实例。</para>
+    /// </summary>
+    private static bool CapabilitySetsEqual(List<string>? previous, List<string>? current)
+    {
+        var before = NormalizeCapabilities(previous);
+        var after = NormalizeCapabilities(current);
+        return before.SetEquals(after);
+
+        static HashSet<string> NormalizeCapabilities(List<string>? values)
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (values is null)
+                return set;
+
+            foreach (var value in values)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                    continue;
+
+                set.Add(LlmCapabilityMap.TryParseConfigKey(value, out var kind)
+                    ? LlmCapabilityMap.ToConfigKey(kind)
+                    : value.Trim());
+            }
+
+            return set;
+        }
+    }
 
     private static bool DictionaryEqual<TValue>(
         IReadOnlyDictionary<string, TValue>? first,
@@ -412,6 +489,11 @@ public class ProviderManager : IProviderManager, IDisposable
             first.All(pair => second.TryGetValue(pair.Key, out var value) &&
                               EqualityComparer<TValue>.Default.Equals(pair.Value, value)));
 
+    /// <summary>
+    /// 配置硬编码字段克隆清单之四（另三处在 <see cref="ConfiguredLlmProvider"/>）。
+    /// <para><b>漏字段 = 保存一次抹掉配置</b>（Review Focus #5）：新增字段必须四处同步，
+    /// 由 <c>ProviderConfigRoundTripTests</c> 守门。</para>
+    /// </summary>
     private static ProviderConfig CloneConfig(ProviderConfig config)
         => new()
         {
@@ -422,12 +504,13 @@ public class ProviderManager : IProviderManager, IDisposable
             ApiKey = config.ApiKey,
             Proxy = config.Proxy,
             UseProxy = config.UseProxy,
-            DefaultModel = config.DefaultModel,
             Timeout = config.Timeout,
             MaxRetries = config.MaxRetries,
             RetryBaseDelayMs = config.RetryBaseDelayMs,
             RetryMaxDelayMs = config.RetryMaxDelayMs,
             RetryTotalBudgetMs = config.RetryTotalBudgetMs,
+            Capabilities = config.Capabilities is null ? null : new List<string>(config.Capabilities),
+            ListModels = config.ListModels,
             Models = config.Models is null ? null : new Dictionary<string, ModelConfig>(config.Models),
             Options = config.Options is null ? null : new Dictionary<string, object>(config.Options),
             Headers = config.Headers is null ? null : new Dictionary<string, string>(config.Headers)

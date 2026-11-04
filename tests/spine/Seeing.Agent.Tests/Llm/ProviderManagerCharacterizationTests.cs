@@ -49,7 +49,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
-        var client = sut.GetClient("openai");
+        var client = sut.GetClient("openai", LlmCapabilityKind.Chat);
 
         client.Should().BeSameAs(expectedClient);
         client!.ProviderType.Should().Be(ProviderTypes.OpenAi);
@@ -72,7 +72,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
-        var client = sut.GetClient("unknown");
+        var client = sut.GetClient("unknown", LlmCapabilityKind.Chat);
 
         client.Should().BeNull();
     }
@@ -128,7 +128,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
-        sut.GetClient("provider").Should().BeSameAs(openAiClient);
+        sut.GetClient("provider", LlmCapabilityKind.Chat).Should().BeSameAs(openAiClient);
 
         await sut.SaveProviderAsync(
             "provider",
@@ -139,15 +139,18 @@ public class ProviderManagerCharacterizationTests : IDisposable
                 ApiKey = "sk-changed"
             },
             ct: TestContext.Current.CancellationToken);
-        var clientAfterSameTypeChange = sut.GetClient("provider");
+        var clientAfterSameTypeChange = sut.GetClient("provider", LlmCapabilityKind.Chat);
         var sameTypeConnectionResult = await sut.TestConnectionAsync(
             "provider",
             "model",
+            LlmCapabilityKind.Chat,
             TestContext.Current.CancellationToken);
 
         clientAfterSameTypeChange.Should().BeSameAs(openAiClient);
         sameTypeConnectionResult.Should().BeFalse();
-        factory.Verify(candidate => candidate.Create(It.IsAny<ProviderConfig>()), Times.Exactly(2));
+        factory.Verify(
+            candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()),
+            Times.Exactly(2));
 
         await sut.SaveProviderAsync(
             "provider",
@@ -158,15 +161,18 @@ public class ProviderManagerCharacterizationTests : IDisposable
                 ApiKey = "sk-anthropic"
             },
             ct: TestContext.Current.CancellationToken);
-        var clientAfterTypeChange = sut.GetClient("provider");
+        var clientAfterTypeChange = sut.GetClient("provider", LlmCapabilityKind.Chat);
         var changedTypeConnectionResult = await sut.TestConnectionAsync(
             "provider",
             "model",
+            LlmCapabilityKind.Chat,
             TestContext.Current.CancellationToken);
 
         clientAfterTypeChange.Should().BeSameAs(anthropicClient);
         changedTypeConnectionResult.Should().BeTrue();
-        factory.Verify(candidate => candidate.Create(It.IsAny<ProviderConfig>()), Times.Exactly(3));
+        factory.Verify(
+            candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()),
+            Times.Exactly(3));
     }
 
     private async Task<UnifiedConfigManager> CreateConfigManagerAsync(
@@ -197,21 +203,22 @@ public class ProviderManagerCharacterizationTests : IDisposable
         return manager;
     }
 
-    private static Mock<ILlmClientFactory> CreateFactory(Func<ProviderConfig, ILlmClient> createClient)
+    private static Mock<ILlmClientFactory> CreateFactory(Func<ProviderConfig, ILlmCapabilityClient> createClient)
     {
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsType(It.IsAny<string>())).Returns(true);
-        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>()))
-            .Returns((ProviderConfig config) => createClient(config));
+        factory.Setup(candidate => candidate.SupportsProtocol(It.IsAny<string>())).Returns(true);
+        factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
+            .Returns((ProviderConfig config, LlmCapabilityKind _) => createClient(config));
         return factory;
     }
 
-    private static ILlmClient CreateClient(string providerType, bool connectionResult = true)
+    private static ILlmCapabilityClient CreateClient(string providerType, bool connectionResult = true)
     {
-        var client = new Mock<ILlmClient>();
+        var client = new Mock<IChatCompletionClient>();
         client.SetupGet(candidate => candidate.ProviderType).Returns(providerType);
         client.Setup(candidate => candidate.TestConnectionAsync(
                 It.IsAny<string>(),
+                It.IsAny<LlmCapabilityKind>(),
                 It.IsAny<LlmCallContext?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(connectionResult);
