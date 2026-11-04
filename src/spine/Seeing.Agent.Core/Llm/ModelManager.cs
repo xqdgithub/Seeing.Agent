@@ -27,7 +27,8 @@ public sealed class ModelManager : IModelManager
     }
 
     /// <summary>
-    /// 按请求 > 会话 > Agent 配置 > 目录默认的优先级解析 Native 运行模型引用。
+    /// 按请求 > 会话 > Agent 配置 > 能力默认值（<c>GetDefaultModel(Chat)</c>）的优先级
+    /// 解析 Native 运行模型引用。优先级顺序不变（spec §7.14.3）。
     /// </summary>
     public string? ResolveNativeModel(string? requestModelRef, string? sessionModelRef, string agentName)
     {
@@ -42,7 +43,7 @@ public sealed class ModelManager : IModelManager
         if (agent?.Model is { ModelId: { Length: > 0 } } modelRef)
             return modelRef.ToString();
 
-        return _catalog.GetDefaultModel();
+        return _catalog.GetDefaultModel(LlmCapabilityKind.Chat);
     }
 
     /// <summary>
@@ -138,9 +139,15 @@ public sealed class ModelManager : IModelManager
     public ModelConfig? GetModel(string modelId) => _catalog.GetModel(modelId);
 
     /// <summary>
-    /// 获取默认模型引用。
+    /// 获取指定能力的全局默认模型引用（严格查表，未配置返回 null）。
     /// </summary>
-    public string? GetDefaultModel() => _catalog.GetDefaultModel();
+    public string? GetDefaultModel(LlmCapabilityKind capability) => _catalog.GetDefaultModel(capability);
+
+    /// <summary>
+    /// 获取全部已配置的能力默认值（透传目录管理器）。
+    /// </summary>
+    public IReadOnlyDictionary<LlmCapabilityKind, string> GetAllDefaultModels() =>
+        _catalog.GetAllDefaultModels();
 
     /// <summary>
     /// 获取指定 Provider 下「已启用」的模型配置字典。
@@ -175,9 +182,10 @@ public sealed class ModelManager : IModelManager
         _catalog.GetModelsByType(type, providerId);
 
     /// <summary>
-    /// 判定指定模型是否可被设为默认模型。
+    /// 判定指定模型能否被设为该能力的默认模型（不再硬编码 Text 类型）。
     /// </summary>
-    public bool CanSetAsDefaultModel(string modelId) => _catalog.CanSetAsDefaultModel(modelId);
+    public bool CanSetAsDefaultModel(string modelId, LlmCapabilityKind capability) =>
+        _catalog.CanSetAsDefaultModel(modelId, capability);
 
     /// <summary>
     /// 刷新模型目录，可限定单个 Provider。
@@ -227,13 +235,30 @@ public sealed class ModelManager : IModelManager
         _catalog.SaveModelsAsync(providerId, models, level, ct);
 
     /// <summary>
-    /// 设置默认模型并持久化到指定配置级别。
+    /// 设置某能力的默认模型并持久化到指定配置级别（写时校验前缀 / 存在性 / 能力）。
     /// </summary>
     public Task SetDefaultModelAsync(
+        LlmCapabilityKind capability,
         string? modelId,
-        ConfigLevel level = ConfigLevel.Project,
+        ConfigLevel level = ConfigLevel.User,
         CancellationToken ct = default) =>
-        _catalog.SetDefaultModelAsync(modelId, level, ct);
+        _catalog.SetDefaultModelAsync(capability, modelId, level, ct);
+
+    /// <summary>
+    /// 查默认值并经 Router 解析客户端（透传目录管理器）。
+    /// </summary>
+    public bool TryResolveDefault<TClient>(
+        LlmCapabilityKind capability,
+        out TClient? client,
+        out string? reason)
+        where TClient : class, ILlmCapabilityClient =>
+        _catalog.TryResolveDefault(capability, out client, out reason);
+
+    /// <summary>
+    /// 校验全部能力默认值（只报告，不自动清除）。
+    /// </summary>
+    public IReadOnlyDictionary<LlmCapabilityKind, string> ValidateDefaultModels() =>
+        _catalog.ValidateDefaultModels();
 
     /// <summary>
     /// 设置指定 Provider 的启用模型清单并持久化。

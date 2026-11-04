@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Llm;
@@ -14,6 +15,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     private readonly UnifiedConfigManager _configManager;
     private readonly IProviderRegistry _registry;
     private readonly ILogger<ModelConfigManager> _logger;
+    private readonly IServiceProvider? _services;
     private readonly Channel<RefreshRequest> _refreshQueue = Channel.CreateUnbounded<RefreshRequest>();
     private readonly CancellationTokenSource _disposeCts = new();
     private readonly Task _refreshWorker;
@@ -58,14 +60,21 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     /// <summary>
     /// 初始化模型目录管理器：种子加载配置模型、监听注册表变更并启动单线程刷新队列。
     /// </summary>
+    /// <param name="services">
+    /// 供 <see cref="TryResolveDefault{TClient}"/> 在调用期惰性解析 <see cref="ILlmRouter"/>。
+    /// <para>Router 依赖 <see cref="IModelConfigManager"/>，构造期直接注入会成环，故走服务提供程序延迟取；
+    /// 未提供时 TryResolveDefault 给出"未注册 ILlmRouter"的可读 reason。</para>
+    /// </param>
     public ModelConfigManager(
         UnifiedConfigManager configManager,
         IProviderRegistry registry,
-        ILogger<ModelConfigManager> logger)
+        ILogger<ModelConfigManager> logger,
+        IServiceProvider? services = null)
     {
         _configManager = configManager;
         _registry = registry;
         _logger = logger;
+        _services = services;
 
         // 监听 Provider 注册表变更（配置变更由 ModelReloadHandler 经编排器触发）
         _registry.ProvidersChanged += OnProvidersChanged;
@@ -134,8 +143,50 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         return null;
     }
 
-    /// <summary>获取默认模型 ID</summary>
-    public string? GetDefaultModel() => _configManager.SeeingAgent.DefaultModel;
+    /// <summary>
+    /// 取指定能力的全局默认模型引用：<b>严格查表</b>，未配置返回 null，
+    /// 不回落到其他能力、不查目录猜测（决议 13 / spec §13 原则 1）。
+    /// </summary>
+    public string? GetDefaultModel(LlmCapabilityKind capability)
+    {
+        if (capability == LlmCapabilityKind.None)
+            return null;
+
+        foreach (var (configuredKey, value) in GetRawDefaultModels())
+        {
+            // 配置键的唯一出处是 LlmCapabilityMap：反向解析后比对语义位，不手拼字符串
+            if (!LlmCapabilityMap.TryParseConfigKey(configuredKey, out var kind) || kind != capability)
+                continue;
+
+            return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        }
+
+        return null;
+    }
+
+    /// <summary>获取全部已配置的能力默认值（只含已配置项，未登记的能力键被忽略）。</summary>
+    public IReadOnlyDictionary<LlmCapabilityKind, string> GetAllDefaultModels()
+    {
+        var result = new Dictionary<LlmCapabilityKind, string>();
+        foreach (var (configuredKey, value) in GetRawDefaultModels())
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                continue;
+
+            if (!LlmCapabilityMap.TryParseConfigKey(configuredKey, out var kind))
+            {
+                _logger.LogWarning(
+                    "DefaultModels 含未登记的能力键 {Key}，已忽略。合法键：{Valid}",
+                    configuredKey,
+                    string.Join(", ", RoutableConfigKeys()));
+                continue;
+            }
+
+            result[kind] = value.Trim();
+        }
+
+        return result;
+    }
 
     /// <summary>获取指定 Provider 下「已启用」的模型列表</summary>
     public IReadOnlyDictionary<string, ModelConfig> GetModelsByProvider(string providerId)
@@ -185,10 +236,13 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         => ModelTypeRules.FilterByType(GetModels(), type, providerId);
 
     /// <inheritdoc />
-    public bool CanSetAsDefaultModel(string modelId)
+    public bool CanSetAsDefaultModel(string modelId, LlmCapabilityKind capability)
     {
+        if (string.IsNullOrWhiteSpace(modelId) || capability == LlmCapabilityKind.None)
+            return false;
+
         var config = GetModel(modelId);
-        return config is not null && GetEffectiveTypes(config).Contains(ModelType.Text);
+        return config is not null && ModelCoversCapability(config, capability);
     }
 
     /// <inheritdoc />
@@ -327,18 +381,140 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         _logger.LogInformation("已保存 {Count} 个模型配置", models.Count);
     }
 
-    /// <summary>设置默认模型</summary>
+    /// <summary>
+    /// 设置某能力的默认模型。写时校验（决议 14 / 21）：引用必须带 <c>provider/</c> 前缀、
+    /// 模型存在、且模型有效类型映射到该能力；任一不满足抛 <see cref="ArgumentException"/>。
+    /// <para><paramref name="modelId"/> 为 null/空白 = 清除该能力的默认值（清除不做存在性校验）。</para>
+    /// </summary>
     public async Task SetDefaultModelAsync(
+        LlmCapabilityKind capability,
         string? modelId,
         ConfigLevel level = ConfigLevel.User,
         CancellationToken ct = default)
     {
-        if (!string.IsNullOrEmpty(modelId) && !CanSetAsDefaultModel(modelId))
-            throw new InvalidOperationException($"模型 '{modelId}' 不是 Text 类型，不能设为默认对话模型。");
+        var configKey = RequireRoutableCapability(capability);
 
-        await _configManager.SaveSectionAsync("DefaultModel", modelId ?? (string)null!, ModelStoreLevel, ct);
+        // 清除路径：只移除该能力槽位，不校验模型（决议 14 的校验对象是"写入的值"）。
+        if (string.IsNullOrWhiteSpace(modelId))
+        {
+            var cleared = await LoadDefaultModelsAtLevelAsync(level, ct).ConfigureAwait(false);
+            if (!cleared.Remove(configKey))
+                return;
 
-        _logger.LogInformation("已设置默认模型: {ModelId}", modelId ?? "(空)");
+            await SaveDefaultModelsAsync(cleared, level, configKey, ct).ConfigureAwait(false);
+            _logger.LogInformation("已清除能力 {Capability} 的默认模型", configKey);
+            return;
+        }
+
+        var reference = modelId.Trim();
+
+        // 决议 21：必须带 provider/ 前缀。裸 ID 在多 Provider 同名时歧义无法可靠消解。
+        if (!reference.Contains('/', StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"默认模型 '{reference}' 必须写成 provider/模型 形式（例如 'openai/{reference}'）。",
+                nameof(modelId));
+        }
+
+        var config = GetModel(reference);
+        if (config is null)
+        {
+            throw new ArgumentException(
+                $"模型 '{reference}' 不在模型目录中，不能作为能力 '{configKey}' 的默认模型。",
+                nameof(modelId));
+        }
+
+        if (!ModelCoversCapability(config, capability))
+        {
+            throw new ArgumentException(
+                $"模型 '{reference}' 不具备 '{configKey}' 能力（声明类型：{DescribeCapabilities(config)}）。",
+                nameof(modelId));
+        }
+
+        var models = await LoadDefaultModelsAtLevelAsync(level, ct).ConfigureAwait(false);
+        models[configKey] = reference;
+        await SaveDefaultModelsAsync(models, level, configKey, ct).ConfigureAwait(false);
+
+        _logger.LogInformation("已设置能力 {Capability} 的默认模型: {ModelId}", configKey, reference);
+    }
+
+    /// <summary>
+    /// 便捷解析：查默认值 → 经 <see cref="ILlmRouter"/> 解析客户端。
+    /// <para>三类失败各给可读 reason：未配置 / Router 不可用 / Router 解析失败。</para>
+    /// </summary>
+    public bool TryResolveDefault<TClient>(
+        LlmCapabilityKind capability,
+        out TClient? client,
+        out string? reason)
+        where TClient : class, ILlmCapabilityClient
+    {
+        client = null;
+        var configKey = LlmCapabilityMap.ToConfigKey(capability);
+
+        var modelId = GetDefaultModel(capability);
+        if (string.IsNullOrWhiteSpace(modelId))
+        {
+            reason = $"未配置 '{configKey}' 能力的默认模型（SeeingAgent:DefaultModels:{configKey}）。";
+            return false;
+        }
+
+        var router = ResolveRouter();
+        if (router is null)
+        {
+            reason = $"未注册 {nameof(ILlmRouter)}，无法解析默认模型 '{modelId}'。";
+            return false;
+        }
+
+        if (!router.TryResolve(modelId, out client, out var resolveReason))
+        {
+            client = null;
+            reason = $"默认模型 '{modelId}' 解析失败：{resolveReason ?? "未知原因"}";
+            return false;
+        }
+
+        reason = null;
+        return true;
+    }
+
+    /// <summary>
+    /// 校验全部默认值：模型是否仍存在、是否仍具备所声明的能力（决议 23）。
+    /// <para><b>只报告，不自动清除</b>：失效项留在配置里等用户修。</para>
+    /// </summary>
+    public IReadOnlyDictionary<LlmCapabilityKind, string> ValidateDefaultModels()
+    {
+        var problems = new Dictionary<LlmCapabilityKind, string>();
+
+        foreach (var (configuredKey, value) in GetRawDefaultModels())
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                continue;
+
+            var reference = value.Trim();
+
+            if (!LlmCapabilityMap.TryParseConfigKey(configuredKey, out var kind))
+            {
+                // 未登记的能力键无法投影到枚举位，用 None 承载这条诊断。
+                problems[LlmCapabilityKind.None] =
+                    $"DefaultModels 含未登记的能力键 '{configuredKey}'（值 '{reference}'）。" +
+                    $"合法键：{string.Join(", ", RoutableConfigKeys())}";
+                continue;
+            }
+
+            var config = GetModel(reference);
+            if (config is null)
+            {
+                problems[kind] = $"默认模型 '{reference}' 已不在模型目录中（配置已保留，请手动修正）。";
+                continue;
+            }
+
+            if (!ModelCoversCapability(config, kind))
+            {
+                problems[kind] =
+                    $"默认模型 '{reference}' 已不具备该能力（当前声明类型：{DescribeCapabilities(config)}）。";
+            }
+        }
+
+        return problems;
     }
 
     /// <summary>设置指定 Provider 的启用模型清单（allowlist）</summary>
@@ -975,6 +1151,115 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         });
     }
 
+    /// <summary>
+    /// 读取当前合并视图的 <c>DefaultModels</c> 原始字典（永不为 null；键为配置端小驼峰字符串）。
+    /// </summary>
+    private KeyValuePair<string, string>[] GetRawDefaultModels()
+    {
+        var defaults = _configManager.SeeingAgent.DefaultModels;
+        return defaults is null
+            ? []
+            : defaults.Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
+                      .Select(pair => new KeyValuePair<string, string>(pair.Key.Trim(), pair.Value))
+                      .ToArray();
+    }
+
+    /// <summary>读取指定级别已持久化的 DefaultModels（用于读—改—写，避免抹掉另一级的条目）。</summary>
+    private async Task<Dictionary<string, string>> LoadDefaultModelsAtLevelAsync(
+        ConfigLevel level,
+        CancellationToken ct)
+    {
+        var atLevel = await _configManager
+            .GetSectionAtLevelAsync<Dictionary<string, string>>("DefaultModels", level, ct)
+            .ConfigureAwait(false);
+
+        return atLevel is null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(atLevel, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private Task SaveDefaultModelsAsync(
+        Dictionary<string, string> models,
+        ConfigLevel level,
+        string changedKey,
+        CancellationToken ct)
+        => _configManager.SaveSectionAsync(
+            "DefaultModels",
+            models,
+            level,
+            new[] { changedKey },
+            ct);
+
+    /// <summary>
+    /// 校验能力位并返回其配置键。<see cref="LlmCapabilityKind.None"/> 与复合位集不作为默认值槽位。
+    /// </summary>
+    private static string RequireRoutableCapability(LlmCapabilityKind capability)
+    {
+        if (capability == LlmCapabilityKind.None || (capability & (capability - 1)) != 0)
+        {
+            throw new ArgumentException(
+                $"能力必须是单一已登记位，收到 '{capability}'。",
+                nameof(capability));
+        }
+
+        return LlmCapabilityMap.ToConfigKey(capability);
+    }
+
+    /// <summary>全部可作为 DefaultModels 键的配置名（诊断文案用，出处仍是 LlmCapabilityMap）。</summary>
+    private static IEnumerable<string> RoutableConfigKeys() =>
+        Enum.GetValues<LlmCapabilityKind>()
+            .Where(kind => kind != LlmCapabilityKind.None)
+            .Select(LlmCapabilityMap.ToConfigKey);
+
+    /// <summary>
+    /// 模型有效类型经 <see cref="LlmCapabilityMap.FromModelType"/> 投影后是否覆盖所需能力
+    /// （复合位要求逐位覆盖）。取代旧的 <c>ModelType.Text</c> 硬编码判定。
+    /// </summary>
+    private bool ModelCoversCapability(ModelConfig config, LlmCapabilityKind capability)
+    {
+        var modelKinds = GetEffectiveTypes(config)
+            .SelectMany(LlmCapabilityMap.FromModelType)
+            .Where(kind => kind != LlmCapabilityKind.None)
+            .ToHashSet();
+
+        foreach (var required in SingleCapabilityBits(capability))
+        {
+            if (!modelKinds.Contains(required))
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>能力位集拆成单值位序列（枚举是唯一出处，不手拼名字）。</summary>
+    private static IEnumerable<LlmCapabilityKind> SingleCapabilityBits(LlmCapabilityKind capability)
+    {
+        foreach (var kind in Enum.GetValues<LlmCapabilityKind>())
+        {
+            if (kind != LlmCapabilityKind.None &&
+                (kind & (kind - 1)) == 0 &&
+                capability.HasFlag(kind))
+            {
+                yield return kind;
+            }
+        }
+    }
+
+    /// <summary>诊断文案：模型有效类型对应到的能力配置键集合。</summary>
+    private string DescribeCapabilities(ModelConfig config)
+        => string.Join(
+            ", ",
+            GetEffectiveTypes(config)
+                .SelectMany(LlmCapabilityMap.FromModelType)
+                .Select(LlmCapabilityMap.ToConfigKey)
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// 惰性取得 <see cref="ILlmRouter"/>：Router 依赖 <see cref="IModelConfigManager"/>，
+    /// 构造期直接注入会形成 DI 环，故经 <see cref="IServiceProvider"/> 在调用期解析。
+    /// </summary>
+    private ILlmRouter? ResolveRouter() => _services?.GetService<ILlmRouter>();
+
     private string RequireWritableProvider(string providerId)
     {
         if (string.IsNullOrWhiteSpace(providerId))
@@ -1089,7 +1374,8 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
             ApiKey = config.ApiKey,
             Proxy = config.Proxy,
             UseProxy = config.UseProxy,
-            DefaultModel = config.DefaultModel,
+            Capabilities = config.Capabilities is null ? null : new List<string>(config.Capabilities),
+            ListModels = config.ListModels,
             Timeout = config.Timeout,
             MaxRetries = config.MaxRetries,
             RetryBaseDelayMs = config.RetryBaseDelayMs,

@@ -23,7 +23,7 @@ public class ConfigSectionRegistryConsumptionTests
             "Boot",
             "CapabilitySets",
             "DefaultAgent",
-            "DefaultModel",
+            "DefaultModels",
             "GlobalWorkspaceRoot",
             "ModelOverrides",
             "ModelSelection",
@@ -154,6 +154,52 @@ public class ConfigSectionRegistryConsumptionTests
 
             // 合并后的 SeeingAgentOptions 也应反映热重载结果（ToolExposureConfigResolver 的读取路径）。
             manager.GetSeeingAgentOptions().Tools.Exposure.PolicyMode.Should().Be("Tiered");
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// DefaultModels 必须以字典节登记：脊柱读端（ModelConfigManager）与写端（SaveSectionAsync）
+    /// 都按 <c>Dictionary&lt;string, string&gt;</c> 往返，登记成 string 会让热重载静默失败。
+    /// </summary>
+    [Fact]
+    public async Task DefaultModels_Section_Should_Be_Dictionary_And_Saveable()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "ucm-default-models-" + Guid.NewGuid().ToString("N"));
+        var userSeeing = Path.Combine(tempDir, "user", ".seeing");
+        var projectSeeing = Path.Combine(tempDir, "project", ".seeing");
+        Directory.CreateDirectory(userSeeing);
+        Directory.CreateDirectory(projectSeeing);
+        try
+        {
+            var workspace = new Mock<IWorkspaceProvider>();
+            workspace.Setup(w => w.UserSeeingDirectory).Returns(userSeeing);
+            workspace.Setup(w => w.ProjectSeeingDirectory).Returns(projectSeeing);
+
+            var manager = new UnifiedConfigManager(
+                workspace.Object,
+                NullLogger<UnifiedConfigManager>.Instance,
+                ConfigSectionRegistry.CreateWithSpine());
+
+            manager.GetSectionMeta("DefaultModels")!.SectionType.Should().Be(typeof(Dictionary<string, string>));
+            manager.GetSectionMeta("DefaultModel").Should().BeNull("旧单值节不再登记");
+
+            var defaults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["chat"] = "openai/gpt-4o",
+                ["speechSynthesis"] = "openai/tts-1"
+            };
+            await manager.SaveSectionAsync(
+                "DefaultModels", defaults, ConfigLevel.Project, TestContext.Current.CancellationToken);
+
+            await manager.LoadAsync(TestContext.Current.CancellationToken);
+
+            manager.GetSection<Dictionary<string, string>>("DefaultModels")["speechSynthesis"]
+                .Should().Be("openai/tts-1");
+            manager.GetSeeingAgentOptions().DefaultModels["chat"].Should().Be("openai/gpt-4o");
         }
         finally
         {

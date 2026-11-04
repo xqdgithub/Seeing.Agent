@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Llm;
 using System.Text.Json;
 
 namespace Seeing.Agent.Core.Configuration;
@@ -23,15 +24,22 @@ public static class LegacyGatewayConfigMigrator
             }
         }
 
+        // 旧 Gateway.DefaultModelId 迁移到按能力默认模型的 chat 槽位（决议 11）。
+        // 值必须带 provider/ 前缀（决议 21）：历史值多为裸 ID，故迁移时显式提示核对。
         if (gateway.TryGetProperty("DefaultModelId", out var legacyModel) &&
             legacyModel.ValueKind == JsonValueKind.String)
         {
             var legacyModelId = legacyModel.GetString();
-            if (!string.IsNullOrWhiteSpace(legacyModelId) && string.IsNullOrWhiteSpace(options.DefaultModel))
+            var chatKey = LlmCapabilityMap.ToConfigKey(LlmCapabilityKind.Chat);
+            if (!string.IsNullOrWhiteSpace(legacyModelId) &&
+                !options.DefaultModels.ContainsKey(chatKey))
             {
-                options.DefaultModel = legacyModelId;
+                options.DefaultModels[chatKey] = legacyModelId;
                 logger?.LogWarning(
-                    "Gateway.DefaultModelId 已弃用，已迁移到 SeeingAgent.DefaultModel。请更新 .seeing/seeing.json");
+                    "Gateway.DefaultModelId 已弃用，已迁移到 SeeingAgent.DefaultModels[{ChatKey}]={ModelId}。" +
+                    "请确认其为 provider/模型 形式并更新 .seeing/seeing.json",
+                    chatKey,
+                    legacyModelId);
             }
         }
 

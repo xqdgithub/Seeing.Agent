@@ -12,8 +12,19 @@ namespace Seeing.Agent.Core.Configuration
     /// </summary>
     public class SeeingAgentOptions
     {
-        /// <summary>默认模型</summary>
-        public string? DefaultModel { get; set; }
+        /// <summary>
+        /// 按能力配置的全局默认模型（seeing.json <c>DefaultModels</c>）。
+        /// <para>
+        /// key 为能力配置键（小驼峰，唯一出处是 <c>LlmCapabilityMap.ToConfigKey</c>，
+        /// 如 <c>chat</c> / <c>embedding</c> / <c>speechSynthesis</c>）；
+        /// value 必须带 <c>provider/</c> 前缀（决议 21，裸 ID 写入时报错）。
+        /// </para>
+        /// <para>
+        /// 只存用户显式配置的意图：未配置的能力就是"没有默认值"，脊柱不回落、不查目录猜测
+        /// （spec §13 原则 1 / 决议 13）。旧单值 <c>DefaultModel</c> 已删除（决议 11/22）。
+        /// </para>
+        /// </summary>
+        public Dictionary<string, string> DefaultModels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>默认 Agent</summary>
         public string? DefaultAgent { get; set; }

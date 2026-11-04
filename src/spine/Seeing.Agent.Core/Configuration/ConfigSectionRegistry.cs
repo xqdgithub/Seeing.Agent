@@ -39,7 +39,7 @@ public sealed class ConfigSectionRegistry : IConfigSectionRegistry
     /// </summary>
     public void RegisterSpineSections()
     {
-        Register(new("DefaultModel", "seeing.json", ConfigScope.Both, typeof(string)));
+        Register(new("DefaultModels", "seeing.json", ConfigScope.Both, typeof(Dictionary<string, string>)));
         Register(new("DefaultAgent", "seeing.json", ConfigScope.Both, typeof(string)));
         Register(new("Boot", "seeing.json", ConfigScope.Both, typeof(string)));
         Register(new("CapabilitySets", "seeing.json", ConfigScope.Both,

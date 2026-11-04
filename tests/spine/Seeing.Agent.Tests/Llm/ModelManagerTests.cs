@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Moq;
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Llm;
@@ -16,7 +17,7 @@ public class ModelManagerTests
     public void ResolveNativeModel_PrefersRequestOverSessionAgentAndDefault()
     {
         var manager = CreateManager(
-            new SeeingAgentOptions { DefaultModel = "openai/gpt-4o" },
+            new SeeingAgentOptions { DefaultModels = { ["chat"] = "openai/gpt-4o" } },
             agentName: "build",
             agentModel: "anthropic/claude-sonnet",
             runtime: AgentRuntime.Native);
@@ -33,7 +34,7 @@ public class ModelManagerTests
     public void ResolveNativeModel_PrefersAgentModelOverDefault()
     {
         var manager = CreateManager(
-            new SeeingAgentOptions { DefaultModel = "openai/gpt-4o" },
+            new SeeingAgentOptions { DefaultModels = { ["chat"] = "openai/gpt-4o" } },
             agentName: "build",
             agentModel: "anthropic/claude-sonnet",
             runtime: AgentRuntime.Native);
@@ -44,10 +45,10 @@ public class ModelManagerTests
     }
 
     [Fact]
-    public void ResolveNativeModel_FallsBackToDefaultModel()
+    public void ResolveNativeModel_ShouldFallBackToGetDefaultModelChat()
     {
         var manager = CreateManager(
-            new SeeingAgentOptions { DefaultModel = "openai/gpt-4o" },
+            new SeeingAgentOptions { DefaultModels = { ["chat"] = "openai/gpt-4o" } },
             agentName: "build",
             agentModel: null,
             runtime: AgentRuntime.Native);
@@ -58,10 +59,45 @@ public class ModelManagerTests
     }
 
     [Fact]
+    public void ResolveNativeModel_OnlyOtherCapabilityConfigured_ShouldReturnNull()
+    {
+        // 只配了 embedding 默认值：不得回落到它，也不得查目录猜（spec §13 原则 1）
+        var catalog = new Mock<IModelConfigManager>();
+        catalog.Setup(c => c.GetDefaultModel(LlmCapabilityKind.Chat)).Returns<string?>(null);
+        var store = new Mock<IAgentStore>();
+        store.Setup(s => s.Get("build")).Returns(new AgentDefinition { Name = "build", Runtime = AgentRuntime.Native });
+
+        var manager = new ModelManager(catalog.Object, store.Object);
+
+        manager.ResolveNativeModel(null, null, "build").Should().BeNull();
+        catalog.Verify(c => c.GetDefaultModel(LlmCapabilityKind.Chat), Times.Once);
+    }
+
+    [Fact]
+    public void ModelManager_ShouldPassThroughCapabilityDefaultMembers()
+    {
+        var catalog = new Mock<IModelConfigManager>();
+        var all = new Dictionary<LlmCapabilityKind, string> { [LlmCapabilityKind.Embedding] = "openai/emb" };
+        catalog.Setup(c => c.GetAllDefaultModels()).Returns(all);
+        catalog.Setup(c => c.GetDefaultModel(LlmCapabilityKind.Embedding)).Returns("openai/emb");
+        catalog.Setup(c => c.CanSetAsDefaultModel("openai/emb", LlmCapabilityKind.Embedding)).Returns(true);
+        catalog.Setup(c => c.ValidateDefaultModels()).Returns(new Dictionary<LlmCapabilityKind, string>());
+
+        var manager = new ModelManager(catalog.Object, new Mock<IAgentStore>().Object);
+
+        manager.GetDefaultModel(LlmCapabilityKind.Embedding).Should().Be("openai/emb");
+        manager.GetAllDefaultModels().Should().BeSameAs(all);
+        manager.CanSetAsDefaultModel("openai/emb", LlmCapabilityKind.Embedding).Should().BeTrue();
+        manager.ValidateDefaultModels().Should().BeEmpty();
+        manager.SetDefaultModelAsync(LlmCapabilityKind.Embedding, "openai/emb", ConfigLevel.User);
+        catalog.Verify(c => c.SetDefaultModelAsync(LlmCapabilityKind.Embedding, "openai/emb", ConfigLevel.User, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public void ResolveAcpModel_DoesNotFallBackToDefaultModel()
     {
         var manager = CreateManager(
-            new SeeingAgentOptions { DefaultModel = "openai/gpt-4o" },
+            new SeeingAgentOptions { DefaultModels = { ["chat"] = "openai/gpt-4o" } },
             agentName: "acp-agent",
             agentModel: "anthropic/claude-sonnet",
             runtime: AgentRuntime.AcpPassthrough);
@@ -197,7 +233,7 @@ public class ModelManagerTests
     public void SeedSessionModel_Native_WritesResolvedDefault()
     {
         var manager = CreateManager(
-            new SeeingAgentOptions { DefaultModel = "openai/gpt-4o" },
+            new SeeingAgentOptions { DefaultModels = { ["chat"] = "openai/gpt-4o" } },
             agentName: "build",
             agentModel: null,
             runtime: AgentRuntime.Native);
@@ -215,7 +251,7 @@ public class ModelManagerTests
     public void SeedSessionModel_Acp_DoesNotWriteDefaultModel()
     {
         var manager = CreateManager(
-            new SeeingAgentOptions { DefaultModel = "openai/gpt-4o" },
+            new SeeingAgentOptions { DefaultModels = { ["chat"] = "openai/gpt-4o" } },
             agentName: "acp-agent",
             agentModel: "anthropic/claude-sonnet",
             runtime: AgentRuntime.AcpPassthrough);
@@ -247,7 +283,8 @@ public class ModelManagerTests
             });
 
         var catalog = new Mock<IModelConfigManager>();
-        catalog.Setup(c => c.GetDefaultModel()).Returns(options.DefaultModel);
+        catalog.Setup(c => c.GetDefaultModel(LlmCapabilityKind.Chat))
+            .Returns(options.DefaultModels.TryGetValue("chat", out var chatDefault) ? chatDefault : null);
         catalog.Setup(c => c.GetModel(It.IsAny<string>())).Returns((string id) =>
         {
             if (models is null)

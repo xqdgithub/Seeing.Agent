@@ -22,12 +22,15 @@ public class UnifiedConfigManagerSnapshotTests
         {
             var before = manager.SeeingAgent;
 
-            manager.SetSectionInMemory("DefaultModel", "gpt-x");
+            manager.SetSectionInMemory("DefaultModels", new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["chat"] = "gpt-x"
+            });
 
             manager.SeeingAgent.Should().NotBeSameAs(before);
-            manager.SeeingAgent.DefaultModel.Should().Be("gpt-x");
+            manager.SeeingAgent.DefaultModels["chat"].Should().Be("gpt-x");
             // 旧快照不被原地修改，保证并发读者不会观察到半更新对象
-            before.DefaultModel.Should().BeNull();
+            before.DefaultModels.Should().NotContainKey("chat");
         }
         finally
         {
