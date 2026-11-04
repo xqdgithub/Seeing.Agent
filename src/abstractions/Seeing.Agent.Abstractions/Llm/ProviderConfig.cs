@@ -10,11 +10,17 @@ public static class ProviderTypes
     /// <summary>OpenAI 兼容协议</summary>
     public const string OpenAi = "openai";
 
+    /// <summary>OpenAI Responses 协议（独立协议，不是 openai 的变体写法）</summary>
+    public const string OpenAiResponses = "openai-responses";
+
     /// <summary>Anthropic 协议</summary>
     public const string Anthropic = "anthropic";
 
+    /// <summary>TypeSafe（Jev / Decision）协议；原 SystemOne 平行栈合流而来</summary>
+    public const string TypeSafe = "typesafe";
+
     /// <summary>
-    /// 将存量 PascalCase（如 <c>OpenAI</c>/<c>Anthropic</c>）及任意大小写变体
+    /// 将存量 PascalCase（如 <c>OpenAI</c>/<c>Anthropic</c>/<c>TypeSafe</c>）及任意大小写变体
     /// 归一为规范小写路由键；未知类型原样保留（仅 Trim）。
     /// </summary>
     public static string Normalize(string? type)
@@ -25,8 +31,12 @@ public static class ProviderTypes
         var trimmed = type.Trim();
         if (string.Equals(trimmed, OpenAi, StringComparison.OrdinalIgnoreCase))
             return OpenAi;
+        if (string.Equals(trimmed, OpenAiResponses, StringComparison.OrdinalIgnoreCase))
+            return OpenAiResponses;
         if (string.Equals(trimmed, Anthropic, StringComparison.OrdinalIgnoreCase))
             return Anthropic;
+        if (string.Equals(trimmed, TypeSafe, StringComparison.OrdinalIgnoreCase))
+            return TypeSafe;
         return trimmed;
     }
 }
@@ -73,9 +83,21 @@ public class ProviderConfig
     [JsonPropertyName("useProxy")]
     public bool UseProxy { get; set; } = true;
 
-    /// <summary>默认模型</summary>
-    [JsonPropertyName("default_model")]
-    public string? DefaultModel { get; set; }
+    /// <summary>
+    /// 该 Provider 供出的能力清单（配置键为小驼峰，由 <see cref="LlmCapabilityMap.ToConfigKey"/> 投影）。
+    /// <para><b>这是能力的唯一真相</b>（决议 15）：客户端不再自述能力，Provider 的运行时能力集是它的投影。</para>
+    /// <para>为 <c>null</c>/空时按 <see cref="ProviderCapabilityDefaults"/> 取协议缺省——即只给 Chat；
+    /// 要 embedding 就显式写 <c>"capabilities": ["chat","embedding"]</c>。</para>
+    /// </summary>
+    [JsonPropertyName("capabilities")]
+    public List<string>? Capabilities { get; set; }
+
+    /// <summary>
+    /// 是否合并远端动态模型目录。为 <c>true</c> 且客户端实现 <see cref="IModelCatalogClient"/> 时，
+    /// 模型目录返回「静态 <see cref="Models"/> ∪ 远端目录」（spec §7.3）。
+    /// </summary>
+    [JsonPropertyName("listModels")]
+    public bool ListModels { get; set; }
 
     /// <summary>请求超时（毫秒）</summary>
     [JsonPropertyName("timeout")]

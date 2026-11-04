@@ -1,24 +1,24 @@
 namespace Seeing.Agent.Abstractions.Llm;
 
 /// <summary>
-/// 从已登记的 <see cref="ILlmClientFactory"/> 集合中按类型解析工厂。
+/// 从已登记的 <see cref="ILlmClientFactory"/> 集合中按协议解析工厂。
 /// </summary>
 public static class LlmClientFactoryResolver
 {
     /// <summary>
-    /// 解析支持指定类型的首个工厂（同类型多工厂时 first wins）。
+    /// 解析支持指定协议的首个工厂（同协议多工厂时 first wins）。
     /// </summary>
     public static ILlmClientFactory Require(
         IEnumerable<ILlmClientFactory> factories,
-        string type)
+        string protocol)
     {
         ArgumentNullException.ThrowIfNull(factories);
-        if (string.IsNullOrWhiteSpace(type))
-            throw new ArgumentException("Provider type is required.", nameof(type));
+        if (string.IsNullOrWhiteSpace(protocol))
+            throw new ArgumentException("Provider protocol is required.", nameof(protocol));
 
-        var factory = factories.FirstOrDefault(f => f.SupportsType(type));
+        var factory = factories.FirstOrDefault(f => f.SupportsProtocol(protocol));
         if (factory is null)
-            throw new NotSupportedException($"不支持的 Provider 类型: {type}");
+            throw new NotSupportedException($"不支持的 Provider 协议: {protocol}");
 
         return factory;
     }
