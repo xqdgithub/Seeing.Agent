@@ -140,10 +140,10 @@ public sealed class SessionWindowTimelineSync
             case CommandResultEvent commandEvt:
                 if (commandEvt.NeedsRefresh)
                 {
+                    // 全量重建已覆盖全部消息，无需再增量对账（Repeat 只会多一次全表遍历）
                     ResetFromSession();
-                    ReconcileAppendFromSession();
                 }
-                // NavigationTarget 导航由窗口 razor 层处理
+                // NavigationTarget 导航由窗口 razor 层单独处理
                 break;
             case CompactionStartedEvent:
                 CompactionInProgress = true;
@@ -160,15 +160,14 @@ public sealed class SessionWindowTimelineSync
                 CompactionInProgress = false;
                 CompactionProgress = null;
                 CompactionReasoning = null;
+                // 全量重建已覆盖摘要条目与此前历史的折叠态，无需再增量对账
                 ResetFromSession();
-                ReconcileAppendFromSession();
                 break;
             case CompactionFailedEvent cfe:
                 CompactionInProgress = false;
                 CompactionProgress = null;
                 CompactionReasoning = null;
                 ResetFromSession();
-                ReconcileAppendFromSession();
                 break;
             default:
                 SyncAssistant(isComplete: false);

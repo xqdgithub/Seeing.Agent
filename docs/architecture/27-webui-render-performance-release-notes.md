@@ -64,7 +64,8 @@
 5. **`TryGetMessage` 不感知元素 Id 的后续改写**。契约是「Id 由写者在入列前确定，索引建立后不得再改」；缺 Id 的消息不入索引、也不进时间线。UI 层已无任何 Id 写入点（原先两处归一化已删除）。
 6. **Summary 窗口仍保留事件流订阅**（执行态事件是卡片状态唯一可靠来源）。收益来自掐掉时间线管道，而非取消订阅 —— `SessionEventStreamRouter` 已按 `sessionId` 共享 loop，不同子会话的 loop 任何方案都省不掉。
 7. **`SyncContextState()` 保持即时渲染**，不走合并器。它承载 AntDesign Select 受控值同步，延迟会放大回滚窗口。
-8. **`GiveSummaryMode` 的 `ExecutionStarted` 分支会调 `SyncContextState()`，其中会 `RebuildSummarySnapshot()`**，加载 Summary 时有一次重复计算（O(M)，可忽略）。
+8. **`MessageList` 的挂载上限（`MaxMounted = 80`）只在贴底时生效**：用户滚到中间位置时窗口不再滑动，若持续有消息进来，DOM 挂载数会超过 80，直到用户滚回底部。属既有行为，本次未改动。
+9. **全量构建（`ResetFromSession`）仍处理全部消息**，渲染层只画窗口内的 40~80 条。触发点仅 4 处（会话切换、`SessionUpdatedEvent`【无发布者】、命令刷新、压缩完成/失败），**流式输出期间不触发**。500 条消息单次约 5~15ms（主要是对象分配）。压缩后改走增量、VM 级缓存属后续独立课题。
 
 ## 契约变更清单
 
@@ -119,3 +120,4 @@
   - 修复前实测两个缺陷：① `_cancellationTokenSource` 的「判空 → 调用」TOCTOU → `NullReferenceException`（`CancelExecution`）；② `CurrentCount == 0` 与 `Release()` 之间 TOCTOU → `SemaphoreFullException` 打崩 circuit。
   - 守门测试：`ReleasePaths_HighContention_ShouldNotThrowSemaphoreFull`（300 轮 × 3 线程用 `Barrier` 同步起跑），修复前稳定 FAIL，修复后 PASS。
 - **小清理** 删除已成死代码的 `RelationTreeModel.BuildRows()`；`RenderLoop` 补注释说明「生产路径已改 `RenderBlock` 分段，本方法保留为接口契约」；`Conference.razor` 同步改用 `PendingPermissionTotal`；Summary 事件白名单移除无处理逻辑的 `LoopCompleteEvent`。
+- **消除重复全表遍历** 删除 `CompactionCompleted` / `CompactionFailed` / `CommandResultEvent.NeedsRefresh` 三个分支里紧随 `ResetFromSession()` 的 `ReconcileAppendFromSession()`。`ResetFromSession` 是全量重建，其后的增量对账语义上是空操作（所有消息已在时间线内），只会额外付一次 `ToList()` + 摘要倒扫 + 全表遍历。行为锁测试 `SessionWindowTimelineSyncTests`（5 个用例）证明「一次 Reset 后时间线已完整」，删除前后均绿。
