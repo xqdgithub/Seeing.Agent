@@ -266,10 +266,50 @@ namespace Seeing.Agent.WebUI.State
         }
 
         /// <summary>
+        /// 切换会话时重置本地执行态：清空状态字段、取消并释放旧取消令牌、释放执行锁。
+        /// <para>
+        /// 复用窗口实例切换会话时，若不重置，新会话会继承旧会话的
+        /// <see cref="IsExecuting"/> / <see cref="ExecutionStatus"/> / 取消令牌，
+        /// 表现为「空闲的 B 显示执行中」且点「取消」会停掉 A。
+        /// </para>
+        /// </summary>
+        public void ResetExecutionState()
+        {
+            if (_disposed)
+                return;
+
+            IsExecuting = false;
+            IsCompleted = false;
+            ExecutionStatus = null;
+            CurrentExecutionId = null;
+            PendingInputCount = 0;
+
+            var previous = _cancellationTokenSource;
+            _cancellationTokenSource = null;
+            if (previous is not null)
+            {
+                try
+                {
+                    previous.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // 已释放，忽略
+                }
+                previous.Dispose();
+            }
+
+            // 释放执行锁，否则下一会话的 StartExecution 会永久阻塞
+            if (_executionLock.CurrentCount == 0)
+            {
+                _executionLock.Release();
+            }
+        }
+
+        /// <summary>
         /// 完成执行
         /// </summary>
-        public void CompleteExecution()
-        {
+        public void CompleteExecution()        {
             if (_cancellationTokenSource != null)
             {
                 _cancellationTokenSource.Dispose();

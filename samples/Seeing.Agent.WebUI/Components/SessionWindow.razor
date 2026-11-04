@@ -514,14 +514,38 @@
 
         if (!string.IsNullOrEmpty(SessionId) && SessionId != _loadedSessionId)
         {
-            await LoadSessionByIdAsync(SessionId);
+            // 复用窗口实例切换会话：必须先清空本地执行态，否则新会话会继承旧会话的
+            // IsExecuting / ExecutionStatus / 取消令牌（表现为「空闲会话显示执行中」，
+            // 且点「取消」会停掉上一个会话）。
+            ResetLocalExecutionState();
+
+            EnsureSyncForSession(SessionId);
+            await ApplySessionAsync(SessionId);
             _loadedSessionId = SessionId;
 
             // 切换到正在执行的会话（含子会话）：重新绑定事件流（Router 已订阅，无需自起循环）
             // 并恢复执行状态，实时渲染最新消息
             EnsureStreamBinding(SessionId);
             RestoreExecutionFromOverview(SessionId);
+
+            if (ViewMode == Services.SessionWindowMode.Full)
+            {
+                // 以下 3 项原先只在本窗首次挂载时执行；复用窗口时必须补上，否则 UI 指向旧会话：
+                Context.SessionId = SessionId;      // 工具栏文件面板等按它定位会话
+                SubscribeToBudgetUpdates();          // 预算徽标重绑到新会话
+                await LoadCommandsFromBackend();     // 命令列表按新 Agent 的 Runtime 重新过滤
+            }
         }
+    }
+
+    /// <summary>
+    /// 切换会话前重置本地执行态（状态字段 + 取消令牌 + 执行锁）。
+    /// </summary>
+    private void ResetLocalExecutionState()
+    {
+        SessionState.ResetExecutionState();
+        _reportedExecuting = null;
+        _executionStartedAtUtc = null;
     }
 
     /// <summary>
@@ -768,11 +792,11 @@
     }
 
     /// <summary>
-    /// 根据 ID 加载会话
+    /// 加载会话数据并重建时间线（不处理事件流绑定与聚合器，由调用方负责）。
+    /// <para>供 <see cref="LoadSessionByIdAsync"/> 与 <see cref="OnParametersSetAsync"/> 的切换分支共用。</para>
     /// </summary>
-    private async Task LoadSessionByIdAsync(string sessionId)
+    private async Task ApplySessionAsync(string sessionId)
     {
-        EnsureSyncForSession(sessionId);
         IsLoadingSession = true;
 
         var sessionData = await SessionDirectory.GetAsync(sessionId);
@@ -815,7 +839,12 @@
 
         _renderedTitle = sessionData.Title;
 
-        // 先重建 Timeline，确保切换会话立即展示目标会话消息；
+        // 和解：进程关闭后残留的「执行中」Task 卡片。
+        // 必须放在 ResetTimelineFromSession 之前：和解结果会直接反映在随后这一次全量重建里，
+        // 避免「先 Reset、和解有变更再 Reset 一次」的白付开销（长会话下每次都是一次全量构建）。
+        await ReconcileIncompleteTasksAsync();
+
+        // 重建 Timeline，确保切换会话立即展示目标会话消息；
         // 避免默认 Agent/Model 解析异常中断会话切换。
         ResetTimelineFromSession();
 
@@ -833,14 +862,43 @@
         // 显示空状态
         ShowEmptyState = false;
 
-        // 和解：进程关闭后残留的「执行中」Task 卡片
-        await ReconcileIncompleteTasksAsync();
-
-        // 计算并更新 Token 预算状态
-        UpdateBudgetStatus();
-
         IsLoadingSession = false;
         Context.NotifySessionLoaded();
+
+        // 预算估算涉及全量消息 token 估算，延迟到首帧之后执行，避免阻塞会话切换的首屏渲染
+        _ = DeferBudgetUpdateAsync();
+    }
+
+    /// <summary>
+    /// 首帧后计算预算状态，把全量 token 估算移出会话切换的关键路径。
+    /// </summary>
+    private async Task DeferBudgetUpdateAsync()
+    {
+        try
+        {
+            // 让出当前批次，使首帧渲染先发生
+            await Task.Yield();
+
+            await InvokeAsync(() =>
+            {
+                UpdateBudgetStatus();
+                StateHasChanged();
+            });
+        }
+        catch (Exception ex)
+        {
+            // 预算为增强信息：失败不阻断会话展示。记录以便诊断（禁止静默吞异常）。
+            System.Diagnostics.Debug.WriteLine($"[SessionWindow] 预算状态更新失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 根据 ID 加载会话（首次挂载路径；会话切换走 <see cref="OnParametersSetAsync"/>）。
+    /// </summary>
+    private async Task LoadSessionByIdAsync(string sessionId)
+    {
+        EnsureSyncForSession(sessionId);
+        await ApplySessionAsync(sessionId);
     }
 
     /// <summary>
@@ -1730,14 +1788,13 @@
 
         try
         {
-            var n = await SessionRuntime.ReconcileIncompleteTasksAsync(sessionId);
-
-            if (n > 0)
-                ResetTimelineFromSession();
+            // 和解结果会直接反映在调用方随后的 ResetTimelineFromSession 中，
+            // 此处不再重复重建时间线（长会话下那是又一次全量构建）。
+            await SessionRuntime.ReconcileIncompleteTasksAsync(sessionId);
         }
-        catch
+        catch (Exception ex)
         {
-            // ignore reconcile failures
+            System.Diagnostics.Debug.WriteLine($"[SessionWindow] 未完成任务和解失败: {ex.Message}");
         }
     }
 
