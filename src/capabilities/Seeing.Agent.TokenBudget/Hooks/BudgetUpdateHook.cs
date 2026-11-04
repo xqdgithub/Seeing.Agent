@@ -11,6 +11,12 @@ namespace Seeing.Agent.TokenBudget;
 /// <summary>
 /// 预算更新 Hook - 在 LLM 响应后更新预算状态
 /// </summary>
+/// <remarks>
+/// <b>只给 chat 记账</b>（spec §7.6.1 / 决议 1）：embedding 的主要调用方是记忆后台 worker、
+/// TTS 可能来自无会话工具，它们的 usage 只进 <c>llm.after_complete</c> 载荷，不写
+/// <c>SessionData.Cached*</c> 预算账。守卫必须是第一步——否则无会话的非 chat 调用会反复
+/// 空转进入本 Hook 再走去加载会话的分支。
+/// </remarks>
 public class BudgetUpdateHook : IHookHandler
 {
     private readonly IServiceProvider _serviceProvider;
@@ -42,6 +48,14 @@ public class BudgetUpdateHook : IHookHandler
 
     public async Task<HookResult> ExecuteAsync(HookPayload payload)
     {
+        // 第一道门：非 chat 能力不参与会话预算账（决议 1）。放在取会话之前，避免无会话的
+        // embedding/TTS 调用反复空转进 Hook。
+        if (!IsChatPayload(payload))
+        {
+            _logger?.LogDebug("BudgetUpdateHook: 非 chat 能力载荷，跳过预算记账");
+            return HookResult.Success;
+        }
+
         // 统一通过 ISessionManager 获取 Session（确保缓存一致性）
         SessionData? session = null;
 
@@ -162,6 +176,27 @@ public class BudgetUpdateHook : IHookHandler
             // 预算检查失败不阻止执行
             return HookResult.Success;
         }
+    }
+
+    /// <summary>
+    /// 判定载荷是否 chat 能力。
+    /// <para>严格口径（spec §7.6.1）：<c>capability</c> 键缺失、值不可解析、或解析出非 chat，
+    /// 一律不记账。键名取自 <see cref="HookDataContract.LlmAfterComplete"/>，
+    /// 解析只走 <see cref="LlmCapabilityMap.TryParseHookValue"/>，禁止手拼字符串。</para>
+    /// </summary>
+    private static bool IsChatPayload(HookPayload payload)
+    {
+        var key = HookDataContract.LlmAfterComplete.Capability.Name;
+
+        // result 优先（适配器写在这里），input 兜底（历史路径可能只带输入侧的键）
+        string? value = null;
+        if (payload.Result.TryGetValue(key, out var fromResult))
+            value = fromResult as string;
+        if (value is null && payload.Input.TryGetValue(key, out var fromInput))
+            value = fromInput as string;
+
+        return LlmCapabilityMap.TryParseHookValue(value, out var capability)
+            && capability == LlmCapabilityKind.Chat;
     }
 
     /// <summary>

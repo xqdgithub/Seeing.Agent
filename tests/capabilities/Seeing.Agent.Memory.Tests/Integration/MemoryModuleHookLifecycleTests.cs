@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Hooks;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Core;
@@ -104,7 +105,13 @@ public class MemoryModuleHookLifecycleTests
         HookPayload.FireAndForget(
             HookRegistry.LlmAfterComplete,
             sessionId,
-            result: new Dictionary<string, object?> { ["content"] = "用户偏好使用深色主题，并要求默认语言为中文。" },
+            result: new Dictionary<string, object?>
+            {
+                // chat 守卫（H-3）：载荷必须显式声明能力，值出自 LlmCapabilityMap，不手拼
+                [HookDataContract.LlmAfterComplete.Capability.Name] =
+                    LlmCapabilityMap.ToHookValue(LlmCapabilityKind.Chat),
+                ["content"] = "用户偏好使用深色主题，并要求默认语言为中文。"
+            },
             cancellationToken: TestContext.Current.CancellationToken);
 
     /// <summary>最小可执行的 IHookManager 替身：按点登记并真实执行处理器。</summary>

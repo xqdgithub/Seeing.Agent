@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Hooks;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Core.Models;
@@ -50,6 +51,11 @@ public sealed class ChatMemoryHandler : IHookHandler
     {
         try
         {
+            // 只收 chat 正文（决议 1 / spec §7.6）：非 chat 能力的 llm.after_complete 载荷
+            // 里没有会话对话内容，收进缓冲会让记忆抽取去消化向量数、音频字节这类东西。
+            if (!IsChatPayload(payload))
+                return Task.FromResult(HookResult.Success);
+
             var opts = _options.CurrentValue;
             if (!opts.Capture.AutoCapture || !opts.Capture.CaptureChat)
                 return Task.FromResult(HookResult.Success);
@@ -97,6 +103,25 @@ public sealed class ChatMemoryHandler : IHookHandler
             _logger?.LogError(ex, "ChatMemoryHandler failed");
             return Task.FromResult(HookResult.Success);
         }
+    }
+
+    /// <summary>
+    /// 判定载荷是否 chat 能力（严格口径：键缺失或值非 chat 一律跳过）。
+    /// <para>与 <c>BudgetUpdateHook</c> 里同形的三行判定：<c>llm.*</c> 载荷的读取方都是
+    /// 能力包，够不到 Core，也不该往 Abstractions 塞实现（零实现纪律），因此各自本地判定。</para>
+    /// </summary>
+    private static bool IsChatPayload(HookPayload payload)
+    {
+        var key = HookDataContract.LlmAfterComplete.Capability.Name;
+
+        string? value = null;
+        if (payload.Result.TryGetValue(key, out var fromResult))
+            value = fromResult as string;
+        if (value is null && payload.Input.TryGetValue(key, out var fromInput))
+            value = fromInput as string;
+
+        return LlmCapabilityMap.TryParseHookValue(value, out var capability)
+            && capability == LlmCapabilityKind.Chat;
     }
 }
 

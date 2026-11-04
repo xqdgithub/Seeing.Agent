@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Hooks;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Core;
@@ -15,6 +16,11 @@ namespace Seeing.Agent.Memory.Tests.Integration;
 
 public class ChatMemoryHandlerEnqueueTests
 {
+    /// <summary>
+    /// <c>llm.after_complete</c> 的能力键值：H-3 的 chat 守卫要求载荷显式声明能力，
+    /// 值一律出自 <see cref="LlmCapabilityMap"/>，测试也不手拼字符串。
+    /// </summary>
+    private static readonly string ChatCapability = LlmCapabilityMap.ToHookValue(LlmCapabilityKind.Chat);
     [Fact]
     public async Task ExecuteAsync_WhenAutoCapture_ShouldBufferAndNotEnqueuePipeline()
     {
@@ -38,6 +44,7 @@ public class ChatMemoryHandlerEnqueueTests
             "session-1",
             result: new Dictionary<string, object?>
             {
+                [HookDataContract.LlmAfterComplete.Capability.Name] = ChatCapability,
                 ["content"] = "用户偏好使用深色主题，并要求默认语言为中文。"
             }, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -69,7 +76,11 @@ public class ChatMemoryHandlerEnqueueTests
         var payload = HookPayload.FireAndForget(
             HookRegistry.LlmAfterComplete,
             "session-1",
-            result: new Dictionary<string, object?> { ["content"] = "anything long enough" }, cancellationToken: TestContext.Current.CancellationToken);
+            result: new Dictionary<string, object?>
+            {
+                [HookDataContract.LlmAfterComplete.Capability.Name] = ChatCapability,
+                ["content"] = "anything long enough"
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
         var result = await handler.ExecuteAsync(payload);
         result.Should().Be(HookResult.Success);
@@ -112,6 +123,7 @@ public class ChatMemoryHandlerEnqueueTests
             "session-1",
             result: new Dictionary<string, object?>
             {
+                [HookDataContract.LlmAfterComplete.Capability.Name] = ChatCapability,
                 ["content"] = "复盘结论：建议把这条流程沉淀为技能，内容足够长以通过最小长度门槛"
             },
             cancellationToken: TestContext.Current.CancellationToken);
@@ -150,6 +162,7 @@ public class ChatMemoryHandlerEnqueueTests
             "session-1",
             result: new Dictionary<string, object?>
             {
+                [HookDataContract.LlmAfterComplete.Capability.Name] = ChatCapability,
                 ["content"] = "用户偏好使用深色主题，并要求默认语言为中文"
             },
             cancellationToken: TestContext.Current.CancellationToken);
