@@ -378,6 +378,16 @@
     /// <summary>Summary 模式预计算投影；仅在状态变化时重算，避免每渲染跑全表 LINQ。</summary>
     private Services.SessionSummarySnapshot? _summarySnapshot;
 
+    /// <summary>组件是否已销毁：渲染回调必须据此短路，避免在已销毁组件上排队渲染。</summary>
+    private bool _disposed;
+
+    /// <summary>
+    /// 渲染合并器：仅用于「消息内容刷新」路径（事件流 delta、聚合器回调）。
+    /// <para>用户交互路径（<see cref="SyncContextState"/>）保持即时渲染，避免 AntDesign Select
+    /// 受控值回滚窗口被拉长（代码里已有针对性防御，见 <c>OnAgentChanged</c> 注释）。</para>
+    /// </summary>
+    private Services.RenderCoalescer? _renderCoalescer;
+
     private string ModeCss => ViewMode == Services.SessionWindowMode.Full ? "full" : "summary";
 
     /// <summary>当前会话在所属组内的成员关系（Child=只读子会话）；组查询失败时用会话 Kind 兜底。</summary>
@@ -405,6 +415,11 @@
     protected override async Task OnInitializedAsync()
     {
         _globalSessionState = GlobalSessionState;
+
+        // 渲染合并器：事件流高频 delta 合并为窗口内一次渲染（33ms ≈ 30fps）
+        _renderCoalescer = new Services.RenderCoalescer(
+            () => SafeRender(),
+            TimeSpan.FromMilliseconds(33));
 
         // 初始构建时间线同步器（会话 ID 可能随后经 LoadSessionByIdAsync 校正）
         EnsureSyncForSession(SessionId);
@@ -687,7 +702,7 @@
         _sync = new Services.SessionWindowTimelineSync(
             Timeline,
             sessionId,
-            () => _ = InvokeAsync(StateHasChanged),
+            () => _renderCoalescer?.Request(),
             t => ApplyTitleToUi(t),
             () => SessionState.CurrentSession?.Messages,
             () => ResolveCurrentStreamingAssistantMessage(),
@@ -701,7 +716,25 @@
     }
 
     private void ResetTimelineFromSession() => _sync.ResetFromSession();
-    private void ReconcileTimelineFromSession() => _sync.ReconcileAppendFromSession();
+
+    /// <summary>
+    /// 从任意线程安全地请求一次渲染。组件已销毁或 circuit 断开时静默跳过。
+    /// </summary>
+    private void SafeRender()
+    {
+        if (_disposed)
+            return;
+
+        try
+        {
+            _ = InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            // circuit 已断开：渲染无接收方，不应影响宿主
+            System.Diagnostics.Debug.WriteLine($"[SessionWindow] 渲染跳过: {ex.Message}");
+        }
+    }    private void ReconcileTimelineFromSession() => _sync.ReconcileAppendFromSession();
     private void CompleteCurrentTimelineTurn() => _sync.CompleteTurn();
     private void SyncTimelineAssistantFromStream(bool isComplete) => _sync.SyncAssistant(isComplete);
 
@@ -1183,7 +1216,11 @@
             else if (evt is CompactionFailedEvent cfe && !string.IsNullOrEmpty(cfe.ErrorMessage))
                 MessageService.Error($"压缩失败: {cfe.ErrorMessage}");
 
-            StateHasChanged();
+            // Full 走合并器（内容刷新路径）；Summary 的事件已被白名单压到极低，直接渲染
+            if (isFull)
+                _renderCoalescer?.Request();
+            else
+                StateHasChanged();
         });
     }
     /// <summary>
@@ -1248,10 +1285,11 @@
 
         // 聚合器回调来自子会话事件流后台线程；时间线变更必须调度回 Blazor 同步上下文，
         // 与渲染线程串行，避免并发修改集合。
+        // 渲染请求走合并器：多子会话并发时不再每个事件都触发一次渲染。
         _ = InvokeAsync(() =>
         {
             Timeline.SyncAssistantMessage(msg, EffectiveSessionId);
-            StateHasChanged();
+            _renderCoalescer?.Request();
         });
     }
 
@@ -2099,6 +2137,12 @@
     /// </summary>
     public void Dispose()
     {
+        // 必须先置位：渲染合并器的尾随回调与 SafeRender 都据此短路，
+        // 避免在正在销毁的组件上排队渲染（circuit 关闭时会抛异常）。
+        _disposed = true;
+        _renderCoalescer?.Dispose();   // 默认不尾随渲染
+        _renderCoalescer = null;
+
         SessionState.CancelExecution();
 
         if (_retryTimer != null)
