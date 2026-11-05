@@ -258,7 +258,7 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
         ILogger logger)
     {
         var lazies = new Dictionary<LlmCapabilityKind, Lazy<ILlmCapabilityClient?>>();
-        foreach (var kind in SingleFlags(capabilities))
+        foreach (var kind in LlmCapabilityMap.SingleFlags(capabilities))
         {
             lazies[kind] = new Lazy<ILlmCapabilityClient?>(
                 () =>
@@ -281,16 +281,6 @@ public sealed class ConfiguredLlmProvider : LlmProviderBase, IConfigurableLlmPro
         }
 
         return lazies;
-    }
-
-    /// <summary>把位集拆成单值能力序列（按枚举位顺序，稳定可预期）。</summary>
-    private static IEnumerable<LlmCapabilityKind> SingleFlags(LlmCapabilityKind capabilities)
-    {
-        foreach (var kind in Enum.GetValues<LlmCapabilityKind>())
-        {
-            if (kind != LlmCapabilityKind.None && capabilities.HasFlag(kind))
-                yield return kind;
-        }
     }
 
     /// <summary>

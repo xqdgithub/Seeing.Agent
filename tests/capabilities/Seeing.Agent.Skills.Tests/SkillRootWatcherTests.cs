@@ -18,10 +18,13 @@ public sealed class SkillRootWatcherTests : IDisposable
 {
     /// <summary>
     /// 去抖窗口：刻意显著小于生产默认 400ms。
-    /// <para>去抖是<b>时长语义</b>（事件成串时只留最后一次），测试只需验证「合并行为」而非「等满 400ms」，
-    /// 故用 50ms 保留同样的语义、把等待压缩一个数量级。</para>
+    /// <para>去抖是<b>时长语义</b>（事件成串时只留最后一次），测试只需验证「合并行为」而非「等满 400ms」。</para>
+    /// <para><b>不能用 50ms</b>：一次「建目录 + 写文件」会产生两个文件系统事件，
+    /// 二者到达时刻受机器负载影响；窗口过窄时第二个事件会落在下一个窗口，
+    /// 于是合法地产生 2 次回调，测试随负载随机失败。窗口必须宽到足以吞掉
+    /// 一次写入产生的相邻事件，故取 300ms。</para>
     /// </summary>
-    private static readonly TimeSpan Debounce = TimeSpan.FromMilliseconds(50);
+    private static readonly TimeSpan Debounce = TimeSpan.FromMilliseconds(300);
 
     /// <summary>单次等待上限（计划要求 5s 封顶）。</summary>
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);

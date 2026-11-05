@@ -27,9 +27,11 @@ public sealed class AnthropicLlmModule : ISeeingModule
     public void ConfigureServices(IServiceCollection services)
     {
         // 协议→工厂唯一映射：anthropic 协议绑本工厂（重复登记在构造期即抛）。
-        services.AddSingleton<ILlmClientFactory, AnthropicLlmClientFactory>();
+        // 必须按具体类型解析——ILlmClientFactory 有多个实现，按接口取会拿到最后登记的那个。
+        services.AddSingleton<AnthropicLlmClientFactory>();
+        services.AddSingleton<ILlmClientFactory>(sp => sp.GetRequiredService<AnthropicLlmClientFactory>());
         services.AddSingleton<LlmClientFactoryRegistration>(sp => new(
-            ProviderTypes.Anthropic, sp.GetRequiredService<ILlmClientFactory>()));
+            ProviderTypes.Anthropic, sp.GetRequiredService<AnthropicLlmClientFactory>()));
     }
 
     /// <inheritdoc />

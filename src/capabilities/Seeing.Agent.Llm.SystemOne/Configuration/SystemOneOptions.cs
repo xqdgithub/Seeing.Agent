@@ -10,9 +10,9 @@ namespace Seeing.Agent.Llm.SystemOne.Configuration;
 /// </summary>
 public sealed class SystemOneOptions
 {
-    /// <summary>Provider ID（同时是模型引用前缀，如 <c>systemone/jev-latest</c>）。</summary>
-    [JsonPropertyName("id")]
-    public string Id { get; set; } = DefaultId;
+    /// <summary>Provider ID 固定值（同时是模型引用前缀，如 <c>systemone/jev-latest</c>）。</summary>
+    /// <remarks>不可配置：注册表按 id 索引，id 可变会让旧键永久残留、注销失效。</remarks>
+    public const string DefaultId = "systemone";
 
     /// <summary>显示名称。</summary>
     [JsonPropertyName("name")]
@@ -38,8 +38,26 @@ public sealed class SystemOneOptions
     public bool ListModels { get; set; } = true;
 
     /// <summary>静态模型表（与远端目录取并集，静态优先）。</summary>
+    /// <remarks>
+    /// 默认给一条 <c>jev-latest</c> 种子：远端目录需要 apiKey 才能拉到，
+    /// 而「装完即用」必须在**没有任何配置**时也有可路由的模型。
+    /// 用户若配置了同名条目，以用户条目为准（静态表优先于远端）。
+    /// </remarks>
     [JsonPropertyName("models")]
-    public Dictionary<string, Abstractions.Llm.ModelConfig>? Models { get; set; }
+    public Dictionary<string, Abstractions.Llm.ModelConfig>? Models { get; set; } = CreateSeedModels();
+
+    /// <summary>Seed decision model，保证未配置 apiKey 时目录非空。</summary>
+    public const string SeedModelId = "jev-latest";
+
+    private static Dictionary<string, Abstractions.Llm.ModelConfig> CreateSeedModels() => new()
+    {
+        [SeedModelId] = new Abstractions.Llm.ModelConfig
+        {
+            Id = SeedModelId,
+            Name = "Jev Latest",
+            Types = [Abstractions.Llm.ModelType.Decision],
+        },
+    };
 
     /// <summary>请求超时（毫秒）；非正数时用协议缺省 10s。</summary>
     [JsonPropertyName("timeout")]
@@ -48,7 +66,4 @@ public sealed class SystemOneOptions
     /// <summary>是否走系统代理。默认关闭（决策服务通常在内网/直连）。</summary>
     [JsonPropertyName("useProxy")]
     public bool UseProxy { get; set; }
-
-    /// <summary>默认 Provider ID。</summary>
-    public const string DefaultId = "systemone";
 }

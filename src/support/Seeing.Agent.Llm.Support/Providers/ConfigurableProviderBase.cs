@@ -104,9 +104,6 @@ public abstract class ConfigurableProviderBase<TOptions> : ILlmProvider, IConfig
     protected ILlmCapabilityClient? CreateClientViaFactory(ProviderConfig config, LlmCapabilityKind capability)
         => _factories.Require(Protocol).Create(config, capability);
 
-    /// <summary>解析器（供子类在需要时按协议取工厂）。</summary>
-    protected ILlmClientFactoryResolver Factories => _factories;
-
     /// <summary>
     /// 应用一份新配置：重建能力集与能力束，返回需要释放的旧束。
     /// <para>调用方负责在锁外释放旧束（异步释放不能在锁内做）。</para>
@@ -140,14 +137,6 @@ public abstract class ConfigurableProviderBase<TOptions> : ILlmProvider, IConfig
     }
 
     /// <summary>推导当前应供出的能力；配置覆盖优先，未识别名字记警告并忽略。</summary>
-    protected LlmCapabilityKind ResolveCapabilities(IReadOnlyList<string>? configured)
-    {
-        lock (_gate)
-        {
-            return ResolveCapabilitiesLocked(configured);
-        }
-    }
-
     private LlmCapabilityKind ResolveCapabilitiesLocked(IReadOnlyList<string>? configured)
     {
         if (configured is null)

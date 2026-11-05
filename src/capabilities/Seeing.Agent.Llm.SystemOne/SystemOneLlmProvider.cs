@@ -35,7 +35,13 @@ public sealed class SystemOneLlmProvider : ConfigurableProviderBase<SystemOneOpt
     }
 
     /// <inheritdoc />
-    public override string Id => Options.Id;
+    /// <remarks>
+    /// 固定为 <see cref="SystemOneOptions.DefaultId"/>，**不随配置变化**：
+    /// <see cref="IProviderRegistry"/> 按 id 索引，若 id 可改，改配置后旧键会永久残留，
+    /// 且 <see cref="SystemOneModule.DeactivateAsync"/> 用新 id 注销会失败并泄漏实例。
+    /// 用户若要换 provider 前缀，应新增一个配置驱动的 Provider，而不是重命名内置的。
+    /// </remarks>
+    public override string Id => SystemOneOptions.DefaultId;
 
     /// <inheritdoc />
     public override string? Name => Options.Name;
@@ -57,7 +63,7 @@ public sealed class SystemOneLlmProvider : ConfigurableProviderBase<SystemOneOpt
 
         return new ProviderConfig
         {
-            Id = options.Id,
+            Id = SystemOneOptions.DefaultId,
             Type = ProviderTypes.TypeSafe,
             Name = options.Name,
             BaseUrl = string.IsNullOrWhiteSpace(options.BaseUrl) ? null : options.BaseUrl,
@@ -82,9 +88,15 @@ public sealed class SystemOneLlmProvider : ConfigurableProviderBase<SystemOneOpt
 
     /// <inheritdoc />
     protected override async Task SaveOptionsAsync(SystemOneOptions options, CancellationToken cancellationToken)
+        => await _store.SaveAsync(options, cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    protected override Task OnOptionsSavedAsync(CancellationToken cancellationToken)
     {
-        await _store.SaveAsync(options, cancellationToken).ConfigureAwait(false);
+        // 在 ApplyOptions 之后调用：此时能力投影与 id 都已是新值，
+        // 重新注册才能让 ProviderInfo 反映真实状态。
         _registry.Register(this, ownerExtensionId: null);
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc />
@@ -94,7 +106,6 @@ public sealed class SystemOneLlmProvider : ConfigurableProviderBase<SystemOneOpt
     {
         IReadOnlyDictionary<string, object?> values = new Dictionary<string, object?>
         {
-            ["Id"] = options.Id,
             ["Name"] = options.Name,
             ["BaseUrl"] = options.BaseUrl,
             ["ApiKey"] = options.ApiKey,

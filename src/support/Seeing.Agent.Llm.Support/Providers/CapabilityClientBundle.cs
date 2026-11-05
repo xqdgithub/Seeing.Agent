@@ -63,8 +63,8 @@ public sealed class CapabilityClientBundle : IDisposable, IAsyncDisposable
     public ILlmCapabilityClient? Get(LlmCapabilityKind capability)
         => _clients.TryGetValue(capability, out var lazy) ? lazy.Value : null;
 
-    /// <summary>已创建的客户端实例（用于释放与诊断）。</summary>
-    public IEnumerable<KeyValuePair<LlmCapabilityKind, ILlmCapabilityClient>> CreatedClients()
+    /// <summary>已创建的客户端实例（含 Lazy 已求值的项）。</summary>
+    private IEnumerable<KeyValuePair<LlmCapabilityKind, ILlmCapabilityClient>> CreatedClients()
     {
         foreach (var (kind, lazy) in _clients)
         {
@@ -125,12 +125,6 @@ public sealed class CapabilityClientBundle : IDisposable, IAsyncDisposable
     }
 
     /// <summary>把位集拆成单值能力（跳过 <see cref="LlmCapabilityKind.None"/>），顺序稳定。</summary>
-    public static IEnumerable<LlmCapabilityKind> SingleFlags(LlmCapabilityKind capabilities)
-    {
-        foreach (var kind in Enum.GetValues<LlmCapabilityKind>())
-        {
-            if (kind != LlmCapabilityKind.None && capabilities.HasFlag(kind))
-                yield return kind;
-        }
-    }
+    private static IEnumerable<LlmCapabilityKind> SingleFlags(LlmCapabilityKind capabilities)
+        => LlmCapabilityMap.SingleFlags(capabilities);
 }

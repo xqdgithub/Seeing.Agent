@@ -28,11 +28,15 @@ public sealed class OpenAiLlmModule : ISeeingModule
     {
         // 协议→工厂唯一映射：本模块登记 openai 与 openai-responses 两个协议键，
         // 共享同一个工厂实例（同一协议只能绑一个工厂，重复登记在构造期即抛）。
-        services.AddSingleton<ILlmClientFactory, OpenAiLlmClientFactory>();
+        //
+        // 注意必须按**具体类型**解析：ILlmClientFactory 有多个实现（OpenAI/Anthropic/TypeSafe），
+        // GetRequiredService<ILlmClientFactory>() 返回最后登记的那个，会把所有协议绑到同一个工厂。
+        services.AddSingleton<OpenAiLlmClientFactory>();
+        services.AddSingleton<ILlmClientFactory>(sp => sp.GetRequiredService<OpenAiLlmClientFactory>());
         services.AddSingleton<LlmClientFactoryRegistration>(sp => new(
-            ProviderTypes.OpenAi, sp.GetRequiredService<ILlmClientFactory>()));
+            ProviderTypes.OpenAi, sp.GetRequiredService<OpenAiLlmClientFactory>()));
         services.AddSingleton<LlmClientFactoryRegistration>(sp => new(
-            ProviderTypes.OpenAiResponses, sp.GetRequiredService<ILlmClientFactory>()));
+            ProviderTypes.OpenAiResponses, sp.GetRequiredService<OpenAiLlmClientFactory>()));
     }
 
     /// <inheritdoc />

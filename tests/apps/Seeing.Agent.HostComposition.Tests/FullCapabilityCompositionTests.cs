@@ -1,6 +1,11 @@
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Llm.Anthropic;
+using Seeing.Agent.Llm.OpenAI;
+using Seeing.Agent.Llm.SystemOne;
+using Seeing.Agent.Llm.SystemOne.Clients;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Core.CapabilitySets;
@@ -112,6 +117,65 @@ public class FullCapabilityCompositionTests
         options.CurrentValue.Mode.Should().Be(
             Seeing.Agent.Reflection.Configuration.ReflectionMode.SuggestOnly,
             "默认模式只产出建议、不写盘");
+    }
+
+    /// <summary>
+    /// 真实容器里每个协议都必须解析到<b>自己的</b>工厂。
+    /// <para>背景：三个 LLM 模块都用 <c>AddSingleton&lt;ILlmClientFactory, XxxFactory&gt;</c> 登记，
+    /// 若注册描述符改用 <c>sp.GetRequiredService&lt;ILlmClientFactory&gt;()</c> 取值，
+    /// MS.DI 会返回**最后登记的那个**实现，于是四个协议全绑到同一个工厂——
+    /// 表现为 SiliconFlow 的 chat 与 embedding 全部为 <c>null</c>，Anthropic 全废。</para>
+    /// <para>这类缺陷在单元测试里看不出来：工厂测试都手工 new 一个 resolver，
+    /// 从不经过 <see cref="IServiceProvider"/>。</para>
+    /// </summary>
+    [Fact]
+    public async Task Protocols_ShouldResolveToTheirOwnFactory_InRealContainer()
+    {
+        await using var provider = BuildProvider(includeGatewayServer: false);
+
+        var resolver = provider.GetRequiredService<ILlmClientFactoryResolver>();
+
+        resolver.Protocols.Should().BeEquivalentTo(
+            ProviderTypes.OpenAi,
+            ProviderTypes.OpenAiResponses,
+            ProviderTypes.Anthropic,
+            ProviderTypes.TypeSafe);
+
+        resolver.Require(ProviderTypes.OpenAi).Should().BeOfType<OpenAiLlmClientFactory>();
+        resolver.Require(ProviderTypes.OpenAiResponses).Should().BeOfType<OpenAiLlmClientFactory>();
+        resolver.Require(ProviderTypes.Anthropic).Should().BeOfType<AnthropicLlmClientFactory>();
+        resolver.Require(ProviderTypes.TypeSafe).Should().BeOfType<TypeSafeSystemOneClientFactory>();
+
+        // 同一工厂服务两个协议时必须共享实例
+        resolver.Require(ProviderTypes.OpenAi)
+            .Should().BeSameAs(resolver.Require(ProviderTypes.OpenAiResponses));
+    }
+
+    /// <summary>
+    /// 真实容器里 OpenAI 工厂必须能产出 chat 与 embedding 客户端。
+    /// <para>这是「四个协议误绑同一工厂」的直接症状：TypeSafe 工厂对非 Decision 能力返回 null。</para>
+    /// </summary>
+    [Fact]
+    public async Task OpenAiProtocol_ShouldProduceChatAndEmbeddingClients_InRealContainer()
+    {
+        await using var provider = BuildProvider(includeGatewayServer: false);
+
+        var factory = provider.GetRequiredService<ILlmClientFactoryResolver>()
+            .Require(ProviderTypes.OpenAi);
+
+        var config = new ProviderConfig
+        {
+            Id = "probe",
+            Type = ProviderTypes.OpenAi,
+            BaseUrl = "https://example.invalid/v1",
+            ApiKey = "sk-probe",
+        };
+
+        using var chat = factory.Create(config, LlmCapabilityKind.Chat) as IDisposable;
+        using var embedding = factory.Create(config, LlmCapabilityKind.Embedding) as IDisposable;
+
+        chat.Should().BeAssignableTo<IChatCompletionClient>("openai 协议必须产出 chat 客户端");
+        embedding.Should().BeAssignableTo<IEmbeddingClient>("openai 协议必须产出 embedding 客户端");
     }
 
     private static ServiceProvider BuildProvider(bool includeGatewayServer)

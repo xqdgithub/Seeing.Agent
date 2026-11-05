@@ -98,6 +98,20 @@ public static class LlmCapabilityMap
     public static bool TryParseHookValue(string? value, out LlmCapabilityKind kind)
         => TryParse(value, s_hookValues, out kind);
 
+    /// <summary>
+    /// 把能力位集拆成单值能力序列（跳过 <see cref="LlmCapabilityKind.None"/>），按枚举位顺序稳定输出。
+    /// <para>「位集 → 单值」是纯映射，归此处：<see cref="ConfiguredLlmProvider"/> 与
+    /// <c>CapabilityClientBundle</c> 都要按单值能力建客户端，此前各写了一份同构实现。</para>
+    /// </summary>
+    public static IEnumerable<LlmCapabilityKind> SingleFlags(LlmCapabilityKind capabilities)
+    {
+        foreach (var kind in s_singleKindsWithoutNone)
+        {
+            if (capabilities.HasFlag(kind))
+                yield return kind;
+        }
+    }
+
     /// <summary>客户端接口类型 → 能力。<c>Resolve&lt;T&gt;</c> 与装饰器定位能力的唯一反查出口。</summary>
     public static bool TryGetKindFromClientType(Type clientType, out LlmCapabilityKind kind)
     {

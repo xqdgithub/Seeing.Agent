@@ -138,7 +138,7 @@ IReadOnlyDictionary<LlmCapabilityKind, string> ValidateDefaultModels();  // 只�
 | `ILlmClient` | 删除，拆为 `IChatCompletionClient` + `ILlmCapabilityClient` |
 | `ILlmProvider.GetClient()` | → `GetClient(LlmCapabilityKind)`；新增 `Protocol` / `Capabilities` |
 | `ILlmProvider.TestConnectionAsync` | 新增 `LlmCapabilityKind capability` 参数 |
-| `ILlmClientFactory` | `Create(config)` → `Create(config, capability)`；`SupportedTypes` → `SupportedProtocols` |
+| `ILlmClientFactory` | `Create(config)` → `Create(config, capability)`；`SupportedTypes` → `SupportedProtocols` → **再删除**（见下） |
 | `ILlmClientDecorator.Wrap` | `ILlmClient` → `ILlmCapabilityClient` |
 | `HookRegistry.Chat*` | → `Llm*` |
 | `HookDataContract.ChatAfterComplete` | → `LlmAfterComplete` |
@@ -175,6 +175,66 @@ IReadOnlyDictionary<LlmCapabilityKind, string> ValidateDefaultModels();  // 只�
 - 未配 `ModelId` 即视为未启用，**框架不会自动挑选模型**
 - 维度不再可配（首次成功调用后由响应回写，仅作展示）
 - 缓存键已加模型指纹：换模型不会命旧向量
+
+## 后续修订：协议→工厂注册表 + Provider 自述能力
+
+初次落地后暴露两个结构性问题，已追加修复（详见提交 `refactor(llm): protocol→factory registry + provider-declared capabilities`）。
+
+### 1. 协议从「工厂自述」改成「注册表服务键」
+
+`ILlmClientFactory` 先前有 `SupportedProtocols` / `SupportsProtocol`，与「协议」是同一事实的两份表达，且 `SupportedProtocols` 零生产消费者（WebUI 也硬编码 `openai`/`anthropic`，导致 `typesafe` 与 `openai-responses` 在界面上**加不出来**）。
+
+现在接口只剩 `Create`：
+
+| 概念 | 归属 |
+|---|---|
+| 协议 → 工厂 | `LlmClientFactoryRegistration(protocol, factory)` |
+| 解析与枚举 | `LlmClientFactoryResolver`（`Find` / `Require` / `Protocols`） |
+
+语义变化：
+
+- 同一协议重复登记 → **构造期抛**（此前 first-wins 静默覆盖，后者永不生效且无从发现）
+- 同一工厂登记多个协议 → 允许（OpenAI 工厂服务 `openai` 与 `openai-responses`）
+- `Protocols` 可枚举 → WebUI 协议下拉改为数据驱动，`typesafe` 可在界面添加
+
+> **实现陷阱（已修）**：模块必须按**具体类型**登记（`AddSingleton<OpenAiLlmClientFactory>()` + `sp.GetRequiredService<OpenAiLlmClientFactory>()`）。用 `sp.GetRequiredService<ILlmClientFactory>()` 会返回最后登记的实现，导致**所有协议绑到同一个工厂**——症状是四个插件的 chat 与 embedding 全部 `null`。`FullCapabilityCompositionTests.Protocols_ShouldResolveToTheirOwnFactory_InRealContainer` 守门。
+
+### 2. 插件能力由作者声明 + 配置可覆盖
+
+先前 4 个插件都硬编码 `Capabilities => Chat` 且有 `if (capability != Chat) return null`。结果 SiliconFlow 即使端点支持 embeddings，`siliconflow/BAAI/bge-large-zh-v1.5` 也无法用于 embedding。
+
+结构上的原因：插件只有单个 `_client` 字段，多能力必须自己重写实例管理与释放。新增：
+
+| 类型 | 层 | 职责 |
+|---|---|---|
+| `CapabilityClientBundle` | `Llm.Support` | 能力位集 → N 个 `Lazy` + 统一释放，缓存粒度 `(providerId, capability)` |
+| `ConfigurableProviderBase<TOptions>` | `Llm.Support` | 能力解析、束生命周期、配置读写、保存后重建 |
+
+**能力来源规则**：默认值由插件作者声明（只有作者知道自家端点支持什么）；配置里写 `capabilities` 可覆盖。**不能由工厂推导**——OpenAI 工厂实现了 embedding，但 DeepSeek 端点没有 `/v1/embeddings`，推导会把「协议支持」误当成「端点支持」。
+
+覆盖语义：不写 = 用作者默认值（装完即用）；显式写了就严格按配置走（含「全是不认识的名字 → 不供出任何能力」），**绝不回落默认值**。
+
+各插件默认能力：
+
+| 插件 | 默认 | 理由 |
+|---|---|---|
+| SiliconFlow | `chat \| embedding` | 官方提供 OpenAI 兼容 embeddings 端点 |
+| DeepSeek / MiMo | `chat` | 官方端点无 embeddings；可用配置开启 |
+| OpenCodeZen | `chat` | 有私有配置形状，保留自有实现 |
+
+### 3. SystemOne 成为内置 Provider
+
+此前 `llm.systemone` 只注册工厂，Provider 实例完全依赖用户手写 `Providers.typesafe`——等于该能力包装上后不可用。
+
+现在新增 `SystemOneLlmProvider` + `SystemOneConfigStore`（`~/.seeing/providers/systemone.json`）：默认 `decision` 能力、`listModels`、10s 超时、不走代理；模型目录 = 静态 ∪ 远端，并**内置 `jev-latest` 种子模型**（远端目录需要凭据，无种子则目录为空、Router 第 1 层必失败）。
+
+三条约束：
+
+- **Provider id 固定**为 `systemone`，不随配置变化（注册表按 id 索引；可变 id 会让旧键永久残留、`Deactivate` 失效、已配的 `systemone/xxx` 引用全部失效）
+- **用户配置优先**：`Activate` 时若注册表已有同 id 的 Provider，内置 Provider 主动让位
+- **Activate/Deactivate 挂载与注销**，不再依赖用户配置
+
+---
 
 ## 已知边界
 

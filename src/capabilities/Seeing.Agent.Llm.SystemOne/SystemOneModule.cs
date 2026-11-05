@@ -44,9 +44,11 @@ public sealed class SystemOneModule : ISeeingModule
         services.TryAddSingleton<SystemOneLlmProvider>();
 
         // 协议→工厂唯一映射：typesafe 协议绑本工厂（重复登记在构造期即抛）。
-        services.AddSingleton<ILlmClientFactory, TypeSafeSystemOneClientFactory>();
+        // 必须按具体类型解析——ILlmClientFactory 有多个实现，按接口取会拿到最后登记的那个。
+        services.AddSingleton<TypeSafeSystemOneClientFactory>();
+        services.AddSingleton<ILlmClientFactory>(sp => sp.GetRequiredService<TypeSafeSystemOneClientFactory>());
         services.AddSingleton<LlmClientFactoryRegistration>(sp => new(
-            ProviderTypes.TypeSafe, sp.GetRequiredService<ILlmClientFactory>()));
+            ProviderTypes.TypeSafe, sp.GetRequiredService<TypeSafeSystemOneClientFactory>()));
     }
 
     /// <inheritdoc />
@@ -55,7 +57,15 @@ public sealed class SystemOneModule : ISeeingModule
         var provider = services.GetRequiredService<SystemOneLlmProvider>();
         await provider.WarmupAsync(cancellationToken).ConfigureAwait(false);
 
-        services.GetRequiredService<IProviderRegistry>().Register(provider, ownerExtensionId: null);
+        var registry = services.GetRequiredService<IProviderRegistry>();
+
+        // 用户若在 Providers 节显式配置了同 id 的配置驱动 Provider，以用户为准：
+        // 内置 Provider 只负责「没有用户配置时也能用」。
+        // （ProviderRegistry 是后注册者覆盖，所以这里必须主动让位，不能只靠注释。）
+        if (registry.GetProvider(provider.Id) is not null)
+            return;
+
+        registry.Register(provider, ownerExtensionId: null);
     }
 
     /// <inheritdoc />
