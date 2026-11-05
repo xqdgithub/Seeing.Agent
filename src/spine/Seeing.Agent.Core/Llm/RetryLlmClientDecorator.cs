@@ -89,26 +89,23 @@ public sealed class RetryLlmClientDecorator : ILlmClientDecorator
     /// </summary>
     private static LlmCapabilityKind ResolveSingleCapability(ILlmCapabilityClient inner)
     {
-        var matched = new List<LlmCapabilityKind>();
-        foreach (var (kind, portType) in LlmCapabilityMap.ClientTypes)
-        {
-            if (portType.IsInstanceOfType(inner))
-                matched.Add(kind);
-        }
+        var type = inner.GetType();
+
+        if (LlmCapabilityMap.TryResolveKind(type, out var capability))
+            return capability;
+
+        var matched = LlmCapabilityMap.FindKindsByClientType(type);
 
         if (matched.Count == 0)
             throw new NotSupportedException(
-                $"客户端 {inner.GetType().Name} 未实现任何已知能力端口" +
-                $"（{string.Join(", ", LlmCapabilityMap.ClientTypes.Keys.Select(LlmCapabilityMap.ToConfigKey))}），" +
+                $"客户端 {type.Name} 未实现任何已知能力端口" +
+                $"（{string.Join(", ", LlmCapabilityMap.ConfigKeys)}），" +
                 "重试装饰器无法确定包装形态。约定：每个客户端实例恰好实现一个能力端口。");
 
-        if (matched.Count > 1)
-            throw new NotSupportedException(
-                $"客户端 {inner.GetType().Name} 同时实现了 {matched.Count} 个能力端口" +
-                $"（{string.Join(", ", matched.Select(LlmCapabilityMap.ToConfigKey))}）；" +
-                "客户端不自述能力（决议 15），装饰器无法判定按哪个端口重试，请拆分为每端口一个实例。");
-
-        return matched[0];
+        throw new NotSupportedException(
+            $"客户端 {type.Name} 同时实现了 {matched.Count} 个能力端口" +
+            $"（{string.Join(", ", matched.Select(LlmCapabilityMap.ToConfigKey))}）；" +
+            "客户端不自述能力（决议 15），装饰器无法判定按哪个端口重试，请拆分为每端口一个实例。");
     }
 }
 
@@ -508,10 +505,6 @@ public sealed class RetryingDecisionClient : LlmRetryingClientBase<IDecisionClie
         LlmCallContext? call = null,
         CancellationToken ct = default)
         => RunWithRetryAsync(nameof(EvaluateAsync), () => Inner.EvaluateAsync(request, call, ct), call, ct);
-
-    /// <inheritdoc />
-    public Task<IReadOnlyList<DecisionModel>> ListModelsAsync(CancellationToken ct = default)
-        => RunWithRetryAsync(nameof(ListModelsAsync), () => Inner.ListModelsAsync(ct), call: null, ct);
 }
 
 /// <summary>

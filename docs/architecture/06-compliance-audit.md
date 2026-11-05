@@ -187,7 +187,7 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 
 ### Abstractions 纯函数豁免清单（显式）
 
-`Abstractions` 允许保留的 7 处无状态纯函数/静态解析（不属「零实现纪律」违规；「上提 PathSafety 到 Abstractions」已决策放弃，避免契约层纯函数膨胀）：
+`Abstractions` 允许保留的 6 处无状态纯函数/静态解析（不属「零实现纪律」违规；「上提 PathSafety 到 Abstractions」已决策放弃，避免契约层纯函数膨胀）：
 
 | 类型 | 位置 | 说明 |
 |------|------|------|
@@ -195,10 +195,12 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 | `ModelCapabilityFillEmpty` | `Abstractions/Llm/ModelCapabilities/ModelCapabilityFillEmpty.cs` | 能力缺省填充（纯函数） |
 | `LlmClientFactoryResolver` | `Abstractions/Llm/LlmClientFactoryResolver.cs` | 工厂解析（无状态） |
 | `ChannelCapabilitiesExtensions` | `Abstractions/Channels/ChannelCapabilitiesExtensions.cs` | 渠道附件能力派生查询：类型支持判定与对话种类覆盖回落（纯函数） |
-| `LlmCapabilityMap` | `Abstractions/Llm/LlmCapabilityMap.cs` | 能力↔模型类型↔客户端端口三张映射表 + 两种字符串投影（含反向解析）。**必须是契约**：能力包要按它解析 `ProviderConfig.Capabilities`，下沉到 Core 会迫使能力包引用 Core |
+| `LlmCapabilityMap` | `Abstractions/Llm/LlmCapabilityMap.cs` | 能力↔模型类型↔客户端端口三张映射表 + 字符串双向投影 + 端口→能力反查（含 Assignable 回落）。**必须是契约**：能力包要按它解析 `ProviderConfig.Capabilities`，下沉到 Core 会迫使能力包引用 Core |
 | `ProviderCapabilityDefaults` | `Abstractions/Llm/ProviderCapabilityDefaults.cs` | 协议→缺省能力表（纯数据 + 纯函数） |
 
 > `SystemOneClientFactoryResolver` 已随 SystemOne 平行栈合流删除（原 `Abstractions/SystemOne/` 整个命名空间移除）。
+>
+> **未列入但同为静态逻辑**：`LlmRetryPolicy`（`Abstractions/Llm/LlmRetryPolicy.cs`，退避计算与可重试判定）与 `LlmRetrySettings`。它们早于本次重构存在，且含策略而非纯映射；是否归入豁免需单独评估，暂标为**已知遗留**。
 >
 > `PermissionRuleEntry` 匹配算法（~140 行）与 `ConfigSectionOptionsMonitor` 为已知契约层实现，维持现状（下沉需单独评估，不在本轮范围）。
 

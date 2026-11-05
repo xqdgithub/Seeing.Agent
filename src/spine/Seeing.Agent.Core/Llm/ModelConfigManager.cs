@@ -60,6 +60,9 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     /// <summary>
     /// 初始化模型目录管理器：种子加载配置模型、监听注册表变更并启动单线程刷新队列。
     /// </summary>
+    /// <param name="configManager">统一配置管理器（读取 <c>Providers</c> / <c>ModelOverrides</c> 等节）。</param>
+    /// <param name="registry">Provider 注册表（目录聚合时按注册项拉取扩展 Provider 的模型）。</param>
+    /// <param name="logger">日志。</param>
     /// <param name="services">
     /// 供 <see cref="TryResolveDefault{TClient}"/> 在调用期惰性解析 <see cref="ILlmRouter"/>。
     /// <para>Router 依赖 <see cref="IModelConfigManager"/>，构造期直接注入会成环，故走服务提供程序延迟取；

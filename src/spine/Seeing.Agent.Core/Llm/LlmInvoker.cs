@@ -357,23 +357,18 @@ public sealed class LlmInvoker : ILlmInvoker
         => ItemOf(ctx, LlmRetryPolicy.AttemptItemKey) ?? 1;
 
     /// <summary>
-    /// 端口类型 → 能力：<see cref="LlmCapabilityMap.ClientTypes"/> 是唯一反查出口。
+    /// 端口类型 → 能力。判定规则统一在 <see cref="LlmCapabilityMap.TryResolveKind"/>，
+    /// 本类只负责把「无法定位」翻译成可读异常。
     /// </summary>
     private static LlmCapabilityKind CapabilityOf<TClient>()
     {
-        if (LlmCapabilityMap.TryGetKindFromClientType(typeof(TClient), out var capability))
+        if (LlmCapabilityMap.TryResolveKind(typeof(TClient), out var capability))
             return capability;
 
-        var matches = LlmCapabilityMap.ClientTypes
-            .Where(pair => pair.Value.IsAssignableFrom(typeof(TClient)))
-            .Select(pair => pair.Key)
-            .ToArray();
-
-        if (matches.Length == 1)
-            return matches[0];
+        var matches = LlmCapabilityMap.FindKindsByClientType(typeof(TClient));
 
         throw new ArgumentException(
-            $"请求端口 '{typeof(TClient).Name}' 无法定位能力（匹配 {matches.Length} 个端口）："
+            $"请求端口 '{typeof(TClient).Name}' 无法定位能力（匹配 {matches.Count} 个端口）："
             + "请传 LlmCapabilityMap.ClientTypes 中登记的八个能力端口之一，且每个客户端恰好实现一个端口",
             nameof(TClient));
     }

@@ -221,29 +221,17 @@ public sealed class LlmRouter : ILlmRouter
     }
 
     /// <summary>
-    /// 端口类型 → 能力的反查：先按 <see cref="LlmCapabilityMap.ClientTypes"/> 精确匹配，
-    /// 再回落到「TClient 派生自某个登记端口」的Assignable 匹配（插件包装端口时仍能定位）。
-    /// <para>匹配到多个端口视为歧义：隐含契约是「每个客户端恰好实现一个能力端口」。</para>
+    /// 端口类型 → 能力的反查。判定规则统一在 <see cref="LlmCapabilityMap.TryResolveKind"/>
+    /// （精确匹配 → Assignable 单命中 → 多命中视为歧义），本类不再自行实现。
     /// </summary>
     private static bool TryCapabilityOf<TClient>(out LlmCapabilityKind capability, out string? reason)
     {
-        reason = null;
-
-        if (LlmCapabilityMap.TryGetKindFromClientType(typeof(TClient), out capability))
-            return true;
-
-        var matches = LlmCapabilityMap.ClientTypes
-            .Where(pair => pair.Value.IsAssignableFrom(typeof(TClient)))
-            .Select(pair => pair.Key)
-            .ToArray();
-
-        if (matches.Length == 1)
+        if (LlmCapabilityMap.TryResolveKind(typeof(TClient), out capability))
         {
-            capability = matches[0];
+            reason = null;
             return true;
         }
 
-        capability = LlmCapabilityKind.None;
         reason = CapabilityFailure<TClient>();
         return false;
     }

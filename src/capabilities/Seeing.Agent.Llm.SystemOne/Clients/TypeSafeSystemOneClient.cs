@@ -55,14 +55,10 @@ public sealed class TypeSafeSystemOneClient : IDecisionClient, IModelCatalogClie
     }
 
     /// <summary>
-    /// 动态模型目录（<see cref="IDecisionClient"/> 视图）。
-    /// <para>与 <see cref="IModelCatalogClient.ListModelsAsync"/> 同签名不同返回类型，
-    /// C# 无法同时隐式实现，故两处均为显式接口实现。</para>
+    /// 动态模型目录：远端映射为 <see cref="ModelConfig"/>（Types 固定为 Decision）。
+    /// <para>这是目录维度的唯一投影——<see cref="IDecisionClient"/> 不再重复声明
+    /// 同义成员（那样会让同一 wire 端点被两个接口各投影一次）。</para>
     /// </summary>
-    async Task<IReadOnlyList<DecisionModel>> IDecisionClient.ListModelsAsync(CancellationToken ct)
-        => TypeSafeWireMap.ToDecisionModels(await ListModelsCoreAsync(ct).ConfigureAwait(false));
-
-    /// <summary>远端目录映射为 <see cref="ModelConfig"/>（Types 固定为 Decision）。</summary>
     async Task<IReadOnlyList<ModelConfig>> IModelCatalogClient.ListModelsAsync(CancellationToken cancellationToken)
     {
         var models = TypeSafeWireMap.ToDecisionModels(

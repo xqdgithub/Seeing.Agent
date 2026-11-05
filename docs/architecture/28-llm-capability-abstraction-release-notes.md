@@ -67,7 +67,16 @@ Resolve → LlmCallContext → llm.params + llm.headers → call/stream
         → 异常时 llm.on_error
 ```
 
-**Router vs Invoker 的适用边界**（见规格 §7.4.1）：判别口诀是「这次调用该不该被观测成一次 LLM 调用」。该 → Invoker；不该（连接测试探针、video 轮询、框架内部装配）→ Router。
+**Router vs Invoker 的适用边界**（见规格 §7.4.1）：判别口诀是「这次调用该不该被观测成一次 LLM 调用」。
+
+| 场景 | 用哪个 |
+|---|---|
+| 常规单次业务调用 | `ILlmInvoker`（默认开 Hook） |
+| 连接测试探针 | `ILlmInvoker` + `EmitHooks = false`（复用五层校验与重试，但不产生 Hook 副作用） |
+| 一次解析多次调用（video 轮询） | `ILlmRouter` |
+| 框架内部装配 | `ILlmRouter` |
+
+> `ILlmRouter` 之所以是 public，是因为 `IModelConfigManager.TryResolveDefault`（Abstractions 成员）要经它解析。该成员目前无生产消费者，且为它引入了 `ModelConfigManager` 的服务定位器环——已登记为接受的残留。
 
 ### 5. Hook 泛化 `chat.*` → `llm.*`
 

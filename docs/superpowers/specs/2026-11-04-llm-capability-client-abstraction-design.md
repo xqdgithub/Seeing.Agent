@@ -591,20 +591,28 @@ public interface ILlmRouter
 
 #### 7.4.1 Router 与 Invoker 的适用边界（必须遵守）
 
-**`ILlmRouter` 保持 public 且保留 `Resolve<T>`**——有三个真实场景需要绕过 Invoker 直接取客户端。但**常规单次调用必须走 `ILlmInvoker`**。
+**`ILlmRouter` 保持 public 且保留 `Resolve<T>`**，但**常规单次调用必须走 `ILlmInvoker`**。
 
 | 场景 | 用哪个 | 理由 |
 |---|---|---|
 | **常规单次业务调用**（chat 一轮、embedding 一批、TTS 一段、decision 一次） | **`ILlmInvoker`** | 只有它触发 `llm.params`/`llm.headers`/`llm.after_complete`/`llm.on_error`、合并出站头、计算耗时 |
-| **连接测试探针**（`TestConnectionAsync`） | **`ILlmRouter`** | 探针不应产生业务副作用。走 Invoker 会让"点一下测试按钮"污染预算账与审计日志 |
-| **长生命周期调用**（video `Submit` + N 次 `GetStatus`/`Poll`） | **`ILlmRouter`** | 一次任务解析一次、多次调用。走 Invoker 会记 N 次 `after_complete`，语义错误 |
+| **连接测试探针**（`TestConnectionAsync`） | **`ILlmInvoker` + `EmitHooks=false`** | 探针要复用五层校验与重试，但**不得产生业务副作用**。`EmitHooks=false` 已闸住全部五个 Hook 点（`LlmInvoker.ShouldEmitHooks`）。现行实现：`EmbeddingConnectionTester` |
+| **长生命周期调用**（video `Submit` + N 次 `GetStatus`/`Poll`） | **`ILlmRouter`** | 一次任务解析一次、多次调用。走 Invoker 会记 N 次 `after_complete`。**注意：video 目前只出契约、无实现，此行为前瞻约定** |
 | **框架内部**（`LlmInvoker` 自身、`ModelConfigManager.TryResolveDefault`、`IProviderManager`） | **`ILlmRouter`** | 这些是 Invoker 的依赖，无法自举 |
 
-**判别口诀**：**这次调用该不该被观测成"一次 LLM 调用"？** 该 → Invoker；不该（探针、轮询、内部装配）→ Router。
+**判别口诀**：**这次调用该不该被观测成"一次 LLM 调用"？** 该 → Invoker（默认开 Hook）；不该但需要校验与重试 → Invoker + `EmitHooks=false`；一次解析多次调用 → Router。
 
-**已知违反**：`SystemOneTool` / `SystemOneService` 曾直连 Router，导致 decision 的 Hook 全不触发。已改为走 Invoker（决议 27）。
+**`ILlmRouter` 为什么必须是 public**：不是因为上表任何一个场景，而是 `IModelConfigManager.TryResolveDefault`（Abstractions 公共成员，决议 12）要经 Router 解析，接口因此必须在 Abstractions 公开。
+
+> **接受的残留**：`TryResolveDefault` 目前**零生产消费者**；为它，`ModelConfigManager` 引入了一个服务定位器环（`_services?.GetService<ILlmRouter>()`，注释自述"Router 依赖 IModelConfigManager，构造期直接注入会成环"）。这是为决议 12 的 API 完整性付出的代价，登记为已知项而非缺陷。
 
 `ILlmRouter` 与 `ILlmInvoker` 的 XML 注释必须互相点名，把这条边界写在使用处，而不是只写在本文档里。
+
+#### 7.4.2 端口→能力的反查单点
+
+`LlmCapabilityMap.TryResolveKind(Type, out LlmCapabilityKind)` 是**唯一**的「端口类型 → 能力」判定入口（精确匹配 → `IsAssignableFrom` 单命中 → 多命中视为歧义）。
+
+`LlmRouter` / `LlmInvoker` / `RetryLlmClientDecorator` 三处都调它，各自只负责把「无法定位」翻译成本层的可读异常。此前三处各自复制了这段逻辑且对歧义抛不同异常，属同一规则的三份实现。
 
 ### 7.5 横切层：`ILlmInvoker`
 

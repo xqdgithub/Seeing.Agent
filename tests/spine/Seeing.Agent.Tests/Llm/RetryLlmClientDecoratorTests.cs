@@ -209,15 +209,16 @@ public class RetryLlmClientDecoratorTests
     }
 
     [Fact]
-    public async Task DecisionListModels_ShouldRetryOnTransientFailure()
+    public async Task ModelCatalogPort_ShouldPassThroughWithoutRetry()
     {
-        var inner = new FlakyDecisionClient([Transient(), null]);
-        var client = (IDecisionClient)Wrap(inner, maxRetries: 3);
+        // 目录查询不是业务调用：装饰器只透传到内层，不重试（重试会把一次目录故障放大成 N 次请求）。
+        var inner = new FlakyDecisionClient([]);
+        var client = (IModelCatalogClient)Wrap(inner, maxRetries: 3);
 
         var models = await client.ListModelsAsync(TestContext.Current.CancellationToken);
 
-        inner.ListModelsCalls.Should().Be(2);
-        models.Should().ContainSingle().Which.Name.Should().Be("jev-1");
+        inner.ListModelsCalls.Should().Be(1);
+        models.Should().ContainSingle().Which.Id.Should().Be("jev-1");
     }
 
     [Fact]
@@ -782,7 +783,7 @@ public class RetryLlmClientDecoratorTests
             => _script.TestConnection(capability);
     }
 
-    private sealed class FlakyDecisionClient : IDecisionClient
+    private sealed class FlakyDecisionClient : IDecisionClient, IModelCatalogClient
     {
         private readonly FlakyScript _script;
 
@@ -812,22 +813,21 @@ public class RetryLlmClientDecoratorTests
             });
         }
 
-        public Task<IReadOnlyList<DecisionModel>> ListModelsAsync(CancellationToken ct = default)
-        {
-            ListModelsCalls++;
-            var failure = _script.NextFailure(call: null);
-            if (failure is not null)
-                throw failure;
-
-            return Task.FromResult<IReadOnlyList<DecisionModel>>([new DecisionModel { Name = "jev-1" }]);
-        }
-
         public Task<bool> TestConnectionAsync(
             string modelId,
             LlmCapabilityKind capability,
             LlmCallContext? call = null,
             CancellationToken cancellationToken = default)
             => _script.TestConnection(capability);
+
+        /// <summary>目录端口（<see cref="IModelCatalogClient"/>）：装饰器只透传、不重试。</summary>
+        async Task<IReadOnlyList<ModelConfig>> IModelCatalogClient.ListModelsAsync(
+            CancellationToken cancellationToken)
+        {
+            ListModelsCalls++;
+            await Task.Yield();
+            return [new ModelConfig { Id = "jev-1" }];
+        }
     }
 
     private sealed class FlakySynthesisClient : ISpeechSynthesisClient

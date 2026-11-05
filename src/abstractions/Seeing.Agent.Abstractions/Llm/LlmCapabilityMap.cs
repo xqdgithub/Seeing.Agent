@@ -116,6 +116,58 @@ public static class LlmCapabilityMap
     }
 
     /// <summary>
+    /// 端口类型 → 能力，带 <c>IsAssignableFrom</c> 回落（插件包装端口时仍能定位）。
+    /// <para><b>这是 Router / Invoker / 装饰器三处的唯一判定入口</b>——此前三处各自复制了
+    /// 「精确匹配 → Assignable 单命中 → 多命中视为歧义」的逻辑，且对歧义各自抛不同异常，
+    /// 属同一规则的三份实现（spec §7.2.1 要求单点）。</para>
+    /// <para><b>隐含契约</b>：每个客户端实例恰好实现一个能力端口；多命中即歧义，返回 false。</para>
+    /// </summary>
+    public static bool TryResolveKind(Type clientType, out LlmCapabilityKind kind)
+    {
+        ArgumentNullException.ThrowIfNull(clientType);
+
+        if (TryGetKindFromClientType(clientType, out kind))
+            return true;
+
+        LlmCapabilityKind? match = null;
+        foreach (var (candidate, type) in ClientTypes)
+        {
+            if (!type.IsAssignableFrom(clientType))
+                continue;
+
+            if (match is not null)
+            {
+                // 多命中：歧义。不猜「最像的那个」。
+                kind = LlmCapabilityKind.None;
+                return false;
+            }
+
+            match = candidate;
+        }
+
+        if (match is { } resolved)
+        {
+            kind = resolved;
+            return true;
+        }
+
+        kind = LlmCapabilityKind.None;
+        return false;
+    }
+
+    /// <summary>
+    /// 由端口类型列出全部 <c>IsAssignableFrom</c> 命中的能力（供诊断要说清「命中哪几个」）。
+    /// </summary>
+    public static IReadOnlyList<LlmCapabilityKind> FindKindsByClientType(Type clientType)
+    {
+        ArgumentNullException.ThrowIfNull(clientType);
+        return ClientTypes
+            .Where(pair => pair.Value.IsAssignableFrom(clientType))
+            .Select(pair => pair.Key)
+            .ToArray();
+    }
+
+    /// <summary>
     /// 把 <see cref="ProviderConfig.Capabilities"/> 这类字符串集合解析为位集。
     /// <para><b>语义钉死（决议 19）</b>：集合为 null 或空 → 回落到
     /// <see cref="DefaultCapabilities"/>（按协议缺省）；<b>遇到未登记的名字必须抛

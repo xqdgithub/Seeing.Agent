@@ -127,13 +127,16 @@ public class LlmCapabilityContractTests
     }
 
     [Fact]
-    public void DecisionPort_ShouldKeepDynamicModelCatalog()
+    public void DecisionPort_ShouldNotDuplicateModelCatalog()
     {
-        // IDecisionClient.ListModelsAsync 存在是为了保住 typesafe 的动态模型目录
         typeof(IDecisionClient).GetMethod("EvaluateAsync")!.ReturnType
             .Should().Be(typeof(Task<DecisionResponse>));
-        typeof(IDecisionClient).GetMethod("ListModelsAsync")!.ReturnType
-            .Should().Be(typeof(Task<IReadOnlyList<DecisionModel>>));
+
+        // 目录维度的唯一投影是 IModelCatalogClient（返回 ModelConfig，直接进目录口径）。
+        // 早期版本在 IDecisionClient 上也声明过同名成员，导致同一 wire 端点被两个接口
+        // 各投影一次且无消费者——与「同一事实不留三份数据」冲突，已删除。
+        typeof(IDecisionClient).GetMethod("ListModelsAsync").Should().BeNull(
+            "决策端口只承载评估，不重复声明模型目录");
     }
 
     [Fact]

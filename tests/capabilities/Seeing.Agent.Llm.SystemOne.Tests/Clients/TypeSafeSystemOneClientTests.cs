@@ -102,15 +102,18 @@ public class TypeSafeSystemOneClientTests
     }
 
     [Fact]
-    public async Task DecisionClient_ListModelsAsync_ReturnsDecisionModels()
+    public async Task ModelCatalogClient_ListModelsAsync_MapsToDecisionModelConfigs()
     {
         var handler = new CapturingHandler("""{"models":[{"name":"jev-latest"},{"name":"jev-mini"}]}""");
         var client = CreateClient(handler);
 
-        var models = await ((IDecisionClient)client).ListModelsAsync(TestContext.Current.CancellationToken);
+        var models = await ((IModelCatalogClient)client).ListModelsAsync(
+            TestContext.Current.CancellationToken);
 
         models.Should().HaveCount(2);
-        models[0].Name.Should().Be("jev-latest");
+        models[0].Id.Should().Be("jev-latest");
+        models.Should().OnlyContain(m => m.Provider == "typesafe");
+        models.Should().OnlyContain(m => m.Types.Contains(ModelType.Decision));
         handler.LastRequest!.RequestUri.Should().Be(new Uri("http://systemone.test/v1/models"));
     }
 
