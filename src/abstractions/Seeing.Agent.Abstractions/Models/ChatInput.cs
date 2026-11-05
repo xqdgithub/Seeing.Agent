@@ -31,20 +31,43 @@ public record ChatAttachment
     /// <summary>MIME 类型</summary>
     public string MimeType { get; init; } = "";
 
-    /// <summary>Base64 编码的数据</summary>
+    /// <summary>
+    /// 内联媒体载荷，<b>必须是纯 base64（不含 <c>data:</c> 前缀</b>，不含 <c>;base64,</c> 标记）。
+    /// <para>
+    /// 该约束与下游 <c>SessionContentPart.DataBase64</c>、<c>ChatContentPart.DataBase64</c> 一致：
+    /// provider 出口会自行拼 <c>data:{mime};base64,{...}</c>。若此处带前缀，出口将拼出双重前缀的非法载荷
+    /// （provider 侧表现为 <c>Failed to download multimodal content</c>）。
+    /// </para>
+    /// <para>
+    /// 例外：值不来自内联字节时可能是 https URL（当前 runtime 无独立 URL 字段）。
+    /// </para>
+    /// </summary>
     public string Base64Data { get; init; } = "";
 
     /// <summary>
-    /// 创建图片附件
+    /// 创建图片附件。传入 data URL 时会自动剥掉前缀，保证「纯 base64」不变量。
     /// </summary>
     public static ChatAttachment Image(string fileName, string base64Data, string mimeType = "image/png")
-        => new() { FileName = fileName, MimeType = mimeType, Base64Data = base64Data };
+        => new() { FileName = fileName, MimeType = mimeType, Base64Data = StripDataPrefix(base64Data) };
 
     /// <summary>
-    /// 创建文件附件
+    /// 创建文件附件。传入 data URL 时会自动剥掉前缀，保证「纯 base64」不变量。
     /// </summary>
     public static ChatAttachment File(string fileName, string base64Data, string mimeType)
-        => new() { FileName = fileName, MimeType = mimeType, Base64Data = base64Data };
+        => new() { FileName = fileName, MimeType = mimeType, Base64Data = StripDataPrefix(base64Data) };
+
+    /// <summary>
+    /// 剥掉 data URL 的 <c>data:{mime};base64,</c> 前缀；非 data URL 原样返回。
+    /// </summary>
+    private static string StripDataPrefix(string value)
+    {
+        if (string.IsNullOrEmpty(value) || !value.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            return value;
+
+        const string marker = ";base64,";
+        var index = value.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        return index < 0 ? value : value[(index + marker.Length)..];
+    }
 }
 
 /// <summary>

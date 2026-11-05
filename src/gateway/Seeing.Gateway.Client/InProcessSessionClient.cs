@@ -4,10 +4,9 @@ using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Runtime;
+using Seeing.Gateway.Mapping;
 using Seeing.Gateway.Models;
 using Seeing.Gateway.Protocol;
-using System.Net;
-using System.Text;
 
 namespace Seeing.Gateway.Client;
 
@@ -36,7 +35,7 @@ public sealed class InProcessSessionClient : ISessionClient
         GatewayRequest request,
         CancellationToken ct = default)
     {
-        var input = BuildChatInput(request);
+        var input = GatewayContentPartMapper.ToChatInput(request.Input, request.Quote);
         var result = await _runtime.DeliverAsync(
             new InboxMessage
             {
@@ -101,110 +100,5 @@ public sealed class InProcessSessionClient : ISessionClient
         return Task.FromResult(resolved
             ? GatewayPermissionRespondResult.Ok()
             : GatewayPermissionRespondResult.Fail("权限请求不存在、已过期或会话不匹配"));
-    }
-
-    private static ChatInput BuildChatInput(GatewayRequest request)
-    {
-        if (request.Quote?.Content is { Count: > 0 })
-            return BuildChatInputWithQuote(request);
-
-        string? text = null;
-        List<ChatAttachment>? attachments = null;
-
-        if (request.Input is { Count: > 0 })
-        {
-            var textParts = request.Input
-                .OfType<GatewayTextContentPart>()
-                .Select(p => p.Text)
-                .ToList();
-
-            if (textParts.Count > 0)
-                text = string.Join("\n", textParts);
-
-            attachments = CollectAttachments(request.Input);
-        }
-
-        return new ChatInput
-        {
-            Text = text,
-            Attachments = attachments
-        };
-    }
-
-    private static ChatInput BuildChatInputWithQuote(GatewayRequest request)
-    {
-        var quote = request.Quote!;
-        var quoteText = ExtractText(quote.Content);
-        var userText = ExtractText(request.Input);
-        var type = WebUtility.HtmlEncode(quote.MsgType ?? "text");
-        var source = string.IsNullOrWhiteSpace(quote.SourceChannel)
-            ? string.Empty
-            : $" source=\"{WebUtility.HtmlEncode(quote.SourceChannel)}\"";
-        var text = new StringBuilder()
-            .Append($"<quoted_message type=\"{type}\"{source}>\n")
-            .Append(WebUtility.HtmlEncode(quoteText))
-            .Append("</quoted_message>\n\n<user_message>\n")
-            .Append(WebUtility.HtmlEncode(userText))
-            .Append("</user_message>")
-            .ToString();
-
-        var attachments = new List<ChatAttachment>();
-        if (quote.Content != null)
-            attachments.AddRange(CollectAttachments(quote.Content) ?? []);
-        if (request.Input != null)
-            attachments.AddRange(CollectAttachments(request.Input) ?? []);
-
-        return new ChatInput
-        {
-            Text = text,
-            Attachments = attachments.Count == 0 ? null : attachments
-        };
-    }
-
-    private static string ExtractText(IReadOnlyList<GatewayContentPart>? parts)
-    {
-        if (parts == null || parts.Count == 0)
-            return string.Empty;
-
-        var builder = new StringBuilder();
-        foreach (var part in parts)
-        {
-            if (part is GatewayTextContentPart text && !string.IsNullOrWhiteSpace(text.Text))
-            {
-                if (builder.Length > 0)
-                    builder.Append('\n');
-                builder.Append(text.Text.Trim());
-            }
-        }
-
-        return builder.ToString();
-    }
-
-    private static List<ChatAttachment>? CollectAttachments(IReadOnlyList<GatewayContentPart> parts)
-    {
-        var attachments = new List<ChatAttachment>();
-        foreach (var part in parts)
-        {
-            if (part is GatewayImageContentPart img)
-            {
-                attachments.Add(new ChatAttachment
-                {
-                    Base64Data = img.Url,
-                    MimeType = img.MimeType ?? "image/png",
-                    FileName = ""
-                });
-            }
-            else if (part is GatewayFileContentPart file)
-            {
-                attachments.Add(new ChatAttachment
-                {
-                    Base64Data = file.Url,
-                    MimeType = file.MimeType ?? "application/octet-stream",
-                    FileName = file.Name ?? ""
-                });
-            }
-        }
-
-        return attachments.Count == 0 ? null : attachments;
     }
 }

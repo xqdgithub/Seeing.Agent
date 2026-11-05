@@ -151,9 +151,8 @@ public static class QQMessageParser
         if (extraParts != null)
             parts.AddRange(extraParts);
 
-        if (parts.Count == 0)
-            parts.Add(new GatewayTextContentPart(""));
-
+        // 不再为空内容补占位文本：真空（文本空 + 媒体全丢）必须显式为空，
+        // 由上层拒绝并给出可读提示；伪造空 part 只会把错误推迟到 provider 侧变成 400。
         return new GatewayRequest
         {
             SessionId = sessionId,

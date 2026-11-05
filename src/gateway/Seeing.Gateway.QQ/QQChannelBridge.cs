@@ -7,6 +7,7 @@ using Seeing.Gateway.Models;
 using Seeing.Gateway.Protocol;
 using Seeing.Gateway.QQ.Connection;
 using System.Collections.Concurrent;
+using System.Text;
 using System.Text.Json;
 
 namespace Seeing.Gateway.QQ;
@@ -325,6 +326,7 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
             }
 
             var mediaParts = await _mediaFetcher.FetchAsync(parsed.Attachments, jobToken).ConfigureAwait(false);
+
             var request = QQMessageParser.ToGatewayRequest(
                 parsed,
                 sessionId,
@@ -332,6 +334,20 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
                 _commonOptions.Mode,
                 _commonOptions.Model,
                 mediaParts);
+
+            // 真空内容（文本空 + 媒体全部失败/缺失）：显式拒绝并告知用户，
+            // 不再把空 part 递给 agent 换来 provider 侧的 400。
+            if (request.Input is not { Count: > 0 })
+            {
+                _logger.LogWarning(
+                    "QQ message has no usable content {MsgId}: attachments={AttachmentCount} parts={PartCount}",
+                    parsed.MsgId,
+                    parsed.Attachments.Count,
+                    mediaParts.Count);
+                await SendVisibleAsync(parsed, "消息内容为空（图片等附件可能下载失败），请重试。", jobToken)
+                    .ConfigureAwait(false);
+                return;
+            }
 
             var reply = new GatewayAssistantReplyCollector();
 
