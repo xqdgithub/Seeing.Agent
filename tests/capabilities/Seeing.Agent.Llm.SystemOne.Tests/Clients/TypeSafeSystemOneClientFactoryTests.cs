@@ -12,13 +12,21 @@ namespace Seeing.Agent.Llm.SystemOne.Tests.Clients;
 /// </summary>
 public class TypeSafeSystemOneClientFactoryTests
 {
+    /// <summary>
+    /// 协议绑定已从工厂移到注册表（协议是服务键）：工厂只按能力分派，
+    /// 「typesafe 协议 → 本工厂」由 <see cref="LlmClientFactoryResolver"/> 保证。
+    /// </summary>
     [Theory]
     [InlineData("typesafe")]
     [InlineData("TypeSafe")]
     [InlineData("TYPESAFE")]
-    public void SupportsProtocol_IsCaseInsensitive(string protocol)
+    public void Resolver_ResolvesTypeSafeCaseInsensitively(string protocol)
     {
-        CreateFactory().SupportsProtocol(protocol).Should().BeTrue();
+        var factory = CreateFactory();
+        var resolver = new LlmClientFactoryResolver(
+            [new LlmClientFactoryRegistration(ProviderTypes.TypeSafe, factory)]);
+
+        resolver.Find(protocol).Should().BeSameAs(factory);
     }
 
     [Theory]
@@ -26,18 +34,24 @@ public class TypeSafeSystemOneClientFactoryTests
     [InlineData("anthropic")]
     [InlineData("")]
     [InlineData("   ")]
-    public void SupportsProtocol_WithOtherOrBlankProtocol_ReturnsFalse(string protocol)
+    public void Resolver_WithOtherOrBlankProtocol_ReturnsNull(string protocol)
     {
-        CreateFactory().SupportsProtocol(protocol).Should().BeFalse();
+        var factory = CreateFactory();
+        var resolver = new LlmClientFactoryResolver(
+            [new LlmClientFactoryRegistration(ProviderTypes.TypeSafe, factory)]);
+
+        resolver.Find(protocol).Should().BeNull();
     }
 
     [Fact]
-    public void SupportedProtocols_ContainsOnlyTypeSafe()
+    public void Resolver_RegistersOnlyTypeSafe()
     {
         var factory = CreateFactory();
+        var resolver = new LlmClientFactoryResolver(
+            [new LlmClientFactoryRegistration(ProviderTypes.TypeSafe, factory)]);
 
-        factory.SupportedProtocols.Should().Equal(ProviderTypes.TypeSafe);
-        factory.SupportedProtocols.Should().NotContain(ProviderTypes.OpenAi);
+        resolver.Protocols.Should().Equal(ProviderTypes.TypeSafe);
+        resolver.Protocols.Should().NotContain(ProviderTypes.OpenAi);
     }
 
     [Fact]
@@ -72,14 +86,19 @@ public class TypeSafeSystemOneClientFactoryTests
         }
     }
 
+    /// <summary>
+    /// 协议校验已从工厂移到注册表：工厂按能力分派，不再自检 <c>config.Type</c>。
+    /// 「openai 配置不会被 TypeSafe 工厂处理」由注册表的协议绑定保证。
+    /// </summary>
     [Fact]
-    public void Create_WithOtherProtocol_ReturnsNull()
+    public void Resolver_WithOtherProtocol_ReturnsNull()
     {
         var factory = CreateFactory();
-        var config = Config();
-        config.Type = ProviderTypes.OpenAi;
+        var resolver = new LlmClientFactoryResolver(
+            [new LlmClientFactoryRegistration(ProviderTypes.TypeSafe, factory)]);
 
-        factory.Create(config, LlmCapabilityKind.Decision).Should().BeNull();
+        resolver.Find(ProviderTypes.OpenAi).Should().BeNull();
+        resolver.Require(ProviderTypes.TypeSafe).Should().BeSameAs(factory);
     }
 
     [Fact]

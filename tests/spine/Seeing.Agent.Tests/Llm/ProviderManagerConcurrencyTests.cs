@@ -36,12 +36,11 @@ public class ProviderManagerConcurrencyTests : IDisposable
         var configManager = await CreateConfigManagerAsync(providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsProtocol(It.IsAny<string>())).Returns(true);
         factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns(Mock.Of<IChatCompletionClient>());
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            new LlmClientFactoryResolver([new LlmClientFactoryRegistration(ProviderTypes.OpenAi, factory.Object)]),
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),

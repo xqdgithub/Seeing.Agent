@@ -139,13 +139,12 @@ public class ProviderManagerTests : IDisposable
         var firstClient = Mock.Of<IChatCompletionClient>();
         var secondClient = Mock.Of<IChatCompletionClient>();
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         factory.SetupSequence(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns(firstClient)
             .Returns(secondClient);
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            Resolver(factory.Object),
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -179,10 +178,9 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            Resolver(factory.Object),
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -224,10 +222,9 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            Resolver(factory.Object),
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -258,7 +255,7 @@ public class ProviderManagerTests : IDisposable
         registry.Register(provider.Object, ownerExtensionId: "test-extension");
         using var sut = new ProviderManager(
             configManager,
-            [Mock.Of<ILlmClientFactory>()],
+            Resolver(Mock.Of<ILlmClientFactory>()),
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -287,12 +284,11 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns(Mock.Of<IChatCompletionClient>());
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            Resolver(factory.Object),
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -323,12 +319,11 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns(Mock.Of<IChatCompletionClient>());
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            Resolver(factory.Object),
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -348,7 +343,7 @@ public class ProviderManagerTests : IDisposable
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         using var sut = new ProviderManager(
             configManager,
-            [Mock.Of<ILlmClientFactory>()],
+            Resolver(Mock.Of<ILlmClientFactory>()),
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -368,7 +363,7 @@ public class ProviderManagerTests : IDisposable
         registry.Register(new TestProvider("ext"), ownerExtensionId: "test-extension");
         using var sut = new ProviderManager(
             configManager,
-            [Mock.Of<ILlmClientFactory>()],
+            Resolver(Mock.Of<ILlmClientFactory>()),
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -390,7 +385,7 @@ public class ProviderManagerTests : IDisposable
         var logger = new ListLogger<ProviderManager>();
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            Resolver(factory.Object),
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -416,7 +411,6 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         string? capturedApiKey = null;
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns((ProviderConfig cfg, LlmCapabilityKind _) =>
             {
@@ -425,7 +419,7 @@ public class ProviderManagerTests : IDisposable
             });
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            Resolver(factory.Object),
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -448,12 +442,11 @@ public class ProviderManagerTests : IDisposable
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var disposableClient = new DisposableClient();
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns(disposableClient);
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            Resolver(factory.Object),
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -483,12 +476,11 @@ public class ProviderManagerTests : IDisposable
         };
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns(Mock.Of<IChatCompletionClient>());
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            Resolver(factory.Object),
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -523,12 +515,11 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns(Mock.Of<IChatCompletionClient>());
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            Resolver(factory.Object),
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -588,19 +579,11 @@ public class ProviderManagerTests : IDisposable
     {
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions());
         var openAi = new Mock<ILlmClientFactory>();
-        openAi.SetupGet(f => f.SupportedProtocols)
-            .Returns(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ProviderTypes.OpenAi });
-        openAi.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
-            .Returns((string type) => string.Equals(type, ProviderTypes.OpenAi, StringComparison.OrdinalIgnoreCase));
         var anthropic = new Mock<ILlmClientFactory>();
-        anthropic.SetupGet(f => f.SupportedProtocols)
-            .Returns(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ProviderTypes.Anthropic });
-        anthropic.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
-            .Returns((string type) => string.Equals(type, ProviderTypes.Anthropic, StringComparison.OrdinalIgnoreCase));
 
         using var sut = new ProviderManager(
             configManager,
-            [openAi.Object, anthropic.Object],
+            Resolver((ProviderTypes.OpenAi, openAi.Object), (ProviderTypes.Anthropic, anthropic.Object)),
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -611,24 +594,47 @@ public class ProviderManagerTests : IDisposable
         sut.ResolveFactory("Anthropic").Should().BeSameAs(anthropic.Object);
     }
 
+    /// <summary>
+    /// 同一协议登记两个不同工厂 → 组合期即抛。
+    /// <para>从前是 first-wins 静默覆盖（后者永远不被用到且无从发现）；现在改为注册表构造期拒绝。</para>
+    /// </summary>
     [Fact]
-    public async Task ResolveFactory_SameTypeMultipleFactories_FirstWins()
+    public async Task ResolveFactory_SameProtocolTwoFactories_ShouldThrow()
     {
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions());
         var first = new Mock<ILlmClientFactory>();
-        first.Setup(f => f.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         var second = new Mock<ILlmClientFactory>();
-        second.Setup(f => f.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
 
-        using var sut = new ProviderManager(
+        var act = () => new ProviderManager(
             configManager,
-            [first.Object, second.Object],
+            Resolver((ProviderTypes.OpenAi, first.Object), (ProviderTypes.OpenAi, second.Object)),
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
 
-        sut.ResolveFactory(ProviderTypes.OpenAi).Should().BeSameAs(first.Object);
+        act.Should().Throw<InvalidOperationException>().WithMessage("*重复登记*");
+    }
+
+    /// <summary>同一工厂登记多个协议是允许的（OpenAI 工厂同时服务两个协议）。</summary>
+    [Fact]
+    public async Task ResolveFactory_SameFactoryTwoProtocols_IsAllowed()
+    {
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions());
+        var factory = new Mock<ILlmClientFactory>();
+
+        using var sut = new ProviderManager(
+            configManager,
+            Resolver(
+                (ProviderTypes.OpenAi, factory.Object),
+                (ProviderTypes.OpenAiResponses, factory.Object)),
+            Mock.Of<IModelConfigManager>(),
+            new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
+            new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
+            NullLogger<ProviderManager>.Instance);
+
+        sut.ResolveFactory(ProviderTypes.OpenAi).Should().BeSameAs(factory.Object);
+        sut.ResolveFactory(ProviderTypes.OpenAiResponses).Should().BeSameAs(factory.Object);
     }
 
     [Fact]
@@ -641,13 +647,11 @@ public class ProviderManagerTests : IDisposable
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions(), providers);
         var expected = Mock.Of<IChatCompletionClient>(c => c.ProviderType == ProviderTypes.Anthropic);
         var anthropic = new Mock<ILlmClientFactory>();
-        anthropic.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
-            .Returns((string type) => string.Equals(type, ProviderTypes.Anthropic, StringComparison.OrdinalIgnoreCase));
         anthropic.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>())).Returns(expected);
 
         using var sut = new ProviderManager(
             configManager,
-            [anthropic.Object],
+            Resolver(anthropic.Object, ProviderTypes.Anthropic),
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -670,18 +674,14 @@ public class ProviderManagerTests : IDisposable
         var anthropicClient = Mock.Of<IChatCompletionClient>(c => c.ProviderType == ProviderTypes.Anthropic);
 
         var openAi = new Mock<ILlmClientFactory>();
-        openAi.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
-            .Returns((string type) => string.Equals(type, ProviderTypes.OpenAi, StringComparison.OrdinalIgnoreCase));
         openAi.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>())).Returns(openAiClient);
 
         var anthropic = new Mock<ILlmClientFactory>();
-        anthropic.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
-            .Returns((string type) => string.Equals(type, ProviderTypes.Anthropic, StringComparison.OrdinalIgnoreCase));
         anthropic.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>())).Returns(anthropicClient);
 
         using var sut = new ProviderManager(
             configManager,
-            [openAi.Object, anthropic.Object],
+            Resolver((ProviderTypes.OpenAi, openAi.Object), (ProviderTypes.Anthropic, anthropic.Object)),
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -692,6 +692,16 @@ public class ProviderManagerTests : IDisposable
         openAi.Verify(f => f.Create(It.Is<ProviderConfig>(c => c.Type == ProviderTypes.OpenAi), It.IsAny<LlmCapabilityKind>()), Times.Once);
         anthropic.Verify(f => f.Create(It.Is<ProviderConfig>(c => c.Type == ProviderTypes.Anthropic), It.IsAny<LlmCapabilityKind>()), Times.Once);
     }
+
+    /// <summary>单个工厂 → 绑定到 openai 协议的解析器。</summary>
+    private static ILlmClientFactoryResolver Resolver(ILlmClientFactory factory, string protocol = ProviderTypes.OpenAi)
+        => new LlmClientFactoryResolver([new LlmClientFactoryRegistration(protocol, factory)]);
+
+    /// <summary>多组「协议 → 工厂」→ 解析器（用于断言协议路由互不干扰）。</summary>
+    private static ILlmClientFactoryResolver Resolver(
+        params (string Protocol, ILlmClientFactory Factory)[] registrations)
+        => new LlmClientFactoryResolver(
+            registrations.Select(r => new LlmClientFactoryRegistration(r.Protocol, r.Factory)));
 
     private sealed class TestProvider(string id) : LlmProviderBase
     {

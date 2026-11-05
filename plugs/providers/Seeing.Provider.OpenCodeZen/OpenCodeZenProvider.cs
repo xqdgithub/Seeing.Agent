@@ -16,7 +16,7 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
     public static readonly TimeSpan ModelsCacheTtl = TimeSpan.FromMinutes(5);
 
     private readonly OpenCodeZenConfigStore _store;
-    private readonly ILlmClientFactory[] _factories;
+    private readonly ILlmClientFactoryResolver _factories;
     private readonly IProviderRegistry _registry;
     private readonly OpenCodeZenModelsClient _modelsClient;
     private readonly IModelCapabilityManager _capabilityManager;
@@ -30,14 +30,14 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
 
     public OpenCodeZenProvider(
         OpenCodeZenConfigStore store,
-        IEnumerable<ILlmClientFactory> factories,
+        ILlmClientFactoryResolver factories,
         IProviderRegistry registry,
         OpenCodeZenModelsClient modelsClient,
         IModelCapabilityManager capabilityManager,
         ILogger<OpenCodeZenProvider> logger)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
-        _factories = factories?.ToArray() ?? throw new ArgumentNullException(nameof(factories));
+        _factories = factories ?? throw new ArgumentNullException(nameof(factories));
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _modelsClient = modelsClient ?? throw new ArgumentNullException(nameof(modelsClient));
         _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
@@ -238,7 +238,7 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
             // User-Agent / x-opencode-client 为静态识别头。免费模型可无 API Key。
             // 装饰器（重试 / 429 退避）由工厂在返回前应用，本 Provider 只原样交出（spec §7.3）。
             // plug provider 直接调工厂、不经 ConfiguredLlmProvider，故不可把 Apply 上移。
-            var factory = LlmClientFactoryResolver.Require(_factories, Protocol);
+            var factory = _factories.Require(Protocol);
             return factory.Create(new ProviderConfig
             {
                 Id = Id,

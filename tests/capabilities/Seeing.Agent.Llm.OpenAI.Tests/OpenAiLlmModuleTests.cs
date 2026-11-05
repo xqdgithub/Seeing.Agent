@@ -107,27 +107,27 @@ public class OpenAiLlmClientFactoryTests
         }
     }
 
+    /// <summary>
+    /// 协议绑定已从工厂移到注册表（协议是服务键）：OpenAI 工厂同时登记
+    /// <c>openai</c> 与 <c>openai-responses</c> 两个协议键，共享同一实例。
+    /// </summary>
     [Fact]
-    public void SupportsProtocol_ShouldBeCaseInsensitive_AndCoverBothOpenAiProtocols()
+    public void Resolver_CoversBothOpenAiProtocols_AndIsCaseInsensitive()
     {
         var factory = new OpenAiLlmClientFactory(NullLoggerFactory.Instance);
+        var resolver = new LlmClientFactoryResolver(
+        [
+            new LlmClientFactoryRegistration(ProviderTypes.OpenAi, factory),
+            new LlmClientFactoryRegistration(ProviderTypes.OpenAiResponses, factory),
+        ]);
 
-        factory.SupportsProtocol("openai").Should().BeTrue();
-        factory.SupportsProtocol("OpenAI").Should().BeTrue();
-        factory.SupportsProtocol(ProviderTypes.OpenAi).Should().BeTrue();
-        factory.SupportsProtocol("openai-responses").Should().BeTrue();
-        factory.SupportsProtocol("OpenAI-Responses").Should().BeTrue();
-        factory.SupportsProtocol("anthropic").Should().BeFalse();
-        factory.SupportsProtocol("").Should().BeFalse();
-    }
-
-    [Fact]
-    public void SupportedProtocols_ShouldContainOpenAiAndOpenAiResponses()
-    {
-        var factory = new OpenAiLlmClientFactory(NullLoggerFactory.Instance);
-
-        factory.SupportedProtocols.Should().Contain(new[] { ProviderTypes.OpenAi, ProviderTypes.OpenAiResponses });
-        factory.SupportedProtocols.Should().HaveCount(2);
+        resolver.Protocols.Should().BeEquivalentTo(ProviderTypes.OpenAi, ProviderTypes.OpenAiResponses);
+        resolver.Find("openai").Should().BeSameAs(factory);
+        resolver.Find("OpenAI").Should().BeSameAs(factory);
+        resolver.Find("openai-responses").Should().BeSameAs(factory);
+        resolver.Find("OpenAI-Responses").Should().BeSameAs(factory);
+        resolver.Find("anthropic").Should().BeNull();
+        resolver.Find("").Should().BeNull();
     }
 
     [Fact]
@@ -185,12 +185,23 @@ public class OpenAiLlmClientFactoryTests
         client.Should().BeNull();
     }
 
+    /// <summary>
+    /// 协议校验已从工厂移到注册表：工厂不再自检 <c>config.Type</c>，
+    /// 「anthropic 配置不会被 OpenAI 工厂处理」由注册表的协议绑定保证。
+    /// </summary>
     [Fact]
-    public void Create_UnsupportedProtocol_ShouldReturnNull()
+    public void Resolver_AnthropicProtocol_ShouldNotReachOpenAiFactory()
     {
         var factory = new OpenAiLlmClientFactory(NullLoggerFactory.Instance);
+        var resolver = new LlmClientFactoryResolver(
+        [
+            new LlmClientFactoryRegistration(ProviderTypes.OpenAi, factory),
+            new LlmClientFactoryRegistration(ProviderTypes.OpenAiResponses, factory),
+        ]);
 
-        factory.Create(CreateConfig("anthropic"), LlmCapabilityKind.Chat).Should().BeNull();
+        resolver.Find(ProviderTypes.Anthropic).Should().BeNull(
+            "anthropic 协议未登记到 OpenAI 工厂，解析阶段即失败");
+        resolver.Require(ProviderTypes.OpenAi).Should().BeSameAs(factory);
     }
 
     [Fact]

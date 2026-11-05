@@ -63,13 +63,12 @@ public class ProviderConfigRoundTripTests : IDisposable
     {
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions());
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(f => f.SupportsProtocol(It.IsAny<string>())).Returns(true);
         factory.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns(Mock.Of<IChatCompletionClient>());
 
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            new LlmClientFactoryResolver([new LlmClientFactoryRegistration(ProviderTypes.OpenAi, factory.Object)]),
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -106,7 +105,7 @@ public class ProviderConfigRoundTripTests : IDisposable
         var reloaded = await CreateConfigManagerAsync(new SeeingAgentOptions());
         using var second = new ProviderManager(
             reloaded,
-            [factory.Object],
+            new LlmClientFactoryResolver([new LlmClientFactoryRegistration(ProviderTypes.OpenAi, factory.Object)]),
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -193,7 +192,6 @@ public class ProviderConfigRoundTripTests : IDisposable
         Func<ProviderConfig, ConfigLevel, CancellationToken, Task>? saveAsync = null)
     {
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(f => f.SupportsProtocol(It.IsAny<string>())).Returns(true);
         factory.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns(Mock.Of<IChatCompletionClient>());
 

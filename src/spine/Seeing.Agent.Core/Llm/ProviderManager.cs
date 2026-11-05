@@ -12,7 +12,7 @@ namespace Seeing.Agent.Core.Llm;
 public class ProviderManager : IProviderManager, IDisposable
 {
     private readonly UnifiedConfigManager _configManager;
-    private readonly ILlmClientFactory[] _clientFactories;
+    private readonly ILlmClientFactoryResolver _clientFactories;
     private readonly IModelConfigManager _modelManager;
     private readonly IProviderRegistry _registry;
     // Lazy：打断 ModelCapabilityManager → ReloadOrchestrator → ProviderReloadHandler → ProviderManager → MCM 环
@@ -33,14 +33,14 @@ public class ProviderManager : IProviderManager, IDisposable
     /// </summary>
     public ProviderManager(
         UnifiedConfigManager configManager,
-        IEnumerable<ILlmClientFactory> clientFactories,
+        ILlmClientFactoryResolver clientFactories,
         IModelConfigManager modelManager,
         IProviderRegistry registry,
         Lazy<IModelCapabilityManager> capabilityManager,
         ILogger<ProviderManager> logger)
     {
         _configManager = configManager;
-        _clientFactories = clientFactories?.ToArray() ?? [];
+        _clientFactories = clientFactories ?? throw new ArgumentNullException(nameof(clientFactories));
         _modelManager = modelManager;
         _registry = registry;
         _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
@@ -50,16 +50,16 @@ public class ProviderManager : IProviderManager, IDisposable
         _registry.ProvidersChanged += OnProvidersChanged;
 
         _logger.LogInformation(
-            "ProviderManager 已初始化，{Count} 个配置驱动 Provider 已注册（{FactoryCount} 个工厂）",
+            "ProviderManager 已初始化，{Count} 个配置驱动 Provider 已注册（{ProtocolCount} 个协议工厂）",
             _configuredProviders.Count,
-            _clientFactories.Length);
+            _clientFactories.Protocols.Count);
     }
 
     /// <summary>
-    /// 解析支持指定协议的首个工厂（同协议多工厂时 first wins）。
+    /// 按协议解析客户端工厂（协议→工厂唯一映射的唯一出口）。
     /// </summary>
     internal ILlmClientFactory? ResolveFactory(string protocol)
-        => _clientFactories.FirstOrDefault(factory => factory.SupportsProtocol(protocol));
+        => _clientFactories.Find(protocol);
 
     #region 查询
 

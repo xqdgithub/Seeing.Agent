@@ -78,12 +78,4 @@ public abstract class LlmProviderBase : ILlmProvider
         ArgumentNullException.ThrowIfNull(config);
         return factory.Create(config, capability);
     }
-
-    /// <summary>
-    /// 从已登记工厂中解析支持指定协议的首个工厂（同协议多工厂时 first wins）。
-    /// </summary>
-    protected static ILlmClientFactory RequireFactory(
-        IEnumerable<ILlmClientFactory> factories,
-        string protocol)
-        => LlmClientFactoryResolver.Require(factories, protocol);
 }

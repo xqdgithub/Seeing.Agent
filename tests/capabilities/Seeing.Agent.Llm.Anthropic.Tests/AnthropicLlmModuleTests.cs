@@ -47,23 +47,55 @@ public class AnthropicLlmClientFactoryTests
         ApiKey = "test-key"
     };
 
+    /// <summary>
+    /// 协议绑定已从工厂移到注册表（协议是服务键）：工厂不再自述协议，
+    /// 「重复协议 → 构造期抛」是新的守门点。本用例锁定注册表的解析行为。
+    /// </summary>
     [Fact]
-    public void SupportsProtocol_IsCaseInsensitive()
+    public void Resolver_IsCaseInsensitive_AndRejectsUnknownProtocol()
     {
         var factory = new AnthropicLlmClientFactory(NullLoggerFactory.Instance);
+        var resolver = new LlmClientFactoryResolver(
+            [new LlmClientFactoryRegistration(ProviderTypes.Anthropic, factory)]);
 
-        factory.SupportsProtocol("anthropic").Should().BeTrue();
-        factory.SupportsProtocol("Anthropic").Should().BeTrue();
-        factory.SupportsProtocol("ANTHROPIC").Should().BeTrue();
-        factory.SupportsProtocol(ProviderTypes.Anthropic).Should().BeTrue();
-        factory.SupportsProtocol("openai").Should().BeFalse();
+        resolver.Find("anthropic").Should().BeSameAs(factory);
+        resolver.Find("Anthropic").Should().BeSameAs(factory);
+        resolver.Find("ANTHROPIC").Should().BeSameAs(factory);
+        resolver.Find("openai").Should().BeNull();
+
+        var act = () => resolver.Require("openai");
+        act.Should().Throw<NotSupportedException>().WithMessage("*anthropic*");
     }
 
+    /// <summary>同一协议登记两个不同工厂 → 构造期即抛（从前是 first-wins 静默覆盖）。</summary>
     [Fact]
-    public void SupportedProtocols_ContainsOnlyAnthropic()
+    public void Resolver_DuplicateProtocol_ShouldThrow()
+    {
+        var first = new AnthropicLlmClientFactory(NullLoggerFactory.Instance);
+        var second = new AnthropicLlmClientFactory(NullLoggerFactory.Instance);
+
+        var act = () => new LlmClientFactoryResolver(
+        [
+            new LlmClientFactoryRegistration(ProviderTypes.Anthropic, first),
+            new LlmClientFactoryRegistration(ProviderTypes.Anthropic, second),
+        ]);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*重复登记*");
+    }
+
+    /// <summary>同一工厂登记多个协议（OpenAI 工厂同时服务 openai 与 openai-responses）。</summary>
+    [Fact]
+    public void Resolver_SameFactoryMultipleProtocols_IsAllowed()
     {
         var factory = new AnthropicLlmClientFactory(NullLoggerFactory.Instance);
-        factory.SupportedProtocols.Should().Equal(ProviderTypes.Anthropic);
+        var resolver = new LlmClientFactoryResolver(
+        [
+            new LlmClientFactoryRegistration(ProviderTypes.Anthropic, factory),
+            new LlmClientFactoryRegistration(ProviderTypes.OpenAi, factory),
+        ]);
+
+        resolver.Protocols.Should().BeEquivalentTo(ProviderTypes.Anthropic, ProviderTypes.OpenAi);
+        resolver.Find(ProviderTypes.OpenAi).Should().BeSameAs(factory);
     }
 
     [Fact]
@@ -102,16 +134,20 @@ public class AnthropicLlmClientFactoryTests
         decorators.ApplyCalls.Should().Be(0);
     }
 
+    /// <summary>
+    /// 协议校验已从工厂移到注册表：工厂不再自检 <c>config.Type</c>，
+    /// 「openai 配置不会被 Anthropic 工厂处理」由注册表的协议绑定保证。
+    /// </summary>
     [Fact]
-    public void Create_OtherProtocol_ShouldReturnNull()
+    public void Resolver_OpenAiProtocol_ShouldNotReachAnthropicFactory()
     {
         var factory = new AnthropicLlmClientFactory(NullLoggerFactory.Instance);
-        var config = CreateAnthropicConfig();
-        config.Type = ProviderTypes.OpenAi;
+        var resolver = new LlmClientFactoryResolver(
+            [new LlmClientFactoryRegistration(ProviderTypes.Anthropic, factory)]);
 
-        var client = factory.Create(config, LlmCapabilityKind.Chat);
-
-        client.Should().BeNull();
+        resolver.Find(ProviderTypes.OpenAi).Should().BeNull(
+            "openai 协议未登记到 Anthropic 工厂，解析阶段即失败");
+        resolver.Require(ProviderTypes.Anthropic).Should().BeSameAs(factory);
     }
 
     /// <summary>

@@ -16,6 +16,8 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <ProjectReference Include="..\..\abstractions\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
+    <ProjectReference Include="..\..\support\Seeing.Agent.Llm.Support\Seeing.Agent.Llm.Support.csproj" />
+    <ProjectReference Include="..\..\primitives\Seeing.ConfigSchema\Seeing.ConfigSchema.csproj" />
   </ItemGroup>
 
 </Project>

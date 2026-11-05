@@ -43,7 +43,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
         var factory = CreateFactory((_) => expectedClient);
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            new LlmClientFactoryResolver([new LlmClientFactoryRegistration(ProviderTypes.OpenAi, factory.Object)]),
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -66,7 +66,7 @@ public class ProviderManagerCharacterizationTests : IDisposable
         var factory = CreateFactory((_) => CreateClient(ProviderTypes.OpenAi));
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            new LlmClientFactoryResolver([new LlmClientFactoryRegistration(ProviderTypes.OpenAi, factory.Object)]),
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -92,7 +92,11 @@ public class ProviderManagerCharacterizationTests : IDisposable
         var factory = CreateFactory(config => CreateClient(config.Type));
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            new LlmClientFactoryResolver(
+            [
+                new LlmClientFactoryRegistration(ProviderTypes.OpenAi, factory.Object),
+                new LlmClientFactoryRegistration(ProviderTypes.Anthropic, factory.Object),
+            ]),
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -122,7 +126,12 @@ public class ProviderManagerCharacterizationTests : IDisposable
             config.Type == ProviderTypes.OpenAi ? openAiClient : anthropicClient);
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            // 同一工厂同时登记两个协议：本用例会把 Provider 的 type 从 openai 改成 anthropic
+            new LlmClientFactoryResolver(
+            [
+                new LlmClientFactoryRegistration(ProviderTypes.OpenAi, factory.Object),
+                new LlmClientFactoryRegistration(ProviderTypes.Anthropic, factory.Object),
+            ]),
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -206,7 +215,6 @@ public class ProviderManagerCharacterizationTests : IDisposable
     private static Mock<ILlmClientFactory> CreateFactory(Func<ProviderConfig, ILlmCapabilityClient> createClient)
     {
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(candidate => candidate.SupportsProtocol(It.IsAny<string>())).Returns(true);
         factory.Setup(candidate => candidate.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns((ProviderConfig config, LlmCapabilityKind _) => createClient(config));
         return factory;

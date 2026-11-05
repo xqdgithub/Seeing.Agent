@@ -30,26 +30,12 @@ public sealed class OpenAiLlmClientFactory : ILlmClientFactory
     }
 
     /// <inheritdoc />
-    public IReadOnlySet<string> SupportedProtocols { get; } =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ProviderTypes.OpenAi,
-            ProviderTypes.OpenAiResponses
-        };
-
-    /// <inheritdoc />
-    public bool SupportsProtocol(string protocol) =>
-        !string.IsNullOrWhiteSpace(protocol) && SupportedProtocols.Contains(ProviderTypes.Normalize(protocol));
-
-    /// <inheritdoc />
     public ILlmCapabilityClient? Create(ProviderConfig config, LlmCapabilityKind capability)
     {
         ArgumentNullException.ThrowIfNull(config);
 
-        if (!SupportsProtocol(config.Type))
-            return null;
-
-        // 每个客户端实例恰好实现一个能力端口（关卡 1 审查派发顺序 #3：D-1 装饰器靠 `is` 判定能力的前提）
+        // 协议校验交由注册表（协议是服务键）；这里只按能力分派。
+        // 每个客户端实例恰好实现一个能力端口（装饰器靠 `is` 判定能力的前提）。
         ILlmCapabilityClient? client = capability switch
         {
             LlmCapabilityKind.Chat => CreateChatClient(config),

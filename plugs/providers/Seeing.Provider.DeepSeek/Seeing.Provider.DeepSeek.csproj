@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\abstractions\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
     <ProjectReference Include="..\..\..\src\primitives\Seeing.ConfigSchema\Seeing.ConfigSchema.csproj" />
+    <ProjectReference Include="..\..\..\src\support\Seeing.Agent.Llm.Support\Seeing.Agent.Llm.Support.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />

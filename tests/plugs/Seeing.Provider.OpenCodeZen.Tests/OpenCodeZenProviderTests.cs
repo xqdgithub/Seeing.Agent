@@ -41,7 +41,7 @@ public class OpenCodeZenProviderTests
     public void GetClient_Chat_ShouldReturnClient()
     {
         var client = new Mock<IChatCompletionClient>();
-        var sut = CreateSut(factory: OpenAiFactory(client.Object));
+        var sut = CreateSut(factory: Resolver(OpenAiFactory(client.Object)));
 
         sut.GetClient(LlmCapabilityKind.Chat).Should().BeSameAs(client.Object);
         // 同一能力重复取用同一实例（缓存键是 providerId + capability，不是 modelId）
@@ -52,7 +52,7 @@ public class OpenCodeZenProviderTests
     public void GetClient_NonChatCapability_ShouldReturnNullWithoutTouchingFactory()
     {
         var factory = new Mock<ILlmClientFactory>();
-        var sut = CreateSut(factory: OpenAiFactory(factory));
+        var sut = CreateSut(factory: Resolver(OpenAiFactory(factory)));
 
         foreach (var capability in new[]
         {
@@ -88,7 +88,6 @@ public class OpenCodeZenProviderTests
         var decorated = new RetryingDecoratorStub(inner);
         var requestedCapabilities = new List<LlmCapabilityKind>();
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(f => f.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         factory.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns((ProviderConfig _, LlmCapabilityKind capability) =>
             {
@@ -97,7 +96,7 @@ public class OpenCodeZenProviderTests
                 return capability == LlmCapabilityKind.Chat ? decorated : null;
             });
 
-        var sut = CreateSut(factory: factory.Object);
+        var sut = CreateSut(factory: Resolver(factory.Object));
 
         var client = sut.GetClient(LlmCapabilityKind.Chat);
 
@@ -268,7 +267,7 @@ public class OpenCodeZenProviderTests
                 createdConfig = config;
                 return Mock.Of<IChatCompletionClient>();
             });
-        var sut = CreateSut(factory: OpenAiFactory(factory));
+        var sut = CreateSut(factory: Resolver(OpenAiFactory(factory)));
         await sut.WarmupAsync(TestContext.Current.CancellationToken);
 
         _ = sut.GetClient(LlmCapabilityKind.Chat);
@@ -285,24 +284,28 @@ public class OpenCodeZenProviderTests
         createdConfig.Type.Should().Be(ProviderTypes.OpenAi);
     }
 
+    /// <summary>
+    /// 协议→工厂是唯一映射：Provider 按自身协议向注册表要工厂，不会误用别的协议的工厂。
+    /// <para>从前这里靠「遍历集合、首个 SupportsProtocol 命中」实现，
+    /// 现已改为注册表精确查表——本用例锁定「按协议取，不扫集合」。</para>
+    /// </summary>
     [Fact]
-    public void GetClient_WhenAnthropicFactoryRegisteredFirst_UsesOpenAiFactory()
+    public void GetClient_RequestsFactoryByOwnProtocol()
     {
-        var anthropic = new Mock<ILlmClientFactory>();
-        anthropic.Setup(f => f.SupportsProtocol(It.Is<string>(t =>
-            string.Equals(t, ProviderTypes.Anthropic, StringComparison.OrdinalIgnoreCase)))).Returns(true);
-        anthropic.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
-            .Throws(new NotSupportedException("不支持的 Provider 协议: openai"));
-
         var openai = new Mock<ILlmClientFactory>();
         var client = Mock.Of<IChatCompletionClient>();
-        openai.Setup(f => f.SupportsProtocol(It.Is<string>(t =>
-            string.Equals(t, ProviderTypes.OpenAi, StringComparison.OrdinalIgnoreCase)))).Returns(true);
         openai.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>())).Returns(client);
+
+        var anthropic = new Mock<ILlmClientFactory>();
+        var resolver = new LlmClientFactoryResolver(
+        [
+            new LlmClientFactoryRegistration(ProviderTypes.Anthropic, anthropic.Object),
+            new LlmClientFactoryRegistration(ProviderTypes.OpenAi, openai.Object),
+        ]);
 
         var sut = new OpenCodeZenProvider(
             new OpenCodeZenConfigStore(CreateTempDirectory(), NullLogger<OpenCodeZenConfigStore>.Instance),
-            new[] { anthropic.Object, openai.Object },
+            resolver,
             Mock.Of<IProviderRegistry>(),
             new OpenCodeZenModelsClient(NullLogger<OpenCodeZenModelsClient>.Instance),
             PassthroughCapabilityManager(),
@@ -333,7 +336,7 @@ public class OpenCodeZenProviderTests
                     createdConfig = config;
                     return Mock.Of<IChatCompletionClient>();
                 });
-            var sut = CreateSut(store, OpenAiFactory(factory));
+            var sut = CreateSut(store, Resolver(OpenAiFactory(factory)));
             await sut.WarmupAsync(TestContext.Current.CancellationToken);
 
             _ = sut.GetClient(LlmCapabilityKind.Chat);
@@ -376,7 +379,7 @@ public class OpenCodeZenProviderTests
             var registry = new Mock<IProviderRegistry>();
             var sut = new OpenCodeZenProvider(
                 store,
-                new[] { OpenAiFactory(factory) },
+                Resolver(OpenAiFactory(factory)),
                 registry.Object,
                 new OpenCodeZenModelsClient(NullLogger<OpenCodeZenModelsClient>.Instance),
                 PassthroughCapabilityManager(),
@@ -455,7 +458,7 @@ public class OpenCodeZenProviderTests
         var factory = new Mock<ILlmClientFactory>();
         factory.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns(client.Object);
-        var sut = CreateSut(factory: OpenAiFactory(factory));
+        var sut = CreateSut(factory: Resolver(OpenAiFactory(factory)));
         await sut.WarmupAsync(TestContext.Current.CancellationToken);
 
         var result = await sut.TestConnectionAsync(
@@ -475,7 +478,7 @@ public class OpenCodeZenProviderTests
     public async Task TestConnectionAsync_UndeclaredCapability_ShouldReturnFalseWithoutClient()
     {
         var factory = new Mock<ILlmClientFactory>();
-        var sut = CreateSut(factory: OpenAiFactory(factory));
+        var sut = CreateSut(factory: Resolver(OpenAiFactory(factory)));
         await sut.WarmupAsync(TestContext.Current.CancellationToken);
 
         var result = await sut.TestConnectionAsync(
@@ -491,31 +494,29 @@ public class OpenCodeZenProviderTests
     }
 
     private static ILlmClientFactory OpenAiFactory(Mock<ILlmClientFactory>? mock = null)
-    {
-        mock ??= new Mock<ILlmClientFactory>();
-        mock.Setup(f => f.SupportsProtocol(It.Is<string>(t =>
-            string.Equals(t, ProviderTypes.OpenAi, StringComparison.OrdinalIgnoreCase)))).Returns(true);
-        return mock.Object;
-    }
+        => (mock ?? new Mock<ILlmClientFactory>()).Object;
 
     private static ILlmClientFactory OpenAiFactory(IChatCompletionClient client)
     {
         var mock = new Mock<ILlmClientFactory>();
-        mock.Setup(f => f.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         mock.Setup(f => f.Create(It.IsAny<ProviderConfig>(), LlmCapabilityKind.Chat))
             .Returns(client);
         return mock.Object;
     }
 
+    /// <summary>把单个工厂包成「openai 协议」的解析器（协议→工厂唯一映射）。</summary>
+    private static ILlmClientFactoryResolver Resolver(ILlmClientFactory factory)
+        => new LlmClientFactoryResolver([new LlmClientFactoryRegistration(ProviderTypes.OpenAi, factory)]);
+
     private static OpenCodeZenProvider CreateSut(
         OpenCodeZenConfigStore? store = null,
-        ILlmClientFactory? factory = null,
+        ILlmClientFactoryResolver? factory = null,
         OpenCodeZenModelsClient? modelsClient = null)
         => new(
             store ?? new OpenCodeZenConfigStore(
                 CreateTempDirectory(),
                 NullLogger<OpenCodeZenConfigStore>.Instance),
-            new[] { factory ?? OpenAiFactory() },
+            factory ?? Resolver(OpenAiFactory()),
             Mock.Of<IProviderRegistry>(),
             modelsClient ?? new OpenCodeZenModelsClient(NullLogger<OpenCodeZenModelsClient>.Instance),
             PassthroughCapabilityManager(),

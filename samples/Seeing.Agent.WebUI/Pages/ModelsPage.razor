@@ -7,6 +7,7 @@
 @using Seeing.Agent.Abstractions.Llm
 @using Seeing.ConfigSchema
 @inject IProviderManager ProviderManager
+@inject ILlmClientFactoryResolver LlmClientFactories
 @inject IModelConfigManager ModelManager
 @inject UnifiedConfigManager ConfigManager
 @inject IMessageService MessageService
@@ -95,8 +96,11 @@
                                 <FormItem Label="ID"><Input @bind-Value="@_currentProvider.Id" Disabled="true" /></FormItem>
                                 <FormItem Label="类型">
                                     <Select TItemValue="string" TItem="string" @bind-Value="@_currentProvider.Type">
-                                        <SelectOption TItemValue="string" TItem="string" Value="@ProviderTypes.OpenAi">OpenAI</SelectOption>
-                                        <SelectOption TItemValue="string" TItem="string" Value="@ProviderTypes.Anthropic">Anthropic</SelectOption>
+                                        @foreach (var protocol in AvailableProtocols)
+                                        {
+                                            <SelectOption TItemValue="string" TItem="string" Value="@protocol"
+                                                          Label="@DescribeProtocol(protocol)" />
+                                        }
                                     </Select>
                                 </FormItem>
                                 @* 决议 5：Provider 能力多选框。写入 ProviderConfig.Capabilities（唯一真相，决议 15）。 *@
@@ -333,9 +337,15 @@
             <FormItem Label="Provider ID"><Input @bind-Value="@_newProviderId" Placeholder="如 openai" /></FormItem>
             <FormItem Label="类型">
                 <Select TItemValue="string" TItem="string" @bind-Value="@_newProviderType">
-                    <SelectOption TItemValue="string" TItem="string" Value="@ProviderTypes.OpenAi">OpenAI</SelectOption>
-                    <SelectOption TItemValue="string" TItem="string" Value="@ProviderTypes.Anthropic">Anthropic</SelectOption>
+                    @foreach (var protocol in AvailableProtocols)
+                    {
+                        <SelectOption TItemValue="string" TItem="string" Value="@protocol"
+                                      Label="@DescribeProtocol(protocol)" />
+                    }
                 </Select>
+                <div style="color: #888; font-size: 12px; margin-top: 4px;">
+                    协议来自已加载的 LLM 模块；同一协议只允许一个客户端工厂。
+                </div>
             </FormItem>
         </div>
         </Form>
@@ -1129,8 +1139,27 @@
     private void ShowAddProvider()
     {
         _newProviderId = "";
+
+        // 协议下拉来自已加载的 LLM 模块（协议→工厂注册表），不再硬编码：
+        // 从前只写 openai/anthropic，导致 typesafe 与 openai-responses 在 UI 里根本加不出来。
+        var protocols = AvailableProtocols;
+        _newProviderType = protocols.Count > 0 ? protocols[0] : ProviderTypes.OpenAi;
+
         _addModalVisible = true;
     }
+
+    /// <summary>当前可用的协议清单（来自 <see cref="ILlmClientFactoryResolver.Protocols"/>）。</summary>
+    private IReadOnlyList<string> AvailableProtocols => LlmClientFactories.Protocols;
+
+    /// <summary>协议显示名：已内置的给中文说明，其余原样显示（插件自定义协议不写死映射）。</summary>
+    private static string DescribeProtocol(string protocol) => protocol switch
+    {
+        ProviderTypes.OpenAi => "OpenAI",
+        ProviderTypes.OpenAiResponses => "OpenAI Responses",
+        ProviderTypes.Anthropic => "Anthropic",
+        ProviderTypes.TypeSafe => "TypeSafe (Decision)",
+        _ => protocol
+    };
 
     private void ShowAddModel()
     {

@@ -138,27 +138,64 @@ public class LlmProviderContractTests
         create.ReturnType.Should().Be(typeof(ILlmCapabilityClient));
     }
 
+    /// <summary>
+    /// 工厂契约只剩一个成员：协议不是工厂的自述属性，而是注册表里的服务键。
+    /// <para>从前 <c>SupportedProtocols</c> 与 <c>SupportsProtocol</c> 是同一事实的两份表达，
+    /// 且前者零生产消费者（UI 也只硬编码 openai/anthropic）。现已合并到注册表。</para>
+    /// </summary>
     [Fact]
-    public void ILlmClientFactory_ShouldSpeakProtocolsNotTypes()
+    public void ILlmClientFactory_ShouldOnlyCreateClients()
     {
         var factory = typeof(ILlmClientFactory);
 
-        factory.GetProperty("SupportedProtocols")!.PropertyType.Should().Be(typeof(IReadOnlySet<string>));
-        factory.GetMethod("SupportsProtocol")!.GetParameters()[0].ParameterType.Should().Be(typeof(string));
+        factory.GetMethods().Where(m => m.DeclaringType == factory)
+            .Select(m => m.Name).Should().Equal(nameof(ILlmClientFactory.Create));
+        factory.GetProperty("SupportedProtocols").Should().BeNull("协议是注册表的服务键，不是工厂自述");
+        factory.GetMethod("SupportsProtocol").Should().BeNull("协议解析归注册表");
         factory.GetMethod("SupportsType").Should().BeNull("旧的 SupportsType 已改名");
         factory.GetProperty("SupportedTypes").Should().BeNull("旧的 SupportedTypes 已改名");
     }
 
     [Fact]
-    public void LlmClientFactoryResolver_Require_ShouldResolveByProtocol()
+    public void LlmClientFactoryResolver_ShouldResolveByProtocol()
     {
         var factory = new StubFactory();
-        var factories = new ILlmClientFactory[] { factory };
+        var resolver = new LlmClientFactoryResolver(
+            [new LlmClientFactoryRegistration(ProviderTypes.TypeSafe, factory)]);
 
-        LlmClientFactoryResolver.Require(factories, "TypeSafe").Should().BeSameAs(factory);
+        resolver.Require("TypeSafe").Should().BeSameAs(factory);
+        resolver.Find("TypeSafe").Should().BeSameAs(factory);
 
-        var act = () => LlmClientFactoryResolver.Require(factories, "openai");
-        act.Should().Throw<NotSupportedException>();
+        var act = () => resolver.Require("openai");
+        act.Should().Throw<NotSupportedException>().WithMessage("*typesafe*");
+    }
+
+    /// <summary>同一协议重复登记必须在构造期暴露，而不是静默 first-wins。</summary>
+    [Fact]
+    public void LlmClientFactoryResolver_DuplicateProtocol_ShouldThrow()
+    {
+        var act = () => new LlmClientFactoryResolver(
+        [
+            new LlmClientFactoryRegistration(ProviderTypes.OpenAi, new StubFactory()),
+            new LlmClientFactoryRegistration(ProviderTypes.OpenAi, new StubFactory()),
+        ]);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*重复登记*");
+    }
+
+    /// <summary>协议枚举是 UI 协议下拉的唯一来源（从前 UI 硬编码，导致 typesafe 加不出来）。</summary>
+    [Fact]
+    public void LlmClientFactoryResolver_Protocols_ShouldBeEnumerableAndDeduplicated()
+    {
+        var factory = new StubFactory();
+        var resolver = new LlmClientFactoryResolver(
+        [
+            new LlmClientFactoryRegistration(ProviderTypes.OpenAi, factory),
+            new LlmClientFactoryRegistration(ProviderTypes.OpenAiResponses, factory),
+        ]);
+
+        resolver.Protocols.Should().BeEquivalentTo(ProviderTypes.OpenAi, ProviderTypes.OpenAiResponses);
+        resolver.Protocols.Should().OnlyHaveUniqueItems();
     }
 
     // ---------- 装饰器 ----------
@@ -349,12 +386,6 @@ public class LlmProviderContractTests
 
     private sealed class StubFactory : ILlmClientFactory
     {
-        public IReadOnlySet<string> SupportedProtocols { get; } =
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ProviderTypes.TypeSafe };
-
-        public bool SupportsProtocol(string protocol) =>
-            !string.IsNullOrWhiteSpace(protocol) && SupportedProtocols.Contains(protocol.Trim());
-
         public ILlmCapabilityClient? Create(ProviderConfig config, LlmCapabilityKind capability) => null;
     }
 }

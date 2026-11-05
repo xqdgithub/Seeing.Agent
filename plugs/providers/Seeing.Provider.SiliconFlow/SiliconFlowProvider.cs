@@ -1,95 +1,139 @@
 using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Llm.Support.Providers;
 using Seeing.ConfigSchema;
 using System.Text.Json;
 
 namespace Seeing.Provider.SiliconFlow;
 
-public sealed class SiliconFlowProvider : ILlmProvider, IConfigurableLlmProvider, IAsyncDisposable
+/// <summary>
+/// SiliconFlow Provider：OpenAI 兼容端点，可同时供出 chat 与 embedding。
+/// <para><b>能力来源</b>：默认值由本类声明（<see cref="DefaultCapabilities"/>，只有作者知道
+/// 自家端点支持什么）；配置里的 <c>capabilities</c> 可覆盖。装完即可用，无需先改配置。</para>
+/// <para><b>为什么不由工厂推导</b>：同一个 OpenAI 兼容工厂能造 chat/embedding，
+/// 不代表某个具体端点实现了 <c>/v1/embeddings</c>（如 DeepSeek 就没有）。
+/// 由工厂推导会把「协议支持」误当成「端点支持」。</para>
+/// </summary>
+public sealed class SiliconFlowProvider : ConfigurableProviderBase<SiliconFlowOptions>
 {
     public const string ExtensionId = "seeing.provider.siliconflow";
+
     public static readonly TimeSpan ModelsCacheTtl = TimeSpan.FromMinutes(5);
 
     private readonly SiliconFlowConfigStore _store;
-    private readonly IReadOnlyList<ILlmClientFactory> _factories;
     private readonly IProviderRegistry _registry;
     private readonly SiliconFlowModelsClient _modelsClient;
     private readonly IModelCapabilityManager _capabilityManager;
     private readonly ILogger<SiliconFlowProvider> _logger;
     private readonly object _gate = new();
-    private string? _apiKey;
-    private ILlmCapabilityClient? _client;
     private IReadOnlyList<ModelConfig>? _modelsCache;
     private DateTimeOffset _modelsCachedAt;
-    private int _disposed;
 
     public SiliconFlowProvider(
         SiliconFlowConfigStore store,
-        IEnumerable<ILlmClientFactory> factories,
+        ILlmClientFactoryResolver factories,
         IProviderRegistry registry,
         SiliconFlowModelsClient modelsClient,
         IModelCapabilityManager capabilityManager,
         ILogger<SiliconFlowProvider> logger)
+        : base(factories, logger)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
-        _factories = (factories ?? throw new ArgumentNullException(nameof(factories))).ToArray();
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _modelsClient = modelsClient ?? throw new ArgumentNullException(nameof(modelsClient));
         _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public string Id => "siliconflow";
+    public override string Id => "siliconflow";
 
-    public string? Name => "SiliconFlow";
+    public override string? Name => "SiliconFlow";
 
     /// <inheritdoc />
     /// <remarks>SiliconFlow 提供 OpenAI 兼容端点，故协议为 <c>openai</c>。</remarks>
-    public string Protocol => ProviderTypes.OpenAi;
+    public override string Protocol => ProviderTypes.OpenAi;
 
     /// <summary>
-    /// 只供 chat（<see cref="ProviderConfig.Capabilities"/> 的运行时投影）：
-    /// embedding 等能力未经协议工厂实现，虚报会让 Router 在第 5 层报错。
+    /// 作者默认能力：chat + embedding。
+    /// <para>不含 rerank/语音——OpenAI 协议工厂目前没有 rerank 实现，声明了会在 Router 第 5 层报错。</para>
     /// </summary>
-    public LlmCapabilityKind Capabilities => LlmCapabilityKind.Chat;
+    protected override LlmCapabilityKind DefaultCapabilities =>
+        LlmCapabilityKind.Chat | LlmCapabilityKind.Embedding;
 
-    public int MaxRetries => 3;
+    /// <summary>无 API Key 时不创建客户端，连接测试直接失败。</summary>
+    protected override bool HasUsableCredentials => !string.IsNullOrWhiteSpace(Options.ApiKey);
 
-    public async Task WarmupAsync(CancellationToken ct = default)
+    /// <inheritdoc />
+    protected override IReadOnlyList<string>? ReadCapabilityOverride(SiliconFlowOptions options)
+        => options.Capabilities;
+
+    /// <inheritdoc />
+    protected override ProviderConfig BuildProviderConfig() => new()
     {
-        var options = await _store.LoadAsync(ct).ConfigureAwait(false);
+        Id = Id,
+        Type = Protocol,
+        Name = Name,
+        BaseUrl = SiliconFlowModelsClient.DefaultBaseUrl,
+        ApiKey = Options.ApiKey,
+    };
+
+    /// <inheritdoc />
+    protected override ILlmCapabilityClient? CreateClient(
+        ProviderConfig config,
+        LlmCapabilityKind capability)
+        // 装饰器（重试/退避）由工厂在返回前应用，本 Provider 只原样交出（spec §7.3）。
+        => CreateClientViaFactory(config, capability);
+
+    /// <inheritdoc />
+    protected override async Task<SiliconFlowOptions> LoadOptionsAsync(CancellationToken cancellationToken)
+        => await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    protected override async Task SaveOptionsAsync(SiliconFlowOptions options, CancellationToken cancellationToken)
+    {
+        await _store.SaveAsync(options, cancellationToken).ConfigureAwait(false);
+
         lock (_gate)
         {
-            _apiKey = options.ApiKey;
+            _modelsCache = null;
+            _modelsCachedAt = default;
         }
     }
 
-    public ILlmCapabilityClient? GetClient(LlmCapabilityKind capability)
+    /// <inheritdoc />
+    protected override Task OnOptionsSavedAsync(CancellationToken cancellationToken)
     {
-        // 不供出的能力返回 null（契约规定不抛、不回退）
-        if (capability != LlmCapabilityKind.Chat)
-            return null;
-
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-
-        lock (_gate)
-        {
-            ObjectDisposedException.ThrowIf(_disposed != 0, this);
-            return _client ??= CreateClient();
-        }
+        // 重新注册让 ProviderInfo 的能力投影跟上新配置（能力覆盖可能已变）。
+        _registry.Register(this, ExtensionId);
+        return Task.CompletedTask;
     }
 
-    public async Task<IReadOnlyList<ModelConfig>> GetModelsAsync(
+    /// <inheritdoc />
+    protected override Task<IReadOnlyDictionary<string, object?>> ExportOptionsAsync(
+        SiliconFlowOptions options,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyDictionary<string, object?> values = new Dictionary<string, object?>
+        {
+            ["ApiKey"] = options.ApiKey,
+            ["Capabilities"] = options.Capabilities is null
+                ? null
+                : new List<string>(options.Capabilities),
+        };
+
+        return Task.FromResult(values);
+    }
+
+    /// <inheritdoc />
+    public override async Task<IReadOnlyList<ModelConfig>> GetModelsAsync(
         CancellationToken cancellationToken = default)
     {
-        string? apiKey;
+        var apiKey = Options.ApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
+            return Array.Empty<ModelConfig>();
+
         lock (_gate)
         {
-            apiKey = _apiKey;
-            if (string.IsNullOrWhiteSpace(apiKey))
-                return Array.Empty<ModelConfig>();
-
             if (_modelsCache is not null &&
                 DateTimeOffset.Now - _modelsCachedAt < ModelsCacheTtl)
             {
@@ -109,156 +153,10 @@ public sealed class SiliconFlowProvider : ILlmProvider, IConfigurableLlmProvider
 
         lock (_gate)
         {
-            if (string.Equals(_apiKey, apiKey, StringComparison.Ordinal))
-            {
-                _modelsCache = models;
-                _modelsCachedAt = DateTimeOffset.Now;
-            }
+            _modelsCache = models;
+            _modelsCachedAt = DateTimeOffset.Now;
         }
 
         return models;
-    }
-
-    public IReadOnlyList<ConfigFieldSchema>? GetConfigSchema()
-        => OptionsSchemaBuilder.FromType(typeof(SiliconFlowOptions));
-
-    public async Task<IReadOnlyDictionary<string, object?>> LoadConfigAsync(
-        CancellationToken cancellationToken = default)
-    {
-        var options = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
-        return new Dictionary<string, object?>
-        {
-            ["ApiKey"] = options.ApiKey
-        };
-    }
-
-    public async Task SaveConfigAsync(
-        IReadOnlyDictionary<string, object?> values,
-        ConfigLevel level,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(values);
-        _ = level;
-
-        var apiKey = GetString(values, "ApiKey");
-        await _store.SaveAsync(
-            new SiliconFlowOptions { ApiKey = apiKey },
-            cancellationToken).ConfigureAwait(false);
-
-        ILlmCapabilityClient? oldClient;
-        lock (_gate)
-        {
-            _apiKey = apiKey;
-            _modelsCache = null;
-            _modelsCachedAt = default;
-            oldClient = InvalidateClient();
-        }
-
-        await DisposeClientAsync(oldClient).ConfigureAwait(false);
-        _registry.Register(this, ExtensionId);
-    }
-
-    public async Task<bool> TestConnectionAsync(
-        string modelId,
-        LlmCapabilityKind capability,
-        CancellationToken cancellationToken = default)
-    {
-        lock (_gate)
-        {
-            if (string.IsNullOrWhiteSpace(_apiKey))
-                return false;
-        }
-
-        // Provider 不推导、不猜能力：直接取该能力客户端，不供出即 false（spec §7.3 / 决议 9）
-        var client = GetClient(capability);
-        if (client is null)
-            return false;
-
-        return await client.TestConnectionAsync(
-            modelId, capability, call: null, cancellationToken).ConfigureAwait(false);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        ILlmCapabilityClient? client;
-        lock (_gate)
-        {
-            if (_disposed != 0)
-                return;
-
-            Volatile.Write(ref _disposed, 1);
-            client = InvalidateClient();
-            _modelsCache = null;
-        }
-
-        await DisposeClientAsync(client).ConfigureAwait(false);
-    }
-
-    private ILlmCapabilityClient? CreateClient()
-    {
-        try
-        {
-            var factory = LlmClientFactoryResolver.Require(_factories, Protocol);
-            // 装饰器（重试 / 429 退避）由工厂在返回前应用，本 Provider 只原样交出（spec §7.3）。
-            // plug provider 直接调工厂、不经 ConfiguredLlmProvider，故不可把 Apply 上移。
-            return factory.Create(new ProviderConfig
-            {
-                Id = Id,
-                Type = Protocol,
-                Name = Name,
-                BaseUrl = SiliconFlowModelsClient.DefaultBaseUrl,
-                ApiKey = _apiKey
-            }, LlmCapabilityKind.Chat);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "创建 SiliconFlow Provider 客户端失败");
-            throw;
-        }
-    }
-
-    private ILlmCapabilityClient? InvalidateClient()
-    {
-        var oldClient = _client;
-        _client = null;
-        return oldClient;
-    }
-
-    private async ValueTask DisposeClientAsync(ILlmCapabilityClient? client)
-    {
-        if (client is null)
-            return;
-
-        try
-        {
-            switch (client)
-            {
-                case IAsyncDisposable asyncDisposable:
-                    await asyncDisposable.DisposeAsync().ConfigureAwait(false);
-                    break;
-                case IDisposable disposable:
-                    disposable.Dispose();
-                    break;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "释放 SiliconFlow Provider 客户端失败");
-        }
-    }
-
-    private static string? GetString(
-        IReadOnlyDictionary<string, object?> values,
-        string key)
-    {
-        if (!values.TryGetValue(key, out var raw) || raw is null)
-            return null;
-
-        return raw switch
-        {
-            string value => value,
-            JsonElement { ValueKind: JsonValueKind.String } element => element.GetString(),
-            _ => raw.ToString()
-        };
     }
 }

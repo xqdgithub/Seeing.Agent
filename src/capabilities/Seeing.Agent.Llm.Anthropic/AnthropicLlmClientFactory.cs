@@ -26,20 +26,13 @@ public sealed class AnthropicLlmClientFactory : ILlmClientFactory
     }
 
     /// <inheritdoc />
-    public IReadOnlySet<string> SupportedProtocols { get; } =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ProviderTypes.Anthropic };
-
-    /// <inheritdoc />
-    public bool SupportsProtocol(string protocol) =>
-        !string.IsNullOrWhiteSpace(protocol) && SupportedProtocols.Contains(protocol);
-
-    /// <inheritdoc />
     public ILlmCapabilityClient? Create(ProviderConfig config, LlmCapabilityKind capability)
     {
         ArgumentNullException.ThrowIfNull(config);
 
-        // 协议或能力任一不匹配都返回 null：契约规定不支持的组合不抛
-        if (!SupportsProtocol(config.Type) || capability != LlmCapabilityKind.Chat)
+        // Anthropic 当前只供 Chat；其余能力返回 null（决议 19：以配置为准，工厂不实现即报空，
+        // 由 Router 第 5 层报错，不做回退）。协议校验在注册表侧。
+        if (capability != LlmCapabilityKind.Chat)
             return null;
 
         var httpClient = LlmHttpClientFactory.Create(config);

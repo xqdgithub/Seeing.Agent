@@ -69,23 +69,19 @@ public class LlmAndExecutorTests : IDisposable
         var anthropicClient = Mock.Of<IChatCompletionClient>(c => c.ProviderType == ProviderTypes.Anthropic);
 
         var openAi = new Mock<ILlmClientFactory>();
-        openAi.SetupGet(f => f.SupportedProtocols)
-            .Returns(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ProviderTypes.OpenAi });
-        openAi.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
-            .Returns((string t) => string.Equals(t, ProviderTypes.OpenAi, StringComparison.OrdinalIgnoreCase));
         openAi.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>())).Returns(openAiClient);
 
         var anthropic = new Mock<ILlmClientFactory>();
-        anthropic.SetupGet(f => f.SupportedProtocols)
-            .Returns(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ProviderTypes.Anthropic });
-        anthropic.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
-            .Returns((string t) => string.Equals(t, ProviderTypes.Anthropic, StringComparison.OrdinalIgnoreCase));
         anthropic.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>())).Returns(anthropicClient);
 
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         using var sut = new ProviderManager(
             configManager,
-            [openAi.Object, anthropic.Object],
+            new LlmClientFactoryResolver(
+            [
+                new LlmClientFactoryRegistration(ProviderTypes.OpenAi, openAi.Object),
+                new LlmClientFactoryRegistration(ProviderTypes.Anthropic, anthropic.Object),
+            ]),
             Mock.Of<IModelConfigManager>(),
             registry,
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -97,7 +93,8 @@ public class LlmAndExecutorTests : IDisposable
         // 「关 openai」= 仅 anthropic 工厂仍可解析 anthropic 路径（并列独立）
         using var anthropicOnly = new ProviderManager(
             configManager,
-            [anthropic.Object],
+            new LlmClientFactoryResolver(
+                [new LlmClientFactoryRegistration(ProviderTypes.Anthropic, anthropic.Object)]),
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
@@ -192,12 +189,16 @@ public class LlmAndExecutorTests : IDisposable
 
         // 路由键是 string，不是 ProviderType 枚举
         typeof(ProviderConfig).Assembly.GetType("Seeing.Agent.Abstractions.Llm.ProviderType")
-            .Should().BeNull("第三方经 SupportedProtocols 声明，不改 Abstractions ProviderType 枚举");
+            .Should().BeNull("第三方经协议注册表声明，不改 Abstractions ProviderType 枚举");
 
+        // 插件自定义协议：登记后即可被解析（协议是服务键，工厂不自述协议）
         ILlmClientFactory factory = new ThirdPartyFactory();
-        factory.SupportedProtocols.Should().Contain("custom-vendor");
-        factory.SupportsProtocol("Custom-Vendor").Should().BeTrue();
-        factory.SupportsProtocol(ProviderTypes.OpenAi).Should().BeFalse();
+        var resolver = new LlmClientFactoryResolver(
+            [new LlmClientFactoryRegistration("custom-vendor", factory)]);
+
+        resolver.Protocols.Should().Contain("custom-vendor");
+        resolver.Find("Custom-Vendor").Should().BeSameAs(factory);
+        resolver.Find(ProviderTypes.OpenAi).Should().BeNull();
     }
 
     private static async IAsyncEnumerable<IMessageEvent> EmptyStream()
@@ -214,12 +215,6 @@ public class LlmAndExecutorTests : IDisposable
 
     private sealed class ThirdPartyFactory : ILlmClientFactory
     {
-        public IReadOnlySet<string> SupportedProtocols { get; } =
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "custom-vendor" };
-
-        public bool SupportsProtocol(string protocol) =>
-            !string.IsNullOrWhiteSpace(protocol) && SupportedProtocols.Contains(protocol);
-
         public ILlmCapabilityClient? Create(ProviderConfig config, LlmCapabilityKind capability) =>
             throw new NotSupportedException();
     }

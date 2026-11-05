@@ -26,21 +26,11 @@ public sealed class TypeSafeSystemOneClientFactory : ILlmClientFactory
     }
 
     /// <inheritdoc />
-    public IReadOnlySet<string> SupportedProtocols { get; } =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ProviderTypes.TypeSafe };
-
-    /// <inheritdoc />
-    public bool SupportsProtocol(string protocol)
-        => !string.IsNullOrWhiteSpace(protocol) && SupportedProtocols.Contains(protocol);
-
-    /// <inheritdoc />
     public ILlmCapabilityClient? Create(ProviderConfig config, LlmCapabilityKind capability)
     {
         ArgumentNullException.ThrowIfNull(config);
 
-        if (!SupportsProtocol(config.Type))
-            return null;
-
+        // 本工厂只供 Decision；协议校验在注册表侧（协议是服务键）。
         if (!capability.HasFlag(LlmCapabilityKind.Decision))
             return null;
 

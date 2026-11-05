@@ -36,10 +36,6 @@ public class ConfiguredLlmProviderTests
         ILlmCapabilityClient? fallback = null)
     {
         var factory = new Mock<ILlmClientFactory>();
-        factory.SetupGet(f => f.SupportedProtocols)
-            .Returns(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ProviderTypes.OpenAi });
-        factory.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
-            .Returns((string protocol) => string.Equals(protocol, ProviderTypes.OpenAi, StringComparison.OrdinalIgnoreCase));
         factory.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns((ProviderConfig _, LlmCapabilityKind kind) =>
                 byCapability is not null && byCapability.TryGetValue(kind, out var hit)

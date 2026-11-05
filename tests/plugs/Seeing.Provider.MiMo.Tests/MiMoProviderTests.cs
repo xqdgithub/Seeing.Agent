@@ -41,7 +41,7 @@ public class MiMoProviderTests
     public void GetClient_Chat_ShouldReturnClient()
     {
         var client = new Mock<IChatCompletionClient>();
-        var sut = CreateSut(apiKey: "sk-test", factory: OpenAiFactory(client.Object));
+        var sut = CreateSut(apiKey: "sk-test", factory: Resolver(OpenAiFactory(client.Object)));
 
         sut.GetClient(LlmCapabilityKind.Chat).Should().BeSameAs(client.Object);
         // 同一能力重复取用同一实例（缓存键是 providerId + capability，不是 modelId）
@@ -52,7 +52,7 @@ public class MiMoProviderTests
     public void GetClient_NonChatCapability_ShouldReturnNullWithoutTouchingFactory()
     {
         var factory = new Mock<ILlmClientFactory>();
-        var sut = CreateSut(apiKey: "sk-test", factory: OpenAiFactory(factory));
+        var sut = CreateSut(apiKey: "sk-test", factory: Resolver(OpenAiFactory(factory)));
 
         foreach (var capability in new[]
         {
@@ -88,7 +88,6 @@ public class MiMoProviderTests
         var decorated = new RetryingDecoratorStub(inner);
         var requestedCapabilities = new List<LlmCapabilityKind>();
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(f => f.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         factory.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns((ProviderConfig _, LlmCapabilityKind capability) =>
             {
@@ -97,7 +96,7 @@ public class MiMoProviderTests
                 return capability == LlmCapabilityKind.Chat ? decorated : null;
             });
 
-        var sut = CreateSut(apiKey: "sk-test", factory: factory.Object);
+        var sut = CreateSut(apiKey: "sk-test", factory: Resolver(factory.Object));
 
         var client = sut.GetClient(LlmCapabilityKind.Chat);
 
@@ -154,7 +153,7 @@ public class MiMoProviderTests
             var registry = new Mock<IProviderRegistry>();
             var sut = new MiMoProvider(
                 store,
-                new[] { OpenAiFactory(factory) },
+                Resolver(OpenAiFactory(factory)),
                 registry.Object,
                 new MiMoModelsClient(NullLogger<MiMoModelsClient>.Instance),
                 PassthroughCapabilityManager(),
@@ -199,7 +198,7 @@ public class MiMoProviderTests
                     createdConfig = config;
                     return Mock.Of<IChatCompletionClient>();
                 });
-            var sut = CreateSut(store, OpenAiFactory(factory));
+            var sut = CreateSut(store, Resolver(OpenAiFactory(factory)));
 
             await sut.WarmupAsync(TestContext.Current.CancellationToken);
             _ = sut.GetClient(LlmCapabilityKind.Chat);
@@ -258,7 +257,7 @@ public class MiMoProviderTests
     public async Task TestConnectionAsync_WithoutApiKey_ReturnsFalseWithoutClient()
     {
         var factory = new Mock<ILlmClientFactory>();
-        var sut = CreateSut(apiKey: null, factory: OpenAiFactory(factory));
+        var sut = CreateSut(apiKey: null, factory: Resolver(OpenAiFactory(factory)));
         await sut.WarmupAsync(TestContext.Current.CancellationToken);
 
         var result = await sut.TestConnectionAsync(
@@ -285,7 +284,7 @@ public class MiMoProviderTests
         var factory = new Mock<ILlmClientFactory>();
         factory.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns(client.Object);
-        var sut = CreateSut(apiKey: "sk-test", factory: OpenAiFactory(factory));
+        var sut = CreateSut(apiKey: "sk-test", factory: Resolver(OpenAiFactory(factory)));
         await sut.WarmupAsync(TestContext.Current.CancellationToken);
 
         var result = await sut.TestConnectionAsync(
@@ -305,7 +304,7 @@ public class MiMoProviderTests
     public async Task TestConnectionAsync_UndeclaredCapability_ShouldReturnFalseWithoutClient()
     {
         var factory = new Mock<ILlmClientFactory>();
-        var sut = CreateSut(apiKey: "sk-test", factory: OpenAiFactory(factory));
+        var sut = CreateSut(apiKey: "sk-test", factory: Resolver(OpenAiFactory(factory)));
         await sut.WarmupAsync(TestContext.Current.CancellationToken);
 
         var result = await sut.TestConnectionAsync(
@@ -321,25 +320,23 @@ public class MiMoProviderTests
     }
 
     private static ILlmClientFactory OpenAiFactory(Mock<ILlmClientFactory>? mock = null)
-    {
-        mock ??= new Mock<ILlmClientFactory>();
-        mock.Setup(f => f.SupportsProtocol(It.Is<string>(t =>
-            string.Equals(t, ProviderTypes.OpenAi, StringComparison.OrdinalIgnoreCase)))).Returns(true);
-        return mock.Object;
-    }
+        => (mock ?? new Mock<ILlmClientFactory>()).Object;
 
     private static ILlmClientFactory OpenAiFactory(IChatCompletionClient client)
     {
         var mock = new Mock<ILlmClientFactory>();
-        mock.Setup(f => f.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         mock.Setup(f => f.Create(It.IsAny<ProviderConfig>(), LlmCapabilityKind.Chat))
             .Returns(client);
         return mock.Object;
     }
 
+    /// <summary>把单个工厂包成「openai 协议」的解析器（协议→工厂唯一映射）。</summary>
+    private static ILlmClientFactoryResolver Resolver(ILlmClientFactory factory)
+        => new LlmClientFactoryResolver([new LlmClientFactoryRegistration(ProviderTypes.OpenAi, factory)]);
+
     private static MiMoProvider CreateSut(
         string? apiKey,
-        ILlmClientFactory? factory = null)
+        ILlmClientFactoryResolver? factory = null)
     {
         var dir = CreateTempDirectory();
         var store = new MiMoConfigStore(dir, NullLogger<MiMoConfigStore>.Instance);
@@ -351,12 +348,12 @@ public class MiMoProviderTests
 
     private static MiMoProvider CreateSut(
         MiMoConfigStore store,
-        ILlmClientFactory? factory = null,
+        ILlmClientFactoryResolver? factory = null,
         MiMoModelsClient? modelsClient = null)
     {
         return new MiMoProvider(
             store,
-            new[] { factory ?? OpenAiFactory() },
+            factory ?? Resolver(OpenAiFactory()),
             Mock.Of<IProviderRegistry>(),
             modelsClient ?? new MiMoModelsClient(NullLogger<MiMoModelsClient>.Instance),
             PassthroughCapabilityManager(),

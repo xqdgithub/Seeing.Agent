@@ -68,14 +68,12 @@ public class MigrationTests : IDisposable
         providers["legacy-anthropic"].Type.Should().Be(ProviderTypes.Anthropic);
 
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(f => f.SupportsProtocol(It.IsAny<string>()))
-            .Returns((string t) => string.Equals(t, ProviderTypes.OpenAi, StringComparison.OrdinalIgnoreCase));
         factory.Setup(f => f.Create(It.IsAny<ProviderConfig>(), It.IsAny<LlmCapabilityKind>()))
             .Returns(Mock.Of<IChatCompletionClient>());
 
         using var sut = new ProviderManager(
             configManager,
-            [factory.Object],
+            new LlmClientFactoryResolver([new LlmClientFactoryRegistration(ProviderTypes.OpenAi, factory.Object)]),
             Mock.Of<IModelConfigManager>(),
             new ProviderRegistry(NullLogger<ProviderRegistry>.Instance),
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),

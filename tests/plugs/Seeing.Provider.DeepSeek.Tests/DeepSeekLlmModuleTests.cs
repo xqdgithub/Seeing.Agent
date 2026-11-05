@@ -23,8 +23,9 @@ public class DeepSeekLlmModuleTests
         services.AddSingleton(registry.Object);
 
         var factory = new Mock<ILlmClientFactory>();
-        factory.Setup(f => f.SupportsProtocol(ProviderTypes.OpenAi)).Returns(true);
         services.AddSingleton(factory.Object);
+        services.AddSingleton<ILlmClientFactoryResolver>(new LlmClientFactoryResolver(
+            [new LlmClientFactoryRegistration(ProviderTypes.OpenAi, factory.Object)]));
 
         var capability = new Mock<IModelCapabilityManager>();
         capability.Setup(m => m.TryEnrichIfEnabledAsync(It.IsAny<ModelConfig>(), It.IsAny<CancellationToken>()))
