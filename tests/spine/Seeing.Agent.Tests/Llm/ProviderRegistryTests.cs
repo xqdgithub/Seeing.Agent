@@ -16,7 +16,7 @@ public class ProviderRegistryTests
         var sut = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var provider = CreateProvider("test");
 
-        sut.Register(provider.Object);
+        sut.Register(new ProviderRegistration(provider.Object, ProviderOrigin.Configured));
 
         sut.GetProvider("test").Should().BeSameAs(provider.Object);
         sut.GetProviders()["test"].Should().BeSameAs(provider.Object);
@@ -30,8 +30,8 @@ public class ProviderRegistryTests
         var original = CreateProvider("test");
         var replacement = CreateProvider("test");
 
-        sut.Register(original.Object);
-        sut.Register(replacement.Object);
+        sut.Register(new ProviderRegistration(original.Object, ProviderOrigin.Configured));
+        sut.Register(new ProviderRegistration(replacement.Object, ProviderOrigin.Configured));
 
         sut.GetProvider("test").Should().BeSameAs(replacement.Object);
         logger.Entries.Should().Contain(entry =>
@@ -46,8 +46,8 @@ public class ProviderRegistryTests
         var disposable = original.As<IAsyncDisposable>();
         disposable.Setup(candidate => candidate.DisposeAsync()).Returns(ValueTask.CompletedTask);
 
-        sut.Register(original.Object);
-        sut.Register(CreateProvider("test").Object);
+        sut.Register(new ProviderRegistration(original.Object, ProviderOrigin.Configured));
+        sut.Register(new ProviderRegistration(CreateProvider("test").Object, ProviderOrigin.Configured));
 
         disposable.Verify(candidate => candidate.DisposeAsync(), Times.Once);
     }
@@ -59,7 +59,7 @@ public class ProviderRegistryTests
         var provider = CreateProvider("test");
         var disposable = provider.As<IAsyncDisposable>();
         disposable.Setup(d => d.DisposeAsync()).Returns(ValueTask.CompletedTask);
-        sut.Register(provider.Object);
+        sut.Register(new ProviderRegistration(provider.Object, ProviderOrigin.Configured));
 
         var removed = sut.Unregister("test");
 
@@ -75,9 +75,9 @@ public class ProviderRegistryTests
         var first = CreateProvider("first");
         var second = CreateProvider("second");
         var other = CreateProvider("other");
-        sut.Register(first.Object, "extension-a");
-        sut.Register(second.Object, "extension-a");
-        sut.Register(other.Object, "extension-b");
+        sut.Register(new ProviderRegistration(first.Object, ProviderOrigin.Extension, OwnerId: "extension-a"));
+        sut.Register(new ProviderRegistration(second.Object, ProviderOrigin.Extension, OwnerId: "extension-a"));
+        sut.Register(new ProviderRegistration(other.Object, ProviderOrigin.Extension, OwnerId: "extension-b"));
 
         var removed = sut.UnregisterByOwner("extension-a");
 
@@ -94,7 +94,7 @@ public class ProviderRegistryTests
         var raised = 0;
         sut.ProvidersChanged += (_, _) => raised++;
 
-        sut.Register(CreateProvider("test").Object);
+        sut.Register(new ProviderRegistration(CreateProvider("test").Object, ProviderOrigin.Configured));
 
         raised.Should().Be(1);
     }
@@ -110,7 +110,8 @@ public class ProviderRegistryTests
         {
             start.Wait(cancellationToken);
             for (var i = 0; i < 500; i++)
-                sut.Register(CreateProvider($"provider-{i}").Object);
+                sut.Register(new ProviderRegistration(
+                    CreateProvider($"provider-{i}").Object, ProviderOrigin.Configured));
         }, cancellationToken);
 
         var readers = Enumerable.Range(0, 4).Select(_ => Task.Run(() =>

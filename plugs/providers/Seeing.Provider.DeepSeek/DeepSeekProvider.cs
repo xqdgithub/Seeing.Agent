@@ -93,7 +93,7 @@ public sealed class DeepSeekProvider : ConfigurableProviderBase<DeepSeekOptions>
     protected override Task OnOptionsSavedAsync(CancellationToken cancellationToken)
     {
         // 重新注册让 ProviderInfo 的能力投影跟上新配置（注册表内部是幂等替换）。
-        _registry.Register(this, ExtensionId);
+        _registry.Register(new ProviderRegistration(this, ProviderOrigin.Extension, OwnerId: ExtensionId));
         return Task.CompletedTask;
     }
 

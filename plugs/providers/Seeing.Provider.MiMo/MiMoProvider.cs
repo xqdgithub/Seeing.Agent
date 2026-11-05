@@ -93,7 +93,7 @@ public sealed class MiMoProvider : ConfigurableProviderBase<MiMoOptions>
     protected override Task OnOptionsSavedAsync(CancellationToken cancellationToken)
     {
         // 重新注册让 ProviderInfo 的能力投影跟上新配置（能力覆盖可能已变）。
-        _registry.Register(this, ExtensionId);
+        _registry.Register(new ProviderRegistration(this, ProviderOrigin.Extension, OwnerId: ExtensionId));
         return Task.CompletedTask;
     }
 

@@ -21,9 +21,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
     {
         var config = await CreateConfigAsync(new SeeingAgentOptions());
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
-        registry.Register(
-            new TestProvider("extension", [new() { Id = "initial-model" }]),
-            ownerExtensionId: "sample-extension");
+        registry.Register(new ProviderRegistration(new TestProvider("extension", [new() { Id = "initial-model" }]), ProviderOrigin.Extension, OwnerId: "sample-extension"));
         using var catalog = new ModelConfigManager(
             config,
             registry,
@@ -52,7 +50,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         };
         var config = await CreateConfigAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
-        registry.Register(new TestProvider("openai", [new() { Id = "configured" }]));
+        registry.Register(new ProviderRegistration(new TestProvider("openai", [new() { Id = "configured" }]), ProviderOrigin.Configured));
         using var catalog = new ModelConfigManager(
             config,
             registry,
@@ -60,9 +58,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         var refreshed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         catalog.ModelConfigChanged += (_, _) => refreshed.TrySetResult();
 
-        registry.Register(
-            new TestProvider("extension", [new() { Id = "dynamic-model" }]),
-            ownerExtensionId: "sample-extension");
+        registry.Register(new ProviderRegistration(new TestProvider("extension", [new() { Id = "dynamic-model" }]), ProviderOrigin.Extension, OwnerId: "sample-extension"));
 
         await refreshed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
@@ -77,8 +73,8 @@ public sealed class ModelCatalogAggregationTests : IDisposable
     {
         var config = await CreateConfigAsync(new SeeingAgentOptions());
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
-        registry.Register(new TestProvider("healthy", [new() { Id = "visible" }]), ownerExtensionId: "ext");
-        registry.Register(new TestProvider("failing", error: new InvalidOperationException("expected")), ownerExtensionId: "ext");
+        registry.Register(new ProviderRegistration(new TestProvider("healthy", [new() { Id = "visible" }]), ProviderOrigin.Extension, OwnerId: "ext"));
+        registry.Register(new ProviderRegistration(new TestProvider("failing", error: new InvalidOperationException("expected")), ProviderOrigin.Extension, OwnerId: "ext"));
         using var catalog = new ModelConfigManager(
             config,
             registry,
@@ -86,7 +82,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         var refreshed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         catalog.ModelConfigChanged += (_, _) => refreshed.TrySetResult();
 
-        registry.Register(new TestProvider("trigger", []), ownerExtensionId: "ext");
+        registry.Register(new ProviderRegistration(new TestProvider("trigger", []), ProviderOrigin.Extension, OwnerId: "ext"));
 
         // 事件在缓存刷新完成后发出，可直接作为同步点断言：单个 Provider 抛异常须被隔离，
         // 且按 Provider 粒度的刷新不得使在途全量刷新作废而丢失其他 Provider 的模型。
@@ -100,7 +96,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
     {
         var config = await CreateConfigAsync(new SeeingAgentOptions());
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
-        registry.Register(new TestProvider("extension"), ownerExtensionId: "sample-extension");
+        registry.Register(new ProviderRegistration(new TestProvider("extension"), ProviderOrigin.Extension, OwnerId: "sample-extension"));
         using var catalog = new ModelConfigManager(
             config,
             registry,
@@ -118,7 +114,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
     {
         var config = await CreateConfigAsync(new SeeingAgentOptions());
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
-        registry.Register(new TestProvider("extension"), ownerExtensionId: "sample-extension");
+        registry.Register(new ProviderRegistration(new TestProvider("extension"), ProviderOrigin.Extension, OwnerId: "sample-extension"));
         using var catalog = new ModelConfigManager(
             config,
             registry,
@@ -150,8 +146,8 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         };
         var config = await CreateConfigAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
-        registry.Register(new TestProvider("openai", [new() { Id = "original" }]));
-        registry.Register(new TestProvider("extension"), ownerExtensionId: "sample-extension");
+        registry.Register(new ProviderRegistration(new TestProvider("openai", [new() { Id = "original" }]), ProviderOrigin.Configured));
+        registry.Register(new ProviderRegistration(new TestProvider("extension"), ProviderOrigin.Extension, OwnerId: "sample-extension"));
         using var catalog = new ModelConfigManager(
             config,
             registry,
@@ -170,9 +166,9 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         var config = await CreateConfigAsync(new SeeingAgentOptions());
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var gate = new ProviderCallGate(2);
-        registry.Register(new GatedProvider("first", gate, [new() { Id = "visible" }]), ownerExtensionId: "gate");
-        registry.Register(new GatedProvider("second", gate, [new() { Id = "also-visible" }]), ownerExtensionId: "gate");
-        registry.Register(new TestProvider("failing", error: new InvalidOperationException("expected")), ownerExtensionId: "gate");
+        registry.Register(new ProviderRegistration(new GatedProvider("first", gate, [new() { Id = "visible" }]), ProviderOrigin.Extension, OwnerId: "gate"));
+        registry.Register(new ProviderRegistration(new GatedProvider("second", gate, [new() { Id = "also-visible" }]), ProviderOrigin.Extension, OwnerId: "gate"));
+        registry.Register(new ProviderRegistration(new TestProvider("failing", error: new InvalidOperationException("expected")), ProviderOrigin.Extension, OwnerId: "gate"));
         using var catalog = new ModelConfigManager(
             config,
             registry,
@@ -195,7 +191,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         var config = await CreateConfigAsync(new SeeingAgentOptions());
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var provider = new SequencedProvider();
-        registry.Register(provider, ownerExtensionId: "sequence");
+        registry.Register(new ProviderRegistration(provider, ProviderOrigin.Extension, OwnerId: "sequence"));
         using var catalog = new ModelConfigManager(
             config,
             registry,
@@ -218,7 +214,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
         var provider = new MutableModelsProvider("recoverable");
         provider.SetModels([]);
-        registry.Register(provider, ownerExtensionId: "recover");
+        registry.Register(new ProviderRegistration(provider, ProviderOrigin.Extension, OwnerId: "recover"));
         using var catalog = new ModelConfigManager(
             config,
             registry,
@@ -242,8 +238,8 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         first.SetModels([new ModelConfig { Id = "a" }]);
         var second = new MutableModelsProvider("second");
         second.SetModels([new ModelConfig { Id = "b" }]);
-        registry.Register(first, ownerExtensionId: "ext");
-        registry.Register(second, ownerExtensionId: "ext");
+        registry.Register(new ProviderRegistration(first, ProviderOrigin.Extension, OwnerId: "ext"));
+        registry.Register(new ProviderRegistration(second, ProviderOrigin.Extension, OwnerId: "ext"));
         using var catalog = new ModelConfigManager(
             config,
             registry,
@@ -279,7 +275,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         };
         var config = await CreateConfigAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
-        registry.Register(new TestProvider("openai", [new() { Id = "gpt" }]));
+        registry.Register(new ProviderRegistration(new TestProvider("openai", [new() { Id = "gpt" }]), ProviderOrigin.Configured));
         using var catalog = new ModelConfigManager(
             config,
             registry,
@@ -319,8 +315,8 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         first.SetModels([new ModelConfig { Id = "a" }]);
         var second = new MutableModelsProvider("second");
         second.SetModels([new ModelConfig { Id = "b" }]);
-        registry.Register(first, ownerExtensionId: "ext");
-        registry.Register(second, ownerExtensionId: "ext");
+        registry.Register(new ProviderRegistration(first, ProviderOrigin.Extension, OwnerId: "ext"));
+        registry.Register(new ProviderRegistration(second, ProviderOrigin.Extension, OwnerId: "ext"));
         using var catalog = new ModelConfigManager(
             config,
             registry,
@@ -354,7 +350,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         };
         var config = await CreateConfigAsync(new SeeingAgentOptions(), providers);
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
-        registry.Register(new TestProvider("openai", [new() { Id = "gpt" }]));
+        registry.Register(new ProviderRegistration(new TestProvider("openai", [new() { Id = "gpt" }]), ProviderOrigin.Configured));
         using var catalog = new ModelConfigManager(
             config,
             registry,
@@ -386,8 +382,8 @@ public sealed class ModelCatalogAggregationTests : IDisposable
         first.SetModels([new ModelConfig { Id = "a" }]);
         var second = new MutableModelsProvider("second");
         second.SetModels([new ModelConfig { Id = "b" }]);
-        registry.Register(first, ownerExtensionId: "ext");
-        registry.Register(second, ownerExtensionId: "ext");
+        registry.Register(new ProviderRegistration(first, ProviderOrigin.Extension, OwnerId: "ext"));
+        registry.Register(new ProviderRegistration(second, ProviderOrigin.Extension, OwnerId: "ext"));
         using var catalog = new ModelConfigManager(
             config,
             registry,
@@ -418,7 +414,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
 
         var provider = new MutableModelsProvider("ghost");
         provider.SetModels([new ModelConfig { Id = "m" }]);
-        registry.Register(provider, ownerExtensionId: "ext");
+        registry.Register(new ProviderRegistration(provider, ProviderOrigin.Extension, OwnerId: "ext"));
 
         await WaitUntilAsync(
             () => catalog.GetCatalogModels().ContainsKey("ghost/m"),
@@ -568,7 +564,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             ProviderTypes.TypeSafe,
             LlmCapabilityKind.Decision,
             [new ModelConfig { Id = "jev-latest", Types = [ModelType.Decision] }]);
-        registry.Register(provider);
+        registry.Register(new ProviderRegistration(provider, ProviderOrigin.Configured));
 
         using var catalog = new ModelConfigManager(
             config,
@@ -611,7 +607,7 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             LlmCapabilityKind.Chat,
             [new ModelConfig { Id = "m1" }]);
         // 扩展归属：走 extensionLoads 分支
-        registry.Register(provider, ownerExtensionId: "ext.test");
+        registry.Register(new ProviderRegistration(provider, ProviderOrigin.Extension, OwnerId: "ext.test"));
 
         using var catalog = new ModelConfigManager(
             config,

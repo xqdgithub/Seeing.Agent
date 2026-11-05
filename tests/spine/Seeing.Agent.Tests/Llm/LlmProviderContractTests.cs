@@ -242,8 +242,10 @@ public class LlmProviderContractTests
         info.Protocol.Should().Be("openai");
         info.Capabilities.Should().HaveFlag(LlmCapabilityKind.Embedding);
 
-        typeof(ProviderInfo).GetProperty("Source")!.PropertyType.Should().Be(typeof(ProviderSource));
-        typeof(ProviderInfo).GetProperty("OwnerExtensionId")!.PropertyType.Should().Be(typeof(string));
+        typeof(ProviderInfo).GetProperty("Origin")!.PropertyType.Should().Be(typeof(ProviderOrigin));
+        typeof(ProviderInfo).GetProperty("OwnerId")!.PropertyType.Should().Be(typeof(string));
+        typeof(ProviderInfo).GetProperty("OwnerExtensionId").Should().BeNull(
+            "已统一为 OwnerId：同一个字段同时承载扩展 id 与内置模块 id");
     }
 
     // ---------- Router ----------

@@ -182,6 +182,12 @@ public sealed class ModelOverrideTests : IDisposable
         sut.GetCatalogModels().Should().NotContainKey("siliconflow/Qwen/Qwen3-Custom");
     }
 
+    /// <summary>
+    /// 单 Provider 刷新后，用户覆盖与补录条目不得被远端 slice 清掉。
+    /// <para>用 <c>EnqueueProviderRefresh</c>（投递即返回）而非 <c>RefreshCatalogAsync</c>（等待完成信号）：
+    /// 后者的完成信号在刷新被抢占或被丢弃时不会到来，会让测试永久挂起。
+    /// 断言的是不变量（覆盖与补录仍在），不依赖刷新何时收敛。</para>
+    /// </summary>
     [Fact]
     public async Task ProviderRefresh_KeepsOverridesAndCustomEntries()
     {
@@ -208,7 +214,18 @@ public sealed class ModelOverrideTests : IDisposable
             TestContext.Current.CancellationToken);
 
         // 单 Provider 刷新：覆盖与补录条目均须保留（不得被远端 slice 清掉）。
-        await sut.RefreshCatalogAsync("siliconflow", TestContext.Current.CancellationToken);
+        // 用 EnqueueProviderRefresh 而非 RefreshCatalogAsync：后者等待「刷新完成」信号，
+        // 而该信号在刷新被后续请求抢占/丢弃时会一直不来，测试会挂死。
+        // 这里改为「投递 + 条件轮询」，断言的仍是不变量（覆盖与补录不丢），
+        // 不依赖异步刷新何时收敛。
+        var overrideStillApplied = () =>
+            sut.GetModel("siliconflow/Qwen/Qwen3-Embedding-8B")?.Types
+                .Contains(ModelType.Embedding) == true
+            && sut.GetCatalogModels().ContainsKey("siliconflow/Qwen/Qwen3-Custom");
+
+        sut.EnqueueProviderRefresh("test-provider-refresh", "siliconflow");
+
+        await WaitUntilAsync(overrideStillApplied, TimeSpan.FromSeconds(5));
 
         sut.GetModel("siliconflow/Qwen/Qwen3-Embedding-8B")!.Types
             .Should().BeEquivalentTo(new[] { ModelType.Embedding });
@@ -331,7 +348,14 @@ public sealed class ModelOverrideTests : IDisposable
         {
             var provider = new Mock<ILlmProvider>();
             provider.SetupGet(candidate => candidate.Id).Returns(providerId);
-            registry.Register(provider.Object);
+
+            // 必须显式给出 GetModelsAsync：Moq 对未 Setup 的 Task 返回 null，
+            // 而目录聚合会 await 它 → 后台刷新线程抛 NullReferenceException 后退出，
+            // 初始刷新永不完成，任何等待目录就绪的断言都会挂死。
+            provider.Setup(candidate => candidate.GetModelsAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyList<ModelConfig>)Array.Empty<ModelConfig>());
+
+            registry.Register(new ProviderRegistration(provider.Object, ProviderOrigin.Configured));
         }
 
         return registry;

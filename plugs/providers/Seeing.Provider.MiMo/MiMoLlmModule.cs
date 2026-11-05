@@ -46,7 +46,7 @@ public sealed class MiMoLlmModule : ISeeingModule
         var provider = services.GetRequiredService<MiMoProvider>();
         var registry = services.GetRequiredService<IProviderRegistry>();
         await provider.WarmupAsync(cancellationToken).ConfigureAwait(false);
-        registry.Register(provider, MiMoProvider.ExtensionId);
+        registry.Register(new ProviderRegistration(provider, ProviderOrigin.Extension, OwnerId: MiMoProvider.ExtensionId));
     }
 
     /// <inheritdoc />

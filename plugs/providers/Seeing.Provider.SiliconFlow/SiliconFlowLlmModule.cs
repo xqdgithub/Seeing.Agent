@@ -46,7 +46,7 @@ public sealed class SiliconFlowLlmModule : ISeeingModule
         var provider = services.GetRequiredService<SiliconFlowProvider>();
         var registry = services.GetRequiredService<IProviderRegistry>();
         await provider.WarmupAsync(cancellationToken).ConfigureAwait(false);
-        registry.Register(provider, SiliconFlowProvider.ExtensionId);
+        registry.Register(new ProviderRegistration(provider, ProviderOrigin.Extension, OwnerId: SiliconFlowProvider.ExtensionId));
     }
 
     /// <inheritdoc />

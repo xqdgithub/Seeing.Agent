@@ -291,8 +291,9 @@ public class ProviderManager : IProviderManager, IDisposable
             var currentProviders = ConfiguredProviders;
             foreach (var providerId in _configuredProviders.Keys.Except(currentProviders.Keys).ToArray())
             {
-                if (_registry.GetProvider(providerId) is not null &&
-                    _registry.GetOwnerExtensionId(providerId) is null)
+                // 只注销「确实是配置驱动」的那个实例：若该 id 已被扩展或内置 Provider 接管，
+                // 删配置不应把它们一并抹掉。
+                if (_registry.IsConfigured(providerId))
                     _registry.Unregister(providerId);
 
                 _configuredProviders.Remove(providerId);
@@ -311,13 +312,14 @@ public class ProviderManager : IProviderManager, IDisposable
                 if (!RequiresRebuild(_configuredProviderConfigs[providerId], config))
                     continue;
 
-                var ownerExtensionId = _registry.GetOwnerExtensionId(providerId);
-                if (ownerExtensionId is not null)
+                // 该 id 已被扩展或内置 Provider 占用时，配置驱动的重建不能顶掉它。
+                var origin = _registry.GetOrigin(providerId);
+                if (origin is not null && origin != ProviderOrigin.Configured)
                 {
                     _logger.LogWarning(
-                        "配置驱动 Provider {ProviderId} 已被扩展 {ExtensionId} 覆盖，跳过重建",
+                        "配置驱动 Provider {ProviderId} 已被 {Origin} 占用，跳过重建",
                         providerId,
-                        ownerExtensionId);
+                        origin);
                     continue;
                 }
 
@@ -344,14 +346,15 @@ public class ProviderManager : IProviderManager, IDisposable
             return;
         }
 
-        var ownerExtensionId = _registry.GetOwnerExtensionId(providerId);
-        if (ownerExtensionId is not null)
+        var origin = _registry.GetOrigin(providerId);
+        if (origin is not null && origin != ProviderOrigin.Configured)
         {
             _configuredProviderConfigs[providerId] = CloneConfig(ownedConfig);
             _logger.LogWarning(
-                "Provider {ProviderId} 已由扩展 {ExtensionId} 注册，跳过配置驱动 Provider",
+                "Provider {ProviderId} 已由 {Origin}（{OwnerId}）注册，跳过配置驱动 Provider",
                 providerId,
-                ownerExtensionId);
+                origin,
+                _registry.GetOwnerId(providerId));
             return;
         }
 
@@ -359,7 +362,12 @@ public class ProviderManager : IProviderManager, IDisposable
         if (provider is null)
             return;
 
-        _registry.Register(provider, ownerExtensionId: null);
+        _registry.Register(new ProviderRegistration(
+            provider,
+            ProviderOrigin.Configured,
+            OwnerId: null,
+            // ConfiguredLlmProvider 由 ProviderManager 构造并持有，生命周期归注册表。
+            DisposeByRegistry: true));
         _configuredProviders[providerId] = provider;
         _configuredProviderConfigs[providerId] = CloneConfig(ownedConfig);
         _logger.LogDebug("已注册配置驱动 Provider: {ProviderId} ({Type})", providerId, ownedConfig.Type);
@@ -411,7 +419,7 @@ public class ProviderManager : IProviderManager, IDisposable
 
     private ProviderInfo CreateProviderInfo(string providerId, ILlmProvider provider)
     {
-        var ownerExtensionId = _registry.GetOwnerExtensionId(providerId);
+        var registration = _registry.GetRegistration(providerId);
         return new ProviderInfo
         {
             Id = provider.Id,
@@ -419,14 +427,16 @@ public class ProviderManager : IProviderManager, IDisposable
             // 协议与能力投影：诊断「这个 Provider 到底供出什么」的唯一去处（决议 15）
             Protocol = provider.Protocol,
             Capabilities = provider.Capabilities,
-            Source = ownerExtensionId is null ? ProviderSource.Configured : ProviderSource.Extension,
-            OwnerExtensionId = ownerExtensionId,
+            // 来源直接取注册记录，不再从 owner 是否为空推断。
+            Origin = registration?.Origin ?? ProviderOrigin.Configured,
+            OwnerId = registration?.OwnerId,
             MaxRetries = provider.MaxRetries
         };
     }
 
+    /// <summary>该 id 是否由扩展持有（只读判定，用于「扩展 Provider 不支持保存/删除配置」）。</summary>
     private bool IsExtensionProvider(string providerId)
-        => _registry.GetOwnerExtensionId(providerId) is not null;
+        => _registry.GetOrigin(providerId) == ProviderOrigin.Extension;
 
     /// <summary>
     /// 判断 Provider 实例是否需要重建。模型目录变化由 <see cref="ModelConfigManager"/> 按配置直接刷新，

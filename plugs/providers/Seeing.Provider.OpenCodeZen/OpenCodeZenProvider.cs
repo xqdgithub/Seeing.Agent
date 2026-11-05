@@ -197,7 +197,7 @@ public sealed class OpenCodeZenProvider : ILlmProvider, IConfigurableLlmProvider
         }
 
         await DisposeClientAsync(oldClient).ConfigureAwait(false);
-        _registry.Register(this, ExtensionId);
+        _registry.Register(new ProviderRegistration(this, ProviderOrigin.Extension, OwnerId: ExtensionId));
     }
 
     public async Task<bool> TestConnectionAsync(

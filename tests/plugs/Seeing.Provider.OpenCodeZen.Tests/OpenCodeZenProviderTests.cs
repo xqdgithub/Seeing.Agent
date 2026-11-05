@@ -398,7 +398,7 @@ public class OpenCodeZenProviderTests
             oldDisposable.Verify(d => d.Dispose(), Times.Once);
             sut.GetClient(LlmCapabilityKind.Chat).Should().BeSameAs(newClient.Object);
             createdKeys.Should().Equal("sk-old", "sk-new");
-            registry.Verify(r => r.Register(sut, OpenCodeZenProvider.ExtensionId), Times.AtLeastOnce);
+            registry.Verify(r => r.Register(It.Is<ProviderRegistration>(x => ReferenceEquals(x.Provider, sut) && x.OwnerId == OpenCodeZenProvider.ExtensionId)), Times.AtLeastOnce);
         }
         finally
         {

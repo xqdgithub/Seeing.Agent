@@ -15,8 +15,8 @@ public class OpenCodeZenLlmModuleTests
         services.AddLogging();
         var registry = new Mock<IProviderRegistry>();
         ILlmProvider? registered = null;
-        registry.Setup(r => r.Register(It.IsAny<ILlmProvider>(), It.IsAny<string?>()))
-            .Callback<ILlmProvider, string?>((p, _) => registered = p);
+        registry.Setup(r => r.Register(It.IsAny<ProviderRegistration>()))
+            .Callback<ProviderRegistration>(r => registered = r.Provider);
         registry.Setup(r => r.Unregister(It.IsAny<string>()))
             .Returns(true)
             .Callback<string>(_ => registered = null);
@@ -41,9 +41,7 @@ public class OpenCodeZenLlmModuleTests
         await module.ActivateAsync(sp, TestContext.Current.CancellationToken);
 
         registered.Should().BeOfType<OpenCodeZenProvider>();
-        registry.Verify(r => r.Register(
-            It.IsAny<OpenCodeZenProvider>(),
-            OpenCodeZenProvider.ExtensionId), Times.Once);
+        registry.Verify(r => r.Register(It.Is<ProviderRegistration>(x => x.Provider is OpenCodeZenProvider && x.OwnerId == OpenCodeZenProvider.ExtensionId)), Times.Once);
 
         await module.DeactivateAsync(sp, TestContext.Current.CancellationToken);
         registry.Verify(r => r.Unregister("opencode-zen"), Times.Once);

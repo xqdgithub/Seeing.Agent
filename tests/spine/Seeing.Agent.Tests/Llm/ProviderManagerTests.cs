@@ -186,7 +186,7 @@ public class ProviderManagerTests : IDisposable
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
         var extensionProvider = new TestProvider("provider");
-        registry.Register(extensionProvider, ownerExtensionId: "test-extension");
+        registry.Register(new ProviderRegistration(extensionProvider, ProviderOrigin.Extension, OwnerId: "test-extension"));
         var changedProviders = new Dictionary<string, ProviderConfig>
         {
             ["provider"] = PredefinedProviders.OpenAI("sk-changed")
@@ -206,8 +206,8 @@ public class ProviderManagerTests : IDisposable
             // LlmProviderBase 基线投影：未声明协议为空串，能力缺省只给 Chat
             Protocol = string.Empty,
             Capabilities = LlmCapabilityKind.Chat,
-            Source = ProviderSource.Extension,
-            OwnerExtensionId = "test-extension",
+            Origin = ProviderOrigin.Extension,
+            OwnerId = "test-extension",
             MaxRetries = 3
         });
     }
@@ -230,12 +230,12 @@ public class ProviderManagerTests : IDisposable
             new Lazy<IModelCapabilityManager>(() => NullModelCapabilityManager.Instance),
             NullLogger<ProviderManager>.Instance);
         var extensionProvider = new TestProvider("provider");
-        registry.Register(extensionProvider, ownerExtensionId: "test-extension");
+        registry.Register(new ProviderRegistration(extensionProvider, ProviderOrigin.Extension, OwnerId: "test-extension"));
 
         registry.UnregisterByOwner("test-extension");
 
         registry.GetProvider("provider").Should().BeOfType<ConfiguredLlmProvider>();
-        sut.GetProvider("provider")!.Source.Should().Be(ProviderSource.Configured);
+        sut.GetProvider("provider")!.Origin.Should().Be(ProviderOrigin.Configured);
     }
 
     [Fact]
@@ -252,7 +252,7 @@ public class ProviderManagerTests : IDisposable
             .ReturnsAsync(true);
         provider.Setup(candidate => candidate.GetClient(It.IsAny<LlmCapabilityKind>()))
             .Returns(Mock.Of<IChatCompletionClient>());
-        registry.Register(provider.Object, ownerExtensionId: "test-extension");
+        registry.Register(new ProviderRegistration(provider.Object, ProviderOrigin.Extension, OwnerId: "test-extension"));
         using var sut = new ProviderManager(
             configManager,
             Resolver(Mock.Of<ILlmClientFactory>()),
@@ -304,7 +304,7 @@ public class ProviderManagerTests : IDisposable
             // 配置驱动 Provider：协议取 config.Type，能力缺省只给 Chat（决议 15/§7.1）
             Protocol = ProviderTypes.OpenAi,
             Capabilities = LlmCapabilityKind.Chat,
-            Source = ProviderSource.Configured,
+            Origin = ProviderOrigin.Configured,
             MaxRetries = 0
         });
     }
@@ -360,7 +360,7 @@ public class ProviderManagerTests : IDisposable
     {
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions());
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
-        registry.Register(new TestProvider("ext"), ownerExtensionId: "test-extension");
+        registry.Register(new ProviderRegistration(new TestProvider("ext"), ProviderOrigin.Extension, OwnerId: "test-extension"));
         using var sut = new ProviderManager(
             configManager,
             Resolver(Mock.Of<ILlmClientFactory>()),
@@ -380,7 +380,7 @@ public class ProviderManagerTests : IDisposable
     {
         var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions());
         var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
-        registry.Register(new TestProvider("extension"), ownerExtensionId: "test-extension");
+        registry.Register(new ProviderRegistration(new TestProvider("extension"), ProviderOrigin.Extension, OwnerId: "test-extension"));
         var factory = new Mock<ILlmClientFactory>();
         var logger = new ListLogger<ProviderManager>();
         using var sut = new ProviderManager(

@@ -1,9 +1,8 @@
 ﻿namespace Seeing.Agent.Abstractions.Llm;
 
 /// <summary>
-/// 已注册 Provider 的描述信息（诊断与 UI 投影）。
-/// <para><see cref="Capabilities"/> 是配置能力的运行时视图：客户端不自述能力，
-/// 要看"这个 Provider 到底供出什么"就读这里（决议 15）。</para>
+/// 已注册 Provider 的对外信息（诊断与 UI 投影）。
+/// <para><see cref="Capabilities"/> 是 Provider 声明的能力位集；见 <see cref="ILlmProvider.Capabilities"/>。</para>
 /// </summary>
 public sealed class ProviderInfo
 {
@@ -17,9 +16,11 @@ public sealed class ProviderInfo
     /// <summary>该 Provider 供出的能力位集。</summary>
     public LlmCapabilityKind Capabilities { get; init; }
 
-    public ProviderSource Source { get; init; }
+    /// <summary>来源。详情见 <see cref="ProviderOrigin"/>。</summary>
+    public ProviderOrigin Origin { get; init; }
 
-    public string? OwnerExtensionId { get; init; }
+    /// <summary>归属标识（扩展 id / 模块 id）；配置驱动为 <c>null</c>。</summary>
+    public string? OwnerId { get; init; }
 
     public int MaxRetries { get; init; }
 }

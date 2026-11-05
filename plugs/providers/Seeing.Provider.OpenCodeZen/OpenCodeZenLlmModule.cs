@@ -53,7 +53,7 @@ public sealed class OpenCodeZenLlmModule : ISeeingModule
         if (interceptors is not null)
             interceptors.Register(services.GetRequiredService<OpenCodeZenCallInterceptor>());
 
-        registry.Register(provider, OpenCodeZenProvider.ExtensionId);
+        registry.Register(new ProviderRegistration(provider, ProviderOrigin.Extension, OwnerId: OpenCodeZenProvider.ExtensionId));
     }
 
     /// <inheritdoc />

@@ -59,14 +59,27 @@ public sealed class SystemOneModule : ISeeingModule
 
         var registry = services.GetRequiredService<IProviderRegistry>();
 
-        // 用户若在 Providers 节显式配置了同 id 的配置驱动 Provider，以用户为准：
-        // 内置 Provider 只负责「没有用户配置时也能用」。
-        // （ProviderRegistry 是后注册者覆盖，所以这里必须主动让位，不能只靠注释。）
-        if (registry.GetProvider(provider.Id) is not null)
+        // 用户若在 Providers 节显式配置了同 id 的配置驱动 Provider，以用户为准。
+        if (registry.GetOrigin(provider.Id) is not null)
             return;
 
-        registry.Register(provider, ownerExtensionId: null);
+        Register(registry, provider);
     }
+
+    /// <summary>
+    /// 把内置 Provider 挂进注册表。
+    /// <para><b>生命周期不归注册表</b>：该实例来自 DI 容器，注册表若在覆盖时释放它，
+    /// 后续解析会撞 <c>ObjectDisposedException</c>（用户新增同 id 配置再删除即可复现）。</para>
+    /// </summary>
+    private static void Register(IProviderRegistry registry, SystemOneLlmProvider provider)
+        => registry.Register(new ProviderRegistration(
+            provider,
+            ProviderOrigin.Builtin,
+            OwnerId: ModuleId,
+            DisposeByRegistry: false));
+
+    /// <summary>模块 id，同时作为内置 Provider 的归属标识。</summary>
+    public const string ModuleId = "llm.systemone";
 
     /// <inheritdoc />
     public Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
@@ -83,5 +96,4 @@ public sealed class SystemOneModule : ISeeingModule
 
         registry.Unregister(provider.Id);
         return Task.CompletedTask;
-    }
-}
+    }}

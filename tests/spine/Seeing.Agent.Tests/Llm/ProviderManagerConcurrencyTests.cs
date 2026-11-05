@@ -64,7 +64,7 @@ public class ProviderManagerConcurrencyTests : IDisposable
             for (var i = 0; i < 400; i++)
             {
                 var id = $"ext_{i}";
-                registry.Register(new TestProvider(id), ownerExtensionId: id);
+                registry.Register(new ProviderRegistration(new TestProvider(id), ProviderOrigin.Extension, OwnerId: id));
                 registry.UnregisterByOwner(id);
             }
         });

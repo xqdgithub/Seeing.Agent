@@ -343,7 +343,13 @@ public abstract class ConfigurableProviderBase<TOptions> : ILlmProvider, IConfig
         }
 
         await DisposeBundleAsync(clients).ConfigureAwait(false);
+        await OnDisposingAsync().ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// 释放前钩子：子类在此退订事件、清理外部引用。默认空操作。
+    /// </summary>
+    protected virtual ValueTask OnDisposingAsync() => ValueTask.CompletedTask;
 
     private static async ValueTask DisposeBundleAsync(CapabilityClientBundle? bundle)
     {

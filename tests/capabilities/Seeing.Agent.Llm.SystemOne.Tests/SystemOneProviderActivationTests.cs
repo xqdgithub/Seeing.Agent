@@ -30,7 +30,7 @@ public class SystemOneProviderActivationTests
         await module.ActivateAsync(sp, TestContext.Current.CancellationToken);
 
         registry.Verify(
-            r => r.Register(It.IsAny<SystemOneLlmProvider>(), null),
+            r => r.Register(It.Is<ProviderRegistration>(x => x.Origin == ProviderOrigin.Builtin)),
             Times.Once,
             "内置 Provider 必须在 Activate 时挂进注册表，否则用户不开箱可用");
     }
@@ -85,7 +85,7 @@ public class SystemOneProviderActivationTests
         // 先放一个用户配置驱动的 Provider（同一个 id）
         var userProvider = new Mock<ILlmProvider>();
         userProvider.SetupGet(p => p.Id).Returns(SystemOneOptions.DefaultId);
-        registry.Register(userProvider.Object, ownerExtensionId: null);
+        registry.Register(new ProviderRegistration(userProvider.Object, ProviderOrigin.Configured, OwnerId: null));
 
         var services = new ServiceCollection();
         services.AddSingleton<IProviderRegistry>(registry);
@@ -102,27 +102,44 @@ public class SystemOneProviderActivationTests
     /// <summary>轻量注册表替身（测试项目不引用 Core，不能用真实 ProviderRegistry）。</summary>
     private sealed class FakeProviderRegistry : IProviderRegistry
     {
-        private readonly Dictionary<string, ILlmProvider> _providers = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, ProviderRegistration> _registrations = new(StringComparer.OrdinalIgnoreCase);
 
         public event EventHandler<ProvidersChangedEventArgs>? ProvidersChanged;
 
-        public IReadOnlyDictionary<string, ILlmProvider> GetProviders() => _providers;
+        public IReadOnlyDictionary<string, ILlmProvider> GetProviders()
+            => _registrations.ToDictionary(p => p.Key, p => p.Value.Provider);
+
+        public IReadOnlyDictionary<string, ProviderRegistration> GetRegistrations() => _registrations;
 
         public ILlmProvider? GetProvider(string id)
-            => _providers.TryGetValue(id, out var provider) ? provider : null;
+            => _registrations.TryGetValue(id, out var r) ? r.Provider : null;
 
-        public string? GetOwnerExtensionId(string id) => null;
+        public ProviderRegistration? GetRegistration(string id)
+            => _registrations.TryGetValue(id, out var r) ? r : null;
 
-        public void Register(ILlmProvider provider, string? ownerExtensionId = null)
+        public ProviderOrigin? GetOrigin(string id)
+            => _registrations.TryGetValue(id, out var r) ? r.Origin : null;
+
+        public string? GetOwnerId(string id)
+            => _registrations.TryGetValue(id, out var r) ? r.OwnerId : null;
+
+        public bool IsConfigured(string id) => GetOrigin(id) == ProviderOrigin.Configured;
+
+        public void Register(ProviderRegistration registration)
         {
-            _providers[provider.Id] = provider;
+            _registrations[registration.Provider.Id] = registration;
             ProvidersChanged?.Invoke(this, new ProvidersChangedEventArgs(
-                _providers, [provider.Id], null));
+                GetProviders(), [registration.Provider.Id], null));
         }
 
-        public bool Unregister(string id) => _providers.Remove(id);
+        public bool Unregister(string id) => _registrations.Remove(id);
 
-        public int UnregisterByOwner(string ownerExtensionId) => 0;
+        public int UnregisterByOwner(string ownerId)
+        {
+            var ids = _registrations.Where(p => p.Value.OwnerId == ownerId).Select(p => p.Key).ToArray();
+            foreach (var id in ids) _registrations.Remove(id);
+            return ids.Length;
+        }
     }
 
     /// <summary>Provider 的 id 固定，不随配置变化（可变 id 会让注册表旧键永久残留）。</summary>

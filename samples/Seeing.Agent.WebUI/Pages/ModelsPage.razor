@@ -49,7 +49,7 @@
                             <MenuItem Key="@p.Key">
                                 <span style="display: inline-flex; align-items: center; gap: 8px;">
                                     @(p.Value.Name ?? p.Key)
-                                    @if (p.Value.Source == ProviderSource.Extension)
+                                    @if (p.Value.Origin == ProviderOrigin.Extension)
                                     {
                                         <Tag Color="@("blue")" Style="margin: 0; line-height: 18px;">扩展</Tag>
                                     }
@@ -66,10 +66,10 @@
                         @* 配置来源信息：帮助定位 Provider 从哪个文件加载（用户级 / 项目级 / 扩展） *@
                         <div style="margin-bottom: 16px; padding: 8px 12px; background: #e6f4ff; border: 1px solid #91caff; border-radius: 6px; font-size: 13px;">
                             来源：
-                            @if (_currentProviderInfo.Source == ProviderSource.Extension)
+                            @if (_currentProviderInfo.Origin == ProviderOrigin.Extension)
                             {
                                 <Tag Color="@("blue")">扩展</Tag>
-                                <span>由扩展 @(_currentProviderInfo.OwnerExtensionId) 注册，配置由扩展自身管理</span>
+                                <span>由扩展 @(_currentProviderInfo.OwnerId) 注册，配置由扩展自身管理</span>
                             }
                             else
                             {
@@ -155,7 +155,7 @@
                                 <DescriptionsItem Title="ID">@_currentProviderInfo!.Id</DescriptionsItem>
                                 <DescriptionsItem Title="名称">@(_currentProviderInfo.Name ?? _currentProviderInfo.Id)</DescriptionsItem>
                                 <DescriptionsItem Title="来源">
-                                    @if (_currentProviderInfo.Source == ProviderSource.Extension)
+                                    @if (_currentProviderInfo.Origin == ProviderOrigin.Extension)
                                     {
                                         <Tag Color="@("blue")">扩展</Tag>
                                     }
@@ -525,7 +525,7 @@
     private readonly EditModelForm _editModelForm = new();
 
     private bool CanEditCurrentProvider =>
-        _currentProviderInfo?.Source == ProviderSource.Configured &&
+        _currentProviderInfo?.Origin == ProviderOrigin.Configured &&
         _currentProvider is not null;
 
     /// <summary>删除仅对配置型 Provider 开放；扩展 Provider 用「恢复默认」表达移除语义。</summary>
@@ -640,7 +640,7 @@
                     _configLoadError = $"加载配置失败: {ex.Message}";
                 }
             }
-            else if (_currentProviderInfo?.Source == ProviderSource.Configured &&
+            else if (_currentProviderInfo?.Origin == ProviderOrigin.Configured &&
                      ConfigManager.GetSection<Dictionary<string, ProviderConfig>>("Providers").TryGetValue(id, out var schemaNullConfig))
             {
                 // ConfiguredLlmProvider: schema null → handcrafted form（编辑副本，不脏写 live 配置）
@@ -649,7 +649,7 @@
                 _providerCapabilities = ToCapabilityKeys(_currentProvider.Capabilities);
             }
         }
-        else if (_currentProviderInfo?.Source == ProviderSource.Configured &&
+        else if (_currentProviderInfo?.Origin == ProviderOrigin.Configured &&
                  ConfigManager.GetSection<Dictionary<string, ProviderConfig>>("Providers").TryGetValue(id, out var configured))
         {
             _currentProvider = CloneProviderConfig(configured);

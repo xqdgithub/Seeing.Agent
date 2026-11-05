@@ -6,164 +6,176 @@ namespace Seeing.Agent.Core.Llm;
 
 /// <summary>
 /// 基于不可变快照的线程安全 Provider 注册表。
+/// <para><b>来源与生命周期都是一等公民</b>：注册时随 <see cref="ProviderRegistration"/> 一起存入，
+/// 使用方直接读取，不再用「owner 是否为 null」推断来源（那正是此前反复出错的根源）。</para>
+/// <para><b>只释放归自己所有的实例</b>：DI 单例由容器负责释放；注册表若擅自释放它，
+/// 后续任何解析都会撞 <c>ObjectDisposedException</c>。</para>
 /// </summary>
 public sealed class ProviderRegistry : IProviderRegistry
 {
     private readonly ILogger<ProviderRegistry> _logger;
     private readonly object _writeLock = new();
-    private ImmutableDictionary<string, ILlmProvider> _providers =
-        ImmutableDictionary<string, ILlmProvider>.Empty;
-    private ImmutableDictionary<string, string?> _owners =
-        ImmutableDictionary<string, string?>.Empty;
+    private ImmutableDictionary<string, ProviderRegistration> _registrations =
+        ImmutableDictionary<string, ProviderRegistration>.Empty;
 
-    /// <summary>
-    /// 注入日志构造空的 Provider 注册表。
-    /// </summary>
+    /// <summary>注入日志构造空的 Provider 注册表。</summary>
     public ProviderRegistry(ILogger<ProviderRegistry> logger)
     {
         _logger = logger;
     }
 
-    /// <summary>
-    /// Provider 集合变更事件（注册/注销后触发，携带最新快照与变更明细）。
-    /// </summary>
+    /// <inheritdoc />
     public event EventHandler<ProvidersChangedEventArgs>? ProvidersChanged;
 
-    /// <summary>
-    /// 获取当前 Provider 快照（不可变字典，线程安全读取）。
-    /// </summary>
+    /// <inheritdoc />
     public IReadOnlyDictionary<string, ILlmProvider> GetProviders()
-        => Volatile.Read(ref _providers);
+        => Snapshot().ToImmutableDictionary(pair => pair.Key, pair => pair.Value.Provider);
 
-    /// <summary>
-    /// 按 ID 获取 Provider，未注册返回 null。
-    /// </summary>
+    /// <inheritdoc />
+    public IReadOnlyDictionary<string, ProviderRegistration> GetRegistrations()
+        => Snapshot();
+
+    /// <inheritdoc />
     public ILlmProvider? GetProvider(string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        return Volatile.Read(ref _providers).TryGetValue(id, out var provider)
-            ? provider
-            : null;
+        return Snapshot().TryGetValue(id, out var registration) ? registration.Provider : null;
     }
 
-    /// <summary>
-    /// 查询 Provider 的归属扩展 ID，无归属或未注册返回 null。
-    /// </summary>
-    public string? GetOwnerExtensionId(string id)
+    /// <inheritdoc />
+    public ProviderRegistration? GetRegistration(string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        return Volatile.Read(ref _owners).TryGetValue(id, out var ownerExtensionId)
-            ? ownerExtensionId
-            : null;
+        return Snapshot().TryGetValue(id, out var registration) ? registration : null;
     }
 
-    /// <summary>
-    /// 注册 Provider；同 ID 后注册者覆盖并释放被替换的实例，随后广播变更事件。
-    /// </summary>
-    public void Register(ILlmProvider provider, string? ownerExtensionId = null)
+    /// <inheritdoc />
+    public ProviderOrigin? GetOrigin(string id)
     {
-        ArgumentNullException.ThrowIfNull(provider);
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        return Snapshot().TryGetValue(id, out var registration) ? registration.Origin : null;
+    }
+
+    /// <inheritdoc />
+    public string? GetOwnerId(string id)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        return Snapshot().TryGetValue(id, out var registration) ? registration.OwnerId : null;
+    }
+
+    /// <inheritdoc />
+    public bool IsConfigured(string id)
+        => GetOrigin(id) == ProviderOrigin.Configured;
+
+    /// <inheritdoc />
+    public void Register(ProviderRegistration registration)
+    {
+        ArgumentNullException.ThrowIfNull(registration);
+
+        var provider = registration.Provider
+            ?? throw new ArgumentException("注册记录必须包含 Provider 实例。", nameof(registration));
         ArgumentException.ThrowIfNullOrWhiteSpace(provider.Id);
 
-        ImmutableDictionary<string, ILlmProvider> snapshot;
-        ILlmProvider? replacedProvider;
+        ImmutableDictionary<string, ProviderRegistration> snapshot;
+        ProviderRegistration? replaced;
 
         lock (_writeLock)
         {
-            _providers.TryGetValue(provider.Id, out replacedProvider);
-            snapshot = _providers.SetItem(provider.Id, provider);
-            _owners = _owners.SetItem(provider.Id, ownerExtensionId);
-            Volatile.Write(ref _providers, snapshot);
+            _registrations.TryGetValue(provider.Id, out replaced);
+            snapshot = _registrations.SetItem(provider.Id, registration);
+            Volatile.Write(ref _registrations, snapshot);
         }
 
-        if (replacedProvider is not null)
+        if (replaced is not null && !ReferenceEquals(replaced.Provider, provider))
         {
             _logger.LogWarning(
-                "Provider {ProviderId} 已注册，后注册的实例将覆盖原实例",
-                provider.Id);
-            if (!ReferenceEquals(replacedProvider, provider))
-                DisposeProvider(replacedProvider);
+                "Provider {ProviderId} 已被 {PreviousOrigin} 注册，现由 {CurrentOrigin} 覆盖",
+                provider.Id,
+                replaced.Origin,
+                registration.Origin);
+
+            ReleaseIfOwned(replaced);
         }
 
         RaiseProvidersChanged(snapshot, changedProviderIds: new[] { provider.Id });
     }
 
-    /// <summary>
-    /// 注销指定 ID 的 Provider 并释放实例，返回是否成功移除。
-    /// </summary>
+    /// <inheritdoc />
     public bool Unregister(string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
 
-        ILlmProvider? removed;
-        ImmutableDictionary<string, ILlmProvider> snapshot;
+        ProviderRegistration? removed;
+        ImmutableDictionary<string, ProviderRegistration> snapshot;
 
         lock (_writeLock)
         {
-            if (!_providers.TryGetValue(id, out removed))
+            if (!_registrations.TryGetValue(id, out removed))
                 return false;
 
-            snapshot = _providers.Remove(id);
-            _owners = _owners.Remove(id);
-            Volatile.Write(ref _providers, snapshot);
+            snapshot = _registrations.Remove(id);
+            Volatile.Write(ref _registrations, snapshot);
         }
 
-        DisposeProvider(removed);
+        ReleaseIfOwned(removed);
         RaiseProvidersChanged(snapshot, removedProviderIds: new[] { id });
         return true;
     }
 
-    /// <summary>
-    /// 注销指定扩展拥有的全部 Provider 并释放实例，返回移除数量。
-    /// </summary>
-    public int UnregisterByOwner(string ownerExtensionId)
+    /// <inheritdoc />
+    public int UnregisterByOwner(string ownerId)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(ownerExtensionId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
 
-        ILlmProvider[] removed;
-        ImmutableDictionary<string, ILlmProvider> snapshot;
+        ProviderRegistration[] removed;
+        ImmutableDictionary<string, ProviderRegistration> snapshot;
         string[] ids;
 
         lock (_writeLock)
         {
-            ids = _owners
-                .Where(pair => string.Equals(
-                    pair.Value,
-                    ownerExtensionId,
-                    StringComparison.Ordinal))
+            ids = _registrations
+                .Where(pair => string.Equals(pair.Value.OwnerId, ownerId, StringComparison.Ordinal))
                 .Select(pair => pair.Key)
                 .ToArray();
 
             if (ids.Length == 0)
                 return 0;
 
-            removed = ids.Select(id => _providers[id]).ToArray();
-            snapshot = _providers.RemoveRange(ids);
-            _owners = _owners.RemoveRange(ids);
-            Volatile.Write(ref _providers, snapshot);
+            removed = ids.Select(id => _registrations[id]).ToArray();
+            snapshot = _registrations.RemoveRange(ids);
+            Volatile.Write(ref _registrations, snapshot);
         }
 
-        foreach (var provider in removed)
-            DisposeProvider(provider);
+        foreach (var registration in removed)
+            ReleaseIfOwned(registration);
 
         RaiseProvidersChanged(snapshot, removedProviderIds: ids);
         return removed.Length;
     }
 
-    private void DisposeProvider(ILlmProvider provider)
+    private ImmutableDictionary<string, ProviderRegistration> Snapshot()
+        => Volatile.Read(ref _registrations);
+
+    /// <summary>
+    /// 仅当实例的生命周期归注册表时才释放。DI 容器持有的单例由容器释放。
+    /// </summary>
+    private void ReleaseIfOwned(ProviderRegistration registration)
     {
-        if (provider is not IAsyncDisposable disposable)
+        if (!registration.DisposeByRegistry)
+            return;
+
+        if (registration.Provider is not IAsyncDisposable disposable)
             return;
 
         try
         {
             var disposal = disposable.DisposeAsync();
             if (!disposal.IsCompletedSuccessfully)
-                _ = ObserveDisposalAsync(disposal, provider.Id);
+                _ = ObserveDisposalAsync(disposal, registration.Provider.Id);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "释放 Provider {ProviderId} 时发生异常", provider.Id);
+            _logger.LogWarning(ex, "释放 Provider {ProviderId} 时发生异常", registration.Provider.Id);
         }
     }
 
@@ -180,11 +192,11 @@ public sealed class ProviderRegistry : IProviderRegistry
     }
 
     private void RaiseProvidersChanged(
-        IReadOnlyDictionary<string, ILlmProvider> providers,
+        IReadOnlyDictionary<string, ProviderRegistration> registrations,
         IReadOnlyList<string>? changedProviderIds = null,
         IReadOnlyList<string>? removedProviderIds = null)
         => ProvidersChanged?.Invoke(this, new ProvidersChangedEventArgs(
-            providers,
+            registrations.ToImmutableDictionary(pair => pair.Key, pair => pair.Value.Provider),
             changedProviderIds,
             removedProviderIds));
 }

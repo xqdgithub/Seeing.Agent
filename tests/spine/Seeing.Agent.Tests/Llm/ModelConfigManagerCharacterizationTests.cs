@@ -497,7 +497,7 @@ public class ModelConfigManagerCharacterizationTests : IDisposable
         {
             var provider = new Mock<ILlmProvider>();
             provider.SetupGet(candidate => candidate.Id).Returns(providerId);
-            registry.Register(provider.Object);
+            registry.Register(new ProviderRegistration(provider.Object, ProviderOrigin.Configured));
         }
 
         return registry;

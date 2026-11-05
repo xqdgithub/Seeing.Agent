@@ -46,7 +46,7 @@ public sealed class DeepSeekLlmModule : ISeeingModule
         var provider = services.GetRequiredService<DeepSeekProvider>();
         var registry = services.GetRequiredService<IProviderRegistry>();
         await provider.WarmupAsync(cancellationToken).ConfigureAwait(false);
-        registry.Register(provider, DeepSeekProvider.ExtensionId);
+        registry.Register(new ProviderRegistration(provider, ProviderOrigin.Extension, OwnerId: DeepSeekProvider.ExtensionId));
     }
 
     /// <inheritdoc />

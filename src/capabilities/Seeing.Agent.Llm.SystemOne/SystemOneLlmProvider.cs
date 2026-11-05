@@ -32,6 +32,16 @@ public sealed class SystemOneLlmProvider : ConfigurableProviderBase<SystemOneOpt
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        _registry.ProvidersChanged += OnProvidersChanged;
+    }
+
+    /// <inheritdoc />
+    protected override ValueTask OnDisposingAsync()
+    {
+        Volatile.Write(ref _disposed, 1);
+        _registry.ProvidersChanged -= OnProvidersChanged;
+        return ValueTask.CompletedTask;
     }
 
     /// <inheritdoc />
@@ -99,10 +109,41 @@ public sealed class SystemOneLlmProvider : ConfigurableProviderBase<SystemOneOpt
         if (existing is not null && !ReferenceEquals(existing, this))
             return Task.CompletedTask;
 
-        _registry.Register(this, ownerExtensionId: null);
+        RegisterSelf();
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// 把自己注册为 <see cref="ProviderOrigin.Builtin"/>。
+    /// <para><b>生命周期不归注册表</b>：本实例来自 DI 容器。注册表若在覆盖时释放它，
+    /// 后续解析会撞 <c>ObjectDisposedException</c>。</para>
+    /// </summary>
+    private void RegisterSelf()
+        => _registry.Register(new ProviderRegistration(
+            this,
+            ProviderOrigin.Builtin,
+            OwnerId: SystemOneModule.ModuleId,
+            DisposeByRegistry: false));
+
+    /// <summary>
+    /// 用户删掉同 id 的配置驱动 Provider 后自动回位。
+    /// <para>「用户优先」必须配套「撤销用户优先后自动恢复」，否则用户删掉自己的配置
+    /// 反而让该 id 永久不可用（早先就是这样：删完 <c>systemone</c> 后 Router 找不到模型）。</para>
+    /// </summary>
+    private void OnProvidersChanged(object? sender, ProvidersChangedEventArgs e)
+    {
+        if (Disposed)
+            return;
+
+        // 只有「本 id 已无任何 Provider」时才回位；扩展或其它来源持有该 id 时不抢。
+        if (_registry.GetRegistration(Id) is not null)
+            return;
+
+        RegisterSelf();
+    }
+
+    private int _disposed;
+    private bool Disposed => Volatile.Read(ref _disposed) != 0;
     /// <inheritdoc />
     protected override Task<IReadOnlyDictionary<string, object?>> ExportOptionsAsync(
         SystemOneOptions options,
