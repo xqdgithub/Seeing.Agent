@@ -171,10 +171,11 @@ public class ExecutionRunnerModelSelectionTests
     public void ApplyInboundModelAndMode_ShouldUpdateTimestamp()
     {
         var session = SessionData.Create();
-        var originalUpdatedAt = session.UpdatedAt;
         session.SelectedModel = string.Empty;
 
-        Thread.Sleep(10);
+        // 直接构造一个明确更早的时间戳，而不是 sleep 等真实时钟前进。
+        session.UpdatedAt = DateTime.Now.AddMinutes(-1);
+        var originalUpdatedAt = session.UpdatedAt;
 
         var changed = ExecutionRunner.ApplyInboundModelAndMode(session, "gpt-4o", null, _modelManager);
 

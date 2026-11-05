@@ -16,13 +16,27 @@ public class ReloadOrchestratorTests
         public IReadOnlyList<Type> ChangeTypes { get; } = new[] { typeof(ConfigChange) };
         public List<string> Received { get; } = new();
         public Func<ConfigChange, Task>? OnConfig;
+
+        /// <summary>
+        /// 每收到一次 Reload 就完成的信号。测试用它等待「确实派发到了」，
+        /// 而不是用固定时长猜异步调度何时完成。
+        /// </summary>
+        public TaskCompletionSource FirstCall { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>累计调用次数（含被隔离的失败调用）。</summary>
+        public int CallCount;
+
         public Task ReloadAsync(IReloadSignal change, CancellationToken ct)
         {
             if (change is ConfigChange cfg)
             {
                 lock (Received) Received.Add(string.Join(",", cfg.ChangedSections));
+                Interlocked.Increment(ref CallCount);
+                FirstCall.TrySetResult();
                 return OnConfig?.Invoke(cfg) ?? Task.CompletedTask;
             }
+
             return Task.CompletedTask;
         }
     }
@@ -48,7 +62,7 @@ public class ReloadOrchestratorTests
         var (orch, handler) = CreateOrchestrator(out var configStore, out var workspace);
         configStore.Raise(x => x.ConfigChanged += null, new ConfigChangedEventArgs { ChangedSections = new[] { "Providers" } });
 
-        await Task.Delay(200, TestContext.Current.CancellationToken); // 等待异步调度
+        await handler.FirstCall.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         handler.Received.Should().Contain("Providers");
     }
 
@@ -66,7 +80,7 @@ public class ReloadOrchestratorTests
         configStore.Raise(x => x.ConfigChanged += null,
             new ConfigChangedEventArgs { ChangedSections = ["Providers"], ChangedKeys = ["trip"] });
 
-        await Task.Delay(300, TestContext.Current.CancellationToken);
+        await handler.FirstCall.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         received.Should().NotBeNull();
         received!.ChangedKeys.Should().BeEquivalentTo("trip");
@@ -78,7 +92,7 @@ public class ReloadOrchestratorTests
         var (orch, handler) = CreateOrchestrator(out var configStore, out var workspace);
         workspace.Raise(x => x.WorkspaceRootChanged += null, new WorkspaceChangedEventArgs { OldWorkspace = "/old", NewWorkspace = "/new" });
 
-        await Task.Delay(200, TestContext.Current.CancellationToken);
+        await handler.FirstCall.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         handler.Received.Should().NotBeEmpty();
     }
 
@@ -137,7 +151,12 @@ public class ReloadOrchestratorTests
         configStore.Raise(x => x.ConfigChanged += null, args);
         configStore.Raise(x => x.ConfigChanged += null, args);
 
-        await Task.Delay(500, TestContext.Current.CancellationToken);
+        // 等第一次派发真正发生（确定事件），再断言「后续不再有第二次」。
+        await handler.FirstCall.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        // 去抖窗口内不得再派发：等 orchestrator 自身静默，而不是 sleep 固定时长去赌。
+        await orch.WaitForQuiescenceAsync(TestContext.Current.CancellationToken);
+
         lock (handler.Received) handler.Received.Should().HaveCount(1);
     }
 
@@ -165,7 +184,9 @@ public class ReloadOrchestratorTests
             new ConfigChangedEventArgs { ChangedSections = Array.Empty<string>() });
 
         await firstRound.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
-        await Task.Delay(500, TestContext.Current.CancellationToken); // 等待 dirty 补跑的第二轮完成
+
+        // 等 dirty 补跑的第二轮真正完成，而不是 sleep 500ms 去赌。
+        await orch.WaitForQuiescenceAsync(TestContext.Current.CancellationToken);
         rounds.Should().BeGreaterThanOrEqualTo(2);
     }
 

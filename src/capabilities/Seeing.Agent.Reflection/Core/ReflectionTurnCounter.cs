@@ -27,20 +27,42 @@ public sealed class ReflectionTurnCounter
 
     private readonly ConcurrentDictionary<string, Entry> _counts = new(StringComparer.Ordinal);
     private readonly int _maxEntries;
+    private readonly TimeProvider _time;
+
+    /// <summary>
+    /// 单调递增的触发序号。淘汰按「最久未触发」排序，同一时间戳会让顺序不确定；
+    /// 用序号兜底，保证淘汰结果与真实调用顺序一致（也让虚拟时钟下的测试可确定）。
+    /// </summary>
+    private long _sequence;
 
     /// <summary>以默认上限创建计数器。</summary>
     public ReflectionTurnCounter() : this(MaxEntries)
     {
     }
 
+    /// <summary>以默认上限 + 注入时钟创建（测试用虚拟时间）。</summary>
+    /// <param name="timeProvider">时钟。</param>
+    public ReflectionTurnCounter(TimeProvider timeProvider) : this(MaxEntries, timeProvider)
+    {
+    }
+
     /// <summary>以指定上限创建计数器（测试用）。</summary>
     /// <param name="maxEntries">条目数上限，必须为正。</param>
     public ReflectionTurnCounter(int maxEntries)
+        : this(maxEntries, TimeProvider.System)
+    {
+    }
+
+    /// <summary>以指定上限 + 注入时钟创建。</summary>
+    /// <param name="maxEntries">条目数上限，必须为正。</param>
+    /// <param name="timeProvider">时钟。</param>
+    public ReflectionTurnCounter(int maxEntries, TimeProvider timeProvider)
     {
         if (maxEntries <= 0)
             throw new ArgumentOutOfRangeException(nameof(maxEntries), maxEntries, "容量上限必须为正数。");
 
         _maxEntries = maxEntries;
+        _time = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     }
 
     /// <summary>当前条目数（用于淘汰断言）。</summary>
@@ -53,11 +75,12 @@ public sealed class ReflectionTurnCounter
         if (string.IsNullOrWhiteSpace(sessionId))
             return 0;
 
-        var now = DateTimeOffset.UtcNow;
+        var now = _time.GetUtcNow();
+        var seq = Interlocked.Increment(ref _sequence);
         var updated = _counts.AddOrUpdate(
             sessionId,
-            _ => new Entry(1, now),
-            (_, current) => new Entry(current.Count + 1, now));
+            _ => new Entry(1, now, seq),
+            (_, current) => new Entry(current.Count + 1, now, seq));
 
         // 只在超限时才做淘汰扫描，正常路径零额外开销。
         if (_counts.Count > _maxEntries)
@@ -76,8 +99,8 @@ public sealed class ReflectionTurnCounter
         // 保留上一次触发时刻：Reset 表示「刚触发过」，不是「没活动」。
         _counts.AddOrUpdate(
             sessionId,
-            _ => new Entry(0, DateTimeOffset.UtcNow),
-            (_, current) => new Entry(0, current.LastTouchedAt));
+            _ => new Entry(0, _time.GetUtcNow(), Interlocked.Increment(ref _sequence)),
+            (_, current) => new Entry(0, current.LastTouchedAt, current.Sequence));
     }
 
     /// <summary>读取当前计数（无记录时为 0）。</summary>
@@ -113,6 +136,7 @@ public sealed class ReflectionTurnCounter
         // 按触发时刻升序取最旧的一批。会话数有界（≤ 上限 + 并发增量），排序成本可忽略。
         var victims = _counts
             .OrderBy(pair => pair.Value.LastTouchedAt)
+            .ThenBy(pair => pair.Value.Sequence)
             .Take(excess)
             .Select(pair => pair.Key)
             .ToList();
@@ -123,5 +147,5 @@ public sealed class ReflectionTurnCounter
 
     /// <summary>计数 + 最近一次触发时刻。</summary>
     /// <remarks>用不可变 record struct 承载，读写都走 <c>AddOrUpdate</c> 的原子替换。</remarks>
-    private readonly record struct Entry(int Count, DateTimeOffset LastTouchedAt);
+    private readonly record struct Entry(int Count, DateTimeOffset LastTouchedAt, long Sequence);
 }

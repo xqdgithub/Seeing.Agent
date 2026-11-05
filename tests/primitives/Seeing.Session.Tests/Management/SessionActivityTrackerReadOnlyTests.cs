@@ -24,11 +24,13 @@ public class SessionActivityTrackerReadOnlyTests
     [Fact]
     public void TryGetLastActivity_Should_Not_Refresh_Timestamp()
     {
-        var tracker = new SessionActivityTracker();
+        var time = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var tracker = new SessionActivityTracker(time);
         tracker.Touch("s1");
         tracker.TryGetLastActivity("s1", out var first).Should().BeTrue();
 
-        Thread.Sleep(30);
+        // 推进虚拟时间 30ms：只读查询不得推进时间戳。
+        time.Advance(TimeSpan.FromMilliseconds(30));
 
         // 关键：只读查询不得推进时间戳，否则空闲判定永远不成立。
         tracker.TryGetLastActivity("s1", out var second).Should().BeTrue();
@@ -56,5 +58,15 @@ public class SessionActivityTrackerReadOnlyTests
 
         tracker.TryGetLastActivity("", out _).Should().BeFalse();
         tracker.TryGetLastActivity("  ", out _).Should().BeFalse();
+    }
+
+    /// <summary>可手动推进的时钟。</summary>
+    private sealed class FakeTimeProvider(DateTimeOffset start) : TimeProvider
+    {
+        private DateTimeOffset _now = start;
+
+        public override DateTimeOffset GetUtcNow() => _now;
+
+        public void Advance(TimeSpan delta) => _now += delta;
     }
 }

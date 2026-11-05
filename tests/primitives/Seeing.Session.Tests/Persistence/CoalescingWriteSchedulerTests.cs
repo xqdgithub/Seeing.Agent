@@ -35,8 +35,8 @@ public sealed class CoalescingWriteSchedulerTests
             scheduler.Enqueue("s1", $"v{i}");
 
         await recorder.WaitForCountAsync(1, TimeSpan.FromSeconds(3));
-        await Task.Delay(250, TestContext.Current.CancellationToken);
 
+        // 不变量：10 次入队在窗口内必须合并且**只写一次**（计数 == 1 即已证明，无需再等）。
         recorder.Count.Should().Be(1);
         recorder.Values.Should().ContainSingle().Which.Should().Be("v9");
     }

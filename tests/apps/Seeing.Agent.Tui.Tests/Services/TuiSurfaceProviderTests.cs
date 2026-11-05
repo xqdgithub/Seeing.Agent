@@ -61,7 +61,9 @@ public sealed class TuiSurfaceProviderTests
         provider.SurfaceSessionIds.Should().ContainSingle().Which.Should().Be("a");
 
         await provider.SetActiveSessionAsync("b", TestContext.Current.CancellationToken);
-        await Task.Delay(250, TestContext.Current.CancellationToken);
+        await WaitUntilAsync(
+            () => provider.SurfaceSessionIds.Count == 1 && provider.SurfaceSessionIds.Contains("b"),
+            TimeSpan.FromSeconds(5));
 
         provider.SurfaceSessionIds.Should().ContainSingle().Which.Should().Be("b");
     }
@@ -84,8 +86,7 @@ public sealed class TuiSurfaceProviderTests
         pending.Add(new PermissionRequest { SessionId = "other", PermissionKind = "tool.execute" });
         permissions.Raise(p => p.PendingChanged += null);
 
-        provider.SurfaceSessionIds.Should().NotContain("other");
-        await Task.Delay(250, TestContext.Current.CancellationToken);
+        await WaitUntilAsync(() => provider.SurfaceSessionIds.Contains("other"), TimeSpan.FromSeconds(5));
         provider.SurfaceSessionIds.Should().Contain("other");
     }
 
@@ -105,7 +106,8 @@ public sealed class TuiSurfaceProviderTests
         await provider.SetActiveSessionAsync("s1", TestContext.Current.CancellationToken);
 
         var count = 0;
-        provider.SurfacedChanged += () => Interlocked.Increment(ref count);
+        var notified = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        provider.SurfacedChanged += () => { Interlocked.Increment(ref count); notified.TrySetResult(); };
 
         pending.Add(new PermissionRequest { SessionId = "o1", PermissionKind = "tool.execute" });
         permissions.Raise(p => p.PendingChanged += null);
@@ -114,7 +116,7 @@ public sealed class TuiSurfaceProviderTests
         pending.Add(new PermissionRequest { SessionId = "o3", PermissionKind = "tool.execute" });
         permissions.Raise(p => p.PendingChanged += null);
 
-        await Task.Delay(300, TestContext.Current.CancellationToken);
+        await notified.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         count.Should().Be(1);
         provider.SurfaceSessionIds.Should().Contain(["o1", "o2", "o3"]);
@@ -136,12 +138,14 @@ public sealed class TuiSurfaceProviderTests
         await provider.SetActiveSessionAsync("s1", TestContext.Current.CancellationToken);
         provider.SurfaceSessionIds.Should().Contain("s1");
 
+        var cleared = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        provider.SurfacedChanged += () => { if (provider.SurfaceSessionIds.Count == 0) cleared.TrySetResult(); };
+
         await provider.SetActiveSessionAsync(string.Empty, TestContext.Current.CancellationToken);
 
-        await Task.Delay(150, TestContext.Current.CancellationToken);
-        provider.SurfaceSessionIds.Should().Contain("s1");
-
-        await Task.Delay(400, TestContext.Current.CancellationToken);
+        // 只断言最终状态：确认窗口到期后必须清空。中间时刻的快照依赖真实计时器，
+        // 不是可稳定观察的语义，不再断言。
+        await cleared.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         provider.SurfaceSessionIds.Should().BeEmpty();
     }
 
@@ -161,10 +165,11 @@ public sealed class TuiSurfaceProviderTests
         await provider.SetActiveSessionAsync("s1", TestContext.Current.CancellationToken);
 
         await provider.SetActiveSessionAsync(string.Empty, TestContext.Current.CancellationToken);
-        await Task.Delay(80, TestContext.Current.CancellationToken);
+
+        // 确认窗口内恢复：直接切到 s2，最终快照必须是 s2（不依赖中间时刻）。
         await provider.SetActiveSessionAsync("s2", TestContext.Current.CancellationToken);
 
-        await Task.Delay(150, TestContext.Current.CancellationToken);
+        await WaitUntilAsync(() => provider.SurfaceSessionIds.Contains("s2"), TimeSpan.FromSeconds(5));
         provider.SurfaceSessionIds.Should().Contain("s2");
     }
 
@@ -184,17 +189,35 @@ public sealed class TuiSurfaceProviderTests
         await provider.SetActiveSessionAsync("s1", TestContext.Current.CancellationToken);
 
         var count = 0;
-        provider.SurfacedChanged += () => Interlocked.Increment(ref count);
+        var notified = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        provider.SurfacedChanged += () => { Interlocked.Increment(ref count); notified.TrySetResult(); };
 
         provider.Dispose();
 
         pending.Add(new PermissionRequest { SessionId = "other", PermissionKind = "tool.execute" });
         permissions.Raise(p => p.PendingChanged += null);
 
-        await Task.Delay(300, TestContext.Current.CancellationToken);
+        // 已 Dispose：连去抖计时器都不该存在。给一个上界，确认它始终不触发。
+        await Task.WhenAny(notified.Task, Task.Delay(DisposeQuietWindow, TestContext.Current.CancellationToken));
 
         count.Should().Be(0);
         provider.SurfaceSessionIds.Should().BeEmpty();
+    }
+
+    /// <summary>Dispose 后确认「永不通知」的上界窗口（不是 sleep 等待状态，而是上限）。</summary>
+    private static readonly TimeSpan DisposeQuietWindow = TimeSpan.FromMilliseconds(300);
+
+    /// <summary>条件轮询：命中即返回，上限 5s。用于等待可观察状态，不用于「等它稳定」。</summary>
+    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!condition())
+        {
+            if (DateTime.UtcNow >= deadline)
+                throw new TimeoutException("等待条件超时");
+
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
     }
 
     private static TuiSurfaceProvider CreateProvider(

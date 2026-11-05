@@ -89,7 +89,8 @@ public sealed class WriteBehindSessionGroupStoreTests
         await store.SaveAsync(new SessionGroup { Id = "g1", Title = "A" }, TestContext.Current.CancellationToken);
         await store.DeleteAsync("g1", TestContext.Current.CancellationToken);
 
-        await Task.Delay(150, TestContext.Current.CancellationToken);
+        // 被测对象自带 flush 完成信号：用它取代固定等待（E5 之外的可改造项）。
+        await store.FlushAllAsync(TestContext.Current.CancellationToken);
 
         inner.DeleteCount.Should().Be(1);
         inner.SaveCount.Should().Be(0);

@@ -299,18 +299,18 @@ Best practices for REST API design.
         var path = "daily/new-file.md";
         var eventFired = false;
         FileChangeEventArgs? eventArgs = null;
+        var fired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         using var subscription = _store.Changes.Subscribe(e =>
         {
             eventFired = true;
             eventArgs = e;
+            fired.TrySetResult();
         });
 
         // Act
         await _store.WriteAsync(path, "# New Content", TestContext.Current.CancellationToken);
-
-        // Wait a bit for the event to propagate
-        await Task.Delay(100, TestContext.Current.CancellationToken);
+        await fired.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         // Assert
         eventFired.Should().BeTrue();
@@ -328,18 +328,18 @@ Best practices for REST API design.
 
         var eventFired = false;
         FileChangeEventArgs? eventArgs = null;
+        var fired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         using var subscription = _store.Changes.Subscribe(e =>
         {
             eventFired = true;
             eventArgs = e;
+            fired.TrySetResult();
         });
 
         // Act - Write again to modify
         await _store.WriteAsync(path, "# Modified", TestContext.Current.CancellationToken);
-
-        // Wait a bit for the event to propagate
-        await Task.Delay(100, TestContext.Current.CancellationToken);
+        await fired.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         // Assert
         eventFired.Should().BeTrue();
@@ -357,18 +357,18 @@ Best practices for REST API design.
 
         var eventFired = false;
         FileChangeEventArgs? eventArgs = null;
+        var fired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         using var subscription = _store.Changes.Subscribe(e =>
         {
             eventFired = true;
             eventArgs = e;
+            fired.TrySetResult();
         });
 
         // Act
         await _store.DeleteAsync(path, TestContext.Current.CancellationToken);
-
-        // Wait a bit for the event to propagate
-        await Task.Delay(100, TestContext.Current.CancellationToken);
+        await fired.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         // Assert
         eventFired.Should().BeTrue();

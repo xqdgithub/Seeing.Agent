@@ -320,6 +320,32 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
     }
 
     /// <summary>释放编排器：注销事件订阅并释放并发闸门资源。</summary>
+    /// <summary>
+    /// 等待编排器进入静默（无在途执行、无待补跑）。
+    /// <para>替代测试里的固定时长等待：调用方可以确定地知道「去抖与重入补跑都已完成」，
+    /// 而不是 sleep 一段时间去赌。</para>
+    /// </summary>
+    public async Task WaitForQuiescenceAsync(CancellationToken ct = default)
+    {
+        do
+        {
+            // _gate 是所有重载轮次的串行点：拿到它即代表当前轮已结束。
+            await _gate.WaitAsync(ct).ConfigureAwait(false);
+
+            bool more;
+            lock (_stateLock)
+                more = _running || _pendingFullReload || _debouncePending;
+
+            _gate.Release();
+
+            if (!more)
+                return;
+
+            await Task.Yield();
+        }
+        while (!ct.IsCancellationRequested);
+    }
+
     public void Dispose()
     {
         lock (_stateLock)

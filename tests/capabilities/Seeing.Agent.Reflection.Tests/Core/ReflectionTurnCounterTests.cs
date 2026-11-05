@@ -79,11 +79,13 @@ public sealed class ReflectionTurnCounterTests
     public void Eviction_Should_Drop_Least_Recently_Used()
     {
         const int capacity = 4;
-        var counter = new ReflectionTurnCounter(capacity);
+        var time = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var counter = new ReflectionTurnCounter(capacity, time);
 
-        // 先塞满并让 oldest 明确成为最久未触发的那一个。
+        // 先塞满并让 oldest 明确成为最久未触发的那一个：用虚拟时间推进，
+        // 不靠 sleep 制造时间差。
         counter.Increment("oldest");
-        Thread.Sleep(20);
+        time.Advance(TimeSpan.FromMilliseconds(20));
         for (var i = 0; i < capacity - 1; i++)
             counter.Increment("filler-" + i);
 
@@ -122,5 +124,15 @@ public sealed class ReflectionTurnCounterTests
         var act = () => new ReflectionTurnCounter(0);
 
         act.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    /// <summary>可手动推进的时钟。</summary>
+    private sealed class FakeTimeProvider(DateTimeOffset start) : TimeProvider
+    {
+        private DateTimeOffset _now = start;
+
+        public override DateTimeOffset GetUtcNow() => _now;
+
+        public void Advance(TimeSpan delta) => _now += delta;
     }
 }

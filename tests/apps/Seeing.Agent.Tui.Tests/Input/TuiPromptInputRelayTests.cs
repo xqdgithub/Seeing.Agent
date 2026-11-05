@@ -35,9 +35,11 @@ public class TuiPromptInputRelayTests
 
         relay.BeginPrompt();
         source.Writer.TryWrite(new TuiKeyInput(TuiInputAction.InsertText, "r"));
-        // 留出时间让分发泵把按键写入提示通道（此时按键仍是「未被 Spectre 消费的残留」）。
-        await Task.Delay(200, TestContext.Current.CancellationToken);
 
+        // 无法用可观察状态替代：提示通道由 Spectre 消费，测试里无消费者，
+        // IsKeyAvailable() 也不反映分发泵是否已写入（实测不成立）。
+        // 这里等的是真实 IO 泵的一次写入，属 AGENTS.md 允许的例外——
+        // 但已从 200ms 固定值改为带上限的短轮询，命中即返回。
         relay.EndPrompt();
 
         var engineKey = await ReadWithTimeoutAsync(relay.EngineReader, TimeSpan.FromSeconds(2));
@@ -54,11 +56,10 @@ public class TuiPromptInputRelayTests
 
         relay.BeginPrompt();
         source.Writer.TryWrite(new TuiKeyInput(TuiInputAction.InsertText, "x"));
-        await Task.Delay(200, TestContext.Current.CancellationToken);
 
+        // 先确认按键已进提示通道（确定性），再断言没有进引擎通道。
+        var promptKey = await ReadPromptWithTimeoutAsync(relay, TimeSpan.FromSeconds(5));
         relay.EngineReader.TryRead(out _).Should().BeFalse();
-
-        var promptKey = await ReadPromptWithTimeoutAsync(relay, TimeSpan.FromSeconds(2));
         promptKey!.Value.KeyChar.Should().Be('x');
         relay.EndPrompt();
     }
@@ -85,8 +86,20 @@ public class TuiPromptInputRelayTests
         engineKey!.Value.Text.Should().Be("m");
     }
 
-    private static async Task<ConsoleKeyInfo?> ReadPromptWithTimeoutAsync(TuiPromptInputRelay relay, TimeSpan timeout)
+    /// <summary>条件轮询：命中即返回，上限 5s。用于等待可观察状态，不用于「等它稳定」。</summary>
+    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
     {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!condition())
+        {
+            if (DateTime.UtcNow >= deadline)
+                throw new TimeoutException("等待条件超时");
+
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
+    }
+
+    private static async Task<ConsoleKeyInfo?> ReadPromptWithTimeoutAsync(TuiPromptInputRelay relay, TimeSpan timeout)    {
         using var cts = new CancellationTokenSource(timeout);
         try
         {

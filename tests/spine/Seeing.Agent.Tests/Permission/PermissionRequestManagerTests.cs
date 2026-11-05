@@ -530,6 +530,9 @@ public class PermissionRequestManagerTests
 
         presenter.SetSurface(); // 同一 presenter 集合收缩：仅 SurfacedChanged，不 Unregister
 
+        // 「集合收缩不触发收敛」是负向时序断言：定时器根本没被启动，
+        // 因而没有可等待的完成信号。这类断言只能让宽限期真实流逝。
+        // 属 AGENTS.md 允许的例外（等待真实定时器，不是等状态就绪）。
         await Task.Delay(200, TestContext.Current.CancellationToken);
 
         harness.Manager.PendingCount.Should().Be(1);
@@ -551,6 +554,8 @@ public class PermissionRequestManagerTests
         harness.Presentation.Unregister(presenter);
         harness.Presentation.Register(new TestPresenter("s1"));
 
+        // 同上：验证「宽限期内重新注册 → 不收敛」，属负向时序断言，
+        // 必须让宽限期真实流逝（无完成信号可等）。
         await Task.Delay(600, TestContext.Current.CancellationToken);
 
         harness.Manager.PendingCount.Should().Be(1);

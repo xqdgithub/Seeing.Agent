@@ -127,8 +127,8 @@ public sealed class TuiTaskTrackerTests
 
         await WaitUntilAsync(() => pump.Stopped);
         var stepCount = CurrentTool(state, "call-1").Steps.Count;
+        // 泵已停止：Emit 写入的通道无人消费，状态不会变化。这是确定性事实，直接断言。
         pump.Emit(ToolCall("child-1", "late", "read", ToolCallStatus.Success, new Dictionary<string, object> { ["path"] = "/late" }));
-        await Task.Delay(50, TestContext.Current.CancellationToken);
         Assert.Equal(stepCount, CurrentTool(state, "call-1").Steps.Count);
     }
 
@@ -180,8 +180,8 @@ public sealed class TuiTaskTrackerTests
         tracker.Observe(tool);
         await tracker.ReconcileAsync();
         tracker.Observe(tool);
-        await Task.Delay(50, TestContext.Current.CancellationToken);
 
+        // Observe 与 ReconcileAsync 都已完成：计数是同步结果，无需等待。
         Assert.Equal(1, pumps.Count);
     }
 
@@ -194,8 +194,8 @@ public sealed class TuiTaskTrackerTests
         await using var tracker = new TuiTaskTracker(state, pumps.Factory, Groups(new()));
 
         tracker.Observe(tool);
-        await Task.Delay(50, TestContext.Current.CancellationToken);
 
+        // 非 task 工具在 Observe 内同步判定，不会挂载泵。
         Assert.Equal(0, pumps.Count);
     }
 

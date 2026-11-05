@@ -21,9 +21,10 @@ public class SessionActivityTrackerTests
     [Fact]
     public void GetIdleSessions_Should_Return_Only_Sessions_Past_Threshold()
     {
-        var tracker = new SessionActivityTracker();
+        var time = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var tracker = new SessionActivityTracker(time);
         tracker.Touch("old");
-        Thread.Sleep(30);
+        time.Advance(TimeSpan.FromMilliseconds(30));
         tracker.Touch("fresh");
 
         var idle = tracker.GetIdleSessions(TimeSpan.FromMilliseconds(20));
@@ -56,12 +57,23 @@ public class SessionActivityTrackerTests
     [Fact]
     public void Touch_Should_Refresh_Existing_Entry()
     {
-        var tracker = new SessionActivityTracker();
+        var time = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var tracker = new SessionActivityTracker(time);
         tracker.Touch("s1");
-        Thread.Sleep(30);
+        time.Advance(TimeSpan.FromMilliseconds(30));
         tracker.Touch("s1");
 
         tracker.GetIdleSessions(TimeSpan.FromMilliseconds(20)).Should().NotContain("s1",
             "重复 Touch 必须刷新时间戳，否则仍在活动的会话会被误判为空闲");
+    }
+
+    /// <summary>可手动推进的时钟：让「过了多久」变成确定性事实，不需要 sleep。</summary>
+    private sealed class FakeTimeProvider(DateTimeOffset start) : TimeProvider
+    {
+        private DateTimeOffset _now = start;
+
+        public override DateTimeOffset GetUtcNow() => _now;
+
+        public void Advance(TimeSpan delta) => _now += delta;
     }
 }

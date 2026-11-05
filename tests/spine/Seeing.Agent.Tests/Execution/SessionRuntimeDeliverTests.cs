@@ -122,7 +122,7 @@ public class SessionRuntimeDeliverTests
         var result = await runtime.DeliverAsync(Msg("s1", InboxDelivery.Inject));
 
         result.Success.Should().BeTrue();
-        await Task.Delay(300);
+        await runtime.WaitForIdleAsync("s1");
         runner.RunCount.Should().Be(0);
 
         var session = sessionManager.Get("s1")!;
@@ -141,7 +141,7 @@ public class SessionRuntimeDeliverTests
 
         result.Success.Should().BeTrue();
         await WaitUntilAsync(() => runner.RunCount == 1);
-        await Task.Delay(200);
+        await runtime.WaitForIdleAsync("s1");
         runner.RunCount.Should().Be(1);
     }
 
@@ -157,7 +157,7 @@ public class SessionRuntimeDeliverTests
         await runtime.DeliverAsync(Msg("s1", InboxDelivery.Wake, body: "wake"));
 
         await WaitUntilAsync(() => runner.RunCount >= 1);
-        await Task.Delay(200);
+        await runtime.WaitForIdleAsync("s1");
 
         runner.RunCount.Should().Be(1);
         InboxBatch batch;
@@ -193,7 +193,7 @@ public class SessionRuntimeDeliverTests
         release.SetResult();
 
         await WaitUntilAsync(() => runner.RunCount >= 1);
-        await Task.Delay(300);
+        await runtime.WaitForIdleAsync("s1");
 
         // 单飞：任何时刻并发执行体不超过 1
         runner.MaxActive.Should().Be(1);
@@ -209,7 +209,7 @@ public class SessionRuntimeDeliverTests
             Msg("s1", InboxDelivery.Notify, InboxPresentation.None, body: "notice"));
 
         result.Success.Should().BeTrue();
-        await Task.Delay(200);
+        await runtime.WaitForIdleAsync("s1");
         runner.RunCount.Should().Be(0);
         sessionManager.Get("s1")!.Messages.Should().BeEmpty();
         ((RecordingPublisher)publisher).Events.Should().ContainSingle(e => e is InboxNoticeEvent);
@@ -225,7 +225,7 @@ public class SessionRuntimeDeliverTests
             Msg("s1", InboxDelivery.Inject, InboxPresentation.None, body: "已取消"));
 
         result.Success.Should().BeTrue();
-        await Task.Delay(300);
+        await runtime.WaitForIdleAsync("s1");
         runner.RunCount.Should().Be(0);
 
         var session = sessionManager.Get("s1")!;
@@ -252,7 +252,7 @@ public class SessionRuntimeDeliverTests
         await runtime.DeliverAsync(Msg("s1", InboxDelivery.Wake, body: "/compact"));
 
         await WaitUntilAsync(() => runner.RunCount >= 1);
-        await Task.Delay(100);
+        await runtime.WaitForIdleAsync("s1");
 
         runner.Records.Should().NotBeEmpty();
         runner.Records[0].Input.Should().NotBeNull();
@@ -271,7 +271,7 @@ public class SessionRuntimeDeliverTests
         await runtime.DeliverAsync(Msg("s1", InboxDelivery.Wake, body: "/compact"));
 
         await WaitUntilAsync(() => runner.RunCount >= 1);
-        await Task.Delay(100);
+        await runtime.WaitForIdleAsync("s1");
 
         runner.Records.Should().NotBeEmpty();
         runner.Records[0].Input!.Text.Should().Be("/compact", "命令判定须取本批末条 user 文本");
@@ -312,7 +312,7 @@ public class SessionRuntimeDeliverTests
         discarded.Should().Be(1);
 
         release.SetResult();
-        await Task.Delay(300);
+        await runtime.WaitForIdleAsync("s1");
 
         runner.RunCount.Should().Be(1);
         lock (runner.Batches)

@@ -197,7 +197,8 @@ public class SessionRuntimeControlTests
         cancelled.Should().Be(1);
 
         release.SetResult();
-        await Task.Delay(300);
+        await runtime.WaitForIdleAsync("s1");
+        await runtime.WaitForIdleAsync("s2");
 
         // 循环已终止：runner 不再被调
         runner.RunCount.Should().Be(1);
@@ -248,7 +249,8 @@ public class SessionRuntimeControlTests
 
         // 放行 s1 → 全局并发放行 s2，但 Stop 校验应使其不执行本轮。
         release.SetResult();
-        await Task.Delay(400);
+        await runtime.WaitForIdleAsync("s1");
+        await runtime.WaitForIdleAsync("s2");
 
         runner.SessionIds.Should().ContainSingle().Which.Should().Be("s1");
         runtime.GetOverview("s2").CurrentExecution.Should().BeNull();
@@ -282,7 +284,8 @@ public class SessionRuntimeControlTests
             .Should().Be(SessionControlKeys.StopReasonCascadedFromParent);
 
         release.SetResult();
-        await Task.Delay(200);
+        await runtime.WaitForIdleAsync("s1");
+        await runtime.WaitForIdleAsync("s2");
 
         runner.RunCount.Should().Be(2);
         parent.Should().NotBeNull();
@@ -358,7 +361,8 @@ public class SessionRuntimeControlTests
         cancelled.Should().Be(2);
 
         release.SetResult();
-        await Task.Delay(200);
+        await runtime.WaitForIdleAsync("s1");
+        await runtime.WaitForIdleAsync("s2");
 
         runner.RunCount.Should().Be(2);
     }
@@ -440,7 +444,7 @@ public class SessionRuntimeControlTests
         runtime.GetOverview("s1").LastExecution.Should().NotBeNull();
 
         // 等循环完全退出（从 _activeLoops 移除自身）
-        await Task.Delay(300);
+        await runtime.WaitForIdleAsync("s1");
         runtime.CleanupIdleSessions();
 
         // 超时空闲 → 运行态被回收（无 state → 空 Overview）
