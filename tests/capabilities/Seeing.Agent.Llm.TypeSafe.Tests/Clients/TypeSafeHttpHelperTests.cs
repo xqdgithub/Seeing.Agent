@@ -1,19 +1,19 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Llm.SystemOne.Clients;
+using Seeing.Agent.Llm.TypeSafe.Clients;
 using System.Net;
 using System.Text;
 using System.Text.Json;
 using Xunit;
 
-namespace Seeing.Agent.Llm.SystemOne.Tests.Clients;
+namespace Seeing.Agent.Llm.TypeSafe.Tests.Clients;
 
 /// <summary>
 /// 序列化、鉴权头与错误映射用例。
 /// <para>429/529 退避重试用例已随客户端自带重试删除而移除（spec §6.3）：
 /// 退避由框架装饰器链统一施加（工厂内），此处只锁定「单次请求 + 原始错误上抛」。</para>
 /// </summary>
-public class SystemOneHttpHelperTests
+public class TypeSafeHttpHelperTests
 {
     private const string ModelsJson = """{"models":[{"name":"jev-latest"}]}""";
 
@@ -25,7 +25,7 @@ public class SystemOneHttpHelperTests
         var config = Config();
         config.Headers = new Dictionary<string, string> { ["X-Tenant"] = "acme" };
 
-        await SystemOneHttpHelper.PostAsync<DecisionRequestWire, DecisionResponseWire>(
+        await TypeSafeHttpHelper.PostAsync<DecisionRequestWire, DecisionResponseWire>(
             http,
             config,
             TypeSafeProtocol.EvaluatePath,
@@ -36,7 +36,7 @@ public class SystemOneHttpHelperTests
         handler.LastRequest!.Headers.GetValues("Authorization").Should().ContainSingle().Which.Should().Be("Bearer test-key");
         handler.LastRequest.Headers.GetValues("Accept").Should().ContainSingle().Which.Should().Be("application/json");
         handler.LastRequest.Headers.GetValues("X-Tenant").Should().ContainSingle().Which.Should().Be("acme");
-        handler.LastRequest.RequestUri.Should().Be(new Uri("http://systemone.test/v1/systemone"));
+        handler.LastRequest.RequestUri.Should().Be(new Uri("http://typesafe.test/v1/systemone"));
         handler.LastRequestBody.Should().NotBeNull();
         using var doc = JsonDocument.Parse(handler.LastRequestBody!);
         doc.RootElement.GetProperty("state").GetString().Should().Be("hello");
@@ -50,7 +50,7 @@ public class SystemOneHttpHelperTests
         var config = Config();
         config.Headers = new Dictionary<string, string> { ["Authorization"] = "Bearer custom" };
 
-        await SystemOneHttpHelper.PostAsync<DecisionRequestWire, DecisionResponseWire>(
+        await TypeSafeHttpHelper.PostAsync<DecisionRequestWire, DecisionResponseWire>(
             http, config, TypeSafeProtocol.EvaluatePath,
             new DecisionRequestWire { State = "s", Model = "m" },
             call: null, TestContext.Current.CancellationToken);
@@ -67,7 +67,7 @@ public class SystemOneHttpHelperTests
         var call = new LlmCallContext();
         call.ExtraHeaders["X-Trace"] = "t-1";
 
-        await SystemOneHttpHelper.PostAsync<DecisionRequestWire, DecisionResponseWire>(
+        await TypeSafeHttpHelper.PostAsync<DecisionRequestWire, DecisionResponseWire>(
             http, Config(), TypeSafeProtocol.EvaluatePath,
             new DecisionRequestWire { State = "s", Model = "m" },
             call, TestContext.Current.CancellationToken);
@@ -81,7 +81,7 @@ public class SystemOneHttpHelperTests
         var handler = new SequenceHandler(Json("rate limited", HttpStatusCode.TooManyRequests));
         using var http = new HttpClient(handler);
 
-        var act = () => SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
+        var act = () => TypeSafeHttpHelper.GetAsync<ModelsResponseWire>(
             http, Config(), TypeSafeProtocol.ModelsPath, call: null, TestContext.Current.CancellationToken);
 
         var ex = await act.Should().ThrowAsync<DecisionProtocolException>();
@@ -96,7 +96,7 @@ public class SystemOneHttpHelperTests
         var handler = new SequenceHandler(Json("overloaded", (HttpStatusCode)529));
         using var http = new HttpClient(handler);
 
-        var act = () => SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
+        var act = () => TypeSafeHttpHelper.GetAsync<ModelsResponseWire>(
             http, Config(), TypeSafeProtocol.ModelsPath, call: null, TestContext.Current.CancellationToken);
 
         var ex = await act.Should().ThrowAsync<DecisionProtocolException>();
@@ -110,7 +110,7 @@ public class SystemOneHttpHelperTests
         var handler = new SequenceHandler(Json("unauthorized", HttpStatusCode.Unauthorized));
         using var http = new HttpClient(handler);
 
-        var act = () => SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
+        var act = () => TypeSafeHttpHelper.GetAsync<ModelsResponseWire>(
             http, Config(), TypeSafeProtocol.ModelsPath, call: null, TestContext.Current.CancellationToken);
 
         var ex = await act.Should().ThrowAsync<DecisionProtocolException>();
@@ -124,7 +124,7 @@ public class SystemOneHttpHelperTests
         var handler = new SequenceHandler(Json("not-json"));
         using var http = new HttpClient(handler);
 
-        var act = () => SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
+        var act = () => TypeSafeHttpHelper.GetAsync<ModelsResponseWire>(
             http, Config(), TypeSafeProtocol.ModelsPath, call: null, TestContext.Current.CancellationToken);
 
         var ex = await act.Should().ThrowAsync<DecisionProtocolException>();
@@ -141,7 +141,7 @@ public class SystemOneHttpHelperTests
         var handler = new CancelingHandler(cts);
         using var http = new HttpClient(handler);
 
-        var act = () => SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
+        var act = () => TypeSafeHttpHelper.GetAsync<ModelsResponseWire>(
             http, Config(), TypeSafeProtocol.ModelsPath, call: null, cts.Token);
 
         await act.Should().ThrowAsync<TaskCanceledException>();
@@ -156,10 +156,78 @@ public class SystemOneHttpHelperTests
         var config = Config();
         config.BaseUrl = null;
 
-        await SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
+        await TypeSafeHttpHelper.GetAsync<ModelsResponseWire>(
             http, config, TypeSafeProtocol.ModelsPath, call: null, TestContext.Current.CancellationToken);
 
         handler.LastRequest!.RequestUri.Should().Be(new Uri("https://api.typesafe.ai/v1/models"));
+    }
+
+    /// <summary>
+    /// 调用拦截器必须对 decision 调用生效——这是与 OpenAI 协议工厂对齐的关键点。
+    /// <para>早先 <c>ApplyHeaders</c> 硬编码传 <c>Array.Empty&lt;ILlmCallInterceptor&gt;()</c>，
+    /// 导致 <c>llm.params</c>/<c>llm.headers</c> 这类横切机制对 decision 调用静默失效。
+    /// 本用例把「拦截器真的被调用、且塑形后的头真的发出去了」钉住。</para>
+    /// </summary>
+    [Fact]
+    public async Task PostAsync_ShouldApplyInterceptors()
+    {
+        var handler = new CapturingHandler("""{"model":"jev-latest","answers":{}}""");
+        using var http = new HttpClient(handler);
+
+        var interceptor = new StampInterceptor();
+
+        await TypeSafeHttpHelper.PostAsync<DecisionRequestWire, DecisionResponseWire>(
+            http,
+            Config(),
+            TypeSafeProtocol.EvaluatePath,
+            new DecisionRequestWire { State = "hello", Model = "m" },
+            call: null,
+            TestContext.Current.CancellationToken,
+            interceptors: [interceptor]);
+
+        interceptor.Calls.Should().Be(1, "拦截器必须被调用");
+        interceptor.SeenProviderId.Should().Be("typesafe");
+        handler.LastRequest!.Headers.GetValues("X-Stamp")
+            .Should().ContainSingle().Which.Should().Be("intercepted");
+    }
+
+    /// <summary>拦截器塑形的头覆盖静态头（同名时后者胜）。</summary>
+    [Fact]
+    public async Task PostAsync_Interceptor_ShouldOverrideStaticHeader()
+    {
+        var handler = new CapturingHandler("""{"model":"jev-latest","answers":{}}""");
+        using var http = new HttpClient(handler);
+        var config = Config();
+        config.Headers = new Dictionary<string, string> { ["X-Stamp"] = "static" };
+
+        await TypeSafeHttpHelper.PostAsync<DecisionRequestWire, DecisionResponseWire>(
+            http,
+            config,
+            TypeSafeProtocol.EvaluatePath,
+            new DecisionRequestWire { State = "hello", Model = "m" },
+            call: null,
+            TestContext.Current.CancellationToken,
+            interceptors: [new StampInterceptor()]);
+
+        handler.LastRequest!.Headers.GetValues("X-Stamp")
+            .Should().ContainSingle().Which.Should().Be("intercepted");
+    }
+
+    private sealed class StampInterceptor : ILlmCallInterceptor
+    {
+        public int Calls { get; private set; }
+        public string? SeenProviderId { get; private set; }
+
+        public int Order => 0;
+
+        public bool AppliesTo(string providerId, string providerType) => true;
+
+        public void OnSending(LlmOutboundRequest request)
+        {
+            Calls++;
+            SeenProviderId = request.ProviderId;
+            request.Headers["X-Stamp"] = "intercepted";
+        }
     }
 
     private static ProviderConfig Config()
@@ -167,7 +235,7 @@ public class SystemOneHttpHelperTests
         {
             Id = "typesafe",
             Type = ProviderTypes.TypeSafe,
-            BaseUrl = "http://systemone.test",
+            BaseUrl = "http://typesafe.test",
             ApiKey = "test-key"
         };
 

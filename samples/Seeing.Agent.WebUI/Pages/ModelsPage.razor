@@ -43,18 +43,21 @@
         <Row Gutter="16">
             <Col Span="6">
                 <Card Title="Provider 列表" Size="@CardSize.Small">
+                    @* 按来源分组：用户先找自己配的，再看插件带的。组内按显示名排序（而非 id）——
+                       显示的是 Name，用 id 排序会出现「看起来毫无规律」的顺序。 *@
                     <Menu Mode="@MenuMode.Inline" SelectedKeys="@_selectedProviderKeys" OnMenuItemClicked="OnProviderSelected">
-                        @foreach (var p in ProviderManager.GetProviders().OrderBy(pair => pair.Key))
+                        @foreach (var group in ProviderGroups)
                         {
-                            <MenuItem Key="@p.Key">
-                                <span style="display: inline-flex; align-items: center; gap: 8px;">
-                                    @(p.Value.Name ?? p.Key)
-                                    @if (p.Value.Origin == ProviderOrigin.Extension)
-                                    {
-                                        <Tag Color="@("blue")" Style="margin: 0; line-height: 18px;">扩展</Tag>
-                                    }
-                                </span>
-                            </MenuItem>
+                            <MenuItemGroup Key="@($"group-{group.Key}")" Title="@group.Title">
+                                @foreach (var p in group.Items)
+                                {
+                                    <MenuItem Key="@p.Key">
+                                        <span style="display: inline-flex; align-items: center; gap: 8px;">
+                                            @(p.Value.Name ?? p.Key)
+                                        </span>
+                                    </MenuItem>
+                                }
+                            </MenuItemGroup>
                         }
                     </Menu>
                 </Card>
@@ -531,6 +534,13 @@
     /// <summary>删除仅对配置型 Provider 开放；扩展 Provider 用「恢复默认」表达移除语义。</summary>
     private bool CanDeleteModel => CanEditCurrentProvider;
 
+    /// <summary>
+    /// Provider 列表的分组视图：配置型 → 内置 → 扩展，组内按显示名排序。
+    /// 规则本身在 <see cref="ProviderListGrouping"/>（纯函数，有单测守门）。
+    /// </summary>
+    private IReadOnlyList<ProviderGroup> ProviderGroups
+        => ProviderListGrouping.Build(ProviderManager.GetProviders());
+
     protected override async Task OnInitializedAsync()
     {
         ModelManager.ModelConfigChanged += OnModelConfigChanged;
@@ -543,7 +553,7 @@
 
         var providers = ProviderManager.GetProviders();
         if (providers.Count > 0 && string.IsNullOrEmpty(_selectedProviderId))
-            await SelectProviderAsync(providers.Keys.First());
+            await SelectProviderAsync(ProviderGroups[0].Items[0].Key);
 
         _loading = false;
     }

@@ -47,14 +47,15 @@
 | `Seeing.Agent.Comms` | `comms` | 渠道目录、出站投递、适配器注册表；`ChannelDeliveryScheduleDispatcher` 只按 `SessionData.ChannelRoute` 出站 |
 | `Seeing.Agent.Tools.ChannelMessaging` | `channel-messaging` | `send_channel_message`（文本 + 工作区附件）/ 列用户 / 列对话；`DependsOn: io.local`；无宿主时 no-op sink |
 | `Seeing.Agent.Memory` | `memory` | 记忆 |
-| `Seeing.Agent.Llm.SystemOne` | `llm.systemone` | SystemOne（TypeSafe/Jev）**内置 Provider**：登记 typesafe 工厂 + 自注册 `SystemOneLlmProvider`（默认 decision、内置 `jev-latest` 种子模型），装完即用；用户 `Providers` 同 id 配置优先 |
-| `Seeing.Agent.Tools.SystemOne` | `llm.systemone.tools` | SystemOne 工具；`DependsOn: llm.systemone`；经 `ILlmInvoker` 调用 |
+| `Seeing.Agent.Llm.TypeSafe` | `llm.typesafe` | TypeSafe（Decision）协议包：**只登记 `typesafe` 协议工厂**，不注册任何 Provider（与 `llm.openai` 对等） |
+| `Seeing.Agent.Tools.SystemOne` | `llm.systemone.tools` | SystemOne 工具；`DependsOn: llm.typesafe`；经 `ILlmInvoker` 调用 |
 | `Seeing.Agent.Acp` | `acp` | ACP 执行实现 |
 | `Seeing.Agent.TokenBudget` | — | Token 预算 Hook（可无模块 id；经扩展方法挂 Hook） |
 | `Seeing.Provider.DeepSeek`（`plugs/providers/`） | `provider.deepseek` | DeepSeek 网关 Provider；`DependsOn: llm.openai` |
 | `Seeing.Provider.MiMo`（`plugs/providers/`） | `provider.mimo` | 小米 MiMo 网关 Provider；`DependsOn: llm.openai` |
 | `Seeing.Provider.OpenCodeZen`（`plugs/providers/`） | `provider.opencodezen` | OpenCode Zen 网关 Provider；`DependsOn: llm.openai` |
 | `Seeing.Provider.SiliconFlow`（`plugs/providers/`） | `provider.siliconflow` | SiliconFlow 网关 Provider；`DependsOn: llm.openai` |
+| `Seeing.Provider.TypeSafeApi`（`plugs/providers/`） | `provider.typesafe-api` | TypeSafe 端点 Provider（id `typesafe-api`）；`DependsOn: llm.typesafe`；配置 `~/.seeing/providers/typesafe-api.json` |
 
 `subagent` 为 Hosting 级能力（Task 工具）；内置场景字符串里可出现该 id。
 

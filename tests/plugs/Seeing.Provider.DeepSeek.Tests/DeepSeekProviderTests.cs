@@ -22,6 +22,24 @@ public class DeepSeekProviderTests
             f.Name == "ApiKey" && f.Type == ConfigFieldType.Secret && f.Required);
     }
 
+    /// <summary>
+    /// 能力多选必须有候选值，否则 UI 只能渲染成一个没有选项的死下拉。
+    /// <para>候选来自 <see cref="LlmCapabilityMap.ConfigKeys"/>（本基类统一补），
+    /// 而不是各插件各写一遍。</para>
+    /// </summary>
+    [Fact]
+    public void GetConfigSchema_Capabilities_ShouldCarryChoices()
+    {
+        var sut = CreateSut(apiKey: null);
+        var capabilities = sut.GetConfigSchema()!.Single(f => f.Name == "Capabilities");
+
+        capabilities.Type.Should().Be(ConfigFieldType.StringList);
+        capabilities.Choices.Should().NotBeNull(
+            "无候选的 StringList 会被渲染成既无选项也无法输入的死框");
+        capabilities.Choices.Should().BeEquivalentTo(LlmCapabilityMap.ConfigKeys);
+        capabilities.Choices.Should().Contain("chat");
+    }
+
     [Fact]
     public void Protocol_ShouldBeOpenAi()
     {

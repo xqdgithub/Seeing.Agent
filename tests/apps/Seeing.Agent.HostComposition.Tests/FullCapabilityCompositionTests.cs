@@ -4,8 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.Anthropic;
 using Seeing.Agent.Llm.OpenAI;
-using Seeing.Agent.Llm.SystemOne;
-using Seeing.Agent.Llm.SystemOne.Clients;
+using Seeing.Agent.Llm.TypeSafe;
+using Seeing.Agent.Llm.TypeSafe.Clients;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Core.CapabilitySets;
@@ -144,7 +144,7 @@ public class FullCapabilityCompositionTests
         resolver.Require(ProviderTypes.OpenAi).Should().BeOfType<OpenAiLlmClientFactory>();
         resolver.Require(ProviderTypes.OpenAiResponses).Should().BeOfType<OpenAiLlmClientFactory>();
         resolver.Require(ProviderTypes.Anthropic).Should().BeOfType<AnthropicLlmClientFactory>();
-        resolver.Require(ProviderTypes.TypeSafe).Should().BeOfType<TypeSafeSystemOneClientFactory>();
+        resolver.Require(ProviderTypes.TypeSafe).Should().BeOfType<TypeSafeClientFactory>();
 
         // 同一工厂服务两个协议时必须共享实例
         resolver.Require(ProviderTypes.OpenAi)

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Seeing.Provider.TypeSafeApi</RootNamespace>
+    <AssemblyName>Seeing.Provider.TypeSafeApi</AssemblyName>
+    <Description>TypeSafe（Decision）端点 Provider 插件——由插件而非能力包提供具体端点</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\abstractions\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\src\primitives\Seeing.ConfigSchema\Seeing.ConfigSchema.csproj" />
+    <ProjectReference Include="..\..\..\src\support\Seeing.Agent.Llm.Support\Seeing.Agent.Llm.Support.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+</Project>

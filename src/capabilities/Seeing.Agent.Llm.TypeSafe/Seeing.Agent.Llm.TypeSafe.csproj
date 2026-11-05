@@ -4,20 +4,18 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>Seeing.Agent.Llm.SystemOne</RootNamespace>
-    <Description>TypeSafe（Jev）Decision 能力客户端与工厂模块——原 SystemOne 平行栈合流进统一 LLM 注册表</Description>
+    <RootNamespace>Seeing.Agent.Llm.TypeSafe</RootNamespace>
+    <Description>TypeSafe（Decision）协议客户端与工厂模块——只管协议，不注册 Provider</Description>
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Seeing.Agent.Llm.SystemOne.Tests" />
+    <InternalsVisibleTo Include="Seeing.Agent.Llm.TypeSafe.Tests" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <ProjectReference Include="..\..\abstractions\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
-    <ProjectReference Include="..\..\support\Seeing.Agent.Llm.Support\Seeing.Agent.Llm.Support.csproj" />
-    <ProjectReference Include="..\..\primitives\Seeing.ConfigSchema\Seeing.ConfigSchema.csproj" />
   </ItemGroup>
 
 </Project>

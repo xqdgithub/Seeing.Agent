@@ -19,7 +19,7 @@ using Seeing.Agent.Memory.Extensions;
 using Seeing.Agent.Reflection.Extensions;
 using Seeing.Agent.Scheduler.Extensions;
 using Seeing.Agent.Skills;
-using Seeing.Agent.Llm.SystemOne.Extensions;
+using Seeing.Agent.Llm.TypeSafe.Extensions;
 using Seeing.Agent.TokenBudget.Extensions;
 using Seeing.Agent.Tools.Basic;
 using Seeing.Agent.Tools.ChannelMessaging;
@@ -38,6 +38,7 @@ using Seeing.Provider.DeepSeek;
 using Seeing.Provider.MiMo;
 using Seeing.Provider.OpenCodeZen;
 using Seeing.Provider.SiliconFlow;
+using Seeing.Provider.TypeSafeApi;
 
 namespace Seeing.Agent.HostComposition;
 
@@ -76,7 +77,7 @@ public static class FullCapabilityComposition
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        // Memory / SystemOne 的 Provider 走 IHttpClientFactory（幂等）。
+        // Memory / TypeSafe 的 Provider 走 IHttpClientFactory（幂等）。
         services.AddHttpClient();
 
         // ── 执行世界与模型 ──
@@ -84,8 +85,10 @@ public static class FullCapabilityComposition
         services.AddSeeingModule<AgentsBuiltInModule>(registry);
         services.AddSeeingModule<OpenAiLlmModule>(registry);
         services.AddSeeingModule<AnthropicLlmModule>(registry);
+        services.AddTypeSafe(registry);
         services.AddSeeingModule<ModelCapabilitiesModule>(registry);
         services.AddSeeingModule<BuiltinCatalogModule>(registry);
+        services.AddSeeingModule<TypeSafeApiLlmModule>(registry);
         services.AddSeeingModule<DeepSeekLlmModule>(registry);
         services.AddSeeingModule<MiMoLlmModule>(registry);
         services.AddSeeingModule<OpenCodeZenLlmModule>(registry);
@@ -112,7 +115,6 @@ public static class FullCapabilityComposition
         services.AddSeeingReflection(registry);
         services.AddSeeingScheduler(registry);
         services.AddSeeingAcp(registry);
-        services.AddSystemOne(registry);
         services.AddSystemOneTools(registry);
         services.AddTokenBudgetIntegration(registry, configuration);
 

@@ -132,7 +132,7 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 |------|------|------|
 | Core 零工具实现 | ✅ | `Tools/BuiltIn/Plan/` 死代码删除；`rg "\[Tool\(" src/spine` 为空 |
 | 能力包无 Core ProjectReference | ✅ | 仅 `src/hosting/*` 命中（维持 2026-09-08 结论） |
-| 模块生命周期对称 | ✅ | MCP/SystemOne/Memory/Agents/ACP/Scheduler/Skill 注册收编进 `Activate/Deactivate`；Bootstrap 退役 |
+| 模块生命周期对称 | ✅ | MCP/TypeSafe/Memory/Agents/ACP/Scheduler/Skill 注册收编进 `Activate/Deactivate`；Bootstrap 退役 |
 | 事件流恰一次 | ✅ | `ExecutionEventPublisher` 发布/订阅同锁，Router 移除 skipSet 手动回放 |
 | 取消正确性 | ✅ | CTS 绑定 `ExecutionRecord`（per-execution），窗口期取消不再偷换 |
 | 装饰器链序 | ✅ | 实际 `OutputLimiter(Cached(Timeout(Retry(tool))))`（补齐链序断言测试） |

@@ -22,7 +22,7 @@ public sealed class SystemOneTool : BuiltInToolBase
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
     };
 
-    /// <summary>无可用 Decision 模型时的错误文案（与 llm.systemone 门面一致）。</summary>
+    /// <summary>无可用 Decision 模型时的错误文案（与 llm.typesafe 协议包一致）。</summary>
     internal const string NoDecisionModelMessage =
         "未配置 Decision 模型：请显式传入 model，或在设置中指定 DefaultModels.decision";
 
@@ -80,7 +80,7 @@ public sealed class SystemOneTool : BuiltInToolBase
 
         var invoker = context.Services?.GetService<ILlmInvoker>();
         if (invoker is null)
-            return Failure("SystemOne 能力未接入（请启用 llm.systemone 模块）");
+            return Failure("SystemOne 能力未接入（请启用 llm.typesafe 模块）");
 
         // 模型解析四步链（spec §7.9）：工具参数 → DefaultModels.decision → 目录唯一 Decision → 报错列候选
         string modelId;
@@ -135,7 +135,7 @@ public sealed class SystemOneTool : BuiltInToolBase
 
     /// <summary>
     /// Decision 模型解析（spec §7.9 四步链，顺序唯一）。
-    /// <para>本包不得引用 <c>Seeing.Agent.Llm.SystemOne</c>（能力包之间不互相依赖），
+    /// <para>本包不得引用 <c>Seeing.Agent.Llm.TypeSafe</c>（能力包之间不互相依赖），
     /// 故与门面对象各持一份同序实现，文案保持一致。</para>
     /// </summary>
     internal static string ResolveDecisionModel(IModelConfigManager? models, string? requested)

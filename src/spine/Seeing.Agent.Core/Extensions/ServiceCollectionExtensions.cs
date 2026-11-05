@@ -723,7 +723,7 @@ namespace Seeing.Agent.Core.Extensions
         /// </summary>
         private static void RegisterLlmServices(IServiceCollection services)
         {
-            // ILlmClientFactory 由 OpenAiLlmModule / AnthropicLlmModule / SystemOneModule 注册；
+            // ILlmClientFactory 由 OpenAiLlmModule / AnthropicLlmModule / TypeSafeModule 注册；
             // 协议→工厂的唯一映射由 ILlmClientFactoryResolver 承载（重复协议在构造期即抛）。
             services.AddSingleton<ILlmClientFactoryResolver>(sp => new LlmClientFactoryResolver(
                 sp.GetServices<LlmClientFactoryRegistration>()));

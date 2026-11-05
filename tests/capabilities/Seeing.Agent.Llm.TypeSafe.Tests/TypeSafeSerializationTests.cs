@@ -1,18 +1,18 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Llm.SystemOne.Clients;
+using Seeing.Agent.Llm.TypeSafe.Clients;
 using System.Text.Json;
 using Xunit;
 
-namespace Seeing.Agent.Llm.SystemOne.Tests;
+namespace Seeing.Agent.Llm.TypeSafe.Tests;
 
 /// <summary>
-/// Decision DTO ↔ TypeSafe wire 的序列化契约（原 SystemOne 序列化用例随合流改造）。
+/// Decision DTO ↔ TypeSafe wire 的序列化契约。
 /// <para>wire 键名必须保持小写（<c>state/model/questions/type/instructions/criteria</c>
 /// 与 <c>noul/choice/score/legend/probabilities/confidence/usage.input_tokens/release_date</c>）：
 /// 能力端口 DTO 不带 wire 注解，协议字段名是本包的私有事实。</para>
 /// </summary>
-public class SystemOneSerializationTests
+public class TypeSafeSerializationTests
 {
     private static JsonSerializerOptions Opts => TypeSafeWireMap.JsonOptions;
 

@@ -14,6 +14,6 @@ public class SystemOneToolsModuleTests
         module.ProvidedTools.Should().BeEquivalentTo(
             new[] { "systemone_ask", "systemone_noul", "systemone_choice", "systemone_score" });
         module.ProvidedSeams.Should().BeEmpty();
-        module.DependsOn.Should().Equal("llm.systemone");
+        module.DependsOn.Should().Equal("llm.typesafe");
     }
 }

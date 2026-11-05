@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>Seeing.Agent.Llm.SystemOne.Tests</RootNamespace>
+    <RootNamespace>Seeing.Agent.Llm.TypeSafe.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
@@ -29,10 +29,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Llm.SystemOne\Seeing.Agent.Llm.SystemOne.csproj" />
+    <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Llm.TypeSafe\Seeing.Agent.Llm.TypeSafe.csproj" />
     <!--
-      原 Seeing.Agent.Core 引用随平行栈删除：合流后本包测试只针对 Abstractions 契约与包内实现，
-      不再需要 Core（能力包不得引用 Core，测试也不该被 Core 的并行改造中间态阻塞）。
+      不引用 Seeing.Agent.Core：本包测试只针对 Abstractions 契约与包内实现
+      （能力包不得引用 Core，测试也不该被 Core 的并行改造中间态阻塞）。
     -->
   </ItemGroup>
 

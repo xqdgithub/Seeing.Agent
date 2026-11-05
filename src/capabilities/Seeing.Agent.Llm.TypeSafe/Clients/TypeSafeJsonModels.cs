@@ -2,13 +2,12 @@ using Seeing.Agent.Abstractions.Llm;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Seeing.Agent.Llm.SystemOne.Clients;
+namespace Seeing.Agent.Llm.TypeSafe.Clients;
 
 /// <summary>
-/// TypeSafe（Jev / Decision）协议常量：端点与缺省值。
-/// <para>原 <c>SystemOneDefaults</c> 随平行栈删除；provider 连接参数（baseUrl / apiKey / timeout /
-/// 代理 / 重试）改由框架 <see cref="ProviderConfig"/>（<c>Providers.typesafe</c>）承载，
-/// 这里只保留协议自身的端点事实（spec §7.9）。</para>
+/// TypeSafe（Decision）协议常量：端点与缺省值。
+/// <para>provider 连接参数（baseUrl / apiKey / timeout / 代理 / 重试）由框架
+/// <see cref="ProviderConfig"/> 承载，这里只保留协议自身的端点事实（spec §7.9）。</para>
 /// </summary>
 internal static class TypeSafeProtocol
 {
@@ -22,7 +21,7 @@ internal static class TypeSafeProtocol
     public const string ModelsPath = "/v1/models";
 
     /// <summary>
-    /// <see cref="ProviderConfig.Timeout"/> 非正数时的兜底超时（沿用原 SystemOne 的 10s，
+    /// <see cref="ProviderConfig.Timeout"/> 非正数时的兜底超时（10s：
     /// 决策调用不应吃满框架 5 分钟缺省超时）。
     /// </summary>
     public const int DefaultTimeoutMs = 10000;
@@ -31,7 +30,7 @@ internal static class TypeSafeProtocol
     public const string ProbeQuestionId = "probe";
 }
 
-/// <summary>POST /v1/systemone 请求体（wire 形状：小写键，与原 SystemOne 协议一致）。</summary>
+/// <summary>POST /v1/systemone 请求体（wire 形状：小写键，TypeSafe 协议约定）。</summary>
 internal sealed class DecisionRequestWire
 {
     [JsonPropertyName("state")] public object? State { get; set; }

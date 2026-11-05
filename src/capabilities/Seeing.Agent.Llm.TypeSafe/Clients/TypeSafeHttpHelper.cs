@@ -1,15 +1,15 @@
-using Seeing.Agent.Abstractions.Llm;
+﻿using Seeing.Agent.Abstractions.Llm;
 using System.Text;
 using System.Text.Json;
 
-namespace Seeing.Agent.Llm.SystemOne.Clients;
+namespace Seeing.Agent.Llm.TypeSafe.Clients;
 
 /// <summary>
 /// TypeSafe（Decision）HTTP 请求辅助：统一鉴权头、JSON 序列化、错误码映射与出站头管道。
 /// <para><b>不含重试/退避</b>（spec §6.3 / §7.7）：429/529 退避由框架装饰器链按
 /// <see cref="ProviderConfig"/> 的重试参数统一施加，客户端自带退避会造成双重退避。</para>
 /// </summary>
-internal static class SystemOneHttpHelper
+internal static class TypeSafeHttpHelper
 {
     private static JsonSerializerOptions JsonOpts => TypeSafeWireMap.JsonOptions;
 
@@ -20,10 +20,12 @@ internal static class SystemOneHttpHelper
         string path,
         TReq body,
         LlmCallContext? call,
-        CancellationToken ct)
+        CancellationToken ct,
+        IReadOnlyList<ILlmCallInterceptor>? interceptors = null)
     {
         var json = JsonSerializer.Serialize(body, JsonOpts);
-        return await SendAsync<TResp>(http, config, path, HttpMethod.Post, json, call, ct).ConfigureAwait(false);
+        return await SendAsync<TResp>(http, config, path, HttpMethod.Post, json, call, ct, interceptors)
+            .ConfigureAwait(false);
     }
 
     /// <summary>GET 请求并反序列化响应。</summary>
@@ -32,8 +34,10 @@ internal static class SystemOneHttpHelper
         ProviderConfig config,
         string path,
         LlmCallContext? call,
-        CancellationToken ct)
-        => await SendAsync<TResp>(http, config, path, HttpMethod.Get, jsonBody: null, call, ct).ConfigureAwait(false);
+        CancellationToken ct,
+        IReadOnlyList<ILlmCallInterceptor>? interceptors = null)
+        => await SendAsync<TResp>(http, config, path, HttpMethod.Get, jsonBody: null, call, ct, interceptors)
+            .ConfigureAwait(false);
 
     private static async Task<TResp> SendAsync<TResp>(
         HttpClient http,
@@ -42,7 +46,8 @@ internal static class SystemOneHttpHelper
         HttpMethod method,
         string? jsonBody,
         LlmCallContext? call,
-        CancellationToken ct)
+        CancellationToken ct,
+        IReadOnlyList<ILlmCallInterceptor>? interceptors = null)
     {
         ArgumentNullException.ThrowIfNull(http);
         ArgumentNullException.ThrowIfNull(config);
@@ -56,7 +61,7 @@ internal static class SystemOneHttpHelper
             using var request = new HttpRequestMessage(method, requestUri);
             if (jsonBody is not null)
                 request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-            ApplyHeaders(request, config, call);
+            ApplyHeaders(request, config, call, interceptors);
 
             using var response = await http
                 .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
@@ -70,14 +75,14 @@ internal static class SystemOneHttpHelper
                 try
                 {
                     return JsonSerializer.Deserialize<TResp>(responseBody, JsonOpts)
-                        ?? throw new DecisionProtocolException(statusCode, responseBody, "SystemOne 响应反序列化为空");
+                        ?? throw new DecisionProtocolException(statusCode, responseBody, "TypeSafe 响应反序列化为空");
                 }
                 catch (JsonException ex)
                 {
                     throw new DecisionProtocolException(
                         statusCode,
                         responseBody,
-                        $"SystemOne 响应反序列化失败: {ex.Message}",
+                        $"TypeSafe 响应反序列化失败: {ex.Message}",
                         ex);
                 }
             }
@@ -86,7 +91,7 @@ internal static class SystemOneHttpHelper
             throw new DecisionProtocolException(
                 statusCode,
                 responseBody,
-                $"SystemOne 请求失败: HTTP {statusCode} {response.ReasonPhrase}");
+                $"TypeSafe 请求失败: HTTP {statusCode} {response.ReasonPhrase}");
         }
         catch (DecisionProtocolException)
         {
@@ -94,15 +99,19 @@ internal static class SystemOneHttpHelper
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            throw new DecisionProtocolException(0, null, $"SystemOne 网络请求失败: {ex.Message}", ex);
+            throw new DecisionProtocolException(0, null, $"TypeSafe 网络请求失败: {ex.Message}", ex);
         }
     }
 
     /// <summary>
     /// 出站头：内置 Bearer/Accept → 框架 <see cref="OutboundPipeline"/>
-    /// （Provider 静态头 + <see cref="LlmCallContext.ExtraHeaders"/>，同名覆盖内置）。
+    /// （Provider 静态头 + <see cref="LlmCallContext.ExtraHeaders"/> + 调用拦截器，同名覆盖内置）。
     /// </summary>
-    private static void ApplyHeaders(HttpRequestMessage request, ProviderConfig config, LlmCallContext? call)
+    private static void ApplyHeaders(
+        HttpRequestMessage request,
+        ProviderConfig config,
+        LlmCallContext? call,
+        IReadOnlyList<ILlmCallInterceptor>? interceptors)
     {
         if (!ContainsHeader(config.Headers, "Authorization") && !string.IsNullOrEmpty(config.ApiKey))
             request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {config.ApiKey}");
@@ -113,7 +122,7 @@ internal static class SystemOneHttpHelper
             request,
             staticHeaders: config.Headers,
             call,
-            Array.Empty<ILlmCallInterceptor>(),
+            interceptors ?? Array.Empty<ILlmCallInterceptor>(),
             config.Id,
             config.Type);
     }

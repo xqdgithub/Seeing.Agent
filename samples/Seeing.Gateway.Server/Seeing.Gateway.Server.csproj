@@ -29,7 +29,7 @@
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Workspace\Seeing.Agent.Workspace.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Question\Seeing.Agent.Tools.Question.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.ChannelMessaging\Seeing.Agent.Tools.ChannelMessaging.csproj" />
-    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Llm.SystemOne\Seeing.Agent.Llm.SystemOne.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Llm.TypeSafe\Seeing.Agent.Llm.TypeSafe.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.SystemOne\Seeing.Agent.Tools.SystemOne.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Skills\Seeing.Agent.Skills.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Mcp\Seeing.Agent.Mcp.csproj" />

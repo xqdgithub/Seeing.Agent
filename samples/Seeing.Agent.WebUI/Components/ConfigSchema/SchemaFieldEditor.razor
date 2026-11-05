@@ -19,11 +19,22 @@
                 Style="width: 100%;" />
         break;
 
-    case ConfigFieldType.StringList:
+    case ConfigFieldType.StringList when Field.Choices is { Count: > 0 } choices:
+        @* 有候选：多选下拉，用户从合法值里挑，不能填错 *@
         <Select TItemValue="string" TItem="string"
-                Mode="SelectMode.Tags"
+                Mode="SelectMode.Multiple"
                 @bind-Values="StringListValue"
-                Style="width: 100%;" />
+                DataSource="@choices.ToList()"
+                Style="width: 100%;"
+                AllowClear />
+        break;
+
+    case ConfigFieldType.StringList:
+        @* 无候选：自由输入（逗号分隔）。绝不能渲染成空下拉——那是没有选项也无法输入的死框。 *@
+        <Input TValue="string"
+               Value="@StringListText"
+               ValueChanged="OnStringListTextChanged"
+               Placeholder="多个值用英文逗号分隔" />
         break;
 
     case ConfigFieldType.TextArea:
@@ -73,6 +84,19 @@
             .Select(s => s.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList() ?? [];
+    }
+
+    /// <summary>无候选值时的自由输入视图（逗号分隔）。</summary>
+    private string StringListText
+        => string.Join(", ", ReadStringList(Field.Name));
+
+    /// <summary>自由输入回写：按逗号拆分、去空、去重（大小写不敏感）。</summary>
+    private void OnStringListTextChanged(string? text)
+    {
+        Options[Field.Name] = (text ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static string ReadString(string name, Dictionary<string, object?> options) =>

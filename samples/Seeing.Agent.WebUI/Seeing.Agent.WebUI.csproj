@@ -37,6 +37,7 @@
     <ProjectReference Include="..\..\src\hosting\Seeing.Agent.Hosting.Web\Seeing.Agent.Hosting.Web.csproj" />
     <ProjectReference Include="..\..\src\primitives\Seeing.Session\Seeing.Session.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Memory\Seeing.Agent.Memory.csproj" />
+    <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.TypeSafeApi\Seeing.Provider.TypeSafeApi.csproj" />
     <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.DeepSeek\Seeing.Provider.DeepSeek.csproj" />
     <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.MiMo\Seeing.Provider.MiMo.csproj" />
     <ProjectReference Include="..\..\plugs\providers\Seeing.Provider.OpenCodeZen\Seeing.Provider.OpenCodeZen.csproj" />
@@ -45,7 +46,7 @@
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.TokenBudget\Seeing.Agent.TokenBudget.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Question\Seeing.Agent.Tools.Question.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.Editor\Seeing.Agent.Tools.Editor.csproj" />
-    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Llm.SystemOne\Seeing.Agent.Llm.SystemOne.csproj" />
+    <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Llm.TypeSafe\Seeing.Agent.Llm.TypeSafe.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Tools.SystemOne\Seeing.Agent.Tools.SystemOne.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Files\Seeing.Agent.Files.csproj" />
     <ProjectReference Include="..\Seeing.Agent.WebUI.Files\Seeing.Agent.WebUI.Files.csproj" />

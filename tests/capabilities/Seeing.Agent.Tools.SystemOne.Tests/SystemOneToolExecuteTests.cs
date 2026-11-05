@@ -193,7 +193,7 @@ public class SystemOneToolExecuteTests
         var result = await tool.ExecuteAsync(args, context);
 
         result.Success.Should().BeFalse();
-        result.Error.Should().Contain("SystemOne").And.Contain("llm.systemone");
+        result.Error.Should().Contain("SystemOne").And.Contain("llm.typesafe");
     }
 
     [Fact]

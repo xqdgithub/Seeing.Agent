@@ -1,16 +1,16 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Llm.SystemOne.Clients;
+using Seeing.Agent.Llm.TypeSafe.Clients;
 using Xunit;
 
-namespace Seeing.Agent.Llm.SystemOne.Tests.Clients;
+namespace Seeing.Agent.Llm.TypeSafe.Tests.Clients;
 
 /// <summary>
-/// <see cref="TypeSafeSystemOneClientFactory"/> 的「协议 + 能力」分派
+/// <see cref="TypeSafeClientFactory"/> 的「协议 + 能力」分派
 /// （spec §7.9：只供 Decision；其余组合返回 null，由 Router 第 5 层报错——决议 19）。
 /// </summary>
-public class TypeSafeSystemOneClientFactoryTests
+public class TypeSafeClientFactoryTests
 {
     /// <summary>
     /// 协议绑定已从工厂移到注册表（协议是服务键）：工厂只按能力分派，
@@ -61,7 +61,7 @@ public class TypeSafeSystemOneClientFactoryTests
 
         var client = factory.Create(Config(), LlmCapabilityKind.Decision);
 
-        client.Should().BeOfType<TypeSafeSystemOneClient>();
+        client.Should().BeOfType<TypeSafeClient>();
         client!.ProviderId.Should().Be("typesafe");
         client.ProviderType.Should().Be(ProviderTypes.TypeSafe);
     }
@@ -105,7 +105,10 @@ public class TypeSafeSystemOneClientFactoryTests
     public void Create_AppliesDecoratorRegistry_BeforeReturning()
     {
         var decorators = new RecordingDecoratorRegistry();
-        var factory = new TypeSafeSystemOneClientFactory(NullLoggerFactory.Instance, decorators);
+        var factory = new TypeSafeClientFactory(
+            NullLoggerFactory.Instance,
+            interceptors: null,
+            decorators: decorators);
 
         var client = factory.Create(Config(), LlmCapabilityKind.Decision);
 
@@ -113,7 +116,7 @@ public class TypeSafeSystemOneClientFactoryTests
         client.Should().BeSameAs(decorators.LastResult);
     }
 
-    private static TypeSafeSystemOneClientFactory CreateFactory()
+    private static TypeSafeClientFactory CreateFactory()
         => new(NullLoggerFactory.Instance);
 
     private static ProviderConfig Config()
@@ -121,7 +124,7 @@ public class TypeSafeSystemOneClientFactoryTests
         {
             Id = "typesafe",
             Type = ProviderTypes.TypeSafe,
-            BaseUrl = "http://systemone.test",
+            BaseUrl = "http://typesafe.test",
             ApiKey = "test-key",
             Timeout = 10000
         };

@@ -15,7 +15,7 @@ public enum ProviderOrigin
     /// <summary>由扩展包（插件）注册。</summary>
     Extension,
 
-    /// <summary>由框架内置能力包注册（如 <c>llm.systemone</c>）。</summary>
+    /// <summary>由框架内置能力包注册（当前无生产者：内置 Provider 已下沉为插件）。</summary>
     Builtin,
 }
 

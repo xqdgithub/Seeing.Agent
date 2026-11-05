@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Llm;
 using System.Net;
 
-namespace Seeing.Agent.Llm.SystemOne.Clients;
+namespace Seeing.Agent.Llm.TypeSafe.Clients;
 
 /// <summary>
 /// TypeSafe 协议客户端工厂（实现框架 <see cref="ILlmClientFactory"/>，spec §7.9）。
@@ -10,18 +10,24 @@ namespace Seeing.Agent.Llm.SystemOne.Clients;
 /// 其余能力返回 <c>null</c>（配置声称了别的能力时由 Router 第 5 层报错，决议 19）。</para>
 /// <para>装饰器（重试/退避）的唯一应用点在工厂返回之前（spec §7.3）：
 /// 原客户端自带的 429/529 退避已删除，重试经 <see cref="ILlmClientDecoratorRegistry"/> 施加。</para>
+/// <para><b>调用拦截器与 OpenAI 协议工厂同权</b>：出站拦截（品牌网关塑形、动态头等）是协议无关能力，
+/// 不能因为「decision 不是主流能力」就丢掉——否则 <c>llm.params</c>/<c>llm.headers</c> 这类横切机制
+/// 对 decision 调用会静默失效。</para>
 /// </summary>
-public sealed class TypeSafeSystemOneClientFactory : ILlmClientFactory
+public sealed class TypeSafeClientFactory : ILlmClientFactory
 {
     private readonly ILoggerFactory _loggerFactory;
+    private readonly ILlmCallInterceptorRegistry? _interceptors;
     private readonly ILlmClientDecoratorRegistry? _decorators;
 
     /// <summary>构造工厂。</summary>
-    public TypeSafeSystemOneClientFactory(
+    public TypeSafeClientFactory(
         ILoggerFactory loggerFactory,
+        ILlmCallInterceptorRegistry? interceptors = null,
         ILlmClientDecoratorRegistry? decorators = null)
     {
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
+        _interceptors = interceptors;
         _decorators = decorators;
     }
 
@@ -34,18 +40,19 @@ public sealed class TypeSafeSystemOneClientFactory : ILlmClientFactory
         if (!capability.HasFlag(LlmCapabilityKind.Decision))
             return null;
 
-        var client = new TypeSafeSystemOneClient(
+        var client = new TypeSafeClient(
             config,
             CreateHttpClient(config),
-            _loggerFactory.CreateLogger<TypeSafeSystemOneClient>());
+            _loggerFactory.CreateLogger<TypeSafeClient>(),
+            _interceptors);
 
         return _decorators is null ? client : _decorators.Apply(client, config);
     }
 
     /// <summary>
-    /// 按 Provider 配置新建 HttpClient（原专用 <c>SystemOneHttpClientFactory</c> 删除后就地构造）。
-    /// <para>代理策略不再硬编码 <c>UseProxy=false</c>：改由 <see cref="ProviderConfig.UseProxy"/> 决定，
-    /// 迁移配置时必须显式写 <c>"useProxy": false</c> 才能保持原行为（spec §7.9 表）。</para>
+    /// 按 Provider 配置新建 HttpClient。
+    /// <para>代理策略由 <see cref="ProviderConfig.UseProxy"/> 决定：决策服务通常在内网/直连，
+    /// 插件的 Options 默认 <c>useProxy=false</c>。</para>
     /// </summary>
     private static HttpClient CreateHttpClient(ProviderConfig config)
     {

@@ -1,30 +1,33 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Llm;
 
-namespace Seeing.Agent.Llm.SystemOne.Clients;
+namespace Seeing.Agent.Llm.TypeSafe.Clients;
 
 /// <summary>
-/// TypeSafe（Jev）Decision 协议客户端（spec §7.9）。
-/// <para>由原 SystemOne 平行栈合流而来：现在只实现框架能力端口
-/// <see cref="IDecisionClient"/>（评估 + 动态目录）与 <see cref="IModelCatalogClient"/>
-/// （供 <c>ProviderConfig.ListModels = true</c> 时合并远端目录），不再有独立 provider 注册表。</para>
+/// TypeSafe（Decision）协议客户端（spec §7.9）。
+/// <para>只实现框架能力端口 <see cref="IDecisionClient"/>（评估 + 动态目录）与
+/// <see cref="IModelCatalogClient"/>（供 <c>ProviderConfig.ListModels = true</c> 时合并远端目录），
+/// 不自带 Provider 注册表。</para>
 /// <para>刻意没有能力自述属性（决议 15）：能力真相在 <see cref="ProviderConfig.Capabilities"/>。</para>
 /// </summary>
-public sealed class TypeSafeSystemOneClient : IDecisionClient, IModelCatalogClient, IDisposable
+public sealed class TypeSafeClient : IDecisionClient, IModelCatalogClient, IDisposable
 {
     private readonly ProviderConfig _config;
     private readonly HttpClient _http;
     private readonly ILogger _logger;
+    private readonly ILlmCallInterceptorRegistry? _interceptorRegistry;
 
     /// <summary>构造 TypeSafe 客户端；HttpClient 由本类负责释放（工厂新建）。</summary>
-    public TypeSafeSystemOneClient(
+    public TypeSafeClient(
         ProviderConfig config,
         HttpClient http,
-        ILogger logger)
+        ILogger logger,
+        ILlmCallInterceptorRegistry? interceptorRegistry = null)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _http = http ?? throw new ArgumentNullException(nameof(http));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _interceptorRegistry = interceptorRegistry;
     }
 
     /// <inheritdoc />
@@ -48,8 +51,9 @@ public sealed class TypeSafeSystemOneClient : IDecisionClient, IModelCatalogClie
             "Decision 评估: provider={ProviderId}, model={Model}, questions={Count}",
             _config.Id, model, wire.Questions.Count);
 
-        var response = await SystemOneHttpHelper.PostAsync<DecisionRequestWire, DecisionResponseWire>(
-            _http, _config, TypeSafeProtocol.EvaluatePath, wire, call, ct).ConfigureAwait(false);
+        var response = await TypeSafeHttpHelper.PostAsync<DecisionRequestWire, DecisionResponseWire>(
+            _http, _config, TypeSafeProtocol.EvaluatePath, wire, call, ct, ResolveInterceptors())
+            .ConfigureAwait(false);
 
         return TypeSafeWireMap.ToResponse(response);
     }
@@ -77,7 +81,7 @@ public sealed class TypeSafeSystemOneClient : IDecisionClient, IModelCatalogClie
         if (!capability.HasFlag(LlmCapabilityKind.Decision))
         {
             _logger.LogWarning(
-                "TypeSafeSystemOneClient 只服务 Decision 能力，收到 {Capability} 连接测试请求", capability);
+                "TypeSafeClient 只服务 Decision 能力，收到 {Capability} 连接测试请求", capability);
             return false;
         }
 
@@ -109,6 +113,19 @@ public sealed class TypeSafeSystemOneClient : IDecisionClient, IModelCatalogClie
 
             return ok;
         }
+        catch (DecisionProtocolException ex) when (ex.StatusCode > 0)
+        {
+            // 服务端明确拒绝（4xx/5xx）：把状态码语义与响应体一并给出，直接指向该找谁。
+            // 451 尤其常见于按来源 IP 判定地域的服务——用户能自己换出口解决，
+            // 但前提是日志说清楚「这是服务端按地域拒绝」，而不是一句笼统的「连接失败」。
+            _logger.LogError(
+                "Decision 连接测试失败: Model={Model}, HTTP {StatusCode}（{Hint}）。服务器响应: {ResponseBody}",
+                modelId,
+                ex.StatusCode,
+                DescribeHttpStatus(ex.StatusCode),
+                ex.ResponseBody);
+            return false;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Decision 连接测试失败: Model={Model}", modelId);
@@ -116,16 +133,34 @@ public sealed class TypeSafeSystemOneClient : IDecisionClient, IModelCatalogClie
         }
     }
 
+    /// <summary>把 HTTP 状态码翻译成「用户能做什么」，避免只留一个数字。</summary>
+    private static string DescribeHttpStatus(int statusCode) => statusCode switch
+    {
+        401 => "凭据无效：请检查 ApiKey",
+        403 => "无权限：凭据无权访问该端点，或来源被拒绝",
+        404 => "端点不存在：请确认 BaseUrl 与接口路径",
+        429 => "触发限流：请稍后重试",
+        451 => "服务端因法律/合规原因拒绝：通常是来源地区受限，请更换出口网络或代理",
+        >= 500 => "服务端故障：请稍后重试或联系服务方",
+        _ => "请求被拒绝"
+    };
+
     /// <summary>释放底层 HttpClient。</summary>
     public void Dispose() => _http.Dispose();
 
+    /// <summary>取本 Provider 作用域的出站拦截器（与 OpenAI 客户端同一语义）。</summary>
+    private IReadOnlyList<ILlmCallInterceptor> ResolveInterceptors()
+        => _interceptorRegistry?.Resolve(ProviderId, ProviderType)
+           ?? Array.Empty<ILlmCallInterceptor>();
+
     private async Task<ModelsResponseWire> ListModelsCoreAsync(CancellationToken ct)
-        => await SystemOneHttpHelper.GetAsync<ModelsResponseWire>(
-            _http, _config, TypeSafeProtocol.ModelsPath, call: null, ct).ConfigureAwait(false);
+        => await TypeSafeHttpHelper.GetAsync<ModelsResponseWire>(
+            _http, _config, TypeSafeProtocol.ModelsPath, call: null, ct, ResolveInterceptors())
+            .ConfigureAwait(false);
 
     /// <summary>
     /// 解析出站模型 ID：剥掉 <c>provider/</c> 前缀后交给 wire。
-    /// <para><b>为什么必须剥离</b>：目录键是 <c>ProviderId/ModelId</c>（如 <c>typesafe/jev-latest</c>），
+    /// <para><b>为什么必须剥离</b>：目录键是 <c>ProviderId/ModelId</c>（如 <c>typesafe-api/jev-latest</c>），
     /// 而 TypeSafe 端点只认裸模型名（<c>jev-latest</c>）。参数字面量写着 <c>provider/model</c>
     /// 是目录约定，不是 wire 约定——embedding 侧有同样的剥离
     /// （<c>RouterEmbeddingService</c> → <c>EmbeddingModelReference.ToWireModelId</c>），此处保持同一口径。</para>

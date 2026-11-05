@@ -29,7 +29,7 @@ public sealed class SystemOneToolsModule : ISeeingModule
     public IReadOnlyList<string> ProvidedSeams { get; } = Array.Empty<string>();
 
     /// <inheritdoc />
-    public IReadOnlyList<string> DependsOn { get; } = new[] { "llm.systemone" };
+    public IReadOnlyList<string> DependsOn { get; } = new[] { "llm.typesafe" };
 
     /// <inheritdoc />
     public void ConfigureServices(IServiceCollection services)

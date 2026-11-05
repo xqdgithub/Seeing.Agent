@@ -44,6 +44,7 @@
 | [26 记忆页面重设计 Release Notes](26-memory-page-redesign-release-notes.md) | 单页总览、`GetOverviewAsync` 一次读盘出分布、`CreatedAt` 归日 vs `ModifiedTime` 排序、设置卡走 `SettingsCardContribution` |
 | [27 WebUI 渲染性能 Release Notes](27-webui-render-performance-release-notes.md) | Summary 窗口轻量化、切换复用窗口实例、Loop 分段缓存、流式跳过 Markdown、时间线索引化、渲染合并、滚动限流、`SessionData.Messages` 快照语义变更 |
 | [28 LLM 能力抽象 Release Notes](28-llm-capability-abstraction-release-notes.md) | `ILlmClient`→8 个能力端口、协议/能力两维建模、`ILlmRouter` 五层校验、`ILlmInvoker` 横切、`chat.*`→`llm.*`、按能力默认模型、SystemOne 合流、破坏性清单 |
+| [29 TypeSafe Provider 下沉为插件 Release Notes](29-typesafe-provider-extraction-release-notes.md) | `llm.systemone`→`llm.typesafe`（只管协议）、Provider 下沉 `provider.typesafe-api`（`Extension` 来源）、`systemone.json` 只读回退、`typesafe-api/` 前缀与迁移 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 

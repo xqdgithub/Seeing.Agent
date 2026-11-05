@@ -12,8 +12,8 @@ using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Llm.Anthropic;
 using Seeing.Agent.Llm.OpenAI;
-using Seeing.Agent.Llm.SystemOne;
-using Seeing.Agent.Llm.SystemOne.Clients;
+using Seeing.Agent.Llm.TypeSafe;
+using Seeing.Agent.Llm.TypeSafe.Clients;
 using Xunit;
 
 namespace Seeing.Agent.HostComposition.Tests;
@@ -33,26 +33,27 @@ namespace Seeing.Agent.HostComposition.Tests;
 public class LlmRoutingEndToEndTests
 {
     /// <summary>
-    /// SystemOne 是内置 Provider：不做任何配置也必须能被 Router 解析出 decision 客户端。
-    /// <para>覆盖三个环节：Activate 注册 Provider → 聚合进全局模型目录 → Router 五层校验。</para>
+    /// TypeSafe 端点插件：不做任何配置也必须能被 Router 解析出 decision 客户端。
+    /// <para>覆盖三个环节：插件 Activate 注册 Provider → 聚合进全局模型目录 → Router 五层校验。</para>
+    /// <para>Provider 由插件 <c>provider.typesafe-api</c> 提供，不再由能力包 <c>llm.typesafe</c> 内置。</para>
     /// </summary>
     [Fact]
-    public async Task SystemOne_ShouldBeRoutableThroughRouter_WithoutAnyConfig()
+    public async Task TypeSafeApi_ShouldBeRoutableThroughRouter_WithoutAnyConfig()
     {
         await using var provider = await BuildProviderAsync();
 
         var registry = provider.GetRequiredService<IProviderRegistry>();
-        registry.GetProvider("systemone").Should().NotBeNull(
-            "llm.systemone 是内置 Provider，Activate 后必须出现在注册表里");
+        registry.GetProvider("typesafe-api").Should().NotBeNull(
+            "provider.typesafe-api 是插件 Provider，Activate 后必须出现在注册表里");
 
         // 目录刷新是后台单线程队列，注册与可路由之间有收敛窗口：按条件轮询，不用固定睡眠。
         var catalog = provider.GetRequiredService<IModelConfigManager>();
-        await WaitUntilAsync(() => catalog.GetCatalogModels().ContainsKey("systemone/jev-latest"));
+        await WaitUntilAsync(() => catalog.GetCatalogModels().ContainsKey("typesafe-api/jev-latest"));
 
         var resolved = provider.GetRequiredService<ILlmRouter>()
-            .TryResolve<IDecisionClient>("systemone/jev-latest", out var client, out var reason);
+            .TryResolve<IDecisionClient>("typesafe-api/jev-latest", out var client, out var reason);
 
-        resolved.Should().BeTrue($"Router 应能解析内置 decision 模型；失败原因: {reason}");
+        resolved.Should().BeTrue($"Router 应能解析插件提供的 decision 模型；失败原因: {reason}");
         client.Should().NotBeNull();
         reason.Should().BeNull();
     }
@@ -105,7 +106,7 @@ public class LlmRoutingEndToEndTests
         resolver.Require(ProviderTypes.OpenAi).Should().BeOfType<OpenAiLlmClientFactory>();
         resolver.Require(ProviderTypes.OpenAiResponses).Should().BeOfType<OpenAiLlmClientFactory>();
         resolver.Require(ProviderTypes.Anthropic).Should().BeOfType<AnthropicLlmClientFactory>();
-        resolver.Require(ProviderTypes.TypeSafe).Should().BeOfType<TypeSafeSystemOneClientFactory>();
+        resolver.Require(ProviderTypes.TypeSafe).Should().BeOfType<TypeSafeClientFactory>();
 
         resolver.Require(ProviderTypes.OpenAi)
             .Should().BeSameAs(resolver.Require(ProviderTypes.OpenAiResponses),
@@ -161,7 +162,8 @@ public class LlmRoutingEndToEndTests
         {
             new OpenAiLlmModule(),
             new AnthropicLlmModule(),
-            new SystemOneModule(),
+            new TypeSafeModule(),
+            new Seeing.Provider.TypeSafeApi.TypeSafeApiLlmModule(),
             new Seeing.Provider.DeepSeek.DeepSeekLlmModule(),
             new Seeing.Provider.MiMo.MiMoLlmModule(),
             new Seeing.Provider.OpenCodeZen.OpenCodeZenLlmModule(),

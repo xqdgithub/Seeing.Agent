@@ -214,7 +214,40 @@ public abstract class ConfigurableProviderBase<TOptions> : ILlmProvider, IConfig
 
     /// <inheritdoc />
     public virtual IReadOnlyList<ConfigFieldSchema>? GetConfigSchema()
-        => OptionsSchemaBuilder.FromType(typeof(TOptions));
+        => WithCapabilityChoices(OptionsSchemaBuilder.FromType(typeof(TOptions)));
+
+    /// <summary>
+    /// 给能力清单字段补上合法候选值。
+    /// <para><b>为什么在这一层做</b>：候选值来自 <see cref="LlmCapabilityMap.ConfigKeys"/>，
+    /// 是 LLM 领域知识，<c>Seeing.ConfigSchema</c> 原语层不该知道。
+    /// 每个 Provider 插件都继承本基类，因此在这里补一次即可覆盖全部插件——
+    /// 否则 UI 会拿一个没有候选的 <see cref="ConfigFieldType.StringList"/> 渲染成空下拉，
+    /// 用户面对的是一个既没有选项、也无法输入的死框。</para>
+    /// <para>只补「名为 Capabilities 且尚无候选」的字段；插件可自行提供别的候选。</para>
+    /// </summary>
+    protected static IReadOnlyList<ConfigFieldSchema>? WithCapabilityChoices(
+        IReadOnlyList<ConfigFieldSchema>? fields)
+    {
+        if (fields is null)
+            return null;
+
+        List<ConfigFieldSchema>? patched = null;
+        for (var i = 0; i < fields.Count; i++)
+        {
+            var field = fields[i];
+            if (field.Type != ConfigFieldType.StringList ||
+                field.Choices is { Count: > 0 } ||
+                !string.Equals(field.Name, "Capabilities", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            patched ??= [.. fields];
+            patched[i] = field with { Choices = LlmCapabilityMap.ConfigKeys };
+        }
+
+        return patched ?? fields;
+    }
 
     /// <inheritdoc />
     public async Task<IReadOnlyDictionary<string, object?>> LoadConfigAsync(
