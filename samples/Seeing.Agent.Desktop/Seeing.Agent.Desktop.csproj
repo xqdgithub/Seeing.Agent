@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Seeing.Agent.Desktop</RootNamespace>
+    <!-- 面向用户的产品名是 Seeing（不是 Seeing.Agent）；产出 seeing.exe / Seeing.app -->
+    <AssemblyName>Seeing</AssemblyName>
+    <!-- 不参与 CPM，使用显式版本（与 WebUI 一致） -->
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <!-- 桌面端不注册为可打包库 -->
+    <IsPackable>false</IsPackable>
+    <!--
+      固定为框架依赖（Framework-dependent），不要改成自包含。
+
+      原因：WebUI 是 OutputType=Exe（CLI 的 `seeing web` 需要独立启动
+      Seeing.Agent.WebUI.dll），SDK 规则 NETSDK1150 禁止自包含的可执行文件
+      引用非自包含的可执行文件。命令行发布时不报错只是因为 -p:SelfContained=true
+      是全局属性、会广播给所有项目；Visual Studio 的发布配置不会广播，
+      于是必然失败。
+
+      显式声明在此，让两条发布路径（CLI / VS 发布配置）行为一致，
+      避免用户在不同入口得到不同结果。
+      代价：目标机器需预装 .NET 10 运行时（见 README 的平台依赖表）。
+    -->
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="PhotinoX" Version="5.4.1" />
+  </ItemGroup>
+
+  <!--
+    应用图标：由 tools/generate-icon.ps1 从 WebUI 的 wwwroot/ai.svg 几何生成。
+    ApplicationIcon 让 seeing-desktop.exe 本身带图标（任务栏/资源管理器），
+    作为 Content 复制让窗口标题栏与 Photino 的 SetIconFile 能读到同一份文件。
+  -->
+  <PropertyGroup>
+    <ApplicationIcon>Assets\seeing.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Link 让文件落在输出根目录（与 SetIconFile 的 AppContext.BaseDirectory 查找一致） -->
+    <Content Include="Assets\seeing.ico" Link="seeing.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\seeing.png" Link="seeing.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      复用 WebUI 宿主组装（WebUiHost.BuildAsync）与其全部 wwwroot 静态资源。
+      ReferenceOutputAssembly=true 是必需的：外壳要直接调用 WebUiHost。
+      静态资源基路径由 WebUI 项目自己声明（见其 csproj 的 StaticWebAssetBasePath），
+      这里不能用 AdditionalProperties 覆盖它 —— 那会让被引用项目以另一套全局属性
+      重复构建，压缩资源指纹对不上，发布时报 MSB3030 "找不到 .gz 文件"。
+    -->
+    <ProjectReference Include="..\Seeing.Agent.WebUI\Seeing.Agent.WebUI.csproj" />
+  </ItemGroup>
+
+</Project>

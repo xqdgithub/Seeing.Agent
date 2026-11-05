@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/samples/">
     <Project Path="samples/Seeing.Agent.Cli/Seeing.Agent.Cli.csproj" />
+    <Project Path="samples/Seeing.Agent.Desktop/Seeing.Agent.Desktop.csproj" />
     <Project Path="samples/Seeing.Agent.HostComposition/Seeing.Agent.HostComposition.csproj" />
     <Project Path="samples/Seeing.Agent.Tui/Seeing.Agent.Tui.csproj" />
     <Project Path="samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj" />
@@ -134,6 +135,7 @@
   </Folder>
   <Folder Name="/tests/apps/">
     <Project Path="tests/apps/Seeing.Agent.Cli.Tests/Seeing.Agent.Cli.Tests.csproj" />
+    <Project Path="tests/apps/Seeing.Agent.Desktop.Tests/Seeing.Agent.Desktop.Tests.csproj" />
     <Project Path="tests/apps/Seeing.Agent.HostComposition.Tests/Seeing.Agent.HostComposition.Tests.csproj" />
     <Project Path="tests/apps/Seeing.Agent.Tui.Tests/Seeing.Agent.Tui.Tests.csproj" />
     <Project Path="tests/apps/Seeing.Agent.WebUI.Files.Tests/Seeing.Agent.WebUI.Files.Tests.csproj" />

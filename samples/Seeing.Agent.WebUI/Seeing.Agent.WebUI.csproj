@@ -7,6 +7,15 @@
     <OutputType>Exe</OutputType>
     <!-- 不参与 CPM，使用显式版本 -->
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <!--
+      静态资源基路径压平到根，保持与独立运行 WebUI 时完全一致的 URL 结构。
+      作为被引用项目时（桌面宿主 Seeing.Agent.Desktop），默认会挂到
+      _content/Seeing.Agent.WebUI/ 前缀下，导致 _Host.cshtml 里的
+      <link href="css/...">、<script src="js/app.js"> 全部 404。
+      写在这里而不是宿主用 AdditionalProperties 覆盖：后者会让本项目以另一套
+      全局属性重复构建，压缩资源指纹对不上，发布时报 MSB3030。
+    -->
+    <StaticWebAssetBasePath>/</StaticWebAssetBasePath>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="memory.db" />
