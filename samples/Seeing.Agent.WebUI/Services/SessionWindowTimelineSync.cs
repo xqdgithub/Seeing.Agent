@@ -73,7 +73,34 @@ public sealed class SessionWindowTimelineSync
             ReconcileAppendFromSession();
             return;
         }
+
+        // 门闸：非完成态同步只认「属于当前回合」的消息。
+        // _getStreamingMessage 在新回合刚开启、新 assistant 消息尚未产生时会回退到上一轮末条；
+        // 若照常用 isComplete:false 同步它，会把已完成的回答降级为流式，
+        // 导致 Markdown 渲染退化为纯文本（用户可见「发新消息后旧回答排版失效」）。
+        if (!isComplete && !BelongsToCurrentLoop(msg))
+            return;
+
         _timeline.SyncAssistantMessage(msg, _sessionId, isComplete);
+    }
+
+    /// <summary>
+    /// 该消息是否属于正在执行的回合。
+    /// <para>
+    /// 无可比对的回合信息（当前 LoopId 或消息 LoopId 缺失）时返回 true，
+    /// 避免把「流式早期 LoopId 尚未写入」的正常路径挡掉。
+    /// </para>
+    /// </summary>
+    private bool BelongsToCurrentLoop(SessionMessage msg)
+    {
+        var currentLoopId = _getLoopId();
+        if (string.IsNullOrEmpty(currentLoopId))
+            return true;
+
+        if (string.IsNullOrEmpty(msg.LoopId))
+            return true;
+
+        return string.Equals(msg.LoopId, currentLoopId, StringComparison.Ordinal);
     }
 
     // ---- 事件分派（窗口 razor 层在 OnHandlerChanged 桥接中调用）----
@@ -95,8 +122,11 @@ public sealed class SessionWindowTimelineSync
                 // 使本批排队消息从排队区提升到主时间线（对齐 TUI PromoteAllPending）。
                 // DeliverAsync 返回的计数早于「标记 consumed」，单条消息会残留 1 直到本轮结束，
                 // 导致「中断并执行」黄条在本无排队时也展示；此处刷新即与真实未读对齐。
+                //
+                // 注意：此处**不得**把「当前助手消息」当流式同步。此时本回合尚无任何 assistant
+                // 消息，指针仍指向上轮末条；以 isComplete:false 同步它会把已完成回答降级为流式，
+                // 使 Markdown 渲染退化为纯文本（见 SessionWindowTimelineSync.SyncAssistant）。
                 RefreshPendingInputCount();
-                SyncAssistant(isComplete: false);
                 ReconcileAppendFromSession();
                 break;
             case ExecutionCompleteEvent completeEvt:

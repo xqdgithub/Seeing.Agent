@@ -27,7 +27,9 @@ public class SessionWindowTimelineSyncTests
 
     /// <summary>构造被测对象，消息来源由调用方提供的可变列表模拟会话快照。</summary>
     private static (SessionWindowTimelineSync Sync, MessageTimelineStore Store) Create(
-        List<SessionMessage> messages)
+        List<SessionMessage> messages,
+        Func<SessionMessage?>? getStreamingMessage = null,
+        Func<string?>? getLoopId = null)
     {
         var store = new MessageTimelineStore();
         var sync = new SessionWindowTimelineSync(
@@ -36,10 +38,74 @@ public class SessionWindowTimelineSyncTests
             requestRender: () => { },
             applyTitle: _ => { },
             getMessages: () => messages,
-            getStreamingMessage: () => null,
-            getLoopId: () => null);
+            getStreamingMessage: getStreamingMessage ?? (() => null),
+            getLoopId: getLoopId ?? (() => null));
 
         return (sync, store);
+    }
+
+    /// <summary>
+    /// 回归：新一轮执行开始时，上一轮**已完成**的助手消息不得被重新标记为未完成。
+    /// <para>
+    /// 现实路径：<c>_handler.GetCurrentAssistantMessage()</c> 在新回合的首个 delta 前仍指向
+    /// 上一轮最后一条 assistant，<c>_sync</c> 以 <c>isComplete: false</c> 同步它，
+    /// 该消息的 <c>IsComplete</c> 被改回 false → <c>RenderMarkdownPolicy</c> 判定为流式 →
+    /// Markdown 退化为纯文本（用户可见「发新消息后旧回答的排版失效」）。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ProcessEvent_ExecutionStarted_ShouldNotDowngradePreviousCompletedTurn()
+    {
+        var old = Assistant("a1", "loop1", "**旧回答**");
+        var messages = new List<SessionMessage> { User("u1", "旧提问"), old };
+        var (sync, store) = Create(messages, getStreamingMessage: () => old);
+
+        // 上一轮已正常结束
+        sync.ProcessEvent(new ExecutionCompleteEvent
+        {
+            SessionId = "s1",
+            ExecutionId = "e1",
+            Outcome = new Seeing.Agent.Abstractions.Execution.ExecutionOutcome
+            {
+                SessionId = "s1",
+                ExecutionId = "e1",
+                Status = Seeing.Agent.Abstractions.Execution.ExecutionStatus.Completed
+            }
+        });
+
+        store.Items.Single(i => i.Key == "loop1").Turn!.Messages.Single().IsComplete.Should().BeTrue();
+
+        // 用户发新消息 → 新一轮执行开始
+        sync.ProcessEvent(new ExecutionStartedEvent { SessionId = "s1", ExecutionId = "e2" });
+
+        store.Items.Single(i => i.Key == "loop1").Turn!.Messages.Single().IsComplete
+            .Should().BeTrue("上一轮已完成的回答不得因新回合开始而被降级为流式");
+    }
+
+    /// <summary>
+    /// 回归：真正的流式消息仍必须被标记为未完成（不得因修复上一轮而降级新消息）。
+    /// <para>
+    /// 真实序列：ExecutionStarted → LoopStart（清空指针）→ StreamStart → delta 时绑定新消息。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ProcessEvent_StreamStart_ShouldMarkNewStreamingMessageIncomplete()
+    {
+        var old = Assistant("a1", "loop1", "旧回答");
+        var current = Assistant("a2", "loop2", "新回答");
+        var messages = new List<SessionMessage> { User("u1", "旧提问"), old, User("u2", "新提问"), current };
+        var (sync, store) = Create(messages, getStreamingMessage: () => current);
+
+        sync.ProcessEvent(new ExecutionStartedEvent { SessionId = "s1", ExecutionId = "e2" });
+        sync.ProcessEvent(new LoopStartEvent { SessionId = "s1", LoopId = "loop2" });
+        sync.ProcessEvent(new StreamStartEvent { SessionId = "s1", LoopId = "loop2", Step = 0 });
+
+        var turn = store.Items.Single(i => i.Turn != null && i.Turn.Messages.Any(m => m.Id == "a2")).Turn!;
+        turn.Messages.Single(m => m.Id == "a2").IsComplete
+            .Should().BeFalse("新回合正在流式输出");
+
+        // 上一轮仍保持已完成
+        store.Items.Single(i => i.Key == "loop1").Turn!.Messages.Single().IsComplete.Should().BeTrue();
     }
 
     [Fact]
