@@ -74,7 +74,14 @@ public sealed class SystemOneModule : ISeeingModule
         cancellationToken.ThrowIfCancellationRequested();
 
         var provider = services.GetRequiredService<SystemOneLlmProvider>();
-        services.GetRequiredService<IProviderRegistry>().Unregister(provider.Id);
+        var registry = services.GetRequiredService<IProviderRegistry>();
+
+        // 只注销「仍是自己」的那个实例：Activate 可能因用户/扩展优先而没注册本 Provider，
+        // 无条件 Unregister 会把别人的 Provider 删掉。
+        if (!ReferenceEquals(registry.GetProvider(provider.Id), provider))
+            return Task.CompletedTask;
+
+        registry.Unregister(provider.Id);
         return Task.CompletedTask;
     }
 }

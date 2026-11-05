@@ -47,7 +47,7 @@
 | `Seeing.Agent.Comms` | `comms` | 渠道目录、出站投递、适配器注册表；`ChannelDeliveryScheduleDispatcher` 只按 `SessionData.ChannelRoute` 出站 |
 | `Seeing.Agent.Tools.ChannelMessaging` | `channel-messaging` | `send_channel_message`（文本 + 工作区附件）/ 列用户 / 列对话；`DependsOn: io.local`；无宿主时 no-op sink |
 | `Seeing.Agent.Memory` | `memory` | 记忆 |
-| `Seeing.Agent.Llm.SystemOne` | `llm.systemone` | SystemOne（TypeSafe/Jev）decision 能力；只登记 `ILlmClientFactory`（协议 `typesafe`），provider 走 `Providers.typesafe` 配置驱动 |
+| `Seeing.Agent.Llm.SystemOne` | `llm.systemone` | SystemOne（TypeSafe/Jev）**内置 Provider**：登记 typesafe 工厂 + 自注册 `SystemOneLlmProvider`（默认 decision、内置 `jev-latest` 种子模型），装完即用；用户 `Providers` 同 id 配置优先 |
 | `Seeing.Agent.Tools.SystemOne` | `llm.systemone.tools` | SystemOne 工具；`DependsOn: llm.systemone`；经 `ILlmInvoker` 调用 |
 | `Seeing.Agent.Acp` | `acp` | ACP 执行实现 |
 | `Seeing.Agent.TokenBudget` | — | Token 预算 Hook（可无模块 id；经扩展方法挂 Hook） |
@@ -58,7 +58,9 @@
 
 `subagent` 为 Hosting 级能力（Task 工具）；内置场景字符串里可出现该 id。
 
-**Provider 插件 vs 协议模块：** `llm.openai` / `llm.anthropic` 登记 `ILlmClientFactory`；`provider.*` 在 Activate 时登记 `ILlmProvider` 到 `IProviderRegistry`，创建客户端时经 `IEnumerable<ILlmClientFactory>` 按 `SupportsType` 解析（禁止注入单个工厂）。
+**Provider 插件 vs 协议模块：** `llm.openai` / `llm.anthropic` 只登记 `ILlmClientFactory`；`provider.*` 在 Activate 时注册 `ILlmProvider` 到 `IProviderRegistry`。
+
+**协议 → 工厂是唯一映射：** 协议是注册表的服务键（`LlmClientFactoryRegistration`），解析走 `ILlmClientFactoryResolver`（`Find` / `Require` / `Protocols`）。同一协议重复登记在构造期抛错；同一工厂可登记多个协议（OpenAI 工厂服务 `openai` 与 `openai-responses`）。`ILlmClientFactory` 只有 `Create(config, capability)` 一个成员——协议不再由工厂自述，工厂也不再承担能力来源（能力由 Provider 自述，见 `ILlmProvider.Capabilities`）。
 
 **Support 包注意：** Hosting 可引用 `Tools.Support` 以复用 Task/Todo 基类；**不得**因此再引用 `Tools.FileSystem` 等具体能力包。
 

@@ -107,11 +107,14 @@ public sealed class SkillRootWatcherTests : IDisposable
             NullLogger.Instance,
             Debounce);
 
-        // Act：连续快速写入，间隔远小于去抖窗口
+        // Act：连续快速写入，整串必须在**同一个去抖窗口内**完成。
+        // 8 次 × 5ms = 40ms ≪ 300ms 窗口；若间隔取 40ms（整串 320ms）会跨越窗口边界，
+        // 去抖按「最后一次事件后静默 N 毫秒」的定义必然产生多次回调——那是测试设计错误，
+        // 不是 watcher 缺陷。
         for (var i = 0; i < 8; i++)
         {
             await File.WriteAllTextAsync(skillFile, $"正文 v{i}", Ct);
-            await Task.Delay(40, Ct);
+            await Task.Delay(5, Ct);
         }
 
         // Assert

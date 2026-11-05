@@ -1,51 +1,81 @@
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Core.CapabilitySets;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Extensions;
-using Seeing.Agent.Core.Modules;
-using Seeing.Agent.Hosting;
+using Seeing.Agent.Core.Llm;
+using Seeing.Agent.Llm;
+using Seeing.Agent.Llm.Anthropic;
+using Seeing.Agent.Llm.OpenAI;
+using Seeing.Agent.Llm.SystemOne;
+using Seeing.Agent.Llm.SystemOne.Clients;
 using Xunit;
 
 namespace Seeing.Agent.HostComposition.Tests;
 
 /// <summary>
-/// 端到端守门：在真实容器里走完 <c>LlmRouter</c> 的五层校验，确认
-/// (1) SiliconFlow 的 embedding 真的可路由；(2) SystemOne 不配置也可路由。
-/// <para>背景：用户报错 <c>模型 'siliconflow/BAAI/bge-large-zh-v1.5' 不能用于能力 'embedding'：
-/// Provider 'siliconflow' 未声明能力 'embedding'</c>。修复后必须能在真实组装下走通，
-/// 只在单测里手工 new resolver 是不足以证明的（曾因此漏掉「四协议误绑同一工厂」的 P0）。</para>
+/// 端到端守门：真实容器里走完 <see cref="ILlmRouter"/> 的五层校验。
+/// <para><b>为什么必须真正调用 Router</b>：早先版本只断言了
+/// <c>registry.GetProvider(...)</c> 与 <c>provider.GetModelsAsync(...)</c>，
+/// 结果「Provider 有模型、但模型进不了全局目录」的缺陷完全逃过测试——
+/// 而 Router 第 1 层查的正是全局目录。</para>
+/// <para><b>为什么不用 <c>InitializeSeeingAsync</c></b>：它会拉起 Quartz 等进程级静态
+/// 组件，其 <c>LogProvider</c> 捕获第一个容器的 <c>LoggerFactory</c>；
+/// 同进程内第二个容器解析时必然撞 <see cref="ObjectDisposedException"/>。
+/// 这里改为直接调用模块的 <c>ActivateAsync</c>——那正是启动链中负责注册 Provider 的一步，
+/// 且不引入无关的静态状态。</para>
 /// </summary>
 public class LlmRoutingEndToEndTests
 {
     /// <summary>
-    /// SiliconFlow Provider 默认声明 embedding，且 openai 协议工厂能产出 embedding 客户端，
-    /// 因此 <c>LlmRouter.Resolve&lt;IEmbeddingClient&gt;</c> 应成功。
+    /// SystemOne 是内置 Provider：不做任何配置也必须能被 Router 解析出 decision 客户端。
+    /// <para>覆盖三个环节：Activate 注册 Provider → 聚合进全局模型目录 → Router 五层校验。</para>
+    /// </summary>
+    [Fact]
+    public async Task SystemOne_ShouldBeRoutableThroughRouter_WithoutAnyConfig()
+    {
+        await using var provider = await BuildProviderAsync();
+
+        var registry = provider.GetRequiredService<IProviderRegistry>();
+        registry.GetProvider("systemone").Should().NotBeNull(
+            "llm.systemone 是内置 Provider，Activate 后必须出现在注册表里");
+
+        // 目录刷新是后台单线程队列，注册与可路由之间有收敛窗口：按条件轮询，不用固定睡眠。
+        var catalog = provider.GetRequiredService<IModelConfigManager>();
+        await WaitUntilAsync(() => catalog.GetCatalogModels().ContainsKey("systemone/jev-latest"));
+
+        var resolved = provider.GetRequiredService<ILlmRouter>()
+            .TryResolve<IDecisionClient>("systemone/jev-latest", out var client, out var reason);
+
+        resolved.Should().BeTrue($"Router 应能解析内置 decision 模型；失败原因: {reason}");
+        client.Should().NotBeNull();
+        reason.Should().BeNull();
+    }
+
+    /// <summary>
+    /// SiliconFlow 默认供出 chat + embedding，openai 协议工厂能产出 embedding 客户端，
+    /// 因此 Provider 层的 embedding 取用必须成功。
     /// <para>不需要真实网络：客户端构造不发起请求。</para>
     /// </summary>
     [Fact]
-    public async Task SiliconFlow_Embedding_ShouldBeRoutableThroughRouter()
+    public async Task SiliconFlow_Embedding_ShouldBeAvailable()
     {
-        await using var provider = BuildProvider();
+        await using var provider = await BuildProviderAsync();
 
-        var registry = provider.GetRequiredService<IProviderRegistry>();
+        var silicon = provider.GetRequiredService<IProviderRegistry>().GetProvider("siliconflow");
+        silicon.Should().NotBeNull("插件模块在 Full 组合里默认启用");
 
-        // 模拟插件 Activate 后的状态：SiliconFlow 用默认能力（chat + embedding）
-        var silicon = registry.GetProvider("siliconflow");
-        if (silicon is null)
-            return; // 插件未在本组合中注册时跳过（组合根不含插件时属正常）
-
-        silicon.Capabilities.Should().HaveFlag(LlmCapabilityKind.Embedding,
+        silicon!.Capabilities.Should().HaveFlag(LlmCapabilityKind.Embedding,
             "SiliconFlow 默认应供出 embedding，否则用户无法用 BAAI/bge 系列");
 
         var factory = provider.GetRequiredService<ILlmClientFactoryResolver>()
             .Require(silicon.Protocol);
-
-        using var embedding = factory.Create(
+        using var client = factory.Create(
             new ProviderConfig
             {
                 Id = "siliconflow",
@@ -55,65 +85,157 @@ public class LlmRoutingEndToEndTests
             },
             LlmCapabilityKind.Embedding) as IDisposable;
 
-        embedding.Should().BeAssignableTo<IEmbeddingClient>(
-            "openai 协议工厂必须能产出 embedding 客户端");
+        client.Should().BeAssignableTo<IEmbeddingClient>();
+    }
+
+    /// <summary>每个协议都必须解析到自己的工厂（防止「按接口取」把四个协议绑到同一个）。</summary>
+    [Fact]
+    public async Task Protocols_ShouldResolveToTheirOwnFactory()
+    {
+        await using var provider = await BuildProviderAsync();
+
+        var resolver = provider.GetRequiredService<ILlmClientFactoryResolver>();
+
+        resolver.Protocols.Should().BeEquivalentTo(
+            ProviderTypes.OpenAi,
+            ProviderTypes.OpenAiResponses,
+            ProviderTypes.Anthropic,
+            ProviderTypes.TypeSafe);
+
+        resolver.Require(ProviderTypes.OpenAi).Should().BeOfType<OpenAiLlmClientFactory>();
+        resolver.Require(ProviderTypes.OpenAiResponses).Should().BeOfType<OpenAiLlmClientFactory>();
+        resolver.Require(ProviderTypes.Anthropic).Should().BeOfType<AnthropicLlmClientFactory>();
+        resolver.Require(ProviderTypes.TypeSafe).Should().BeOfType<TypeSafeSystemOneClientFactory>();
+
+        resolver.Require(ProviderTypes.OpenAi)
+            .Should().BeSameAs(resolver.Require(ProviderTypes.OpenAiResponses),
+                "同一工厂服务两个协议时必须共享实例");
+    }
+
+    /// <summary>OpenAI 协议必须能产出 chat 与 embedding 客户端（误绑时两者都是 null）。</summary>
+    [Fact]
+    public async Task OpenAiProtocol_ShouldProduceChatAndEmbeddingClients()
+    {
+        await using var provider = await BuildProviderAsync();
+
+        var factory = provider.GetRequiredService<ILlmClientFactoryResolver>()
+            .Require(ProviderTypes.OpenAi);
+
+        var config = new ProviderConfig
+        {
+            Id = "probe",
+            Type = ProviderTypes.OpenAi,
+            BaseUrl = "https://example.invalid/v1",
+            ApiKey = "sk-probe",
+        };
+
+        using var chat = factory.Create(config, LlmCapabilityKind.Chat) as IDisposable;
+        using var embedding = factory.Create(config, LlmCapabilityKind.Embedding) as IDisposable;
+
+        chat.Should().BeAssignableTo<IChatCompletionClient>("openai 协议必须产出 chat 客户端");
+        embedding.Should().BeAssignableTo<IEmbeddingClient>("openai 协议必须产出 embedding 客户端");
     }
 
     /// <summary>
-    /// SystemOne 是内置 Provider：未做任何配置时也必须在注册表里，且能给出 decision 客户端与模型。
+    /// 组装真实容器并执行模块 Activate（启动链中注册 Provider 的那一步）。
+    /// <para>只启用与 LLM 相关的模块，避免拉起 Quartz / Gateway 等进程级静态组件。</para>
     /// </summary>
-    [Fact]
-    public async Task SystemOne_ShouldBeRegisteredAndExposeDecisionModel_WithoutConfig()
+    private static async Task<ServiceProvider> BuildProviderAsync()
     {
-        await using var provider = BuildProvider();
-
-        // 必须走真实启动链：模块注册只进 DI，Activate 才会把 Provider 挂进注册表。
-        await provider.InitializeSeeingAsync(TestContext.Current.CancellationToken);
-
-        var registry = provider.GetRequiredService<IProviderRegistry>();
-        var systemOne = registry.GetProvider("systemone");
-
-        systemOne.Should().NotBeNull(
-            "llm.systemone 是内置 Provider，Activate 后必须出现在注册表里（用户不该手写配置）");
-
-        systemOne!.Capabilities.Should().HaveFlag(LlmCapabilityKind.Decision);
-        systemOne.GetClient(LlmCapabilityKind.Decision).Should().NotBeNull();
-
-        var models = await systemOne.GetModelsAsync(TestContext.Current.CancellationToken);
-        models.Should().Contain(m => m.Id == "jev-latest",
-            "无凭据时远端目录为空，必须靠静态种子模型保证可路由");
-    }
-
-    private static ServiceProvider BuildProvider()
-    {
+        var workspace = new TempWorkspaceProvider();
         var services = new ServiceCollection();
         var registry = new ConfigSectionRegistry();
-
-        // seam 绑定来自配置（宿主 shape 会写这里）；测试直接给出与真实宿主相同的值
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["SeeingAgent:Seams:executionWorld"] = "io.local",
-            })
-            .Build();
+        var configuration = new ConfigurationBuilder().Build();
 
         services.AddSingleton<IConfigSectionRegistry>(registry);
         services.AddSingleton<IConfiguration>(configuration);
 
-        services.AddSeeingFullCapabilities(registry, configuration, includeGatewayServer: false);
-        services.AddSessionHosting();
-        services.AddExecutionEngine();
         services.AddSeeingCore(registry);
 
-        // 真实宿主由 Host Shape 提供这批默认值；测试显式给出同样的 seam 绑定。
-        services.AddSingleton(new ProcessSettlementOptions
-        {
-            HostDefaultSeams = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["executionWorld"] = "io.local",
-            },
-        });
+        // 依赖注入是「后注册者覆盖」，因此隔离 Provider 必须放在 AddSeeingCore **之后**，
+        // 否则会被 Core 自己的 WorkspaceProvider 顶掉，测试就会写真实 ~/.seeing。
+        services.AddSingleton<IWorkspaceProvider>(workspace);
 
-        return services.BuildServiceProvider();
+        // 与 Full 组合一致的 LLM 相关模块（不引入 scheduler/gateway）
+        var modules = new ISeeingModule[]
+        {
+            new OpenAiLlmModule(),
+            new AnthropicLlmModule(),
+            new SystemOneModule(),
+            new Seeing.Provider.DeepSeek.DeepSeekLlmModule(),
+            new Seeing.Provider.MiMo.MiMoLlmModule(),
+            new Seeing.Provider.OpenCodeZen.OpenCodeZenLlmModule(),
+            new Seeing.Provider.SiliconFlow.SiliconFlowLlmModule(),
+        };
+
+        foreach (var module in modules)
+        {
+            module.ConfigureServices(services);
+            services.AddSingleton(module);
+        }
+
+        var provider = services.BuildServiceProvider();
+        foreach (var module in modules)
+            await module.ActivateAsync(provider, TestContext.Current.CancellationToken);
+
+        return provider;
+    }
+
+    /// <summary>条件轮询（不引入固定睡眠）；超时后让断言报告真实原因。</summary>
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (condition())
+                return;
+
+            await Task.Delay(25);
+        }
+    }
+
+    /// <summary>测试独占的用户级 / 项目级目录，避免污染真实 <c>~/.seeing</c>。</summary>
+    private sealed class TempWorkspaceProvider : IWorkspaceProvider
+    {
+        private readonly string _root = Path.Combine(
+            Path.GetTempPath(), "seeing-llm-e2e-" + Guid.NewGuid().ToString("N"));
+
+        public TempWorkspaceProvider() => Directory.CreateDirectory(_root);
+
+        public string WorkspaceRoot => _root;
+
+        public string UserSeeingDirectory => Path.Combine(_root, "user", ".seeing");
+
+        public string ProjectSeeingDirectory => Path.Combine(_root, ".seeing");
+
+        public string GetSeeingDirectory(ConfigLevel level) => level switch
+        {
+            ConfigLevel.User => UserSeeingDirectory,
+            ConfigLevel.Project => ProjectSeeingDirectory,
+            _ => throw new ArgumentOutOfRangeException(nameof(level)),
+        };
+
+        public string StartupDirectory => _root;
+
+        public WorkspaceResolutionSource ResolutionSource => WorkspaceResolutionSource.StartupDirectory;
+
+        public string? GlobalWorkspaceRoot => null;
+
+        public event EventHandler<WorkspaceChangedEventArgs>? WorkspaceRootChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public void SetWorkspaceRoot(string workspaceRoot) { }
+
+        public Task InitializeAsync(CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task SetGlobalWorkspaceRootAsync(string? path, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task SetWorkspaceOptionsAsync(WorkspaceOptions options, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
     }
 }

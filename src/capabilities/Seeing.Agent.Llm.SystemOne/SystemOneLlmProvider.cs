@@ -93,8 +93,12 @@ public sealed class SystemOneLlmProvider : ConfigurableProviderBase<SystemOneOpt
     /// <inheritdoc />
     protected override Task OnOptionsSavedAsync(CancellationToken cancellationToken)
     {
-        // 在 ApplyOptions 之后调用：此时能力投影与 id 都已是新值，
-        // 重新注册才能让 ProviderInfo 反映真实状态。
+        // 与 Activate 同一规则：注册表里已有同 id 的 Provider（用户配置或扩展）时让位。
+        // 否则用户在配置页点一次「保存」就会把用户自己的 Provider 顶掉。
+        var existing = _registry.GetProvider(Id);
+        if (existing is not null && !ReferenceEquals(existing, this))
+            return Task.CompletedTask;
+
         _registry.Register(this, ownerExtensionId: null);
         return Task.CompletedTask;
     }

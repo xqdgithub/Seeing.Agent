@@ -28,19 +28,28 @@
 
 ### 协议工厂（OpenAI / Anthropic 类）
 
-1. 实现 `ILlmClientFactory`，`SupportedProtocols` 声明协议字符串（小写，如 `openai`），`Create(config, capability)` 按能力返回对应客户端（不支持返回 `null`，不抛）。  
+1. 实现 `ILlmClientFactory`：**只有一个成员** `Create(config, capability)`，按能力返回对应客户端（不支持返回 `null`，不抛）。协议不在工厂里声明。  
 2. 包放 `src/capabilities/Seeing.Agent.Llm.Xxx/`。  
-3. 模块 `ConfigureServices` 登记工厂；由 Core `ProviderManager` 聚合。  
+3. 模块 `ConfigureServices` 登记工厂，并登记「协议 → 工厂」映射：  
+   ```csharp
+   services.AddSingleton<XxxLlmClientFactory>();
+   services.AddSingleton<ILlmClientFactory>(sp => sp.GetRequiredService<XxxLlmClientFactory>());
+   services.AddSingleton<LlmClientFactoryRegistration>(sp => new(
+       ProviderTypes.Xxx, sp.GetRequiredService<XxxLlmClientFactory>()));
+   ```
+   **必须按具体类型解析**：`ILlmClientFactory` 有多个实现，`GetRequiredService<ILlmClientFactory>()` 返回最后登记的那个，会把所有协议绑到同一个工厂。  
 4. 旧 `providers.json` PascalCase 由 `ProviderTypes.Normalize` 兼容；写盘用小写。
 
 ### 品牌网关插件（DeepSeek / MiMo / OpenCodeZen / SiliconFlow 类）
 
-1. 包可放 `plugs/providers/`；实现 `ILlmProvider` / `IConfigurableLlmProvider`（**禁止**引用 Core；工厂解析用 `LlmClientFactoryResolver`）。  
-2. 实现 `ISeeingModule`（如 `provider.deepseek`），`DependsOn: ["llm.openai"]`（若走 OpenAI 兼容协议）。  
-3. `ConfigureServices`：登记 Provider / Store；**不要** `AddHostedService` 旁路登记。  
-4. `ActivateAsync`：先挂 `ILlmCallInterceptor`（若有），再 Warmup + `IProviderRegistry.Register`；`DeactivateAsync`：先 `Unregister` Provider，再卸拦截器。  
-5. 创建客户端：注入 `IEnumerable<ILlmClientFactory>`，用 `LlmClientFactoryResolver.Require(..., ProviderTypes.OpenAi)`，**禁止**注入单个 `ILlmClientFactory`。  
-6. Sample：`AddSeeingModule<XxxLlmModule>(registry)`（在 `AddSeeingCore` 之前；模块类由 plug 提供，登记 API 在 Core）。
+1. 包可放 `plugs/providers/`；实现 `ILlmProvider` / `IConfigurableLlmProvider`（**禁止**引用 Core）。  
+2. 若配置形状与 `ProviderConfig` 同构，可直接继承 `ConfigurableProviderBase<TOptions>`（`Seeing.Agent.Llm.Support`）：它提供能力解析、能力束生命周期、配置读写与释放；只需给出 `Protocol`、`DefaultCapabilities`、`BuildProviderConfig`、`CreateClient`、`LoadOptionsAsync` / `SaveOptionsAsync`。  
+3. **能力由插件作者声明**（`DefaultCapabilities`），配置里 `capabilities` 可覆盖。不要按工厂推导——工厂实现了 embedding 不代表你的端点提供了 `/v1/embeddings`。装完即用，不要求用户先改配置。  
+4. 实现 `ISeeingModule`（如 `provider.deepseek`），`DependsOn: ["llm.openai"]`（若走 OpenAI 兼容协议）。  
+5. `ConfigureServices`：登记 Provider / Store；**不要** `AddHostedService` 旁路登记。  
+6. `ActivateAsync`：先挂 `ILlmCallInterceptor`（若有），再 Warmup + `IProviderRegistry.Register`；`DeactivateAsync`：先 `Unregister` Provider，再卸拦截器。  
+7. 创建客户端：注入 `ILlmClientFactoryResolver`（不是 `IEnumerable<ILlmClientFactory>`），用 `_factories.Require(Protocol).Create(config, capability)`。也可以完全跳过工厂、直接 `new` 自己的客户端——`ILlmProvider.GetClient` 是唯一契约。  
+8. Sample：`AddSeeingModule<XxxLlmModule>(registry)`（在 `AddSeeingCore` 之前；模块类由 plug 提供，登记 API 在 Core）。
 
 **LLM 调用边界扩展点（勿混层）：**
 

@@ -149,10 +149,11 @@ public class SystemOneProviderActivationTests
         registry = mock;
         services.AddSingleton(mock.Object);
 
-        // 协议→工厂：typesafe 绑真实工厂（不依赖 Core）
-        services.AddSingleton<ILlmClientFactory, TypeSafeSystemOneClientFactory>();
+        // 协议→工厂：按具体类型登记/解析（与三个生产模块一致，避免复刻 P0 的按接口取法）
+        services.AddSingleton<TypeSafeSystemOneClientFactory>();
+        services.AddSingleton<ILlmClientFactory>(sp => sp.GetRequiredService<TypeSafeSystemOneClientFactory>());
         services.AddSingleton<ILlmClientFactoryResolver>(sp => new LlmClientFactoryResolver(
-            [new LlmClientFactoryRegistration(ProviderTypes.TypeSafe, sp.GetRequiredService<ILlmClientFactory>())]));
+            [new LlmClientFactoryRegistration(ProviderTypes.TypeSafe, sp.GetRequiredService<TypeSafeSystemOneClientFactory>())]));
 
         return services;
     }

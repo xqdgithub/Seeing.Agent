@@ -792,7 +792,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         }
 
         var extensionLoads = _registry.GetProviders()
-            .Where(pair => _registry.GetOwnerExtensionId(pair.Key) is not null)
+            .Where(pair => IsProviderOwned(pair.Key))
             .Select(pair => LoadProviderModelsAsync(pair.Key, pair.Value, ct));
         var extensionModels = await Task.WhenAll(extensionLoads).ConfigureAwait(false);
 
@@ -863,7 +863,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     {
         var models = new Dictionary<string, ModelConfig>();
 
-        if (_registry.GetOwnerExtensionId(providerId) is not null)
+        if (IsProviderOwned(providerId))
         {
             var provider = _registry.GetProvider(providerId);
             if (provider is null)
@@ -978,12 +978,25 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     /// </summary>
     private bool ShouldLoadProviderCatalog(string providerId)
     {
-        if (_registry.GetOwnerExtensionId(providerId) is not null)
-            return false; // 扩展 Provider 走 extensionLoads 分支，不能在此重复拉取
+        // 自管目录的 Provider（扩展 / 内置）走 extensionLoads 分支，不能在此重复拉取。
+        // 判据与 IsProviderOwned 必须一致，否则会出现「两边都拉」或「两边都不拉」。
+        if (IsProviderOwned(providerId))
+            return false;
 
         return GetUserProviders().TryGetValue(providerId, out var config)
                && config.ListModels;
     }
+
+    /// <summary>
+    /// Provider 是否「自管目录」：由扩展注册的、或不由 <c>Providers</c> 配置驱动的内置 Provider。
+    /// <para><b>为什么不能只看 owner</b>：内置 Provider（如 <c>llm.systemone</c> 的 SystemOne）
+    /// 由模块注册、不属于任何扩展，也不在用户的 <c>Providers</c> 节里。
+    /// 若分类只看 <c>GetOwnerExtensionId</c>，它会既不算「配置驱动」也不算「扩展」，
+    /// 于是模型永远进不了全局目录——表现为 Router 第 1 层报「模型目录中不存在」。</para>
+    /// </summary>
+    private bool IsProviderOwned(string providerId)
+        => _registry.GetOwnerExtensionId(providerId) is not null
+           || !GetUserProviders().ContainsKey(providerId);
 
     /// <summary>
     /// 拉取「配置驱动 + listModels」Provider 的远端目录。
