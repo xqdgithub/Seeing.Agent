@@ -4,7 +4,7 @@
 
 @* 文本消息组件 - 流式中纯文本（保留空白），完成后 Markdown *@
 
-<div style="margin-left:15px" class="@(UseMarkdown ? "" : "message-content--streaming")">
+<div style="margin-left:15px" class="message-content @(UseMarkdown ? "" : "message-content--streaming")">
     @if (UseMarkdown)
     {
         @((MarkupString)HtmlContent)

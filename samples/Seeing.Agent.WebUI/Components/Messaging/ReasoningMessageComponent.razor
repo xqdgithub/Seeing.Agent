@@ -25,7 +25,7 @@
     
     @* 内容区域 *@
     <div class="reasoning-content">
-        <div class="reasoning-content-scroll @(IsComplete ? "is-complete" : "is-streaming")" style="font-size: 12px; color: var(--color-text-tertiary); overflow-y: auto; overflow-x: hidden; word-break: break-word; overflow-wrap: break-word;">
+        <div class="reasoning-content-scroll message-content @(IsComplete ? "is-complete" : "is-streaming")" style="font-size: 12px; color: var(--color-text-tertiary); overflow-y: auto; overflow-x: hidden; word-break: break-word; overflow-wrap: break-word;">
             @if (UseMarkdown)
             {
                 @((MarkupString)HtmlContent)

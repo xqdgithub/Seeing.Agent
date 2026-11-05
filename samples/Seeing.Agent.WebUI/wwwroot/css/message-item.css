@@ -231,6 +231,13 @@
     color: var(--color-text-tertiary);
 }
 
+/* 思考区的 Markdown 表格沿用 .message-content 的框线口径，
+   仅按思考区更小的字号收紧内边距（不重定义框线/表头底色）。 */
+.reasoning-section .reasoning-content th,
+.reasoning-section .reasoning-content td {
+    padding: var(--space-1) var(--space-2);
+}
+
 .reasoning-section .reasoning-content strong {
     color: var(--color-text-secondary);
     font-weight: 600;
@@ -328,12 +335,15 @@
     width: 100%;
     margin: var(--space-3) 0;
     border-collapse: collapse;
+    max-width: 100%;
 }
 
 .message-content th,
 .message-content td {
     padding: var(--space-2) var(--space-3);
     border: 1px solid var(--color-border);
+    text-align: left;
+    vertical-align: top;
 }
 
 .message-content th {

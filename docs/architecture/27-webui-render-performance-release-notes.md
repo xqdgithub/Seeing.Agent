@@ -41,6 +41,7 @@
 - 新增 `RenderMarkdownPolicy.ShouldUseMarkdown()`：流式中的文本/思考/子代理块跳过 Markdown，按纯文本渲染。
 - `message-item.css` 新增 `.message-content--streaming { white-space: pre-wrap; ... }` —— 不做这步流式文本会塌成一整段。
 - 完成后 `block.IsStreaming` 转 false，自动走回 Markdown 分支。
+- **不变量**：`IsStreaming` 的来源必须是「这条消息**本身**还在流」，而不是「当前会话有别的东西在流」。`SessionWindowTimelineSync.SyncAssistant(isComplete:false)` 只同步属于当前回合的消息（`LoopId` 比对）；`ExecutionStartedEvent` 分支**不同步**助手消息——此刻本回合尚无 assistant 消息，指针仍指上一轮末条，同步它会把已完成回答降级为流式、Markdown 退回纯文本（回归见下方 2026-11-05）。
 
 ### 热路径数据结构
 
@@ -131,3 +132,50 @@
   - `OnWindowsChanged` 与 Summary 窗口加载各加一次 `Task.Yield()`，避免组内 N 个侧栏窗口的 `await` 续体插到主窗首帧之前。
   - `LoadSummaryOnlyAsync` 用组快照的 `ParentSessionId` 替代单独一次 `GetParentAsync()` 往返。
   - 新增 `MessageListWindowTests`（12 个用例），含两条守门：`InitialWindowSize == MaxMounted`（防首屏与上限不一致导致贴底跳动）、`MaxMounted <= 40`（防无意上调挂载数回归 Paint 成本）。
+
+## 回归修复：发新消息后旧回答 Markdown 失效（2026-11-05）
+
+**现象**：会话中发出一条新消息后，**上一轮已经渲染好的回答**排版塌掉——表格、列表、标题、加粗全部变成原样的 Markdown 源码文本。
+
+**根因**：`ExecutionStartedEvent` 分支调用了 `SyncAssistant(isComplete: false)`。
+
+时序上此时本回合还没有任何 assistant 消息，`ResolveCurrentStreamingAssistantMessage()` 走兜底分支 `messages.LastOrDefault(m => m.Role == "assistant")`，拿到的是**上一轮最后一条已完成消息**。以 `isComplete: false` 同步它 → `MessageViewModel.IsComplete` 被改回 `false` → `ContentBlock.CreateText(..., isComplete: false)` → `IsStreaming = true` → `RenderMarkdownPolicy.ShouldUseMarkdown()` 返回 `false` → 走纯文本分支。而且 `MessageViewModel.Revision` 也递增，分段缓存随之重建，坏状态被固化下来，直到下一次全量 `ResetFromSession`（刷新页面）才恢复。
+
+`IsStreaming` 的语义被误用了：它应当表示「**这条消息本身**还在流」，而不是「当前会话有别的东西在流」。
+
+**修复**（两处，均在 `SessionWindowTimelineSync`）：
+
+1. `ExecutionStartedEvent` 分支移除 `SyncAssistant(isComplete: false)`，只保留 `RefreshPendingInputCount()` + `ReconcileAppendFromSession()`（排队消息提升到主时间线本来就是 `Reconcile` 的职责，不依赖那次同步）。
+2. `SyncAssistant` 增加回合门闸：`isComplete == false` 时只同步属于当前回合的消息（消息 `LoopId` 与当前 LoopId 比对）。任一 `LoopId` 缺失时放行，避免挡掉「流式早期 LoopId 尚未写入」的正常路径。这条门闸兜住其他调用点将来踩同一个坑。
+
+**未采用的方案**：在 `MessageTimelineStore.SyncAssistantMessage` 里给 `IsComplete` 加 latch（一旦完成就不再回退）。试过，会打破流式路径——`ReconcileAppendFromSession` 恒以 `isComplete: true` 物化消息，之后流式同步必须能把它改回未完成。完成的单向性只在**同一回合内**成立，跨回合不成立，因此门闸放在「回合归属」这一层而非「完成状态」这一层。
+
+**守门测试**（`SessionWindowTimelineSyncTests`，均 RED→GREEN）：
+
+| 用例 | 断言 |
+|---|---|
+| `ProcessEvent_ExecutionStarted_ShouldNotDowngradePreviousCompletedTurn` | 新回合开始后，上轮消息 `IsComplete` 仍为 `true` |
+| `ProcessEvent_StreamStart_ShouldMarkNewStreamingMessageIncomplete` | 真流式消息仍被标为未完成（防止修复过度） |
+
+## 修复：Markdown 表格没有框线（2026-11-05）
+
+**现象**：助手回答里的 Markdown 表格渲染出来了，但没有框线、单元格没有内边距，列与列内容黏连（如「办公耗材20 包」挤在一起）。
+
+**根因**：`.message-content table / th / td` 是表格框线与内边距的唯一来源，但两个 Markdown 容器都没带 `message-content` 类：
+
+| 容器 | 原 class |
+|---|---|
+| `TextMessageComponent.razor` | 走 Markdown 时是 `class=""`（空） |
+| `ReasoningMessageComponent.razor` | `reasoning-content-scroll is-complete` |
+
+CSS 选择器不命中是静默的——页面照常渲染，只是样式全部失效。`TextBlockRenderer`（非生产路径）倒是带了该类，所以只有走组件这条生产路径受影响。
+
+**修复**：
+
+1. 两个容器都补上 `message-content`（正文容器始终带；思考区增加该类以复用同一套框线口径）。
+2. 表格样式补 `text-align: left` + `vertical-align: top`（Markdown 表格默认表头居中，与正文左对齐不一致）。
+3. 思考区只收紧单元格内边距（`--space-1 --space-2`），**不**重复定义框线与表头底色——避免同一元素两套口径漂移。
+
+**守门测试**（`MessageContentClassContractTests`，3 个用例）：断言两个 Markdown 容器都带独立 `message-content` 类，且 CSS 中表格规则块确实含 `border` / `padding` / `border-collapse`。
+
+> 注意断言写法：不能用 `Contain("message-content")`——`message-content--streaming` 含该子串，会让「漏加类」的回归静默通过。必须用 `message-content(?![\w-])` 匹配独立类名。反向验证（临时删类 → 测试失败）已确认有效。
