@@ -79,6 +79,9 @@ SEEING_WORKSPACE_ROOT → 项目级 Workspace.CustomPath
 
 | 约束 | 原因 |
 |------|------|
+| `OutputType` 必须是 `WinExe` | `Exe` 生成控制台子系统程序，双击会额外弹出 cmd 窗口（黑框 + 应用窗口两个窗口） |
+| 日志必须落盘 | `WinExe` 没有 stdout/stderr；用 `DesktopFileLoggerProvider` 写 `~/.seeing/logs/seeing-desktop-yyyyMMdd.log` |
+| 启动失败须用窗口提示 | 没有控制台，「双击没反应」无从排查；用同一个 WebView 显示错误页（不用 WinForms，那会把 TFM 绑到 `net10.0-windows`） |
 | 工作区解析必须在 `BuildAsync` 之前 | `WorkspaceProvider` 构造时把 cwd 记为 `StartupDirectory`，之后改 cwd 不生效 |
 | 桌面壳不得自行读取 `GlobalWorkspaceRoot` | 会绕过 `Workspace.UseGlobal` 开关；工作区只由 Core 裁决 |
 | 内容根必须是 `AppContext.BaseDirectory` | 否则 `WebApplication.CreateBuilder` 以宿主进程工作目录为准，静态资源清单与 wwwroot 定位失败 |

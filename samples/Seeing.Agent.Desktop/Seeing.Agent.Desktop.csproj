@@ -2,7 +2,15 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <OutputType>Exe</OutputType>
+    <!--
+      WinExe 而不是 Exe：Exe 会生成「控制台子系统」程序，双击时额外弹出一个
+      cmd 窗口承载 stdout/stderr，桌面应用会同时出现黑框 + 应用窗口两个窗口。
+      WinExe 挂到 GUI 子系统，不分配控制台。
+
+      代价：没有 stdout/stderr。日志改由 DesktopFileLoggerProvider 落盘到
+      ~/.seeing/logs/seeing-desktop-yyyyMMdd.log（见 Program.cs）。
+    -->
+    <OutputType>WinExe</OutputType>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Seeing.Agent.Desktop</RootNamespace>

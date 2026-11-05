@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
+using Microsoft.Extensions.Logging;
 using Photino.NET;
 using Seeing.Agent.Desktop.Services;
 using Seeing.Agent.WebUI.Hosting;
@@ -43,7 +45,9 @@ internal static class Program
         // 最终工作区仍由 WorkspaceProvider 按 Core 优先级决定
         // （环境变量 → 项目 CustomPath → UseGlobal 为真时的全局目录 → 启动目录）。
         var startLocation = DesktopWorkspace.Apply();
-        Console.WriteLine($"起始位置: {startLocation.Path}（来源: {startLocation.Describe()}）");
+
+        // WinExe 没有控制台，日志必须落盘，否则出问题无从排查。
+        var logProvider = new DesktopFileLoggerProvider(DesktopFileLoggerProvider.ResolveLogDirectory());
 
         var port = FindAvailablePort(PreferredPort);
         var url = $"http://127.0.0.1:{port}";
@@ -70,7 +74,16 @@ internal static class Program
             try
             {
                 // 内容根必须指向外壳自己的输出目录（WebUI 的静态资源已随引用复制过来）。
-                app = WebUiHost.BuildAsync(hostArgs, AppContext.BaseDirectory)
+                // 日志切到文件：桌面形态没有控制台窗口。
+                app = WebUiHost.BuildAsync(
+                        hostArgs,
+                        AppContext.BaseDirectory,
+                        logging =>
+                        {
+                            // 清掉默认 Console 提供方（WinExe 下没有控制台，写入是空操作）。
+                            logging.ClearProviders();
+                            logging.AddProvider(logProvider);
+                        })
                     .GetAwaiter()
                     .GetResult();
 
@@ -95,8 +108,12 @@ internal static class Program
         hostReady.Wait();
         if (startupError is not null || app is null)
         {
-            Console.Error.WriteLine($"WebUI 宿主启动失败：{startupError?.Message}");
-            return 1;
+            // WinExe 没有控制台，启动失败必须让用户看得见，否则表现为「双击没反应」。
+            // 不用 WinForms 的 MessageBox：那会把目标框架绑到 net10.0-windows，
+            // 破坏本项目「同一份代码跨平台」的前提。这里直接用同一个 WebView 显示错误页。
+            logProvider.CreateLogger("Seeing.Desktop").LogError(startupError, "宿主启动失败");
+
+            return ShowStartupError(startupError, logProvider.FilePath);
         }
 
         var application = new PhotinoApplication { NotificationsEnabled = false };
@@ -144,6 +161,67 @@ internal static class Program
             // 窗口关闭 → 触发 Host 正常停止（释放 circuit、后台执行与文件句柄）。
             app?.StopAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
         }
+    }
+
+    /// <summary>
+    /// 用同一个原生窗口展示启动失败原因（WinExe 没有控制台，否则用户只看到「双击没反应」）。
+    /// </summary>
+    /// <returns>固定返回 1（非零退出码）。</returns>
+    private static int ShowStartupError(Exception? error, string logPath)
+    {
+        var detail = WebUtility.HtmlEncode(error?.ToString() ?? "未知错误");
+
+        var html = $$"""
+            <!DOCTYPE html>
+            <html lang="zh-CN">
+            <head>
+              <meta charset="utf-8" />
+              <title>Seeing 启动失败</title>
+              <style>
+                body { font-family: "Segoe UI", system-ui, sans-serif; margin: 0; padding: 32px;
+                       background: #fafafa; color: #1c1c1e; }
+                h1 { font-size: 20px; margin: 0 0 12px; color: #cf1322; }
+                p  { line-height: 1.7; margin: 8px 0; }
+                code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px;
+                       font-family: Consolas, monospace; font-size: 13px; }
+                pre { background: #fff; border: 1px solid #e8e8e8; border-radius: 6px;
+                      padding: 16px; overflow: auto; font-size: 12px; line-height: 1.5;
+                      max-height: 320px; white-space: pre-wrap; word-break: break-all; }
+              </style>
+            </head>
+            <body>
+              <h1>Seeing 无法启动</h1>
+              <p>后台服务启动失败，应用窗口无法打开。</p>
+              <p>完整日志：<code>{{WebUtility.HtmlEncode(logPath)}}</code></p>
+              <p>错误详情：</p>
+              <pre>{{detail}}</pre>
+            </body>
+            </html>
+            """;
+
+        try
+        {
+            var application = new PhotinoApplication { NotificationsEnabled = false };
+            var window = new PhotinoWindow()
+                .SetTitle(WindowTitle)
+                .SetIconFile(Path.Combine(AppContext.BaseDirectory, IconFileName))
+                .SetSize(new Size(900, 620))
+                .Center()
+                .SetStatusBarEnabled(false)
+                .LoadString(html);
+
+            application
+                .SetName(ApplicationName)
+                .SetShutdownMode(PhotinoShutdownMode.OnMainWindowClose);
+
+            application.Run(window);
+        }
+        catch
+        {
+            // 连错误窗口都开不出来时只能返回码，日志里仍有完整堆栈。
+        }
+
+        return 1;
     }
 
     /// <summary>判断是否为应用外部地址（任何非本机回环、或非当前监听端口的地址）。</summary>

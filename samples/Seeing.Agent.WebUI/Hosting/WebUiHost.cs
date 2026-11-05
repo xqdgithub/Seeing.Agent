@@ -44,7 +44,14 @@ public static class WebUiHost
     /// 否则 <c>WebApplication.CreateBuilder</c> 会以宿主进程的当前工作目录为准，
     /// 导致静态资源清单与 wwwroot 定位失败。
     /// </param>
-    public static async Task<WebApplication> BuildAsync(string[] args, string? contentRoot = null)
+    /// <param name="configureLogging">
+    /// 可选的日志配置钩子。桌面宿主用它把日志改到文件（桌面形态没有控制台窗口，
+    /// 默认 Console 日志会随窗口一起消失）。为 null 时保持浏览器宿主的默认行为。
+    /// </param>
+    public static async Task<WebApplication> BuildAsync(
+        string[] args,
+        string? contentRoot = null,
+        Action<ILoggingBuilder>? configureLogging = null)
     {
         var builder = contentRoot is null
             ? WebApplication.CreateBuilder(args)
@@ -53,6 +60,8 @@ public static class WebUiHost
                 Args = args,
                 ContentRootPath = contentRoot,
             });
+
+        configureLogging?.Invoke(builder.Logging);
 
         // 启用 .NET 9+ StaticWebAssets 管道。
         // 在 .NET 9+，Microsoft.NET.Sdk.Web 不再把 wwwroot 复制到 bin\<Config>\<TFM>\wwwroot，
