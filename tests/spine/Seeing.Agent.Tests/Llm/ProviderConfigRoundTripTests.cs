@@ -143,6 +143,21 @@ public class ProviderConfigRoundTripTests : IDisposable
     }
 
     [Fact]
+    public async Task ProviderConfig_LoadConfig_ShouldExportEveryFormManagedField()
+    {
+        // 导出方向的单独守门：LoadConfigAsync 少导出一个键，UI 里就看不到该字段、
+        // 编辑后也写不回（"静默丢失"的另一半）。上一个测试只覆盖写回方向。
+        var config = new ProviderConfig { Id = "p", Type = ProviderTypes.OpenAi };
+        var provider = CreateProvider(config);
+
+        var exported = await provider.LoadConfigAsync(TestContext.Current.CancellationToken);
+
+        foreach (var field in FormManagedFields)
+            exported.Keys.Should().Contain(field,
+                $"LoadConfigAsync 必须导出表单字段 '{field}'，否则 UI 无法回填它");
+    }
+
+    [Fact]
     public void ProviderConfig_NewWritableProperty_ShouldBeRegisteredOrExplicitlyExcluded()
     {
         // 守门元测试：白名单必须覆盖「除显式排除项外的全部可写属性」。
