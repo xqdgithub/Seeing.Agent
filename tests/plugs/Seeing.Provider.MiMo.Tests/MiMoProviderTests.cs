@@ -73,11 +73,13 @@ public class MiMoProviderTests
     }
 
     /// <summary>
-    /// 防 B2 回归：装饰器（重试 / 429 退避）的唯一应用点在工厂 <c>Create</c> 返回之前（spec §7.3）。
-    /// plug provider 直接调工厂、从不经过 <c>ConfiguredLlmProvider</c>，因此一旦把 <c>Apply</c>
-    /// 上移到 Provider 层，本 Provider 拿到的就是未装饰的裸客户端——重试会**静默消失**。
-    /// 桩工厂复刻真实工厂的顺序（建裸客户端 → 内部 Apply 装饰器 → 交回最外层），
-    /// 断言 Provider 原样交出装饰产物：既不自建裸客户端、也不解包或二次包装。
+    /// plug Provider 必须原样交出工厂产物：不自建裸客户端、不解包、不二次包装。
+    /// <para>plug provider 直接调工厂、从不经过 <c>ConfiguredLlmProvider</c>，所以只要它
+    /// 自己动手建客户端或绕过工厂，重试（429 退避）就会静默消失。</para>
+    /// <para><b>本用例的边界（诚实标注）</b>：桩工厂自己返回 decorated，因此它只能证明
+    /// 「Provider 侧不改写工厂产物」这一半。另一半——「真实工厂确实在 <c>Create</c> 内调
+    /// <c>Apply</c>」——由 <c>OpenAiLlmModuleTests.Create_ShouldApplyDecorators_BeforeReturning_AndOnlyHere</c>
+    /// 用真实工厂 + 记录型注册表覆盖。两处合起来才是完整的防上移守卫。</para>
     /// </summary>
     [Fact]
     public async Task CreatedClient_ShouldStillBeWrappedByRetryDecorator()

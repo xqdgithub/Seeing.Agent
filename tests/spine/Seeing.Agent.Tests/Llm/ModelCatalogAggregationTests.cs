@@ -534,9 +534,134 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             Directory.Delete(_root, recursive: true);
     }
 
-    private sealed class TestProvider : ILlmProvider
+    /// <summary>
+    /// listModels 端到端守门（配置驱动 Provider 的远端目录合并）。
+    /// <para>背景：`ModelConfigManager` 过去只对**扩展注册**的 Provider 调 `GetModelsAsync`，
+    /// 配置驱动的（如 `Providers.typesafe`）只读静态 `Models` 表 —— 于是
+    /// `ConfiguredLlmProvider.GetModelsAsync` 里的远端合并永不执行，jev 模型进不了目录。</para>
+    /// <para>本用例锁住两件事：① 初次全量刷新时远端模型进目录；
+    /// ② <c>RefreshCatalogAsync(providerId)</c>（模型页「刷新当前」与每次 CRUD 都走它）
+    /// 之后远端模型**不消失**——后者曾因 `LoadProviderSliceAsync` 缺合并分支而丢失。</para>
+    /// </summary>
+    [Fact]
+    public async Task RefreshCatalogAsync_ConfiguredProviderWithListModels_KeepsRemoteModels()
     {
-        private readonly IReadOnlyList<ModelConfig> _models;
+        var providers = new Dictionary<string, ProviderConfig>
+        {
+            ["typesafe"] = new ProviderConfig
+            {
+                Id = "typesafe",
+                Type = ProviderTypes.TypeSafe,
+                Capabilities = ["decision"],
+                ListModels = true,
+                Models = new Dictionary<string, ModelConfig>
+                {
+                    ["static-one"] = new() { Id = "static-one", Types = [ModelType.Decision] }
+                }
+            }
+        };
+        var config = await CreateConfigAsync(new SeeingAgentOptions(), providers);
+
+        var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
+        var provider = new CountingProvider(
+            "typesafe",
+            ProviderTypes.TypeSafe,
+            LlmCapabilityKind.Decision,
+            [new ModelConfig { Id = "jev-latest", Types = [ModelType.Decision] }]);
+        registry.Register(provider);
+
+        using var catalog = new ModelConfigManager(
+            config,
+            registry,
+            NullLogger<ModelConfigManager>.Instance);
+
+        await WaitUntilAsync(
+            () => catalog.GetCatalogModels().ContainsKey("typesafe/jev-latest"),
+            TimeSpan.FromSeconds(5));
+
+        catalog.GetCatalogModels().Keys.Should()
+            .BeEquivalentTo("typesafe/static-one", "typesafe/jev-latest");
+
+        // 单 Provider 刷新必须保留远端模型（曾在此丢失）
+        await catalog.RefreshCatalogAsync("typesafe", TestContext.Current.CancellationToken);
+
+        catalog.GetCatalogModels().Keys.Should().BeEquivalentTo(
+            "typesafe/static-one", "typesafe/jev-latest");
+    }
+
+    /// <summary>
+    /// 同一 id 既被扩展注册、又在 `Providers` 里声明 `listModels` 时，
+    /// 每次全量刷新只能拉一次目录。
+    /// <para>否则每次刷新对所有扩展 Provider 多发一次请求（DeepSeek/SiliconFlow/…），
+    /// 未命中 TTL 时是 2× 网络，失败时日志也会翻倍。</para>
+    /// </summary>
+    [Fact]
+    public async Task FullRefresh_ExtensionProviderAlsoInUserProviders_ShouldNotDoubleFetch()
+    {
+        var providers = new Dictionary<string, ProviderConfig>
+        {
+            ["dup"] = new ProviderConfig { Id = "dup", ListModels = true }
+        };
+        var config = await CreateConfigAsync(new SeeingAgentOptions(), providers);
+
+        var registry = new ProviderRegistry(NullLogger<ProviderRegistry>.Instance);
+        var provider = new CountingProvider(
+            "dup",
+            ProviderTypes.OpenAi,
+            LlmCapabilityKind.Chat,
+            [new ModelConfig { Id = "m1" }]);
+        // 扩展归属：走 extensionLoads 分支
+        registry.Register(provider, ownerExtensionId: "ext.test");
+
+        using var catalog = new ModelConfigManager(
+            config,
+            registry,
+            NullLogger<ModelConfigManager>.Instance);
+
+        await WaitUntilAsync(() => provider.CallCount >= 1, TimeSpan.FromSeconds(5));
+        var afterInitial = provider.CallCount;
+
+        await catalog.RefreshCatalogAsync(null, TestContext.Current.CancellationToken);
+        var afterSecond = provider.CallCount;
+
+        (afterSecond - afterInitial).Should().Be(1,
+            "扩展 Provider 由 extensionLoads 统一处理，不应再被 catalogLoads 拉一次");
+    }
+
+    /// <summary>记录 <see cref="GetModelsAsync"/> 调用次数的 Provider 替身。</summary>
+    private sealed class CountingProvider(
+        string id,
+        string protocol,
+        LlmCapabilityKind capability,
+        IReadOnlyList<ModelConfig> models) : ILlmProvider
+    {
+        private int _callCount;
+
+        public string Id { get; } = id;
+        public string? Name => Id;
+        public string Protocol { get; } = protocol;
+        public LlmCapabilityKind Capabilities { get; } = capability;
+        public int MaxRetries => 3;
+
+        public int CallCount => Volatile.Read(ref _callCount);
+
+        public ILlmCapabilityClient? GetClient(LlmCapabilityKind requested) => null;
+
+        public Task<IReadOnlyList<ModelConfig>> GetModelsAsync(CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _callCount);
+            return Task.FromResult(models);
+        }
+
+        public Task<bool> TestConnectionAsync(
+            string modelId,
+            LlmCapabilityKind requested,
+            CancellationToken cancellationToken)
+            => Task.FromResult(true);
+    }
+
+    private sealed class TestProvider : ILlmProvider
+    {        private readonly IReadOnlyList<ModelConfig> _models;
         private readonly Exception? _error;
 
         public TestProvider(string id, IReadOnlyList<ModelConfig>? models = null, Exception? error = null)
