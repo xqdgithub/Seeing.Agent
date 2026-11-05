@@ -105,4 +105,33 @@ public class DesktopHostShapeTests
         var text = File.ReadAllText(settings!);
         text.Should().Contain("\"launchBrowser\": false");
     }
+
+    [Fact]
+    public void PublishScript_Should_Exist_And_Clean_Before_Publish()
+    {
+        // obj/<Config>/net10.0/ 下并存多个 RID 分支（win-x64/linux-x64/ref/refint），
+        // 共用同一组 .cache 文件；交替用不同 -r 构建会让 MSBuild 增量判断读到
+        // 交叉污染的时间戳，出现「改了 WebUI 公共方法签名，宿主仍按旧签名编译」
+        // → CS1501。脚本的清理步骤就是为此存在，不能被删掉。
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        string? script = null;
+        for (var i = 0; i < 8 && dir is not null; i++)
+        {
+            var candidate = Path.Combine(
+                dir.FullName, "samples", "Seeing.Agent.Desktop", "tools", "publish.ps1");
+            if (File.Exists(candidate))
+            {
+                script = candidate;
+                break;
+            }
+            dir = dir.Parent;
+        }
+
+        script.Should().NotBeNull("桌面发布必须走带清理的脚本");
+
+        var text = File.ReadAllText(script!);
+        text.Should().Contain("NoClean", "脚本要提供跳过清理的开关");
+        text.Should().Contain("Remove-Item -Recurse -Force $full",
+            "脚本必须清理受影响项目的 obj/bin，否则 RID 交叉污染会让构建假成功");
+    }
 }

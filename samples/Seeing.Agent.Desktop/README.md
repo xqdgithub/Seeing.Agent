@@ -10,7 +10,14 @@ dotnet run --project samples/Seeing.Agent.Desktop
 
 ## 打包
 
-**框架依赖（推荐，也是唯一受支持的方式）**
+**推荐用脚本**（会先清理受影响的 obj/bin，避免 RID 交叉污染）：
+
+```powershell
+pwsh -File samples/Seeing.Agent.Desktop/tools/publish.ps1 -Runtime win-x64
+# 默认输出到 artifacts/seeing-win-x64，可用 -OutputDir 覆盖
+```
+
+脚本做的事等价于：
 
 ```bash
 # Windows x64
@@ -24,6 +31,36 @@ dotnet publish samples/Seeing.Agent.Desktop -c Release -r linux-x64 -o artifacts
 ```
 
 产物约 56 MB，入口是 `Seeing.exe`。目标机器需预装 **.NET 10 运行时**。
+
+### 遇到 CS1501「方法没有采用 N 个参数的重载」时
+
+这是**增量构建缓存失效**，不是代码问题。现象：改了 WebUI 的公共方法签名，
+桌面宿主却仍按旧版本编译。
+
+原因：`samples/Seeing.Agent.WebUI/obj/<Config>/net10.0/` 下同时存在
+`win-x64` / `linux-x64` / `osx-arm64` / `ref` / `refint` 等多个 RID 分支，
+它们共用同一组 `.cache` 文件。先后用不同 `-r` 构建后，MSBuild 的增量判断
+会读到交叉污染的时间戳，误判为「无需重编译」。
+
+处理（任选其一）：
+
+```powershell
+# 1) 用脚本，它每次都清理
+pwsh -File samples/Seeing.Agent.Desktop/tools/publish.ps1 -Runtime win-x64
+
+# 2) 手动删掉受影响项目的 obj/bin 后重来
+Remove-Item -Recurse -Force samples/Seeing.Agent.WebUI/obj, samples/Seeing.Agent.WebUI/bin
+```
+
+判断是否踩到：比较源码与引用程序集的时间戳。
+
+```powershell
+(Get-Item samples/Seeing.Agent.WebUI/Hosting/WebUiHost.cs).LastWriteTime
+(Get-Item samples/Seeing.Agent.WebUI/obj/Release/net10.0/win-x64/ref/Seeing.Agent.WebUI.dll).LastWriteTime
+```
+
+后者早于前者即为缓存失效。
+
 
 ### 为什么不能自包含
 

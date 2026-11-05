@@ -92,20 +92,34 @@ SEEING_WORKSPACE_ROOT → 项目级 Workspace.CustomPath
 
 ## 发布
 
-**框架依赖**（唯一受支持的方式；产物约 56 MB，目标机需预装 .NET 10 运行时）：
+**推荐用脚本**（先清理 obj/bin，规避 RID 交叉污染）：
+
+```powershell
+pwsh -File samples/Seeing.Agent.Desktop/tools/publish.ps1 -Runtime win-x64
+```
+
+产物约 56 MB，目标机需预装 .NET 10 运行时。等价的直接命令：
 
 ```bash
-# Windows
+# Windows / macOS(arm64) / Linux 分别把 -r 换成 win-x64 / osx-arm64 / linux-x64
 dotnet publish samples/Seeing.Agent.Desktop -c Release -r win-x64 -o artifacts/seeing-win-x64
-
-# macOS (Apple Silicon)
-dotnet publish samples/Seeing.Agent.Desktop -c Release -r osx-arm64 -o artifacts/seeing-osx-arm64
-
-# Linux (x64)
-dotnet publish samples/Seeing.Agent.Desktop -c Release -r linux-x64 -o artifacts/seeing-linux-x64
 ```
 
 产物是文件夹形态（非单文件）。
+
+### 已知陷阱：CS1501「方法没有采用 N 个参数的重载」
+
+改了 WebUI 的公共方法签名（例如 `WebUiHost.BuildAsync` 增参）后，桌面宿主
+却仍按旧签名编译。这是**增量构建缓存失效**，不是代码问题：
+
+`samples/Seeing.Agent.WebUI/obj/<Config>/net10.0/` 下并存 `win-x64` /
+`linux-x64` / `osx-arm64` / `ref` / `refint` 多个 RID 分支，共用同一组
+`.cache` 文件。用不同 `-r` 交替构建后，MSBuild 增量判断读到交叉污染的时间戳，
+误判为无需重编译。**`publish.ps1` 的清理步骤就是为此而设，不要跳过。**
+
+判断方法：比较 `WebUiHost.cs` 与
+`obj/Release/net10.0/win-x64/ref/Seeing.Agent.WebUI.dll` 的修改时间，
+后者更早即中招。
 
 ### 为什么不是自包含
 
