@@ -53,6 +53,27 @@ public class LlmRouterTests
         Mock<IProviderRegistry> providers)
         => new(models.Object, providers.Object, NullLogger<LlmRouter>.Instance);
 
+    /// <summary>
+    /// 一个客户端类型实现两个能力端口 → 歧义。
+    /// <para>决议 15 删掉了客户端自述能力，反查只能靠端口类型；这使「每个客户端恰好实现
+    /// 一个端口」成为隐含契约。歧义时必须失败而非任取一个——否则同一个客户端可能被
+    /// 当作 chat 也可能被当作 embedding，行为随实现细节漂移。</para>
+    /// </summary>
+    [Fact]
+    public void Resolve_ClientTypeImplementingTwoPorts_ShouldThrowAmbiguous()
+    {
+        var router = CreateRouter(CreateModels(), CreateProviders(LlmCapabilityKind.Chat, _ => null));
+
+        var act = () => router.Resolve<IChatAndEmbeddingClient>("openai/m");
+
+        var ex = act.Should().Throw<LlmCapabilityMismatchException>().Which;
+        ex.Reason.Should().Contain("端口", "歧义要指出反查失败的原因是端口匹配数不为 1");
+    }
+
+    private interface IChatAndEmbeddingClient : IChatCompletionClient, IEmbeddingClient
+    {
+    }
+
     private static ModelConfig Model(ModelType type, string provider = ProviderId)
         => new()
         {

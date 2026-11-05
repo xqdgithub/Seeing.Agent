@@ -13,11 +13,15 @@ namespace Seeing.Agent.Abstractions.Llm;
 /// 直接 Resolve 的调用在观测面上是隐形的。</para>
 /// <para>适用直接调用本接口的场景（spec §7.4.1）：</para>
 /// <list type="bullet">
-/// <item>连接测试探针（不应产生业务副作用；Invoker 侧另可置 <c>EmitHooks=false</c>）</item>
-/// <item>长生命周期任务（如 video <c>Submit</c> + N 次 <c>Poll</c>，避免记 N 次完成）</item>
-/// <item>框架内部装配（Invoker 自身、默认值解析、Provider 层）</item>
+/// <item>一次解析多次调用（如 video <c>Submit</c> + N 次 <c>Poll</c>，避免记 N 次完成）。
+/// <b>注意：video 目前只出契约、无实现，此条为前瞻约定。</b></item>
+/// <item>框架内部装配（Invoker 自身、<c>IModelConfigManager.TryResolveDefault</c>、Provider 层）</item>
 /// </list>
-/// <para>判别口诀：<b>这次调用该不该被观测成「一次 LLM 调用」？</b>该 → Invoker；不该 → 本接口。</para>
+/// <para><b>连接测试探针不在此列</b>：探针应走 <see cref="ILlmInvoker"/> 且置
+/// <see cref="LlmInvocationOptions.EmitHooks"/>=<c>false</c>——这样既有五层校验与重试，
+/// 又不产生 Hook 副作用。见 <c>EmbeddingConnectionTester</c>。</para>
+/// <para>判别口诀：<b>这次调用该不该被观测成「一次 LLM 调用」？</b>该 → Invoker（默认开 Hook）；
+/// 不该但需要校验与重试 → Invoker + <c>EmitHooks=false</c>；一次解析多次调用 → 本接口。</para>
 /// </summary>
 public interface ILlmRouter
 {

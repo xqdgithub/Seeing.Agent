@@ -200,7 +200,7 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 
 > `SystemOneClientFactoryResolver` 已随 SystemOne 平行栈合流删除（原 `Abstractions/SystemOne/` 整个命名空间移除）。
 >
-> **未列入但同为静态逻辑**：`LlmRetryPolicy`（`Abstractions/Llm/LlmRetryPolicy.cs`，退避计算与可重试判定）与 `LlmRetrySettings`。它们早于本次重构存在，且含策略而非纯映射；是否归入豁免需单独评估，暂标为**已知遗留**。
+> **未列入但同为静态逻辑**：`LlmRetryPolicy`（`Abstractions/Llm/LlmRetryPolicy.cs`，退避计算与可重试判定）。它早于本次重构存在，且含策略而非纯映射；是否归入豁免需单独评估，暂标为**已知遗留**。（同文件的 `LlmRetrySettings` 是 `Core/Llm/RetryLlmClientDecorator.cs` 的内部类型，不在 Abstractions，无需豁免。）
 >
 > `PermissionRuleEntry` 匹配算法（~140 行）与 `ConfigSectionOptionsMonitor` 为已知契约层实现，维持现状（下沉需单独评估，不在本轮范围）。
 

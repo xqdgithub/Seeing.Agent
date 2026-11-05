@@ -315,6 +315,37 @@ public class LlmInvokerTests
         hooks.Points.Should().BeEmpty("解析失败不应触发任何 Hook");
     }
 
+    /// <summary>
+    /// 一个客户端类型实现两个能力端口 → 歧义，Invoker 必须失败且不进 Router。
+    /// <para>与装饰器的 `Wrap_MultiplePorts_ShouldThrowNotSupported`、Router 的对应用例
+    /// 共同锁定「端口反查单点 + 歧义即失败」这条隐含契约。</para>
+    /// </summary>
+    [Fact]
+    public async Task Invoke_ShouldFailForAmbiguousPort()
+    {
+        var hooks = new RecordingHookManager();
+        var router = new Mock<ILlmRouter>();
+        var sut = new LlmInvoker(
+            router.Object, hooks, new TestAdapterRegistry(), NullLogger<LlmInvoker>.Instance);
+
+        var act = () => sut.InvokeAsync<IAmbiguousClient, string>(
+            "p/m",
+            (_, _, _) => Task.FromResult("ok"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<ArgumentException>().WithMessage("*端口*");
+        router.Verify(
+            r => r.Resolve<IAmbiguousClient>(It.IsAny<string>()),
+            Times.Never,
+            "歧义端口不应进入 Router 解析");
+        hooks.Points.Should().BeEmpty("解析失败不应触发任何 Hook");
+    }
+
+    /// <summary>同时声明两个能力端口（歧义源）。</summary>
+    private interface IAmbiguousClient : IChatCompletionClient, IEmbeddingClient
+    {
+    }
+
     private static async IAsyncEnumerable<StreamUpdate> Updates()
     {
         await Task.CompletedTask;

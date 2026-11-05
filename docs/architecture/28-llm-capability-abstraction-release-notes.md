@@ -38,7 +38,7 @@ ILlmCapabilityClient（仅身份 + TestConnectionAsync）
 ├─ IChatCompletionClient      （CompleteAsync / CompleteStreamAsync）
 ├─ IEmbeddingClient           （EmbedAsync）
 ├─ IRerankClient              （RerankAsync）
-├─ IDecisionClient            （EvaluateAsync / ListModelsAsync）
+├─ IDecisionClient            （EvaluateAsync）
 ├─ ISpeechSynthesisClient     （SynthesizeAsync / SynthesizeStreamAsync）
 ├─ ISpeechTranscriptionClient （TranscribeAsync / TranscribeStreamAsync）
 ├─ IImageGenerationClient     （GenerateAsync）

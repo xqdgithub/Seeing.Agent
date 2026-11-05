@@ -314,7 +314,6 @@ public interface IRerankClient : ILlmCapabilityClient
 public interface IDecisionClient : ILlmCapabilityClient
 {
     Task<DecisionResponse> EvaluateAsync(DecisionRequest request, LlmCallContext? call = null, CancellationToken ct = default);
-    Task<IReadOnlyList<DecisionModel>> ListModelsAsync(CancellationToken ct = default);
 }
 
 public interface ISpeechSynthesisClient : ILlmCapabilityClient
@@ -343,7 +342,7 @@ public interface IVideoGenerationClient : ILlmCapabilityClient
 }
 ```
 
-`IDecisionClient.ListModelsAsync` 存在是为了保住 typesafe 的**动态模型目录**，返回 `DecisionModel { Name, Description, ReleaseDate }`。
+typesafe 的**动态模型目录**由 `IModelCatalogClient.ListModelsAsync` 承担（返回 `ModelConfig`，直接进目录口径）。`IDecisionClient` **不重复声明**同名成员——同一 wire 端点由两个接口各投影一次会让 `TypeSafeSystemOneClient` 永久成为两端口类，且该成员零消费者（与 §4 反目标「同一事实不留多份数据」冲突）。
 
 #### 7.2.1 映射表：三张，全部集中在一个静态类
 
