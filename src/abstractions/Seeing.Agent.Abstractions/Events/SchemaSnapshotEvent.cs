@@ -42,4 +42,20 @@ public sealed record SchemaSnapshotEvent : IMessageEvent
 
     /// <summary>本轮目录的估算 token（与定义口径分列）。</summary>
     public int CatalogTokens { get; init; }
+
+    /// <summary>
+    /// 本轮的 <c>tools[]</c> 是否与同一会话上一轮不同（前缀缓存会从变化点起失效）。
+    /// <para>
+    /// 已知合法变化：Agent / 场景切换、MCP 连接增减、跨日（环境分节）。该标志只陈述事实，
+    /// 不包含"是否异常"的判断——用 <see cref="AddedToolIds"/> / <see cref="RemovedToolIds"/> 定位原因。
+    /// </para>
+    /// <para>首轮（无基线）恒为 false。</para>
+    /// </summary>
+    public bool SchemaChangedFromPreviousExecution { get; init; }
+
+    /// <summary>相对上一轮新增的内联工具 id（顺序变化时为两者差异集，可能都为空）。</summary>
+    public IReadOnlyList<string> AddedToolIds { get; init; } = Array.Empty<string>();
+
+    /// <summary>相对上一轮消失的内联工具 id。</summary>
+    public IReadOnlyList<string> RemovedToolIds { get; init; } = Array.Empty<string>();
 }

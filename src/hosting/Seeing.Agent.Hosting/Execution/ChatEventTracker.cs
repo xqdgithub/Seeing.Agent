@@ -282,7 +282,12 @@ internal class ChatEventTracker
             ["inlineToolCount"] = snapshot.InlineToolCount,
             ["deferredToolCount"] = snapshot.DeferredToolCount,
             ["estimatedDefinitionTokens"] = snapshot.EstimatedDefinitionTokens,
-            ["catalogTokens"] = snapshot.CatalogTokens
+            ["catalogTokens"] = snapshot.CatalogTokens,
+            // 前缀缓存守卫：tools[] 相对上一轮是否变化 + 增删项。
+            // 性能事故没有用户可见报错，落盘后才能回答"这个会话的缓存从哪一轮开始断"。
+            ["schemaChanged"] = snapshot.SchemaChangedFromPreviousExecution,
+            ["addedToolIds"] = snapshot.AddedToolIds.ToList(),
+            ["removedToolIds"] = snapshot.RemovedToolIds.ToList()
         };
     }
 

@@ -19,6 +19,7 @@ using Seeing.Agent.Core.Context.Sources;
 using Seeing.Agent.Core.Events;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Services;
+using Seeing.Agent.Hosting.Execution.ToolExposure;
 using Seeing.Agent.Llm;
 using Seeing.Session.Core;
 using System.Diagnostics.CodeAnalysis;
@@ -66,6 +67,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
     private readonly CompactionRunner _compactionRunner;
     private readonly ILogger<ExecutionRunner> _logger;
     private readonly ISessionToolSchemaResolver _schemaResolver;
+    private readonly ToolSchemaStabilityMonitor _schemaStability;
 
     public ExecutionRunner(
         IServiceProvider serviceProvider,
@@ -74,7 +76,8 @@ internal sealed class ExecutionRunner : IExecutionRunner
         IConfigSectionStore configStore,
         CompactionRunner compactionRunner,
         ILogger<ExecutionRunner> logger,
-        ISessionToolSchemaResolver schemaResolver)
+        ISessionToolSchemaResolver schemaResolver,
+        ToolSchemaStabilityMonitor? schemaStability = null)
     {
         _serviceProvider = serviceProvider;
         _eventPublisher = eventPublisher;
@@ -82,6 +85,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
         _configStore = configStore;
         _compactionRunner = compactionRunner ?? throw new ArgumentNullException(nameof(compactionRunner));
         _logger = logger;
+        _schemaStability = schemaStability ?? new ToolSchemaStabilityMonitor();
         _observerTimeout = ObserverTimeout;
         // schema 唯一计算点经端口 ISessionToolSchemaResolver：必需注入，缺失即构造期失败，
         // 不再自构造回退实例，杜绝第二套结算路径与类型耦合。
@@ -318,14 +322,32 @@ internal sealed class ExecutionRunner : IExecutionRunner
 
                 // schema 快照事件：与随后 ChatRequest.Tools 同源（同一份工具视图结算）
                 var settlement = context.ToolSettlement ?? SessionToolSchemaResolution.Empty;
+                var inlineToolIds = settlement.InlineSchemas
+                    .Where(s => s.Function != null)
+                    .Select(s => s.Function.Name!)
+                    .ToArray();
+
+                // 前缀缓存守门：tools[] 变化会让厂商侧缓存从变化点起全量失效，
+                // 且没有用户可见报错——只能靠这条事实观测。已知合法变化（Agent/场景切换、
+                // MCP 增减、跨日）也走这里，故只告警不阻断。
+                var schemaDiff = _schemaStability.Track(record.SessionId, inlineToolIds);
+                if (schemaDiff.Changed)
+                {
+                    _logger.LogWarning(
+                        "工具 schema 发生变化，前缀缓存将失效: ExecutionId={ExecutionId}, SessionId={SessionId}, " +
+                        "Inline={InlineCount}, Added=[{Added}], Removed=[{Removed}]",
+                        record.ExecutionId,
+                        record.SessionId,
+                        inlineToolIds.Length,
+                        string.Join(", ", schemaDiff.Added),
+                        string.Join(", ", schemaDiff.Removed));
+                }
+
                 var schemaSnapshot = new SchemaSnapshotEvent
                 {
                     SessionId = record.SessionId,
                     ExecutionId = record.ExecutionId,
-                    ToolIds = settlement.InlineSchemas
-                        .Where(s => s.Function != null)
-                        .Select(s => s.Function.Name)
-                        .ToArray(),
+                    ToolIds = inlineToolIds,
                     SectionIds = context.SectionIds,
                     ExposureMode = settlement.Layout == ToolExposureLayout.Tiered
                         ? ToolExposurePolicyMode.Tiered
@@ -333,7 +355,10 @@ internal sealed class ExecutionRunner : IExecutionRunner
                     InlineToolCount = settlement.InlineToolCount,
                     DeferredToolCount = settlement.DeferredToolCount,
                     EstimatedDefinitionTokens = settlement.SchemaTokens,
-                    CatalogTokens = settlement.CatalogTokens
+                    CatalogTokens = settlement.CatalogTokens,
+                    SchemaChangedFromPreviousExecution = schemaDiff.Changed,
+                    AddedToolIds = schemaDiff.Added,
+                    RemovedToolIds = schemaDiff.Removed
                 };
                 eventTracker.ApplyEvent(session, schemaSnapshot);
                 _eventPublisher.Publish(record.SessionId, schemaSnapshot);

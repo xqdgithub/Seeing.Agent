@@ -86,6 +86,8 @@ public static class HostingServiceCollectionExtensions
         services.AddSingleton<SessionToolSchemaResolver>();
         services.AddSingleton<ISessionToolSchemaResolver>(sp => sp.GetRequiredService<SessionToolSchemaResolver>());
         // 工具暴露子系统：纯引擎（静态）+ 四级配置解析 + 发现态写入
+        // 前缀缓存守门：记录每会话上一轮 tools[]，变化即告警（性能事故无用户可见报错，只能靠观测）
+        services.AddSingleton<ToolSchemaStabilityMonitor>();
         // token 估算默认口径（TryAdd：能力包若提供更准实现则覆盖，全局仅一套）
         services.TryAddSingleton<Seeing.TokenEstimation.ITokenCounter, Seeing.TokenEstimation.CharBasedTokenCounter>();
         services.AddSingleton<ToolExposureConfigResolver>();
