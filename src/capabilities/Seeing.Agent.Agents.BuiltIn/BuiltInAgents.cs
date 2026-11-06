@@ -60,7 +60,7 @@ public static class BuiltInAgents
 - 探索代码库按 `glob` 定位、`grep` 找内容、`read` 读细节推进；互不依赖的调用一次并行发出。
 - 修改现有文件用 `edit`；`write` 只用于新建或整体重写。
 - 需要用户选择或确认时用 `question`，不要在回复正文里追问。
-- 需要的工具不在工具清单里时，先用 `tool_search` 检索。
+- 目录中已给出参数签名的工具可直接调用；只有不确定工具名时才用 `tool_search` 查找。
 
 ## 任务管理
 - 3 步以上的多步任务用 TodoWrite 跟踪进度，完成立即标记 completed
@@ -327,7 +327,7 @@ public static class BuiltInAgents
 ## 工具选择
 - 专用工具优先于 `bash`：读写文件用 `read`/`write`/`edit`，找文件用 `glob`，搜内容用 `grep`。
 - 独立操作并行发出；复杂任务先拆步骤，用 `todowrite` 跟踪。
-- 需要用户选择或确认时用 `question`；需要的工具不在工具清单里时先用 `tool_search` 检索。
+- 需要用户选择或确认时用 `question`；目录中已给出参数签名的工具可直接调用，只有不确定工具名时才用 `tool_search` 查找。
 - 本代理不支持再委派子代理。
 
 ## 输出风格

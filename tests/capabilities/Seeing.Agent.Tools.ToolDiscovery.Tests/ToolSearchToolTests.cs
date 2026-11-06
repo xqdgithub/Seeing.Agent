@@ -162,7 +162,7 @@ public class ToolSearchToolTests
 
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("file_read");
-        result.Output.Should().Contain("本次执行内可直接调用");
+        result.Output.Should().Contain("已返回完整定义，可直接调用");
         result.LoadedToolIds.Should().Equal("file_read");
         _store.Verify(
             s => s.Add("s1", It.Is<IEnumerable<string>>(ids => ids.Contains("file_read"))),
@@ -338,9 +338,9 @@ public class ToolSearchToolTests
     }
 
     [Fact]
-    public void ParameterDescription_ShouldUseSameExecutionTerminology()
+    public void ParameterDescription_ShouldNotPromiseAutoInlining()
     {
-        // 参数描述是模型实际读到的 schema，不能再说“下一轮生效”。
+        // 参数描述是模型实际读到的 schema，不得残留「下一轮自动内联」这类已不成立的承诺。
         var tool = CreateTool(Entry("file_read"));
         var detailDescription = tool.ParametersSchema
             .GetProperty("properties")
@@ -349,19 +349,20 @@ public class ToolSearchToolTests
             .GetString();
 
         detailDescription.Should().NotContain("下一轮");
-        detailDescription.Should().Contain("本次执行内");
+        detailDescription.Should().NotContain("自动内联");
         tool.Description.Should().NotContain("下一轮");
+        tool.Description.Should().NotContain("自动内联");
     }
 
     [Fact]
-    public async Task FullDetail_ShouldStateSameExecutionCallability()
+    public async Task FullDetail_ShouldStateDefinitionReturned()
     {
         var tool = CreateTool(Entry("file_read"));
 
         var result = await tool.ExecuteAsync(Args(new { query = "file_read", detail = "full" }), _context);
 
         result.Success.Should().BeTrue();
-        result.Output.Should().Contain("本次执行内可直接调用");
+        result.Output.Should().Contain("已返回完整定义，可直接调用");
         result.LoadedToolIds.Should().Equal("file_read");
         // 加载由执行器统一应用，能力包不得直接写作用域
         _scope.LoadedIds.Should().BeEmpty();
@@ -397,25 +398,6 @@ public class ToolSearchToolTests
         var result = await tool.ExecuteAsync(Args(new { }), context);
 
         result.Output.Should().Contain("from_scope").And.NotContain("from_resolver");
-    }
-
-    [Fact]
-    public async Task DetailFull_WithoutExecutionScope_ShouldPromiseOnlyLaterExecutions()
-    {
-        // 非执行器路径（未透传作用域）不得承诺"本次执行可用"，否则就是假消息。
-        var tool = CreateTool(Entry("file_read"));
-        var context = new ToolContext
-        {
-            SessionId = "s1",
-            Agent = new AgentDefinition { Name = "build" }
-        };
-
-        var result = await tool.ExecuteAsync(Args(new { query = "file_read", detail = "full" }), context);
-
-        result.Success.Should().BeTrue();
-        result.Output.Should().Contain("下一次执行起");
-        result.Output.Should().NotContain("本次执行内可直接调用");
-        result.LoadedToolIds.Should().Equal("file_read");
     }
 
     [Fact]

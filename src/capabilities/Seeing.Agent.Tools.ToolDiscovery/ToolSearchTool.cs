@@ -49,9 +49,9 @@ public sealed class ToolSearchTool : ToolBase
 
     /// <inheritdoc />
     public override string Description =>
-        "检索未内联的工具目录；需要的工具不在 tools 中时先用它。\n\n" +
-        "- detail：name 仅 id、summary 默认、full 返回完整定义并登记为本次执行内可调用。\n" +
-        "- full 命中后下一次执行起自动内联，每页最多 3 条。\n" +
+        "按关键词查找工具（不确定工具名时用）。\n\n" +
+        "- detail：name 仅 id、summary 默认（id+签名+摘要）、full 返回完整定义。\n" +
+        "- 目录里已给出参数签名的工具可直接调用，无需先检索。\n" +
         "- 分页：limit 与 offset；query 省略则浏览全部目录。";
 
     /// <inheritdoc />
@@ -77,7 +77,7 @@ public sealed class ToolSearchTool : ToolBase
             {
                 type = "string",
                 @enum = new[] { "name", "summary", "full" },
-                description = "详情档位：name=仅 id；summary=id+签名/摘要（默认）；full=登记本次执行内可调用并返回完整定义（下一次执行起自动内联，每页最多 3 条）"
+                description = "详情档位：name=仅 id；summary=id+签名/摘要（默认）；full=返回完整定义（每页最多 3 条）"
             },
             limit = new
             {
@@ -206,9 +206,7 @@ public sealed class ToolSearchTool : ToolBase
                 sb.Append(entry.Signature);
 
             sb.Append(discovered
-                ? context.ToolScope is not null
-                    ? "\n   已加载：本次执行内可直接调用；下一次执行起自动内联:"
-                    : "\n   已登记：下一次执行起可直接调用（本次执行内暂不可调用）:"
+                ? "\n   已返回完整定义，可直接调用："
                 : "\n   警告：发现态登记失败（会话不可用），该工具本次及后续请求均不可直接调用:");
             var schemaText = GetFullDefinition(entry);
             sb.Append('\n').Append(schemaText);

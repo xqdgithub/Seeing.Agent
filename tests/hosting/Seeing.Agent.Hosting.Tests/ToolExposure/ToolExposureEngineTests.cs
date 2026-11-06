@@ -221,7 +221,7 @@ public class ToolExposureEngineTests
     }
 
     [Fact]
-    public void Catalog_ShouldStateSameRequestCallabilityAndCompleteness()
+    public void Catalog_ShouldStateDirectCallabilityAndCompleteness()
     {
         var tools = new[] { Schema("read"), Schema("tool_search") };
 
@@ -229,11 +229,10 @@ public class ToolExposureEngineTests
             Input(tools, Config(ToolExposurePolicyMode.Tiered)), Counter);
 
         result.CatalogText.Should().NotBeNull();
-        // 目录承诺必须与执行层一致：命中后本次执行内可调用，而非“下一轮”。
-        result.CatalogText!.Should().Contain("本次执行内即可直接调用");
-        result.CatalogText.Should().Contain("未加载前");
-        result.CatalogText.Should().NotContain("下一轮");
-        result.CatalogText.Should().NotContain("本次请求内");
+        // 目录承诺必须与执行层一致：deferred 工具可直接调用。
+        result.CatalogText!.Should().Contain("可以直接调用");
+        result.CatalogText.Should().NotContain("未加载前");
+        result.CatalogText.Should().NotContain("先调用 tool_search 检索");
         // 未展示的条目必须显式说明仍然存在、仍可检索，避免“以为工具缺失”。
         result.CatalogText.Should().Contain("未展示");
     }
