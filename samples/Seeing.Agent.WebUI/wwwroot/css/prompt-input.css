@@ -244,3 +244,59 @@
     color: var(--color-error);
     font-size: 12px;
 }
+
+/* ========== 语音输入按钮 ========== */
+.prompt-voice-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* 未配置模型：灰调但仍可点（不能设 Disabled，否则触屏无反馈） */
+.prompt-voice-btn--unavailable {
+    color: var(--color-text-quaternary) !important;
+    opacity: 0.65;
+}
+
+.prompt-voice-btn--unavailable:hover {
+    opacity: 0.85;
+    color: var(--color-text-tertiary) !important;
+}
+
+/* 录音中：红色 + 呼吸圆点 */
+.prompt-voice-btn--recording {
+    color: var(--color-error, #ff4d4f) !important;
+}
+
+.prompt-voice-recording-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: prompt-voice-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes prompt-voice-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+
+.prompt-voice-error {
+    padding: 4px 8px;
+    color: var(--color-error);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.prompt-voice-error-action {
+    color: var(--color-primary);
+    cursor: pointer;
+    text-decoration: underline;
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 12px;
+}
