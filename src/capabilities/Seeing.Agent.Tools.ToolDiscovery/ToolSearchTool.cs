@@ -232,10 +232,23 @@ public sealed class ToolSearchTool : ToolBase
         return result;
     }
 
+    /// <summary>
+    /// 非 ASCII 不转义的序列化选项。
+    /// <para>
+    /// <see cref="JsonSerializer"/> 默认把中文转成 <c>\uXXXX</c>（每字 6 字符，膨胀 6 倍），
+    /// 而这份定义是**给人看的模型输入**，不是要再被解析的传输载荷。放开转义后
+    /// <c>cron_create</c> 这类工具的 full 输出从约 1.4k 字符降到约 0.4k。
+    /// </para>
+    /// </summary>
+    private static readonly JsonSerializerOptions s_readableJson = new()
+    {
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
     private static string GetFullDefinition(ExposedTool entry)
     {
         // full 定义直接取自本执行快照，不再回头查注册表或重新结算（避免第二条 schema 路径）。
-        return "   " + JsonSerializer.Serialize(entry.Schema);
+        return "   " + JsonSerializer.Serialize(entry.Schema, s_readableJson);
     }
 
     private static Dictionary<string, object> BuildMetadata(
