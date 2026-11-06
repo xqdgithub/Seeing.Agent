@@ -18,6 +18,11 @@ namespace Seeing.ConfigSchema;
 /// </param>
 /// <param name="EnumValues">枚举类型的全部取值（仅 <see cref="ConfigFieldType.Enum"/>）。</param>
 /// <param name="Section">分组名（表单用 Divider 分段）。</param>
+/// <param name="Placeholder">
+/// 输入控件的占位文案。<b>空值时的自我说明</b>：对「留空有特殊含义」的字段（如 Provider 的
+/// <c>Capabilities</c>——留空表示沿用默认能力），占位文案是用户唯一能看到的解释；
+/// 否则一个空下拉看起来就像「这里什么都没有」。
+/// </param>
 public sealed record ConfigFieldSchema(
     string Name,
     string Label,
@@ -27,4 +32,5 @@ public sealed record ConfigFieldSchema(
     object? DefaultValue,
     IReadOnlyList<string>? EnumValues = null,
     string? Section = null,
-    IReadOnlyList<string>? Choices = null);
+    IReadOnlyList<string>? Choices = null,
+    string? Placeholder = null);

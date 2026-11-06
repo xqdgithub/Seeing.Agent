@@ -20,11 +20,14 @@
         break;
 
     case ConfigFieldType.StringList when Field.Choices is { Count: > 0 } choices:
-        @* 有候选：多选下拉，用户从合法值里挑，不能填错 *@
+        @* 有候选：多选下拉，用户从合法值里挑，不能填错。
+           Placeholder 解释「留空是什么意思」——空值往往有语义（如能力清单留空 = 用默认能力），
+           不写清楚就会被读成「这里没有东西」。 *@
         <Select TItemValue="string" TItem="string"
                 Mode="SelectMode.Multiple"
                 @bind-Values="StringListValue"
                 DataSource="@choices.ToList()"
+                Placeholder="@(Field.Placeholder ?? "请选择")"
                 Style="width: 100%;"
                 AllowClear />
         break;
@@ -34,7 +37,7 @@
         <Input TValue="string"
                Value="@StringListText"
                ValueChanged="OnStringListTextChanged"
-               Placeholder="多个值用英文逗号分隔" />
+               Placeholder="@(Field.Placeholder ?? "多个值用英文逗号分隔")" />
         break;
 
     case ConfigFieldType.TextArea:

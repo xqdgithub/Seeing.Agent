@@ -214,22 +214,30 @@ public abstract class ConfigurableProviderBase<TOptions> : ILlmProvider, IConfig
 
     /// <inheritdoc />
     public virtual IReadOnlyList<ConfigFieldSchema>? GetConfigSchema()
-        => WithCapabilityChoices(OptionsSchemaBuilder.FromType(typeof(TOptions)));
+        => WithCapabilityChoices(OptionsSchemaBuilder.FromType(typeof(TOptions)), DefaultCapabilities);
 
     /// <summary>
-    /// 给能力清单字段补上合法候选值。
+    /// 给能力清单字段补上合法候选值，并说明「留空」的含义。
     /// <para><b>为什么在这一层做</b>：候选值来自 <see cref="LlmCapabilityMap.ConfigKeys"/>，
     /// 是 LLM 领域知识，<c>Seeing.ConfigSchema</c> 原语层不该知道。
-    /// 每个 Provider 插件都继承本基类，因此在这里补一次即可覆盖全部插件——
-    /// 否则 UI 会拿一个没有候选的 <see cref="ConfigFieldType.StringList"/> 渲染成空下拉，
-    /// 用户面对的是一个既没有选项、也无法输入的死框。</para>
+    /// 每个 Provider 插件都继承本基类，因此在这里补一次即可覆盖全部插件——</para>
+    /// <para><b>为什么还要占位文案</b>：能力清单留空<em>不是</em>「没有能力」，而是「用默认能力」。
+    /// 用户打开一个未覆盖的 Provider 时看到空下拉，很容易读成「这个 Provider 什么都没声明」；
+    /// 占位文案是他在这个控件上唯一能看到的解释。</para>
     /// <para>只补「名为 Capabilities 且尚无候选」的字段；插件可自行提供别的候选。</para>
     /// </summary>
+    /// <param name="fields">反射生成的字段。</param>
+    /// <param name="defaults">留空时生效的默认能力集（用于生成占位文案）。</param>
     protected static IReadOnlyList<ConfigFieldSchema>? WithCapabilityChoices(
-        IReadOnlyList<ConfigFieldSchema>? fields)
+        IReadOnlyList<ConfigFieldSchema>? fields,
+        LlmCapabilityKind defaults = LlmCapabilityKind.None)
     {
         if (fields is null)
             return null;
+
+        var placeholder = defaults == LlmCapabilityKind.None
+            ? "留空 = 使用默认能力"
+            : $"留空 = 使用默认能力（{DescribeCapabilities(defaults)}）";
 
         List<ConfigFieldSchema>? patched = null;
         for (var i = 0; i < fields.Count; i++)
@@ -243,11 +251,19 @@ public abstract class ConfigurableProviderBase<TOptions> : ILlmProvider, IConfig
             }
 
             patched ??= [.. fields];
-            patched[i] = field with { Choices = LlmCapabilityMap.ConfigKeys };
+            patched[i] = field with
+            {
+                Choices = LlmCapabilityMap.ConfigKeys,
+                Placeholder = field.Placeholder ?? placeholder,
+            };
         }
 
         return patched ?? fields;
     }
+
+    /// <summary>能力位集 → 配置键串（<c>chat, embedding</c>），用于界面文案。</summary>
+    private static string DescribeCapabilities(LlmCapabilityKind mask) =>
+        string.Join(", ", LlmCapabilityMap.SingleFlags(mask).Select(LlmCapabilityMap.ToConfigKey));
 
     /// <inheritdoc />
     public async Task<IReadOnlyDictionary<string, object?>> LoadConfigAsync(
