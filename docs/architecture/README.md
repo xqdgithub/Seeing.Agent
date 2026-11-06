@@ -45,7 +45,7 @@
 | [27 WebUI 渲染性能 Release Notes](27-webui-render-performance-release-notes.md) | Summary 窗口轻量化、切换复用窗口实例、Loop 分段缓存、流式跳过 Markdown、时间线索引化、渲染合并、滚动限流、`SessionData.Messages` 快照语义变更 |
 | [28 LLM 能力抽象 Release Notes](28-llm-capability-abstraction-release-notes.md) | `ILlmClient`→8 个能力端口、协议/能力两维建模、`ILlmRouter` 五层校验、`ILlmInvoker` 横切、`chat.*`→`llm.*`、按能力默认模型、SystemOne 合流、破坏性清单 |
 | [29 TypeSafe Provider 下沉为插件 Release Notes](29-typesafe-provider-extraction-release-notes.md) | `llm.systemone`→`llm.typesafe`（只管协议）、Provider 下沉 `provider.typesafe-api`（`Extension` 来源）、`systemone.json` 只读回退、`typesafe-api/` 前缀与迁移 |
-| [30 桌面宿主 Release Notes](30-desktop-host-release-notes.md) | `Seeing.Agent.Desktop`（同进程 Kestrel + 原生 WebView）、`WebUiHost.BuildAsync` 单一真相源、`StaticWebAssetBasePath=/`、`--urls` 走命令行避免污染子进程、图标生成与已知边界 |
+| [30 桌面宿主 Release Notes](30-desktop-host-release-notes.md) | `Seeing.Agent.Desktop`（同进程 Kestrel + 原生 WebView）、`WebUiHost.BuildAsync` 单一真相源、`StaticWebAssetBasePath=/`、`--urls` 走命令行避免污染子进程、图标生成与已知边界、**「改了不生效」三步排查（旧进程 / 加载副本 / RID 目录分裂）** |
 | [31 可读 JSON 序列化统一 Release Notes](31-readable-json-release-notes.md) | `Seeing.Serialization.SeeingJson` 单一出口（中文原样）、55 处调用点迁移、签名/哈希三处显式豁免 `Signature`、`JsonOptionsInvariantTests` 防漂移 |
 | [32 Provider 能力展示 Release Notes](32-provider-capability-display-release-notes.md) | 生效能力常显（`ProviderInfo.Capabilities`）、配置覆盖/插件默认/协议缺省三态来源、`ConfigFieldSchema.Placeholder`、空下拉自我说明 |
 | [33 Provider 语音能力接入 Release Notes](33-provider-speech-capability-release-notes.md) | SiliconFlow 声明 ASR、MiMo 专有客户端（chat/completions + base64）、代理统一上提、探针 20ms→200ms、`ModalityInference`、语音方向性前置校验 |

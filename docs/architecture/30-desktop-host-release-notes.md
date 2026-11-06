@@ -183,3 +183,85 @@ pwsh -File samples/Seeing.Agent.Desktop/tools/generate-icon.ps1
 - **工作区判定依赖「不是 exe 目录」这一条**：若用户把 exe 直接放到自己的项目目录里运行，
   cwd 会等于 exe 目录而被跳过，回退到全局默认/文档目录。此时可用
   `SEEING_WORKSPACE_ROOT` 显式指定。
+
+## 排查：改了代码、发布了，界面却没变
+
+这是本项目**最常被误判**的故障。三次实际排查下来，表面症状完全一样（界面上还是旧行为），
+但根因分三类，**必须按下面的顺序排除**——先查最便宜的，别一上来就怀疑构建系统。
+
+### ① 旧进程还活着（最常见，先查这个）
+
+程序集在进程启动时就加载进内存，`publish` 覆盖磁盘文件**不会**影响已运行实例。
+Photino 窗口通常一直开着，所以「发布成功但界面没变」八成是它。
+
+```powershell
+# 进程名是 Seeing（csproj 的 <AssemblyName>Seeing</AssemblyName>），不是 Seeing.Agent.Desktop
+Get-Process -Name Seeing -ErrorAction SilentlyContinue | Select-Object Id, StartTime
+
+# 有输出就关掉
+Stop-Process -Name Seeing -Force -ErrorAction SilentlyContinue
+```
+
+反过来也能从「发布时是否报错」判断：publish 报 `MSB3021 / 文件被占用` → 进程没退；
+**没报** → 进程本来就没在跑，问题不在这一条，往下看。
+
+### ② 判断进程实际加载的是哪一份 dll（装了多份副本时必备）
+
+```powershell
+Get-Process -Name Seeing -ErrorAction SilentlyContinue | ForEach-Object {
+    $p = $_
+    $p.Modules | Where-Object { $_.FileName -like "*Seeing.Agent.WebUI.dll" } |
+        Select-Object @{n='PID';e={$p.Id}}, @{n='启动时间';e={$p.StartTime}}, FileName
+}
+```
+
+`FileName` 指向的目录不是你刚发布的那个 → 启动的是另一个副本。
+
+### ③ 发布产物本身过期（构建路径问题）
+
+对照两个时间戳，源码产物必须不早于发布产物：
+
+```powershell
+Get-Item D:\AI\seeing-desktop\Seeing.Agent.WebUI.dll | Select-Object LastWriteTime
+Get-Item samples\Seeing.Agent.WebUI\bin\Release\net10.0\Seeing.Agent.WebUI.dll | Select-Object LastWriteTime
+```
+
+判定 dll 里到底含哪版代码（Razor 编译进字符串表，可直接查）：
+
+```powershell
+$b = [IO.File]::ReadAllBytes("D:\AI\seeing-desktop\Seeing.Agent.WebUI.dll")
+$s = [Text.Encoding]::Unicode.GetString($b)
+"含 audio: $($s.Contains('audio'))  含 sound: $($s.Contains('sound'))"
+```
+
+> 例：语音输入按钮曾把 `IconType.Outline.Sound`（喇叭）误写成输入图标，
+> 改回 `Audio`（麦克风）后仍显示喇叭，就是靠这条确认 dll 里已是新版，
+> 从而把排查方向从「构建」纠正到「旧进程」。
+
+### 为什么发布产物会过期：RID 目录分裂
+
+`FolderProfile.pubxml` 里指定 `<RuntimeIdentifier>win-x64</RuntimeIdentifier>` 时，
+VS 发布**不会**把这个属性广播给 `ProjectReference`（它属项目级配置，
+不像命令行 `-r win-x64` 那样是全局属性）。于是引用项目按「无 RID」编到
+`bin/Release/net10.0/`，而发布却从 `bin/Release/net10.0/win-x64/` 取文件 —— 拿到上一次的旧 dll。
+
+两个核对点：
+
+| 路径 | 含义 |
+|---|---|
+| `bin/Release/net10.0/` | RID 无关产物（命令行 `dotnet build` 更新这里） |
+| `bin/Release/net10.0/win-x64/` | RID 特定产物（VS 发布从这里取） |
+
+实测结论：
+
+- `dotnet publish -r win-x64`（命令行）→ 正常，引用项目会按 RID 重编
+- VS 的 `PublishProfile` 路径 → 引用项目编到无 RID 目录，发布取到旧文件
+- 在 `ProjectReference` 上加 `AdditionalProperties="RuntimeIdentifier=..."` 强传 → **不可用**，
+  会绕过 restore 直接 `NETSDK1047`（assets 文件没有 `net10.0/win-x64` target）
+- **去掉 `<RuntimeIdentifier>`** → 正常。本项目 `SelfContained=false`，框架依赖发布不需要 RID；
+  原生库（Photino）随 `runtimes/<rid>/native/` 解析，`Seeing.exe` 正常生成并启动
+
+因此若 VS 双目标（Linux + Windows）发布反复踩坑，优先考虑删掉两个 pubxml 里的
+`<RuntimeIdentifier>`，而不是加 MSBuild hack。**改之前先在 Linux 上验证一次**——
+这是唯一可能引入回归的方向。
+
