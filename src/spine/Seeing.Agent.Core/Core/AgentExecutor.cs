@@ -907,6 +907,55 @@ public class AgentExecutor : IAgentExecutor
                 : "not_found"
         };
 
+    /// <summary>回灌定义的大小上限；超过则不附，改提示用 tool_search 获取。</summary>
+    private const int MaxDefinitionChars = 8192;
+
+    /// <summary>
+    /// 判断失败是否属「参数类」（缺参/类型错/枚举值非法）。
+    /// <para>
+    /// 超时、重试耗尽、权限拒绝这些失败附定义没有帮助，只会白付 2–8KB。
+    /// </para>
+    /// </summary>
+    private static bool IsParamLikeFailure(ToolResult result)
+    {
+        if (result.Success)
+            return false;
+        if (result.Metadata?.ContainsKey("timeout") == true)
+            return false;
+        if (string.Equals(result.Title, "重试耗尽", StringComparison.Ordinal))
+            return false;
+        if (string.Equals(result.Error, "Permission denied", StringComparison.Ordinal))
+            return false;
+        return true;
+    }
+
+    /// <summary>
+    /// 从本轮冻结快照取该工具的完整定义（不重新结算）。
+    /// 超过 <see cref="MaxDefinitionChars"/> 时返回 null——由调用方改写成检索提示。
+    /// </summary>
+    private string? ResolveFailureDefinition(string name, AgentContext context)
+    {
+        var exposed = context.ToolSettlement?.Tools.FirstOrDefault(
+            t => string.Equals(t.Id, name, StringComparison.OrdinalIgnoreCase));
+        if (exposed?.Schema is null)
+            return null;
+
+        var json = JsonSerializer.Serialize(exposed.Schema);
+        return json.Length <= MaxDefinitionChars ? json : null;
+    }
+
+    /// <summary>
+    /// 需要回灌但取不到（超限 / 快照缺失）时的回退提示：
+    /// 不留空承诺——告诉模型定义为什么没给、去哪里取。
+    /// </summary>
+    private static string AppendDefinitionFallbackHint(string? error, string name)
+    {
+        var head = string.IsNullOrEmpty(error) ? "(未提供错误详情)" : error;
+        return head +
+               $"\n\n该工具定义过大或不可用（上限 {MaxDefinitionChars} 字符），" +
+               $"请用 {ToolIdConventions.SearchToolId} query=\"{name}\" detail=full 获取。";
+    }
+
     /// <summary>
     /// 执行单个工具调用（权限 + 执行），返回 Complete 事件。
     /// </summary>
@@ -945,6 +994,13 @@ public class AgentExecutor : IAgentExecutor
         }
 
         var decision = await EvaluatePermissionAsync(name, arguments, agent, context, permissionAuthorizer, tc.Id).ConfigureAwait(false);
+
+        // 是否需要在本轮失败时回灌定义：本轮未下发 schema 且本执行内未加载过。
+        // 两个条件都要：detail=full 加载后工具仍是 Deferred，只看 SendsSchema 会重复附定义。
+        var needsDefinitionOnFailure =
+            context.ToolSettlement is { } definitionSettlement
+            && !definitionSettlement.SendsSchema(name)
+            && !(toolScope?.IsCallable(name) ?? false);
 
         if (decision.Action == PermissionAction.Deny)
         {
@@ -996,6 +1052,15 @@ public class AgentExecutor : IAgentExecutor
         {
             _logger.LogError(ex, "[AgentExecutor] 工具执行异常: {ToolName}", name);
 
+            // 抛异常的工具（如 GitCommitTool 缺参抛 JsonException）是最典型的参数类失败，
+            // 与 result.Success == false 那条出口一样要回灌定义。
+            var exceptionError = ex.Message;
+            var exceptionDefinition = needsDefinitionOnFailure
+                ? ResolveFailureDefinition(name, context)
+                : null;
+            if (needsDefinitionOnFailure && exceptionDefinition is null)
+                exceptionError = AppendDefinitionFallbackHint(exceptionError, name);
+
             return new ToolCallEvent
             {
                 SessionId = context.SessionId,
@@ -1005,8 +1070,9 @@ public class AgentExecutor : IAgentExecutor
                 ToolName = name,
                 Arguments = arguments,
                 Status = ToolCallStatus.Failed,
-                Error = ex.Message,
-                Duration = DateTime.Now - startTime
+                Error = exceptionError,
+                Duration = DateTime.Now - startTime,
+                ToolDefinition = exceptionDefinition
             };
         }
 
@@ -1033,6 +1099,12 @@ public class AgentExecutor : IAgentExecutor
                 };
             }
 
+            var paramLike = needsDefinitionOnFailure && IsParamLikeFailure(result);
+            var definition = paramLike ? ResolveFailureDefinition(name, context) : null;
+            var failureError = result.Error;
+            if (paramLike && definition is null)
+                failureError = AppendDefinitionFallbackHint(failureError, name);
+
             return new ToolCallEvent
             {
                 SessionId = context.SessionId,
@@ -1044,11 +1116,12 @@ public class AgentExecutor : IAgentExecutor
                 Status = ToolCallStatus.Failed,
                 Output = result.Output,
                 Title = result.Title,
-                Error = result.Error,
+                Error = failureError,
                 Duration = DateTime.Now - startTime,
                 Metadata = CopyMetadata(result.Metadata),
                 TurnDirective = result.TurnDirective,
-                TurnDirectiveReason = result.TurnDirectiveReason
+                TurnDirectiveReason = result.TurnDirectiveReason,
+                ToolDefinition = definition
             };
         }
 
