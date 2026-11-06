@@ -854,7 +854,8 @@ public class AgentExecutor : IAgentExecutor
         AgentContext context,
         string loopId,
         ToolCallStatus status,
-        string error)
+        string error,
+        IReadOnlyDictionary<string, object>? metadata = null)
     {
         return new ToolCallEvent
         {
@@ -865,9 +866,46 @@ public class AgentExecutor : IAgentExecutor
             ToolName = name,
             Arguments = ParseArguments(tc.Function?.Arguments),
             Status = status,
-            Error = error
+            Error = error,
+            Metadata = metadata
         };
     }
+
+    /// <summary>按 OrdinalIgnoreCase 在注册表中查找（ToolManager 的查找是序数敏感的）。</summary>
+    private ITool? GetRegisteredToolIgnoreCase(string name) =>
+        _tools.GetRegisteredTools()
+            .FirstOrDefault(t => string.Equals(t.Id, name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// 结算外工具的三种拒绝文案：已禁用 / 已注册但被过滤 / 不存在。
+    /// <para>
+    /// 「被过滤」必须明确说检索解决不了：<c>tool_search</c> 的语料取自结算内的 deferred 集，
+    /// 被过滤的工具不在语料里，提示检索只会让模型反复空搜。
+    /// </para>
+    /// </summary>
+    private string ResolveVisibilityRejection(string name, AgentContext context)
+    {
+        if (!_tools.IsToolEnabled(name))
+            return $"工具 '{name}' 已被禁用；可在工具设置中启用后重试。";
+
+        if (GetRegisteredToolIgnoreCase(name) is not null)
+            return $"工具 '{name}' 在当前 Agent 或会话中不可用；" +
+                   "这不是检索可以解决的问题，请直接使用已提供的工具完成任务。";
+
+        var hint = context.ToolSettlement?.HasSearchTool == true
+            ? $"\n可用 {ToolIdConventions.SearchToolId} 按关键词检索你要的能力（例如 query=\"删除文件\"）。"
+            : string.Empty;
+        return $"无此工具 '{name}'。{hint}";
+    }
+
+    private IReadOnlyDictionary<string, object> BuildVisibilityMetadata(string name) =>
+        new Dictionary<string, object>
+        {
+            ["visibility.reason"] =
+                !_tools.IsToolEnabled(name) ? "disabled"
+                : GetRegisteredToolIgnoreCase(name) is not null ? "not_in_settlement"
+                : "not_found"
+        };
 
     /// <summary>
     /// 执行单个工具调用（权限 + 执行），返回 Complete 事件。
@@ -889,20 +927,21 @@ public class AgentExecutor : IAgentExecutor
         // Session-first：task 走正常 ToolManager 路径（TaskTool），不再旁路
 
         // ========== 可见集校验 ==========
-        // 本执行内可直接调用 = 本轮已下发 schema（inline）∪ 本执行内经 tool_search 已加载。
-        // 未下发的工具（延迟暴露且未检索 / 被 Agent 或模块过滤）不得被调用：
-        // 这是执行层对"模型凭空调用未加载工具"的确定性拦截，位于权限判定之前。
+        // 只拦「不在本会话结算内」的工具（被禁用 / Agent 过滤 / 模块未挂载 / 名字不存在）。
+        // 结算内即放行：deferred（未下发 schema）也能直接调用——目录已给出参数签名，
+        // 参数错误由失败时的定义回灌兜住。加载（TryLoad）只是审计，不参与能否调用。
         if (context.ToolSettlement is { } settlement
-            && !(toolScope?.IsCallable(name) ?? settlement.SendsSchema(name)))
+            && !settlement.Contains(name))
         {
-            var deferred = toolScope?.IsDeferred(name) ?? settlement.IsDeferred(name);
-            var reason = deferred
-                ? $"工具 '{name}' 尚未加载。请先用 {ToolIdConventions.SearchToolId} 检索该工具；命中后本次执行内即可直接调用。"
-                : $"工具 '{name}' 在本会话当前上下文中不可用。";
+            var reason = ResolveVisibilityRejection(name, context);
             _logger.LogWarning(
-                "[AgentExecutor] 拒绝了本轮不可见工具的调用: {ToolName} (deferred={IsDeferred})",
-                name, settlement.IsDeferred(name));
-            return BuildTerminalEvent(tc, name, context, loopId, ToolCallStatus.Rejected, reason);
+                "[AgentExecutor] 拒绝了结算外工具的调用: {ToolName} (enabled={Enabled}, registered={Registered})",
+                name,
+                _tools.IsToolEnabled(name),
+                GetRegisteredToolIgnoreCase(name) is not null);
+            return BuildTerminalEvent(
+                tc, name, context, loopId, ToolCallStatus.Rejected, reason,
+                BuildVisibilityMetadata(name));
         }
 
         var decision = await EvaluatePermissionAsync(name, arguments, agent, context, permissionAuthorizer, tc.Id).ConfigureAwait(false);

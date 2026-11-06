@@ -8,6 +8,7 @@ using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Llm;
@@ -39,7 +40,7 @@ public class AgentExecutorToolVisibilityTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_DeferredTool_ShouldRejectAndPointToSearch()
+    public async Task ExecuteAsync_DeferredTool_ShouldBeAllowed()
     {
         var executor = CreateExecutor("hidden_tool");
         var settlement = BuildSettlement(
@@ -50,9 +51,8 @@ public class AgentExecutorToolVisibilityTests
 
         var complete = events.OfType<ToolCallEvent>()
             .Single(e => e.Type == MessageEventType.ToolCallComplete);
-        complete.Status.Should().Be(ToolCallStatus.Rejected);
-        complete.Error.Should().Contain(ToolIdConventions.SearchToolId);
-        complete.Error.Should().Contain("本次执行");
+        complete.Status.Should().NotBe(ToolCallStatus.Rejected,
+            "deferred 工具免检索直调：目录已给出参数签名，无需先 tool_search");
     }
 
     [Fact]
@@ -83,12 +83,13 @@ public class AgentExecutorToolVisibilityTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_LoadDeclaredWithoutCapability_ShouldBeIgnored()
+    public async Task ExecuteAsync_LoadDeclaredWithoutCapability_ShouldNotMakeUnsettledToolCallable()
     {
-        // 未声明 exposure.load 的工具不得解锁其他工具（防止第三方工具绕过“先检索”约定）。
-        var llm = CreateScriptedLlm(ToolIdConventions.SearchToolId, "hidden_tool");
+        // 未声明 exposure.load 的工具不得解锁其他工具（防止第三方工具绕过"先检索"约定）。
+        // 注：直调放开后 hidden_tool 不再需要检索，故改用「不在结算里」的工具作探针。
+        var llm = CreateScriptedLlm(ToolIdConventions.SearchToolId, "never_exposed_tool");
         var executor = await CreateExecutorWithToolsAsync(
-            llm, new UndeclaredSearchTool(), new NamedTool("hidden_tool"));
+            llm, new UndeclaredSearchTool(), new NamedTool("never_exposed_tool"));
         var settlement = BuildSettlement(
             (ToolIdConventions.SearchToolId, ToolExposureMode.Inline),
             ("hidden_tool", ToolExposureMode.Deferred));
@@ -101,7 +102,7 @@ public class AgentExecutorToolVisibilityTests
 
         completes.Single(e => e.ToolName == ToolIdConventions.SearchToolId)
             .Status.Should().NotBe(ToolCallStatus.Rejected);
-        completes.Single(e => e.ToolName == "hidden_tool")
+        completes.Single(e => e.ToolName == "never_exposed_tool")
             .Status.Should().Be(ToolCallStatus.Rejected);
     }
 
@@ -117,8 +118,10 @@ public class AgentExecutorToolVisibilityTests
         var complete = events.OfType<ToolCallEvent>()
             .Single(e => e.Type == MessageEventType.ToolCallComplete);
         complete.Status.Should().Be(ToolCallStatus.Rejected);
-        complete.Error.Should().NotContain(ToolIdConventions.SearchToolId);
-        complete.Error.Should().Contain("不可用");
+        complete.Metadata!["visibility.reason"].Should().Be("not_found");
+        complete.Error.Should().NotContain(ToolIdConventions.SearchToolId,
+            "本结算不含检索入口，不得提示一个不存在的工具");
+        complete.Error.Should().Contain("无此工具");
     }
 
     [Fact]
@@ -140,9 +143,10 @@ public class AgentExecutorToolVisibilityTests
     public async Task ExecuteAsync_LoadDeclaredWithExplicitFalseCapability_ShouldBeIgnored()
     {
         // 能力值写 "false" 也必须视为不可（fail-closed），不能因为“键存在”就放行。
-        var llm = CreateScriptedLlm(ToolIdConventions.SearchToolId, "hidden_tool");
+        // 探针用「不在结算里」的工具：隐藏工具直调放开后无法证明加载声明被忽略。
+        var llm = CreateScriptedLlm(ToolIdConventions.SearchToolId, "never_exposed_tool");
         var executor = await CreateExecutorWithToolsAsync(
-            llm, new FalseCapabilitySearchTool(), new NamedTool("hidden_tool"));
+            llm, new FalseCapabilitySearchTool(), new NamedTool("never_exposed_tool"));
         var settlement = BuildSettlement(
             (ToolIdConventions.SearchToolId, ToolExposureMode.Inline),
             ("hidden_tool", ToolExposureMode.Deferred));
@@ -151,7 +155,7 @@ public class AgentExecutorToolVisibilityTests
 
         events.OfType<ToolCallEvent>()
             .Where(e => e.Type == MessageEventType.ToolCallComplete)
-            .Single(e => e.ToolName == "hidden_tool")
+            .Single(e => e.ToolName == "never_exposed_tool")
             .Status.Should().Be(ToolCallStatus.Rejected);
     }
 
@@ -185,6 +189,68 @@ public class AgentExecutorToolVisibilityTests
         var complete = events.OfType<ToolCallEvent>()
             .Single(e => e.Type == MessageEventType.ToolCallComplete);
         complete.Status.Should().NotBe(ToolCallStatus.Rejected);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DisabledTool_ShouldRejectAsDisabled()
+    {
+        var executor = await CreateExecutorWithDisabledToolAsync("disabled_tool");
+        var settlement = BuildSettlement(("visible_tool", ToolExposureMode.Inline));
+
+        var events = await RunAsync(executor, settlement);
+
+        var complete = events.OfType<ToolCallEvent>()
+            .Single(e => e.Type == MessageEventType.ToolCallComplete);
+        complete.Status.Should().Be(ToolCallStatus.Rejected);
+        complete.Metadata!["visibility.reason"].Should().Be("disabled");
+        complete.Error.Should().Contain("已被禁用");
+        complete.Error.Should().NotContain(ToolIdConventions.SearchToolId,
+            "禁用与检索无关，提示检索只会让模型反复空搜");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_AgentFilteredTool_ShouldRejectWithoutSearchHint()
+    {
+        // 已注册但不在本轮结算（Agent 白名单/模块过滤）：提示检索是误导。
+        var executor = await CreateExecutorWithToolsAsync(
+            CreateScriptedLlm("filtered_tool"), new NamedTool("filtered_tool"));
+        var settlement = BuildSettlement(("visible_tool", ToolExposureMode.Inline));
+
+        var events = await RunAsync(executor, settlement);
+
+        var complete = events.OfType<ToolCallEvent>()
+            .Single(e => e.Type == MessageEventType.ToolCallComplete);
+        complete.Status.Should().Be(ToolCallStatus.Rejected);
+        complete.Metadata!["visibility.reason"].Should().Be("not_in_settlement");
+        complete.Error.Should().Contain("不是检索可以解决的问题");
+        complete.Error.Should().NotContain(ToolIdConventions.SearchToolId);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_CaseInsensitiveDeferredCall_ShouldNotFallToNotFound()
+    {
+        // 结算用 OrdinalIgnoreCase，ToolManager 用序数敏感：模型写 Read 不得落到"工具不存在"。
+        var executor = CreateExecutor("Read");
+        var settlement = BuildSettlement(("read", ToolExposureMode.Deferred));
+
+        var events = await RunAsync(executor, settlement);
+
+        var complete = events.OfType<ToolCallEvent>()
+            .Single(e => e.Type == MessageEventType.ToolCallComplete);
+        complete.Status.Should().NotBe(ToolCallStatus.Rejected);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DeferredToolWithoutSearchTool_ShouldStillBeAllowed()
+    {
+        var executor = CreateExecutor("hidden_tool");
+        var settlement = BuildSettlement(("hidden_tool", ToolExposureMode.Deferred));
+
+        var events = await RunAsync(executor, settlement);
+
+        events.OfType<ToolCallEvent>()
+            .Single(e => e.Type == MessageEventType.ToolCallComplete)
+            .Status.Should().NotBe(ToolCallStatus.Rejected);
     }
 
     private static SessionToolSchemaResolution BuildSettlement(
@@ -264,6 +330,32 @@ public class AgentExecutorToolVisibilityTests
             await toolManager.RegisterToolAsync(tool);
 
         return CreateExecutorCore(llm, toolManager, hookManager);
+    }
+
+    /// <summary>
+    /// 带 workspace 的 ToolManager：<c>SetToolEnabledAsync</c> 需要它落 tool-state.json。
+    /// <c>IsToolEnabled</c> 对未注册工具也返回 true，因此"禁用"分支必须用真实注册 + 真实禁用才测得出来。
+    /// </summary>
+    private static async Task<AgentExecutor> CreateExecutorWithDisabledToolAsync(string toolId)
+    {
+        var temp = Path.Combine(Path.GetTempPath(), "visibility-" + Guid.NewGuid().ToString("N"));
+        var userSeeing = Path.Combine(temp, "user", ".seeing");
+        var projectSeeing = Path.Combine(temp, "project", ".seeing");
+        Directory.CreateDirectory(userSeeing);
+        Directory.CreateDirectory(projectSeeing);
+
+        var workspace = new Mock<IWorkspaceProvider>();
+        workspace.Setup(w => w.UserSeeingDirectory).Returns(userSeeing);
+        workspace.Setup(w => w.ProjectSeeingDirectory).Returns(projectSeeing);
+
+        var hookManager = new HookManager(NullLogger<HookManager>.Instance);
+        var toolManager = new ToolManager(
+            NullLogger<ToolManager>.Instance, hookManager, workspace: workspace.Object);
+
+        await toolManager.RegisterToolAsync(new NamedTool(toolId));
+        await toolManager.SetToolEnabledAsync(toolId, enabled: false);
+
+        return CreateExecutorCore(CreateScriptedLlm(toolId), toolManager, hookManager);
     }
 
     private static AgentExecutor CreateExecutorCore(
@@ -368,7 +460,7 @@ public class AgentExecutorToolVisibilityTests
         public Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
             var result = ToolResult.Succeeded("loaded");
-            result.LoadedToolIds = ["hidden_tool"];
+            result.LoadedToolIds = ["never_exposed_tool"];
             return Task.FromResult(result);
         }
     }
@@ -402,7 +494,7 @@ public class AgentExecutorToolVisibilityTests
         public Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
             var result = ToolResult.Succeeded("loaded");
-            result.LoadedToolIds = ["hidden_tool"];
+            result.LoadedToolIds = ["never_exposed_tool"];
             return Task.FromResult(result);
         }
     }
