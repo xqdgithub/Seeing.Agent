@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Context;
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Skills;
 
 namespace Seeing.Agent.Core.Context;
@@ -30,4 +31,7 @@ public sealed class ContextExecutionScope : IContextExecutionScope
 
     /// <inheritdoc />
     public string? UserQuery { get; set; }
+
+    /// <inheritdoc />
+    public SessionToolSchemaResolution? ToolSettlement { get; set; }
 }

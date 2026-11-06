@@ -233,6 +233,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
             // 本轮用户查询（本批最后一条用户输入）：供「查询依赖」的上下文源（如记忆召回）使用。
             // 取 record.Input（= 本批最后一条），不是 batch.FirstUserText（= 本批第一条）。
             executionScope.UserQuery = record.Input?.Text;
+            executionScope.ToolSettlement = context.ToolSettlement;
 
             if (IsCommandInput(inputText))
             {

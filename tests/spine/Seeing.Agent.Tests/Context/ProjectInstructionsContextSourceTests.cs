@@ -375,5 +375,7 @@ public sealed class ProjectInstructionsContextSourceTests
         public SkillCatalogSnapshot? SkillSnapshot { get; set; }
 
         public string? UserQuery { get; set; }
+
+        public Seeing.Agent.Abstractions.Execution.SessionToolSchemaResolution? ToolSettlement { get; set; }
     }
 }

@@ -1,3 +1,4 @@
+using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Skills;
 
 namespace Seeing.Agent.Abstractions.Context;
@@ -36,4 +37,13 @@ public interface IContextExecutionScope
     /// <para>由宿主在装配前填充一次，执行期内只读。</para>
     /// </summary>
     string? UserQuery { get; set; }
+
+    /// <summary>
+    /// 本轮执行的工具暴露结算视图（宿主在装配前填充）。
+    /// <para>
+    /// 工具目录源与工具看到同一份，执行期间不漂移。宿主未接入结算时为 null
+    /// （工具目录源按不可用处理，保留上次已叙述内容，不叙述「目录已删除」）。
+    /// </para>
+    /// </summary>
+    SessionToolSchemaResolution? ToolSettlement { get; set; }
 }
