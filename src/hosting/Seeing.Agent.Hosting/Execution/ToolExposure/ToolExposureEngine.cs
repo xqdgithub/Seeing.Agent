@@ -92,12 +92,11 @@ internal static class ToolExposureEngine
         // 分配暴露模式。
         var assigned = new List<(ToolMeta Meta, ToolExposureMode Mode)>(metas.Count);
         foreach (var meta in metas)
-            assigned.Add((meta, ResolveMode(meta.Id, layout, pinnedIds, discoveredIds)));
+            assigned.Add((meta, ResolveMode(meta.Id, layout, pinnedIds, discoveredIds, cfg.PromoteOnSearch)));
 
         // 物化顺序：pinned（声明序）→ 已发现（发现序）→ 其余内联（id 序）。
         var ordered = new List<ExposedTool>(assigned.Count);
         var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
         void EmitInline(string id)
         {
             var hit = assigned.FirstOrDefault(a =>
@@ -167,12 +166,17 @@ internal static class ToolExposureEngine
         || (cfg.EscalateSchemaTokens > 0 && schemaTokens >= cfg.EscalateSchemaTokens);
 
     private static ToolExposureMode ResolveMode(
-        string id, ToolExposureLayout layout, IReadOnlySet<string> pinned, IReadOnlySet<string> discovered)
+        string id, ToolExposureLayout layout, IReadOnlySet<string> pinned,
+        IReadOnlySet<string> discovered, bool promoteOnSearch)
     {
         if (layout == ToolExposureLayout.Flat)
             return IsSearchTool(id) ? ToolExposureMode.Hidden : ToolExposureMode.Inline;
 
-        if (IsSearchTool(id) || discovered.Contains(id) || pinned.Contains(id))
+        if (IsSearchTool(id) || pinned.Contains(id))
+            return ToolExposureMode.Inline;
+
+        // 默认不提升：发现态只用于观测，不改变本轮暴露模式（tools[] 恒定）。
+        if (promoteOnSearch && discovered.Contains(id))
             return ToolExposureMode.Inline;
 
         return ToolExposureMode.Deferred;

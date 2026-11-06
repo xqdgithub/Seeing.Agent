@@ -46,7 +46,8 @@ public class ToolExposureEngineTests
             options.CatalogBudgetChars,
             options.CatalogLineMaxChars,
             9999,
-            999999);
+            999999,
+            PromoteOnSearch: false);
 
         var result = ToolExposureEngine.Compute(Input(tools, config), Counter);
 
@@ -71,8 +72,10 @@ public class ToolExposureEngineTests
         int escalateToolCount = 9999,
         int escalateSchemaTokens = 999999,
         int budget = 2000,
-        int lineMax = 120) =>
-        new(mode, pinned ?? Array.Empty<string>(), budget, lineMax, escalateToolCount, escalateSchemaTokens);
+        int lineMax = 120,
+        bool promoteOnSearch = false) =>
+        new(mode, pinned ?? Array.Empty<string>(), budget, lineMax,
+            escalateToolCount, escalateSchemaTokens, promoteOnSearch);
 
     private static ToolExposureInput Input(
         IReadOnlyList<FunctionToolSchema> tools,
@@ -97,12 +100,15 @@ public class ToolExposureEngineTests
     }
 
     [Fact]
-    public void TieredLayout_ShouldInlinePinnedDiscoveredAndSearchTool()
+    public void TieredLayout_ShouldInlinePinnedAndSearchTool()
     {
         var tools = new[] { Schema("a"), Schema("b"), Schema("c"), Schema("tool_search") };
 
+        // promoteOnSearch: true —— 本测试守的是「发现态进 tools[]」的旧行为，需显式开启。
         var result = ToolExposureEngine.Compute(
-            Input(tools, Config(ToolExposurePolicyMode.Tiered, pinned: ["a"]), discovered: ["b"]), Counter);
+            Input(tools, Config(ToolExposurePolicyMode.Tiered, pinned: ["a"], promoteOnSearch: true),
+                discovered: ["b"]),
+            Counter);
 
         result.Layout.Should().Be(ToolExposureLayout.Tiered);
         result.Tools.Where(t => t.Mode == ToolExposureMode.Inline).Select(t => t.Id)
@@ -165,11 +171,38 @@ public class ToolExposureEngineTests
         var available = new HashSet<string>(new[] { "a", "tool_search" }, StringComparer.OrdinalIgnoreCase);
 
         var result = ToolExposureEngine.Compute(
-            Input(tools, Config(ToolExposurePolicyMode.Tiered), discovered: ["gone", "a"], available: available),
+            Input(tools, Config(ToolExposurePolicyMode.Tiered, promoteOnSearch: true),
+                discovered: ["gone", "a"], available: available),
             Counter);
 
         result.Tools.Should().NotContain(t => t.Id == "gone");
         result.Tools.Single(t => t.Id == "a").Mode.Should().Be(ToolExposureMode.Inline);
+    }
+
+    [Fact]
+    public void Discovered_ShouldStayDeferred_WhenPromoteOnSearchDisabled()
+    {
+        var tools = new[] { Schema("a"), Schema("tool_search") };
+
+        var result = ToolExposureEngine.Compute(
+            Input(tools, Config(ToolExposurePolicyMode.Tiered, promoteOnSearch: false), discovered: ["a"]),
+            Counter);
+
+        result.Tools.Single(t => t.Id == "a").Mode.Should().Be(ToolExposureMode.Deferred,
+            "promotion 关闭后 tools[] 恒定，发现态不影响暴露模式");
+    }
+
+    [Fact]
+    public void ToolsArray_ShouldBeStableAcrossRounds_WhenPromoteOnSearchDisabled()
+    {
+        var tools = new[] { Schema("a"), Schema("b"), Schema("tool_search") };
+        var config = Config(ToolExposurePolicyMode.Tiered, promoteOnSearch: false);
+
+        var round1 = ToolExposureEngine.Compute(Input(tools, config, discovered: []), Counter);
+        var round2 = ToolExposureEngine.Compute(Input(tools, config, discovered: ["a"]), Counter);
+
+        round1.Tools.Select(t => t.Id).Should().Equal(round2.Tools.Select(t => t.Id));
+        round1.CatalogText.Should().Be(round2.CatalogText);
     }
 
     [Fact]

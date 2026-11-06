@@ -218,5 +218,15 @@ namespace Seeing.Agent.Core.Configuration
         /// <summary>升级阈值：schema token 估计超过此值触发降档。</summary>
         public int EscalateSchemaTokens { get; set; } = 8000;
 
+        /// <summary>
+        /// <c>tool_search</c> 命中后是否在下一次执行把该工具提升为内联（进 <c>tools[]</c>）。
+        /// <para>
+        /// 默认 false：提升会让 <c>tools[]</c> 内部插入（破坏前缀缓存），且每轮常驻重发 schema。
+        /// 免检索直调上线后，提升带来的「跨轮可调用」已由直调本身提供，因此默认关闭。
+        /// 需要旧行为时置 true。
+        /// </para>
+        /// </summary>
+        public bool PromoteOnSearch { get; set; }
+
     }
 }

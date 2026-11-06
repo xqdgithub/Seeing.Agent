@@ -18,7 +18,8 @@ public sealed record EffectiveExposureConfig(
     int CatalogBudgetChars,
     int CatalogLineMaxChars,
     int EscalateToolCount,
-    int EscalateSchemaTokens);
+    int EscalateSchemaTokens,
+    bool PromoteOnSearch);
 
 /// <summary>
 /// 工具暴露策略配置解析器：把会话/Agent/场景/全局四级模式收敛为一个有效模式。
@@ -108,7 +109,8 @@ public sealed class ToolExposureConfigResolver
             exposure.CatalogBudgetChars,
             exposure.CatalogLineMaxChars,
             exposure.EscalateToolCount,
-            exposure.EscalateSchemaTokens);
+            exposure.EscalateSchemaTokens,
+            exposure.PromoteOnSearch);
     }
 
     /// <summary>
