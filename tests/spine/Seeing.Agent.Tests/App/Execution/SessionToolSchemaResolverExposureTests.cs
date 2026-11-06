@@ -28,8 +28,9 @@ namespace Seeing.Agent.Tests.App.Execution;
 public class SessionToolSchemaResolverExposureTests
 {
     [Fact]
-    public async Task Tiered_ShouldExposeOnlyPinnedAndDiscovered()
+    public async Task Tiered_ShouldExposeOnlyPinnedAndSearchTool()
     {
+        // PromoteOnSearch 默认 false：发现集不再进 tools[]，视图只内联 pinned 与检索工具。
         var (session, agent, services) = await SetupAsync(
             AgentDefinition(ToolExposurePolicyMode.Tiered, pinned: ["git_status"]),
             discovered: new[] { "read" });
@@ -39,8 +40,8 @@ public class SessionToolSchemaResolverExposureTests
 
         resolution.Layout.Should().Be(ToolExposureLayout.Tiered);
         resolution.InlineSchemas.Select(s => s.Function!.Name)
-            .Should().BeEquivalentTo(["git_status", "read", "tool_search"]);
-        resolution.DeferredTools.Select(t => t.Id).Should().BeEquivalentTo(["current_time"]);
+            .Should().BeEquivalentTo(["git_status", "tool_search"]);
+        resolution.DeferredTools.Select(t => t.Id).Should().BeEquivalentTo(["current_time", "read"]);
         resolution.CatalogText.Should().NotBeNull();
     }
 
@@ -132,8 +133,9 @@ public class SessionToolSchemaResolverExposureTests
     }
 
     [Fact]
-    public async Task Ordering_ShouldBePinnedThenDiscovered()
+    public async Task Ordering_ShouldBePinnedThenSearchTool_WhenPromotionDisabled()
     {
+        // PromoteOnSearch 默认 false：发现集不进 tools[]，顺序恒为 pinned → 检索工具。
         var (session, agent, services) = await SetupAsync(
             AgentDefinition(ToolExposurePolicyMode.Tiered, pinned: ["git_status"]),
             discovered: new[] { "current_time", "read" });
@@ -142,7 +144,7 @@ public class SessionToolSchemaResolverExposureTests
             .ResolveAsync(session.Id, agent, TestContext.Current.CancellationToken);
 
         resolution.InlineSchemas.Select(s => s.Function!.Name)
-            .Should().Equal("git_status", "current_time", "read", "tool_search");
+            .Should().Equal("git_status", "tool_search");
     }
 
     [Fact]
