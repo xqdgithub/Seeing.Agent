@@ -13,11 +13,15 @@
 @using Seeing.Agent.TokenBudget.Api.Responses
 @using Seeing.Session.Core
 @using Seeing.Agent.Tools.Support
+@using Seeing.Agent.Llm
+@using Seeing.Agent.Abstractions.Llm
 @implements IAsyncDisposable
 @inject IJSRuntime JSRuntime
 @inject AppState AppState
 @inject SkillManager SkillManager
 @inject Seeing.Agent.WebUI.Services.UploadedFileService UploadedFileService
+@inject IModelConfigManager ModelManager
+@inject NavigationManager Navigation
 
 <div Class="prompt-input-container" id="@ContainerId" data-session-id="@SessionState?.CurrentSession?.Id">
     <!-- 附件预览 -->
@@ -31,6 +35,16 @@
     @if (!string.IsNullOrEmpty(_uploadError))
     {
         <div class="prompt-upload-error">@_uploadError</div>
+    }
+    @if (!string.IsNullOrEmpty(_voiceError))
+    {
+        <div class="prompt-voice-error">
+            <span>@_voiceError</span>
+            @if (!_voiceReady)
+            {
+                <button class="prompt-voice-error-action" @onclick="@(() => Navigation.NavigateTo("/models"))">去模型页配置</button>
+            }
+        </div>
     }
 
     <div Class="@GetDropZoneClass()">
@@ -102,6 +116,25 @@
         
         <div Class="prompt-actions">
             <Space>
+                <SpaceItem>
+                    <Tooltip Title="@VoiceButtonTooltip">
+                        <Button Type="@ButtonType.Text"
+                                Size="@ButtonSize.Small"
+                                Class="@VoiceButtonClass"
+                                OnClick="@OnVoiceClick"
+                                Disabled="@(_voiceState == VoiceState.Transcribing)">
+                            @if (_voiceState == VoiceState.Recording)
+                            {
+                                <span class="prompt-voice-recording-dot"></span>
+                                <span style="font-size: 12px;">@VoiceElapsedText</span>
+                            }
+                            else
+                            {
+                                <Icon Type="@IconType.Outline.Sound" />
+                            }
+                        </Button>
+                    </Tooltip>
+                </SpaceItem>
                 <SpaceItem>
                     <Tooltip Title="上传文件">
                         <Button Type="@ButtonType.Text"
@@ -384,6 +417,230 @@
     /// </summary>
     private bool _pendingRefocus;
 
+    /// <summary>语音按钮状态。</summary>
+    private enum VoiceState { Idle, Recording, Transcribing }
+
+    private VoiceState _voiceState = VoiceState.Idle;
+    private bool _voiceReady;
+    private string? _voiceUnavailableReason;
+    private string? _voiceError;
+    private int _voiceSeconds;
+    private string? _voiceMimeType;
+
+    /// <summary>进入 Transcribing 时的会话快照：回调若发现会话已变，只清状态不插文本。</summary>
+    private string? _voiceBoundSessionKey;
+
+    /// <summary>语音按钮提示文案。</summary>
+    private string VoiceButtonTooltip => _voiceState switch
+    {
+        VoiceState.Recording => "点击结束并转写",
+        VoiceState.Transcribing => "正在转写…",
+        _ => _voiceReady ? "语音输入" : _voiceUnavailableReason ?? "未配置语音转写模型"
+    };
+
+    /// <summary>语音按钮样式：未就绪为灰调，录音中为红色。</summary>
+    private string VoiceButtonClass
+    {
+        get
+        {
+            var classes = "prompt-voice-btn";
+            if (!_voiceReady) classes += " prompt-voice-btn--unavailable";
+            if (_voiceState == VoiceState.Recording) classes += " prompt-voice-btn--recording";
+            return classes;
+        }
+    }
+
+    /// <summary>录音计时文案（分:秒）。</summary>
+    private string VoiceElapsedText => $"{_voiceSeconds / 60}:{_voiceSeconds % 60:D2}";
+
+    /// <summary>
+    /// 重算语音可用性：走 Router 五层校验，能区分「没配」「模型不在目录」「类型不含 Speech」等原因。
+    /// </summary>
+    private void RefreshVoiceAvailability()
+    {
+        _voiceReady = ModelManager.TryResolveDefault<ISpeechTranscriptionClient>(
+            LlmCapabilityKind.SpeechTranscription,
+            out _,
+            out _voiceUnavailableReason);
+    }
+
+    /// <summary>模型配置变更：用户在模型页配好后回来，按钮自动从灰变亮。</summary>
+    private void OnModelConfigChanged(object? sender, ModelConfigChangedEventArgs e)
+        => _ = InvokeAsync(() =>
+        {
+            RefreshVoiceAvailability();
+            StateHasChanged();
+        });
+
+    /// <summary>点击麦克风：空闲时开始录音，录音中则停止并转写。</summary>
+    private async Task OnVoiceClick()
+    {
+        _voiceError = null;
+
+        if (_voiceState == VoiceState.Recording)
+        {
+            // 顺序不能反：上传可能极快，回调先到而状态仍是 Recording 会打乱判断。
+            _voiceBoundSessionKey = SessionKey;
+            _voiceState = VoiceState.Transcribing;
+            StateHasChanged();
+
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("stopVoiceRecording");
+            }
+            catch
+            {
+                _voiceState = VoiceState.Idle;
+                StateHasChanged();
+            }
+
+            return;
+        }
+
+        if (_voiceState == VoiceState.Transcribing)
+            return;
+
+        // 未配置模型：不请求麦克风，就地给配置指引（灰态可点，见设计 §6b）。
+        if (!_voiceReady)
+        {
+            _voiceError = _voiceUnavailableReason ?? "未配置语音转写模型";
+            StateHasChanged();
+            return;
+        }
+
+        _pasteRef ??= DotNetObjectReference.Create(this);
+
+        try
+        {
+            var result = await JSRuntime.InvokeAsync<VoiceStartResult>(
+                "startVoiceRecording",
+                ContainerId,
+                TextareaId,
+                _pasteRef,
+                VoiceInputLayout.MaxRecordingSeconds);
+
+            if (result is { Ok: true })
+            {
+                _voiceState = VoiceState.Recording;
+                _voiceSeconds = 0;
+                _voiceMimeType = result.MimeType;
+            }
+            else
+            {
+                _voiceError = !string.IsNullOrWhiteSpace(result?.Message)
+                    ? result!.Message
+                    : DescribeVoiceFailure(result?.Code);
+            }
+        }
+        catch (Exception ex)
+        {
+            _voiceError = $"无法开始录音：{ex.Message}";
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>把 JS 的失败代码翻成中文（脚本未给 message 时的兜底）。</summary>
+    private static string DescribeVoiceFailure(string? code) => code switch
+    {
+        "insecureContext" => "需要 https 或 localhost 才能使用麦克风",
+        "unsupportedBrowser" => "当前浏览器不支持录音",
+        "permissionDenied" => "麦克风权限被拒绝",
+        "noDevice" => "未找到麦克风设备",
+        "alreadyRecording" => "已经在录音中",
+        _ => "无法开始录音"
+    };
+
+    /// <summary>录音计时回调（每秒一次）。</summary>
+    [JSInvokable]
+    public Task HandleVoiceTick(int seconds)
+    {
+        _voiceSeconds = seconds;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>转写结果回调：成功插入光标处，失败显示错误条。</summary>
+    [JSInvokable]
+    public async Task HandleVoiceTranscribed(string? text, string? error, string? code)
+    {
+        _voiceState = VoiceState.Idle;
+        _voiceSeconds = 0;
+        _voiceMimeType = null;
+
+        // 会话已变：丢弃结果，不插入、不报错。
+        if (!string.Equals(_voiceBoundSessionKey, SessionKey, StringComparison.Ordinal))
+        {
+            _voiceBoundSessionKey = null;
+            StateHasChanged();
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(error))
+        {
+            _voiceError = error;
+            _voiceBoundSessionKey = null;
+            StateHasChanged();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            _voiceError = "未识别到语音";
+            _voiceBoundSessionKey = null;
+            StateHasChanged();
+            return;
+        }
+
+        var caret = InputText.Length;
+        try
+        {
+            var anchor = await JSRuntime.InvokeAsync<VoiceInsertAnchor>("getVoiceInsertAnchor", TextareaId);
+            var (inserted, newCaret) = VoiceTextInsertion.Insert(
+                InputText,
+                anchor?.Start ?? InputText.Length,
+                anchor?.End ?? InputText.Length,
+                text);
+
+            InputText = inserted;
+            caret = newCaret;
+        }
+        catch
+        {
+            // JS 不可用时退化为追加到末尾。
+            InputText = string.IsNullOrEmpty(InputText) ? text : InputText + text;
+            caret = InputText.Length;
+        }
+
+        _voiceError = null;
+        _voiceBoundSessionKey = null;
+        StateHasChanged();
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("setVoiceCaret", TextareaId, caret);
+        }
+        catch
+        {
+            // 光标复位失败不影响文本已插入
+        }
+    }
+
+    /// <summary>录音被中断（如切会话、设备被占用）。</summary>
+    [JSInvokable]
+    public Task HandleVoiceInterrupted(string? reason)
+    {
+        _voiceState = VoiceState.Idle;
+        _voiceSeconds = 0;
+        _voiceMimeType = null;
+        _voiceBoundSessionKey = null;
+
+        if (!string.IsNullOrWhiteSpace(reason))
+            _voiceError = reason;
+
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
     /// <summary>
     /// 加载所有命令（仅从后端获取的命令，已按 Runtime 过滤）
     /// </summary>
@@ -1161,18 +1418,21 @@
         return Task.CompletedTask;
     }
 
-    /// <summary>释放 JS 粘贴/拖拽监听。</summary>
+    /// <summary>释放 JS 粘贴/拖拽监听与语音输入资源。</summary>
     public async ValueTask DisposeAsync()
     {
         try
         {
             await JSRuntime.InvokeVoidAsync("disposePasteHandler", ContainerId);
             await JSRuntime.InvokeVoidAsync("disposeDropZone", ContainerId);
+            await JSRuntime.InvokeVoidAsync("disposeVoiceInput");
         }
         catch
         {
             // circuit 可能已断开
         }
+
+        ModelManager.ModelConfigChanged -= OnModelConfigChanged;
 
         _pasteRef?.Dispose();
         _pasteRef = null;
@@ -1181,6 +1441,12 @@
     /// <summary>
     /// 组件初始化后设置 JSInterop
     /// </summary>
+    protected override void OnInitialized()
+    {
+        ModelManager.ModelConfigChanged += OnModelConfigChanged;
+        RefreshVoiceAvailability();
+    }
+
     protected override void OnParametersSet()
     {
         // 会话切换：清空上一会话的输入草稿与已上传附件（附件按旧会话目录上传，混入新会话会串台）
@@ -1191,6 +1457,16 @@
                 InputText = string.Empty;
             if (Attachments.Count > 0)
                 Attachments.Clear();
+
+            // 录音中切会话：取消录音，结果不得落进新会话。
+            if (_voiceState != VoiceState.Idle)
+            {
+                _ = JSRuntime.InvokeVoidAsync("cancelVoiceRecording");
+                _voiceState = VoiceState.Idle;
+                _voiceSeconds = 0;
+                _voiceMimeType = null;
+                _voiceBoundSessionKey = null;
+            }
         }
 
         // 检测执行结束（处理中 -> 空闲），标记渲染后聚焦输入框
