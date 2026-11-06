@@ -66,4 +66,48 @@ public class ToolResultFormattingTests
     public void 标题_应写入title属性()
         => ToolResultFormatting.ToModelContent(false, null, "timeout", "t", "failed", "执行超时")
             .Should().Contain("title=\"执行超时\"");
+
+    [Fact]
+    public void 失败_带定义_应在错误之后输出定义块()
+    {
+        var content = ToolResultFormatting.ToModelContent(
+            false, null, "缺少必需参数: taskType", "cron_create", "failed",
+            toolDefinition: "{\"name\":\"cron_create\"}");
+
+        var errorIndex = content.IndexOf("<error>", StringComparison.Ordinal);
+        var definitionIndex = content.IndexOf("<tool_definition>", StringComparison.Ordinal);
+
+        errorIndex.Should().BeGreaterThan(0);
+        definitionIndex.Should().BeGreaterThan(errorIndex);
+        content.Should().Contain("</tool_definition>");
+        content.Should().Contain("{\"name\":\"cron_create\"}");
+    }
+
+    [Fact]
+    public void 失败_无定义_应与旧输出逐字节相同()
+    {
+        var legacy = ToolResultFormatting.ToModelContent(false, null, "boom", "t", "failed");
+        var withNull = ToolResultFormatting.ToModelContent(
+            false, null, "boom", "t", "failed", toolDefinition: null);
+
+        withNull.Should().Be(legacy);
+        withNull.Should().NotContain("<tool_definition>");
+    }
+
+    [Fact]
+    public void 失败_定义含结束标签_应转义()
+    {
+        var content = ToolResultFormatting.ToModelContent(
+            false, null, "boom", "t", "failed", toolDefinition: "{\"d\":\"a</b>\"}");
+
+        content.Should().Contain(@"a<\/b>");
+        // 必须只有一对闭合标签：块内不得出现未转义的 </
+        content.Split("</tool_definition>").Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void 成功_带定义_应忽略定义()
+        => ToolResultFormatting.ToModelContent(
+                true, "结果", null, "t", "success", toolDefinition: "{\"x\":1}")
+            .Should().Be("结果");
 }

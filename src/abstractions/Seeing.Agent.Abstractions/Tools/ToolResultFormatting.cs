@@ -27,13 +27,18 @@ public static class ToolResultFormatting
     /// <param name="toolName">工具 Id（写入信封 <c>name</c> 属性）。</param>
     /// <param name="status">非正常终态：<c>failed</c>/<c>rejected</c>/<c>cancelled</c>（其余归一为 failed）。</param>
     /// <param name="title">可读标题（如「执行超时」「重试耗尽」）。</param>
+    /// <param name="toolDefinition">
+    /// 附带的工具完整定义（JSON）。仅当该工具本轮未下发 schema、且失败属参数类错误时传入；
+    /// 渲染为 <c>&lt;tool_definition&gt;</c> 块，让模型在一次往返内修正参数。null 时输出与旧版逐字节相同。
+    /// </param>
     public static string ToModelContent(
         bool succeeded,
         string? output,
         string? error,
         string? toolName = null,
         string? status = null,
-        string? title = null)
+        string? title = null,
+        string? toolDefinition = null)
     {
         if (succeeded)
             return output ?? string.Empty;
@@ -55,6 +60,13 @@ public static class ToolResultFormatting
         sb.AppendLine(ResolveNotice(normalizedStatus));
         sb.AppendLine("</notice>");
         sb.Append("<error>").Append(EscapeBody(reason)).AppendLine("</error>");
+        // 定义块放在 error 之后：notice 说的是「以下是错误信息」，紧跟错误符合阅读顺序。
+        if (!string.IsNullOrEmpty(toolDefinition))
+        {
+            sb.AppendLine("<tool_definition>");
+            sb.Append(EscapeBody(toolDefinition)).AppendLine();
+            sb.AppendLine("</tool_definition>");
+        }
         sb.Append("</tool_result>");
         return sb.ToString();
     }
