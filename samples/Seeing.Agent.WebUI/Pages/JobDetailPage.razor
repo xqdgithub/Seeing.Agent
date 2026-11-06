@@ -29,7 +29,7 @@ else if (_job != null)
         <Extra>
             <Space>
                 <Button Icon="@IconType.Outline.Reload" OnClick="LoadAsync">刷新</Button>
-                <Button Icon="@IconType.Outline.Edit" OnClick="EditJob">编辑</Button>
+                <Button Icon="@IconType.Outline.Edit" OnClick="EditJob" Disabled="@(_status == JobState.Running)">编辑</Button>
                 <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.PlayCircle" OnClick="RunOnce" Disabled="@(_status == JobState.Running)">运行</Button>
             </Space>
         </Extra>
@@ -122,6 +122,15 @@ else if (_job != null)
                       VisibleChanged="@(_ => _detailVisible = false)"
                       Record="@_selectedRecord" />
 
+@* 编辑沿用列表页的同一个弹窗：详情页原本跳 /cron-jobs/{JobId}/edit，
+   但那条路由从未登记，ModuleRouter 解析不到就落到「当前场景未启用」提示页。 *@
+<JobEditorModal Visible="@_editorVisible"
+                VisibleChanged="@(v => _editorVisible = v)"
+                Job="@_editingJob"
+                IsEdit="@true"
+                Saving="@_saving"
+                OnSave="SaveJob" />
+
 @code {
     [Parameter] public string JobId { get; set; } = "";
 
@@ -139,6 +148,10 @@ else if (_job != null)
     
     private bool _detailVisible;
     private JobExecutionRecord? _selectedRecord;
+
+    private bool _editorVisible;
+    private bool _saving;
+    private ScheduledJobSpec _editingJob = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -223,9 +236,36 @@ else if (_job != null)
         }
     }
 
+    /// <summary>
+    /// 就地编辑：与列表页共用 <c>JobEditorModal</c>。
+    /// <para>
+    /// 原先跳 <c>/cron-jobs/{JobId}/edit</c>，但该路由未登记，
+    /// 解析失败后 ModuleRouter 落到 Fallback，显示「当前场景未启用『页面』」。
+    /// </para>
+    /// </summary>
     private void EditJob()
     {
-        Navigation.NavigateTo($"/cron-jobs/{JobId}/edit");
+        if (_job is null)
+            return;
+
+        // 必须深拷贝：弹窗直接改绑定对象，传活对象会把未保存的编辑泄漏进调度器内存
+        _editingJob = ScheduledJobCloner.Clone(_job);
+        _editorVisible = true;
+    }
+
+    private async Task SaveJob(ScheduledJobSpec job)
+    {
+        _saving = true;
+        try
+        {
+            await ScheduleManager.CreateOrReplaceJobAsync(job);
+            MessageService.Success("任务已保存");
+            await LoadAsync();
+        }
+        finally
+        {
+            _saving = false;
+        }
     }
 
     private void NavigateBack()

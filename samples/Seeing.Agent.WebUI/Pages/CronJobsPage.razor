@@ -366,14 +366,10 @@
     {
         var job = _jobs.FirstOrDefault(j => j.Id == id);
         if (job == null) return;
-        _editingJob = CloneJob(job);
+        _editingJob = ScheduledJobCloner.Clone(job);
         _isEdit = true;
         _editorVisible = true;
     }
-
-    private static ScheduledJobSpec CloneJob(ScheduledJobSpec job) =>
-        System.Text.Json.JsonSerializer.Deserialize<ScheduledJobSpec>(
-            System.Text.Json.JsonSerializer.Serialize(job)) ?? new ScheduledJobSpec();
 
     private async Task SaveJob(ScheduledJobSpec job)
     {

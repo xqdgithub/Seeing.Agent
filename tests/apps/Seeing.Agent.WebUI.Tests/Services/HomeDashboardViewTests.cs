@@ -231,9 +231,9 @@ public class HomeDashboardViewTests
     {
         var runs = new List<TodayRun>
         {
-            new(Now.Date.AddHours(20).AddMinutes(53), "测试1"),
-            new(Now.Date.AddHours(20).AddMinutes(56), "测试2"),
-            new(Now.Date.AddHours(21), "测试3")
+            new(Now.Date.AddHours(20).AddMinutes(53), "测试1", "job-1"),
+            new(Now.Date.AddHours(20).AddMinutes(56), "测试2", "job-2"),
+            new(Now.Date.AddHours(21), "测试3", "job-3")
         };
 
         var loads = HomeDashboardView.HourLoads(runs);
@@ -352,5 +352,42 @@ public class HomeDashboardViewTests
 
         HomeDashboardView.TodayRuns([job], new Dictionary<string, JobStatus>(), Now)
             .Single().Title.Should().Be("job_abc");
+    }
+
+    [Fact]
+    public void TodayRuns_ShouldCarryJobIdForRowNavigation()
+    {
+        // 首页待触发行可点击进 /cron-jobs/{JobId} 详情：
+        // JobId 若丢失（空字符串），点击会跳到不存在的任务页。
+        var job = new ScheduledJobSpec
+        {
+            Id = "job_detail",
+            Name = "巡检",
+            Intent = ScheduleIntent.Active,
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Once, RunAt = Now.AddHours(2) }
+        };
+
+        var run = HomeDashboardView.TodayRuns([job], new Dictionary<string, JobStatus>(), Now).Single();
+
+        run.JobId.Should().Be("job_detail");
+        run.Title.Should().Be("巡检");
+    }
+
+    [Fact]
+    public void NextRunAfter_ShouldCarryJobIdForRowNavigation()
+    {
+        // 「下次：…」这行同样可点击，JobId 必须一起返回
+        var job = new ScheduledJobSpec
+        {
+            Id = "job_next",
+            Name = "明天的巡检",
+            Intent = ScheduleIntent.Active,
+            Schedule = new ScheduleSpec { Type = ScheduleTypes.Once, RunAt = Now.AddDays(1).AddHours(9) }
+        };
+
+        var next = HomeDashboardView.NextRunAfter([job], new Dictionary<string, JobStatus>(), Now);
+
+        next.Should().NotBeNull();
+        next!.JobId.Should().Be("job_next");
     }
 }

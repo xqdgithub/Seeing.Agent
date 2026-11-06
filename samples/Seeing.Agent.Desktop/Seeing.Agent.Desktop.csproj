@@ -41,7 +41,7 @@
   </ItemGroup>
 
   <!--
-    应用图标：由 tools/generate-icon.ps1 从 WebUI 的 wwwroot/ai.svg 几何生成。
+    应用图标：由 tools/generate-icon.ps1 从 WebUI 的 wwwroot/seeing-mark.png（首字母 S）生成。
     ApplicationIcon 让 seeing-desktop.exe 本身带图标（任务栏/资源管理器），
     作为 Content 复制让窗口标题栏与 Photino 的 SetIconFile 能读到同一份文件。
   -->

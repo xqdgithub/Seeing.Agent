@@ -33,21 +33,21 @@ aside.app-sider.ant-layout-sider {
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    /* 左内边距 29.4px = 菜单图标左缘 32px − ai.svg 墨迹内缩 2.58px（viewBox 留白），
-       使 logo 视觉左缘与菜单项图标严格对齐 */
-    padding: 0 16px 0 29.4px;
+    /* 左内边距 32px 与菜单项图标左缘对齐：
+       wordmark 自身是紧裁的（没有 viewBox 留白），无需再补偿墨迹内缩 */
+    padding: 0 16px 0 32px;
     border-bottom: none;
     background: #ffffff;
     flex-shrink: 0;
 }
 
     /* 仅做轻微视觉反馈，不再整块变色，保持与菜单区融为一体的观感 */
-    .sider-header:hover .logo-text,
+    .sider-header:hover .app-wordmark,
     .sider-header:hover .app-logo {
         opacity: 0.75;
     }
 
-/* 折叠态（窄栏）下没有文字，logo 居中显示 */
+/* 折叠态（窄栏）下只显示 S 图标，居中显示 */
 .app-sider.ant-layout-sider-collapsed .sider-header {
     justify-content: center;
     padding: 0;
@@ -56,9 +56,23 @@ aside.app-sider.ant-layout-sider {
 .logo-section {
     display: flex;
     align-items: center;
-    gap: 8px;
     min-width: 0;
     overflow: hidden;
+}
+
+/*
+ * 展开态字标：源图宽高比 1346:295 ≈ 4.56。
+ * 高 22px 时宽约 100px，在 240−32−16=192px 的可用宽度内绰绰有余；
+ * 用高定值 + auto 宽，避免不同像素密度下比例漂移。
+ */
+.app-wordmark {
+    height: 22px;
+    width: auto;
+    max-width: 100%;
+    display: block;
+    flex-shrink: 0;
+    object-fit: contain;
+    transition: opacity 0.2s;
 }
 
 .app-logo {
@@ -75,16 +89,6 @@ aside.app-sider.ant-layout-sider {
 .app-logo-collapsed {
     margin: 0 auto;
     display: block;
-}
-
-.logo-text {
-    font-size: 17px;
-    font-weight: 600;
-    line-height: 1;
-    letter-spacing: 0.2px;
-    color: #1890ff;
-    white-space: nowrap;
-    transition: opacity 0.2s;
 }
 
 /* ========== Agent Selector ========== */

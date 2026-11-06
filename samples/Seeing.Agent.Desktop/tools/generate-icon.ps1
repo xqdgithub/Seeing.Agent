@@ -1,54 +1,46 @@
-# 从 wwwroot/ai.svg 的原始几何生成应用图标（PNG 多尺寸 + ICO）。
-# SVG 内容为两条 32 半径（线宽 64）的圆头斜线，颜色 #1890ff 与 #1C1C1E，
-# 坐标取自 ai.svg 的路径中心线，因此这里直接按几何绘制，保真度与原图一致。
+﻿# 从 WebUI 的品牌主图生成桌面应用图标（PNG 多尺寸 + ICO）。
+#
+# 数据源：samples/Seeing.Agent.WebUI/wwwroot/seeing-mark.png
+#   —— 由源图裁出的首字母 S（透明底、高 1024）。改图标应先更新这张主图，
+#      再重跑本脚本；不要手工逐个改 PNG，否则多尺寸之间会漂移。
+#
+# 为什么用首字母 S 而不是完整字标：完整 SEEING 字标宽高比 ≈4.56，
+# 压进 16×16 / 32×32 的正方形会糊成一条不可读的横线（实测 16px 下
+# 纯色像素为 0）。S 的近方形比例能撑住小尺寸。
 param(
-    [string]$OutDir = "samples/Seeing.Agent.Desktop/Assets"
+    [string]$OutDir = "samples/Seeing.Agent.Desktop/Assets",
+    [string]$SourceMark = "samples/Seeing.Agent.WebUI/wwwroot/seeing-mark.png"
 )
 
 Add-Type -AssemblyName System.Drawing
 
-$size = 1024
-# 中心线端点（由 SVG 轮廓路径 ± 半线宽还原）
-$blue  = @{ A = @(519.088, 102.752); B = @(897.744, 914.784); Color = [System.Drawing.ColorTranslator]::FromHtml("#1890ff") }
-$black = @{ A = @(521.184, 129.808); B = @(142.496, 941.840); Color = [System.Drawing.ColorTranslator]::FromHtml("#1C1C1E") }
-$strokeWidth = 64
-
+if (-not (Test-Path $SourceMark)) {
+    throw "找不到品牌主图：$SourceMark"
+}
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
 
-function New-LogoBitmap([int]$px) {
-    # 超采样 4 倍后缩小，保证小尺寸边缘平滑
-    $scale = 4
-    $big = $px * $scale
-    $bmp = New-Object System.Drawing.Bitmap $big, $big, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+$master = New-Object System.Drawing.Bitmap (Resolve-Path $SourceMark).Path
+Write-Host ("主图: {0}  {1}x{2}" -f $SourceMark, $master.Width, $master.Height)
+
+# 等比放进正方形，四边留 6% 内边距（与 WebUI 侧栏折叠图标同一口径）
+function New-IconBitmap([int]$px) {
+    $bmp = New-Object System.Drawing.Bitmap $px, $px, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+    $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
     $g.Clear([System.Drawing.Color]::Transparent)
 
-    $k = $big / $size
-    $w = $strokeWidth * $k
+    $pad = [int][math]::Round($px * 0.06)
+    $avail = $px - 2 * $pad
+    $scale = [math]::Min($avail / $master.Width, $avail / $master.Height)
+    $w = [int][math]::Max(1, [math]::Round($master.Width * $scale))
+    $h = [int][math]::Max(1, [math]::Round($master.Height * $scale))
 
-    foreach ($line in @($black, $blue)) {
-        $pen = New-Object System.Drawing.Pen $line.Color, $w
-        $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-        $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-        $g.DrawLine($pen,
-            [single]($line.A[0] * $k), [single]($line.A[1] * $k),
-            [single]($line.B[0] * $k), [single]($line.B[1] * $k))
-        $pen.Dispose()
-    }
+    $g.DrawImage($master, [int](($px - $w) / 2), [int](($px - $h) / 2), $w, $h)
     $g.Dispose()
-
-    if ($scale -ne 1) {
-        $final = New-Object System.Drawing.Bitmap $px, $px, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-        $g2 = [System.Drawing.Graphics]::FromImage($final)
-        $g2.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-        $g2.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
-        $g2.Clear([System.Drawing.Color]::Transparent)
-        $g2.DrawImage($bmp, 0, 0, $px, $px)
-        $g2.Dispose()
-        $bmp.Dispose()
-        return $final
-    }
     return $bmp
 }
 
@@ -56,19 +48,17 @@ $sizes = @(16, 24, 32, 48, 64, 128, 256, 512)
 $pngBytes = @{}
 
 foreach ($s in $sizes) {
-    $bmp = New-LogoBitmap $s
+    $bmp = New-IconBitmap $s
     $ms = New-Object System.IO.MemoryStream
     $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
     $pngBytes[$s] = $ms.ToArray()
-    if ($s -le 512) {
-        [System.IO.File]::WriteAllBytes((Join-Path $OutDir "seeing-$s.png"), $pngBytes[$s])
-    }
+    [System.IO.File]::WriteAllBytes((Join-Path $OutDir "seeing-$s.png"), $pngBytes[$s])
     $ms.Dispose()
     $bmp.Dispose()
 }
 
-# 单文件 used by Photino/Linux 与文档：1024 透明 PNG
-$logo = New-LogoBitmap 512
+# 单文件 used by Photino/Linux 与文档
+$logo = New-IconBitmap 512
 $logo.Save((Join-Path $OutDir "seeing.png"), [System.Drawing.Imaging.ImageFormat]::Png)
 $logo.Dispose()
 
@@ -101,5 +91,7 @@ foreach ($s in $icoSizes) {
 $bw.Flush()
 [System.IO.File]::WriteAllBytes((Join-Path $OutDir "seeing.ico"), $ms.ToArray())
 $ms.Dispose()
+
+$master.Dispose()
 
 Get-ChildItem $OutDir | Select-Object Name, Length | Format-Table -AutoSize

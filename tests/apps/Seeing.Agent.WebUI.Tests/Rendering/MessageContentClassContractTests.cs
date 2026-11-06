@@ -54,6 +54,49 @@ public class MessageContentClassContractTests
         tableBlock.Should().Contain("border-collapse", "相邻单元格边框需合并，避免双线");
     }
 
+    /// <summary>
+    /// 表格字号必须显式声明，且必须比正文小一档。
+    /// <para>
+    /// 缺省时会继承 body 的 16px + 1.75 行高（WebUI 的 body 字号是 16px），
+    /// 导致表格文字在同一屏里比思考区（12px）、工具卡片（11–12px）都大，
+    /// 单元格单行高从 34px 涨到 45px，长参数列一换行就吃掉大量竖向空间。
+    /// CSS 缺省是静默的，不会报错，因此在此按源码断言。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void MessageContentTable_ShouldDeclareSmallerFontSizeThanBody()
+    {
+        var css = ReadWebUiSource("wwwroot/css/message-item.css");
+        var tableBlock = ExtractRuleBlock(css, ".message-content table");
+
+        tableBlock.Should().Contain("font-size:",
+            "表格必须显式声明字号，否则继承 body 的 16px，比同屏其它次级文本都大");
+
+        var declared = Regex.Match(tableBlock, @"font-size:\s*([^;]+);");
+        declared.Success.Should().BeTrue("应能从规则块中取到 font-size 声明");
+        declared.Groups[1].Value.Trim().Should().Be("var(--font-size-sm)",
+            "表格字号应取 14px（--font-size-sm），与单元格内联代码同号；改这个值必须先确认不会压过正文");
+
+        // 14px < 16px（body/正文），且不小于 12px（思考区字号），保证仍可读。
+        var designSystem = ReadWebUiSource("wwwroot/css/design-system.css");
+        designSystem.Should().Contain("--font-size-sm: 14px;");
+        designSystem.Should().Contain("--font-size-base: 16px;");
+    }
+
+    /// <summary>
+    /// 思考区容器靠内联 12px 撑字号，表格规则若直接写死 14px 会把思考区表格反向放大。
+    /// 必须有 inherit 豁免，让思考区表格跟随容器。
+    /// </summary>
+    [Fact]
+    public void ReasoningTable_ShouldInheritContainerFontSize()
+    {
+        var css = ReadWebUiSource("wwwroot/css/message-item.css");
+        var block = ExtractRuleBlock(css, ".reasoning-section .message-content table");
+
+        block.Should().Contain("font-size: inherit",
+            "思考区表格必须 inherit，否则会被正文的 14px 规则放大（容器为 12px）");
+    }
+
     /// <summary>从 CSS 文本中取出以指定选择器开头的规则块（到配对的右花括号为止）。</summary>
     private static string ExtractRuleBlock(string css, string selector)
     {

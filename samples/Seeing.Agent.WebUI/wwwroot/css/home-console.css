@@ -1,0 +1,682 @@
+/**
+ * 首页控制台样式（Index.razor）
+ *
+ * 骨架：品牌细条（88px）+ 三栏分区（会话 / 调度 / 状态）。
+ * 分区之间用 1px 发丝线（grid gap + 底色）而不是卡片边框与间距：
+ * 目的是消除「一条贯穿的白卡」观感，让整屏每寸都是内容。
+ * 所有页面级样式集中在此，页面不再输出 <style> 块。
+ */
+
+.hc {
+    /* 局部令牌：跟着 design-system 的主题变量走，深色模式自动生效 */
+    --hc-line: var(--color-border-secondary);
+    --hc-hover: var(--color-bg-secondary);
+    --hc-muted: var(--color-text-tertiary);
+    --hc-faint: var(--color-text-quaternary);
+    --hc-accent: var(--color-primary);
+    --hc-warn: #c47f17;
+    --hc-ok: #2f8f4e;
+    --hc-err: #c9433c;
+    /* 时间轴专用：未到（蓝）/ 已过（灰）。
+       已过不能太浅——白底上 #dfe3e8 几乎看不见，时间轴就退化成一排空槽 */
+    --hc-slot-todo: #7cc0ff;
+    --hc-slot-past: #aeb6c0;
+
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-size: 13px;
+}
+
+[data-theme="dark"] .hc {
+    --hc-warn: #e8a33d;
+    --hc-ok: #4fb96c;
+    --hc-err: #e0625b;
+    --hc-slot-todo: #1d4b7a;
+    --hc-slot-past: #3a3f45;
+}
+
+/* ========== 品牌细条 ========== */
+
+.hc-brand {
+    flex: 0 0 88px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 22px;
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--hc-line);
+}
+
+/*
+ * 侧栏顶部已是 SEEING 字标，这里不再重复放字标：
+ * 品牌条改用「印记 + 标语」承担页面的身份，横向排列避免退回居中 hero。
+ */
+.hc-brand-mark {
+    flex: none;
+    height: 30px;
+    width: auto;
+    display: block;
+}
+.hc-brand-rule {
+    flex: none;
+    width: 1px;
+    height: 34px;
+    background: var(--hc-line);
+}
+
+.hc-brand-copy {
+    min-width: 0;
+}
+
+/* 标语作为品牌条的视觉主体：加字距、提字号，撑住 88px 的高度 */
+.hc-brand-tagline {
+    font-size: 15px;
+    color: var(--color-text);
+    letter-spacing: .12em;
+    line-height: 1.35;
+    white-space: nowrap;
+}
+
+.hc-brand-desc {
+    margin-top: 1px;
+    font-size: 10.5px;
+    color: var(--hc-faint);
+    letter-spacing: .04em;
+    white-space: nowrap;
+}
+
+.hc-brand-spacer {
+    flex: 1 1 auto;
+    min-width: 8px;
+}
+
+/* 品牌条上的三枚数字（会话 / 任务 / 待办） */
+.hc-brand-stats {
+    display: flex;
+    gap: 16px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.hc-brand-stat {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    font-size: 10.5px;
+    color: var(--hc-muted);
+}
+
+.hc-brand-stat b {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+/* 仅在确有积压时才染成告警色：0 待办标橙会制造假警报 */
+.hc-brand-stat.is-warn b {
+    color: var(--hc-warn);
+}
+
+.hc-brand-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 错误提示：插在品牌条下方，不遮挡主体（主体仍渲染已有数据） */
+.hc-alert {
+    flex: none;
+    padding: 8px 22px;
+    border-bottom: 1px solid var(--hc-line);
+    background: var(--color-error-bg);
+    color: var(--hc-err);
+    font-size: 12px;
+}
+
+/* ========== 三栏分区 ========== */
+
+.hc-grid {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr) 250px;
+    /* gap + 容器底色模拟 1px 发丝线，替代卡片边框 */
+    gap: 1px;
+    background: var(--hc-line);
+}
+
+.hc-loading {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 20px 22px;
+    border-top: 1px solid var(--hc-line);
+}
+
+.hc-col {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg);
+    padding: 12px 14px 0;
+}
+
+.hc-status {
+    background: var(--color-bg-secondary);
+}
+
+/* 列内可填充区：吃掉剩余高度；内容超出时在本区内滚动（不静默裁掉数据，
+   也不撑破列、不产生整页滚动条） */
+.hc-fill {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.hc-fixed {
+    flex: 0 0 auto;
+}
+
+/* ========== 分区标题 ========== */
+
+.hc-sec-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding-bottom: 8px;
+}
+
+.hc-sec-title {
+    font-size: 11px;
+    letter-spacing: .07em;
+    color: var(--hc-muted);
+}
+
+.hc-sec-note {
+    font-size: 10.5px;
+    color: var(--hc-faint);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.hc-link {
+    flex: none;
+    font-size: 11px;
+    color: var(--hc-accent);
+    text-decoration: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    font-family: inherit;
+    letter-spacing: 0;
+}
+
+.hc-link:hover {
+    text-decoration: underline;
+}
+
+.hc-link:focus-visible {
+    outline: 2px solid var(--hc-accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+/* ========== 通用行 ========== */
+
+.hc-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 5px 5px;
+    border-radius: 4px;
+    min-height: 27px;
+}
+
+.hc-row.is-actionable {
+    cursor: pointer;
+}
+
+.hc-row.is-actionable:hover {
+    background: var(--hc-hover);
+}
+
+.hc-row.is-actionable:focus-visible {
+    outline: 2px solid var(--hc-accent);
+    outline-offset: -1px;
+}
+
+/* 最近使用的那条会话：主色左边线 + 浅底，充当列表锚点 */
+.hc-row.is-current {
+    background: var(--color-primary-bg);
+    box-shadow: inset 2px 0 0 var(--hc-accent);
+}
+
+.hc-row .t {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.hc-row .m {
+    flex: none;
+    font-size: 10.5px;
+    color: var(--hc-muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* 弱化行（今日已执行：已发生的事实，不是待办） */
+.hc-row.is-dim .t {
+    color: var(--color-text-secondary);
+}
+
+.hc-row.is-dim .m {
+    color: var(--hc-faint);
+}
+
+.hc-hair {
+    flex: 0 0 auto;
+    height: 1px;
+    background: var(--hc-line);
+    margin: 10px 0;
+}
+
+.hc-empty {
+    padding: 6px 5px;
+    font-size: 12px;
+    color: var(--hc-muted);
+}
+
+/* ========== 底部能力数字格（右栏） ========== */
+
+.hc-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2px;
+}
+
+.hc-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 5px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
+}
+
+.hc-stat:hover {
+    background: var(--hc-hover);
+}
+
+.hc-stat:focus-visible {
+    outline: 2px solid var(--hc-accent);
+    outline-offset: -1px;
+}
+
+.hc-stat b {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.1;
+    color: var(--color-text);
+    font-variant-numeric: tabular-nums;
+}
+
+.hc-stat span {
+    font-size: 10px;
+    color: var(--hc-muted);
+}
+
+/* 色调（状态文案着色）。挂在 .hc 下限定作用域：
+   这几个类名很短，若作为全站级类名会被其它页面误命中。 */
+.hc .tone-ok { color: var(--hc-ok); font-weight: 600; }
+.hc .tone-warn { color: var(--hc-warn); font-weight: 600; }
+.hc .tone-err { color: var(--hc-err); font-weight: 600; }
+.hc .tone-idle { color: var(--hc-muted); }
+
+/* ========== 24 小时时间轴 ========== */
+
+.hc-axis {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 66px;
+}
+
+/* 顶部块内的紧凑版：时间轴略矮，给下方待触发列表留空间 */
+.hc-hero-block .hc-axis {
+    height: 56px;
+}
+
+/* 顶部块内的提示行紧贴时间轴刻度，不沿用列表的 margin */
+.hc-hero-block .hc-trigger-list {
+    margin-top: 6px;
+}
+
+.hc-axis-cell {
+    position: relative;
+    flex: 1 1 0;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+    min-width: 0;
+    cursor: pointer;
+    border-radius: 2px;
+    /* 悬停背景要能看见，但别抢时间轴本身的视觉 */
+    transition: background-color .12s ease;
+}
+
+/*
+ * 悬停/聚焦某小时：格子铺一层浅底 + 柱体加深。
+ * 之前只有原生 title 提示（约 1 秒才出现），鼠标放上去毫无反馈，
+ * 读者会以为这块图不可交互。
+ */
+.hc-axis-cell:hover,
+.hc-axis-cell:focus-visible,
+.hc-axis-cell.is-active {
+    background: var(--color-primary-bg);
+    outline: none;
+}
+
+.hc-axis-cell:focus-visible {
+    box-shadow: inset 0 0 0 1.5px var(--hc-accent);
+}
+
+    /* 悬停时无任务的空槽也给出可见的基座，避免「悬停一片空白区域」 */
+    .hc-axis-cell:hover .hc-axis-bar,
+    .hc-axis-cell:focus-visible .hc-axis-bar,
+    .hc-axis-cell.is-active .hc-axis-bar {
+        background: var(--color-primary);
+    }
+
+    /* 有任务的柱体在悬停时保持高度、只加深颜色，指示「这一格有安排」 */
+    .hc-axis-cell:hover .hc-axis-bar.has-task,
+    .hc-axis-cell:focus-visible .hc-axis-bar.has-task,
+    .hc-axis-cell.is-active .hc-axis-bar.has-task {
+        background: var(--hc-accent);
+    }
+
+/* 无任务的时段只留一条细基座；有任务的整格顶满，形成高度差 */
+.hc-axis-bar {
+    display: block;
+    width: 100%;
+    height: 7px;
+    border-radius: 2px;
+    background: var(--hc-line);
+    transition: background-color .12s ease;
+}
+
+    .hc-axis-bar.has-task {
+        height: 100%;
+        background: var(--hc-slot-todo);
+    }
+
+        .hc-axis-bar.has-task.is-past {
+            background: var(--hc-slot-past);
+        }
+
+    .hc-axis-bar.is-now {
+        outline: 1.5px solid var(--hc-accent);
+        outline-offset: 1.5px;
+    }
+
+.hc-axis-ticks {
+    flex: 0 0 auto;
+    display: flex;
+    margin-top: 3px;
+    font-size: 9px;
+    color: var(--hc-faint);
+    font-variant-numeric: tabular-nums;
+}
+
+.hc-axis-ticks span {
+    flex: 1 1 0;
+}
+
+/* 末端刻度右对齐，让「24」贴着轴线末端而不是浮在中缝 */
+.hc-axis-tick-end {
+    text-align: right;
+}
+
+/* 待触发列表：与时间轴之间留出呼吸，不靠内联 style */
+.hc-trigger-list {
+    margin-top: 10px;
+}
+
+/* ========== 两栏顶部块 ========== */
+
+/*
+ * 高度由内容决定，不设固定值。
+ * 曾经用固定 160px + overflow:hidden 来强制两栏等高，
+ * 但中栏内容会随「待触发任务数」变化（1 行 / 3 行），
+ * 任务一多就溢出被裁 —— 表现为「新建任务后分组标题消失」。
+ * 现在放弃强制等高：两栏各自按内容排布，
+ * 列表仍在本栏内是连续序列，读者不会被误导。
+ */
+.hc-hero-block {
+    flex: 0 0 auto;
+    margin-bottom: 8px;
+    /* 纵向 flex：卡片撑满块高，块内元素按序排列 */
+    display: flex;
+    flex-direction: column;
+}
+
+/* 顶部块内的脚行：计数 + 入口。
+   注意：中栏已改为把「今日已执行」放进列表标题行，
+   这个类保留给未来可能的块内脚注使用，当前无引用。 */
+.hc-block-foot {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: auto;
+    padding-top: 6px;
+    font-size: 11px;
+    color: var(--hc-muted);
+}
+
+.hc-hero-block > .hc-panel {
+    margin-top: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 顶部块之后的第一段（列表）紧贴块底，不再额外留 margin */
+.hc-hero-block + .hc-hair {
+    margin-top: 0;
+}
+
+/* ========== 汇总卡片（左栏：会话分布） ==========
+   刻意不同于 .hc-row 明细列表：卡片有边界、数字大字展示、横向排布。
+   明细（最近会话 / 今日执行）是「逐条」，汇总是「几档」，
+   两者长得一样会被读成同一个列表的延续。 */
+
+.hc-panel {
+    flex: 0 0 auto;
+    margin-top: 12px;
+    padding: 10px 10px 8px;
+    border: 1px solid var(--hc-line);
+    border-radius: 8px;
+    background: var(--color-bg);
+}
+
+.hc-panel-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.hc-panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+}
+
+.hc-panel-note {
+    font-size: 10px;
+    color: var(--hc-faint);
+    font-variant-numeric: tabular-nums;
+}
+
+/* 横向铺开：几档并排，读作「一个整体的构成」而不是「若干行条目」 */
+.hc-panel-grid {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.hc-panel-cell {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 2px;
+    border-radius: 5px;
+}
+
+.hc-panel-cell b {
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text);
+}
+
+.hc-panel-cell span {
+    font-size: 10px;
+    color: var(--hc-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/* ========== 时间轴 → 列表 的联动高亮 ==========
+   悬停时间轴某小时后，下方属于该小时的条目加 .is-linked。
+   它必须比 .is-dim（已执行的弱化行）更强，否则联动在灰字列表里看不出来。 */
+
+.hc-row.is-linked {
+    background: var(--color-primary-bg);
+    box-shadow: inset 2px 0 0 var(--hc-accent);
+}
+
+    /* 联动行盖过 .is-dim 的灰字，让「被指向的那条」真的跳出来 */
+    .hc-row.is-dim.is-linked .t {
+        color: var(--color-text);
+        font-weight: 600;
+    }
+
+    .hc-row.is-dim.is-linked .m {
+        color: var(--color-text-secondary);
+    }
+
+/* 分区标题行右侧：计数 + 链接并排 */
+.hc-head-right {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex: none;
+}
+
+/* ========== 响应式 ========== */
+
+/* 中屏：收紧两侧固定列 */
+@media (max-width: 1280px) {
+    .hc-grid {
+        grid-template-columns: 260px minmax(0, 1fr) 210px;
+    }
+
+    .hc-col {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+}
+
+/* 窄屏：状态列隐藏（其数据在定时任务 / MCP / 智能体页均可查），保住主信息密度 */
+@media (max-width: 1024px) {
+    .hc-grid {
+        grid-template-columns: 260px minmax(0, 1fr);
+    }
+
+    .hc-status {
+        display: none;
+    }
+}
+
+/* 移动端：单列堆叠，允许整页纵向滚动 */
+@media (max-width: 768px) {
+    .hc {
+        height: 100%;
+        overflow-y: auto;
+        padding-bottom: 16px;
+    }
+
+    .hc-brand {
+        flex: 0 0 auto;
+        min-height: 88px;
+        height: auto;
+        flex-wrap: wrap;
+        gap: 10px 14px;
+        padding: 12px 16px;
+    }
+
+    .hc-brand-rule {
+        display: none;
+    }
+
+    .hc-brand-spacer {
+        flex-basis: 100%;
+        min-width: 0;
+    }
+
+    .hc-grid {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px;
+        background: transparent;
+    }
+
+    .hc-col {
+        flex: 0 0 auto;
+        padding: 12px 14px;
+        border: 1px solid var(--hc-line);
+        border-radius: 8px;
+    }
+
+    /* 单列时没有固定列高参照，退回内容高度：不裁切 */
+    .hc-fill {
+        flex: 0 0 auto;
+        overflow: visible;
+    }
+
+    .hc-status {
+        display: flex;
+    }
+
+    .hc-loading {
+        padding: 12px 16px;
+    }
+}
+

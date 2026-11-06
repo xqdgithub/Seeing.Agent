@@ -20,7 +20,7 @@ MAUI 的 `BlazorWebView` 是 **Hybrid 渲染**模型（进程内直接渲染组�
 Seeing.Agent.Desktop (本目录)
 ├── Program.cs                 窗口 + 宿主生命周期 + 外链拦截 + 端口分配
 ├── Assets/seeing.ico|png      应用图标（由 tools/generate-icon.ps1 生成）
-└── tools/generate-icon.ps1    从 WebUI 的 wwwroot/ai.svg 几何光栅化
+└── tools/generate-icon.ps1    从 WebUI 的 wwwroot/seeing-mark.png 光栅化
 
 Seeing.Agent.WebUI
 └── Hosting/WebUiHost.cs       宿主组装（单一真相源）
@@ -156,14 +156,21 @@ dotnet publish samples/Seeing.Agent.Desktop -c Release -r win-x64 -p:SelfContain
 
 ## 图标
 
-`Assets/` 下的文件由 `tools/generate-icon.ps1` 从 `samples/Seeing.Agent.WebUI/wwwroot/ai.svg`
-的原始几何（两条 32 半径圆头斜线，`#1890ff` / `#1C1C1E`）生成，多尺寸 PNG + 合成 ICO。
+`Assets/` 下的文件由 `tools/generate-icon.ps1` 从
+`samples/Seeing.Agent.WebUI/wwwroot/seeing-mark.png`（品牌首字母 S，透明底、高 1024）生成，
+多尺寸 PNG + 合成 ICO（16/24/32/48/64/128/256，内嵌 PNG 条目）。
 
-改了 SVG 后重新生成：
+**为什么用首字母 S 而不是完整字标**：完整 `SEEING` 字标宽高比 ≈4.56，压进 16×16 / 32×32
+的正方形会糊成一条不可读的横线（实测 16px 下纯色像素为 0）。S 的近方形比例能撑住小尺寸。
+
+改了品牌主图后重新生成：
 
 ```powershell
 pwsh -File samples/Seeing.Agent.Desktop/tools/generate-icon.ps1
 ```
+
+> 主图 `seeing-mark.png` 由源图裁剪得来（白底转透明）。
+> 换了源图就从主图这一步重做，不要手工逐个改 `Assets/` 里的 PNG —— 多尺寸之间会漂移。
 
 ## 已知边界
 

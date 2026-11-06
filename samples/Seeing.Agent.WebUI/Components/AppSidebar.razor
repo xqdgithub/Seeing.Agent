@@ -33,15 +33,15 @@
     <a href="/" class="sider-header" style="cursor: pointer; text-decoration: none;">
         @if (!EffectiveCollapsed)
         {
+            @* 品牌标识本身就是字标（SEEING），不再另写文字，避免重复 *@
             <div class="logo-section">
-                <img src="ai.svg" alt="Seeing" class="app-logo" width="24" height="24" />
-                <span class="logo-text">Seeing</span>
+                <img src="seeing-wordmark.png" alt="Seeing" class="app-wordmark" />
             </div>
         }
         else
         {
             <Tooltip Title="Seeing" Placement="@Placement.Right">
-                <img src="ai.svg" alt="Seeing" class="app-logo app-logo-collapsed" width="24" height="24" />
+                <img src="seeing-mark-32.png" alt="Seeing" class="app-logo" width="24" height="24" />
             </Tooltip>
         }
     </a>

@@ -331,16 +331,22 @@
     text-decoration: underline;
 }
 
+/* 表格字号必须显式声明：单元格规则只管框线与内边距，若不在此处给字号，
+   表格会继承 body 的 16px + 1.75 行高，在同一屏里比思考区（12px）、
+   工具卡片（11–12px）都更大更"重"，长参数列一换行一行就占到 90px 以上。
+   取 14px 与单元格内的 `内联代码`（--font-size-sm）同号，视觉上不再压过正文。 */
 .message-content table {
     width: 100%;
     margin: var(--space-3) 0;
     border-collapse: collapse;
     max-width: 100%;
+    font-size: var(--font-size-sm);
+    line-height: var(--line-height-normal);
 }
 
 .message-content th,
 .message-content td {
-    padding: var(--space-2) var(--space-3);
+    padding: 6px var(--space-3);
     border: 1px solid var(--color-border);
     text-align: left;
     vertical-align: top;
@@ -349,6 +355,13 @@
 .message-content th {
     background: var(--color-bg-tertiary);
     font-weight: var(--font-weight-semibold);
+}
+
+/* 思考区容器自带 12px 内联字号（比正文更次级），表格必须跟着容器走，
+   否则上面 14px 的规则会把思考区表格反向放大（12 → 14）。 */
+.reasoning-section .message-content table {
+    font-size: inherit;
+    line-height: inherit;
 }
 
 /* ========== 工具调用（消息流内兜底样式，左侧蓝色强调） ========== */

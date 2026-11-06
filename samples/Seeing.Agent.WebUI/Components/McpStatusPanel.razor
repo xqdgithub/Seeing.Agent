@@ -58,7 +58,7 @@
                         else
                         {
                             <Badge Status="@GetBadgeStatus(kvp.Value.State)" 
-                                   Text="@GetStateText(kvp.Value.State)" />
+                                   Text="@GetStateText(kvp.Value)" />
                         }
                     </div>
                     
@@ -276,17 +276,8 @@
         _ => BadgeStatus.Default
     };
     
-    private string GetStateText(McpConnectionState state) => state switch
-    {
-        McpConnectionState.Connected => "已连接",
-        McpConnectionState.Error => "错误",
-        McpConnectionState.Paused => "已暂停",
-        McpConnectionState.Reconnecting => "重连中",
-        McpConnectionState.Connecting => "连接中",
-        McpConnectionState.Pending => "待连接",
-        _ => "未知"
-    };
-    
+    private string GetStateText(McpServerStatus status) => HomeDashboardView.McpStateText(status);
+
     public void Dispose()
     {
         McpStateService.StateChanged -= OnStateChanged;

@@ -1,5 +1,7 @@
 @using AntDesign
 @using Seeing.Agent.Abstractions.Agents
+@using Seeing.Agent.Abstractions.Mcp
+@using Seeing.Agent.Abstractions.Modules
 @using Seeing.Agent.Abstractions.Runtime
 @using Seeing.Agent.Abstractions.Skills
 @using Seeing.Agent.Abstractions.Tools
@@ -8,7 +10,6 @@
 @using Seeing.Agent.Llm
 @using Seeing.Agent.Scheduler.Abstractions
 @using Seeing.Agent.Scheduler.Models
-@using Seeing.Agent.WebUI.Components.Home
 @using Seeing.Agent.WebUI.Services
 @using Seeing.Session.Core
 @inject ISessionDirectory SessionDirectory
@@ -21,633 +22,464 @@
 @inject PermissionInbox PermissionInboxService
 @inject QuestionInbox QuestionInboxService
 @inject UiOverlayService Overlays
-@inject IServiceProvider Services
+@inject ISkillCatalog? SkillCatalog
+@inject IToolManager ToolManager
+@inject McpStateService? McpState
+@inject IModuleCatalog ModuleCatalog
 @inject NavigationManager Navigation
+@inject ILogger<Index> Logger
 @inject Seeing.Agent.Scheduler.Abstractions.IScheduleRepository ScheduleRepository
 
-<PageTitle>总览 - Seeing</PageTitle>
+<PageTitle>控制台 - Seeing</PageTitle>
 
-<div class="home-dashboard">
-    <section class="home-hero">
-        <div class="home-hero-brand">
-            <img src="ai.svg" alt="Seeing" class="home-hero-logo" />
-            <h1 class="home-hero-title">Seeing</h1>
+@*
+    首页控制台：品牌细条（88px）+ 三栏分区（会话 / 调度 / 状态）。
+    分区之间用 1px 发丝线而不是卡片边框，目的是让整屏每寸都是内容、
+    不再出现「中间一条卡带 + 下方大片空白」。
+*@
+<div class="hc">
+
+    @* ===== 品牌细条：印记 + 标语 + 三枚数字 + 主操作。整体 88px，横向排列 =====
+       侧栏顶部已有 SEEING 字标，这里不再重复放字标，避免同一行出现两个相同字标 *@
+    <header class="hc-brand">
+        <img src="seeing-mark-64.png" alt="Seeing" class="hc-brand-mark" />
+
+        <div class="hc-brand-rule"></div>
+
+        <div class="hc-brand-copy">
+            <div class="hc-brand-tagline">行到水穷处，坐看云起时</div>
+            <div class="hc-brand-desc">会话、定时任务与待办一屏总览</div>
         </div>
-        <p class="home-hero-tagline">行到水穷处，坐看云起时</p>
-        <p class="home-hero-desc">会话、定时任务与待办审批一屏总览；点卡片进入对应页面。</p>
-        <Space Size="@("middle")">
-            <Button Type="@ButtonType.Primary" Size="@ButtonSize.Large"
-                    Icon="@IconType.Outline.Message" OnClick="ContinueLastSession">开始对话</Button>
-            <Button Size="@ButtonSize.Large"
-                    Icon="@IconType.Outline.Plus" OnClick="CreateNewSession">新建会话</Button>
-        </Space>
-    </section>
 
-    <div class="home-section-head">
-        <span class="home-section-title">总览</span>
-        <Button Type="@ButtonType.Link" Icon="@IconType.Outline.Reload"
-                Loading="@_loading" OnClick="@(() => LoadAsync(showSkeleton: true))">刷新</Button>
-    </div>
+        <div class="hc-brand-spacer"></div>
+
+        @* 待办为 0 时不染告警色：常亮橙色会变成假警报 *@
+        <div class="hc-brand-stats">
+            <span class="hc-brand-stat">会话 <b>@_sessionCount</b></span>
+            <span class="hc-brand-stat">任务 <b>@_activeJobCount</b></span>
+            <span class="hc-brand-stat @(_pendingTotal > 0 ? "is-warn" : null)">待办 <b>@_pendingTotal</b></span>
+        </div>
+
+        <div class="hc-brand-rule"></div>
+
+        <div class="hc-brand-actions">
+            <Button Size="@ButtonSize.Small" OnClick="CreateNewSession">新建会话</Button>
+            <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" OnClick="ContinueLastSession">
+                继续上次会话
+            </Button>
+            @* 本页不订阅任何变更事件（审批/问答/MCP 状态都靠快照），
+               停在首页时数字会陈旧，因此保留一个显式刷新入口。 *@
+            <Button Size="@ButtonSize.Small"
+                    Icon="@IconType.Outline.Reload"
+                    Loading="@_loading"
+                    OnClick="@(() => LoadAsync(showSkeleton: true))" />
+        </div>
+    </header>
 
     @if (_error is not null)
     {
-        <Alert Type="@AlertType.Warning" ShowIcon="true" Message="@_error" Style="margin-bottom:16px;" />
+        @* 错误提示不遮挡主体：主体仍渲染已取到的数据 *@
+        <div class="hc-alert">@_error</div>
     }
 
     @if (_loading && _sessions.Count == 0)
     {
-        <Skeleton Active="true" />
+        <div class="hc-loading">
+            <Skeleton Active="true" />
+        </div>
     }
     else
     {
-        @* 等尺寸卡片网格：卡片同高，排列规整；窄屏自动降列 *@
-        <div class="home-board">
+        @*
+            三栏用 subgrid 对齐：两栏各自再分「标题行 / 顶部块 / 列表」三段。
+            顶部块高度取两者较高者（由内容决定），两栏列表因此严格同起点，
+            且不需要任何固定像素值 —— 固定值一旦遇到内容变多就会裁掉东西。
+        *@
+        <div class="hc-grid">
 
-            <DashboardCard Title="最近会话" LinkText="全部 →"
-                           OnLink="@(() => Navigation.NavigateTo("/sessions"))">
-                @if (_sessions.Count == 0)
+            @* ===== 左栏：会话分布（顶部块）→ 最近会话列表 ===== *@
+            <div class="hc-col">
+                <div class="hc-sec-head">
+                    <span class="hc-sec-title">最近会话</span>
+                    <button class="hc-link" @onclick="@(() => Navigation.NavigateTo("/sessions"))">全部 →</button>
+                </div>
+
+                @* 顶部块：会话状态构成。与中栏顶部块自动等高（grid 同行），
+                   让两栏的列表从同一水平线开始。 *@
+                <div class="hc-hero-block">
+                    @if (_statusCounts.Count > 0)
+                    {
+                        <div class="hc-panel">
+                            <div class="hc-panel-head">
+                                <span class="hc-panel-title">会话分布</span>
+                                <span class="hc-panel-note">共 @_sessionCount 个</span>
+                            </div>
+                            <div class="hc-panel-grid">
+                                @foreach (var bucket in _statusCounts)
+                                {
+                                    <div class="hc-panel-cell">
+                                        <b class="@bucket.Tone">@bucket.Count</b>
+                                        <span>@bucket.Label</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="hc-fill">
+                    @if (_sessions.Count == 0)
+                    {
+                        <div class="hc-empty">还没有会话，开始第一个对话</div>
+                    }
+                    else
+                    {
+                        @for (var i = 0; i < _sessions.Count; i++)
+                        {
+                            var session = _sessions[i];
+                            var sessionId = session.Id;
+                            @* 首行即最近会话：左边线标记，其余靠 hover 提示可点 *@
+                            <div class="hc-row is-actionable @(i == 0 ? "is-current" : null)"
+                                 role="button"
+                                 tabindex="0"
+                                 title="@HomeDashboardView.SessionTitle(session.Title)"
+                                 @onclick="@(() => Navigation.NavigateTo($"/session/{sessionId}"))"
+                                 @onkeydown="@(args => NavigateOnKey(args, $"/session/{sessionId}"))">
+                                <span class="t">@HomeDashboardView.SessionTitle(session.Title)</span>
+                                <span class="m">@HomeDashboardView.RelativeTime(session.LastActiveAt, _now)</span>
+                            </div>
+                        }
+                    }
+                </div>
+
+                @if (HomeDashboardView.HasActionItems(_pendingApprovals, _pendingQuestions, _recentFailures))
                 {
-                    <div class="home-empty">
-                        <span class="home-muted">还没有会话，开始第一个对话</span>
-                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="CreateNewSession">新建会话</Button>
+                    @* 零值时常年空块会形成噪音：整块按需出现，挂在会话列表底部零成本 *@
+                    <div class="hc-fixed" style="border-top:1px solid var(--hc-line);padding:8px 0 10px">
+                        <div class="hc-sec-head">
+                            <span class="hc-sec-title">待我处理</span>
+                            <button class="hc-link" @onclick="OpenPermissionCenter">审批中心 →</button>
+                        </div>
+                        @if (_pendingApprovals > 0)
+                        {
+                            <div class="hc-row is-actionable" role="button" tabindex="0"
+                                 @onclick="OpenPermissionCenter"
+                                 @onkeydown="@(args => ActivateOnKey(args, OpenPermissionCenter))">
+                                <span class="t">待审批</span>
+                                <span class="m tone-warn">@_pendingApprovals</span>
+                            </div>
+                        }
+                        @if (_pendingQuestions > 0)
+                        {
+                            <div class="hc-row is-actionable" role="button" tabindex="0"
+                                 @onclick="OpenPermissionCenter"
+                                 @onkeydown="@(args => ActivateOnKey(args, OpenPermissionCenter))">
+                                <span class="t">待回答</span>
+                                <span class="m tone-warn">@_pendingQuestions</span>
+                            </div>
+                        }
+                        @if (_recentFailures > 0)
+                        {
+                            <div class="hc-row">
+                                <span class="t">最近失败</span>
+                                <span class="m tone-err">@_recentFailures</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            @* ===== 中栏：定时任务 · 今日（时间轴 + 待触发 + 今日已执行撑满） ===== *@
+            <div class="hc-col">
+                <div class="hc-sec-head">
+                    <span class="hc-sec-title">定时任务 · 今日</span>
+                    <span class="hc-head-right">
+                        @if (_todayExecutions.Count > 0)
+                        {
+                            <span class="hc-sec-note">已执行 @_todayExecutions.Count 次</span>
+                        }
+                        <button class="hc-link" @onclick="@(() => Navigation.NavigateTo("/cron-jobs"))">全部 →</button>
+                    </span>
+                </div>
+
+                @* 顶部块：时间轴 + 待触发。高度由内容决定（不设固定值）——
+                   固定高度遇到任务变多就会裁掉内容，这是「分组消失」的根因。
+                   两栏因此不再严格等高，但列表仍是各自栏内的连续序列，读起来不受影响。 *@
+                <div class="hc-hero-block">
+                    @* 24 小时时间轴：这一栏的核心图形，始终显示。
+                       有任务的整格顶满，已过压暗，当前小时描主色边。
+                       悬停某小时：该小时高亮，下方「待触发」里同一小时的条目同步变蓝；
+                       点击进定时任务页。 *@
+                    <div class="hc-axis" title="今日 00:00–24:00">
+                        @for (var hour = 0; hour < 24; hour++)
+                        {
+                            var hourIndex = hour;
+                            var count = _hourLoads[hour];
+                            var hourLabel = $"{hour:00}:00 · {count} 个任务";
+                            var barClass = "hc-axis-bar"
+                                + (count > 0 ? " has-task" : string.Empty)
+                                + (hour < _now.Hour ? " is-past" : string.Empty)
+                                + (hour == _now.Hour ? " is-now" : string.Empty)
+                                + (_hoverHour == hour ? " is-hovered" : string.Empty);
+                            <div class="hc-axis-cell @(_hoverHour == hour ? "is-active" : null)"
+                                 role="button"
+                                 tabindex="0"
+                                 title="@hourLabel"
+                                 aria-label="@hourLabel"
+                                 @onmouseenter="@(() => SetHoverHour(hourIndex))"
+                                 @onmouseleave="ClearHoverHour"
+                                 @onfocus="@(() => SetHoverHour(hourIndex))"
+                                 @onblur="ClearHoverHour"
+                                 @onclick="@(() => Navigation.NavigateTo("/cron-jobs"))"
+                                 @onkeydown="@(args => NavigateOnKey(args, "/cron-jobs"))">
+                                <span class="@barClass"></span>
+                            </div>
+                        }
+                    </div>
+                    <div class="hc-axis-ticks">
+                        <span>00</span><span>06</span><span>12</span><span>18</span>
+                        <span class="hc-axis-tick-end">24</span>
+                    </div>
+
+                    @{
+                        // 待触发最多 3 行：块高现在由内容决定，多一行不会裁切。
+                        var remaining = _todayRuns.Where(r => r.When >= _now).Take(3).ToList();
+                    }
+
+                    <div class="hc-trigger-list">
+                        @if (_todayRuns.Count == 0)
+                        {
+                            @* 时间轴为空时必须有文字说明：
+                               否则读者无法判断是「今天确实没有任务」还是「数据没加载出来」。 *@
+                            @if (_nextRun is not null)
+                            {
+                                var nextId = _nextRun.JobId;
+                                <div class="hc-row is-actionable"
+                                     role="button"
+                                     tabindex="0"
+                                     title="查看任务详情"
+                                     @onclick="@(() => Navigation.NavigateTo($"/cron-jobs/{nextId}"))"
+                                     @onkeydown="@(args => NavigateOnKey(args, $"/cron-jobs/{nextId}"))">
+                                    <span class="t">下次：@_nextRun.Title</span>
+                                    <span class="m">@_nextRun.When.ToString("MM-dd HH:mm")</span>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="hc-row">
+                                    <span class="hc-empty">今天没有待触发的定时任务</span>
+                                </div>
+                            }
+                        }
+                        else if (remaining.Count == 0)
+                        {
+                            @if (_nextRun is not null)
+                            {
+                                var nextId = _nextRun.JobId;
+                                <div class="hc-row is-actionable"
+                                     role="button"
+                                     tabindex="0"
+                                     title="查看任务详情"
+                                     @onclick="@(() => Navigation.NavigateTo($"/cron-jobs/{nextId}"))"
+                                     @onkeydown="@(args => NavigateOnKey(args, $"/cron-jobs/{nextId}"))">
+                                    <span class="t">下次：@_nextRun.Title</span>
+                                    <span class="m">@_nextRun.When.ToString("MM-dd HH:mm")</span>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="hc-row"><span class="hc-empty">今天的任务都已触发</span></div>
+                            }
+                        }
+                        else
+                        {
+                            @foreach (var run in remaining)
+                            {
+                                var runJobId = run.JobId;
+                                @* 可点击进任务详情；同时参与时间轴联动高亮 *@
+                                <div class="hc-row is-actionable @(_hoverHour == run.When.Hour ? "is-linked" : null)"
+                                     role="button"
+                                     tabindex="0"
+                                     title="查看任务详情"
+                                     @onclick="@(() => Navigation.NavigateTo($"/cron-jobs/{runJobId}"))"
+                                     @onkeydown="@(args => NavigateOnKey(args, $"/cron-jobs/{runJobId}"))">
+                                    <span class="t">@run.Title</span>
+                                    <span class="m">@run.When.ToString("HH:mm")</span>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+
+                @* 执行记录列表：同样参与 hover 联动 —— 悬停某小时时，
+                   该小时执行过的记录也高亮，这样「时间轴 → 待触发 + 已执行」是一条完整链路。 *@
+                @if (_todayExecutions.Count == 0)
+                {
+                    <div class="hc-fill">
+                        <div class="hc-empty">今天还没有执行记录</div>
                     </div>
                 }
                 else
                 {
-                    @foreach (var session in _sessions)
-                    {
-                        var sessionId = session.Id;
-                        <div class="home-dash-row is-actionable"
-                             role="button"
-                             tabindex="0"
-                             @onclick="@(() => Navigation.NavigateTo($"/session/{sessionId}"))"
-                             @onkeydown="@(args => NavigateOnKey(args, $"/session/{sessionId}"))"
-                             @onclick:stopPropagation="true">
-                            <span class="title">@HomeDashboardView.SessionTitle(session.Title)</span>
-                            <span class="meta">@HomeDashboardView.RelativeTime(session.LastActiveAt, _now)</span>
-                        </div>
-                    }
-                }
-            </DashboardCard>
-
-            @if (HomeDashboardView.HasActionItems(_pendingApprovals, _pendingQuestions, _recentFailures))
-            {
-                <DashboardCard Title="待我处理" OnClick="@(() => Overlays.RequestPermissionCenter())">
-                    @if (_pendingApprovals > 0)
-                    {
-                        <div class="home-dash-row">
-                            <span class="title">待审批</span>
-                            <span class="meta home-meta-strong">@_pendingApprovals 项</span>
-                        </div>
-                    }
-                    @if (_pendingQuestions > 0)
-                    {
-                        <div class="home-dash-row">
-                            <span class="title">待回答</span>
-                            <span class="meta home-meta-strong">@_pendingQuestions 项</span>
-                        </div>
-                    }
-                    @if (_recentFailures > 0)
-                    {
-                        <div class="home-dash-row">
-                            <span class="title">最近失败</span>
-                            <span class="meta home-meta-strong">@_recentFailures 次</span>
-                        </div>
-                    }
-                </DashboardCard>
-            }
-
-            @* 大卡：今日日程时间轴（00:00–24:00），跨 2 列 2 行 *@
-            <DashboardCard Class="card-schedule" Title="定时任务 · 今日" LinkText="全部 →"
-                           OnLink="@(() => Navigation.NavigateTo("/cron-jobs"))"
-                           OnClick="@(() => Navigation.NavigateTo("/cron-jobs"))">
-                @* 24 小时格子：有任务的时段整格高亮，已过时段压暗，当前小时描红 *@
-                <div class="sched-strip" title="今日 00:00–24:00">
-                    @for (var hour = 0; hour < 24; hour++)
-                    {
-                        var count = _hourLoads[hour];
-                        var barClass = "sched-bar"
-                            + (count > 0 ? " has-task" : string.Empty)
-                            + (hour < _now.Hour ? " is-past" : string.Empty)
-                            + (hour == _now.Hour ? " is-now" : string.Empty);
-                        <div class="sched-cell" title="@($"{hour:00}:00 · {count} 个任务")">
-                            <span class="@barClass"></span>
-                            @if (hour % 6 == 0)
-                            {
-                                <span class="sched-tick">@hour.ToString("00")</span>
-                            }
-                        </div>
-                    }
-                </div>
-
-                @{
-                    var remaining = _todayRuns.Where(r => r.When >= _now).Take(6).ToList();
-                    // 时间轴为空但今天已有执行记录时，不显示占位文案：
-                    // 「今天没有待触发的定时任务」对用户没有信息量，下面的执行列表已经说明了情况，
-                    // 那行字还会挤占列表的可视高度（卡片是固定行高）。
-                    var showIdleText = _todayRuns.Count == 0 && _todayExecutions.Count == 0;
-                }
-                <div class="sched-list">
-                    @if (_todayRuns.Count == 0)
-                    {
-                        @if (showIdleText)
-                        {
-                            <div class="home-dash-row">
-                                <span class="home-muted">今天没有定时任务</span>
-                            </div>
-                        }
-                        @if (_nextRun is not null)
-                        {
-                            <div class="home-dash-row">
-                                <span class="title">下次：@_nextRun.Title</span>
-                                <span class="meta">@_nextRun.When.ToString("MM-dd HH:mm")</span>
-                            </div>
-                        }
-                    }
-                    else if (remaining.Count == 0)
-                    {
-                        <div class="home-dash-row">
-                            <span class="home-muted">今天的任务都已触发</span>
-                        </div>
-                    }
-                    else
-                    {
-                        @foreach (var run in remaining)
-                        {
-                            <div class="home-dash-row">
-                                <span class="title">@run.Title</span>
-                                <span class="meta">@run.When.ToString("HH:mm")</span>
-                            </div>
-                        }
-                    }
-                </div>
-                @if (_todayExecutions.Count > 0)
-                {
-                    @* 今日已执行：执行历史，不是「任务已作废」。
-                       逐条列出（弱化样式）：用户需要确认今天到底跑了什么、成没成功。 *@
-                    <div class="home-card-foot">今日已执行 @_todayExecutions.Count 次</div>
-                    @* 独立滚动区：执行记录可能几十条，超出时在本区域内滚动，
-                       不撑破卡片、也不触发整卡跳转（行自身可点，stopPropagation）。 *@
-                    <div class="sched-executed-list">
+                    <div class="hc-sec-head">
+                        <span class="hc-sec-title">今日已执行 · @_todayExecutions.Count 次</span>
+                        <button class="hc-link" @onclick="@(() => Navigation.NavigateTo("/cron-jobs"))">任务页 →</button>
+                    </div>
+                    @* 独立填充区：执行记录可能几十条，在本区内滚动查看，不撑破列、不触发整页滚动 *@
+                    <div class="hc-fill">
                         @foreach (var ex in _todayExecutions)
                         {
-                            <div class="home-dash-row is-executed"
+                            var jobId = ex.JobId;
+                            <div class="hc-row is-actionable is-dim @(_hoverHour == ex.StartedAt.Hour ? "is-linked" : null)"
                                  role="button"
                                  tabindex="0"
-                                 title="@(ex.Duration is { } d ? $"耗时 {d.TotalSeconds:0.#}s" : "")"
-                                 @onclick="@(() => Navigation.NavigateTo($"/cron-jobs/{ex.JobId}"))"
-                                 @onkeydown="@(args => NavigateOnKey(args, $"/cron-jobs/{ex.JobId}"))"
-                                 @onclick:stopPropagation="true">
-                                <span class="title">@JobTitle(ex.JobId)</span>
-                                <span class="meta">
+                                 title="@(ex.Duration is { } d ? $"耗时 {d.TotalSeconds:0.#}s" : "执行中")"
+                                 @onclick="@(() => Navigation.NavigateTo($"/cron-jobs/{jobId}"))"
+                                 @onkeydown="@(args => NavigateOnKey(args, $"/cron-jobs/{jobId}"))">
+                                <span class="t">@JobTitle(jobId)</span>
+                                <span class="m">
                                     @ex.StartedAt.ToString("HH:mm")
                                     @if (!ex.IsSuccess)
                                     {
-                                        <span class="exec-failed"> · @ex.Status</span>
+                                        <span class="tone-err"> · @ex.Status</span>
                                     }
                                 </span>
                             </div>
                         }
                     </div>
                 }
-            </DashboardCard>
+            </div>
 
-            @* 合并卡：同类计数放一张卡，数字本身即入口 *@
-            <DashboardCard Title="概览" Class="card-overview">
-                <div class="home-stat-grid">
-                    <div class="home-stat" role="button" tabindex="0"
-                         @onclick="@(() => Navigation.NavigateTo("/sessions"))"
-                         @onkeydown="@(args => NavigateOnKey(args, "/sessions"))">
-                        <span class="home-stat-value">@_sessionCount</span>
-                        <span class="home-stat-label">会话</span>
+            @* ===== 右栏：运行状态（调度器 / MCP / 智能体）+ 能力计数 ===== *@
+            <div class="hc-col hc-status">
+                <div class="hc-sec-head">
+                    <span class="hc-sec-title">运行状态</span>
+                </div>
+                <div class="hc-row">
+                    <span class="t">调度器</span>
+                    <span class="m @HomeDashboardView.SchedulerStateTone(_schedulerStatus)">
+                        @HomeDashboardView.SchedulerStateText(_schedulerStatus)
+                    </span>
+                </div>
+                @if (_schedulerStatus is { ThreadPoolSize: > 0 })
+                {
+                    <div class="hc-row">
+                        <span class="t">线程池</span>
+                        <span class="m">@_schedulerStatus.ThreadPoolSize</span>
                     </div>
-                    <div class="home-stat" role="button" tabindex="0"
-                         @onclick="@(() => Navigation.NavigateTo("/agents"))"
-                         @onkeydown="@(args => NavigateOnKey(args, "/agents"))">
-                        <span class="home-stat-value">@_agentCount</span>
-                        <span class="home-stat-label">智能体</span>
+                }
+                @if (_schedulerStatus?.NextExecutionTime is { } nextAt)
+                {
+                    <div class="hc-row">
+                        <span class="t">下次触发</span>
+                        <span class="m">@nextAt.ToString("MM-dd HH:mm")</span>
                     </div>
-                    <div class="home-stat" role="button" tabindex="0"
-                         @onclick="@(() => Navigation.NavigateTo("/models"))"
-                         @onkeydown="@(args => NavigateOnKey(args, "/models"))">
-                        <span class="home-stat-value">@_modelCount</span>
-                        <span class="home-stat-label">模型</span>
+                }
+
+                <div class="hc-hair"></div>
+
+                <div class="hc-sec-head">
+                    <span class="hc-sec-title">MCP</span>
+                    <button class="hc-link" @onclick="@(() => Navigation.NavigateTo("/mcp"))">全部 →</button>
+                </div>
+                @if (_mcpServers.Count == 0)
+                {
+                    <div class="hc-empty">未配置 MCP 服务器</div>
+                }
+                else
+                {
+                    <div class="hc-fixed">
+                        @foreach (var server in _mcpServers)
+                        {
+                            <div class="hc-row" title="@server.Name">
+                                <span class="t">@server.Name</span>
+                                <span class="m @HomeDashboardView.McpStateTone(server)">
+                                    @HomeDashboardView.McpStateText(server)
+                                </span>
+                            </div>
+                        }
                     </div>
-                    <div class="home-stat" role="button" tabindex="0"
-                         @onclick="@(() => Navigation.NavigateTo("/skills"))"
-                         @onkeydown="@(args => NavigateOnKey(args, "/skills"))">
-                        <span class="home-stat-value">@_skillCount</span>
-                        <span class="home-stat-label">技能</span>
-                    </div>
-                    <div class="home-stat" role="button" tabindex="0"
-                         @onclick="@(() => Navigation.NavigateTo("/tools"))"
-                         @onkeydown="@(args => NavigateOnKey(args, "/tools"))">
-                        <span class="home-stat-value">@_toolCount</span>
-                        <span class="home-stat-label">工具</span>
-                    </div>
-                    <div class="home-stat" role="button" tabindex="0"
-                         @onclick="@(() => Navigation.NavigateTo("/mcp"))"
-                         @onkeydown="@(args => NavigateOnKey(args, "/mcp"))">
-                        <span class="home-stat-value">@_mcpCount</span>
-                        <span class="home-stat-label">MCP</span>
-                    </div>
-                    <div class="home-stat" role="button" tabindex="0"
-                         @onclick="@(() => Navigation.NavigateTo("/acp"))"
-                         @onkeydown="@(args => NavigateOnKey(args, "/acp"))">
-                        <span class="home-stat-value">@_acpCount</span>
-                        <span class="home-stat-label">ACP</span>
+                }
+
+                <div class="hc-hair"></div>
+
+                <div class="hc-sec-head">
+                    <span class="hc-sec-title">智能体</span>
+                    <button class="hc-link" @onclick="@(() => Navigation.NavigateTo("/agents"))">全部 →</button>
+                </div>
+                @* 固定高度（不参与拉伸）：智能体数量有限，
+                   让这一段 flex 会把空白挤到它和下一段之间，形成断层。 *@
+                <div class="hc-fixed">
+                    @foreach (var agent in _agents)
+                    {
+                        <div class="hc-row" title="@agent.Description">
+                            <span class="t">@agent.Name</span>
+                            <span class="m">@HomeDashboardView.AgentRuntimeText(agent)</span>
+                        </div>
+                    }
+                </div>
+
+                @* 能力计数：原「概览」卡里的数字沉到右栏。
+                   用数字格而不是一行文字，一是让每个数字各自可点进对应页面
+                   （原来只是一个不可点的汇总行），二是把右栏的空隙推到页尾，
+                   而不是切成两段内容中间的一块断层。 *@
+                <div class="hc-fixed" style="border-top:1px solid var(--hc-line);padding:10px 0 6px;margin-top:12px">
+                    <div class="hc-stats">
+                        <div class="hc-stat" role="button" tabindex="0"
+                             @onclick="@(() => Navigation.NavigateTo("/skills"))"
+                             @onkeydown="@(args => NavigateOnKey(args, "/skills"))">
+                            <b>@_skillCount</b><span>技能</span>
+                        </div>
+                        <div class="hc-stat" role="button" tabindex="0"
+                             @onclick="@(() => Navigation.NavigateTo("/tools"))"
+                             @onkeydown="@(args => NavigateOnKey(args, "/tools"))">
+                            <b>@_toolCount</b><span>工具</span>
+                        </div>
+                        <div class="hc-stat" role="button" tabindex="0"
+                             @onclick="@(() => Navigation.NavigateTo("/models"))"
+                             @onkeydown="@(args => NavigateOnKey(args, "/models"))">
+                            <b>@_modelCount</b><span>模型</span>
+                        </div>
+                        <div class="hc-stat" role="button" tabindex="0"
+                             @onclick="@(() => Navigation.NavigateTo("/mcp"))"
+                             @onkeydown="@(args => NavigateOnKey(args, "/mcp"))">
+                            <b>@_mcpCount</b><span>MCP</span>
+                        </div>
+                        <div class="hc-stat" role="button" tabindex="0"
+                             @onclick="@(() => Navigation.NavigateTo("/agents"))"
+                             @onkeydown="@(args => NavigateOnKey(args, "/agents"))">
+                            <b>@_agentCount</b><span>智能体</span>
+                        </div>
+                        <div class="hc-stat" role="button" tabindex="0"
+                             @onclick="@(() => Navigation.NavigateTo("/acp"))"
+                             @onkeydown="@(args => NavigateOnKey(args, "/acp"))">
+                            <b>@_acpCount</b><span>ACP</span>
+                        </div>
                     </div>
                 </div>
-            </DashboardCard>
+
+                @* 会话分布已移到左栏顶部（与中栏时间轴等高，保证两栏列表起点对齐），
+                   右栏不再重复展示。 *@
+
+                @* 右栏剩余空间由这段弹性占位吸收：
+                   不塞内容，避免为了填满而堆砌无信息量的行。 *@
+                <div class="hc-fill"></div>
+            </div>
         </div>
     }
 </div>
 
-<style>
-    /* 卡片外壳（DashboardCard）：样式放页面级，避免在组件内重复输出样式块 */
-    .dash-card {
-        background: #fff;
-        border: 1px solid #e8e8e8;
-        border-radius: 8px;
-        padding: 16px;
-        /* 等尺寸卡片：高度由网格行高决定，内容超出裁切，保证排列规整 */
-        height: 100%;
-        overflow: hidden;
-        box-sizing: border-box;
-        transition: border-color .15s, transform .15s;
-    }
-
-        .dash-card.is-clickable {
-            cursor: pointer;
-        }
-
-            .dash-card.is-clickable:hover {
-                border-color: #1890ff;
-                transform: translateY(-1px);
-            }
-
-            .dash-card.is-clickable:focus-visible {
-                outline: 2px solid #1890ff;
-                outline-offset: 2px;
-            }
-
-    .dash-card-head {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 12px;
-    }
-
-    .dash-card-title {
-        font-size: 13px;
-        font-weight: 600;
-        color: #262626;
-    }
-
-    .dash-card-link {
-        font-size: 12px;
-        color: #1890ff;
-        text-decoration: none;
-        white-space: nowrap;
-    }
-
-        .dash-card-link:hover {
-            text-decoration: underline;
-        }
-
-    @@media (prefers-reduced-motion: reduce) {
-        .dash-card {
-            transition: none;
-        }
-    }
-
-    .home-dashboard {
-        padding: 24px 32px;
-    }
-
-    .home-hero {
-        text-align: center;
-        /* 竖向节奏：品牌 → 标语 → 描述 → 按钮 四段逐级放宽，
-           但整体高度受控，避免把下方「总览」挤到折叠线以下。 */
-        padding: 28px 0 22px;
-    }
-
-    /* 品牌横排：logo 在 Seeing 左侧，基线视觉对齐 */
-    .home-hero-brand {
-        display: inline-flex;
-        align-items: center;
-        gap: 12px;
-    }
-
-    .home-hero-logo {
-        width: 44px;
-        height: 44px;
-        display: block;
-    }
-
-    .home-hero-title {
-        margin: 0;
-        font-size: 28px;
-        font-weight: 600;
-        color: #1890ff;
-        letter-spacing: .5px;
-        line-height: 1.1;
-    }
-
-    .home-hero-tagline {
-        margin: 18px 0 0;
-        font-size: 14px;
-        color: #8c8c8c;
-    }
-
-    .home-hero-desc {
-        margin: 12px 0 20px;
-        font-size: 13px;
-        color: #bfbfbf;
-    }
-
-    .home-section-head {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 12px;
-    }
-
-    .home-section-title {
-        font-size: 14px;
-        font-weight: 600;
-        color: #262626;
-    }
-
-    /* 2 列网格：左列「最近会话 + 概览」上下叠放，右列「定时任务」占满两行。
-       原本是 3 列 + 定时任务跨 2×2，但只有 3 张卡 → 右下角必留一格空白。
-       2 列正好装下，没有空格。行高 148 让首屏能同时看到品牌区与网格。 */
-    .home-board {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        grid-auto-rows: 148px;
-        grid-auto-flow: dense;
-        gap: 14px;
-    }
-
-    /* 定时任务大卡：右侧整列，跨 2 行 */
-    .home-board .card-schedule {
-        grid-column: span 1;
-        grid-row: span 2;
-        /* 内部纵向 flex：让「今日已执行」列表吃掉剩余高度并独立滚动。
-           否则固定行高 + .dash-card 的 overflow:hidden 会直接把超出部分裁掉。 */
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-    }
-
-    /* 时间轴 / 待触发列表 / 脚注 / 卡片头不参与压缩，保证时间轴始终完整可见 */
-    .card-schedule .dash-card-head,
-    .card-schedule .sched-strip,
-    .card-schedule .sched-list,
-    .card-schedule .home-card-foot {
-        flex: 0 0 auto;
-    }
-
-    /* 概览卡：跟「最近会话」同列，下方占 1 行 */
-    .home-board .card-overview {
-        grid-row: span 1;
-    }
-
-    /* 24 小时格子：有任务的时段整格高亮 */
-    .sched-strip {
-        display: flex;
-        align-items: flex-end;
-        gap: 3px;
-        /* 44px：给下方「今日已执行」滚动区多让出可视高度（卡片是固定行高） */
-        height: 44px;
-        margin: 6px 0 18px;
-    }
-
-    .sched-cell {
-        position: relative;
-        flex: 1;
-        height: 100%;
-        display: flex;
-        align-items: flex-end;
-    }
-
-    .sched-bar {
-        width: 100%;
-        height: 8px;
-        border-radius: 3px;
-        background: #f0f0f0;
-    }
-
-        .sched-bar.has-task {
-            height: 100%;
-            background: #1890ff;
-        }
-
-            .sched-bar.has-task.is-past {
-                background: #d9d9d9;
-            }
-
-        .sched-bar.is-now {
-            outline: 2px solid #ffccc7;
-            outline-offset: 1px;
-        }
-
-    .sched-tick {
-        position: absolute;
-        bottom: -15px;
-        left: 50%;
-        transform: translateX(-50%);
-        font-size: 10px;
-        color: #bfbfbf;
-    }
-
-    .sched-list {
-        margin-top: 8px;
-    }
-
-    /* 今日已执行列表：弱化（灰字、缩小），但仍可点进任务详情。
-       与「待触发」列表同结构，只降视觉权重——它是已发生的事实，不是待办。
-       作为唯一的弹性项独立滚动：执行条数可能几十上百，
-       不滚动就会被 .dash-card 的 overflow:hidden 裁掉且无法查看。 */
-    .sched-executed-list {
-        margin-top: 2px;
-        flex: 1 1 auto;
-        min-height: 0;
-        overflow-y: auto;
-        overscroll-behavior: contain;
-    }
-
-        .sched-executed-list .home-dash-row.is-executed {
-            cursor: pointer;
-            font-size: 12px;
-            color: #8c8c8c;
-        }
-
-            .sched-executed-list .home-dash-row.is-executed:hover {
-                background: #fafafa;
-            }
-
-            .sched-executed-list .home-dash-row.is-executed:focus-visible {
-                outline: 2px solid #d9d9d9;
-                outline-offset: 1px;
-            }
-
-            .sched-executed-list .home-dash-row.is-executed .title {
-                color: #8c8c8c;
-            }
-
-            .sched-executed-list .home-dash-row.is-executed .meta {
-                color: #bfbfbf;
-            }
-
-    /* 执行失败：仅状态文字着色，整行仍弱化 */
-    .exec-failed {
-        color: #ff7875;
-    }
-
-    .home-dash-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        padding: 6px 8px;
-        border-radius: 6px;
-        font-size: 13px;
-    }
-
-        /* 只有真正可点的行（最近会话）才暗示可交互 */
-        .home-dash-row.is-actionable {
-            cursor: pointer;
-        }
-
-            .home-dash-row.is-actionable:hover {
-                background: #f5f5f5;
-            }
-
-            .home-dash-row.is-actionable:focus-visible {
-                outline: 2px solid #1890ff;
-                outline-offset: 1px;
-            }
-
-        .home-dash-row .title {
-            color: #262626;
-            /* flex item 默认 min-width:auto 不会收缩，长英文/URL 标题会撑破卡片 */
-            flex: 1 1 auto;
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .home-dash-row .meta {
-            color: #8c8c8c;
-            font-size: 12px;
-            flex-shrink: 0;
-        }
-
-    .home-meta-strong {
-        color: #fa8c16 !important;
-        font-weight: 500;
-    }
-
-    /* 合并卡里的多个计数：每个数字都是独立入口。
-       7 项排成一行（7 列）：卡内容区高 84px，单个统计项 56px，
-       两行（120px）会溢出被裁切，一行才装得下。 */
-    .home-stat-grid {
-        display: grid;
-        grid-template-columns: repeat(7, minmax(0, 1fr));
-        gap: 0 2px;
-    }
-
-    .home-stat {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        padding: 6px 8px;
-        border-radius: 6px;
-    }
-
-        .home-stat:hover {
-            background: #f5f5f5;
-        }
-
-        .home-stat:focus-visible {
-            outline: 2px solid #1890ff;
-            outline-offset: 1px;
-        }
-
-    .home-stat-value {
-        font-size: 22px;
-        font-weight: 600;
-        color: #1890ff;
-        line-height: 1.1;
-    }
-
-    .home-stat-label {
-        font-size: 12px;
-        color: #8c8c8c;
-    }
-
-    .home-empty {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        padding: 4px 8px;
-    }
-
-    .home-muted {
-        font-size: 13px;
-        color: #8c8c8c;
-    }
-
-    .home-card-foot {
-        margin-top: 10px;
-        padding-top: 8px;
-        border-top: 1px dashed #f0f0f0;
-        font-size: 12px;
-        color: #fa8c16;
-    }
-
-    @@media (max-width: 1200px) {
-        .home-board {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-    }
-
-    @@media (max-width: 800px) {
-        .home-board {
-            grid-template-columns: 1fr;
-            grid-auto-rows: auto;
-        }
-
-        .home-board .card-schedule {
-            grid-column: span 1;
-            grid-row: span 1;
-        }
-
-        /* 窄屏卡片高度自适应，弹性区没有参照高度：
-           退回固定上限滚动，避免几十条执行记录把整页拉长。 */
-        .sched-executed-list {
-            flex: 0 0 auto;
-            max-height: 200px;
-        }
-
-        .dash-card {
-            height: auto;
-            min-height: 140px;
-        }
-
-        .home-dashboard {
-            padding: 16px;
-        }
-    }
-</style>
-
 @code {
-    private const int RecentSessionCount = 3;
+    /// <summary>
+    /// 最近会话最多展示多少条。左栏按视口高度滚动，取够铺满一列的量
+    /// （少于此数时有多少显示多少）。
+    /// </summary>
+    private const int RecentSessionCount = 30;
+    /// <summary>单个任务最多回读多少条历史。当天可能多次触发，留足余量即可。</summary>
+    private const int MaxHistoryPerJob = 50;
+
+    /// <summary>中栏最多展示多少条今日执行，避免把整个执行历史读进内存渲染。</summary>
+    private const int MaxTodayExecutions = 60;
 
     private List<SessionSummary> _sessions = new();
     private IReadOnlyList<TodayRun> _todayRuns = Array.Empty<TodayRun>();
@@ -655,6 +487,9 @@
     private TodayRun? _nextRun;
     private IReadOnlyList<TodayExecution> _todayExecutions = Array.Empty<TodayExecution>();
     private IReadOnlyDictionary<string, string> _jobTitles = new Dictionary<string, string>();
+    private IReadOnlyList<AgentDefinition> _agents = Array.Empty<AgentDefinition>();
+    private IReadOnlyList<McpServerStatus> _mcpServers = Array.Empty<McpServerStatus>();
+    private SchedulerStatus? _schedulerStatus;
     private int _sessionCount;
     private int _agentCount;
     private int _modelCount;
@@ -662,27 +497,55 @@
     private int _toolCount;
     private int _mcpCount;
     private int _acpCount;
+    private int _activeJobCount;
     private int _pendingApprovals;
     private int _pendingQuestions;
     private int _recentFailures;
+    private int _totalMessageCount;
+    private IReadOnlyList<HomeDashboardView.SessionStatusBucket> _statusCounts
+        = Array.Empty<HomeDashboardView.SessionStatusBucket>();
     private bool _loading = true;
     private string? _error;
     private DateTime _now = DateTime.Now;
 
-    /// <summary>单个任务最多回读多少条历史。当天可能多次触发，留足余量即可。</summary>
-    private const int MaxHistoryPerJob = 50;
+    /// <summary>
+    /// 当前悬停的时间轴小时（0–23），null = 无悬停。
+    /// <para>
+    /// 它把「时间轴 → 待触发 / 今日已执行」串成一条链路：
+    /// 悬停某小时，该小时的任务行同步高亮，读者不用横向来回比对时间。
+    /// </para>
+    /// </summary>
+    private int? _hoverHour;
 
-    /// <summary>首页最多展示多少条今日执行，避免卡片被撑爆。</summary>
-    private const int MaxTodayExecutions = 20;
+    /// <summary>品牌条待办总数（审批 + 问答）。</summary>
+    private int _pendingTotal => _pendingApprovals + _pendingQuestions;
 
     /// <summary>按 jobId 取任务名（历史记录里只有 jobId）。</summary>
     private string JobTitle(string jobId) =>
         _jobTitles.TryGetValue(jobId, out var title) ? title : jobId;
 
+    /// <summary>悬停时间轴某小时：记录小时并对齐联动行。重复设置同一小时不触发重渲染。</summary>
+    private void SetHoverHour(int hour)
+    {
+        if (_hoverHour == hour)
+            return;
+
+        _hoverHour = hour;
+    }
+
+    /// <summary>离开时间轴：清除联动高亮。</summary>
+    private void ClearHoverHour()
+    {
+        if (_hoverHour is null)
+            return;
+
+        _hoverHour = null;
+    }
+
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
     /// <summary>
-    /// 首屏/刷新加载：一次性取快照，不做轮询（spec §2 非目标）。
+    /// 首屏/刷新加载：一次性取快照，不做轮询（沿用既有非目标约定）。
     /// </summary>
     private async Task LoadAsync(bool showSkeleton = false)
     {
@@ -702,27 +565,47 @@
             _sessionCount = visible.Count;
             _sessions = visible.Take(RecentSessionCount).ToList();
 
+            // 会话分布：完全基于已加载的摘要，不额外查询。
+            // 口径是本页自己的「24h 内有活动」（LastActiveAt）；
+            // SessionsPage 的「活跃 (24h)」用 UpdatedAt，且不排除归档 —— 两者刻意不同，
+            // 这里说的是「最近还在聊」，不是「元数据最近被改过」。
+            _totalMessageCount = visible.Sum(s => s.MessageCount);
+            _statusCounts = HomeDashboardView.SessionStatusBuckets(
+                visible, _now, TimeSpan.FromHours(24));
+
             var agents = await AgentRegistry.GetPrimaryAgentsAsync();
+            _agents = agents;
             _agentCount = agents.Count;
+            _acpCount = agents.Count(agent => agent.Runtime == AgentRuntime.AcpPassthrough);
             _modelCount = LlmService.GetAvailableModels().Count;
 
-            // 工作区四类入口：模块可能未启用，用 GetService 而非硬注入，缺失时按 0 展示
-            _skillCount = Services.GetService<ISkillCatalog>()?.EnabledEntries.Count ?? 0;
-            _toolCount = Services.GetService<IToolManager>()?.GetRegisteredTools().Count ?? 0;
+            // 模块能力入口：用 IModuleCatalog.IsEnabled 判定模块是否结算启用，
+            // 而不是 GetService 嗅探服务是否存在（04 号文档明确点名的反模式）。
+            // 模块未启用时对应计数按 0 展示，页面上不出现空块。
+            if (ModuleCatalog.IsEnabled("skills"))
+                _skillCount = SkillCatalog?.EnabledEntries.Count ?? 0;
 
-            // MCP 状态缓存由 1s 定时器填充，首屏读取前先刷一次，否则会显示 0
-            var mcpState = Services.GetService<McpStateService>();
-            mcpState?.ManualRefresh();
-            _mcpCount = mcpState?.GetAvailableCount() ?? 0;
+            _toolCount = ToolManager.GetRegisteredTools().Count;
 
-            _acpCount = agents.Count(agent => agent.Runtime == AgentRuntime.AcpPassthrough);
+            if (ModuleCatalog.IsEnabled("mcp") && McpState is not null)
+            {
+                // MCP 状态缓存由 1s 定时器填充，首屏读取前先刷一次，否则会显示 0
+                McpState.ManualRefresh();
+                _mcpCount = McpState.GetAvailableCount();
+                _mcpServers = McpState.GetCachedStatus().Values
+                    .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
 
-            var status = await SchedulerStatus.GetStatusAsync();
+            // 调度器状态：原实现虽调用但结果未使用，这里接上（运行中 / 线程池 / 下次触发）
+            _schedulerStatus = await SchedulerStatus.GetStatusAsync();
+
             var jobStatuses = new Dictionary<string, JobStatus>();
             foreach (var jobStatus in await SchedulerStatus.GetAllJobStatusesAsync())
                 jobStatuses[jobStatus.JobId] = jobStatus;
 
             var jobs = await ScheduleManager.ListJobsAsync();
+            _activeJobCount = jobs.Count(j => j.Intent == ScheduleIntent.Active);
             _todayRuns = HomeDashboardView.TodayRuns(jobs, jobStatuses, _now);
             _hourLoads = HomeDashboardView.HourLoads(_todayRuns);
             _nextRun = HomeDashboardView.NextRunAfter(jobs, jobStatuses, _now);
@@ -732,7 +615,13 @@
             // 单 job 只取最近若干条足够覆盖当天，避免把整年历史读进内存。
             _jobTitles = jobs
                 .GroupBy(j => j.Id, StringComparer.Ordinal)
-                .ToDictionary(g => g.Key, g => string.IsNullOrWhiteSpace(g.First().Name) ? g.Key : g.First().Name.Trim(),
+                .ToDictionary(
+                    g => g.Key,
+                    g =>
+                    {
+                        var name = g.First().Name;
+                        return string.IsNullOrWhiteSpace(name) ? g.Key : name.Trim();
+                    },
                     StringComparer.Ordinal);
 
             var executions = new List<JobExecutionRecord>();
@@ -745,7 +634,9 @@
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    // 单个任务历史损坏不影响整体首页
+                    // 单个任务历史损坏不影响整体首页，但必须留痕：
+                    // 静默吞异常会让人误以为该任务今天没执行过。
+                    Logger.LogWarning(ex, "读取任务 {JobId} 执行历史失败，首页跳过该任务", job.Id);
                 }
             }
 
@@ -754,14 +645,15 @@
             _pendingApprovals = PermissionInboxService.TotalCount;
             _pendingQuestions = QuestionInboxService.TotalCount;
 
-            // 首版固定 0：暂无失败历史查询接口（spec §9.4 的已知取舍）
+            // 首版固定 0：暂无失败历史查询接口（沿用既有取舍）
             _recentFailures = 0;
 
             _error = null;
         }
         catch (Exception ex)
         {
-            _error = $"加载仪表盘数据失败：{ex.Message}";
+            Logger.LogError(ex, "加载首页控制台数据失败");
+            _error = $"加载控制台数据失败：{ex.Message}";
         }
         finally
         {
@@ -769,12 +661,22 @@
         }
     }
 
-    /// <summary>键盘可达性：Enter / Space 等价于点击（行与计数块共用）。</summary>
+    /// <summary>键盘可达性：Enter / Space 等价于点击（行与链接共用）。</summary>
     private void NavigateOnKey(KeyboardEventArgs args, string path)
     {
         if (args.Key is "Enter" or " " or "Spacebar")
             Navigation.NavigateTo(path);
     }
+
+    /// <inheritdoc cref="NavigateOnKey"/>
+    private void ActivateOnKey(KeyboardEventArgs args, Action action)
+    {
+        if (args.Key is "Enter" or " " or "Spacebar")
+            action();
+    }
+
+    /// <summary>审批中心是抽屉而非路由：经 UiOverlayService 请求 AppSidebar 打开。</summary>
+    private void OpenPermissionCenter() => Overlays.RequestPermissionCenter();
 
     /// <summary>英雄区主操作：有最近会话就续聊，否则去会话列表。</summary>
     private void ContinueLastSession()

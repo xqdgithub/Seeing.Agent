@@ -179,3 +179,41 @@ CSS 选择器不命中是静默的——页面照常渲染，只是样式全部�
 **守门测试**（`MessageContentClassContractTests`，3 个用例）：断言两个 Markdown 容器都带独立 `message-content` 类，且 CSS 中表格规则块确实含 `border` / `padding` / `border-collapse`。
 
 > 注意断言写法：不能用 `Contain("message-content")`——`message-content--streaming` 含该子串，会让「漏加类」的回归静默通过。必须用 `message-content(?![\w-])` 匹配独立类名。反向验证（临时删类 → 测试失败）已确认有效。
+
+## 修复：Markdown 表格字号偏大、占用空间过多（2026-11-06）
+
+**现象**：表格内容看起来比正文「大一号」，整张表格竖向占位过多。截图里 7 行工具表几乎占满整个可视区。
+
+**根因**：`.message-content table / th / td` 只定义了框线与内边距，**从未声明字号**。表格因此继承 `body` 的 `16px / line-height 1.75`（`design-system.css` 把 `body` 设为 `--font-size-base: 16px`）。同一屏内其它次级文本都比它小：
+
+| 元素 | 字号 |
+|---|---|
+| 正文段落 | 16px |
+| **表格单元格** | **16px / 行高 28px（继承 body，从未声明）** |
+| 单元格内 `内联代码` | 14px |
+| 思考区 | 12px |
+| 工具卡片 | 11–12px |
+
+叠加单元格 `8px 12px` 内边距后，**单行高 45px**；长参数列一换行，一行就 90px 起。
+
+**修复**（`wwwroot/css/message-item.css`）：
+
+1. `.message-content table` 显式声明 `font-size: var(--font-size-sm)`（14px）+ `line-height: var(--line-height-normal)`（1.5），与单元格内联代码同号，视觉上不再压过正文。
+2. 单元格内边距 `8px 12px` → `6px 12px`。
+3. **思考区豁免**：`.reasoning-section .message-content table { font-size: inherit; line-height: inherit; }`。思考区容器靠内联 `font-size: 12px` 撑着，若不豁免，正文的 14px 规则会把思考区表格**反向放大**（12 → 14）。
+
+**实测**（Chromium，真实 CSS 层叠，900px 内容宽度）：
+
+| 指标 | 改动前 | 改动后 |
+|---|---|---|
+| 正文单元格字号 / 行高 | 16px / 28px | 14px / 21px |
+| 正文单元格单行高 | 45px | 34px（−24%） |
+| 正文表格高（1 行数据） | 91px | 69px |
+| 思考区单元格字号 | 12px | 12px（不变） |
+| 思考区单元格单行高 | 38px | 30px |
+
+**守门测试**（`MessageContentClassContractTests` 新增 2 个用例）：断言表格规则块必须含 `font-size:` 且取值为 `var(--font-size-sm)`（防止回落成继承 16px，也防止随手改大），以及思考区必须有 `font-size: inherit` 豁免（防止被放大）。
+
+> CSS 缺省是静默的：删掉 `font-size` 不会报错、页面照常渲染，只是表格又悄悄变大。所以这条只能靠源码断言守。
+
+**已知边界**：表格仍是 `width: 100%` + 自动换行，宽表会把长参数列挤成多行（本次未改为横向滚动）。

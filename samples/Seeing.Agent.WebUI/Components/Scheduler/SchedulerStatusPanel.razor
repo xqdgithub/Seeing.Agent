@@ -1,5 +1,6 @@
 @using AntDesign
 @using Seeing.Agent.Scheduler.Models
+@using Seeing.Agent.WebUI.Services
 
 @code {
     [Parameter] public SchedulerStatus Status { get; set; } = new();
@@ -14,8 +15,10 @@
     <Body>
         <Row Gutter="16">
             <Col Span="6">
-                <Statistic Title="状态" 
-                           Value="@(Status.IsRunning ? "运行中" : Status.IsStandby ? "待机" : "已停止")"
+                @* 状态文案统一走 HomeDashboardView.SchedulerStateText：
+                   首页与本面板必须说同一句话，否则「已暂停 / 已停止」会各说一套 *@
+                <Statistic Title="状态"
+                           Value="@HomeDashboardView.SchedulerStateText(Status)"
                            ValueStyle="@(Status.IsRunning ? "color: #52c41a;" : "color: #faad14;")" />
             </Col>
             <Col Span="6">
