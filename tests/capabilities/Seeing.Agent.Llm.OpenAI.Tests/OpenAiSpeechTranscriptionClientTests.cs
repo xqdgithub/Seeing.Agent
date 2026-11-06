@@ -193,6 +193,49 @@ public class OpenAiSpeechTranscriptionClientTests
         text.Should().Contain("Content-Type: audio/wav");
     }
 
+    [Fact]
+    public async Task TranscribeAsync_StringSegmentId_ShouldParseWithoutThrowing()
+    {
+        // SiliconFlow（XingChenASR）把 segment.id 返回成字符串 "0"，不是数字。
+        // 该字段从未被读取，但类型过窄会让整条转写失败——
+        // 用户看到的是「转写失败」而后端其实已经成功识别出文字。
+        var (sut, _) = CreateSut(_ => JsonResponse("""
+            {"duration":2.58,"text":"你是谁呀？",
+             "segments":[{"type":"transcript.text.segment","id":"0","start":0.92,"end":2.56,"text":"你是谁呀？"}],
+             "usage":{"type":"duration","seconds":3}}
+            """));
+
+        var result = await sut.TranscribeAsync(new TranscriptionRequest
+        {
+            Model = "XingChenASR-V3.2-Ultra",
+            Audio = new MemoryStream(new byte[64])
+        });
+
+        result.Text.Should().Be("你是谁呀？");
+        result.Segments.Should().HaveCount(1);
+        result.Segments![0].Text.Should().Be("你是谁呀？");
+        result.Segments[0].Start.Should().Be(TimeSpan.FromSeconds(0.92));
+        result.Segments[0].End.Should().Be(TimeSpan.FromSeconds(2.56));
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_NonTokenUsageShape_ShouldNotBreakDeserialization()
+    {
+        // SiliconFlow 的 usage 是 {"type":"duration","seconds":3}，没有 input_tokens；
+        // 只需不抛异常，用量按「无 token 计量」处理。
+        var (sut, _) = CreateSut(_ => JsonResponse("""
+            {"text":"你好","usage":{"type":"duration","seconds":3}}
+            """));
+
+        var result = await sut.TranscribeAsync(new TranscriptionRequest
+        {
+            Model = "XingChenASR-V3.2-Ultra",
+            Audio = new MemoryStream(new byte[64])
+        });
+
+        result.Text.Should().Be("你好");
+    }
+
     // ---- 响应解析 ----
 
     [Fact]

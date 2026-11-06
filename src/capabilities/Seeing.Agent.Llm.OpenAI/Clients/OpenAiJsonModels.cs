@@ -622,8 +622,13 @@ internal class TranscriptionApiResponse
 /// <summary>ASR verbose_json 段落条目。</summary>
 internal class TranscriptionApiSegment
 {
+    /// <summary>
+    /// 段落序号。<b>类型放宽为 object</b>：OpenAI 返回数字 <c>0</c>，
+    /// SiliconFlow（XingChenASR）返回字符串 <c>"0"</c>，而该字段从未被读取——
+    /// 用 int 会让整条转写因反序列化失败而报废（后端其实已识别成功）。
+    /// </summary>
     [JsonPropertyName("id")]
-    public int Id { get; set; }
+    public object? Id { get; set; }
 
     /// <summary>起始秒。</summary>
     [JsonPropertyName("start")]
