@@ -96,14 +96,16 @@ async function startVoiceRecording(containerId, textareaId, dotNetRef, maxSecond
         return { ok: false, code: 'alreadyRecording', message: '已经在录音中' };
     }
 
-    // 非安全上下文（http + 非 localhost）拿不到麦克风
-    var host = window.location.hostname;
-    var isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1';
-    if (window.isSecureContext === false && !isLocal) {
+    // 安全上下文是浏览器的硬性要求：非 https 且非 localhost 时，
+    // 浏览器根本不暴露 navigator.mediaDevices，若不先判这一条，
+    // 下面那个「不支持录音」分支会先命中，把「http 访问」误报成「浏览器太旧」。
+    // isSecureContext 是浏览器的权威判定，已内含 localhost / 127.0.0.1 / [::1] 例外，
+    // 无需再手写地址白名单（手写列表还会漏掉 *.localhost 子域等情形）。
+    if (!window.isSecureContext) {
         return {
             ok: false,
             code: 'insecureContext',
-            message: '需要 https 或 localhost 才能使用麦克风'
+            message: '浏览器要求 https 或 localhost 才能使用麦克风（用局域网 IP 访问时需要 https）'
         };
     }
 

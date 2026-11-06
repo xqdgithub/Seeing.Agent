@@ -563,7 +563,7 @@
     /// <summary>把 JS 的失败代码翻成中文（脚本未给 message 时的兜底）。</summary>
     private static string DescribeVoiceFailure(string? code) => code switch
     {
-        "insecureContext" => "需要 https 或 localhost 才能使用麦克风",
+        "insecureContext" => "浏览器要求 https 或 localhost 才能使用麦克风（用局域网 IP 访问时需要 https）",
         "unsupportedBrowser" => "当前浏览器不支持录音",
         "permissionDenied" => "麦克风权限被拒绝",
         "noDevice" => "未找到麦克风设备",
