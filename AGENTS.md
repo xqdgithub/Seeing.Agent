@@ -36,6 +36,7 @@
 - [可读 JSON 序列化统一 Release Notes](docs/architecture/31-readable-json-release-notes.md)
 - [Provider 能力展示 Release Notes](docs/architecture/32-provider-capability-display-release-notes.md)
 - [Provider 语音能力接入 Release Notes](docs/architecture/33-provider-speech-capability-release-notes.md)
+- [WebUI 语音输入 Release Notes](docs/architecture/34-webui-voice-input-release-notes.md)
 
 设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
 
@@ -106,6 +107,7 @@ Seeing.Agent/
 | WebUI 模型选择 | `samples/Seeing.Agent.WebUI/Components/Models/` | Badge+Modal（Session）/ Dropdown（配置页）；见 `docs/architecture/07-webui-model-picker.md` |
 | 记忆页面 | 契约 `src/capabilities/Seeing.Agent.Memory/Abstractions/MemoryOverview.cs`；页面 `samples/Seeing.Agent.WebUI/Pages/MemoryPage.razor`；设置卡 `Components/Settings/MemorySettingsCard.razor` | 单页总览：`GetOverviewAsync` 一次读盘出类型/时间分布；分布用 `CreatedAt`（本地日历归日），列表排序用 `ModifiedTime`；设置走 `SettingsCardContribution`（`/memory/**` 子路由会被子路由规则隐藏，不能作侧栏项）；见 `docs/architecture/26-memory-page-redesign-release-notes.md` |
 | 模型元数据覆盖 | 契约 `src/abstractions/.../Llm/ModelOverride.cs`；应用器 `src/spine/Seeing.Agent.Core/Llm/ModelOverrideApplier.cs`；节 `ModelOverrides`（`~/.seeing/model-overrides.json`，UserOnly）；UI `samples/Seeing.Agent.WebUI/Pages/ModelsPage.razor` | 用户级稀疏覆盖（含补录），diff 持久化，聚合末端应用；见 `docs/superpowers/specs/2026-10-16-model-overrides-design.md` |
+| 语音输入（PromptInput 麦克风） | 脚本 `samples/Seeing.Agent.WebUI/wwwroot/js/voice-input.js`；端点 `samples/Seeing.Agent.WebUI/Endpoints/TranscriptionEndpoints.cs`；服务 `samples/Seeing.Agent.WebUI/Services/SpeechTranscriptionService.cs` | 点击切换录音（非按住说话）；未配模型时灰态可点非 `Disabled`；ASR 走既有 `ISpeechTranscriptionClient` + `DefaultModels.speechTranscription`；见 `docs/architecture/34` |
 | 共享/底层支持包 | `src/support/`（`Seeing.Agent.Llm.Support`、`Seeing.Agent.Tools.Support`） | 仅依赖 Abstractions + 原语；承载启发式/工具基类等实现，禁止引用上层包 |
 | 会话文件浏览器 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Files/`；能力包 `src/capabilities/Seeing.Agent.Files/`；组件库 `samples/Seeing.Agent.WebUI.Files/`；宿主桥接 `samples/Seeing.Agent.WebUI/Services/AgentFileChangeBridge.cs` | 文件能力只描述磁盘事实，不订阅会话事件；agent 桥接在宿主层；见 `docs/architecture/16` |
 | Hook | `HookManager` 在 `src/spine/Seeing.Agent.Core/Core/Hooks/`；`HookPoints.*` 常量在 `src/primitives/Seeing.Session/Hooks/HookPoints.cs`（原语层） | 用 `HookPoints.*`，禁止魔法字符串 |

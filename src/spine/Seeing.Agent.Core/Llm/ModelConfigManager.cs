@@ -444,6 +444,7 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
 
             await SaveDefaultModelsAsync(cleared, level, configKey, ct).ConfigureAwait(false);
             _logger.LogInformation("已清除能力 {Capability} 的默认模型", configKey);
+            RaiseDefaultModelsChanged();
             return;
         }
 
@@ -477,7 +478,23 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
         await SaveDefaultModelsAsync(models, level, configKey, ct).ConfigureAwait(false);
 
         _logger.LogInformation("已设置能力 {Capability} 的默认模型: {ModelId}", configKey, reference);
+        RaiseDefaultModelsChanged();
     }
+
+    /// <summary>
+    /// 默认模型变更后通知订阅方。
+    /// </summary>
+    /// <remarks>
+    /// <b>与 <see cref="ModelConfigChangeType.Added"/> 等模型目录事件语义不同</b>：
+    /// 默认模型的写入走 <c>SaveSectionAsync("DefaultModels")</c>，不刷新模型目录、也不重建视图缓存，
+    /// 因此必须在这里单独发事件。否则依赖「是否已配置某能力默认模型」的 UI
+    /// （如语音输入按钮的灰态）只能靠页面重建才刷新，跨标签页/多窗口场景会一直停在旧状态。
+    /// </remarks>
+    private void RaiseDefaultModelsChanged()
+        => ModelConfigChanged?.Invoke(this, new ModelConfigChangedEventArgs
+        {
+            ChangeType = ModelConfigChangeType.Updated
+        });
 
     /// <summary>
     /// 便捷解析：查默认值 → 经 <see cref="ILlmRouter"/> 解析客户端。

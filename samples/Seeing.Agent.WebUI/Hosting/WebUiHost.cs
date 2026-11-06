@@ -103,6 +103,7 @@ public static class WebUiHost
         builder.Services.AddSingleton<AppState>();
         builder.Services.AddScoped<SessionState>();
         builder.Services.AddScoped<UploadedFileService>();
+        builder.Services.AddScoped<SpeechTranscriptionService>();
         builder.Services.AddScoped<MessageTimelineStore>();
 
         // 会话事件流路由（Singleton）：按会话统一订阅 + 按 circuit 关联 Scoped 消费者。
@@ -269,6 +270,7 @@ public static class WebUiHost
 
         app.MapBlazorHub();
         app.MapUploadEndpoints();
+        app.MapTranscriptionEndpoints();
 
         // 记忆详情路由的路径以 .md 结尾（/memory/detail/daily/xxx.md）。
         // MapFallbackToPage 对「看起来像文件」的请求不生效：ASP.NET Core 的 fallback 会跳过
