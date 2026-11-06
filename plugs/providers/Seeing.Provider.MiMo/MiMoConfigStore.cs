@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
+using Seeing.Serialization;
 using System.Text;
 using System.Text.Json;
 
@@ -7,11 +8,8 @@ namespace Seeing.Provider.MiMo;
 
 public sealed class MiMoConfigStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNameCaseInsensitive = true
-    };
+    private static readonly JsonSerializerOptions JsonOptions = SeeingJson.Create(indented: true,
+        o => o.PropertyNameCaseInsensitive = true);
 
     private readonly string _directory;
     private readonly ILogger<MiMoConfigStore> _logger;

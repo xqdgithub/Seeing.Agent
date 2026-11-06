@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Serialization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -95,11 +96,11 @@ internal sealed class ModelEntryWire
 internal static class TypeSafeWireMap
 {
     /// <summary>wire 序列化选项（读时大小写不敏感，写时省略 null）。</summary>
-    public static JsonSerializerOptions JsonOptions { get; } = new()
+    public static JsonSerializerOptions JsonOptions { get; } = SeeingJson.Create(o =>
     {
-        PropertyNameCaseInsensitive = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
+        o.PropertyNameCaseInsensitive = true;
+        o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    });
 
     /// <summary>请求 DTO → wire（model 已由调用方解析为非空）。</summary>
     public static DecisionRequestWire FromRequest(DecisionRequest request, string model)

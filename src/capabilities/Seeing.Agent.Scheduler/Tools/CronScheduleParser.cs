@@ -1,6 +1,7 @@
 using Quartz;
 using Seeing.Agent.Scheduler.Engine;
 using Seeing.Agent.Scheduler.Models;
+using Seeing.Serialization;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -137,7 +138,8 @@ internal static class CronScheduleParser
 
     private static bool BuildSingleValueObject(string propertyName, string value, out JsonElement root)
     {
-        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new Dictionary<string, string> { [propertyName] = value }));
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(
+            new Dictionary<string, string> { [propertyName] = value }, SeeingJson.Readable));
         root = doc.RootElement.Clone();
         return true;
     }

@@ -1,4 +1,5 @@
 using Quartz;
+using Seeing.Serialization;
 
 namespace Seeing.Agent.Scheduler.Jobs;
 
@@ -44,7 +45,7 @@ public static class JobDataMapExtensions
     public static void SetJsonValue<T>(this JobDataMap map, string key, T? value)
     {
         map[key] = value != null
-            ? System.Text.Json.JsonSerializer.Serialize(value)
+            ? System.Text.Json.JsonSerializer.Serialize(value, SeeingJson.Readable)
             : string.Empty;
     }
 

@@ -68,6 +68,16 @@ Core 程序集内命名空间须为 `Seeing.Agent.Core.*`（契约仍可在 Abst
 - [ ] 不引入第二套「偷偷读 json」旁路  
 - [ ] 可清空字段支持 null 删除键  
 
+### JSON 序列化
+
+- [ ] **禁止裸写 `new JsonSerializerOptions`**：一律走 `Seeing.Serialization.SeeingJson`
+      （`Readable` / `ReadableIndented` / `Create(...)`）；
+      需要自定义编码器（如 HMAC/内容哈希）才用 `Signature`，并在注释写明理由  
+- [ ] 落盘与展示用 `ReadableIndented`，协议/模型可见载荷用 `Readable`  
+- [ ] 参与签名或内容哈希的序列化**必须**用 `Signature`（默认编码器，字节稳定）；
+      改动它会让既有签名与哈希全部失效  
+- [ ] 由 `tests/spine/Seeing.Agent.Invariants.Tests/Invariants/JsonOptionsInvariantTests.cs` 守门
+
 ### 执行与 schema
 
 - [ ] 不在 Native executor 自算工具 schema 写入请求  

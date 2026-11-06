@@ -6,6 +6,7 @@ using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Permission;
 using Seeing.Gateway.Client;
 using Seeing.Gateway.Models;
+using Seeing.Serialization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -16,12 +17,12 @@ namespace Seeing.Agent.Gateway.Endpoints;
 /// </summary>
 public static class GatewayEndpoints
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions JsonOptions = SeeingJson.Create(o =>
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-    };
+        o.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        o.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+    });
 
     /// <summary>注册所有 Gateway API 端点</summary>
     public static WebApplication MapGatewayEndpoints(this WebApplication app)

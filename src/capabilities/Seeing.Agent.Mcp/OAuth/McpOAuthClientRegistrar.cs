@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Serialization;
 using System.Text;
 using System.Text.Json;
 
@@ -69,7 +70,7 @@ namespace Seeing.Agent.Mcp.OAuth
             using var request = new HttpRequestMessage(HttpMethod.Post, registrationEndpoint)
             {
                 Content = new StringContent(
-                    JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+                    JsonSerializer.Serialize(payload, SeeingJson.Readable), Encoding.UTF8, "application/json")
             };
 
             HttpResponseMessage response;

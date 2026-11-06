@@ -3,6 +3,7 @@ using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Mcp.OAuth;
 using Seeing.Agent.Mcp.OAuth;
+using Seeing.Serialization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -24,14 +25,13 @@ public class McpConfigPersistence : IMcpConfigPersistence
         _logger = logger;
         _directories = directories;
 
-        _jsonOptions = new JsonSerializerOptions
+        _jsonOptions = SeeingJson.Create(indented: true, o =>
         {
-            WriteIndented = true,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            ReadCommentHandling = JsonCommentHandling.Skip,
-            AllowTrailingCommas = true
-        };
+            o.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+            o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+            o.ReadCommentHandling = JsonCommentHandling.Skip;
+            o.AllowTrailingCommas = true;
+        });
     }
 
     /// <summary>

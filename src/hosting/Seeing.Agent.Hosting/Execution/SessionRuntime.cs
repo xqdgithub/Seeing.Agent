@@ -9,6 +9,7 @@ using Seeing.Agent.Abstractions.Reminders;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Sessions;
 using Seeing.Agent.Core.Execution;
+using Seeing.Serialization;
 using Seeing.Session.Core;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
@@ -1113,11 +1114,11 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
 
     private static JsonSerializerOptions CreateConversationJsonOptions()
     {
-        var options = new JsonSerializerOptions
+        var options = SeeingJson.Create(o =>
         {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            PropertyNameCaseInsensitive = true
-        };
+            o.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+            o.PropertyNameCaseInsensitive = true;
+        });
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
         return options;
     }

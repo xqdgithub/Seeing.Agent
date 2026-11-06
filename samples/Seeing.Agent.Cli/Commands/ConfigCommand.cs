@@ -156,7 +156,7 @@ public static class ConfigCommand
         else
             targetObj[section] = newValue;
 
-        return doc?.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) ?? rawJson;
+        return doc?.ToJsonString(Seeing.Serialization.SeeingJson.ReadableIndented) ?? rawJson;
     }
 
     private static string SetNestedValue(string rawJson, string? rootProperty, string section, string key, string newValue)
@@ -192,7 +192,7 @@ public static class ConfigCommand
                 sectionObj[key] = newValue;
         }
 
-        return doc?.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) ?? rawJson;
+        return doc?.ToJsonString(Seeing.Serialization.SeeingJson.ReadableIndented) ?? rawJson;
     }
 
     private static async Task InitWorkspace(UnifiedConfigManager config)

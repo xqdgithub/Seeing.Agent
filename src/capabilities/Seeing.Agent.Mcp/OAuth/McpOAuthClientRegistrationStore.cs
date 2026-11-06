@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Serialization;
 using System.Text.Json;
 
 namespace Seeing.Agent.Mcp.OAuth
@@ -13,11 +14,11 @@ namespace Seeing.Agent.Mcp.OAuth
     /// </summary>
     public sealed class McpOAuthClientRegistrationStore
     {
-        private static readonly JsonSerializerOptions s_jsonOptions = new()
+        private static readonly JsonSerializerOptions s_jsonOptions = SeeingJson.Create(o =>
         {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-        };
+            o.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+            o.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
+        });
 
         private readonly ILogger<McpOAuthClientRegistrationStore> _logger;
         private readonly string _storageDirectory;

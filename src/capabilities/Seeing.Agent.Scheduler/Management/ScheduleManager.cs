@@ -5,6 +5,7 @@ using Seeing.Agent.Scheduler.Configuration;
 using Seeing.Agent.Scheduler.Engine;
 using Seeing.Agent.Scheduler.Jobs;
 using Seeing.Agent.Scheduler.Models;
+using Seeing.Serialization;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Scheduler.Management;
@@ -601,7 +602,7 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
 
         if (hb.ActiveHours != null)
         {
-            jobData[JobDataKeys.ActiveHours] = System.Text.Json.JsonSerializer.Serialize(hb.ActiveHours);
+            jobData[JobDataKeys.ActiveHours] = System.Text.Json.JsonSerializer.Serialize(hb.ActiveHours, SeeingJson.Readable);
         }
 
         await _engine.UpsertJobAsync(SchedulerConstants.HeartbeatJobId, schedule, ScheduleIntent.Active, jobData, ct);

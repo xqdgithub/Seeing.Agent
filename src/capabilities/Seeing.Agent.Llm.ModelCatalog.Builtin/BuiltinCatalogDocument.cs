@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Serialization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -15,10 +16,9 @@ internal sealed class BuiltinCatalogDocument
 
 internal static class BuiltinJson
 {
-    public static readonly JsonSerializerOptions Options = new()
+    public static readonly JsonSerializerOptions Options = SeeingJson.Create(indented: true, o =>
     {
-        PropertyNameCaseInsensitive = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        WriteIndented = true
-    };
+        o.PropertyNameCaseInsensitive = true;
+        o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    });
 }

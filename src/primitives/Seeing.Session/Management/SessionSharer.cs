@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Serialization;
 using Seeing.Session.Core;
 using System.Collections.Concurrent;
 using System.Text.Json;
@@ -40,7 +41,7 @@ namespace Seeing.Session.Management
             // 持久化
             Directory.CreateDirectory(_sharePath);
             var filePath = Path.Combine(_sharePath, $"{shareId}.share.json");
-            var json = JsonSerializer.Serialize(shareRecord, new JsonSerializerOptions { WriteIndented = true });
+            var json = JsonSerializer.Serialize(shareRecord, SeeingJson.ReadableIndented);
             await File.WriteAllTextAsync(filePath, json, ct);
 
             _logger.LogInformation("Shared session {SessionId} as {ShareId}", session.Id, shareId);

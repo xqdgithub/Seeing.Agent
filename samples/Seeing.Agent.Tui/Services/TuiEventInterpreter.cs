@@ -475,7 +475,7 @@ public sealed class TuiEventInterpreter
     {
         try
         {
-            return JsonSerializer.Serialize(value);
+            return JsonSerializer.Serialize(value, Seeing.Serialization.SeeingJson.Readable);
         }
         catch (NotSupportedException)
         {

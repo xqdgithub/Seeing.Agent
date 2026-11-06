@@ -1,6 +1,7 @@
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Configuration; // IWorkspaceProvider (Abstractions assembly)
 using Seeing.Agent.Gateway.Configuration;
+using Seeing.Serialization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -12,13 +13,12 @@ namespace Seeing.Agent.Gateway.Channels;
 /// </summary>
 public sealed class ChannelHostConfigStore
 {
-    private static readonly JsonSerializerOptions s_jsonOptions = new()
+    private static readonly JsonSerializerOptions s_jsonOptions = SeeingJson.Create(indented: true, o =>
     {
-        PropertyNameCaseInsensitive = true,
-        WriteIndented = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new JsonStringEnumConverter() }
-    };
+        o.PropertyNameCaseInsensitive = true;
+        o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        o.Converters.Add(new JsonStringEnumConverter());
+    });
 
     private readonly IConfigSectionStore _configStore;
     private readonly IWorkspaceProvider _workspaceProvider;

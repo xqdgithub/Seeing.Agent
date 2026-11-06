@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Serialization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -157,7 +158,8 @@ public static class AgentPermissionPolicyExtensions
 
     private static string ComputeHash(IReadOnlyList<PermissionRuleEntry> rules)
     {
-        var json = JsonSerializer.Serialize(rules);
+        // 签名字节稳定性优先：必须用默认编码器，改成可读编码器会让既有 ContentHash 全部改变。
+        var json = JsonSerializer.Serialize(rules, SeeingJson.Signature);
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(json));
         return Convert.ToHexStringLower(bytes);
     }

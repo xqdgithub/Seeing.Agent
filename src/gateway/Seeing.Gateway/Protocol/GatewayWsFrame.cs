@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Channels;
+using Seeing.Serialization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -27,12 +28,12 @@ public static class GatewayWsFrameSerializer
 
     private static JsonSerializerOptions CreateOptions()
     {
-        var options = new JsonSerializerOptions
+        var options = SeeingJson.Create(o =>
         {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            PropertyNameCaseInsensitive = true,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-        };
+            o.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+            o.PropertyNameCaseInsensitive = true;
+            o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        });
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
         return options;
     }

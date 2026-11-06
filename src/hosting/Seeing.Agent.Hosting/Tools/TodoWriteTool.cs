@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.Support;
+using Seeing.Serialization;
 using System.Text.Json;
 
 namespace Seeing.Agent.Hosting.Tools
@@ -61,10 +62,7 @@ namespace Seeing.Agent.Hosting.Tools
             }
 
             var pendingCount = todos.Count(t => t.Status == TodoStatus.Pending || t.Status == TodoStatus.InProgress);
-            var output = JsonSerializer.Serialize(todos, new JsonSerializerOptions
-            {
-                WriteIndented = true
-            });
+            var output = JsonSerializer.Serialize(todos, SeeingJson.ReadableIndented);
 
             _logger.LogInformation("更新 Todo 列表: {PendingCount} 个待处理任务", pendingCount);
 

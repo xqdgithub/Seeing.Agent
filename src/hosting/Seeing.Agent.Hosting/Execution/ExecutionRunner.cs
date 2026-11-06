@@ -10,6 +10,7 @@ using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Runtime;
+using Seeing.Serialization;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Configuration;
@@ -1357,7 +1358,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
             history = history.TakeLast(_options.ExecutionHistoryLimit).ToList();
         }
 
-        session.Metadata["execution_history"] = JsonSerializer.Serialize(history);
+        session.Metadata["execution_history"] = JsonSerializer.Serialize(history, SeeingJson.Readable);
     }
 }
 

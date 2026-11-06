@@ -74,7 +74,7 @@ public sealed class InstanceRegistry
             _filePath,
             JsonSerializer.Serialize(
                 new RegistryDocument { Instances = list },
-                new JsonSerializerOptions { WriteIndented = true }));
+                Seeing.Serialization.SeeingJson.ReadableIndented));
     }
 
     private static bool IsProcessAlive(int pid)

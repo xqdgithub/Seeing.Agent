@@ -1,5 +1,6 @@
 ﻿using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Serialization;
 using System.Security.Cryptography;
 using System.Text.Json;
 
@@ -31,6 +32,7 @@ internal static class PermissionIntegrity
     /// <returns>Base64 编码的哈希值</returns>
     public static string ComputeIntegrityHash(PermissionContext context, byte[] hmacKey)
     {
+        // 签名字节稳定性优先：必须用默认编码器，否则既有完整性哈希会全部失效。
         var payload = JsonSerializer.SerializeToUtf8Bytes(new
         {
             context.SessionId,
@@ -41,7 +43,7 @@ internal static class PermissionIntegrity
             Timestamp = context.Timestamp.ToUnixTimeMilliseconds(),
             context.Nonce,
             ParentHash = context.Parent != null ? ComputeIntegrityHash(context.Parent, hmacKey) : null
-        });
+        }, SeeingJson.Signature);
 
         using var hmac = new HMACSHA256(hmacKey);
         var hash = hmac.ComputeHash(payload);

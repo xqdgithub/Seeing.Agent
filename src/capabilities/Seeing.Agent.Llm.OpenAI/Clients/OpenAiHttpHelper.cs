@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Serialization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -15,11 +16,11 @@ internal static class OpenAiHttpHelper
     /// <summary>Debug 日志中请求体的最大字符数。</summary>
     private const int MaxLoggedBodyChars = 2000;
 
-    private static readonly JsonSerializerOptions JsonOpts = new()
+    private static readonly JsonSerializerOptions JsonOpts = SeeingJson.Create(o =>
     {
-        PropertyNameCaseInsensitive = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
+        o.PropertyNameCaseInsensitive = true;
+        o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    });
 
     /// <summary>
     /// 创建并配置独立 HttpClient（用于没有 DI 工厂的模型目录客户端）。

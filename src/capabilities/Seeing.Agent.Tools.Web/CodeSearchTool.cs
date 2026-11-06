@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.Support;
+using Seeing.Serialization;
 using System.Text;
 using System.Text.Json;
 
@@ -98,7 +99,7 @@ public class CodeSearchTool : ToolBase
             var request = new HttpRequestMessage(HttpMethod.Post, $"{ApiBaseUrl}{ApiEndpoint}");
             request.Headers.Add("Accept", "application/json, text/event-stream");
             request.Content = new StringContent(
-                JsonSerializer.Serialize(mcpRequest),
+                JsonSerializer.Serialize(mcpRequest, SeeingJson.Readable),
                 Encoding.UTF8,
                 "application/json");
 

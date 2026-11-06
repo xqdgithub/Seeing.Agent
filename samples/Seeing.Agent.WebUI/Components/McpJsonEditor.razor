@@ -80,7 +80,7 @@
         try
         {
             var doc = JsonDocument.Parse(_jsonContent);
-            var options = new JsonSerializerOptions { WriteIndented = true };
+            var options = Seeing.Serialization.SeeingJson.ReadableIndented;
             _jsonContent = JsonSerializer.Serialize(doc.RootElement, options);
             _isValid = true;
         }

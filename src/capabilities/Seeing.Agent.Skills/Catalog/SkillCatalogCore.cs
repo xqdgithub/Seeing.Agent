@@ -5,7 +5,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Skills;
-
+using Seeing.Serialization;
 namespace Seeing.Agent.Skills.Catalog;
 
 /// <summary>
@@ -646,7 +646,7 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
             var json = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
             var data = JsonSerializer.Deserialize<DisabledSkillsData>(
                 json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                SeeingJson.Create(o => o.PropertyNameCaseInsensitive = true));
 
             var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var name in data?.DisabledSkills ?? [])

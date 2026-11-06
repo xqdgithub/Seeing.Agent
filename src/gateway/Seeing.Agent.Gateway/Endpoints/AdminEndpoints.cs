@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Gateway.Client;
+using Seeing.Serialization;
 using Seeing.Session.Core;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -13,11 +14,11 @@ namespace Seeing.Agent.Gateway.Endpoints;
 
 public static class AdminEndpoints
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions JsonOptions = SeeingJson.Create(o =>
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
+        o.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    });
 
     private static DateTime _startTime = DateTime.UtcNow;
 

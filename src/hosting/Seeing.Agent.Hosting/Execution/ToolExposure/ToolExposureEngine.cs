@@ -1,5 +1,6 @@
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Serialization;
 using Seeing.TokenEstimation;
 using System.Text;
 using System.Text.Json;
@@ -192,7 +193,7 @@ internal static class ToolExposureEngine
         var description = NormalizeWhitespace(schema.Function?.Description);
         var signature = $"{id}({DescribeParameters(schema.Function?.Parameters)}): {Truncate(description, lineMaxChars)}";
         return new ToolMeta(id, DeriveNamespace(id), Truncate(signature, lineMaxChars), schema,
-            counter.Estimate(JsonSerializer.Serialize(schema)), index);
+            counter.Estimate(JsonSerializer.Serialize(schema, SeeingJson.Readable)), index);
     }
 
     private static ExposedTool ToExposed(ToolMeta meta, ToolExposureMode mode) =>

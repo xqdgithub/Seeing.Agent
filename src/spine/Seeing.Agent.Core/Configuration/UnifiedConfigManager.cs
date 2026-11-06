@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Configuration;
+using Seeing.Serialization;
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -18,15 +19,15 @@ namespace Seeing.Agent.Core.Configuration;
 /// </summary>
 public sealed class UnifiedConfigManager : IConfigSectionStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions JsonOptions = SeeingJson.Create(indented: true, o =>
     {
-        PropertyNameCaseInsensitive = true,
-        WriteIndented = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true,
-        Converters = { new JsonStringEnumConverter(), new PluginSpecConverter() }
-    };
+        o.PropertyNameCaseInsensitive = true;
+        o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        o.ReadCommentHandling = JsonCommentHandling.Skip;
+        o.AllowTrailingCommas = true;
+        o.Converters.Add(new JsonStringEnumConverter());
+        o.Converters.Add(new PluginSpecConverter());
+    });
 
     private readonly IWorkspaceProvider _workspace;
     private readonly ILogger<UnifiedConfigManager> _logger;
@@ -743,7 +744,7 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
 
     private async Task WriteJsonAsync(string path, JsonObject root, CancellationToken ct)
     {
-        var json = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        var json = root.ToJsonString(SeeingJson.ReadableIndented);
         await WriteTextAsync(path, json, ct);
     }
 

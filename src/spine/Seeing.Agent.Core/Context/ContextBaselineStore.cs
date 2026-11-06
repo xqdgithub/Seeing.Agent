@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
+using Seeing.Serialization;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Core.Context;
@@ -12,14 +13,14 @@ namespace Seeing.Agent.Core.Context;
 /// </summary>
 internal sealed class ContextBaselineStore
 {
-    private static readonly JsonSerializerOptions s_options = new()
+    private static readonly JsonSerializerOptions s_options = SeeingJson.Create(o =>
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        o.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         // 省略 null 字段，控制会话文件体积；缺失字段由模型默认值承接。
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
         // 枚举与 [Flags] 组合值以名称（可读）落盘。
-        Converters = { new JsonStringEnumConverter() }
-    };
+        o.Converters.Add(new JsonStringEnumConverter());
+    });
 
     private readonly ILogger<ContextBaselineStore> _logger;
 

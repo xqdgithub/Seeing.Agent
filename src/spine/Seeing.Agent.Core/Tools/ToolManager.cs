@@ -9,6 +9,7 @@ using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Decorators;
+using Seeing.Serialization;
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
@@ -355,10 +356,8 @@ namespace Seeing.Agent.Core.Tools
             try
             {
                 var json = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
-                var data = JsonSerializer.Deserialize<DisabledToolsData>(json, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+                var data = JsonSerializer.Deserialize<DisabledToolsData>(
+                    json, SeeingJson.Create(o => o.PropertyNameCaseInsensitive = true));
 
                 if (data?.DisabledTools != null)
                 {
@@ -386,10 +385,7 @@ namespace Seeing.Agent.Core.Tools
             }
 
             var data = new DisabledToolsData { DisabledTools = disabledTools.ToList() };
-            var json = JsonSerializer.Serialize(data, new JsonSerializerOptions
-            {
-                WriteIndented = true
-            });
+            var json = JsonSerializer.Serialize(data, SeeingJson.ReadableIndented);
 
             await File.WriteAllTextAsync(filePath, json, ct).ConfigureAwait(false);
         }

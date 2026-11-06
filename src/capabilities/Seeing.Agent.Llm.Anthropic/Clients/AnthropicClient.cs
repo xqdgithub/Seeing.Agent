@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Serialization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -116,7 +117,7 @@ public class AnthropicClient : IChatCompletionClient, IDisposable
         _logger.LogDebug("Anthropic 请求: Model={Model}, Messages={Count}", request.Model, request.Messages.Count);
 
         var anthropicRequest = BuildAnthropicRequest(request, false);
-        var json = JsonSerializer.Serialize(anthropicRequest);
+        var json = JsonSerializer.Serialize(anthropicRequest, SeeingJson.Readable);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, "messages") { Content = content };
@@ -142,7 +143,7 @@ public class AnthropicClient : IChatCompletionClient, IDisposable
         _logger.LogDebug("Anthropic 流式请求: Model={Model}", request.Model);
 
         var anthropicRequest = BuildAnthropicRequest(request, true);
-        var json = JsonSerializer.Serialize(anthropicRequest);
+        var json = JsonSerializer.Serialize(anthropicRequest, SeeingJson.Readable);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, "messages")
@@ -169,7 +170,7 @@ public class AnthropicClient : IChatCompletionClient, IDisposable
         // message_start 事件的 message.usage.input_tokens 缓存：
         // Anthropic 流式下 input_tokens 只在 message_start 出现，message_delta 的 usage 只含最终 output_tokens
         var streamInputTokens = 0;
-        var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var jsonOpts = SeeingJson.Create(o => o.PropertyNameCaseInsensitive = true);
 
         string? line;
         while ((line = await reader.ReadLineAsync(cancellationToken)) != null)
@@ -659,7 +660,7 @@ public class AnthropicClient : IChatCompletionClient, IDisposable
                     Function = new FunctionCall
                     {
                         Name = block.Name ?? "",
-                        Arguments = JsonSerializer.Serialize(block.Input)
+                        Arguments = JsonSerializer.Serialize(block.Input, SeeingJson.Readable)
                     }
                 });
             }

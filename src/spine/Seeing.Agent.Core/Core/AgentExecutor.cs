@@ -14,6 +14,7 @@ using Seeing.Agent.Core.Detection;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Helpers;
 using Seeing.Agent.Core.Llm;
+using Seeing.Serialization;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Core.Reminders;
@@ -947,7 +948,7 @@ public class AgentExecutor : IAgentExecutor
         if (exposed?.Schema is null)
             return null;
 
-        var json = JsonSerializer.Serialize(exposed.Schema);
+        var json = JsonSerializer.Serialize(exposed.Schema, SeeingJson.Readable);
         return json.Length <= MaxDefinitionChars ? json : null;
     }
 

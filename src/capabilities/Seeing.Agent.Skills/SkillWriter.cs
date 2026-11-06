@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Skills;
+using Seeing.Serialization;
 using Seeing.Agent.Skills.Catalog;
 
 namespace Seeing.Agent.Skills;
@@ -751,7 +752,7 @@ public sealed class SkillWriter : ISkillWriter
         };
         var json = System.Text.Json.JsonSerializer.Serialize(
             data,
-            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            SeeingJson.ReadableIndented);
 
         var temp = $"{filePath}{TempFileInfix}{Guid.NewGuid():N}";
         try

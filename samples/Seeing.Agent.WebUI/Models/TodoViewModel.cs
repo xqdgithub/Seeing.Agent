@@ -191,10 +191,8 @@ public class TodoListViewModel
 
         try
         {
-            var options = new System.Text.Json.JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            };
+            var options = Seeing.Serialization.SeeingJson.Create(
+                o => o.PropertyNameCaseInsensitive = true);
 
             // 尝试解析为数组
             using var doc = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonDocument>(json, options);

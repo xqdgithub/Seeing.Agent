@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
+using Seeing.Serialization;
 using System.Text;
 using System.Text.Json;
 
@@ -15,11 +16,8 @@ namespace Seeing.Provider.TypeSafeApi;
 /// </summary>
 public sealed class TypeSafeApiConfigStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNameCaseInsensitive = true,
-    };
+    private static readonly JsonSerializerOptions JsonOptions = SeeingJson.Create(indented: true,
+        o => o.PropertyNameCaseInsensitive = true);
 
     /// <summary>已废弃的旧配置文件名（只读回退，不再写入）。</summary>
     public const string LegacyFileName = "systemone.json";

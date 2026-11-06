@@ -1,4 +1,6 @@
 ﻿using System.Security.Cryptography;
+using System.Text.Json;
+using Seeing.Serialization;
 
 namespace Seeing.Agent.Abstractions.Permissions;
 
@@ -60,7 +62,8 @@ public sealed class AgentPermissionPolicy
 
     private static string ComputeHash(IReadOnlyList<PermissionRuleEntry> rules)
     {
-        var json = JsonSerializer.Serialize(rules);
+        // 签名字节稳定性优先：这里必须用默认编码器，改成可读编码器会让既有 ContentHash 全部改变。
+        var json = JsonSerializer.Serialize(rules, SeeingJson.Signature);
         var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json));
         return Convert.ToHexStringLower(bytes);
     }
@@ -71,7 +74,8 @@ public sealed class AgentPermissionPolicy
     /// <param name="hmacKey">HMAC 密钥</param>
     public void Sign(byte[] hmacKey)
     {
-        var payload = JsonSerializer.SerializeToUtf8Bytes(new { Id, AgentName, Version, Rules, DefaultEffect });
+        // 签名字节稳定性优先：必须用默认编码器（与 VerifySignature 保持一致）。
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new { Id, AgentName, Version, Rules, DefaultEffect }, SeeingJson.Signature);
         using var hmac = new HMACSHA256(hmacKey);
         var signature = hmac.ComputeHash(payload);
         Signature = Convert.ToBase64String(signature);
@@ -85,7 +89,8 @@ public sealed class AgentPermissionPolicy
     public bool VerifySignature(byte[] hmacKey)
     {
         if (string.IsNullOrEmpty(Signature)) return false;
-        var payload = JsonSerializer.SerializeToUtf8Bytes(new { Id, AgentName, Version, Rules, DefaultEffect });
+        // 签名字节稳定性优先：必须与 Sign 使用同一默认编码器。
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new { Id, AgentName, Version, Rules, DefaultEffect }, SeeingJson.Signature);
         using var hmac = new HMACSHA256(hmacKey);
         var expected = Convert.ToBase64String(hmac.ComputeHash(payload));
         return Signature == expected;

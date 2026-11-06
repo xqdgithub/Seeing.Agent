@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Configuration;
+using Seeing.Serialization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -18,12 +19,11 @@ public sealed class WeComSessionTracker
     private readonly string _stateFilePath;
     private readonly Dictionary<string, WeComSessionEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions JsonOptions = SeeingJson.Create(indented: true, o =>
     {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
+        o.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    });
 
     public WeComSessionTracker(
         IOptions<WeComOptions> options,

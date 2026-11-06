@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Models;
+using Seeing.Serialization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -10,13 +11,12 @@ namespace Seeing.Agent.Scheduler.Persistence;
 /// <summary>JSON 文件持久化（jobs.json + jobs_history/）</summary>
 public sealed class JsonScheduleRepository : IScheduleRepository
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions JsonOptions = SeeingJson.Create(indented: true, o =>
     {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new JsonStringEnumConverter() }
-    };
+        o.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        o.Converters.Add(new JsonStringEnumConverter());
+    });
 
     private readonly IWorkspaceProvider _workspace;
     private readonly ILogger<JsonScheduleRepository> _logger;

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
+using Seeing.Serialization;
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text;
@@ -539,7 +540,7 @@ public sealed class QQHttpApiClient
 
         using var request = new HttpRequestMessage(method, path.TrimStart('/'))
         {
-            Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
+            Content = new StringContent(JsonSerializer.Serialize(body, SeeingJson.Readable), Encoding.UTF8, "application/json")
         };
         // 请求级 Header，避免并发修改 HttpClient.DefaultRequestHeaders
         request.Headers.Authorization = new AuthenticationHeaderValue("QQBot", token);

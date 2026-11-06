@@ -33,6 +33,7 @@
 - [WebUI 渲染性能 Release Notes](docs/architecture/27-webui-render-performance-release-notes.md)
 - [LLM 能力抽象 Release Notes](docs/architecture/28-llm-capability-abstraction-release-notes.md)
 - [桌面宿主 Release Notes](docs/architecture/30-desktop-host-release-notes.md)
+- [可读 JSON 序列化统一 Release Notes](docs/architecture/31-readable-json-release-notes.md)
 
 设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
 

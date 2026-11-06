@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Seeing.Serialization;
 
 namespace Seeing.Gateway.WeCom;
 
@@ -235,11 +236,11 @@ public static class WeComWsJson
 
     private static JsonSerializerOptions Create()
     {
-        return new JsonSerializerOptions
+        return SeeingJson.Create(o =>
         {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            PropertyNameCaseInsensitive = true,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-        };
+            o.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+            o.PropertyNameCaseInsensitive = true;
+            o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        });
     }
 }

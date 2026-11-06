@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using Seeing.Serialization;
 
 namespace Seeing.Agent.Core.Context;
 
@@ -14,8 +15,8 @@ namespace Seeing.Agent.Core.Context;
 /// </summary>
 internal static class CanonicalJson
 {
-    // 非 ASCII 原样输出；仍转义引号、反斜杠与控制字符。
-    private static readonly JavaScriptEncoder s_encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
+    // 非 ASCII 原样输出；仍转义引号、反斜杠与控制字符。与全项目其余 JSON 输出共用同一编码器。
+    private static readonly JavaScriptEncoder s_encoder = SeeingJson.ReadableEncoder;
 
     /// <summary>
     /// 输出规范化 JSON 文本。

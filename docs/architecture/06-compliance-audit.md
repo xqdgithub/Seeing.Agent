@@ -201,6 +201,17 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 > `SystemOneClientFactoryResolver` 已随 SystemOne 平行栈合流删除（原 `Abstractions/SystemOne/` 整个命名空间移除）。
 >
 > **未列入但同为静态逻辑**：`LlmRetryPolicy`（`Abstractions/Llm/LlmRetryPolicy.cs`，退避计算与可重试判定）。它早于本次重构存在，且含策略而非纯映射；是否归入豁免需单独评估，暂标为**已知遗留**。（同文件的 `LlmRetrySettings` 是 `Core/Llm/RetryLlmClientDecorator.cs` 的内部类型，不在 Abstractions，无需豁免。）
+
+### JSON 选项单一出口（2026-11-06）
+
+`Seeing.Serialization.SeeingJson`（物理位置 `src/primitives/Seeing.Session/Serialization/SeeingJson.cs`）是全项目唯一的 `JsonSerializerOptions` 构造点。
+
+**为何寄居 `Seeing.Session` 而非 `Abstractions`**：`Seeing.Session` 是依赖地板（`Abstractions` → `Seeing.Session`，不反向）。产出转义 JSON 最多的 `FileSessionStore` 位于最低层；若把工具放 `Abstractions`，会话落盘无法复用，统一失效。命名空间取横切语义 `Seeing.Serialization`，程序集仍属原语层，不违反分层。
+
+**豁免（必须保持默认编码器）**：参与 HMAC / 内容哈希的序列化使用 `SeeingJson.Signature`——`AgentPermissionPolicy.ComputeHash/Sign/VerifySignature`、`AgentPermissionPolicyExtensions.ComputeHash`、`PermissionIntegrity.ComputeIntegrityHash`。改动这些会让既有签名与 `ContentHash` 全部失效。
+
+**守门**：`tests/spine/Seeing.Agent.Invariants.Tests/Invariants/JsonOptionsInvariantTests.cs` 扫描 `src`/`plugs`/`samples`，禁止裸 `new JsonSerializerOptions`。详见 `docs/architecture/31-readable-json-release-notes.md`。
+
 >
 > `PermissionRuleEntry` 匹配算法（~140 行）与 `ConfigSectionOptionsMonitor` 为已知契约层实现，维持现状（下沉需单独评估，不在本轮范围）。
 

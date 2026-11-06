@@ -127,7 +127,8 @@
 
             var historyFile = GetHistoryFilePath();
             Directory.CreateDirectory(Path.GetDirectoryName(historyFile)!);
-            var json = System.Text.Json.JsonSerializer.Serialize(_recentWorkspaces);
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                _recentWorkspaces, Seeing.Serialization.SeeingJson.Readable);
             File.WriteAllText(historyFile, json);
         }
         catch

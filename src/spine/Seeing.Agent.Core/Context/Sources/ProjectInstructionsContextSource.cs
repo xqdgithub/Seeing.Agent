@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Core.Instructions;
+using Seeing.Serialization;
 
 namespace Seeing.Agent.Core.Context.Sources;
 
@@ -245,7 +246,7 @@ public sealed class ProjectInstructionsContextSource : IContextSource, IContextS
             [ProjectInstructions.MetadataKeys.Reason] = parts.Reason,
             [ProjectInstructions.MetadataKeys.Cwd] = parts.Cwd,
             [ProjectInstructions.MetadataKeys.Paths] =
-                JsonSerializer.Serialize(parts.Files.Select(file => file.Path))
+                JsonSerializer.Serialize(parts.Files.Select(file => file.Path), SeeingJson.Readable)
         };
     }
 

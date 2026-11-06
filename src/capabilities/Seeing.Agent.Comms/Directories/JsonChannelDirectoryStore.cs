@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
+using Seeing.Serialization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -12,13 +13,12 @@ namespace Seeing.Agent.Comms.Directories;
 /// </summary>
 public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions JsonOptions = SeeingJson.Create(indented: true, o =>
     {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new JsonStringEnumConverter() },
-    };
+        o.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        o.Converters.Add(new JsonStringEnumConverter());
+    });
 
     private readonly IOptions<CommsOptions> _options;
     private readonly ILogger<JsonChannelDirectoryStore> _logger;

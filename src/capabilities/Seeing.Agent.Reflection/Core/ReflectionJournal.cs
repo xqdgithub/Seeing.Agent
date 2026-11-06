@@ -1,9 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Seeing.Agent.Reflection.Abstractions;
+using Seeing.Serialization;
 
 namespace Seeing.Agent.Reflection.Core;
 
@@ -25,13 +25,11 @@ public sealed class ReflectionJournal : IReflectionJournal
     /// </summary>
     public const int MaxFileNameLength = 100;
 
-    private static readonly JsonSerializerOptions SerializerOptions = new()
+    private static readonly JsonSerializerOptions SerializerOptions = SeeingJson.Create(indented: true, o =>
     {
-        WriteIndented = true,
         // 中文不转义：日志是给人读的，\uXXXX 会让排查成本陡增。
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        Converters = { new JsonStringEnumConverter() }
-    };
+        o.Converters.Add(new JsonStringEnumConverter());
+    });
 
     private readonly string _baseDirectory;
 

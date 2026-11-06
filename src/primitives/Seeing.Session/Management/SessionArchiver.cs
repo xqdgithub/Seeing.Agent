@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Serialization;
 using Seeing.Session.Core;
 using System.IO.Compression;
 using System.Text.Json;
@@ -51,10 +52,7 @@ namespace Seeing.Session.Management
                 session.Status = SessionStatus.Archived;
 
                 // 序列化
-                var json = JsonSerializer.Serialize(session, new JsonSerializerOptions
-                {
-                    WriteIndented = true
-                });
+                var json = JsonSerializer.Serialize(session, SeeingJson.ReadableIndented);
 
                 // 压缩并保存
                 Directory.CreateDirectory(_archivePath);

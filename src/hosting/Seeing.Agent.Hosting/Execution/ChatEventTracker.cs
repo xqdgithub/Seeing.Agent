@@ -1,6 +1,7 @@
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Serialization;
 using Seeing.Session.Core;
 using System.Collections.Immutable;
 using System.Text.Json;
@@ -320,7 +321,7 @@ internal class ChatEventTracker
         if (arguments is string str)
             return str;
 
-        return JsonSerializer.Serialize(arguments);
+        return JsonSerializer.Serialize(arguments, SeeingJson.Readable);
     }
 
     /// <summary>
@@ -369,7 +370,7 @@ internal class ChatEventTracker
         {
             null => null,
             string s => s,
-            _ => JsonSerializer.Serialize(arguments)
+            _ => JsonSerializer.Serialize(arguments, SeeingJson.Readable)
         };
         if (string.IsNullOrWhiteSpace(json))
             return;

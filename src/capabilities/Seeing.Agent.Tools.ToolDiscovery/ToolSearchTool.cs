@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.Support;
+using Seeing.Serialization;
 using System.Text;
 using System.Text.Json;
 
@@ -248,17 +249,14 @@ public sealed class ToolSearchTool : ToolBase
     }
 
     /// <summary>
-    /// 非 ASCII 不转义的序列化选项。
+    /// 非 ASCII 不转义的序列化选项（统一取自 <see cref="SeeingJson"/>）。
     /// <para>
-    /// <see cref="JsonSerializer"/> 默认把中文转成 <c>\uXXXX</c>（每字 6 字符，膨胀 6 倍），
+    /// <see cref="JsonSerializer"/> 默认把中文转成 <c>\uXXXX</c>（每字 6 字符），
     /// 而这份定义是**给人看的模型输入**，不是要再被解析的传输载荷。放开转义后
     /// <c>cron_create</c> 这类工具的 full 输出从约 1.4k 字符降到约 0.4k。
     /// </para>
     /// </summary>
-    private static readonly JsonSerializerOptions s_readableJson = new()
-    {
-        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
+    private static readonly JsonSerializerOptions s_readableJson = SeeingJson.Readable;
 
     private static string GetFullDefinition(ExposedTool entry)
     {

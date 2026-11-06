@@ -4,7 +4,7 @@ using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Tools.Support;
-using System.Text.Encodings.Web;
+using Seeing.Serialization;
 using System.Text.Json;
 
 namespace Seeing.Agent.Tools.SystemOne;
@@ -15,12 +15,11 @@ public sealed class SystemOneTool : BuiltInToolBase
     private const string AnswersBegin = "<<<SYSTEMONE_ANSWERS_BEGIN>>>";
     private const string AnswersEnd = "<<<SYSTEMONE_ANSWERS_END>>>";
 
-    private static readonly JsonSerializerOptions s_outputOptions = new()
+    private static readonly JsonSerializerOptions s_outputOptions = SeeingJson.Create(o =>
     {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         // 能力端口 DTO 不带 wire 注解；输出沿用原 SystemOne 的小写字段名（model/answers/noul/input_tokens…）
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-    };
+        o.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
+    });
 
     /// <summary>无可用 Decision 模型时的错误文案（与 llm.typesafe 协议包一致）。</summary>
     internal const string NoDecisionModelMessage =

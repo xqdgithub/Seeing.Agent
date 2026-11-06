@@ -5,6 +5,7 @@ using Seeing.Agent.Gateway.Configuration;
 using Seeing.ConfigSchema;
 using Seeing.Gateway.Client;
 using Seeing.Gateway.Plugins;
+using Seeing.Serialization;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using System.Text.Json;
@@ -21,13 +22,12 @@ namespace Seeing.Agent.WebUI.Services;
 /// </summary>
 public sealed class GatewayClientConfigService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions JsonOptions = SeeingJson.Create(indented: true, o =>
     {
-        PropertyNameCaseInsensitive = true,
-        WriteIndented = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new JsonStringEnumConverter() }
-    };
+        o.PropertyNameCaseInsensitive = true;
+        o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        o.Converters.Add(new JsonStringEnumConverter());
+    });
 
     private readonly IConfigSectionStore _configStore;
     private readonly IWorkspaceProvider _workspaceProvider;
@@ -237,7 +237,7 @@ public sealed class GatewayClientConfigService
         WriteCommonOptions(root, model.Agent, model.Model, model.Mode);
 
         var path = GetRuntimeConfigPath(model.ChannelId);
-        await File.WriteAllTextAsync(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }), ct);
+        await File.WriteAllTextAsync(path, root.ToJsonString(SeeingJson.ReadableIndented), ct);
     }
 
     private static GatewayChannelEntry CreateRegistryEntry(

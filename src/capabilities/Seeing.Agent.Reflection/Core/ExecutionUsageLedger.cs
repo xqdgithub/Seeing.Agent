@@ -1,9 +1,9 @@
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Reflection.Abstractions;
+using Seeing.Serialization;
 
 namespace Seeing.Agent.Reflection.Core;
 
@@ -20,12 +20,10 @@ namespace Seeing.Agent.Reflection.Core;
 /// </summary>
 public sealed class ExecutionUsageLedger : IExecutionUsageLedger
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
+    private static readonly JsonSerializerOptions SerializerOptions = SeeingJson.Create(indented: true, o =>
     {
-        WriteIndented = true,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        Converters = { new JsonStringEnumConverter() }
-    };
+        o.Converters.Add(new JsonStringEnumConverter());
+    });
 
     private readonly string _filePath;
     private readonly object _gate = new();

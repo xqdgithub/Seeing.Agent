@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Serialization;
 using Seeing.Session.Core;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
@@ -35,12 +36,11 @@ namespace Seeing.Session.Storage
         {
             _logger = logger;
             _baseDirectory = baseDirectory ?? GetDefaultSessionDirectory();
-            _jsonOptions = new JsonSerializerOptions
+            _jsonOptions = SeeingJson.Create(indented: true, o =>
             {
-                WriteIndented = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                PropertyNameCaseInsensitive = true
-            };
+                o.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+                o.PropertyNameCaseInsensitive = true;
+            });
 
             EnsureDirectoryExists();
         }

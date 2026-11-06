@@ -72,7 +72,7 @@ public class ChatMessage
         var result = $"{Role}:\n{Content}";
         if (ToolCalls?.Count > 0)
         {
-            result += $"\nToolCalls: {System.Text.Json.JsonSerializer.Serialize(ToolCalls.Select(tc => new { tc.Id, tc.Function?.Name }))}";
+            result += $"\nToolCalls: {System.Text.Json.JsonSerializer.Serialize(ToolCalls.Select(tc => new { tc.Id, tc.Function?.Name }), Seeing.Serialization.SeeingJson.Readable)}";
         }
         if (!string.IsNullOrEmpty(ToolCallId))
         {

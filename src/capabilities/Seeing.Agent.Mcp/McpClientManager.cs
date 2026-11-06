@@ -10,6 +10,7 @@ using Seeing.Agent.Mcp.Core;
 using Seeing.Agent.Mcp.Factory;
 using Seeing.Agent.Mcp.Management;
 using Seeing.Agent.Mcp.Policy;
+using Seeing.Serialization;
 using Seeing.Agent.Mcp.Validation;
 using System.Collections.Concurrent;
 using System.Net;
@@ -427,11 +428,7 @@ namespace Seeing.Agent.Mcp
         /// <inheritdoc />
         public string GetConfigsAsJson(ConfigLevel level, bool indented = true)
         {
-            var options = new JsonSerializerOptions
-            {
-                WriteIndented = indented,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            };
+            var options = SeeingJson.Create(indented, o => o.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
 
             var configs = GetAllConfigs();
             var wrapper = new { mcpServers = configs };

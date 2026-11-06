@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Net.WebSockets;
+using Seeing.Serialization;
 using System.Text;
 using System.Text.Json;
 
@@ -310,7 +311,7 @@ public sealed class QQWebSocketClient : IAsyncDisposable
     {
         if (_ws is not { State: WebSocketState.Open })
             return;
-        var json = JsonSerializer.Serialize(payload);
+        var json = JsonSerializer.Serialize(payload, SeeingJson.Readable);
         var bytes = Encoding.UTF8.GetBytes(json);
         await _ws.SendAsync(bytes, WebSocketMessageType.Text, true, cancellationToken).ConfigureAwait(false);
     }

@@ -11,12 +11,12 @@ namespace Seeing.Agent.Cli.Services;
 /// </summary>
 public sealed class OneShotOutput
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions JsonOptions = Seeing.Serialization.SeeingJson.Create(o =>
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new JsonStringEnumConverter() },
-    };
+        o.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        o.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        o.Converters.Add(new JsonStringEnumConverter());
+    });
 
     private readonly TextWriter _stdout;
     private readonly TextWriter _stderr;

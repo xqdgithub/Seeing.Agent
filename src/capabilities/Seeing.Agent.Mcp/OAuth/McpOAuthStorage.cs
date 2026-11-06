@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Serialization;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
@@ -69,7 +70,7 @@ namespace Seeing.Agent.Mcp.OAuth
         public async Task SaveTokenAsync(string mcpName, McpOAuthToken token)
         {
             var filePath = GetTokenPath(mcpName);
-            var json = JsonSerializer.Serialize(token);
+            var json = JsonSerializer.Serialize(token, SeeingJson.Readable);
             var bytes = Encoding.UTF8.GetBytes(json);
 
             var encrypted = Protect(bytes);
