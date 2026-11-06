@@ -54,11 +54,15 @@ public sealed class SiliconFlowProvider : ConfigurableProviderBase<SiliconFlowOp
     public override string Protocol => ProviderTypes.OpenAi;
 
     /// <summary>
-    /// 作者默认能力：chat + embedding。
-    /// <para>不含 rerank/语音——OpenAI 协议工厂目前没有 rerank 实现，声明了会在 Router 第 5 层报错。</para>
+    /// 作者默认能力：chat + embedding + 语音转写。
+    /// <para>不含 rerank/语音合成——OpenAI 协议工厂目前没有 rerank 实现，声明了会在 Router 第 5 层报错。
+    /// 语音合成同理未声明：工厂虽已实现 <c>/audio/speech</c>，但当前没有消费方，声明只是占位。</para>
+    /// <para><b>语音转写已实测可用</b>：<c>POST /v1/audio/transcriptions</c> 接受
+    /// <c>FunAudioLLM/SenseVoiceSmall</c>、<c>TeleAI/TeleSpeechASR</c>、
+    /// <c>XingChenAGI/XingChenASR-V3.2</c> 等模型，与 <c>OpenAiSpeechTranscriptionClient</c> 形状一致。</para>
     /// </summary>
     protected override LlmCapabilityKind DefaultCapabilities =>
-        LlmCapabilityKind.Chat | LlmCapabilityKind.Embedding;
+        LlmCapabilityKind.Chat | LlmCapabilityKind.Embedding | LlmCapabilityKind.SpeechTranscription;
 
     /// <summary>无 API Key 时不创建客户端，连接测试直接失败。</summary>
     protected override bool HasUsableCredentials => !string.IsNullOrWhiteSpace(Options.ApiKey);

@@ -30,11 +30,16 @@ public class MiMoProviderTests
     }
 
     [Fact]
-    public void Capabilities_ShouldDeclareChatOnly()
+    public void Capabilities_ShouldDeclareChatAndSpeechTranscription()
     {
-        // MiMo 走 openai 协议的 chat 端口；embedding 等未经工厂实现，不得虚报能力
+        // chat 走 openai 协议工厂；语音转写走 MiMo 专有的 chat/completions 形状。
+        // embedding 等未经实现，不得虚报能力。
         var sut = CreateSut(apiKey: null);
-        sut.Capabilities.Should().Be(LlmCapabilityKind.Chat);
+
+        sut.Capabilities.Should().HaveFlag(LlmCapabilityKind.Chat);
+        sut.Capabilities.Should().HaveFlag(LlmCapabilityKind.SpeechTranscription);
+        sut.Capabilities.Should().NotHaveFlag(LlmCapabilityKind.Embedding);
+        sut.Capabilities.Should().NotHaveFlag(LlmCapabilityKind.SpeechSynthesis);
     }
 
     [Fact]
@@ -49,8 +54,10 @@ public class MiMoProviderTests
     }
 
     [Fact]
-    public void GetClient_NonChatCapability_ShouldReturnNullWithoutTouchingFactory()
+    public void GetClient_UnsupportedCapability_ShouldReturnNull()
     {
+        // 语音转写由 MiMo 专有客户端提供（见 MiMoSpeechTranscriptionClientTests），
+        // 这里验证其余能力仍按契约返回 null 且不碰工厂。
         var factory = new Mock<ILlmClientFactory>();
         var sut = CreateSut(apiKey: "sk-test", factory: Resolver(OpenAiFactory(factory)));
 
@@ -61,7 +68,6 @@ public class MiMoProviderTests
             LlmCapabilityKind.Rerank,
             LlmCapabilityKind.Decision,
             LlmCapabilityKind.SpeechSynthesis,
-            LlmCapabilityKind.SpeechTranscription,
             LlmCapabilityKind.ImageGeneration,
             LlmCapabilityKind.VideoGeneration
         })

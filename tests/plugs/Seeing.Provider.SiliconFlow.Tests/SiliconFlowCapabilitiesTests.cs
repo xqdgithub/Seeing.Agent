@@ -26,6 +26,22 @@ public class SiliconFlowCapabilitiesTests
             "SiliconFlow 端点提供 OpenAI 兼容的 /v1/embeddings；装完即应可用");
     }
 
+    /// <summary>
+    /// 语音转写：SiliconFlow 的 <c>/v1/audio/transcriptions</c> 与我们的
+    /// <c>OpenAiSpeechTranscriptionClient</c> 形状一致（已用真端点验证），因此直接声明即可路由。
+    /// <para>不声明合成：虽然端点有 <c>/v1/audio/speech</c>，但当前无消费方，声明只是占位。</para>
+    /// </summary>
+    [Fact]
+    public void DefaultCapabilities_ShouldIncludeSpeechTranscriptionButNotSynthesis()
+    {
+        var sut = CreateSut(out _, out _, _ => null);
+
+        sut.Capabilities.Should().HaveFlag(LlmCapabilityKind.SpeechTranscription,
+            "端点提供 OpenAI 兼容的 /v1/audio/transcriptions；装完即可用于语音输入");
+        sut.Capabilities.Should().NotHaveFlag(LlmCapabilityKind.SpeechSynthesis,
+            "无消费方的能力不声明，避免制造假的「可路由」标记");
+    }
+
     [Fact]
     public void GetClient_Embedding_ShouldCreateEmbeddingClient()
     {

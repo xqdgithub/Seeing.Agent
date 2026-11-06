@@ -25,7 +25,7 @@ public static class ModelTypeInference
         if (ContainsAny(id, "rerank", "reranker", "bge-reranker"))
             return [ModelType.Rerank];
 
-        if (ContainsAny(id, "whisper", "-tts", "tts-", "speech", "cosyvoice", "sensevoice"))
+        if (ContainsAny(id, "whisper", "-tts", "tts-", "speech", "cosyvoice", "sensevoice", "asr", "-stt"))
             return [ModelType.Speech];
 
         if (ContainsAny(id, "stable-diffusion", "sdxl", "flux", "dall-e", "kolors", "-image", "image-"))

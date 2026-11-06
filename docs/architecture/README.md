@@ -47,6 +47,8 @@
 | [29 TypeSafe Provider 下沉为插件 Release Notes](29-typesafe-provider-extraction-release-notes.md) | `llm.systemone`→`llm.typesafe`（只管协议）、Provider 下沉 `provider.typesafe-api`（`Extension` 来源）、`systemone.json` 只读回退、`typesafe-api/` 前缀与迁移 |
 | [30 桌面宿主 Release Notes](30-desktop-host-release-notes.md) | `Seeing.Agent.Desktop`（同进程 Kestrel + 原生 WebView）、`WebUiHost.BuildAsync` 单一真相源、`StaticWebAssetBasePath=/`、`--urls` 走命令行避免污染子进程、图标生成与已知边界 |
 | [31 可读 JSON 序列化统一 Release Notes](31-readable-json-release-notes.md) | `Seeing.Serialization.SeeingJson` 单一出口（中文原样）、55 处调用点迁移、签名/哈希三处显式豁免 `Signature`、`JsonOptionsInvariantTests` 防漂移 |
+| [32 Provider 能力展示 Release Notes](32-provider-capability-display-release-notes.md) | 生效能力常显（`ProviderInfo.Capabilities`）、配置覆盖/插件默认/协议缺省三态来源、`ConfigFieldSchema.Placeholder`、空下拉自我说明 |
+| [33 Provider 语音能力接入 Release Notes](33-provider-speech-capability-release-notes.md) | SiliconFlow 声明 ASR、MiMo 专有客户端（chat/completions + base64）、代理统一上提、探针 20ms→200ms、`ModalityInference`、语音方向性前置校验 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 

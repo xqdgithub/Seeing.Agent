@@ -1329,7 +1329,26 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
                 return false;
         }
 
-        return true;
+        // 语音有方向：合成看 modalities.output、转写看 modalities.input（决议 24，与 Router 第 3 层同口径）。
+        // 不在这里拦就会让用户把「标了 Speech 但没写 audio」的模型设成默认，运行时才炸。
+        return CoversSpeechModality(config, capability);
+    }
+
+    /// <summary>
+    /// 语音能力的模态检查：<c>Speech</c> 类型同时覆盖合成与转写，必须靠 <c>Modalities</c> 消歧。
+    /// <para>非语音能力一律通过（此项只补充语音的方向性约束）。</para>
+    /// </summary>
+    private static bool CoversSpeechModality(ModelConfig config, LlmCapabilityKind capability)
+    {
+        var isSynthesis = capability.HasFlag(LlmCapabilityKind.SpeechSynthesis);
+        var isTranscription = capability.HasFlag(LlmCapabilityKind.SpeechTranscription);
+
+        if (!isSynthesis && !isTranscription)
+            return true;
+
+        var modalities = isSynthesis ? config.Modalities?.Output : config.Modalities?.Input;
+        return modalities is not null
+               && modalities.Any(value => string.Equals(value, "audio", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>能力位集拆成单值位序列（枚举是唯一出处，不手拼名字）。</summary>

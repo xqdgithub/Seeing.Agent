@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Llm.Support.Speech;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 
@@ -177,14 +178,14 @@ public sealed class OpenAiSpeechTranscriptionClient : ISpeechTranscriptionClient
         try
         {
             // 决议 25：传极短静音音频真实探针，校验响应结构合法（能解析即模型可用；空转写文本也算通过）。
-            using var probe = new MemoryStream(BuildSilentWavBytes());
+            using var probe = new MemoryStream(SilentWavProbe.CreateBytes());
             var result = await TranscribeAsync(
                 new TranscriptionRequest
                 {
                     Model = modelId,
                     Audio = probe,
-                    MimeType = "audio/wav",
-                    FileName = "connection-probe.wav"
+                    MimeType = SilentWavProbe.MimeType,
+                    FileName = SilentWavProbe.FileName
                 },
                 call, ct);
             return result.Text is not null;
@@ -260,35 +261,6 @@ public sealed class OpenAiSpeechTranscriptionClient : ISpeechTranscriptionClient
             ResolveInterceptors(),
             _config.Id,
             _config.Type);
-    }
-
-    /// <summary>极短静音 WAV（20ms、8kHz、16bit 单声道）：连接测试探针用。</summary>
-    private static byte[] BuildSilentWavBytes()
-    {
-        const int sampleRate = 8000;
-        const int samples = 160; // 20ms
-        var dataSize = samples * 2;
-        var bytes = new byte[44 + dataSize];
-
-        void WriteString(int offset, string value) => System.Text.Encoding.ASCII.GetBytes(value).CopyTo(bytes.AsSpan(offset));
-        void WriteInt32(int offset, int value) => BitConverter.TryWriteBytes(bytes.AsSpan(offset, 4), value);
-        void WriteInt16(int offset, short value) => BitConverter.TryWriteBytes(bytes.AsSpan(offset, 2), value);
-
-        WriteString(0, "RIFF");
-        WriteInt32(4, 36 + dataSize);
-        WriteString(8, "WAVE");
-        WriteString(12, "fmt ");
-        WriteInt32(16, 16);            // fmt 块长度
-        WriteInt16(20, 1);             // PCM
-        WriteInt16(22, 1);             // 单声道
-        WriteInt32(24, sampleRate);
-        WriteInt32(28, sampleRate * 2); // 字节率
-        WriteInt16(32, 2);             // 块对齐
-        WriteInt16(34, 16);            // 位深
-        WriteString(36, "data");
-        WriteInt32(40, dataSize);
-        // 44.. 保持全零 = 静音
-        return bytes;
     }
 
     private IReadOnlyList<ILlmCallInterceptor> ResolveInterceptors()

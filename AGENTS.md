@@ -34,6 +34,8 @@
 - [LLM 能力抽象 Release Notes](docs/architecture/28-llm-capability-abstraction-release-notes.md)
 - [桌面宿主 Release Notes](docs/architecture/30-desktop-host-release-notes.md)
 - [可读 JSON 序列化统一 Release Notes](docs/architecture/31-readable-json-release-notes.md)
+- [Provider 能力展示 Release Notes](docs/architecture/32-provider-capability-display-release-notes.md)
+- [Provider 语音能力接入 Release Notes](docs/architecture/33-provider-speech-capability-release-notes.md)
 
 设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
 

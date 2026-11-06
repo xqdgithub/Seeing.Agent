@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.Support;
+using Seeing.Agent.Llm.Support.Speech;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -65,6 +66,8 @@ public sealed class SiliconFlowModelsClient
                     Provider = "siliconflow",
                     Types = ModelTypeInference.InferTypes(m.Id) ?? new List<ModelType>()
                 })
+                // 远端目录不返回模态；不补的话语音模型永远过不了 Router 第 3 层（缺 modalities.input）
+                .Select(ModalityInference.Apply)
                 .ToList();
 
             return listed;

@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Llm.Support;
+using Seeing.Agent.Llm.Support.Speech;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -55,15 +57,20 @@ public sealed class MiMoModelsClient
             if (payload?.Data is null || payload.Data.Count == 0)
                 return Array.Empty<ModelConfig>();
 
-            // 模型列表原样保留（含 asr/tts 等非对话条目），能力由 IModelCapabilityManager 补全
+            // 模型列表原样保留（含 asr/tts 等非对话条目）。
+            // 远端目录不返回用途类型与模态，但 Router 两层都要它们：
+            //   · 第 2 层要 types（缺省被当 Text，语音模型会被判「类型不含能力」）
+            //   · 第 3 层要 modalities.input/output 含 audio（决议 24，不猜）
             var listed = payload.Data
                 .Where(m => !string.IsNullOrWhiteSpace(m.Id))
                 .Select(m => new ModelConfig
                 {
                     Id = m.Id!,
                     Name = m.Id,
-                    Provider = "mimo"
+                    Provider = "mimo",
+                    Types = ModelTypeInference.InferTypes(m.Id) ?? new List<ModelType>()
                 })
+                .Select(ModalityInference.Apply)
                 .ToList();
 
             return listed;

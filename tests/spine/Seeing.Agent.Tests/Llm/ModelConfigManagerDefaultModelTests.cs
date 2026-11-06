@@ -315,6 +315,34 @@ public class ModelConfigManagerDefaultModelTests : IDisposable
         sut.CanSetAsDefaultModel("missing/model", LlmCapabilityKind.Chat).Should().BeFalse();
     }
 
+    /// <summary>
+    /// 语音的方向性校验：<c>Speech</c> 类型同时覆盖合成与转写，
+    /// 必须靠 <c>Modalities</c> 消歧（决议 24）。不在设置时拦，用户要到运行时才炸。
+    /// </summary>
+    [Fact]
+    public async Task CanSetAsDefaultModel_SpeechTranscription_RequiresInputAudioModality()
+    {
+        using var sut = await CreateSutAsync(new SeeingAgentOptions());
+
+        sut.CanSetAsDefaultModel("openai/whisper-1", LlmCapabilityKind.SpeechTranscription)
+            .Should().BeTrue("whisper-1 的 modalities.input 含 audio");
+
+        sut.CanSetAsDefaultModel("openai/speech-no-modalities", LlmCapabilityKind.SpeechTranscription)
+            .Should().BeFalse("标了 Speech 但未写 modalities.input=audio，运行时会被 Router 第 3 层拒");
+    }
+
+    [Fact]
+    public async Task CanSetAsDefaultModel_SpeechSynthesis_RequiresOutputAudioModality()
+    {
+        using var sut = await CreateSutAsync(new SeeingAgentOptions());
+
+        sut.CanSetAsDefaultModel("openai/tts-1", LlmCapabilityKind.SpeechSynthesis)
+            .Should().BeTrue("tts-1 的 modalities.output 含 audio");
+
+        sut.CanSetAsDefaultModel("openai/whisper-1", LlmCapabilityKind.SpeechSynthesis)
+            .Should().BeFalse("转写模型的输出是文本，不能当合成模型");
+    }
+
     #endregion
 
     #region TryResolveDefault：三类失败 + 成功
@@ -435,6 +463,27 @@ public class ModelConfigManagerDefaultModelTests : IDisposable
                     Id = "text-embedding-3-small",
                     Provider = "openai",
                     Types = [ModelType.Embedding]
+                },
+                // 语音模型：标了 Speech 但模态决定方向（决议 24）
+                ["whisper-1"] = new ModelConfig
+                {
+                    Id = "whisper-1",
+                    Provider = "openai",
+                    Types = [ModelType.Speech],
+                    Modalities = new ModelModalities { Input = ["audio"], Output = ["text"] }
+                },
+                ["tts-1"] = new ModelConfig
+                {
+                    Id = "tts-1",
+                    Provider = "openai",
+                    Types = [ModelType.Speech],
+                    Modalities = new ModelModalities { Input = ["text"], Output = ["audio"] }
+                },
+                ["speech-no-modalities"] = new ModelConfig
+                {
+                    Id = "speech-no-modalities",
+                    Provider = "openai",
+                    Types = [ModelType.Speech]
                 }
             }
         }

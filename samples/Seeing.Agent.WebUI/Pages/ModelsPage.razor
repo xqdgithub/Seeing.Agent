@@ -80,6 +80,22 @@
                                 <span>加载自用户级配置文件</span>
                             }
                         </div>
+                        @* 生效能力常显：下面表单里的能力多选框只表达「配置覆盖」，
+                           未勾选 ≠ 没有能力。两者混为一谈会让人误读成「这个 Provider 什么都没声明」。 *@
+                        <div style="margin-bottom: 16px; padding: 8px 12px; background: #f6ffed; border: 1px solid #b7eb8f; border-radius: 6px; font-size: 13px;">
+                            <span>生效能力：</span>
+                            <strong>@_capabilityView.EffectiveText</strong>
+                            <Tag Style="margin-left: 8px;">@_capabilityView.SourceText(_currentProviderInfo.Protocol, _currentProviderInfo.Origin)</Tag>
+                            @if (_capabilityView.HasDrift)
+                            {
+                                <Tag Color="@("warning")">配置与运行时不符</Tag>
+                            }
+                        </div>
+                        @if (_capabilityView.HasDrift)
+                        {
+                            <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 16px;"
+                                   Message="@_capabilityView.DriftText" />
+                        }
                         @if (!string.IsNullOrEmpty(_configLoadError))
                         {
                             <Alert Type="@AlertType.Error" Message="@_configLoadError" ShowIcon="true" />
@@ -115,7 +131,7 @@
                                             Values="@_providerCapabilities"
                                             ValuesChanged="OnProviderCapabilitiesChanged"
                                             Style="width: 100%;"
-                                            Placeholder="选择该 Provider 供出的能力">
+                                            Placeholder="留空 = 使用该 Provider 的默认能力">
                                         @foreach (var kind in CapabilityLabels.All)
                                         {
                                             <SelectOption TItemValue="string" TItem="string"
@@ -463,6 +479,21 @@
                     }
                 </Select>
             </FormItem>
+            @* 语音合成（TTS）看输出模态，转写（ASR）看输入模态——两者缺一都会在路由时被拒（决议 24） *@
+            <FormItem Label="输出模态">
+                <Select Mode="@SelectMode.Tags"
+                        TItemValue="string"
+                        TItem="string"
+                        Values="@_editOutputModalities"
+                        ValuesChanged="OnEditOutputModalitiesChanged"
+                        Style="width: 100%;"
+                        Placeholder="如 text、image、audio">
+                    @foreach (var m in new[] { "text", "image", "audio", "video", "embedding" })
+                    {
+                        <SelectOption TItemValue="string" TItem="string" Value="@m" Label="@m" />
+                    }
+                </Select>
+            </FormItem>
             <FormItem Label="免费模型">
                 <AntDesign.Switch @bind-Value="_editModelForm.IsFree" />
             </FormItem>
@@ -510,6 +541,12 @@
     private string _headersJson = "{}";
     /// <summary>Provider 表单里的能力多选值（配置键，小驼峰，出处是 <see cref="LlmCapabilityMap.ToConfigKey"/>）。</summary>
     private IEnumerable<string> _providerCapabilities = Array.Empty<string>();
+    /// <summary>
+    /// 当前 Provider 的能力投影：生效位集（<see cref="ProviderInfo.Capabilities"/>）+ 配置声明来源。
+    /// <para><b>为什么单独存一份</b>：多选框只表达「配置覆盖」，未勾选时它为空；
+    /// 直接把它当生效能力会得到「这个 Provider 没有能力」的错误结论。</para>
+    /// </summary>
+    private ProviderCapabilityView _capabilityView = ProviderCapabilityProjection.Build(null, null);
     /// <summary>已配置的能力默认值（能力 → <c>provider/model</c>），随目录刷新重取。</summary>
     private IReadOnlyDictionary<LlmCapabilityKind, string> _capabilityDefaults = new Dictionary<LlmCapabilityKind, string>();
     /// <summary>失效的默认模型诊断（<c>ValidateDefaultModels</c>）：只报告，不清除（决议 23）。</summary>
@@ -525,6 +562,7 @@
     private bool _savingEditModel;
     private bool _editHasOverride;
     private IEnumerable<string> _editInputModalities = Array.Empty<string>();
+    private IEnumerable<string> _editOutputModalities = Array.Empty<string>();
     private readonly EditModelForm _editModelForm = new();
 
     private bool CanEditCurrentProvider =>
@@ -632,6 +670,7 @@
         _selectedProviderId = id;
         _selectedProviderKeys = new[] { id };
         _currentProviderInfo = ProviderManager.GetProvider(id);
+        _capabilityView = ProviderCapabilityProjection.Build(_currentProviderInfo, null);
 
         if (ProviderManager.TryGetConfigurable(id, out var configurable) && configurable is not null)
         {
@@ -644,6 +683,8 @@
                 {
                     var loaded = await configurable.LoadConfigAsync();
                     _schemaValues = loaded.ToDictionary(kv => kv.Key, kv => kv.Value);
+                    _capabilityView = ProviderCapabilityProjection.Build(
+                        _currentProviderInfo, ReadCapabilitySection(_schemaValues));
                 }
                 catch (Exception ex)
                 {
@@ -657,6 +698,7 @@
                 _currentProvider = CloneProviderConfig(schemaNullConfig);
                 _headersJson = SerializeHeaders(_currentProvider.Headers);
                 _providerCapabilities = ToCapabilityKeys(_currentProvider.Capabilities);
+                _capabilityView = ProviderCapabilityProjection.Build(_currentProviderInfo, _currentProvider.Capabilities);
             }
         }
         else if (_currentProviderInfo?.Origin == ProviderOrigin.Configured &&
@@ -665,6 +707,7 @@
             _currentProvider = CloneProviderConfig(configured);
             _headersJson = SerializeHeaders(_currentProvider.Headers);
             _providerCapabilities = ToCapabilityKeys(_currentProvider.Capabilities);
+            _capabilityView = ProviderCapabilityProjection.Build(_currentProviderInfo, _currentProvider.Capabilities);
         }
 
         RefreshModelRows();
@@ -807,19 +850,24 @@
                 ? pair.Value
                 : $"{LlmCapabilityMap.ToConfigKey(pair.Key)}: {pair.Value}"));
 
-    /// <summary>能力多选区提示：未配置 = 按协议缺省（决议 19）。</summary>
+    /// <summary>能力多选区提示：区分「配置覆盖」与「生效能力」，两者不可混淆。</summary>
     private string ProviderCapabilitiesHint
     {
         get
         {
-            if (_currentProvider is null)
+            if (_currentProviderInfo is null)
                 return string.Empty;
 
-            var protocol = ProviderTypes.Normalize(_currentProvider.Type);
-            var protocolDefault = CapabilityLabels.Describe(LlmCapabilityMap.DefaultCapabilities(_currentProvider.Type));
-            return _currentProvider.Capabilities is null
-                ? $"未配置能力时缺省仅 {protocolDefault}（按协议 {protocol} 取缺省）。"
-                : $"已声明 {string.Join(", ", _providerCapabilities)}；全部取消后保存 = 交回协议缺省（{protocolDefault}）。";
+            return _capabilityView.Source switch
+            {
+                // 覆盖是用户写的：清空后回到 Provider 自己的默认值（具体是什么由 Provider 决定）
+                ProviderCapabilitySource.Declared =>
+                    $"已声明 {_capabilityView.DeclaredText}；全部取消后保存 = 交回该 Provider 的默认能力。",
+                ProviderCapabilitySource.Disabled =>
+                    "配置已显式关闭全部能力（该 Provider 当前不供出任何能力）；勾选任意项即可恢复。",
+                // 未配置覆盖：此时运行时生效值就是默认值，直接照实说，不要用协议缺省去冒充
+                _ => $"未配置覆盖 = 使用默认能力：{_capabilityView.EffectiveText}。"
+            };
         }
     }
 
@@ -835,6 +883,22 @@
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
+    /// <summary>
+    /// 从 schema 表单值里取能力清单。
+    /// <para>取不到键时返回 <c>null</c>（＝未声明）；键存在但值为空集合时返回空集合（＝显式关闭），
+    /// 两者语义不同，不能合并成同一个默认值。</para>
+    /// </summary>
+    private static object? ReadCapabilitySection(IReadOnlyDictionary<string, object?> values)
+    {
+        foreach (var (key, value) in values)
+        {
+            if (string.Equals(key, "Capabilities", StringComparison.OrdinalIgnoreCase))
+                return value;
+        }
+
+        return null;
+    }
+
     private void OnProviderCapabilitiesChanged(IEnumerable<string>? values)
     {
         _providerCapabilities = ToCapabilityKeys(values?.ToList());
@@ -843,6 +907,7 @@
             _currentProvider.Capabilities = _providerCapabilities.Count() > 0
                 ? _providerCapabilities.ToList()
                 : null;
+            _capabilityView = ProviderCapabilityProjection.Build(_currentProviderInfo, _currentProvider.Capabilities);
         }
     }
 
@@ -1074,6 +1139,7 @@
         _editModelForm.IsFree = IsFreeModel(config);
         _editTypes = ModelManager.GetEffectiveTypes(config).ToArray();
         _editInputModalities = config.Modalities?.Input?.ToArray() ?? Array.Empty<string>();
+        _editOutputModalities = config.Modalities?.Output?.ToArray() ?? Array.Empty<string>();
         _editModelVisible = true;
     }
 
@@ -1100,6 +1166,7 @@
                 ContextLimit = _editModelForm.Context > 0 ? _editModelForm.Context : null,
                 OutputLimit = _editModelForm.Output > 0 ? _editModelForm.Output : null,
                 InputModalities = _editInputModalities?.ToList(),
+                OutputModalities = _editOutputModalities?.ToList(),
                 IsFree = _editModelForm.IsFree
             };
 
@@ -1145,6 +1212,9 @@
 
     private void OnEditInputModalitiesChanged(IEnumerable<string> values)
         => _editInputModalities = values?.ToArray() ?? Array.Empty<string>();
+
+    private void OnEditOutputModalitiesChanged(IEnumerable<string> values)
+        => _editOutputModalities = values?.ToArray() ?? Array.Empty<string>();
 
     private void ShowAddProvider()
     {

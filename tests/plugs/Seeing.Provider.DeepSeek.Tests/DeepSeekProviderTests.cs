@@ -40,6 +40,21 @@ public class DeepSeekProviderTests
         capabilities.Choices.Should().Contain("chat");
     }
 
+    /// <summary>
+    /// 空下拉必须自我说明：能力清单留空不是「没有能力」，而是「用默认能力」。
+    /// 占位文案里要点出这个 Provider 的默认值到底是什么（DeepSeek 是 chat）。
+    /// </summary>
+    [Fact]
+    public void GetConfigSchema_Capabilities_ShouldExplainEmptyMeansDefault()
+    {
+        var sut = CreateSut(apiKey: null);
+        var capabilities = sut.GetConfigSchema()!.Single(f => f.Name == "Capabilities");
+
+        capabilities.Placeholder.Should().Contain("留空");
+        capabilities.Placeholder.Should().Contain("chat",
+            "用户看到空框时，唯一能据以判断的就是占位文案里写出的默认值");
+    }
+
     [Fact]
     public void Protocol_ShouldBeOpenAi()
     {
