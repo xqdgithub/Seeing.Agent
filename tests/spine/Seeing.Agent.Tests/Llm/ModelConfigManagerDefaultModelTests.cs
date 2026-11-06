@@ -214,6 +214,54 @@ public class ModelConfigManagerDefaultModelTests : IDisposable
     }
 
     [Fact]
+    public async Task SetDefaultModel_Should_Raise_ModelConfigChanged()
+    {
+        var configManager = await CreateConfigManagerAsync(new SeeingAgentOptions());
+        using var sut = CreateSut(configManager);
+
+        var raised = 0;
+        sut.ModelConfigChanged += (_, _) => raised++;
+
+        await sut.SetDefaultModelAsync(
+            LlmCapabilityKind.SpeechTranscription,
+            "openai/whisper-1",
+            ConfigLevel.User,
+            TestContext.Current.CancellationToken);
+
+        // 语音输入等 UI 依赖此事件原位刷新「是否已配置默认模型」；
+        // 不触发就只能靠页面重建，跨标签页/多窗口场景会一直显示灰态。
+        // 断言 >= 1 而非 == 1：SaveSectionAsync 自身也可能触发一次配置变更事件，
+        // 重复通知只是多一次刷新，漏通知才是 bug。
+        raised.Should().BeGreaterThanOrEqualTo(1);
+    }
+
+    [Fact]
+    public async Task ClearDefaultModel_Should_Raise_ModelConfigChanged()
+    {
+        var options = new SeeingAgentOptions
+        {
+            DefaultModels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["speechTranscription"] = "openai/whisper-1"
+            }
+        };
+        var configManager = await CreateConfigManagerAsync(options);
+        using var sut = CreateSut(configManager, options);
+
+        var raised = 0;
+        sut.ModelConfigChanged += (_, _) => raised++;
+
+        await sut.SetDefaultModelAsync(
+            LlmCapabilityKind.SpeechTranscription,
+            null,
+            ConfigLevel.User,
+            TestContext.Current.CancellationToken);
+
+        raised.Should().BeGreaterThanOrEqualTo(1);
+        sut.GetDefaultModel(LlmCapabilityKind.SpeechTranscription).Should().BeNull();
+    }
+
+    [Fact]
     public async Task SetDefaultModel_ChangedCapability_ShouldKeepOtherSlots()
     {
         var options = new SeeingAgentOptions
@@ -435,6 +483,17 @@ public class ModelConfigManagerDefaultModelTests : IDisposable
                     Id = "text-embedding-3-small",
                     Provider = "openai",
                     Types = [ModelType.Embedding]
+                },
+                ["whisper-1"] = new ModelConfig
+                {
+                    Id = "whisper-1",
+                    Provider = "openai",
+                    Types = [ModelType.Speech],
+                    Modalities = new ModelModalities
+                    {
+                        Input = ["audio"],
+                        Output = ["text"]
+                    }
                 }
             }
         }

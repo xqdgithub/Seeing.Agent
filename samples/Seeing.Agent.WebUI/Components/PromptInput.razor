@@ -486,11 +486,14 @@
 
             try
             {
+                // 若此时还没有会话绑定（异常路径），补上，保证结果不被误丢。
+                _voiceBoundSessionKey ??= SessionKey;
                 await JSRuntime.InvokeVoidAsync("stopVoiceRecording");
             }
             catch
             {
                 _voiceState = VoiceState.Idle;
+                _voiceBoundSessionKey = null;
                 StateHasChanged();
             }
 
@@ -524,6 +527,11 @@
                 _voiceState = VoiceState.Recording;
                 _voiceSeconds = 0;
                 _voiceMimeType = result.MimeType;
+
+                // 会话绑定必须在这里做，不能只在"点击停止"时做：
+                // JS 计时到上限会自己 stop 并上传，那条路径不经过 .NET，
+                // 若等到点击才绑定，自动停止的转写结果会被误判成"会话已变"而丢弃。
+                _voiceBoundSessionKey = SessionKey;
             }
             else
             {
@@ -535,6 +543,18 @@
         catch (Exception ex)
         {
             _voiceError = $"无法开始录音：{ex.Message}";
+
+            // JS 可能已经在录（异常发生在 interop 回程）：此时 .NET 认为 Idle，
+            // 用户再点会得到 alreadyRecording 且永远停不下来。这里补一次取消，
+            // 保证两侧状态一起归位。
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("cancelVoiceRecording");
+            }
+            catch
+            {
+                // circuit 已断，无处复位
+            }
         }
 
         StateHasChanged();
@@ -564,6 +584,16 @@
     [JSInvokable]
     public async Task HandleVoiceTranscribed(string? text, string? error, string? code)
     {
+        // 只在「本次录音确实处于 Transcribing」时迁移状态。
+        // 否则旧录音的迟到回调会把切会话后刚发起的新录音（Recording）打回 Idle，
+        // 而 JS 侧仍在录，用户会看到红点消失却提示「已经在录音中」。
+        if (_voiceState != VoiceState.Transcribing)
+        {
+            _voiceBoundSessionKey = null;
+            StateHasChanged();
+            return;
+        }
+
         _voiceState = VoiceState.Idle;
         _voiceSeconds = 0;
         _voiceMimeType = null;
@@ -1473,6 +1503,11 @@
         if (_prevIsProcessing && !IsProcessing)
             _pendingRefocus = true;
         _prevIsProcessing = IsProcessing;
+
+        // 兜底：模型配置事件在少数路径可能不发（如直接改配置文件后热重载），
+        // 每次参数更新便宜地重算一次可用性，避免按钮长期停在灰态。
+        if (_voiceState == VoiceState.Idle)
+            RefreshVoiceAvailability();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

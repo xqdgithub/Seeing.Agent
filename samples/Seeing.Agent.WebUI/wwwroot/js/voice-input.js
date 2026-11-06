@@ -25,6 +25,9 @@ var voiceMimeType = '';
 var voiceCancelled = false;
 var voiceDotNetRef = null;
 var voiceContainerId = null;
+// 起流中的重入守卫：getUserMedia 是异步的，期间 voiceRecorder 仍为 null，
+// 没有这个标志时用户连点两次会拿到两条麦克风流，第一条永远没人 stop（指示灯常亮）。
+var voiceStarting = false;
 
 // 候选音频容器：按优先级探测，不硬编码 webm
 // （WKWebView 只出得了 audio/mp4，写死 webm 会让 macOS 桌面版必然失败）。
@@ -52,7 +55,10 @@ function voiceExtensionFor(mimeType) {
     if (mime.indexOf('mp4') >= 0) return 'mp4';
     if (mime.indexOf('ogg') >= 0) return 'ogg';
     if (mime.indexOf('wav') >= 0) return 'wav';
-    return 'bin';
+    if (mime.indexOf('mpeg') >= 0) return 'mp3';
+    // 不产出 .bin：ASR 服务端多按扩展名识别容器，.bin 会被直接 400。
+    // 走到这里说明浏览器连默认类型都没给，按 webm 兜底（Chrome/Edge/Firefox 的默认容器）。
+    return 'webm';
 }
 
 /** 挑第一个浏览器支持的容器；全不支持则返回空串，交给 MediaRecorder 用默认值。 */
@@ -86,7 +92,7 @@ function clearVoiceTimer() {
  * 开始录音。返回 { ok } 或 { ok:false, code, message }。
  */
 async function startVoiceRecording(containerId, textareaId, dotNetRef, maxSeconds) {
-    if (voiceRecorder !== null) {
+    if (voiceRecorder !== null || voiceStarting) {
         return { ok: false, code: 'alreadyRecording', message: '已经在录音中' };
     }
 
@@ -108,9 +114,12 @@ async function startVoiceRecording(containerId, textareaId, dotNetRef, maxSecond
         return { ok: false, code: 'unsupportedBrowser', message: '当前浏览器不支持录音' };
     }
 
+    voiceStarting = true;
+
     try {
         voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
+        voiceStarting = false;
         if (err && err.name === 'NotAllowedError') {
             return { ok: false, code: 'permissionDenied', message: '麦克风权限被拒绝' };
         }
@@ -138,6 +147,7 @@ async function startVoiceRecording(containerId, textareaId, dotNetRef, maxSecond
             ? new MediaRecorder(voiceStream, { mimeType: mimeType })
             : new MediaRecorder(voiceStream);
     } catch (err) {
+        voiceStarting = false;
         releaseVoiceStream();
         voiceRecorder = null;
         return {
@@ -149,6 +159,8 @@ async function startVoiceRecording(containerId, textareaId, dotNetRef, maxSecond
 
     // 浏览器可能把我们请求的容器降级成别的；以实际值为准。
     if (voiceRecorder.mimeType) voiceMimeType = voiceRecorder.mimeType;
+
+    voiceStarting = false;
 
     voiceRecorder.ondataavailable = function (e) {
         if (e.data && e.data.size > 0) voiceChunks.push(e.data);
@@ -189,8 +201,11 @@ async function startVoiceRecording(containerId, textareaId, dotNetRef, maxSecond
     voiceRecorder.start();
 
     var limit = typeof maxSeconds === 'number' && maxSeconds > 0 ? maxSeconds : 600;
+    // 用时间差而非自增：后台标签页 setInterval 会被浏览器节流到约 1 次/分钟，
+    // 自增会让"10 分钟上限"实际拖到远超 10 分钟，进而逼近 25MB 请求上限。
+    var startedAt = Date.now();
     voiceTimerId = setInterval(function () {
-        voiceSeconds += 1;
+        voiceSeconds = Math.floor((Date.now() - startedAt) / 1000);
         invokeVoiceCallback('HandleVoiceTick', voiceSeconds);
         if (voiceSeconds >= limit) {
             stopVoiceRecording();
