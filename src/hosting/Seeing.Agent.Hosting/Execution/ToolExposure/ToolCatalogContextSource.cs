@@ -55,8 +55,12 @@ public sealed class ToolCatalogContextSource : IContextSource, IContextSourceMes
     public int ValueSchemaVersion => 1;
 
     /// <inheritdoc />
-    /// <remarks>初始渲染落会话消息，不进系统提示词。</remarks>
-    public ContextSourceTarget Target => ContextSourceTarget.Message;
+    /// <remarks>
+    /// 初始渲染进系统提示词（与 <c>SkillsContextSource</c> 同构）：目录是环境事实，
+    /// 第 1 轮就应在位、位置固定。之后的运行时变化由装配器统一转成增量叙述消息，
+    /// 因此系统提示词在基线建立后字节稳定（<c>BuildSystemBaseline</c> 只读存库基线）。
+    /// </remarks>
+    public ContextSourceTarget Target => ContextSourceTarget.System;
 
     /// <inheritdoc />
     /// <remarks>截断由 <see cref="ToolExposureEngine"/> 的目录预算完成，框架不二次截断。</remarks>
@@ -118,9 +122,8 @@ public sealed class ToolCatalogContextSource : IContextSource, IContextSourceMes
 
     /// <inheritdoc />
     /// <remarks>
-    /// 必须带 <c>context.update</c> 标记：初始渲染落的是 <c>UserMessage</c>，
-    /// 没有该标记时 UI 会把它当成用户亲自发的长消息（8K 目录气泡）。
-    /// 形状与记忆源一致（<c>ContextUpdate</c> + <c>ContextUpdateSources</c>）。
+    /// 仅用于增量叙述消息（System 落点的初始渲染不进消息）。带 <c>context.update</c> 标记
+    /// 与 <c>ContextUpdateSources</c>，形状与记忆源一致，供 UI 折叠与标题计数。
     /// </remarks>
     public IReadOnlyDictionary<string, object>? GetMessageMetadata(
         string renderedText, ContextSourceValue value) =>

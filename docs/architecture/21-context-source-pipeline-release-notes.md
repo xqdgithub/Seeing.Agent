@@ -161,7 +161,7 @@
 
 1. **watcher 去抖是真实时间**（400ms，仓库无虚拟时钟包）：批量安装会合并成一次刷新；测试允许 5s 内完成。
 2. **同秒同长度编辑可能延迟一次装配**：廉价指纹 = 路径 + 长度 + `LastWriteTimeUtc`；未变化时直接复用快照，因此这类编辑可能到下一次装配/观察才生效（§11.3 已记录）。
-3. **工具目录源已接入**（2026-11-06）：`ToolCatalogContextSource`（`Target = Message`、`Scope = Session`）承担目录初始渲染与增量叙述；系统提示词分节 `ToolCatalogSectionContributor` 已删除。目录正文仍由 `ToolExposureEngine.BuildCatalog` 单点渲染（经执行级 `IContextExecutionScope.ToolSettlement.CatalogText` 传递），canonical 只含命名空间与工具 id、不含描述（描述可能被 `tool.definition` Hook 改写）。旁路（Scheduler/Heartbeat）走 `ReadOnly` 不注入消息，故不拿到目录——与项目指令/记忆源的现状一致。
+3. **工具目录源已接入**（2026-11-06）：`ToolCatalogContextSource`（`Target = System`、`Scope = Session`，与 `SkillsContextSource` 同构）承担目录初始渲染（进系统提示词）与增量叙述（`context-update` 消息）；系统提示词分节 `ToolCatalogSectionContributor` 已删除。目录正文仍由 `ToolExposureEngine.BuildCatalog` 单点渲染（经执行级 `IContextExecutionScope.ToolSettlement.CatalogText` 传递），canonical 只含命名空间与工具 id、不含描述（描述可能被 `tool.definition` Hook 改写）。旁路（Scheduler/Heartbeat）走 `ReadOnly` 不写状态，目录经 `AgentJob.AppendCatalogToBaseline` 拼进系统基线——该路径每次执行都是冷启动，无跨轮前缀缓存可破坏。
 4. **旁路（Scheduler/Heartbeat）不推进状态**：它们自建消息列表，会话历史不参与本轮输入；写状态会造成「已叙述但模型没看到」的丢失更新。
 5. **ACP 不支持**：passthrough 执行器不构建系统提示词。
 6. **装配失败不阻断对话**：主链记录错误日志并沿用已存基线（不静默、不冒充成功）。

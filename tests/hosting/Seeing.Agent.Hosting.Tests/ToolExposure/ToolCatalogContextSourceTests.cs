@@ -25,10 +25,12 @@ public class ToolCatalogContextSourceTests
     }
 
     [Fact]
-    public void 落点_应为会话消息_目录不得进系统提示词()
+    public void 落点_应为系统提示词_与技能清单同构()
     {
+        // 目录是环境事实，不是"用户说了什么"：初始渲染进系统提示词（第 1 轮就在、位置固定），
+        // 之后的变化由装配器统一走增量叙述消息（与 SkillsContextSource 相同形态）。
         new ToolCatalogContextSource(new FakeScope()).Target
-            .Should().Be(ContextSourceTarget.Message);
+            .Should().Be(ContextSourceTarget.System);
     }
 
     [Fact]
@@ -75,24 +77,6 @@ public class ToolCatalogContextSourceTests
         var value = await source.ReadAsync();
 
         value.State.Should().Be(ContextValueState.Unavailable);
-    }
-
-    [Fact]
-    public async Task 初始消息元数据_应带上下文增量标记()
-    {
-        // 初始渲染落的是 UserMessage；没有 context.update 标记时 UI 会把它当成用户发的长消息。
-        var scope = new FakeScope
-        {
-            ToolSettlement = BuildSettlement(("通用", "read", "读取文件"))
-        };
-        var source = new ToolCatalogContextSource(scope);
-        var value = await source.ReadAsync();
-
-        var metadata = source.GetMessageMetadata("CATALOG-BODY", value);
-
-        metadata.Should().NotBeNull();
-        metadata!.Should().ContainKey(SessionMetadataKeys.ContextUpdate);
-        metadata.Should().ContainKey(SessionMetadataKeys.ContextUpdateSources);
     }
 
     [Fact]
