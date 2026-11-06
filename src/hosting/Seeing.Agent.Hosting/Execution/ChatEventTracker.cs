@@ -153,6 +153,8 @@ internal class ChatEventTracker
                     existing.Metadata = ImmutableDictionary.CreateRange(toolCall.Metadata);
                 if (toolCall.Duration is { } duration)
                     existing.DurationMs = duration.TotalMilliseconds;
+                if (toolCall.ToolDefinition != null)
+                    existing.ToolDefinition = toolCall.ToolDefinition;
 
                 // task 工具：Task* 权威来源为 TaskTool 结果 Metadata；Running 态无 Metadata 时从 Arguments 回填展示字段。
                 var previousTaskId = existing.TaskId;

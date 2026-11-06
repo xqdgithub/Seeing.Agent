@@ -152,6 +152,15 @@ namespace Seeing.Session.Core
         [JsonPropertyName("task_steps")]
         public ImmutableList<SessionTaskStep>? TaskSteps { get; set; }
 
+        /// <summary>
+        /// 附带的工具完整定义（JSON）。仅当该工具本轮未下发 schema、且失败属参数类错误时填充。
+        /// <para>
+        /// 持久化是必需的：跨轮历史重建必须与本轮产出一致，否则前缀缓存失效。
+        /// </para>
+        /// </summary>
+        [JsonPropertyName("tool_definition")]
+        public string? ToolDefinition { get; set; }
+
         /// <summary>深拷贝工具调用（含 Task 卡片字段）</summary>
         public SessionToolCall Clone()
         {
@@ -165,6 +174,7 @@ namespace Seeing.Session.Core
                 Status = Status,
                 Error = Error,
                 Title = Title,
+                ToolDefinition = ToolDefinition,
                 Metadata = Metadata == null ? null : ImmutableDictionary.CreateRange(Metadata),
                 DurationMs = DurationMs,
                 TaskId = TaskId,

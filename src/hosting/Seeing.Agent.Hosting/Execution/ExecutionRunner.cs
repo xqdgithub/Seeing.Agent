@@ -1082,7 +1082,8 @@ internal sealed class ExecutionRunner : IExecutionRunner
                             tc.Error,
                             tc.Name,
                             tc.Status,
-                            tc.Title)
+                            tc.Title,
+                            tc.ToolDefinition)
                     });
                 }
             }
