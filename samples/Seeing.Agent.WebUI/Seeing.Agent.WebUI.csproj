@@ -84,37 +84,68 @@
     apphost / deps.json / runtimeconfig.json —— 那些文件只存在于 <rid> 子目录，
     于是报「无法复制 …linux-x64/…deps.json，原因是找不到该文件」。
     两者还会争抢同一组中间文件，在并行构建下进一步表现为随机失败。
+
+    目标目录必须转成**绝对路径**再传给嵌套 MSBuild：
+    $(OutDir) / $(PublishDir) 是相对路径（如 bin\Release\net10.0\win-x64\），
+    MSBuild 任务会以**被调用项目**的目录为基准解析它 ——
+    于是 ChannelHost 把产物发布回了自己的 bin，WebUI 输出目录什么也没拿到。
+    表现为只剩 ProjectReference 带来的 exe + deps + runtimeconfig
+    （ReferenceOutputAssembly=false 不复制 .dll），
+    运行期 ResolveChannelHost 找不到 Seeing.Gateway.ChannelHost.dll 而启动失败。
   -->
   <Target Name="PassRuntimeIdentifier">
     <PropertyGroup>
       <!-- 空 RID（framework-dependent 默认）时不追加，避免产生多余的 ";;" -->
       <_ChannelHostRuntimeIdentifierArg Condition="'$(RuntimeIdentifier)' != ''">;RuntimeIdentifier=$(RuntimeIdentifier)</_ChannelHostRuntimeIdentifierArg>
+      <!-- 嵌套 MSBuild 的 PublishDir 基准是被调用项目目录，必须给绝对路径 -->
+      <_ChannelHostBuildPublishDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)$(OutDir)'))</_ChannelHostBuildPublishDir>
+      <_ChannelHostRealPublishDir Condition="'$(PublishDir)' != ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)$(PublishDir)'))</_ChannelHostRealPublishDir>
     </PropertyGroup>
   </Target>
 
   <Target Name="CopyChannelHostForBuild"
           AfterTargets="Build"
-          DependsOnTargets="PassRuntimeIdentifier"
-          Condition="'$(PublishDir)' == ''">
+          DependsOnTargets="PassRuntimeIdentifier">
+    <!--
+      不要加 Condition 判断「是否在发布」：
+      历史上这里写过 '$(PublishDir)' == ''，但 PublishDir 有 SDK 默认值
+      （bin/<config>/<tfm>/<rid>/publish/）永远非空，目标从不执行 ——
+      输出目录只剩 ProjectReference 带来的 exe + deps + runtimeconfig
+      （ReferenceOutputAssembly=false 不复制 .dll），
+      运行期 ResolveChannelHost 找不到 Seeing.Gateway.ChannelHost.dll。
+      而发布场景下 Desktop 构建 WebUI 时会带 _IsPublishing 等标志，
+      用标志位判断同样不可靠（被引用项目与顶层项目的标志不一致）。
+
+      改为无条件执行：嵌套 Publish 是幂等的，
+      发布阶段由 PublishChannelHost 额外写一遍发布目录，两者互不冲突。
+    -->
     <MSBuild Projects="$(MSBuildThisFileDirectory)../Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj"
              Targets="Publish"
-             Properties="Configuration=$(Configuration);PublishDir=$(OutDir);SelfContained=false$(_ChannelHostRuntimeIdentifierArg)" />
-    <!-- 删除项目引用带来的 ChannelHost exe/dll（我们使用 Publish 输出版本），删除 exe 因为它不能跨平台 -->
-    <Delete Files="$(OutDir)Seeing.Gateway.ChannelHost.exe" Condition="Exists('$(OutDir)Seeing.Gateway.ChannelHost.exe')" />
+             RemoveProperties="PublishProfile;PublishUrl;WebPublishMethod"
+             Properties="Configuration=$(Configuration);PublishDir=$(_ChannelHostBuildPublishDir);SelfContained=false$(_ChannelHostRuntimeIdentifierArg)" />
+
+    <!--
+      再删 ProjectReference 带来的 exe / 无扩展名 apphost：
+      ReferenceOutputAssembly=false 只复制这几个「半套」文件，
+      Publish 产物已包含完整的 exe，跨平台也不该带 Windows 专属 apphost。
+      .dll / .pdb 必须保留 —— 那是 ResolveChannelHost 真正要找的东西。
+    -->
     <Delete Files="$(OutDir)Seeing.Gateway.ChannelHost" Condition="Exists('$(OutDir)Seeing.Gateway.ChannelHost')" />
+
     <!-- 清理旧的 channel-host 子目录（之前版本遗留） -->
     <RemoveDir Directories="$(OutDir)channel-host" Condition="Exists('$(OutDir)channel-host')" />
   </Target>
 
   <Target Name="PublishChannelHost"
-          AfterTargets="Publish"
+          AfterTargets="Publish;PublishOnly"
           DependsOnTargets="PassRuntimeIdentifier"
-          Condition="'$(PublishDir)' != ''">
+          Condition="'$(_ChannelHostRealPublishDir)' != ''">
+    <!-- RemoveProperties 理由同上：发布配置不可下传给没有该配置的嵌套项目 -->
     <MSBuild Projects="$(MSBuildThisFileDirectory)../Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj"
              Targets="Publish"
-             Properties="Configuration=$(Configuration);PublishDir=$(PublishDir);SelfContained=false$(_ChannelHostRuntimeIdentifierArg)" />
+             RemoveProperties="PublishProfile;PublishUrl;WebPublishMethod"
+             Properties="Configuration=$(Configuration);PublishDir=$(_ChannelHostRealPublishDir);SelfContained=false$(_ChannelHostRuntimeIdentifierArg)" />
 
     <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost')" />
-    <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost.exe" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost.exe')" />
   </Target>
 </Project>

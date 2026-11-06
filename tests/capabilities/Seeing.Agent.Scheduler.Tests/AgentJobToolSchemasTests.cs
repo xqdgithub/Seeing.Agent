@@ -14,6 +14,7 @@ using Seeing.Agent.Abstractions.Reminders;
 using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Jobs;
 using Seeing.Agent.Scheduler.Models;
 using Xunit;
@@ -212,8 +213,70 @@ public class AgentJobToolSchemasTests
         logger.Warnings.Should().Contain(m => m.Contains("ISessionToolExposureWriter"));
     }
 
-    private sealed class RecordingLogger<T> : ILogger<T>
+    /// <summary>
+    /// 记账失败不得把「已成功」的执行改判为失败。
+    /// <para>
+    /// 现场症状：日志先打 <c>Schedule dispatch</c>（任务确实跑了），紧接着
+    /// <c>Job xxx execution failed</c> + <c>FileNotFoundException: *.json.tmp</c>。
+    /// 用户看到的是「任务执行失败」，实际上 Agent 输出正常，只是写执行历史失败。
+    /// </para>
+    /// <para>
+    /// <c>OnJobExecutedAsync</c> 属于旁路记账，必须与执行成败解耦：
+    /// 它抛异常时只应记 Warning，<see cref="IJobExecutionContext.Result"/> 必须保持 success。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Execute_WhenHistoryPersistFails_ShouldKeepSuccessfulResult()
     {
+        // Arrange
+        var executor = new Mock<IAgentExecutor>();
+        executor
+            .Setup(e => e.ExecuteAsync(
+                It.IsAny<AgentDefinition>(),
+                It.IsAny<IReadOnlyList<ChatMessage>>(),
+                It.IsAny<AgentContext>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(() => OneEvent(new StreamCompleteEvent
+            {
+                SessionId = "s-cron",
+                Message = new ChatMessage { Role = ChatRole.Assistant, Content = "执行成功的输出" }
+            }));
+
+        var services = new ServiceCollection().BuildServiceProvider();
+        var logger = new RecordingLogger<AgentJob>();
+
+        // 模拟落盘失败（对应 jobs_history/*.json.tmp 丢失）
+        var listener = new Mock<IJobExecutionListener>();
+        listener
+            .Setup(l => l.OnJobExecutedAsync(
+                It.IsAny<string>(), It.IsAny<JobExecutionResult>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new FileNotFoundException("Could not find file 'job.json.tmp'."));
+
+        var jobContextMock = CreateJobContextMock();
+        var job = CreateJob(executor.Object, services, logger, [listener.Object]);
+
+        // Act
+        await job.Execute(jobContextMock.Object);
+
+        // Assert
+        var result = jobContextMock.Object.Result as JobExecutionResult;
+        result.Should().NotBeNull();
+        result!.Success.Should().BeTrue(
+            "执行已成功，记账失败不该改写结果的成败");
+        result.Output.Should().Be("执行成功的输出",
+            "输出必须保留（这是任务真正的产物）");
+        result.Error.Should().BeNullOrEmpty(
+            "不允许把落盘异常写进执行错误——那会让读者误判任务失败");
+
+        logger.Entries.Should().Contain(
+            e => e.Level == LogLevel.Warning && e.Message.Contains("执行历史落盘失败"),
+            "记账失败必须留下可观测的 Warning，否则历史静默丢失");
+        logger.Entries.Should().NotContain(
+            e => e.Level == LogLevel.Error,
+            "旁路记账失败不应升级为 Error（那会与真正的执行失败混淆）");
+    }
+
+    private sealed class RecordingLogger<T> : ILogger<T>    {
         public List<(LogLevel Level, string Message)> Entries { get; } = [];
 
         public IEnumerable<string> Warnings =>
@@ -236,7 +299,8 @@ public class AgentJobToolSchemasTests
     private static AgentJob CreateJob(
         IAgentExecutor executor,
         IServiceProvider services,
-        ILogger<AgentJob>? logger = null)
+        ILogger<AgentJob>? logger = null,
+        IEnumerable<IJobExecutionListener>? listeners = null)
     {
         var agentRegistry = new Mock<IAgentRegistry>();
         agentRegistry
@@ -287,7 +351,7 @@ public class AgentJobToolSchemasTests
             hooks.Object,
             reminders.Object,
             dispatcher.Object,
-            [],
+            listeners ?? [],
             logger ?? NullLogger<AgentJob>.Instance);
     }
 

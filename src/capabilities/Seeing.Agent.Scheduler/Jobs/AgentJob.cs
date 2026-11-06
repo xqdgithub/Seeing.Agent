@@ -131,10 +131,7 @@ public class AgentJob : IJob
             });
 
             // 通知监听器
-            if (_listener != null)
-            {
-                await _listener.OnJobExecutedAsync(jobId, (JobExecutionResult)context.Result, ct);
-            }
+            await NotifyExecutedAsync(jobId, (JobExecutionResult)context.Result, ct);
             return;
         }
 
@@ -175,10 +172,10 @@ public class AgentJob : IJob
             });
 
             // 通知监听器
-            if (_listener != null)
-            {
-                await _listener.OnJobExecutedAsync(jobId, result, timeoutCts.Token);
-            }
+            // 单独守一层：监听器负责落盘历史，它失败不该把「已经跑成功」的执行
+            // 改判成失败。现场日志里的 "execution failed" 多数就是这条路径造成的
+            // （任务输出正常、只是 .tmp 写入失败），读者会误以为是任务本身出错。
+            await NotifyExecutedAsync(jobId, result, timeoutCts.Token);
         }
         catch (OperationCanceledException)
         {
@@ -197,10 +194,7 @@ public class AgentJob : IJob
                 DispatchSessionId = dispatchSessionId
             };
 
-            if (_listener != null)
-            {
-                await _listener.OnJobExecutedAsync(jobId, (JobExecutionResult)context.Result, ct);
-            }
+            await NotifyExecutedAsync(jobId, (JobExecutionResult)context.Result, ct);
         }
         catch (Exception ex)
         {
@@ -229,10 +223,44 @@ public class AgentJob : IJob
             });
 
             // 通知监听器
-            if (_listener != null)
-            {
-                await _listener.OnJobExecutedAsync(jobId, (JobExecutionResult)context.Result, ct);
-            }
+            await NotifyExecutedAsync(jobId, (JobExecutionResult)context.Result, ct);
+        }
+    }
+
+    /// <summary>
+    /// 通知监听器任务已执行完成。
+    /// <para>
+    /// 监听器（<c>ScheduleManager</c>）在这里落盘执行历史。落盘属于**旁路记账**，
+    /// 它的失败不能反向改写任务本身的成败：原先直接 await，一旦
+    /// <c>jobs_history/*.json.tmp</c> 写入失败就会被外层 <c>catch</c> 捕获，
+    /// 把「已成功」的结果覆盖成 <c>Success = false</c> 并打出 "execution failed"，
+    /// 读者看着像 Agent 执行出错，实际只是记账失败。
+    /// </para>
+    /// <para>
+    /// 因此这里吞掉异常并降级为 Warning：执行结果保持原样，历史缺失可接受
+    /// （下次追加会重写整份文件，不会扩散）。
+    /// </para>
+    /// </summary>
+    private async Task NotifyExecutedAsync(string jobId, JobExecutionResult result, CancellationToken ct)
+    {
+        if (_listener is null)
+            return;
+
+        try
+        {
+            await _listener.OnJobExecutedAsync(jobId, result, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "执行历史落盘失败（任务本身结果为 {Status}，不受影响）: {JobId}",
+                result.Success ? "success" : "failed",
+                jobId);
         }
     }
 

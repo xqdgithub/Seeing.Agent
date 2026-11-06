@@ -8,7 +8,14 @@ using System.Text.Json.Serialization;
 
 namespace Seeing.Agent.Scheduler.Persistence;
 
-/// <summary>JSON 文件持久化（jobs.json + jobs_history/）</summary>
+/// <summary>
+/// JSON 文件持久化（jobs.json + jobs_history/）。
+/// <para>
+/// 所有写入都走 <see cref="ScheduleAtomicFile"/>：**跨实例**的按路径锁 + 唯一临时名 + 移动重试。
+/// 不使用实例级 <c>SemaphoreSlim</c> —— 它只在单实例内有效，而同一份文件会被
+/// DI 单例、CLI、冷/热实例等多方访问（这正是历史上 <c>*.json.tmp</c> 丢失的成因）。
+/// </para>
+/// </summary>
 public sealed class JsonScheduleRepository : IScheduleRepository
 {
     private static readonly JsonSerializerOptions JsonOptions = SeeingJson.Create(indented: true, o =>
@@ -20,7 +27,6 @@ public sealed class JsonScheduleRepository : IScheduleRepository
 
     private readonly IWorkspaceProvider _workspace;
     private readonly ILogger<JsonScheduleRepository> _logger;
-    private readonly SemaphoreSlim _lock = new(1, 1);
 
     public JsonScheduleRepository(IWorkspaceProvider workspace, ILogger<JsonScheduleRepository> logger)
     {
@@ -34,49 +40,66 @@ public sealed class JsonScheduleRepository : IScheduleRepository
     /// <inheritdoc/>
     public async Task<JobsFile> LoadAsync(CancellationToken ct = default)
     {
-        await _lock.WaitAsync(ct).ConfigureAwait(false);
+        var path = JobsFilePath;
+        var gate = ScheduleAtomicFile.GetLock(path);
+        await gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (!File.Exists(JobsFilePath))
+            if (!File.Exists(path))
                 return new JobsFile();
 
-            var json = await File.ReadAllTextAsync(JobsFilePath, ct).ConfigureAwait(false);
+            var json = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
             return JsonSerializer.Deserialize<JobsFile>(json, JsonOptions) ?? new JobsFile();
         }
         finally
         {
-            _lock.Release();
+            gate.Release();
         }
     }
 
     /// <inheritdoc/>
     public async Task SaveAsync(JobsFile jobs, CancellationToken ct = default)
     {
-        await _lock.WaitAsync(ct).ConfigureAwait(false);
+        var path = JobsFilePath;
+        var gate = ScheduleAtomicFile.GetLock(path);
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+
+        string? tmpPath = null;
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(JobsFilePath)!);
-            var tmpPath = JobsFilePath + ".tmp";
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             var payload = JsonSerializer.Serialize(jobs, JsonOptions);
+
+            tmpPath = ScheduleAtomicFile.CreateTempPath(path);
             await File.WriteAllTextAsync(tmpPath, payload, ct).ConfigureAwait(false);
-            await ReplaceFileWithRetryAsync(tmpPath, JobsFilePath, ct).ConfigureAwait(false);
-            _logger.LogDebug("Saved jobs file: {Path}", JobsFilePath);
+            await ScheduleAtomicFile.ReplaceAsync(tmpPath, path, _logger, ct).ConfigureAwait(false);
+            tmpPath = null; // 已消费
+
+            _logger.LogDebug("Saved jobs file: {Path}", path);
         }
         finally
         {
-            _lock.Release();
+            // 失败时清理唯一临时文件；唯一名字保证不会误删他人正在写的文件
+            if (tmpPath is not null)
+                ScheduleAtomicFile.TryDelete(tmpPath);
+
+            gate.Release();
         }
     }
 
     /// <inheritdoc/>
     public async Task AppendHistoryAsync(string jobId, JobExecutionRecord record, CancellationToken ct = default)
     {
-        await _lock.WaitAsync(ct).ConfigureAwait(false);
+        Directory.CreateDirectory(HistoryDirectory);
+        var path = Path.Combine(HistoryDirectory, $"{SanitizeFileName(jobId)}.json");
+
+        // 锁必须覆盖整个「读-改-写」周期，否则两个写入者会基于同一份旧内容各自覆盖
+        var gate = ScheduleAtomicFile.GetLock(path);
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+
+        string? tmpPath = null;
         try
         {
-            Directory.CreateDirectory(HistoryDirectory);
-            var path = Path.Combine(HistoryDirectory, $"{SanitizeFileName(jobId)}.json");
-
             List<JobExecutionRecord> history;
             if (File.Exists(path))
             {
@@ -92,13 +115,18 @@ public sealed class JsonScheduleRepository : IScheduleRepository
             if (history.Count > SchedulerConstants.MaxHistoryRecords)
                 history = history.Take(SchedulerConstants.MaxHistoryRecords).ToList();
 
-            var tmpPath = path + ".tmp";
-            await File.WriteAllTextAsync(tmpPath, JsonSerializer.Serialize(history, JsonOptions), ct).ConfigureAwait(false);
-            await ReplaceFileWithRetryAsync(tmpPath, path, ct).ConfigureAwait(false);
+            tmpPath = ScheduleAtomicFile.CreateTempPath(path);
+            await File.WriteAllTextAsync(tmpPath, JsonSerializer.Serialize(history, JsonOptions), ct)
+                .ConfigureAwait(false);
+            await ScheduleAtomicFile.ReplaceAsync(tmpPath, path, _logger, ct).ConfigureAwait(false);
+            tmpPath = null; // 已消费
         }
         finally
         {
-            _lock.Release();
+            if (tmpPath is not null)
+                ScheduleAtomicFile.TryDelete(tmpPath);
+
+            gate.Release();
         }
     }
 
@@ -106,41 +134,25 @@ public sealed class JsonScheduleRepository : IScheduleRepository
     public async Task<IReadOnlyList<JobExecutionRecord>> GetHistoryAsync(string jobId, int limit, int offset = 0, CancellationToken ct = default)
     {
         var path = Path.Combine(HistoryDirectory, $"{SanitizeFileName(jobId)}.json");
-        if (!File.Exists(path))
-            return Array.Empty<JobExecutionRecord>();
 
-        var json = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
-        var history = JsonSerializer.Deserialize<List<JobExecutionRecord>>(json, JsonOptions) ?? new();
-        return history.Skip(Math.Max(0, offset)).Take(Math.Max(1, limit)).ToList();
+        // 与写入共享同一把锁：避免读到「已截断但未写完」的中间态
+        var gate = ScheduleAtomicFile.GetLock(path);
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (!File.Exists(path))
+                return Array.Empty<JobExecutionRecord>();
+
+            var json = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+            var history = JsonSerializer.Deserialize<List<JobExecutionRecord>>(json, JsonOptions) ?? new();
+            return history.Skip(Math.Max(0, offset)).Take(Math.Max(1, limit)).ToList();
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     private static string SanitizeFileName(string jobId) =>
         string.Concat(jobId.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
-
-    /// <summary>
-    /// 原子替换目标文件，带有限重试。
-    /// <para>
-    /// Windows 上杀毒/索引器可能瞬时持有刚写完的临时文件或目标文件句柄，
-    /// 导致 <see cref="File.Move(string, string, bool)"/> 抛
-    /// <see cref="UnauthorizedAccessException"/> / <see cref="IOException"/>。
-    /// 这类占用通常毫秒级释放，因此短退避重试即可，避免一次偶发占用丢掉整次保存。
-    /// </para>
-    /// </summary>
-    private static async Task ReplaceFileWithRetryAsync(string sourcePath, string destinationPath, CancellationToken ct)
-    {
-        const int maxAttempts = 5;
-
-        for (var attempt = 1; ; attempt++)
-        {
-            try
-            {
-                File.Move(sourcePath, destinationPath, overwrite: true);
-                return;
-            }
-            catch (Exception ex) when (attempt < maxAttempts && ex is IOException or UnauthorizedAccessException)
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(20 * attempt), ct).ConfigureAwait(false);
-            }
-        }
-    }
 }

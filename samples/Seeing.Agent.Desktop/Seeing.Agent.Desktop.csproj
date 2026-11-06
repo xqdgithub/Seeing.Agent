@@ -62,8 +62,44 @@
       静态资源基路径由 WebUI 项目自己声明（见其 csproj 的 StaticWebAssetBasePath），
       这里不能用 AdditionalProperties 覆盖它 —— 那会让被引用项目以另一套全局属性
       重复构建，压缩资源指纹对不上，发布时报 MSB3030 "找不到 .gz 文件"。
+
+      GlobalPropertiesToRemove：PublishProfile / PublishUrl 是**全局属性**，会随
+      ProjectReference 传播给被引用项目。两个项目恰好都有名为 FolderProfile 的
+      发布配置（各自在 Properties/PublishProfiles 下），但目标 RID 不同：
+      桌面是 win-x64，WebUI 是 linux-x64。于是从 VS 发布桌面时，WebUI 会套用
+      **自己**那份 linux-x64 的 profile，被按 linux-x64 构建/发布 ——
+      表现为 UpdateExternallyDefinedStaticWebAssets 任务意外失败、
+      或发布产物里混进 linux-x64 的静态资源清单。
+      发布配置只属于声明它的那个项目，不应下传给引用项目。
     -->
-    <ProjectReference Include="..\Seeing.Agent.WebUI\Seeing.Agent.WebUI.csproj" />
+    <ProjectReference Include="..\Seeing.Agent.WebUI\Seeing.Agent.WebUI.csproj">
+      <GlobalPropertiesToRemove>PublishProfile;PublishUrl;WebPublishMethod</GlobalPropertiesToRemove>
+    </ProjectReference>
   </ItemGroup>
 
+  <!--
+    ChannelHost 产物补全。
+
+    为什么需要：WebUI 以 ReferenceOutputAssembly="false" 引用 ChannelHost ——
+    该设置下 SDK 只复制 apphost(.exe)、deps.json、runtimeconfig.json，
+    **不复制 .dll**。WebUI 自己的 csproj 用嵌套 Publish 补齐了这些文件，
+    但 Desktop 把被引用项目的输出复制到 publish 时又按同一套规则走了一遍，
+    结果 publish 目录里同样只剩「半套」文件。
+    运行期 ChannelHostManager.ResolveChannelHost 要求 .dll 存在，
+    缺了会抛「找不到可运行的 Seeing.Gateway.ChannelHost」。
+
+    这里在发布后把 WebUI 输出目录中已齐备的 ChannelHost 文件带过来。
+  -->
+  <Target Name="CopyChannelHostToPublish"
+          AfterTargets="Publish"
+          Condition="Exists('$(PublishDir)')">
+    <ItemGroup>
+      <_ChannelHostArtifact Include="$(MSBuildThisFileDirectory)..\Seeing.Agent.WebUI\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\Seeing.Gateway.ChannelHost.*" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_ChannelHostArtifact)"
+          DestinationFolder="$(PublishDir)"
+          SkipUnchangedFiles="true"
+          Condition="'@(_ChannelHostArtifact)' != ''" />
+  </Target>
 </Project>
