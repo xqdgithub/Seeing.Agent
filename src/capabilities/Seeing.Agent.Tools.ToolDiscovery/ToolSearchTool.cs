@@ -178,56 +178,71 @@ public sealed class ToolSearchTool : ToolBase
         if (detail == "full" && discovered && hitIds.Count > 0)
             loadedToolIds = hitIds;
 
+        // 输出分三段，段间空行分隔：
+        //   1) 头部元信息（[ ] 标记）：本次检索的规模与档位
+        //   2) 结果主体：每行 "N. " 编号，纯内容、无样板句
+        //   3) 尾部元信息（[ ] 标记）：后续动作提示（翻页/收窄/末页）
+        // 检索级事实（发现态、硬上限）只出现一次，放在所属段首，不随条目重复。
         var sb = new StringBuilder();
-        sb.Append($"工具检索结果（detail={detail}, total={total}, returned={page.Count}, remaining={remaining}）:");
-        if (detail == "full" && limit > FullPageHardCap)
+
+        var head = new List<string>
         {
-            sb.Append($"\n(detail=full 每页最多加载 {FullPageHardCap} 条全量定义，已按硬上限截断)");
+            $"detail={detail}, total={total}, returned={page.Count}, remaining={remaining}"
+        };
+        if (detail == "full" && limit > FullPageHardCap)
+            head.Add($"full 每页最多返回 {FullPageHardCap} 条全量定义，已按硬上限截断");
+        if (detail == "full")
+        {
+            head.Add(discovered
+                ? "已返回完整定义，可直接调用"
+                : "发现态登记失败（会话不可用），不影响直接调用；只是本次检索不会被记录");
         }
+
+        sb.Append('[').Append(string.Join(" · ", head)).AppendLine("]");
+        sb.AppendLine();
 
         for (var i = 0; i < page.Count; i++)
         {
             var entry = page[i].Entry;
-            sb.Append('\n').Append(i + 1).Append(". ");
+            sb.Append(i + 1).Append(". ");
+
             if (detail == "name")
             {
-                sb.Append(entry.Id);
+                sb.AppendLine(entry.Id);
                 continue;
             }
 
             // summary：用完整描述（截 300）而非目录行签名；full 保持签名 + 完整 schema。
             if (detail == "summary")
             {
-                sb.Append(BuildSummaryLine(entry));
+                sb.AppendLine(BuildSummaryLine(entry));
                 continue;
             }
 
-            if (!string.IsNullOrWhiteSpace(entry.Signature))
-                sb.Append(entry.Signature);
-
-            sb.Append(discovered
-                ? "\n   已返回完整定义，可直接调用："
-                : "\n   提示：发现态登记失败（会话不可用），不影响直接调用；只是本次检索不会被记录:");
-            var schemaText = GetFullDefinition(entry);
-            sb.Append('\n').Append(schemaText);
+            sb.AppendLine(string.IsNullOrWhiteSpace(entry.Signature) ? entry.Id : entry.Signature);
+            sb.AppendLine(GetFullDefinition(entry));
         }
 
-        sb.Append('\n');
+        var tail = new List<string>();
         if (remaining > 0)
         {
-            sb.Append($"提示：优先使用更精确关键词或指定 namespace 参数收窄结果；如需继续翻页可用 offset={nextOffset}。");
+            tail.Add($"优先用更精确关键词或 namespace 收窄；继续翻页用 offset={nextOffset}");
             if (detail == "full")
-            {
-                sb.Append($"\n注意：继续以 detail=full 加载会写入过多 schema，建议先用 detail=summary 浏览候选。");
-            }
+                tail.Add("继续以 full 加载会写入过多 schema，建议先用 summary 浏览候选");
         }
         else if (total > 0)
         {
-            sb.Append("已到末页；若未找到合适工具，可换用更宽泛或不同措辞的关键词。");
+            tail.Add("已到末页；未找到合适工具时可换更宽泛或不同措辞的关键词");
+        }
+
+        if (tail.Count > 0)
+        {
+            sb.AppendLine();
+            sb.Append('[').Append(string.Join(" · ", tail)).Append(']');
         }
 
         var resultMeta = BuildMetadata(detail, total, page.Count, remaining, remaining > 0 ? nextOffset : null);
-        var result = Success(sb.ToString(), resultMeta);
+        var result = Success(sb.ToString().TrimEnd(), resultMeta);
         result.LoadedToolIds = loadedToolIds;
         return result;
     }
@@ -248,7 +263,17 @@ public sealed class ToolSearchTool : ToolBase
     private static string GetFullDefinition(ExposedTool entry)
     {
         // full 定义直接取自本执行快照，不再回头查注册表或重新结算（避免第二条 schema 路径）。
-        return "   " + JsonSerializer.Serialize(entry.Schema, s_readableJson);
+        // 只输出内层 {name, description, parameters}：外层 {"type":"function","function":…}
+        // 是 OpenAI 传输格式细节，对模型无信息量，且与 summary 的单行签名形态不连续。
+        var function = entry.Schema.Function;
+        var readable = new
+        {
+            name = function?.Name ?? entry.Id,
+            description = function?.Description,
+            parameters = function?.Parameters
+        };
+
+        return "   " + JsonSerializer.Serialize(readable, s_readableJson);
     }
 
     private static Dictionary<string, object> BuildMetadata(

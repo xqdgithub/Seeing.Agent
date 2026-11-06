@@ -317,7 +317,7 @@ public class ToolSearchToolTests
         _store.Verify(
             s => s.Add("s1", It.Is<IEnumerable<string>>(ids => ids.Count() == 3)),
             Times.Once);
-        result.Output.Should().Contain("每页最多加载 3 条");
+        result.Output.Should().Contain("每页最多返回 3 条");
     }
 
     [Fact]
