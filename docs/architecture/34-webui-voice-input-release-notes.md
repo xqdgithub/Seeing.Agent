@@ -131,6 +131,21 @@ Body: multipart/form-data, field "audio" = 录音 Blob
    Windows WebView2 走 Chromium，预期零改动，但未在桌面宿主里跑过。
 4. **真音频→真文字未端到端验证**：验证环境没有配置 ASR 服务商模型，
    实测到「真录音 → 真上传 → 503 modelNotConfigured」为止。
+5. **ASR 端口不表达说话人分离（speaker diarization）**。
+   业界主流服务（Deepgram / AssemblyAI / Google / Azure / ElevenLabs）都支持，
+   但**没有统一的请求/响应协议**——OpenAI 要 `response_format=diarized_json`
+   配专用模型，Deepgram 是查询参数 `diarize=true` 且响应结构完全不同，
+   AssemblyAI 走异步 job 轮询，Azure 是另一个专有接口。
+   因此 `TranscriptSegment` 只有 `Start` / `End` / `Text`，`TranscriptionRequest`
+   也没有 `ResponseFormat` 字段，客户端固定请求 `verbose_json`（业界最小公约数）。
+   将来若需要，正确做法是新增独立能力位 + 专用端口（如 `IDiarizationClient`），
+   **而不是往 `TranscriptSegment` 加字段**——共用 `Segments` 数组装不下各家差异。
+
+   > 相关实测：SiliconFlow 把 `verbose_json` 的 `segments[].id` 序列化成字符串 `"0"`
+   > （规范是整数）。`TranscriptionApiSegment.Id` 用
+   > `[JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]` 兼容两种形状；
+   > 不去把类型放宽成 `object`，也不兼容 `"seg_001"`——我们只发 `verbose_json`，
+   > 读不进来即说明误用了别的响应格式，报错才对。
 
 ## 6. 手工验收清单
 

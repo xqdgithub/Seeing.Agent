@@ -623,12 +623,20 @@ internal class TranscriptionApiResponse
 internal class TranscriptionApiSegment
 {
     /// <summary>
-    /// 段落序号。<b>类型放宽为 object</b>：OpenAI 返回数字 <c>0</c>，
-    /// SiliconFlow（XingChenASR）返回字符串 <c>"0"</c>，而该字段从未被读取——
-    /// 用 int 会让整条转写因反序列化失败而报废（后端其实已识别成功）。
+    /// 段落序号。
     /// </summary>
+    /// <remarks>
+    /// <para><c>verbose_json</c> 里这是<b>整数序号</b>（whisper-1 返回 <c>0</c>）。</para>
+    /// <para>部分 OpenAI 兼容服务（如 SiliconFlow / XingChenASR）把它序列化成字符串
+    /// <c>"0"</c>，属实现不规范；<see cref="JsonNumberHandling.AllowReadingFromString"/>
+    /// 让两种形状都能读进来，无需为此把类型放宽成 <c>object</c> 而丢掉契约表达力。</para>
+    /// <para>注：OpenAI 的 <c>diarized_json</c> 用 <c>"seg_001"</c> 这类非数字字符串。
+    /// 本客户端只请求 <c>verbose_json</c>，因此读不进来即说明误用了别的响应格式，
+    /// 报错是正确的。</para>
+    /// </remarks>
     [JsonPropertyName("id")]
-    public object? Id { get; set; }
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+    public int Id { get; set; }
 
     /// <summary>起始秒。</summary>
     [JsonPropertyName("start")]
