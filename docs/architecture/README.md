@@ -47,6 +47,7 @@
 | [29 TypeSafe Provider 下沉为插件 Release Notes](29-typesafe-provider-extraction-release-notes.md) | `llm.systemone`→`llm.typesafe`（只管协议）、Provider 下沉 `provider.typesafe-api`（`Extension` 来源）、`systemone.json` 只读回退、`typesafe-api/` 前缀与迁移 |
 | [30 桌面宿主 Release Notes](30-desktop-host-release-notes.md) | `Seeing.Agent.Desktop`（同进程 Kestrel + 原生 WebView）、`WebUiHost.BuildAsync` 单一真相源、`StaticWebAssetBasePath=/`、`--urls` 走命令行避免污染子进程、图标生成与已知边界 |
 | [31 可读 JSON 序列化统一 Release Notes](31-readable-json-release-notes.md) | `Seeing.Serialization.SeeingJson` 单一出口（中文原样）、55 处调用点迁移、签名/哈希三处显式豁免 `Signature`、`JsonOptionsInvariantTests` 防漂移 |
+| [33 WebUI 语音输入 Release Notes](33-webui-voice-input-release-notes.md) | 点击切换录音、灰态可点非 Disabled、组件直读 `IModelConfigManager`、`/api/transcriptions` 契约、`ModelReference` 共享 helper、macOS 已知边界 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 
