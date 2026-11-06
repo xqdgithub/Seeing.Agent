@@ -131,6 +131,116 @@ public class DesktopPublishProfileIsolationTests
     }
 
     /// <summary>
+    /// ChannelHost 必须保持 RID 无关（不产原生 apphost）。
+    /// <para>
+    /// 现场症状：从 VS 用 WebUI 的 <c>FolderProfile</c>（linux-x64）发布时报
+    /// <c>无法复制 …obj\Release\net10.0\linux-x64\apphost，原因是找不到该文件</c>，
+    /// 同时缺 <c>deps.json</c> / <c>runtimeconfig.json</c>。
+    /// </para>
+    /// <para>
+    /// 根因：RID 只写在 WebUI 自己的 PublishProfile 里，不会进入 ChannelHost 的
+    /// restore，于是它的 assets 只有 <c>net10.0</c>；但构建期 ProjectReference
+    /// 与嵌套 Publish 又会把 RID 带过去，按 <c>net10.0/linux-x64</c> 去取
+    /// RID 专属产物（apphost 来自 microsoft.netcore.app.host.&lt;rid&gt; 包）
+    /// —— restore 与 build 的 RID 视图不一致。
+    /// </para>
+    /// <para>
+    /// ChannelHost 一律以 <c>dotnet Seeing.Gateway.ChannelHost.dll</c> 启动
+    /// （见 <c>ChannelHostManager.BuildChannelHostStartInfo</c>），原生启动器
+    /// 从未被使用，因此关掉 apphost 是正确解法，而不是给嵌套调用补 RID。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ChannelHostProject_ShouldBeRidAgnostic()
+    {
+        var csproj = ReadRepoFile("samples/Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj");
+
+        Regex.IsMatch(csproj, @"<UseAppHost>\s*false\s*</UseAppHost>", RegexOptions.CultureInvariant)
+            .Should().BeTrue(
+                "ChannelHost 只通过 `dotnet xxx.dll` 启动，不该产原生 apphost；" +
+                "留着它会把 RID 拉进构建，导致跨 RID 发布时找不到 apphost");
+    }
+
+    /// <summary>
+    /// 嵌套发布 ChannelHost 时必须剥离 RuntimeIdentifier。
+    /// <para>
+    /// 一旦透传，MSBuild 会去 <c>obj/&lt;Config&gt;/&lt;tfm&gt;/&lt;rid&gt;/</c> 找
+    /// <c>apphost</c> / <c>deps.json</c> / <c>runtimeconfig.json</c>；而该 RID
+    /// 目标只存在于入口项目的 assets 里，被调用项目没有 → NETSDK1047 或
+    /// 「无法复制 …，原因是找不到该文件」。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ChannelHostNestedPublish_ShouldNotPropagateRuntimeIdentifier()
+    {
+        var csproj = ReadRepoFile("samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj");
+
+        var msbuildCalls = Regex.Matches(
+            csproj,
+            @"<MSBuild[^>]*Seeing\.Gateway\.ChannelHost\.csproj[^>]*/?>",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+        msbuildCalls.Should().NotBeEmpty("WebUI 需要把 ChannelHost 发布到输出/发布目录");
+
+        foreach (Match call in msbuildCalls)
+        {
+            Regex.IsMatch(call.Value, @"RemoveProperties=""[^""]*RuntimeIdentifier", RegexOptions.CultureInvariant)
+                .Should().BeTrue(
+                    "嵌套发布必须剔除 RuntimeIdentifier：ChannelHost 是 RID 无关产物，" +
+                    "透传 RID 会让它去找不存在的 apphost / deps.json");
+        }
+    }
+
+    /// <summary>
+    /// ChannelHost 的 ProjectReference 同样不得传递 RID，
+    /// 否则 restore（无 RID）与 build（有 RID）的视图不一致。
+    /// </summary>
+    [Fact]
+    public void ChannelHostProjectReference_ShouldNotPropagateRuntimeIdentifier()
+    {
+        var csproj = ReadRepoFile("samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj");
+
+        var node = Regex.Match(
+            csproj,
+            @"<ProjectReference[^>]*Seeing\.Gateway\.ChannelHost\.csproj[^>]*>(.*?)</ProjectReference>",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+        node.Success.Should().BeTrue("WebUI 必须引用 ChannelHost 以保证构建顺序");
+
+        Regex.IsMatch(node.Value, @"GlobalPropertiesToRemove>[^<]*RuntimeIdentifier", RegexOptions.CultureInvariant)
+            .Should().BeTrue(
+                "ProjectReference 必须剥离 RuntimeIdentifier，" +
+                "否则 restore 与 build 的 RID 视图不一致（NETSDK1047）");
+    }
+
+    /// <summary>
+    /// Desktop 补齐 ChannelHost 时必须同时兼容「RID 无关」与「历史 RID 子目录」两种落点。
+    /// <para>
+    /// ChannelHost 改成 <c>UseAppHost=false</c> 后落在 <c>bin/&lt;Config&gt;/&lt;tfm&gt;/</c>，
+    /// 不再进 <c>&lt;rid&gt;</c> 子目录。若补齐目标仍只认 <c>$(RuntimeIdentifier)</c>，
+    /// 桌面端 publish 会静默丢掉这四个文件，运行期 ResolveChannelHost 直接失败。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void DesktopPublish_ShouldFindChannelHostInBothRidAndRidlessDirs()
+    {
+        var csproj = ReadRepoFile("samples/Seeing.Agent.Desktop/Seeing.Agent.Desktop.csproj");
+
+        var target = Regex.Match(
+            csproj,
+            @"<Target\s+Name=""CopyChannelHostToPublish""(.*?)</Target>",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+        target.Success.Should().BeTrue("Desktop 必须补齐 ChannelHost 完整产物");
+
+        target.Value.Should().Contain(@"\$(TargetFramework)\Seeing.Gateway.ChannelHost.*",
+            "ChannelHost 现在是 RID 无关产物，主来源必须是 bin/<Config>/<tfm>/");
+
+        target.Value.Should().Contain(@"\$(RuntimeIdentifier)\Seeing.Gateway.ChannelHost.*",
+            "仍需保留 RID 子目录兜底，兼容外层带 RID 构建的历史布局");
+    }
+
+    /// <summary>
     /// 从测试输出目录回溯到仓库根，读取仓库内文件。
     /// </summary>
     private static string ReadRepoFile(string relativePath)

@@ -69,7 +69,17 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\gateway\Seeing.Agent.Gateway\Seeing.Agent.Gateway.csproj" />
     <ProjectReference Include="..\..\src\capabilities\Seeing.Agent.Scheduler\Seeing.Agent.Scheduler.csproj" />
-    <ProjectReference Include="..\Seeing.Gateway.ChannelHost\Seeing.Gateway.ChannelHost.csproj" ReferenceOutputAssembly="false" />
+    <!--
+      ChannelHost 是 RID 无关的纯托管产物（UseAppHost=false），
+      与 WebUI 的 RID 完全解耦：真实产物由嵌套 MSBuild Publish 生成，
+      这里的引用只用于保证构建顺序。
+      若让 RuntimeIdentifier 传播过去，它就会按 RID 去解析 assets 与原生 apphost，
+      而 RID 只写在 WebUI 的 PublishProfile 里、不会进入它的 restore，
+      造成 restore/build 的 RID 视图不一致 → NETSDK1047 或 apphost 缺失。
+    -->
+    <ProjectReference Include="..\Seeing.Gateway.ChannelHost\Seeing.Gateway.ChannelHost.csproj" ReferenceOutputAssembly="false">
+      <GlobalPropertiesToRemove>RuntimeIdentifier;SelfContained;PublishProfile;PublishUrl;WebPublishMethod</GlobalPropertiesToRemove>
+    </ProjectReference>
   </ItemGroup>
   <!--
     ChannelHost 打包策略：
@@ -78,12 +88,18 @@
     3. Publish 时发布到 WebUI 发布目录（同级根目录）
     4. 启动时统一使用 dotnet Seeing.Gateway.ChannelHost.dll
 
-    RuntimeIdentifier 必须透传给嵌套的 MSBuild（见下方 PassRuntimeIdentifier）：
-    WebUI 以 -r <rid> 构建时，外层中间产物在 obj/<Config>/<tfm>/<rid>/，
-    若嵌套调用拿空 RID，ChannelHost 会去 obj/<Config>/<tfm>/ 找 RID 专属的
-    apphost / deps.json / runtimeconfig.json —— 那些文件只存在于 <rid> 子目录，
-    于是报「无法复制 …linux-x64/…deps.json，原因是找不到该文件」。
-    两者还会争抢同一组中间文件，在并行构建下进一步表现为随机失败。
+    **ChannelHost 全程不带 RuntimeIdentifier。** 它是 RID 无关的纯托管产物
+    （UseAppHost=false，只有 .dll / .deps.json / .runtimeconfig.json），
+    原生启动器从没被用到（见 ChannelHostManager.BuildChannelHostStartInfo）。
+
+    WebUI 以 -r <rid> 或 PublishProfile 发布到 linux-x64 时，RID 只属于 WebUI
+    自己，不会进入 ChannelHost 的 restore。若这里把 RID 透传给嵌套 MSBuild，
+    它会按 RID 去找 obj/<Config>/<tfm>/<rid>/ 下的 apphost / deps.json /
+    runtimeconfig.json —— 这些文件因为 restore 没有该 RID 目标而根本不存在，
+    于是报「无法复制 …/linux-x64/apphost，原因是找不到该文件」
+    （历史报错原文），或直接 NETSDK1047「资产文件没有 net10.0/linux-x64 目标」。
+    两者还会争抢同一组中间文件，并行构建下进一步表现为随机失败。
+    因此嵌套调用必须 RemoveProperties 掉 RuntimeIdentifier / SelfContained。
 
     目标目录必须转成**绝对路径**再传给嵌套 MSBuild：
     $(OutDir) / $(PublishDir) 是相对路径（如 bin\Release\net10.0\win-x64\），
@@ -93,19 +109,30 @@
     （ReferenceOutputAssembly=false 不复制 .dll），
     运行期 ResolveChannelHost 找不到 Seeing.Gateway.ChannelHost.dll 而启动失败。
   -->
-  <Target Name="PassRuntimeIdentifier">
+  <Target Name="PassChannelHostPublishDirs">
     <PropertyGroup>
-      <!-- 空 RID（framework-dependent 默认）时不追加，避免产生多余的 ";;" -->
-      <_ChannelHostRuntimeIdentifierArg Condition="'$(RuntimeIdentifier)' != ''">;RuntimeIdentifier=$(RuntimeIdentifier)</_ChannelHostRuntimeIdentifierArg>
-      <!-- 嵌套 MSBuild 的 PublishDir 基准是被调用项目目录，必须给绝对路径 -->
-      <_ChannelHostBuildPublishDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)$(OutDir)'))</_ChannelHostBuildPublishDir>
-      <_ChannelHostRealPublishDir Condition="'$(PublishDir)' != ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)$(PublishDir)'))</_ChannelHostRealPublishDir>
+      <!--
+        不再向 ChannelHost 传 RuntimeIdentifier：它是 RID 无关的纯托管产物
+        （UseAppHost=false，只产出 .dll / .deps.json / .runtimeconfig.json），
+        一律 `dotnet Seeing.Gateway.ChannelHost.dll` 启动。
+        传 RID 会让它按 RID 去解析 assets（net10.0/<rid>）与原生 apphost，
+        而 RID 只存在于 WebUI 的 PublishProfile、不会进入 ChannelHost 的 restore，
+        于是 restore 与 build 的 RID 视图不一致，报 NETSDK1047 /
+        「无法复制 …linux-x64/apphost，原因是找不到该文件」。
+      -->
+      <!-- 嵌套 MSBuild 的 PublishDir 基准是被调用项目目录，必须给绝对路径；
+           若调用方已给绝对路径（如 -o / PublishDir 指定外部目录），
+           不能再拼 MSBuildThisFileDirectory，否则会得到 ...\samples\C:\... 这种非法路径 -->
+      <_ChannelHostBuildPublishDir Condition="!$([System.IO.Path]::IsPathRooted('$(OutDir)'))">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)$(OutDir)'))</_ChannelHostBuildPublishDir>
+      <_ChannelHostBuildPublishDir Condition="$([System.IO.Path]::IsPathRooted('$(OutDir)'))">$([MSBuild]::NormalizeDirectory('$(OutDir)'))</_ChannelHostBuildPublishDir>
+      <_ChannelHostRealPublishDir Condition="'$(PublishDir)' != '' and !$([System.IO.Path]::IsPathRooted('$(PublishDir)'))">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)$(PublishDir)'))</_ChannelHostRealPublishDir>
+      <_ChannelHostRealPublishDir Condition="'$(PublishDir)' != '' and $([System.IO.Path]::IsPathRooted('$(PublishDir)'))">$([MSBuild]::NormalizeDirectory('$(PublishDir)'))</_ChannelHostRealPublishDir>
     </PropertyGroup>
   </Target>
 
   <Target Name="CopyChannelHostForBuild"
           AfterTargets="Build"
-          DependsOnTargets="PassRuntimeIdentifier">
+          DependsOnTargets="PassChannelHostPublishDirs">
     <!--
       不要加 Condition 判断「是否在发布」：
       历史上这里写过 '$(PublishDir)' == ''，但 PublishDir 有 SDK 默认值
@@ -121,8 +148,8 @@
     -->
     <MSBuild Projects="$(MSBuildThisFileDirectory)../Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj"
              Targets="Publish"
-             RemoveProperties="PublishProfile;PublishUrl;WebPublishMethod"
-             Properties="Configuration=$(Configuration);PublishDir=$(_ChannelHostBuildPublishDir);SelfContained=false$(_ChannelHostRuntimeIdentifierArg)" />
+             RemoveProperties="PublishProfile;PublishUrl;WebPublishMethod;RuntimeIdentifier;SelfContained"
+             Properties="Configuration=$(Configuration);PublishDir=$(_ChannelHostBuildPublishDir);SelfContained=false" />
 
     <!--
       再删 ProjectReference 带来的 exe / 无扩展名 apphost：
@@ -138,13 +165,13 @@
 
   <Target Name="PublishChannelHost"
           AfterTargets="Publish;PublishOnly"
-          DependsOnTargets="PassRuntimeIdentifier"
+          DependsOnTargets="PassChannelHostPublishDirs"
           Condition="'$(_ChannelHostRealPublishDir)' != ''">
     <!-- RemoveProperties 理由同上：发布配置不可下传给没有该配置的嵌套项目 -->
     <MSBuild Projects="$(MSBuildThisFileDirectory)../Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj"
              Targets="Publish"
-             RemoveProperties="PublishProfile;PublishUrl;WebPublishMethod"
-             Properties="Configuration=$(Configuration);PublishDir=$(_ChannelHostRealPublishDir);SelfContained=false$(_ChannelHostRuntimeIdentifierArg)" />
+             RemoveProperties="PublishProfile;PublishUrl;WebPublishMethod;RuntimeIdentifier;SelfContained"
+             Properties="Configuration=$(Configuration);PublishDir=$(_ChannelHostRealPublishDir);SelfContained=false" />
 
     <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost')" />
   </Target>

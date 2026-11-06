@@ -7,6 +7,23 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Seeing.Gateway.ChannelHost</RootNamespace>
     <AssemblyName>Seeing.Gateway.ChannelHost</AssemblyName>
+    <!--
+      不生成原生 apphost（exe / 无扩展名可执行文件）。
+
+      原因一（运行方式）：宿主一律通过 `dotnet Seeing.Gateway.ChannelHost.dll` 启动
+      （见 ChannelHostManager.BuildChannelHostStartInfo），原生启动器从没被用到。
+
+      原因二（跨平台发布）：apphost 是**平台相关**产物，必须按 RID 从
+      microsoft.netcore.app.host.<rid> 包取。WebUI 发布到 linux-x64 时，
+      RID 只写在 WebUI 自己的 PublishProfile 里，不会进入本项目 restore，
+      于是构建期按 RID 去找 apphost、restore 期却没有对应 assets，
+      报「无法复制 …/linux-x64/apphost，原因是找不到该文件」。
+
+      关掉后本项目变成完全 RID 无关：产物只有 .dll / .deps.json /
+      .runtimeconfig.json，Windows / Linux / macOS 可共用同一份，
+      发布方也不需要再为它做 RID 对齐。
+    -->
+    <UseAppHost>false</UseAppHost>
   </PropertyGroup>
 
   <ItemGroup>

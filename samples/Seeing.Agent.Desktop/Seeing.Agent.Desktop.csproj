@@ -80,8 +80,8 @@
   <!--
     ChannelHost 产物补全。
 
-    为什么需要：WebUI 以 ReferenceOutputAssembly="false" 引用 ChannelHost ——
-    该设置下 SDK 只复制 apphost(.exe)、deps.json、runtimeconfig.json，
+    为什么需要：WebUI 以 ReferenceOutputAssembly="false" 引用 ChannelHost，
+    SDK 只会复制 apphost / deps.json / runtimeconfig.json 这类「半套」文件，
     **不复制 .dll**。WebUI 自己的 csproj 用嵌套 Publish 补齐了这些文件，
     但 Desktop 把被引用项目的输出复制到 publish 时又按同一套规则走了一遍，
     结果 publish 目录里同样只剩「半套」文件。
@@ -89,12 +89,25 @@
     缺了会抛「找不到可运行的 Seeing.Gateway.ChannelHost」。
 
     这里在发布后把 WebUI 输出目录中已齐备的 ChannelHost 文件带过来。
+    ChannelHost 现在是 RID 无关产物（UseAppHost=false），会落在
+    bin/<Config>/<tfm>/ 下；但历史上也出现过落在 bin/<Config>/<tfm>/<rid>/
+    的情况（外层带 RID 构建时）。两处都找，避免换发布方式就丢文件。
   -->
   <Target Name="CopyChannelHostToPublish"
           AfterTargets="Publish"
           Condition="Exists('$(PublishDir)')">
     <ItemGroup>
-      <_ChannelHostArtifact Include="$(MSBuildThisFileDirectory)..\Seeing.Agent.WebUI\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\Seeing.Gateway.ChannelHost.*" />
+      <!-- 主来源：ChannelHost 是 RID 无关产物，落在 bin/<Config>/<tfm>/ -->
+      <_ChannelHostArtifact Include="$(MSBuildThisFileDirectory)..\Seeing.Agent.WebUI\bin\$(Configuration)\$(TargetFramework)\Seeing.Gateway.ChannelHost.*" />
+      <!-- 兜底：历史遗留的 RID 子目录（外层带 RID 构建时才会产生），
+           只补主来源里没有的文件，避免同名覆盖 -->
+      <_ChannelHostArtifactFallback Include="$(MSBuildThisFileDirectory)..\Seeing.Agent.WebUI\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\Seeing.Gateway.ChannelHost.*"
+                                   Condition="'$(RuntimeIdentifier)' != ''" />
+      <_ChannelHostArtifactFallback Remove="@(_ChannelHostArtifactFallback)"
+                                    MatchOnMetadata="Filename"
+                                    MatchOnMetadataOptions="CaseInsensitive"
+                                    Condition="'@(_ChannelHostArtifact)' != ''" />
+      <_ChannelHostArtifact Include="@(_ChannelHostArtifactFallback)" />
     </ItemGroup>
 
     <Copy SourceFiles="@(_ChannelHostArtifact)"
