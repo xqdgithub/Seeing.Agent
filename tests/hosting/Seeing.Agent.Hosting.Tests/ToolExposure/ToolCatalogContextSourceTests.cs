@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
@@ -72,6 +73,22 @@ public class ToolCatalogContextSourceTests
 
         value.State.Should().Be(ContextValueState.Value);
         source.RenderInitial(value).Should().Be("CATALOG-BODY");
+    }
+
+    [Fact]
+    public void 执行引擎注册_应把工具目录注册为上下文源()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        // AddExecutionEngine 依赖外部已注册的会话/工作区服务，独立构建容器会失败；
+        // 这里只断言 ServiceDescriptor（DI 连通性由 HostComposition 守门测试覆盖）。
+        HostingServiceCollectionExtensions.AddExecutionEngine(services);
+
+        services.Should().Contain(
+            d => d.ServiceType == typeof(IContextSource)
+                 && d.ImplementationType == typeof(ToolCatalogContextSource),
+            "工具目录必须以上下文源注册，而不是系统提示词分节");
     }
 
     [Fact]

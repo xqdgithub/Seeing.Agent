@@ -93,8 +93,11 @@ public static class HostingServiceCollectionExtensions
         // 会话暴露状态唯一写出口（主链轮首提升/提交、Scheduler 旁路提升共用）
         services.AddSingleton<Seeing.Agent.Abstractions.Execution.ISessionToolExposureWriter,
             Seeing.Agent.Hosting.Execution.SessionToolExposureWriter>();
-        // 目录分节贡献者（透传结算产出的目录正文进系统提示）
-        services.AddSingleton<Seeing.Agent.Abstractions.Prompts.IPromptSectionContributor, Seeing.Agent.Hosting.Prompts.ToolCatalogSectionContributor>();
+        // 工具目录改为上下文源（Target = Message）：目录不再进系统提示词，
+        // 运行时变化走增量叙述消息，保住系统提示词与前缀缓存。
+        services.TryAddEnumerable(
+            ServiceDescriptor.Scoped<Seeing.Agent.Abstractions.Context.IContextSource,
+                Seeing.Agent.Hosting.Execution.ToolExposure.ToolCatalogContextSource>());
         services.AddSingleton<SessionRuntime>(sp => new SessionRuntime(
             sp.GetRequiredService<IExecutionRunner>(),
             sp.GetRequiredService<IExecutionEventPublisher>(),

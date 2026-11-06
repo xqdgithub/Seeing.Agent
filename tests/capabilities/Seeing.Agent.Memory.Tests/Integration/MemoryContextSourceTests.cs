@@ -547,5 +547,6 @@ public class MemoryContextSourceTests
         public string WorkspaceRoot { get; set; } = string.Empty;
         public Seeing.Agent.Abstractions.Skills.SkillCatalogSnapshot? SkillSnapshot { get; set; }
         public string? UserQuery { get; set; }
+        public Seeing.Agent.Abstractions.Execution.SessionToolSchemaResolution? ToolSettlement { get; set; }
     }
 }

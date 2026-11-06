@@ -328,6 +328,8 @@ public sealed class SkillsContextSourceTests : IDisposable
         public SkillCatalogSnapshot? SkillSnapshot { get; set; } = snapshot;
 
         public string? UserQuery { get; set; }
+
+        public Seeing.Agent.Abstractions.Execution.SessionToolSchemaResolution? ToolSettlement { get; set; }
     }
 
 }

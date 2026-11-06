@@ -578,7 +578,6 @@ public class AgentExecutor : IAgentExecutor
         var settlement = context.ToolSettlement;
         var toolSchemas = settlement?.InlineSchemas
             ?? (IReadOnlyList<FunctionToolSchema>)Array.Empty<FunctionToolSchema>();
-
         // 使用 PromptBuilder 构建系统提示词
         // 不再以「agent 有无系统提示词」守卫整块：上下文基线即使在没有正文时也必须送达模型
         // （PromptBuilder 在正文为空时直接返回基线）。
@@ -595,9 +594,6 @@ public class AgentExecutor : IAgentExecutor
             Tools = toolSchemas.Select(ts => ts.Function).ToList(),
             ContextBaseline = context.ContextBaseline,
         };
-        // 工具目录正文（结算时渲染，string-only 携带）经通用 Sections 槽交给 ToolCatalog 分节贡献者
-        if (!string.IsNullOrWhiteSpace(settlement?.CatalogText))
-            promptContext.Sections[PromptSectionNames.ToolCatalog] = settlement.CatalogText;
 
         systemPrompt = await _promptBuilder.BuildAsync(promptContext, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrEmpty(systemPrompt))
