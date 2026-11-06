@@ -328,6 +328,12 @@ public record ToolCallEvent : IMessageEvent
     public string? TurnDirectiveReason { get; init; }
 
     /// <summary>
+    /// 附带的工具完整定义（JSON）。仅当该工具本轮未下发 schema、且本次失败属参数类错误时填充；
+    /// 用于让模型在一次往返内修正参数，无需先 tool_search。
+    /// </summary>
+    public string? ToolDefinition { get; init; }
+
+    /// <summary>
     /// 回传给模型的内容：成功为 <see cref="Output"/>；失败为带防误判 notice 的
     /// <c>tool_result</c> XML 信封（详见 <see cref="ToolResultFormatting"/>）。
     /// </summary>
@@ -337,7 +343,8 @@ public record ToolCallEvent : IMessageEvent
         Error,
         ToolName,
         Status.ToString().ToLowerInvariant(),
-        Title);
+        Title,
+        ToolDefinition);
 }
 
 /// <summary>
