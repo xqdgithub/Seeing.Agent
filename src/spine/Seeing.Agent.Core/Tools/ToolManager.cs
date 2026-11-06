@@ -705,7 +705,9 @@ namespace Seeing.Agent.Core.Tools
                         {
                             Success = false,
                             ToolCallId = toolCall.Id,
-                            Error = resolution.Reason ?? "Permission denied"
+                            Title = "权限拒绝",
+                            Error = resolution.Reason ?? "Permission denied",
+                            Metadata = new Dictionary<string, object> { ["permission.denied"] = true }
                         };
                     }
                 }

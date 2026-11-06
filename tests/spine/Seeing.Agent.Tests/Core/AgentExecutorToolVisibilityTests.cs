@@ -227,17 +227,20 @@ public class AgentExecutorToolVisibilityTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_CaseInsensitiveDeferredCall_ShouldNotFallToNotFound()
+    public async Task ExecuteAsync_CaseInsensitiveDeferredCall_ShouldExecuteTheCanonicalTool()
     {
-        // 结算用 OrdinalIgnoreCase，ToolManager 用序数敏感：模型写 Read 不得落到"工具不存在"。
-        var executor = CreateExecutor("Read");
+        // 结算用 OrdinalIgnoreCase，ToolManager 用序数敏感：
+        // 模型写 Read 必须被归一化为 read 再执行，否则会拿裸「工具不存在: Read」。
+        var executor = await CreateExecutorWithToolsAsync(
+            CreateScriptedLlm("Read"), new NamedTool("read"));
         var settlement = BuildSettlement(("read", ToolExposureMode.Deferred));
 
         var events = await RunAsync(executor, settlement);
 
         var complete = events.OfType<ToolCallEvent>()
             .Single(e => e.Type == MessageEventType.ToolCallComplete);
-        complete.Status.Should().NotBe(ToolCallStatus.Rejected);
+        complete.Status.Should().Be(ToolCallStatus.Success);
+        complete.Error.Should().BeNull();
     }
 
     [Fact]

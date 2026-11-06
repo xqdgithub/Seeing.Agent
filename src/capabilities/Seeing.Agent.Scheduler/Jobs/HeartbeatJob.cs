@@ -305,7 +305,7 @@ public class HeartbeatJob : IJob
             }
         };
 
-        // schema 单点纪律：直连执行必须携带会话级结算后的真实工具 schema；目录正文同源注入旁路。
+        // schema 单点纪律：直连执行必须携带会话级结算后的真实工具 schema。
         var hbResolution = await AgentJob.ResolveToolSchemasAsync(_services, sessionId, agentDefinition, _logger, ct)
             .ConfigureAwait(false);
 
@@ -322,7 +322,7 @@ public class HeartbeatJob : IJob
             WorkspaceRoot = projectRoot,
             IsBackground = true,
             ToolSettlement = hbResolution,
-            ContextBaseline = assembly.SystemBaseline,
+            ContextBaseline = AgentJob.AppendCatalogToBaseline(assembly.SystemBaseline, hbResolution),
             SkillSnapshot = assembly.SkillSnapshot,
             Metadata = new Dictionary<string, object>
             {

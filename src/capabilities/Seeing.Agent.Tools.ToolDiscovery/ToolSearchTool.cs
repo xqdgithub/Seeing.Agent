@@ -10,11 +10,11 @@ namespace Seeing.Agent.Tools.ToolDiscovery;
 
 /// <summary>
 /// 工具检索 — 在"可发现但未内联"的目录（deferred 集合）中检索工具，
-/// 按 name/summary/full 三档返回；full 命中项登记为本执行内可调用并返回权威全量定义，
-/// 下一次执行起自动内联。
-/// <para>只依赖 Abstractions + Seeing.Session + Tools.Support；经注入端口获取能力，不引用 Core。</para>
-/// <para>默认值（limit/offset/分页上限/full 硬上限）为工具内常量：能力包不读 Core options。</para>
-/// </summary>
+/// 按 name/summary/full 三档返回；full 返回完整定义并登记发现态。
+/// <para>
+/// 定位是**发现**，不是「使用前必须做的加载仪式」：deferred 工具本来就能直接调用。
+/// 登记发现态只用于观测（`PromoteOnSearch=true` 时才恢复「下一次执行进入 tools[]」）。
+/// </para>
 [ToolCapability(ToolCapabilityKeys.ExposureLoad, "true")]
 public sealed class ToolSearchTool : ToolBase
 {
@@ -207,7 +207,7 @@ public sealed class ToolSearchTool : ToolBase
 
             sb.Append(discovered
                 ? "\n   已返回完整定义，可直接调用："
-                : "\n   警告：发现态登记失败（会话不可用），该工具本次及后续请求均不可直接调用:");
+                : "\n   提示：发现态登记失败（会话不可用），不影响直接调用；只是本次检索不会被记录:");
             var schemaText = GetFullDefinition(entry);
             sb.Append('\n').Append(schemaText);
         }

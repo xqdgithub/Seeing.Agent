@@ -327,7 +327,6 @@ public class AgentJob : IJob
 
         // schema 单点纪律：直连执行必须携带会话级结算后的真实工具 schema，
         // 否则 LLM 请求无 tools，模型只能靠文本「表演」工具调用。
-        // 同源：目录正文随同一结算产出注入旁路 AgentContext，避免旁路只见裁剪后 schema 却无目录指引。
         var resolution = await ResolveToolSchemasAsync(_services, sessionId, agentDefinition, _logger, ct)
             .ConfigureAwait(false);
 
@@ -345,7 +344,7 @@ public class AgentJob : IJob
             WorkspaceRoot = projectRoot,
             IsBackground = true,
             ToolSettlement = resolution,
-            ContextBaseline = assembly.SystemBaseline,
+            ContextBaseline = AppendCatalogToBaseline(assembly.SystemBaseline, resolution),
             SkillSnapshot = assembly.SkillSnapshot,
             Metadata = metadata
         };
@@ -380,6 +379,23 @@ public class AgentJob : IJob
             Prompt = prompt,
             DispatchSessionId = dispatchSessionId
         };
+    }
+
+    /// <summary>
+    /// 旁路的目录补偿：目录已改为 <c>Target = Message</c> 的上下文源，而旁路走只读装配
+    /// （不插入消息），因此必须把同一结算产出的目录正文拼进系统基线，
+    /// 否则旁路模型既看不到目录、也看不到参数签名（相对改动前是回退）。
+    /// <para>旁路自建消息列表、不写会话状态，因此不违反单一写入者契约。</para>
+    /// </summary>
+    public static string AppendCatalogToBaseline(
+        string baseline, SessionToolSchemaResolution? resolution)
+    {
+        if (resolution is null || string.IsNullOrWhiteSpace(resolution.CatalogText))
+            return baseline;
+
+        return string.IsNullOrWhiteSpace(baseline)
+            ? resolution.CatalogText
+            : baseline + "\n\n" + resolution.CatalogText;
     }
 
     /// <summary>

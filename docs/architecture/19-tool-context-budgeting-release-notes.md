@@ -39,7 +39,7 @@
 ## 4. 架构不变量
 
 - **schema 单点**：唯一计算在 `SessionToolSchemaResolver`（Hosting），`SettleAsync` 为私有核心，仅经端口 `ISessionToolSchemaResolver.ResolveAsync`（`sessionId` / `SessionData` 双重载）访问。`ExecutionRunner` 必需注入端口、无回退构造。主链与 Scheduler 旁路同源。
-- **单轮 schema 不变**：一次执行内 `tools[]` 一经结算不再变；`tool_search` 的 `detail=full` 只声明"本执行内已加载"，**下一次执行**才并入 inline（对齐 dsh native）。无同轮换 schema、无 `ToolResult.Metadata` 执行控制信号。
+- **单轮 schema 不变**：一次执行内 `tools[]` 一经结算不再变；`tool_search` 的 `detail=full` 只登记发现态**并返回完整定义**（定义经工具结果进入对话历史），**不再**在下一次执行并入 inline（`PromoteOnSearch` 默认 false）。无同轮换 schema、无 `ToolResult.Metadata` 执行控制信号。
 - **执行级放行集**：可调用 = **本会话结算内**（`Tools` 全集，含 Inline 与 Deferred）。分层只决定「是否随请求下发 schema」，**不决定能否调用**；deferred 工具可直接调用（目录已给出参数签名）。参数错误时执行器把该工具的完整定义回灌进失败结果（`ToolCallEvent.ToolDefinition`，上限 8192 字符），模型一次往返即可修正。`IExecutionToolScope.IsCallable` 不再参与能否调用的判定，仅用于判断「本次是否需要回灌定义」与审计。
 - **exposure ≠ permission**：分层只决定"是否进本轮 schema / 目录"，不决定"能否调用"。调用许可恒走 `IPermissionAuthorizer` 决策链（无绕过）；目录正文只描述签名与可调用性，不含任何权限裁决语。
 - **`tools[]` 与系统提示词在一次会话内恒定**：`Tools.Exposure.PromoteOnSearch` 默认 false，`tool_search` 命中不再把工具提升为内联（发现态只用于观测）。工具目录不再是系统提示词分节，而是上下文源 `ToolCatalogContextSource`（`Target = Message`、`Scope = Session`），运行时变化只产生一条 `context-update` 增量叙述消息。二者合起来使前缀缓存从头到尾不失效。
@@ -67,7 +67,7 @@ MCP 工具 id 由 `mcp_{server}_{tool}` 改为 `mcp__{server}__{tool}`，**不�
 
 1. **`tool_search` 的检索参数不来自 `Tools.Exposure`**：能力包不得依赖 Core 的 `SeeingAgentOptions`，故三档 detail 默认值、limit 上限、full 硬上限 3 以**工具内常量**实现（10 / 30 / 3，detail 默认 summary）。原先计划但从未接线的 `Tools.Exposure.Search*` 四个字段已**删除**（避免"配置可见而无效"）。如需用户可调，需另立 Abstractions 级配置契约或由 Hosting 注入适配器。
 2. **`tool_search` 语料优先取执行级冻结快照**：执行器路径直接读 `IExecutionToolScope.DeferredTools`（与本轮门闸同源，无重复结算）；仅未透传作用域的非执行器宿主回退 `ISessionToolSchemaResolver.ResolveAsync`。
-3. **发现的行为边界**：`detail=full` 命中后，工具经 `ToolResult.LoadedToolIds` 声明、执行器应用，**本次执行内即可直接调用**；**下一次执行起**才进入 `tools[]`。未透传执行作用域的宿主路径不会获得"本次执行可调用"能力，`tool_search` 结果文案会降级为"下一次执行起可调用"，不给假承诺。
+3. **发现的行为边界**：`detail=full` 命中后返回完整定义并登记发现态；**可调用性与发现态无关**——deferred 工具本来就能直接调用（见 §4 执行级放行集）。发现态只用于观测 `Pending` 累积（模型想加载什么），`PromoteOnSearch=true` 时才恢复「下一次执行起进入 `tools[]`」的旧行为。`tool_search` 结果文案按 `PromoteOnSearch` 语义给出（默认不再承诺自动内联）。
 4. **`tool_search` 无专属配额**：连续调用计入既有 `MaxSteps`；`LoopDetector` 按 (tool,argsHash) 判定，检索参数各异不误触发。
 5. **`tool_search` 检索明细不设专用事件**：数据经 `ToolResult.Metadata` → `ToolCallEvent.Metadata` → 会话消息 metadata 持久化，与 `SchemaSnapshotEvent` 走同一条可观测链路，避免第二份重复数据源。
 6. **运行期降幅度量需实运验证**：真实 LLM 会话的 input token 降幅属基线对比，本环境不含 live provider，**未产出数字、不写具体百分比**；由 `baseline.md` 流程在联调环境记录。自动化侧已用「前缀稳定 / 升级只一次不回退 / 目录不含权限 / full 硬上限3 / 分页 total-next」等确定性测试锁定行为。

@@ -910,6 +910,8 @@ public class AgentExecutor : IAgentExecutor
     /// 判断失败是否属「参数类」（缺参/类型错/枚举值非法）。
     /// <para>
     /// 超时、重试耗尽、权限拒绝这些失败附定义没有帮助，只会白付 2–8KB。
+    /// 权限拒绝按结构化标记判定（<c>permission.denied</c>），不依赖错误文案——
+    /// 真实拒绝的 <c>Error</c> 是策略给出的原因，文案千变万化。
     /// </para>
     /// </summary>
     private static bool IsParamLikeFailure(ToolResult result)
@@ -918,12 +920,21 @@ public class AgentExecutor : IAgentExecutor
             return false;
         if (result.Metadata?.ContainsKey("timeout") == true)
             return false;
-        if (string.Equals(result.Title, "重试耗尽", StringComparison.Ordinal))
+        if (result.Metadata?.ContainsKey("permission.denied") == true)
             return false;
-        if (string.Equals(result.Error, "Permission denied", StringComparison.Ordinal))
+        if (string.Equals(result.Title, "重试耗尽", StringComparison.Ordinal))
             return false;
         return true;
     }
+
+    /// <summary>
+    /// 异常是否值得回灌定义。取消与 IO/网络类异常不是参数问题，附定义只会浪费上下文。
+    /// </summary>
+    private static bool IsParamLikeException(Exception ex) =>
+        ex is not OperationCanceledException
+        && ex is not TimeoutException
+        && ex is not IOException
+        && ex is not UnauthorizedAccessException;
 
     /// <summary>
     /// 从本轮冻结快照取该工具的完整定义（不重新结算）。
@@ -942,14 +953,17 @@ public class AgentExecutor : IAgentExecutor
 
     /// <summary>
     /// 需要回灌但取不到（超限 / 快照缺失）时的回退提示：
-    /// 不留空承诺——告诉模型定义为什么没给、去哪里取。
+    /// 不留空承诺——告诉模型定义为什么没给、去哪里取（无检索入口时不提它）。
     /// </summary>
-    private static string AppendDefinitionFallbackHint(string? error, string name)
+    private static string AppendDefinitionFallbackHint(string? error, string name, AgentContext context)
     {
         var head = string.IsNullOrEmpty(error) ? "(未提供错误详情)" : error;
+        var hint = context.ToolSettlement?.HasSearchTool == true
+            ? $"请用 {ToolIdConventions.SearchToolId} query=\"{name}\" detail=full 获取。"
+            : "该工具本轮无可用的定义与检索入口，请按目录中的参数签名修正后重试。";
         return head +
-               $"\n\n该工具定义过大或不可用（上限 {MaxDefinitionChars} 字符），" +
-               $"请用 {ToolIdConventions.SearchToolId} query=\"{name}\" detail=full 获取。";
+               $"\n\n未能附上该工具的完整定义（上限 {MaxDefinitionChars} 字符或快照不可用）。" +
+               hint;
     }
 
     /// <summary>
@@ -975,18 +989,41 @@ public class AgentExecutor : IAgentExecutor
         // 只拦「不在本会话结算内」的工具（被禁用 / Agent 过滤 / 模块未挂载 / 名字不存在）。
         // 结算内即放行：deferred（未下发 schema）也能直接调用——目录已给出参数签名，
         // 参数错误由失败时的定义回灌兜住。加载（TryLoad）只是审计，不参与能否调用。
-        if (context.ToolSettlement is { } settlement
-            && !settlement.Contains(name))
+        if (context.ToolSettlement is { } settlement)
         {
-            var reason = ResolveVisibilityRejection(name, context);
-            _logger.LogWarning(
-                "[AgentExecutor] 拒绝了结算外工具的调用: {ToolName} (enabled={Enabled}, registered={Registered})",
-                name,
-                _tools.IsToolEnabled(name),
-                GetRegisteredToolIgnoreCase(name) is not null);
-            return BuildTerminalEvent(
-                tc, name, context, loopId, ToolCallStatus.Rejected, reason,
-                BuildVisibilityMetadata(name));
+            // 结算用 OrdinalIgnoreCase、ToolManager 用序数敏感：先归一化为结算里的 canonical id，
+            // 否则模型写 Read 会穿过 gate 后拿到裸「工具不存在: Read」。
+            var canonicalName = settlement.ResolveCanonicalId(name);
+            if (canonicalName is null)
+            {
+                var reason = ResolveVisibilityRejection(name, context);
+                _logger.LogWarning(
+                    "[AgentExecutor] 拒绝了结算外工具的调用: {ToolName} (enabled={Enabled}, registered={Registered})",
+                    name,
+                    _tools.IsToolEnabled(name),
+                    GetRegisteredToolIgnoreCase(name) is not null);
+                return BuildTerminalEvent(
+                    tc, name, context, loopId, ToolCallStatus.Rejected, reason,
+                    BuildVisibilityMetadata(name));
+            }
+
+            if (!string.Equals(canonicalName, name, StringComparison.Ordinal))
+            {
+                _logger.LogDebug(
+                    "[AgentExecutor] 工具名大小写归一化: {Requested} → {Canonical}", name, canonicalName);
+                name = canonicalName;
+                // ToolManager 按 toolCall.Name 查注册表（序数敏感）：必须把归一化后的名字传下去。
+                tc = new ToolCall
+                {
+                    Id = tc.Id,
+                    Type = tc.Type,
+                    Function = new FunctionCall
+                    {
+                        Name = canonicalName,
+                        Arguments = tc.Function?.Arguments
+                    }
+                };
+            }
         }
 
         var decision = await EvaluatePermissionAsync(name, arguments, agent, context, permissionAuthorizer, tc.Id).ConfigureAwait(false);
@@ -1049,13 +1086,13 @@ public class AgentExecutor : IAgentExecutor
             _logger.LogError(ex, "[AgentExecutor] 工具执行异常: {ToolName}", name);
 
             // 抛异常的工具（如 GitCommitTool 缺参抛 JsonException）是最典型的参数类失败，
-            // 与 result.Success == false 那条出口一样要回灌定义。
+            // 与 result.Success == false 那条出口一样要回灌定义；取消/IO/网络异常除外。
             var exceptionError = ex.Message;
-            var exceptionDefinition = needsDefinitionOnFailure
+            var exceptionDefinition = needsDefinitionOnFailure && IsParamLikeException(ex)
                 ? ResolveFailureDefinition(name, context)
                 : null;
-            if (needsDefinitionOnFailure && exceptionDefinition is null)
-                exceptionError = AppendDefinitionFallbackHint(exceptionError, name);
+            if (needsDefinitionOnFailure && IsParamLikeException(ex) && exceptionDefinition is null)
+                exceptionError = AppendDefinitionFallbackHint(exceptionError, name, context);
 
             return new ToolCallEvent
             {
@@ -1099,7 +1136,7 @@ public class AgentExecutor : IAgentExecutor
             var definition = paramLike ? ResolveFailureDefinition(name, context) : null;
             var failureError = result.Error;
             if (paramLike && definition is null)
-                failureError = AppendDefinitionFallbackHint(failureError, name);
+                failureError = AppendDefinitionFallbackHint(failureError, name, context);
 
             return new ToolCallEvent
             {

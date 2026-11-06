@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Session.Core;
 
 namespace Seeing.Agent.Hosting.Execution.ToolExposure;
 
@@ -75,7 +76,17 @@ public sealed class ToolCatalogContextSource : IContextSource, IContextSourceMes
         }
 
         if (settlement.DeferredToolCount == 0)
+        {
+            // 两种成因必须区分：布局变 Flat（工具全进 tools[]，仍可调）与工具真消失。
+            // 前者叙述「不得再调用」会写入与环境相反的持久事实，模型据此拒绝使用已内联的工具。
+            if (settlement.Layout != ToolExposureLayout.Tiered)
+            {
+                _logger.LogDebug("布局非分层（{Layout}），工具已全部内联；目录按不可用处理", settlement.Layout);
+                return Task.FromResult(new ContextSourceValue(ContextValueState.Unavailable, null, null));
+            }
+
             return Task.FromResult(new ContextSourceValue(ContextValueState.Removed, null, null));
+        }
 
         var canonical = BuildCanonical(settlement);
 
@@ -106,9 +117,19 @@ public sealed class ToolCatalogContextSource : IContextSource, IContextSourceMes
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// 必须带 <c>context.update</c> 标记：初始渲染落的是 <c>UserMessage</c>，
+    /// 没有该标记时 UI 会把它当成用户亲自发的长消息（8K 目录气泡）。
+    /// 形状与记忆源一致（<c>ContextUpdate</c> + <c>ContextUpdateSources</c>）。
+    /// </remarks>
     public IReadOnlyDictionary<string, object>? GetMessageMetadata(
         string renderedText, ContextSourceValue value) =>
-        new Dictionary<string, object> { [MessageMetadataKey] = true };
+        new Dictionary<string, object>
+        {
+            [SessionMetadataKeys.ContextUpdate] = true,
+            [SessionMetadataKeys.ContextUpdateSources] = new[] { Key.Value },
+            [MessageMetadataKey] = true
+        };
 
     private static JsonElement BuildCanonical(SessionToolSchemaResolution settlement)
     {

@@ -80,10 +80,21 @@ public sealed record SessionToolSchemaResolution(
         Tools.Any(t => string.Equals(t.Id, toolId, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
+    /// 把模型请求的工具名归一化为本视图里的 canonical id（OrdinalIgnoreCase）；
+    /// 视图内没有该工具时返回 null。
+    /// <para>
+    /// 归一化是必需的：本视图的匹配是大小写不敏感的，而 <c>ToolManager</c> 的注册表查找
+    /// 是序数敏感的——不归一化会让 <c>Read</c> 穿过可见性校验后拿到「工具不存在」。
+    /// </para>
+    /// </summary>
+    public string? ResolveCanonicalId(string toolId) =>
+        Tools.FirstOrDefault(t => string.Equals(t.Id, toolId, StringComparison.OrdinalIgnoreCase))?.Id;
+
+    /// <summary>
     /// 该工具的 schema 是否随本视图下发（<see cref="ToolExposureMode.Inline"/>）。
     /// <para>
-    /// <b>注意</b>：本成员只回答“schema 是否已下发”，不等于“能否调用”。
-    /// 执行层的可调用判定以 <c>IExecutionToolScope</c> 为准（内联 ∪ 本执行已加载）。
+    /// <b>注意</b>：本成员只回答“schema 是否已下发”，**不等于“能否调用”**。
+    /// 执行层的可调用判定以**本会话结算**为准（`Contains`）；deferred 工具可直接调用。
     /// </para>
     /// </summary>
     public bool SendsSchema(string toolId) =>

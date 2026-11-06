@@ -6,6 +6,7 @@ using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Hosting.Execution.ToolExposure;
+using Seeing.Session.Core;
 using Xunit;
 
 namespace Seeing.Agent.Hosting.Tests.ToolExposure;
@@ -61,6 +62,40 @@ public class ToolCatalogContextSourceTests
     }
 
     [Fact]
+    public async Task 布局变平坦_应为不可用_不得叙述工具已移除()
+    {
+        // Tiered→Flat：工具此刻全部内联在 tools[] 里、完全可调。
+        // 若按 Removed 处理会叙述「已不在目录中（不得再调用）」，写入与环境相反的持久事实。
+        var scope = new FakeScope
+        {
+            ToolSettlement = BuildSettlement(ToolExposureLayout.Flat)
+        };
+        var source = new ToolCatalogContextSource(scope);
+
+        var value = await source.ReadAsync();
+
+        value.State.Should().Be(ContextValueState.Unavailable);
+    }
+
+    [Fact]
+    public async Task 初始消息元数据_应带上下文增量标记()
+    {
+        // 初始渲染落的是 UserMessage；没有 context.update 标记时 UI 会把它当成用户发的长消息。
+        var scope = new FakeScope
+        {
+            ToolSettlement = BuildSettlement(("通用", "read", "读取文件"))
+        };
+        var source = new ToolCatalogContextSource(scope);
+        var value = await source.ReadAsync();
+
+        var metadata = source.GetMessageMetadata("CATALOG-BODY", value);
+
+        metadata.Should().NotBeNull();
+        metadata!.Should().ContainKey(SessionMetadataKeys.ContextUpdate);
+        metadata.Should().ContainKey(SessionMetadataKeys.ContextUpdateSources);
+    }
+
+    [Fact]
     public async Task 初始渲染_应返回目录正文()
     {
         var scope = new FakeScope
@@ -107,6 +142,11 @@ public class ToolCatalogContextSourceTests
     // ===== 脚手架 =====
 
     private static SessionToolSchemaResolution BuildSettlement(
+        params (string Namespace, string Id, string Description)[] tools) =>
+        BuildSettlement(ToolExposureLayout.Tiered, tools);
+
+    private static SessionToolSchemaResolution BuildSettlement(
+        ToolExposureLayout layout,
         params (string Namespace, string Id, string Description)[] tools)
     {
         var exposed = tools
@@ -125,7 +165,7 @@ public class ToolCatalogContextSourceTests
         return new SessionToolSchemaResolution(
             exposed,
             Array.Empty<string>(),
-            ToolExposureLayout.Tiered,
+            layout,
             CatalogText: exposed.Count == 0 ? null : "CATALOG-BODY",
             SchemaTokens: 0,
             CatalogTokens: 10);

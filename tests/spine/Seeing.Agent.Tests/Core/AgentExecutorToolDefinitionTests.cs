@@ -75,6 +75,23 @@ public class AgentExecutorToolDefinitionTests
     }
 
     [Fact]
+    public async Task 策略给出的拒绝原因_也不应附带定义()
+    {
+        // 真实拒绝的 Error 是策略原因（文案千变万化），不能靠字符串比较识别。
+        var complete = await RunSingleAsync(FailingBehavior.PolicyDeniedWithReason);
+
+        complete.ToolDefinition.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task IO异常_不应附带定义()
+    {
+        var complete = await RunSingleAsync(FailingBehavior.ThrowIoException);
+
+        complete.ToolDefinition.Should().BeNull("IO 异常与参数无关，附定义只会浪费上下文");
+    }
+
+    [Fact]
     public async Task 内联工具失败_不应附带定义()
     {
         var complete = await RunSingleAsync(FailingBehavior.ReturnFailure, inline: true);
@@ -106,13 +123,24 @@ public class AgentExecutorToolDefinitionTests
     }
 
     [Fact]
-    public async Task 超限定义_应回退为检索提示()
+    public async Task 超限定义_应回退为提示且不留空承诺()
     {
         var complete = await RunSingleAsync(FailingBehavior.ReturnFailure, oversized: true);
 
         complete.ToolDefinition.Should().BeNull();
+        complete.Error.Should().Contain("未能附上该工具的完整定义");
+        // 本结算不含检索入口，提示不得指向一个不存在的工具。
+        complete.Error.Should().NotContain(ToolIdConventions.SearchToolId);
+    }
+
+    [Fact]
+    public async Task 超限定义_有检索入口_应提示用检索取定义()
+    {
+        var complete = await RunSingleAsync(
+            FailingBehavior.ReturnFailure, oversized: true, includeSearchTool: true);
+
+        complete.ToolDefinition.Should().BeNull();
         complete.Error.Should().Contain(ToolIdConventions.SearchToolId);
-        complete.Error.Should().Contain("定义过大");
     }
 
     // ===== 脚手架 =====
@@ -121,13 +149,16 @@ public class AgentExecutorToolDefinitionTests
     {
         ReturnFailure,
         ThrowJsonException,
+        ThrowIoException,
         Timeout,
         RetryExhausted,
-        PermissionDenied
+        PermissionDenied,
+        PolicyDeniedWithReason
     }
 
     private static async Task<ToolCallEvent> RunSingleAsync(
-        FailingBehavior failure, bool inline = false, bool oversized = false)
+        FailingBehavior failure, bool inline = false, bool oversized = false,
+        bool includeSearchTool = false)
     {
         var hookManager = new HookManager(NullLogger<HookManager>.Instance);
         var toolManager = new ToolManager(NullLogger<ToolManager>.Instance, hookManager);
@@ -135,7 +166,7 @@ public class AgentExecutorToolDefinitionTests
 
         var executor = CreateExecutor(CreateScriptedLlm(TargetTool), toolManager, hookManager);
         var mode = inline ? ToolExposureMode.Inline : ToolExposureMode.Deferred;
-        var settlement = BuildSettlement(mode, oversized, includeSearchTool: false);
+        var settlement = BuildSettlement(mode, oversized, includeSearchTool);
 
         var events = await RunAsync(executor, settlement, maxSteps: 1);
         return events.OfType<ToolCallEvent>()
@@ -336,6 +367,8 @@ public class AgentExecutorToolDefinitionTests
             {
                 case FailingBehavior.ThrowJsonException:
                     throw new JsonException("Missing required parameter: taskType");
+                case FailingBehavior.ThrowIoException:
+                    throw new IOException("磁盘不可读");
                 case FailingBehavior.Timeout:
                     return Task.FromResult(new ToolResult
                     {
@@ -355,7 +388,18 @@ public class AgentExecutorToolDefinitionTests
                     return Task.FromResult(new ToolResult
                     {
                         Success = false,
-                        Error = "Permission denied"
+                        Title = "权限拒绝",
+                        Error = "Permission denied",
+                        Metadata = new Dictionary<string, object> { ["permission.denied"] = true }
+                    });
+                case FailingBehavior.PolicyDeniedWithReason:
+                    // 生产路径的真实形状：Error 是策略原因，只有结构化标记能识别。
+                    return Task.FromResult(new ToolResult
+                    {
+                        Success = false,
+                        Title = "权限拒绝",
+                        Error = "Denied by rule shell.execute from project: shell.execute",
+                        Metadata = new Dictionary<string, object> { ["permission.denied"] = true }
                     });
                 default:
                     return Task.FromResult(new ToolResult
