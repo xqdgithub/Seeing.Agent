@@ -89,9 +89,18 @@
     <MakeDir Directories="$(WebUIPublishStagingDir)" />
 
     <!-- 独立 dotnet 进程发布：全新评估 WebUI 依赖闭包，不受 VS 增量缓存影响。
-         DOTNET_CLI_UI_LANGUAGE=en 强制子进程输出英文，避免 VS 输出窗口用 GBK 解码 UTF-8 中文产生乱码。 -->
+         DOTNET_CLI_UI_LANGUAGE=en 强制子进程输出英文，避免 VS 输出窗口用 GBK 解码 UTF-8 中文产生乱码。
+
+         **必须显式传 -r $(RuntimeIdentifier)**：Cli 是跨进程打包，WebUI 作为独立进程被拉起；
+         不传 RID 时被发布项目按"当前机器"出 apphost，跨平台发布会把 Windows .exe
+         装进 linux 包（实测），运行期根本拉不起来。 -->
+    <Exec Command="set &quot;DOTNET_CLI_UI_LANGUAGE=en&quot; &amp;&amp; dotnet publish &quot;$(MSBuildThisFileDirectory)../Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj&quot; -c $(Configuration) -r $(RuntimeIdentifier) -o &quot;$(WebUIPublishStagingDir)&quot; -p:SelfContained=false --nologo"
+          StandardOutputImportance="high"
+          Condition="'$(RuntimeIdentifier)' != ''" />
+
     <Exec Command="set &quot;DOTNET_CLI_UI_LANGUAGE=en&quot; &amp;&amp; dotnet publish &quot;$(MSBuildThisFileDirectory)../Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj&quot; -c $(Configuration) -o &quot;$(WebUIPublishStagingDir)&quot; -p:SelfContained=false --nologo"
-          StandardOutputImportance="high" />
+          StandardOutputImportance="high"
+          Condition="'$(RuntimeIdentifier)' == ''" />
 
     <ItemGroup>
       <WebUIPublishFiles Include="$(WebUIPublishStagingDir)\**\*" />
@@ -130,8 +139,13 @@
     <RemoveDir Directories="$(TuiPublishStagingDir)" Condition="Exists('$(TuiPublishStagingDir)')" />
     <MakeDir Directories="$(TuiPublishStagingDir)" />
 
+    <Exec Command="set &quot;DOTNET_CLI_UI_LANGUAGE=en&quot; &amp;&amp; dotnet publish &quot;$(MSBuildThisFileDirectory)../Seeing.Agent.Tui/Seeing.Agent.Tui.csproj&quot; -c $(Configuration) -r $(RuntimeIdentifier) -o &quot;$(TuiPublishStagingDir)&quot; -p:SelfContained=false --nologo"
+          StandardOutputImportance="high"
+          Condition="'$(RuntimeIdentifier)' != ''" />
+
     <Exec Command="set &quot;DOTNET_CLI_UI_LANGUAGE=en&quot; &amp;&amp; dotnet publish &quot;$(MSBuildThisFileDirectory)../Seeing.Agent.Tui/Seeing.Agent.Tui.csproj&quot; -c $(Configuration) -o &quot;$(TuiPublishStagingDir)&quot; -p:SelfContained=false --nologo"
-          StandardOutputImportance="high" />
+          StandardOutputImportance="high"
+          Condition="'$(RuntimeIdentifier)' == ''" />
 
     <ItemGroup>
       <TuiPublishFiles Include="$(TuiPublishStagingDir)\**\*" />

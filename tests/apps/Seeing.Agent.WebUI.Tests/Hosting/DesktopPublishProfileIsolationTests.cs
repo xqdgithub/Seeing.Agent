@@ -230,6 +230,41 @@ public class DesktopPublishProfileIsolationTests
     }
 
     /// <summary>
+    /// Cli 发布 WebUI/Tui 是跨进程打包：必须显式传 RID，
+    /// 否则被发布项目按"当前机器"出 apphost，导致 linux 包里混进 Windows .exe。
+    /// </summary>
+    [Fact]
+    public void CliNestedPublish_ShouldPassRuntimeIdentifier()
+    {
+        var csproj = ReadRepoFile("samples/Seeing.Agent.Cli/Seeing.Agent.Cli.csproj");
+
+        var execs = Regex.Matches(
+            csproj,
+            @"<Exec[^>]*dotnet publish[^>]*>",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+        execs.Should().NotBeEmpty("Cli 需要嵌套发布 WebUI / Tui");
+
+        // 每条 Exec 要么带 -r $(RuntimeIdentifier)，要么是「未指定 RID」的显式兜底分支。
+        // 兜底分支必须自带说明，否则就是悄悄产出错平台产物。
+        foreach (Match exec in execs)
+        {
+            var hasRid = Regex.IsMatch(exec.Value, @"-r\s+\$\(RuntimeIdentifier\)", RegexOptions.CultureInvariant);
+            var isNoRidFallback = Regex.IsMatch(
+                exec.Value, @"Condition=""'\$\(RuntimeIdentifier\)' == ''""", RegexOptions.CultureInvariant);
+
+            (hasRid || isNoRidFallback).Should().BeTrue(
+                "每条嵌套发布要么显式传 -r $(RuntimeIdentifier)，" +
+                "要么是声明清楚的「未指定 RID」兜底分支；" +
+                "否则跨平台包内会混入错误平台的 apphost");
+        }
+
+        // 至少有一条真正传 RID 的分支
+        execs.Cast<Match>().Any(e => Regex.IsMatch(e.Value, @"-r\s+\$\(RuntimeIdentifier\)", RegexOptions.CultureInvariant))
+            .Should().BeTrue("必须存在带 RID 的发布分支，这是跨平台发布的正常路径");
+    }
+
+    /// <summary>
     /// 桌面发布的 publish 目录同样必须带 ChannelHost 的 .dll。
     /// </summary>
     [Fact]
