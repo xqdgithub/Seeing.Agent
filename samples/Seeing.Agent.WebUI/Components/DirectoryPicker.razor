@@ -12,10 +12,12 @@
        OnCancel="Hide">
     <Spin Spinning="@(_listing is null)">
         <div class="dir-picker-path">
-            <Button Size="@ButtonSize.Small"
-                    Icon="@IconType.Outline.Home"
-                    OnClick="GoRoots"
-                    Title="磁盘根" />
+            @* AntDesign 的 Button 没有 Title 参数；提示信息要用 Tooltip 承载 *@
+            <Tooltip Title="@("磁盘根")">
+                <Button Size="@ButtonSize.Small"
+                        Icon="@IconType.Outline.Home"
+                        OnClick="GoRoots" />
+            </Tooltip>
             @if (!_showingRoots && _listing?.ParentPath is not null)
             {
                 <Button Size="@ButtonSize.Small"
