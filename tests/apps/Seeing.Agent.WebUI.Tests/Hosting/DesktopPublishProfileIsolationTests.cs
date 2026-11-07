@@ -291,6 +291,54 @@ public class DesktopPublishProfileIsolationTests
     }
 
     /// <summary>
+    /// 可跨平台的产物（WebUI）不得在 .pubxml 里写死 RID —— 平台由外层决定。
+    /// <para>
+    /// Desktop 例外：它是 Photino + WebView2，产物固有地只能跑 Windows，
+    /// 且必须带 RID 才会引入平台原生库（否则又回到「缺 libe_sqlite3」）。
+    /// 该类产物的 RID 由 csproj 的守卫兜底，pubxml 写在里面是正确表达。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void PublishProfiles_ShouldNotHardcodeRuntimeIdentifier()
+    {
+        var profileDir = Path.Combine(
+            Path.GetDirectoryName(ReadRepoFileLocation("samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj"))!,
+            "Properties", "PublishProfiles");
+
+        Directory.Exists(profileDir).Should().BeTrue("WebUI 应有发布配置目录");
+
+        var profiles = Directory.GetFiles(profileDir, "*.pubxml");
+        profiles.Should().NotBeEmpty("WebUI 应至少有一个发布配置");
+
+        foreach (var profile in profiles)
+        {
+            var xml = File.ReadAllText(profile);
+            Regex.IsMatch(xml, @"<RuntimeIdentifier>", RegexOptions.CultureInvariant)
+                .Should().BeFalse(
+                    $"{Path.GetFileName(profile)} 不得写死 RuntimeIdentifier —— " +
+                    "WebUI 是跨平台产物，平台必须由外层 -r 决定");
+        }
+    }
+
+    /// <summary>
+    /// 桌面产物是 Windows-only 且必须有 RID（否则缺平台原生库），
+    /// 因此 pubxml 里保留 win-x64 是正确的，并由 csproj 守卫兜底。
+    /// </summary>
+    [Fact]
+    public void DesktopPublishProfile_ShouldPinWinRuntimeIdentifier()
+    {
+        var xml = ReadRepoFile("samples/Seeing.Agent.Desktop/Properties/PublishProfiles/FolderProfile.pubxml");
+
+        Regex.IsMatch(xml, @"<RuntimeIdentifier>\s*win-", RegexOptions.CultureInvariant)
+            .Should().BeTrue(
+                "Desktop 只能在 Windows 运行，且不带 RID 会缺 e_sqlite3.dll / WebView2 原生依赖");
+
+        ReadRepoFile("samples/Seeing.Agent.Desktop/Seeing.Agent.Desktop.csproj").Should()
+            .Contain("StartsWith('win')",
+                "同时必须有守卫，防止有人用 -r linux-x64 覆盖 pubxml 产出坏包");
+    }
+
+    /// <summary>
     /// 桌面发布的 publish 目录同样必须带 ChannelHost 的 .dll。
     /// </summary>
     [Fact]
@@ -420,6 +468,14 @@ public class DesktopPublishProfileIsolationTests
     /// </summary>
     private static string ReadRepoFile(string relativePath)
     {
+        return File.ReadAllText(ReadRepoFileLocation(relativePath));
+    }
+
+    /// <summary>
+    /// 从测试输出目录回溯到仓库根，返回仓库内文件的绝对路径。
+    /// </summary>
+    private static string ReadRepoFileLocation(string relativePath)
+    {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
@@ -427,7 +483,7 @@ public class DesktopPublishProfileIsolationTests
                 dir.FullName, relativePath.Replace('/', Path.DirectorySeparatorChar));
 
             if (File.Exists(candidate))
-                return File.ReadAllText(candidate);
+                return candidate;
 
             dir = dir.Parent;
         }
