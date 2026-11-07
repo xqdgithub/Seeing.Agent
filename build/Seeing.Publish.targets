@@ -10,10 +10,11 @@
     1. 目录属性必须在使用它的 target 体内计算 —— target 一次构建只执行一次，
        放进"供他人依赖"的独立 target 会在 Build 阶段求值后冻结。
     2. **不能用 CallTarget 传属性**：实测 CallTarget 执行时看不到调用方 target
-       体内设置的属性（诊断输出全空）。必须改用 AfterTargets/DependsOnTargets
-       在"前一个 target"里设值，或直接在本 target 体内设值。
-    3. 发布目录要双写 $(PublishDir) 与 $(PublishIntermediateOutputPath) ——
-       VS/FileSystem 发布把后者当作收集源，只写前者会漏文件。
+       体内设置的属性（诊断输出全空）。属性必须在被调 target 体内自行计算。
+    3. 发布阶段的落点：`$(PublishDir)` 在 VS/FileSystem 发布时会被改写成
+       obj/<config>/<tfm>/<rid>/PubTmp/Out/（收集源），而收集与复制在
+       `AfterTargets="Publish"` 之前已完成。因此必须**再直接写 $(PublishUrl)**，
+       否则文件进不了最终发布目录（这正是现场 bug 的成因）。
     4. ChannelHost 必须剥离 RuntimeIdentifier —— 它是 RID 无关产物。
     5. 目录参数必须绝对路径 —— 相对路径以被调用项目目录为基准解析。
 
@@ -23,32 +24,14 @@
   -->
   <PropertyGroup>
     <SeeingRequireRuntimeIdentifier Condition="'$(SeeingRequireRuntimeIdentifier)' == ''">true</SeeingRequireRuntimeIdentifier>
+    <!-- 被嵌套的项目路径由调用方提供，契约不假设目录结构 -->
+    <SeeingChannelHostProject Condition="'$(SeeingChannelHostProject)' == ''">$(MSBuildThisFileDirectory)../samples/Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj</SeeingChannelHostProject>
   </PropertyGroup>
 
   <Target Name="_SeeingValidateRuntimeIdentifier">
     <Error Condition="'$(SeeingRequireRuntimeIdentifier)' == 'true' and '$(RuntimeIdentifier)' == ''"
            Text="发布必须指定 RuntimeIdentifier（-r &lt;rid&gt;）。不带 RID 的产物缺少平台原生库（如 libe_sqlite3），无法运行。"
            ContinueOnError="false" />
-  </Target>
-
-  <!--
-    ============================================================
-    共用的"把产物补到副目录"实现
-    ============================================================
-    由具体操作 target 调用；参数以 _SeeingCopy* 属性传入，
-    且必须在**同一个** target 体内设置后立即调用。
-  -->
-  <Target Name="_SeeingMirrorToStaging"
-          Inputs="$(SeeingMirrorSourceDir)"
-          Condition="'$(SeeingMirrorStagingDir)' != '' and '$(SeeingMirrorStagingDir)' != '$(SeeingMirrorSourceDir)'">
-    <ItemGroup>
-      <_SeeingMirrorFile Include="$(SeeingMirrorSourceDir)**\*.*" />
-    </ItemGroup>
-
-    <Copy SourceFiles="@(_SeeingMirrorFile)"
-          DestinationFiles="@(_SeeingMirrorFile->'$(SeeingMirrorStagingDir)%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"
-          Condition="'@(_SeeingMirrorFile)' != ''" />
   </Target>
 
   <!--
@@ -63,7 +46,7 @@
       <_SeeingPublishDirAbs Condition="$([System.IO.Path]::IsPathRooted('$(OutDir)'))">$([MSBuild]::NormalizeDirectory('$(OutDir)'))</_SeeingPublishDirAbs>
     </PropertyGroup>
 
-    <MSBuild Projects="$(MSBuildThisFileDirectory)../samples/Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj"
+    <MSBuild Projects="$(SeeingChannelHostProject)"
              Targets="Publish"
              RemoveProperties="PublishProfile;PublishUrl;WebPublishMethod;RuntimeIdentifier;SelfContained"
              Properties="Configuration=$(Configuration);PublishDir=$(_SeeingPublishDirAbs);SelfContained=false" />
@@ -94,7 +77,7 @@
       <_SeeingPublishUrlAbs Condition="'$(PublishUrl)' != '' and $([System.IO.Path]::IsPathRooted('$(PublishUrl)'))">$([MSBuild]::NormalizeDirectory('$(PublishUrl)'))</_SeeingPublishUrlAbs>
     </PropertyGroup>
 
-    <MSBuild Projects="$(MSBuildThisFileDirectory)../samples/Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj"
+    <MSBuild Projects="$(SeeingChannelHostProject)"
              Targets="Publish"
              RemoveProperties="PublishProfile;PublishUrl;WebPublishMethod;RuntimeIdentifier;SelfContained"
              Properties="Configuration=$(Configuration);PublishDir=$(_SeeingPublishDirAbs);SelfContained=false" />

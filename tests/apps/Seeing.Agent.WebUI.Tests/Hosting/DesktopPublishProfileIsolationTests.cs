@@ -212,10 +212,13 @@ public class DesktopPublishProfileIsolationTests
     {
         var targets = ReadRepoFile("build/Seeing.Publish.targets");
 
-        // 两处 ChannelHost 嵌套发布（Build 期 / Publish 期）都必须剥离 RID
+        // 契约把被嵌套项目做成可覆盖属性，测试要顺着这条抽象找
+        targets.Should().Contain("SeeingChannelHostProject",
+            "契约必须定义 ChannelHost 项目路径属性，而不是把路径写死在各处");
+
         var msbuildCalls = Regex.Matches(
             targets,
-            @"<MSBuild[^>]*Seeing\.Gateway\.ChannelHost\.csproj[^>]*/>",
+            @"<MSBuild[^>]*Projects=""\$\(SeeingChannelHostProject\)""[^>]*/>",
             RegexOptions.Singleline | RegexOptions.CultureInvariant);
 
         msbuildCalls.Should().NotBeEmpty("契约必须负责把 ChannelHost 发布到宿主目录");
@@ -227,6 +230,10 @@ public class DesktopPublishProfileIsolationTests
                     "ChannelHost 是 RID 无关产物（UseAppHost=false），" +
                     "透传 RID 会让它去找不存在的 apphost / deps.json");
         }
+
+        // 默认值仍要指向真实项目，否则上层不显式设置时契约不可用
+        Regex.IsMatch(targets, @"<SeeingChannelHostProject[^>]*>.*?Seeing\.Gateway\.ChannelHost\.csproj", RegexOptions.CultureInvariant)
+            .Should().BeTrue("契约必须给出 ChannelHost 项目的默认路径");
     }
 
     /// <summary>
