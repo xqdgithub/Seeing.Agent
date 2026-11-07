@@ -35,6 +35,7 @@
 | `Seeing.Agent.Tools.ToolDiscovery` | `tool-discovery` | tool_search 检索（分层暴露目录按需展开；命中后同一执行内可调用，下一次请求起内联）|
 | `Seeing.Agent.Tools.Question` | `question.tools` | 交互式提问工具（single/text） |
 | `Seeing.Agent.Tools.Basic` | `basic` | current_time |
+| `Seeing.Agent.Tools.Speech` | `speech.tools` | transcribe_audio（音频文件转写为文本，走既有 `ISpeechTranscriptionClient`） |
 | `Seeing.Agent.Tools.Support` | — | ToolBase 等共享；**不是** `ISeeingModule` |
 | `Seeing.Agent.Skills` | `skills` | skill；命令经 `ICommand` 贡献 |
 | `Seeing.Agent.Mcp` | `mcp` | MCP 连接与代理工具；工具经 `mcp.execute`（resource=server）server 粒度审批 |

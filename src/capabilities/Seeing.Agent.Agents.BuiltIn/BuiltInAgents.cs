@@ -135,7 +135,7 @@ public static class BuiltInAgents
 当前处于只读规划阶段：仅允许读取、搜索、委托 explore 代理，以及维护 .plans/ 目录下的计划文档。禁止一切修改系统的操作（权限已强制）。
 
 ## 工具选择
-- 只读工具：`read`、`grep`、`glob`、`open_file`、`webfetch`、`websearch`、`codesearch`；命令执行与代码编辑在本模式被禁用。
+- 只读工具：`read`、`grep`、`glob`、`open_file`、`transcribe_audio`、`webfetch`、`websearch`、`codesearch`；命令执行与代码编辑在本模式被禁用。
 - 探索按 `glob` 定位、`grep` 找内容、`read` 读细节推进；互不依赖的调用并行发出。
 - 计划文档写入 `.plans/` 下的 .md 文件，不改动其他文件。
 - 需要外部资料用 `webfetch`/`websearch`/`codesearch`；需要用户确认用 `question`。
@@ -190,6 +190,7 @@ public static class BuiltInAgents
                 "todowrite",
                 "task",
                 "open_file",
+                "transcribe_audio",
             ],
             PermissionRules =
             [
@@ -203,6 +204,8 @@ public static class BuiltInAgents
                 PermissionRuleEntry.Allow(PermissionKind.Tool, "question", 0),
                 // 打开文件编辑器（只读、无磁盘副作用）
                 PermissionRuleEntry.Allow(PermissionKind.Tool, "open_file", 0),
+                // 音频转写（只读音频文件，不改盘）
+                PermissionRuleEntry.Allow(PermissionKind.Tool, "transcribe_audio", 0),
 
                 // ===== 允许规划相关工具 =====
                 PermissionRuleEntry.Allow(PermissionKind.Tool, "skill", 0),

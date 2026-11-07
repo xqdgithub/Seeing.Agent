@@ -62,6 +62,7 @@
     <Project Path="src/capabilities/Seeing.Agent.Tools.Session/Seeing.Agent.Tools.Session.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.ToolDiscovery/Seeing.Agent.Tools.ToolDiscovery.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Shell/Seeing.Agent.Tools.Shell.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Tools.Speech/Seeing.Agent.Tools.Speech.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.SystemOne/Seeing.Agent.Tools.SystemOne.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Web/Seeing.Agent.Tools.Web.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Workspace/Seeing.Agent.Workspace.csproj" />
@@ -117,6 +118,7 @@
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Session.Tests/Seeing.Agent.Tools.Session.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.ToolDiscovery.Tests/Seeing.Agent.Tools.ToolDiscovery.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Shell.Tests/Seeing.Agent.Tools.Shell.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Tools.Speech.Tests/Seeing.Agent.Tools.Speech.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.SystemOne.Tests/Seeing.Agent.Tools.SystemOne.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Web.Tests/Seeing.Agent.Tools.Web.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Workspace.Tests/Seeing.Agent.Workspace.Tests.csproj" />

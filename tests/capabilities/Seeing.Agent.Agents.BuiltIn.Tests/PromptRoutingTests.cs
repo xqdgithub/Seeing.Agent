@@ -27,7 +27,7 @@ public class PromptRoutingTests
         "send_channel_message", "list_channel_conversations", "list_channel_users",
         "acp", "acp_status",
         "systemone_ask", "systemone_noul", "systemone_choice", "systemone_score",
-        "current_time", "question",
+        "current_time", "question", "transcribe_audio",
     ];
 
     [Theory]

@@ -29,6 +29,7 @@ using Seeing.Agent.Tools.Git;
 using Seeing.Agent.Tools.Question;
 using Seeing.Agent.Tools.Session;
 using Seeing.Agent.Tools.Shell;
+using Seeing.Agent.Tools.Speech;
 using Seeing.Agent.Tools.SystemOne.Extensions;
 using Seeing.Agent.Tools.ToolDiscovery;
 using Seeing.Agent.Tools.Web;
@@ -105,6 +106,7 @@ public static class FullCapabilityComposition
         services.AddSeeingModule<ToolDiscoveryModule>(registry);
         services.AddSeeingModule<QuestionToolsModule>(registry);
         services.AddSeeingModule<WebModule>(registry);
+        services.AddSeeingModule<SpeechToolsModule>(registry);
         services.AddSeeingModule<ChannelMessagingModule>(registry);
         services.AddSeeingModule<WorkspaceGitExcludeModule>(registry);
 

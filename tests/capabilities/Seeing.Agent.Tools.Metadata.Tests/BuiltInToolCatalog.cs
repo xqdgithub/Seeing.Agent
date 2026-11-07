@@ -14,6 +14,7 @@ using Seeing.Agent.Tools.Git;
 using Seeing.Agent.Tools.Question;
 using Seeing.Agent.Tools.Session;
 using Seeing.Agent.Tools.Shell;
+using Seeing.Agent.Tools.Speech;
 using Seeing.Agent.Tools.SystemOne;
 using Seeing.Agent.Tools.ToolDiscovery;
 using Seeing.Agent.Tools.Web;
@@ -85,6 +86,7 @@ internal static class BuiltInToolCatalog
         typeof(SystemOneTool),
         typeof(CurrentTimeTool),
         typeof(QuestionTool),
+        typeof(TranscribeAudioTool),
     ];
 
     /// <summary>登记的全部工具类型。</summary>
@@ -112,6 +114,7 @@ internal static class BuiltInToolCatalog
         typeof(GitStatusTool),     // Seeing.Agent.Tools.Git
         typeof(SendMessageTool),   // Seeing.Agent.Tools.ChannelMessaging
         typeof(SkillTool),         // Seeing.Agent.Skills
+        typeof(TranscribeAudioTool), // Seeing.Agent.Tools.Speech
     ];
 
     public static IReadOnlyList<ITool> All() => s_types.SelectMany(CreateInstances).ToList();

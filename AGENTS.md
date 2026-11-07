@@ -37,6 +37,7 @@
 - [Provider 能力展示 Release Notes](docs/architecture/32-provider-capability-display-release-notes.md)
 - [Provider 语音能力接入 Release Notes](docs/architecture/33-provider-speech-capability-release-notes.md)
 - [WebUI 语音输入 Release Notes](docs/architecture/34-webui-voice-input-release-notes.md)
+- [语音转写工具 Release Notes](docs/architecture/35-speech-transcription-tool-release-notes.md)
 
 设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
 
@@ -108,6 +109,7 @@ Seeing.Agent/
 | 记忆页面 | 契约 `src/capabilities/Seeing.Agent.Memory/Abstractions/MemoryOverview.cs`；页面 `samples/Seeing.Agent.WebUI/Pages/MemoryPage.razor`；设置卡 `Components/Settings/MemorySettingsCard.razor` | 单页总览：`GetOverviewAsync` 一次读盘出类型/时间分布；分布用 `CreatedAt`（本地日历归日），列表排序用 `ModifiedTime`；设置走 `SettingsCardContribution`（`/memory/**` 子路由会被子路由规则隐藏，不能作侧栏项）；见 `docs/architecture/26-memory-page-redesign-release-notes.md` |
 | 模型元数据覆盖 | 契约 `src/abstractions/.../Llm/ModelOverride.cs`；应用器 `src/spine/Seeing.Agent.Core/Llm/ModelOverrideApplier.cs`；节 `ModelOverrides`（`~/.seeing/model-overrides.json`，UserOnly）；UI `samples/Seeing.Agent.WebUI/Pages/ModelsPage.razor` | 用户级稀疏覆盖（含补录），diff 持久化，聚合末端应用；见 `docs/superpowers/specs/2026-10-16-model-overrides-design.md` |
 | 语音输入（PromptInput 麦克风） | 脚本 `samples/Seeing.Agent.WebUI/wwwroot/js/voice-input.js`；端点 `samples/Seeing.Agent.WebUI/Endpoints/TranscriptionEndpoints.cs`；服务 `samples/Seeing.Agent.WebUI/Services/SpeechTranscriptionService.cs` | 点击切换录音（非按住说话）；未配模型时灰态可点非 `Disabled`；ASR 走既有 `ISpeechTranscriptionClient` + `DefaultModels.speechTranscription`；见 `docs/architecture/34` |
+| 语音转写工具（agent 侧） | 能力包 `src/capabilities/Seeing.Agent.Tools.Speech/`；格式表 `src/support/Seeing.Agent.Tools.Support/Speech/AudioFormatSupport.cs`；工具 `TranscribeAudioTool.cs` | `transcribe_audio`：路径经 `IWorkspacePathGate`、读进 `MemoryStream`（可 seek）、经 `ILlmInvoker` 调 `ISpeechTranscriptionClient`；未配默认模型直接报错不猜；输出带不可信内容声明；见 `docs/architecture/35` |
 | 桌面发布「改了不生效」排查 | `docs/architecture/30-desktop-host-release-notes.md` 的「排查」章节 | 三步顺序：① 旧进程（`Get-Process -Name Seeing`，程序名是 `Seeing` 不是 `Seeing.Agent.Desktop`）② 进程实际加载的副本（`$p.Modules`）③ RID 目录分裂（`net10.0\` vs `net10.0\win-x64\`）；见 `docs/architecture/30` |
 | 共享/底层支持包 | `src/support/`（`Seeing.Agent.Llm.Support`、`Seeing.Agent.Tools.Support`） | 仅依赖 Abstractions + 原语；承载启发式/工具基类等实现，禁止引用上层包 |
 | 会话文件浏览器 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Files/`；能力包 `src/capabilities/Seeing.Agent.Files/`；组件库 `samples/Seeing.Agent.WebUI.Files/`；宿主桥接 `samples/Seeing.Agent.WebUI/Services/AgentFileChangeBridge.cs` | 文件能力只描述磁盘事实，不订阅会话事件；agent 桥接在宿主层；见 `docs/architecture/16` |
