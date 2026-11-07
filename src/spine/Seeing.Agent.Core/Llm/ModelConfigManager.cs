@@ -1031,7 +1031,9 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
     }
 
     /// <summary>
-
+    /// 拉取单个 provider 的模型目录。带超时；provider 违约（返回 null Task / null 结果）时
+    /// 按空目录处理，不把 null 泄漏给调用方。调用方取消向上抛，超时按空目录降级。
+    /// </summary>
     private async Task<KeyValuePair<string, IReadOnlyList<ModelConfig>>> LoadProviderModelsAsync(
         string providerId,
         ILlmProvider provider,
