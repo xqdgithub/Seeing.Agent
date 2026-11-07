@@ -46,9 +46,15 @@ public class LlmRoutingEndToEndTests
         registry.GetProvider("typesafe-api").Should().NotBeNull(
             "provider.typesafe-api 是插件 Provider，Activate 后必须出现在注册表里");
 
-        // 目录刷新是后台单线程队列，注册与可路由之间有收敛窗口：按条件轮询，不用固定睡眠。
+        // 目录刷新是后台单线程队列，注册与可路由之间有收敛窗口。
+        // 这里显式 await 一次该 Provider 的刷新完成，而不是轮询固定短窗口：
+        // 生产侧单个 Provider 的 GetModelsAsync 上限是 15s、刷新完成等待是 45s，
+        // 测试若用更短的窗口，慢网络下会在刷新尚未结束时误判失败。
         var catalog = provider.GetRequiredService<IModelConfigManager>();
-        await WaitUntilAsync(() => catalog.GetCatalogModels().ContainsKey("typesafe-api/jev-latest"));
+        await catalog.RefreshCatalogAsync("typesafe-api", TestContext.Current.CancellationToken);
+
+        catalog.GetCatalogModels().Should().ContainKey("typesafe-api/jev-latest",
+            "种子模型来自插件静态表，不依赖网络；刷新完成后必须进全局目录");
 
         var resolved = provider.GetRequiredService<ILlmRouter>()
             .TryResolve<IDecisionClient>("typesafe-api/jev-latest", out var client, out var reason);
@@ -181,19 +187,6 @@ public class LlmRoutingEndToEndTests
             await module.ActivateAsync(provider, TestContext.Current.CancellationToken);
 
         return provider;
-    }
-
-    /// <summary>条件轮询（不引入固定睡眠）；超时后让断言报告真实原因。</summary>
-    private static async Task WaitUntilAsync(Func<bool> condition)
-    {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (DateTime.UtcNow < deadline)
-        {
-            if (condition())
-                return;
-
-            await Task.Delay(25);
-        }
     }
 
     /// <summary>测试独占的用户级 / 项目级目录，避免污染真实 <c>~/.seeing</c>。</summary>

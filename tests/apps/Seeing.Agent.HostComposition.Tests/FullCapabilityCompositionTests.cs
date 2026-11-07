@@ -59,28 +59,50 @@ public class FullCapabilityCompositionTests
         result.Enabled.Should().BeEquivalentTo(BuiltInCapabilitySets.Full);
     }
 
-    /// <summary>4 个宿主组合根必须走共享注册点，禁止再出现分散的 AddSeeingModule。</summary>
+    /// <summary>
+    /// 4 个宿主组合根必须走共享注册点，禁止再出现分散的 AddSeeingModule。
+    /// <para>
+    /// WebUI 的组装逻辑已下沉到 <c>WebUiHost.BuildAsync</c>（桌面宿主复用同一方法），
+    /// 入口 <c>Program.cs</c> 只剩两行委托，因此对该宿主断言「委托链的终点」而非入口文件本身。
+    /// 允许登记的入口（任一命中即可）：入口源文件，或它委托的宿主组装方法所在文件。
+    /// </para>
+    /// </summary>
     [Theory]
-    [InlineData("samples/Seeing.Agent.WebUI/Program.cs")]
-    [InlineData("samples/Seeing.Agent.Tui/Program.cs")]
-    [InlineData("samples/Seeing.Agent.Cli/Infrastructure/CliServiceBootstrap.cs")]
-    [InlineData("samples/Seeing.Gateway.Server/Program.cs")]
-    public void HostSamples_ShouldUseSharedComposition(string relativePath)
+    [InlineData("samples/Seeing.Agent.WebUI/Program.cs", "samples/Seeing.Agent.WebUI/Hosting/WebUiHost.cs")]
+    [InlineData("samples/Seeing.Agent.Tui/Program.cs", null)]
+    [InlineData("samples/Seeing.Agent.Cli/Infrastructure/CliServiceBootstrap.cs", null)]
+    [InlineData("samples/Seeing.Gateway.Server/Program.cs", null)]
+    public void HostSamples_ShouldUseSharedComposition(string relativePath, string? delegatedPath)
     {
-        var path = Path.Combine(FindRepositoryRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
+        var root = FindRepositoryRoot();
+        var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
 
         File.Exists(path).Should().BeTrue($"{relativePath} 应存在");
 
         var source = File.ReadAllText(path);
 
-        source.Should().Contain(
-            "AddSeeingFullCapabilities",
-            "{0} 必须使用共享组合根，避免默认能力集再次漂移",
+        // 入口自身或其委托目标，至少一处必须是共享组合根的调用点
+        var candidates = new List<string> { source };
+        if (delegatedPath is not null)
+        {
+            var delegated = Path.Combine(root, delegatedPath.Replace('/', Path.DirectorySeparatorChar));
+            File.Exists(delegated).Should().BeTrue($"{delegatedPath} 应存在");
+            candidates.Add(File.ReadAllText(delegated));
+        }
+
+        candidates.Should().Contain(
+            text => text.Contains("AddSeeingFullCapabilities", StringComparison.Ordinal),
+            "{0} 必须使用共享组合根（可经宿主组装方法委托），避免默认能力集再次漂移",
             relativePath);
-        source.Should().NotContain(
-            "AddSeeingModule<",
-            "{0} 不应再手写能力模块注册；新增模块请改 samples/Seeing.Agent.HostComposition",
-            relativePath);
+
+        // 手写模块注册在任何一处都不允许
+        foreach (var text in candidates)
+        {
+            text.Should().NotContain(
+                "AddSeeingModule<",
+                "{0} 不应再手写能力模块注册；新增模块请改 samples/Seeing.Agent.HostComposition",
+                relativePath);
+        }
     }
 
     /// <summary>复盘能力必须进 Full 档并随组合根一起登记（否则宿主开着却永远不触发）。</summary>

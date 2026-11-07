@@ -62,6 +62,9 @@ public class ToolViewSingleSourceTests
             Path.Combine("src", "hosting", "Seeing.Agent.Hosting", "Execution", "ToolExposure", "ToolExposureEngine.cs"),
             // 契约声明本身（接口成员签名），非调用
             Path.Combine("src", "abstractions", "Seeing.Agent.Abstractions", "Tools", "IToolManager.cs"),
+            // AgentExecutor：仅在结算端口已拒绝之后，用注册表区分「已注册但被过滤」与「不存在」两种
+            // 拒绝文案；判定可用性的仍是 settlement（ResolveCanonicalId），不是这次枚举。
+            Path.Combine("src", "spine", "Seeing.Agent.Core", "Core", "AgentExecutor.cs"),
         };
 
         foreach (var file in EnumerateSourceFiles(Path.Combine(root, "src")))
@@ -82,6 +85,31 @@ public class ToolViewSingleSourceTests
 
         offenders.Should().BeEmpty(
             "GetRegisteredTools() 只服务管理视图；用它判定本轮可用工具会绕过结算端口");
+    }
+
+    [Fact]
+    public void AgentExecutor_Should_Confine_Registry_Enumeration_To_Lookup_Helper()
+    {
+        // 上一条测试把 AgentExecutor 列入允许名单（诊断拒绝原因需要知道"是否存在该工具"）。
+        // 这里锁定该豁免的边界：注册表枚举必须收敛到单一私有查找 helper，
+        // 不得在可用性判定处内联枚举，也不得用于生产 schema。
+        var root = FindRepoRoot();
+        var text = File.ReadAllText(Path.Combine(
+            root, "src", "spine", "Seeing.Agent.Core", "Core", "AgentExecutor.cs"));
+
+        text.Should().Contain("ResolveCanonicalId(",
+            "可用性判定必须来自结算视图 settlement，而不是注册表");
+
+        // 枚举必须只有一处（单一收口），否则每个分支都会长出自己的"是否存在"判断
+        Regex.Matches(text, @"GetRegisteredTools\s*\(").Count.Should().Be(1,
+            "GetRegisteredTools 调用应收敛到唯一查找 helper；新增一处即意味着又一处可用性判定分叉");
+
+        // 该处必须在按名称查找的 helper 内（诊断用），而不是在结算门闸内联展开
+        var helperIndex = text.IndexOf("GetRegisteredToolIgnoreCase(string name)", StringComparison.Ordinal);
+        helperIndex.Should().BeGreaterThanOrEqualTo(0, "注册表枚举应被封装进按名称查找的 helper");
+
+        text.Should().NotContain("new FunctionToolSchema",
+            "执行器不得自行生产 schema（唯一生产点是 SessionToolSchemaResolver）");
     }
 
     [Fact]
