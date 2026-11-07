@@ -50,7 +50,4 @@ public interface IScheduleManager
     Task ResumeJobAsync(string jobId, CancellationToken ct = default);
     Task DisableJobAsync(string jobId, CancellationToken ct = default);
     Task<bool> CancelJobAsync(string jobId, CancellationToken ct = default);
-
-    // ===== 心跳 =====
-    Task ReloadHeartbeatAsync(CancellationToken ct = default);
 }

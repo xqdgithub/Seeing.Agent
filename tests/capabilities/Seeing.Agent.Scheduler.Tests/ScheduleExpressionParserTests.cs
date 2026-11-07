@@ -42,12 +42,3 @@ public class ScheduleExpressionParserTests
         next!.Value.Should().BeCloseTo(from.AddHours(1), TimeSpan.FromSeconds(1));
     }
 }
-
-public class ActiveHoursCheckerTests
-{
-    [Fact]
-    public void IsInActiveHours_NullOptions_ReturnsTrue()
-    {
-        ActiveHoursChecker.IsInActiveHours(null).Should().BeTrue();
-    }
-}

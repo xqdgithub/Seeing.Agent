@@ -81,11 +81,20 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
             if (await SnapshotMissingConversationsAsync(ct).ConfigureAwait(false))
                 await _repository.SaveAsync(_jobsFile, ct).ConfigureAwait(false);
 
-            // 注册用户任务（只注册 Active 状态的）
+            // 注册用户任务（只注册 Active 状态的）；单个任务失败不阻断其余任务
             foreach (var job in _jobsFile.Jobs.Where(j => j.Intent == ScheduleIntent.Active))
-                await RegisterUserJobAsync(job, ct);
+            {
+                try
+                {
+                    await RegisterUserJobAsync(job, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogError(ex, "注册定时任务失败，已跳过: JobId={JobId}", job.Id);
+                }
+            }
 
-            // 注册心跳
+            // 注册心跳（内部任务，失败同样不阻断用户任务）
             await RegisterHeartbeatAsync(ct);
 
             // 恢复 Running 状态（从 Quartz 获取正在执行的任务）
@@ -385,17 +394,6 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         return result;
     }
 
-    /// <inheritdoc/>
-    public async Task ReloadHeartbeatAsync(CancellationToken ct = default)
-    {
-        _optionsProvider.Reload();
-        if (!_started)
-            return;
-
-        await _engine.RemoveJobAsync(SchedulerConstants.HeartbeatJobId, ct);
-        await RegisterHeartbeatAsync(ct);
-    }
-
     // ===== IJobExecutionListener =====
 
     /// <inheritdoc/>
@@ -582,35 +580,168 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         await _engine.UpsertJobAsync(job.Id, job.Schedule, job.Intent, jobData, ct);
     }
 
+    // ===== 心跳槽位（供 IHeartbeatService 转调；不进入 IScheduleManager）=====
+
+    /// <summary>心跳槽位快照（深拷贝）。null 表示尚未配置。</summary>
+    internal ScheduledJobSpec? HeartbeatSpec()
+        => _jobsFile.Heartbeat is null ? null : CloneSpec(_jobsFile.Heartbeat);
+
+    /// <summary>保存心跳槽位：写盘，并按 intent 注册或移除触发器。</summary>
+    internal async Task<ScheduledJobSpec> SaveHeartbeatAsync(ScheduledJobSpec spec, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+
+        if (!string.Equals(spec.Id, SchedulerConstants.HeartbeatJobId, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                $"心跳任务 id 必须为 '{SchedulerConstants.HeartbeatJobId}'，实际为 '{spec.Id}'。");
+
+        var stored = CloneSpec(spec);
+        stored.Id = SchedulerConstants.HeartbeatJobId;
+        _jobsFile.Heartbeat = stored;
+        await _repository.SaveAsync(_jobsFile, ct).ConfigureAwait(false);
+
+        if (_started)
+            await RegisterHeartbeatAsync(ct).ConfigureAwait(false);
+
+        return CloneSpec(stored);
+    }
+
+    /// <summary>在槽位副本上就地修改并保存（供心跳服务做局部更新）。槽位为 null 时返回 null。</summary>
+    internal async Task<ScheduledJobSpec?> MutateHeartbeatAsync(
+        Action<ScheduledJobSpec> mutate, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(mutate);
+
+        if (_jobsFile.Heartbeat is null)
+            return null;
+
+        var copy = CloneSpec(_jobsFile.Heartbeat);
+        mutate(copy);
+        return await SaveHeartbeatAsync(copy, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 立即执行心跳。
+    /// <para>
+    /// 四种结果都有明确语义：未配置 → <c>NotFound</c>；调度器未启动或心跳未启用 → <c>Disabled</c>；
+    /// 正在执行 → <c>Conflict</c>；其余 <c>Accepted</c>。绝不出现「说已触发但其实没跑」。
+    /// </para>
+    /// </summary>
+    internal async Task<TriggerResult> RunHeartbeatAsync(CancellationToken ct = default)
+    {
+        var hb = _jobsFile.Heartbeat;
+        if (hb is null)
+            return new TriggerResult.NotFound();
+
+        if (!_started || _engine.Scheduler is null)
+            return new TriggerResult.Disabled();
+
+        if (hb.Intent != ScheduleIntent.Active)
+            return new TriggerResult.Disabled();
+
+        var runId = Guid.NewGuid().ToString("N");
+        if (!_runningJobs.TryAdd(SchedulerConstants.HeartbeatJobId, new RunInfo(runId, DateTime.Now)))
+            return new TriggerResult.Conflict("任务正在执行中");
+
+        try
+        {
+            // 先按当前槽位与锚点重建触发器，确保立即执行与周期执行走同一份配置。
+            await RegisterHeartbeatAsync(ct).ConfigureAwait(false);
+            await _engine.TriggerJobAsync(
+                SchedulerConstants.HeartbeatJobId,
+                runId,
+                new JobDataMap { [JobDataKeys.Source] = ScheduleSources.Manual },
+                ct).ConfigureAwait(false);
+
+            _logger.LogInformation("Heartbeat triggered with RunId={RunId}", runId);
+            return new TriggerResult.Accepted(runId);
+        }
+        catch
+        {
+            _runningJobs.TryRemove(SchedulerConstants.HeartbeatJobId, out _);
+            throw;
+        }
+    }
+
+    /// <summary>取消正在执行的心跳。</summary>
+    internal async Task<bool> CancelHeartbeatAsync(CancellationToken ct = default)
+    {
+        if (_jobsFile.Heartbeat is null)
+            return false;
+
+        return await CancelJobAsync(SchedulerConstants.HeartbeatJobId, ct).ConfigureAwait(false);
+    }
+
     private async Task RegisterHeartbeatAsync(CancellationToken ct)
     {
-        var hb = _optionsProvider.Current.Heartbeat;
-        if (!hb.Enabled)
-            return;
-
-        var schedule = new ScheduleSpec
+        var hb = _jobsFile.Heartbeat;
+        if (hb is null)
         {
-            Type = ScheduleTypes.Interval,
-            Every = hb.Every,
-            Timezone = _optionsProvider.Current.Timezone
-        };
+            // 槽位被清空：移除残留触发器，避免「已没有配置却还在按时跑」。
+            await _engine.RemoveJobAsync(SchedulerConstants.HeartbeatJobId, ct).ConfigureAwait(false);
+            return;
+        }
 
-        var jobData = new JobDataMap
+        try
+        {
+            await _engine.UpsertJobAsync(
+                SchedulerConstants.HeartbeatJobId,
+                hb.Schedule,
+                hb.Intent,
+                BuildHeartbeatData(hb),
+                ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // 单条配置写错不应该让整个调度器起不来（用户任务照常注册）。
+            _logger.LogError(ex, "心跳注册失败（不影响其他任务）: Every={Every}", hb.Schedule.Every);
+        }
+    }
+
+    private JobDataMap BuildHeartbeatData(ScheduledJobSpec hb)
+    {
+        var data = new JobDataMap
         {
             [JobDataKeys.JobId] = SchedulerConstants.HeartbeatJobId,
-            [JobDataKeys.SessionId] = hb.SessionId,
-            [JobDataKeys.TimeoutSeconds] = hb.TimeoutSeconds.ToString(),
-            [JobDataKeys.AgentId] = hb.Agent ?? string.Empty,
+            [JobDataKeys.JobName] = hb.Name ?? "心跳",
+            [JobDataKeys.TaskType] = ScheduleTaskTypes.Agent,
             [JobDataKeys.Prompt] = hb.Prompt ?? string.Empty,
-            [JobDataKeys.HeartbeatTarget] = hb.Target,
+            [JobDataKeys.AgentId] = hb.Agent ?? string.Empty,
+            [JobDataKeys.TimeoutSeconds] = hb.Runtime.TimeoutSeconds.ToString(),
             [JobDataKeys.Source] = ScheduleSources.Heartbeat
         };
 
-        if (hb.ActiveHours != null)
+        if (!string.IsNullOrWhiteSpace(hb.Dispatch?.Target?.SessionId))
+            data[JobDataKeys.SessionId] = hb.Dispatch.Target.SessionId;
+
+        if (!string.IsNullOrWhiteSpace(hb.Model))
+            data[JobDataKeys.Model] = hb.Model;
+
+        if (!string.IsNullOrWhiteSpace(hb.Mode))
+            data[JobDataKeys.Mode] = hb.Mode;
+
+        var conversation = hb.Dispatch?.Target?.Conversation;
+        if (conversation is { IsComplete: true })
         {
-            jobData[JobDataKeys.ActiveHours] = System.Text.Json.JsonSerializer.Serialize(hb.ActiveHours, SeeingJson.Readable);
+            data[JobDataKeys.ConversationChannelId] = conversation.ChannelId!.Trim();
+            data[JobDataKeys.ConversationKind] = conversation.Kind!.Trim().ToLowerInvariant();
+            data[JobDataKeys.ConversationExternalId] = conversation.ExternalId!.Trim();
+            if (!string.IsNullOrWhiteSpace(conversation.Title))
+                data[JobDataKeys.ConversationTitle] = conversation.Title!.Trim();
         }
 
-        await _engine.UpsertJobAsync(SchedulerConstants.HeartbeatJobId, schedule, ScheduleIntent.Active, jobData, ct);
+        data.SetJsonValue(JobDataKeys.RunProfile, ScheduleRunProfile.Heartbeat);
+
+        // interval 锚点：上次执行时间决定下次触发，重启不重置节律。
+        if (hb.LastRunAt is { } lastRun)
+            data[JobDataKeys.LastRunAt] = lastRun.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+
+        return data;
     }
+
+    private static ScheduledJobSpec CloneSpec(ScheduledJobSpec spec)
+        => System.Text.Json.JsonSerializer.Deserialize<ScheduledJobSpec>(
+               System.Text.Json.JsonSerializer.Serialize(spec, SeeingJson.Readable),
+               SeeingJson.Readable)
+           ?? new ScheduledJobSpec();
 }

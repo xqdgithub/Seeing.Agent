@@ -1,4 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Quartz;
 using Seeing.Agent.Abstractions.Configuration;
@@ -61,7 +61,6 @@ public static class SchedulerServiceCollectionExtensions
 
         // Quartz Jobs - 注册为 transient 以支持每次执行创建新实例
         services.AddTransient<AgentJob>();
-        services.AddTransient<HeartbeatJob>();
 
         // Quartz 配置 - 使用 AddQuartz 进行 DI 集成
         // 注意：AddQuartz 会自动使用 Microsoft DI JobFactory
@@ -139,7 +138,6 @@ public static class SchedulerServiceCollectionExtensions
 
         // Quartz Jobs - 注册为 transient 以支持每次执行创建新实例
         services.AddTransient<AgentJob>();
-        services.AddTransient<HeartbeatJob>();
 
         // Quartz 配置 - 使用 AddQuartz 进行 DI 集成
         // 使用委托工厂方法，在运行时获取配置

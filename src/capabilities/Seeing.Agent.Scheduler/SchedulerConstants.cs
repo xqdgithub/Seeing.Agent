@@ -50,14 +50,6 @@ public static class ScheduleTypes
     public const string Once = "once";
 }
 
-/// <summary>心跳投递目标（旧配置模型；随心跳槽位上线后移除）</summary>
-public static class HeartbeatTargets
-{
-    public const string Main = "main";
-    public const string Last = "last";
-    public const string Inbox = "inbox";
-}
-
 /// <summary>任务 id 保留策略：内部任务 id 不得经用户任务 API 进入 Jobs。</summary>
 public static class ScheduleIdPolicy
 {

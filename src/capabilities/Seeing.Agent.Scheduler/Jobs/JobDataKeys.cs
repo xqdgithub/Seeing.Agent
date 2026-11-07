@@ -78,14 +78,6 @@ public static class JobDataKeys
     /// <summary>上次执行结束时间（本地墙钟，往返格式）；存在时作为 interval 触发器的起算锚点。</summary>
     public const string LastRunAt = "lastRunAt";
 
-    // ===== 心跳特有 =====
-
-    /// <summary>投递目标：main / last / inbox</summary>
-    public const string HeartbeatTarget = "heartbeatTarget";
-
-    /// <summary>活跃时段（JSON）</summary>
-    public const string ActiveHours = "activeHours";
-
     /// <summary>调度时区 ID（墙钟展示用）</summary>
     public const string ScheduleTimezone = "scheduleTimezone";
 }

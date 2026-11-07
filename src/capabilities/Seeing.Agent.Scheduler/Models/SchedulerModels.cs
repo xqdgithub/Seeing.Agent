@@ -17,9 +17,6 @@ public class SchedulerOptions
 
     /// <summary>持久化配置</summary>
     public PersistenceOptions Persistence { get; set; } = new();
-
-    /// <summary>心跳配置</summary>
-    public HeartbeatOptions Heartbeat { get; set; } = new();
 }
 
 /// <summary>持久化配置</summary>
@@ -36,42 +33,6 @@ public class PersistenceOptions
 
     /// <summary>表名前缀</summary>
     public string TablePrefix { get; set; } = "QRTZ_";
-}
-
-/// <summary>心跳配置</summary>
-public class HeartbeatOptions
-{
-    /// <summary>是否启用心跳</summary>
-    public bool Enabled { get; set; }
-
-    /// <summary>执行间隔（如 6h、30m）</summary>
-    public string Every { get; set; } = "6h";
-
-    /// <summary>投递目标：main / last / inbox</summary>
-    public string Target { get; set; } = HeartbeatTargets.Main;
-
-    /// <summary>心跳 Prompt（必填，支持 Markdown 格式）</summary>
-    public string Prompt { get; set; } = "";
-
-    /// <summary>使用的 Agent ID</summary>
-    public string? Agent { get; set; }
-
-    /// <summary>Session ID（Target=main 时使用）</summary>
-    public string SessionId { get; set; } = "main";
-
-    /// <summary>超时（秒）</summary>
-    public int TimeoutSeconds { get; set; } = SchedulerConstants.DefaultTimeoutSeconds;
-
-    /// <summary>活跃时段</summary>
-    public ActiveHoursOptions? ActiveHours { get; set; }
-}
-
-/// <summary>活跃时段配置</summary>
-public class ActiveHoursOptions
-{
-    public string Start { get; set; } = "08:00";
-    public string End { get; set; } = "22:00";
-    public string? Timezone { get; set; }
 }
 
 /// <summary>调度规格</summary>

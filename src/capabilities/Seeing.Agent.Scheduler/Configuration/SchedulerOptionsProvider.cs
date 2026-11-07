@@ -38,8 +38,7 @@ public sealed class SchedulerOptionsProvider : ISchedulerOptionsProvider
     public void Reload()
     {
         _options = _configStore.GetSection<SchedulerOptions>("Scheduler") ?? new SchedulerOptions();
-        _logger.LogDebug("Scheduler options reloaded (Enabled={Enabled}, Heartbeat={HeartbeatEnabled})",
-            _options.Enabled, _options.Heartbeat.Enabled);
+        _logger.LogDebug("Scheduler options reloaded (Enabled={Enabled})", _options.Enabled);
     }
 
     /// <summary>保存配置</summary>
