@@ -592,66 +592,17 @@ internal sealed class ExecutionRunner : IExecutionRunner
         int totalSteps,
         TokenUsage? usage,
         TimeSpan loopDuration)
-    {
-        var (isTopLevel, parentSessionId, origin) = ResolveSessionRelation(services, record.SessionId);
-        var completedAt = record.CompletedAt ?? DateTime.UtcNow;
-
-        return new ExecutionOutcome
-        {
-            SessionId = record.SessionId,
-            ExecutionId = record.ExecutionId,
-            Status = record.Status,
-            AgentName = agentExecuted ? agentName : null,
-            AgentExecuted = agentExecuted,
-            IsTopLevel = isTopLevel,
-            ParentSessionId = parentSessionId,
-            Origin = origin,
-            TotalSteps = totalSteps,
-            Usage = usage,
-            Duration = loopDuration,
-            CompletedAt = completedAt
-        };
-    }
-
-    /// <summary>
-    /// 解析「是否顶层 + 父会话 Id + 会话来源」。
-    /// <para>
-    /// 真值来源是 <see cref="SessionData.Kind"/>（<c>SubAgent</c> → 非顶层）、会话组的父子关系、
-    /// 以及 <see cref="SessionData.Origin"/>；<b>不得</b>读 <c>ChatExecutionContext.IsTopLevel</c>
-    /// （该字段在唯一构造点从未赋值）。
-    /// </para>
-    /// <para>
-    /// 三者**同一次**读取会话得出：把 <c>Origin</c> 一并下发，观察者就不必为了判定来源再回读会话
-    /// （终态钩子上不该出现第二次 I/O）。<paramref name="services"/> 是执行作用域，
-    /// <see cref="ISessionManager.Get"/> 命中内存缓存，不产生磁盘访问。
-    /// </para>
-    /// <para>读不到会话时按「顶层 + 用户来源」处理（保守：不把根会话误判成内部会话）。</para>
-    /// </summary>
-    private (bool IsTopLevel, string? ParentSessionId, SessionOrigin Origin) ResolveSessionRelation(
-        IServiceProvider services, string sessionId)
-    {
-        try
-        {
-            var session = services.GetService<ISessionManager>()?.Get(sessionId);
-            if (session is null)
-                return (true, null, SessionOrigin.User);
-
-            var origin = session.Origin;
-            if (session.Kind != SessionKind.SubAgent)
-                return (true, null, origin);
-
-            var groupManager = services.GetService<ISessionGroupManager>();
-            var parentId = groupManager is not null && groupManager.TryGetParent(sessionId, out var parent)
-                ? parent
-                : null;
-            return (false, parentId, origin);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "读取会话关系失败，按顶层处理: SessionId={SessionId}", sessionId);
-            return (true, null, SessionOrigin.User);
-        }
-    }
+        => ExecutionOutcomeFactory.Create(
+            record,
+            services,
+            _logger,
+            // 本通道口径：模型循环累计时长（汇总 LoopCompleteEvent），回答「模型跑了多久」。
+            // 墙钟口径由 SessionRuntime 通道提供，两者刻意不同——见工厂类注释。
+            duration: loopDuration,
+            agentExecuted: agentExecuted,
+            agentName: agentName,
+            totalSteps: totalSteps,
+            usage: usage);
 
     /// <summary>
     /// 逐字段累加 Token 用量：任一为 <c>null</c> 时返回另一方（<c>null</c> 表示「未知」而不是零）。
@@ -1035,151 +986,14 @@ internal sealed class ExecutionRunner : IExecutionRunner
     }
 
     /// <summary>
-    /// Builds history from session.
+    /// 从会话重建 LLM 历史 —— 转发到 <see cref="SessionHistoryBuilder"/>。
+    /// <para>
+    /// 实现已迁出（历史重建的所有约束都在 <see cref="SessionHistoryBuilder"/> 的类注释里）。
+    /// 保留本门面仅为兼容既有调用点与测试，<b>不要在此重新实现逻辑</b>。
+    /// </para>
     /// </summary>
     internal static List<ChatMessage> BuildHistoryFromSession(SessionData session)
-    {
-        var history = new List<ChatMessage>();
-
-        // 统一消息来源：仅活跃消息（已压缩标记的旧消息保留展示但不传递给 LLM）
-        // 跳过旧版空 system 仅承载 schema_snapshot 的载体（不进 LLM 历史）
-        foreach (var msg in session.GetActiveMessages())
-        {
-            if (IsSchemaSnapshotCarrierMessage(msg))
-                continue;
-
-            if (IsRuntimeNotificationMessage(msg))
-                continue;
-
-            if (IsNonHistoryInboxMessage(msg))
-                continue;
-
-            var chatMessage = new ChatMessage
-            {
-                Role = msg.Role,
-                Content = msg.Content,
-                ReasoningContent = msg.ReasoningContent,
-                ReasoningSignature = msg.ReasoningSignature,
-                ToolCallId = msg.ToolCallId
-            };
-
-            if (msg.Parts != null && msg.Parts.Count > 0)
-            {
-                chatMessage.Parts = msg.Parts.Select(p => new ChatContentPart
-                {
-                    Type = p.Type,
-                    Text = p.Text,
-                    Url = p.Url,
-                    DataBase64 = p.DataBase64,
-                    MimeType = p.MimeType,
-                    FileName = p.FileName
-                }).ToList();
-            }
-
-            if (msg.ToolCalls != null && msg.ToolCalls.Count > 0)
-            {
-                chatMessage.ToolCalls = msg.ToolCalls.Select(tc => new ToolCall
-                {
-                    Id = tc.Id,
-                    Type = tc.Type,
-                    Function = new FunctionCall
-                    {
-                        Name = tc.Name,
-                        Arguments = tc.Arguments
-                    }
-                }).ToList();
-            }
-
-            history.Add(chatMessage);
-
-            // 工具结果在会话中内嵌于 assistant 消息的 ToolCalls[].Result，
-            // 此处展开为独立的 tool 消息，满足 OpenAI 对 assistant(tool_calls)
-            // 后必须紧跟对应 tool 消息的要求，否则重建历史会触发 400。
-            if (msg.ToolCalls is { Count: > 0 })
-            {
-                foreach (var tc in msg.ToolCalls)
-                {
-                    history.Add(new ChatMessage
-                    {
-                        Role = ChatRole.Tool,
-                        ToolCallId = tc.Id,
-                        Content = ToolResultFormatting.ToModelContent(
-                            string.Equals(tc.Status, "success", StringComparison.OrdinalIgnoreCase),
-                            tc.Result,
-                            tc.Error,
-                            tc.Name,
-                            tc.Status,
-                            tc.Title,
-                            tc.ToolDefinition)
-                    });
-                }
-            }
-        }
-
-        return history;
-    }
-
-    /// <summary>
-    /// 旧版空 system 仅承载 schema_snapshot，不进入 LLM 历史。
-    /// </summary>
-    private static bool IsSchemaSnapshotCarrierMessage(SessionMessage msg)
-    {
-        if (!string.Equals(msg.Role, MessageRole.System, StringComparison.OrdinalIgnoreCase))
-            return false;
-        if (!string.IsNullOrEmpty(msg.Content))
-            return false;
-        if (msg.Parts is { Count: > 0 })
-            return false;
-        return msg.Metadata?.ContainsKey(ChatEventTracker.SchemaSnapshotMetadataKey) == true;
-    }
-
-    /// <summary>
-    /// 运行时通知（错误/取消）不进 LLM 历史。
-    /// 新数据已不再产生；此处兼容存量消息（前缀）与显式 transient 标记。
-    /// </summary>
-    private static bool IsRuntimeNotificationMessage(SessionMessage msg)
-    {
-        if (!string.Equals(msg.Role, MessageRole.System, StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        if (msg.Metadata?.TryGetValue("transient", out var flag) == true)
-        {
-            if (flag is bool b && b)
-                return true;
-            // 落盘再加载后 Metadata 值为 JsonElement，需兼容
-            if (flag is System.Text.Json.JsonElement je
-                && je.ValueKind == System.Text.Json.JsonValueKind.True)
-                return true;
-        }
-
-        if (string.IsNullOrEmpty(msg.Content))
-            return false;
-
-        return msg.Content.StartsWith("错误: ", StringComparison.Ordinal)
-            || msg.Content.StartsWith("对话已取消: ", StringComparison.Ordinal)
-            || msg.Content.StartsWith("压缩失败", StringComparison.Ordinal)
-            || msg.Content.StartsWith("⚠️ 执行已取消", StringComparison.Ordinal)
-            || msg.Content.StartsWith("❌ 执行出错", StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// 入站消息中 <c>inbox.presentation=none</c>（可持久化展示但不进 LLM 历史，如 Gateway 横幅）。
-    /// 落盘再加载后 Metadata 值可能为 <see cref="JsonElement"/>，故用 <c>ToString()</c> 兼容。
-    /// </summary>
-    private static bool IsNonHistoryInboxMessage(SessionMessage msg)
-    {
-        if (msg.Metadata?.TryGetValue(InboxMetadataKeys.Presentation, out var raw) != true || raw is null)
-            return false;
-
-        var presentation = raw switch
-        {
-            string s => s,
-            JsonElement je when je.ValueKind == JsonValueKind.String => je.GetString(),
-            _ => raw.ToString()
-        };
-
-        return string.Equals(presentation, "none", StringComparison.OrdinalIgnoreCase);
-    }
+        => SessionHistoryBuilder.BuildHistory(session);
 
     /// <summary>
     /// Builds agent context from execution context.

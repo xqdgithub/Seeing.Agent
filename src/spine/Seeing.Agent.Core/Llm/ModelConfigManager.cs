@@ -1330,57 +1330,11 @@ public class ModelConfigManager : IModelConfigManager, IDisposable, IAsyncDispos
             .Select(LlmCapabilityMap.ToConfigKey);
 
     /// <summary>
-    /// 模型有效类型经 <see cref="LlmCapabilityMap.FromModelType"/> 投影后是否覆盖所需能力
-    /// （复合位要求逐位覆盖）。取代旧的 <c>ModelType.Text</c> 硬编码判定。
+    /// 模型有效类型经 <see cref="LlmCapabilityMap.FromModelType"/> 投影后是否覆盖所需能力。
+    /// <para>实现已收敛到 <see cref="ModelCapabilityPredicate"/>（与 <see cref="LlmRouter"/> 第 3 层共用同一份）。</para>
     /// </summary>
     private bool ModelCoversCapability(ModelConfig config, LlmCapabilityKind capability)
-    {
-        var modelKinds = GetEffectiveTypes(config)
-            .SelectMany(LlmCapabilityMap.FromModelType)
-            .Where(kind => kind != LlmCapabilityKind.None)
-            .ToHashSet();
-
-        foreach (var required in SingleCapabilityBits(capability))
-        {
-            if (!modelKinds.Contains(required))
-                return false;
-        }
-
-        // 语音有方向：合成看 modalities.output、转写看 modalities.input（决议 24，与 Router 第 3 层同口径）。
-        // 不在这里拦就会让用户把「标了 Speech 但没写 audio」的模型设成默认，运行时才炸。
-        return CoversSpeechModality(config, capability);
-    }
-
-    /// <summary>
-    /// 语音能力的模态检查：<c>Speech</c> 类型同时覆盖合成与转写，必须靠 <c>Modalities</c> 消歧。
-    /// <para>非语音能力一律通过（此项只补充语音的方向性约束）。</para>
-    /// </summary>
-    private static bool CoversSpeechModality(ModelConfig config, LlmCapabilityKind capability)
-    {
-        var isSynthesis = capability.HasFlag(LlmCapabilityKind.SpeechSynthesis);
-        var isTranscription = capability.HasFlag(LlmCapabilityKind.SpeechTranscription);
-
-        if (!isSynthesis && !isTranscription)
-            return true;
-
-        var modalities = isSynthesis ? config.Modalities?.Output : config.Modalities?.Input;
-        return modalities is not null
-               && modalities.Any(value => string.Equals(value, "audio", StringComparison.OrdinalIgnoreCase));
-    }
-
-    /// <summary>能力位集拆成单值位序列（枚举是唯一出处，不手拼名字）。</summary>
-    private static IEnumerable<LlmCapabilityKind> SingleCapabilityBits(LlmCapabilityKind capability)
-    {
-        foreach (var kind in Enum.GetValues<LlmCapabilityKind>())
-        {
-            if (kind != LlmCapabilityKind.None &&
-                (kind & (kind - 1)) == 0 &&
-                capability.HasFlag(kind))
-            {
-                yield return kind;
-            }
-        }
-    }
+        => ModelCapabilityPredicate.Covers(config, capability, GetEffectiveTypes(config));
 
     /// <summary>诊断文案：模型有效类型对应到的能力配置键集合。</summary>
     private string DescribeCapabilities(ModelConfig config)

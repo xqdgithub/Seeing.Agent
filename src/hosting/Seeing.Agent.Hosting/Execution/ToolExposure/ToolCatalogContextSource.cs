@@ -9,10 +9,15 @@ using Seeing.Session.Core;
 namespace Seeing.Agent.Hosting.Execution.ToolExposure;
 
 /// <summary>
-/// 工具目录上下文源：<c>Target = Message</c>、<c>Scope = Session</c>。
+/// 工具目录上下文源：<c>Target = System</c>、<c>Scope = Session</c>。
 /// <para>
-/// 目录不再进系统提示词——那会让「工具数/展示数」的每次变化都击穿前缀缓存。
-/// 初始渲染落一条会话消息，运行时变化只产生一条增量叙述（尾部追加）。
+/// <b>初始渲染进系统提示词</b>（与 <c>SkillsContextSource</c> 同构）：目录是环境事实，第 1 轮就该在位、
+/// 位置固定。它只在基线建立时渲染一次，之后不再参与每请求拼装，因此不会因「工具数/展示数」变化
+/// 而击穿前缀缓存。
+/// </para>
+/// <para>
+/// 运行时变化（工具增减 / 升级）由装配器统一转成一条 <c>context-update</c> 增量叙述消息追加到
+/// 消息尾部，不重写系统提示词。
 /// </para>
 /// <para>
 /// 只读执行作用域钉住的 <see cref="IContextExecutionScope.ToolSettlement"/>，

@@ -17,9 +17,6 @@ namespace Seeing.Agent.Core.Llm;
 /// </summary>
 public sealed class LlmRouter : ILlmRouter
 {
-    /// <summary>语音模态标识（<c>ModelConfig.Modalities</c> 的取值约定，spec §7.10）。</summary>
-    private const string AudioModality = "audio";
-
     private readonly IModelConfigManager _models;
     private readonly IProviderRegistry _providers;
     private readonly ILogger<LlmRouter> _logger;
@@ -125,6 +122,7 @@ public sealed class LlmRouter : ILlmRouter
         }
 
         // ---- 第 2 层：模型声明类型映射到请求能力 ----
+        // 投影规则与「设为默认模型」的写入校验共用 ModelCapabilityPredicate（单一实现，不各自维护一份）。
         var effectiveTypes = _models.GetEffectiveTypes(model) ?? [ModelType.Text];
         if (!effectiveTypes.Any(type => LlmCapabilityMap.FromModelType(type).Contains(capability)))
         {
@@ -134,23 +132,17 @@ public sealed class LlmRouter : ILlmRouter
         }
 
         // ---- 第 3 层：Speech 双向消歧（决议 24：不猜，缺声明就要求补） ----
-        if (capability is LlmCapabilityKind.SpeechSynthesis or LlmCapabilityKind.SpeechTranscription)
+        // 判定逻辑与写入校验共用 CoversSpeechModality，此处只负责分层文案。
+        if (capability is LlmCapabilityKind.SpeechSynthesis or LlmCapabilityKind.SpeechTranscription
+            && !ModelCapabilityPredicate.CoversSpeechModality(model, capability))
         {
             var modalityKey = capability == LlmCapabilityKind.SpeechSynthesis
                 ? "modalities.output"
                 : "modalities.input";
-            var modalityValues = capability == LlmCapabilityKind.SpeechSynthesis
-                ? model.Modalities?.Output
-                : model.Modalities?.Input;
-
-            if (modalityValues is null ||
-                !modalityValues.Any(value => string.Equals(value, AudioModality, StringComparison.OrdinalIgnoreCase)))
-            {
-                return Fail(modelId,
-                    $"声明不足：模型标为 Speech 但未在 {modalityKey} 写明 'audio'，"
-                    + $"无法判定它承担 '{capabilityName}'。请在模型配置补 Modalities（合成看 output、转写看 input）",
-                    effectiveTypes);
-            }
+            return Fail(modelId,
+                $"声明不足：模型标为 Speech 但未在 {modalityKey} 写明 'audio'，"
+                + $"无法判定它承担 '{capabilityName}'。请在模型配置补 Modalities（合成看 output、转写看 input）",
+                effectiveTypes);
         }
 
         // ---- 第 4 层：Provider 声明该能力 ----

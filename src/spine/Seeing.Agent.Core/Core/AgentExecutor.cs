@@ -47,6 +47,9 @@ public class AgentExecutor : IAgentExecutor
     private readonly ITodoStore? _todoStore;
     private readonly ILlmTurnRetryPolicy? _turnRetryPolicy;
 
+    /// <summary>单个工具调用的执行体（可见集校验 → 权限 → 执行 → 终态事件）。</summary>
+    private readonly ToolCallInvoker _toolInvoker;
+
     /// <summary>
     /// 构造 Agent 执行器，注入 LLM、工具、权限、钩子、注册表等核心依赖（后四项为可选）。
     /// </summary>
@@ -74,7 +77,20 @@ public class AgentExecutor : IAgentExecutor
         _sessionManager = sessionManager;
         _todoStore = todoStore;
         _turnRetryPolicy = turnRetryPolicy;
+        _toolInvoker = new ToolCallInvoker(tools, permissions, logger, sessionManager);
     }
+
+    /// <summary>
+    /// 按 OrdinalIgnoreCase 在注册表中查找（<see cref="ToolManager"/> 的查找是序数敏感的）。
+    /// <para>
+    /// <b>本方法是注册表枚举的唯一调用点</b>（见 ToolViewSingleSourceTests）：
+    /// 只用于把「已注册但被本轮结算过滤」与「根本不存在」区分成两种拒绝文案，
+    /// 判定本轮可用性的始终是结算快照（<c>ResolveCanonicalId</c>），不是这次枚举。
+    /// </para>
+    /// </summary>
+    private ITool? GetRegisteredToolIgnoreCase(string name) =>
+        _tools.GetRegisteredTools()
+            .FirstOrDefault(t => string.Equals(t.Id, name, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// 执行 Agent - 核心 LLM 循环
@@ -801,6 +817,60 @@ public class AgentExecutor : IAgentExecutor
         CancellationToken cancellationToken)
     {
         var name = tc.Function?.Name ?? "";
+
+        // ========== 可见集校验（在派发前完成） ==========
+        // 只拦「不在本会话结算内」的工具（被禁用 / Agent 过滤 / 模块未挂载 / 名字不存在）。
+        // 结算内即放行：deferred（未下发 schema）也能直接调用——目录已给出参数签名，
+        // 参数错误由失败时的定义回灌兜住。加载（TryLoad）只是审计，不参与能否调用。
+        // <b>此处是可用性的唯一判定点</b>（ToolViewSingleSourceTests 锁定）；ToolCallInvoker 只做权限与执行。
+        if (context.ToolSettlement is { } settlement)
+        {
+            // 结算用 OrdinalIgnoreCase、ToolManager 用序数敏感：先归一化为结算里的 canonical id，
+            // 否则模型写 Read 会穿过 gate 后拿到裸「工具不存在: Read」。
+            var canonicalName = settlement.ResolveCanonicalId(name);
+            if (canonicalName is null)
+            {
+                var isEnabled = _tools.IsToolEnabled(name);
+                var isRegistered = GetRegisteredToolIgnoreCase(name) is not null;
+                var reason = ToolVisibilityGate.ResolveVisibilityRejection(name, context, isEnabled, isRegistered);
+                _logger.LogWarning(
+                    "[AgentExecutor] 拒绝了结算外工具的调用: {ToolName} (enabled={Enabled}, registered={Registered})",
+                    name, isEnabled, isRegistered);
+
+                await writer.WriteAsync(new ToolCallEvent
+                {
+                    SessionId = context.SessionId,
+                    LoopId = loopId,
+                    Type = MessageEventType.ToolCallComplete,
+                    ToolCallId = tc.Id,
+                    ToolName = name,
+                    Arguments = ParseArguments(tc.Function?.Arguments),
+                    Status = ToolCallStatus.Rejected,
+                    Error = reason,
+                    Metadata = ToolVisibilityGate.BuildVisibilityMetadata(isEnabled, isRegistered)
+                }, CancellationToken.None).ConfigureAwait(false);
+                return;
+            }
+
+            if (!string.Equals(canonicalName, name, StringComparison.Ordinal))
+            {
+                _logger.LogDebug(
+                    "[AgentExecutor] 工具名大小写归一化: {Requested} → {Canonical}", name, canonicalName);
+                name = canonicalName;
+                // ToolManager 按 toolCall.Name 查注册表（序数敏感）：必须把归一化后的名字传下去。
+                tc = new ToolCall
+                {
+                    Id = tc.Id,
+                    Type = tc.Type,
+                    Function = new FunctionCall
+                    {
+                        Name = canonicalName,
+                        Arguments = tc.Function?.Arguments
+                    }
+                };
+            }
+        }
+
         await writer.WriteAsync(new ToolCallEvent
         {
             SessionId = context.SessionId,
@@ -818,7 +888,7 @@ public class AgentExecutor : IAgentExecutor
         ToolCallEvent complete;
         try
         {
-            complete = await ExecuteSingleToolCallAsync(
+            complete = await _toolInvoker.InvokeAsync(
                 tc, agent, context, permissionAuthorizer, loopId, toolScope, EmitAsync, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -866,395 +936,6 @@ public class AgentExecutor : IAgentExecutor
             Error = error,
             Metadata = metadata
         };
-    }
-
-    /// <summary>按 OrdinalIgnoreCase 在注册表中查找（ToolManager 的查找是序数敏感的）。</summary>
-    private ITool? GetRegisteredToolIgnoreCase(string name) =>
-        _tools.GetRegisteredTools()
-            .FirstOrDefault(t => string.Equals(t.Id, name, StringComparison.OrdinalIgnoreCase));
-
-    /// <summary>
-    /// 结算外工具的三种拒绝文案：已禁用 / 已注册但被过滤 / 不存在。
-    /// <para>
-    /// 「被过滤」必须明确说检索解决不了：<c>tool_search</c> 的语料取自结算内的 deferred 集，
-    /// 被过滤的工具不在语料里，提示检索只会让模型反复空搜。
-    /// </para>
-    /// </summary>
-    private string ResolveVisibilityRejection(string name, AgentContext context)
-    {
-        if (!_tools.IsToolEnabled(name))
-            return $"工具 '{name}' 已被禁用；可在工具设置中启用后重试。";
-
-        if (GetRegisteredToolIgnoreCase(name) is not null)
-            return $"工具 '{name}' 在当前 Agent 或会话中不可用；" +
-                   "这不是检索可以解决的问题，请直接使用已提供的工具完成任务。";
-
-        var hint = context.ToolSettlement?.HasSearchTool == true
-            ? $"\n可用 {ToolIdConventions.SearchToolId} 按关键词检索你要的能力（例如 query=\"删除文件\"）。"
-            : string.Empty;
-        return $"无此工具 '{name}'。{hint}";
-    }
-
-    private IReadOnlyDictionary<string, object> BuildVisibilityMetadata(string name) =>
-        new Dictionary<string, object>
-        {
-            ["visibility.reason"] =
-                !_tools.IsToolEnabled(name) ? "disabled"
-                : GetRegisteredToolIgnoreCase(name) is not null ? "not_in_settlement"
-                : "not_found"
-        };
-
-    /// <summary>回灌定义的大小上限；超过则不附，改提示用 tool_search 获取。</summary>
-    private const int MaxDefinitionChars = 8192;
-
-    /// <summary>
-    /// 判断失败是否属「参数类」（缺参/类型错/枚举值非法）。
-    /// <para>
-    /// 超时、重试耗尽、权限拒绝这些失败附定义没有帮助，只会白付 2–8KB。
-    /// 权限拒绝按结构化标记判定（<c>permission.denied</c>），不依赖错误文案——
-    /// 真实拒绝的 <c>Error</c> 是策略给出的原因，文案千变万化。
-    /// </para>
-    /// </summary>
-    private static bool IsParamLikeFailure(ToolResult result)
-    {
-        if (result.Success)
-            return false;
-        if (result.Metadata?.ContainsKey("timeout") == true)
-            return false;
-        if (result.Metadata?.ContainsKey("permission.denied") == true)
-            return false;
-        if (string.Equals(result.Title, "重试耗尽", StringComparison.Ordinal))
-            return false;
-        return true;
-    }
-
-    /// <summary>
-    /// 异常是否值得回灌定义。取消与 IO/网络类异常不是参数问题，附定义只会浪费上下文。
-    /// </summary>
-    private static bool IsParamLikeException(Exception ex) =>
-        ex is not OperationCanceledException
-        && ex is not TimeoutException
-        && ex is not IOException
-        && ex is not UnauthorizedAccessException;
-
-    /// <summary>
-    /// 从本轮冻结快照取该工具的完整定义（不重新结算）。
-    /// 超过 <see cref="MaxDefinitionChars"/> 时返回 null——由调用方改写成检索提示。
-    /// </summary>
-    private string? ResolveFailureDefinition(string name, AgentContext context)
-    {
-        var exposed = context.ToolSettlement?.Tools.FirstOrDefault(
-            t => string.Equals(t.Id, name, StringComparison.OrdinalIgnoreCase));
-        if (exposed?.Schema is null)
-            return null;
-
-        var json = JsonSerializer.Serialize(exposed.Schema, SeeingJson.Readable);
-        return json.Length <= MaxDefinitionChars ? json : null;
-    }
-
-    /// <summary>
-    /// 需要回灌但取不到（超限 / 快照缺失）时的回退提示：
-    /// 不留空承诺——告诉模型定义为什么没给、去哪里取（无检索入口时不提它）。
-    /// </summary>
-    private static string AppendDefinitionFallbackHint(string? error, string name, AgentContext context)
-    {
-        var head = string.IsNullOrEmpty(error) ? "(未提供错误详情)" : error;
-        var hint = context.ToolSettlement?.HasSearchTool == true
-            ? $"请用 {ToolIdConventions.SearchToolId} query=\"{name}\" detail=full 获取。"
-            : "该工具本轮无可用的定义与检索入口，请按目录中的参数签名修正后重试。";
-        return head +
-               $"\n\n未能附上该工具的完整定义（上限 {MaxDefinitionChars} 字符或快照不可用）。" +
-               hint;
-    }
-
-    /// <summary>
-    /// 执行单个工具调用（权限 + 执行），返回 Complete 事件。
-    /// </summary>
-    private async Task<ToolCallEvent> ExecuteSingleToolCallAsync(
-        ToolCall tc,
-        Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
-        AgentContext context,
-        IPermissionAuthorizer? permissionAuthorizer,
-        string loopId,
-        IExecutionToolScope toolScope,
-        Func<IMessageEvent, ValueTask>? emitAsync,
-        CancellationToken cancellationToken)
-    {
-        var name = tc.Function?.Name ?? "";
-        var arguments = ParseArguments(tc.Function?.Arguments);
-        var startTime = DateTime.Now;
-
-        // Session-first：task 走正常 ToolManager 路径（TaskTool），不再旁路
-
-        // ========== 可见集校验 ==========
-        // 只拦「不在本会话结算内」的工具（被禁用 / Agent 过滤 / 模块未挂载 / 名字不存在）。
-        // 结算内即放行：deferred（未下发 schema）也能直接调用——目录已给出参数签名，
-        // 参数错误由失败时的定义回灌兜住。加载（TryLoad）只是审计，不参与能否调用。
-        if (context.ToolSettlement is { } settlement)
-        {
-            // 结算用 OrdinalIgnoreCase、ToolManager 用序数敏感：先归一化为结算里的 canonical id，
-            // 否则模型写 Read 会穿过 gate 后拿到裸「工具不存在: Read」。
-            var canonicalName = settlement.ResolveCanonicalId(name);
-            if (canonicalName is null)
-            {
-                var reason = ResolveVisibilityRejection(name, context);
-                _logger.LogWarning(
-                    "[AgentExecutor] 拒绝了结算外工具的调用: {ToolName} (enabled={Enabled}, registered={Registered})",
-                    name,
-                    _tools.IsToolEnabled(name),
-                    GetRegisteredToolIgnoreCase(name) is not null);
-                return BuildTerminalEvent(
-                    tc, name, context, loopId, ToolCallStatus.Rejected, reason,
-                    BuildVisibilityMetadata(name));
-            }
-
-            if (!string.Equals(canonicalName, name, StringComparison.Ordinal))
-            {
-                _logger.LogDebug(
-                    "[AgentExecutor] 工具名大小写归一化: {Requested} → {Canonical}", name, canonicalName);
-                name = canonicalName;
-                // ToolManager 按 toolCall.Name 查注册表（序数敏感）：必须把归一化后的名字传下去。
-                tc = new ToolCall
-                {
-                    Id = tc.Id,
-                    Type = tc.Type,
-                    Function = new FunctionCall
-                    {
-                        Name = canonicalName,
-                        Arguments = tc.Function?.Arguments
-                    }
-                };
-            }
-        }
-
-        var decision = await EvaluatePermissionAsync(name, arguments, agent, context, permissionAuthorizer, tc.Id).ConfigureAwait(false);
-
-        // 是否需要在本轮失败时回灌定义：本轮未下发 schema 且本执行内未加载过。
-        // 两个条件都要：detail=full 加载后工具仍是 Deferred，只看 SendsSchema 会重复附定义。
-        var needsDefinitionOnFailure =
-            context.ToolSettlement is { } definitionSettlement
-            && !definitionSettlement.SendsSchema(name)
-            && !(toolScope?.IsCallable(name) ?? false);
-
-        if (decision.Action == PermissionAction.Deny)
-        {
-            return new ToolCallEvent
-            {
-                SessionId = context.SessionId,
-                LoopId = loopId,
-                Type = MessageEventType.ToolCallComplete,
-                ToolCallId = tc.Id,
-                ToolName = name,
-                Arguments = arguments,
-                Status = ToolCallStatus.Rejected,
-                Error = decision.Reason ?? "权限拒绝",
-                Duration = DateTime.Now - startTime
-            };
-        }
-
-
-        ToolResult result;
-        // 工具执行的全局兜底超时已下沉到 ToolTimeoutDecorator（工具执行漏斗内，能力感知 + 全局配置热重载）。
-        // 此处仅处理取消：Loop 取消令牌贯通工具执行，工具抛 OCE 时统一报告"已取消"。
-        try
-        {
-            result = await _tools.ExecuteAsync(
-                tc, context.SessionId, cancellationToken, emitAsync, permissionAuthorizer, agent, toolScope,
-                context.SkillSnapshot)
-                .ConfigureAwait(false);
-
-            // 工具声明的"本执行内已加载"由执行器统一应用（能力键门控 + 审计）。
-            if (result.Success)
-                ApplyDeclaredToolLoads(name, result, toolScope);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return new ToolCallEvent
-            {
-                SessionId = context.SessionId,
-                LoopId = loopId,
-                Type = MessageEventType.ToolCallComplete,
-                ToolCallId = tc.Id,
-                ToolName = name,
-                Arguments = arguments,
-                Status = ToolCallStatus.Cancelled,
-                Error = "已取消",
-                Duration = DateTime.Now - startTime
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[AgentExecutor] 工具执行异常: {ToolName}", name);
-
-            // 抛异常的工具（如 GitCommitTool 缺参抛 JsonException）是最典型的参数类失败，
-            // 与 result.Success == false 那条出口一样要回灌定义；取消/IO/网络异常除外。
-            var exceptionError = ex.Message;
-            var exceptionDefinition = needsDefinitionOnFailure && IsParamLikeException(ex)
-                ? ResolveFailureDefinition(name, context)
-                : null;
-            if (needsDefinitionOnFailure && IsParamLikeException(ex) && exceptionDefinition is null)
-                exceptionError = AppendDefinitionFallbackHint(exceptionError, name, context);
-
-            return new ToolCallEvent
-            {
-                SessionId = context.SessionId,
-                LoopId = loopId,
-                Type = MessageEventType.ToolCallComplete,
-                ToolCallId = tc.Id,
-                ToolName = name,
-                Arguments = arguments,
-                Status = ToolCallStatus.Failed,
-                Error = exceptionError,
-                Duration = DateTime.Now - startTime,
-                ToolDefinition = exceptionDefinition
-            };
-        }
-
-        if (!result.Success)
-        {
-            // 取消优先于失败：工具内部吞掉 OCE 返回 Failure（如 TaskTool 子任务取消）时，
-            // 只要本 Loop 已请求取消，终态就应标记为 Cancelled，避免 UI 显示为 Failed。
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return new ToolCallEvent
-                {
-                    SessionId = context.SessionId,
-                    LoopId = loopId,
-                    Type = MessageEventType.ToolCallComplete,
-                    ToolCallId = tc.Id,
-                    ToolName = name,
-                    Arguments = arguments,
-                    Status = ToolCallStatus.Cancelled,
-                    Output = result.Output,
-                    Title = result.Title,
-                    Error = result.Error ?? "已取消",
-                    Duration = DateTime.Now - startTime,
-                    Metadata = CopyMetadata(result.Metadata)
-                };
-            }
-
-            var paramLike = needsDefinitionOnFailure && IsParamLikeFailure(result);
-            var definition = paramLike ? ResolveFailureDefinition(name, context) : null;
-            var failureError = result.Error;
-            if (paramLike && definition is null)
-                failureError = AppendDefinitionFallbackHint(failureError, name, context);
-
-            return new ToolCallEvent
-            {
-                SessionId = context.SessionId,
-                LoopId = loopId,
-                Type = MessageEventType.ToolCallComplete,
-                ToolCallId = tc.Id,
-                ToolName = name,
-                Arguments = arguments,
-                Status = ToolCallStatus.Failed,
-                Output = result.Output,
-                Title = result.Title,
-                Error = failureError,
-                Duration = DateTime.Now - startTime,
-                Metadata = CopyMetadata(result.Metadata),
-                TurnDirective = result.TurnDirective,
-                TurnDirectiveReason = result.TurnDirectiveReason,
-                ToolDefinition = definition
-            };
-        }
-
-        return new ToolCallEvent
-        {
-            SessionId = context.SessionId,
-            LoopId = loopId,
-            Type = MessageEventType.ToolCallComplete,
-            ToolCallId = tc.Id,
-            ToolName = name,
-            Arguments = arguments,
-            Status = ToolCallStatus.Success,
-            Output = result.Output,
-            Title = result.Title,
-            Error = result.Error,
-            Duration = DateTime.Now - startTime,
-            Metadata = CopyMetadata(result.Metadata),
-            TurnDirective = result.TurnDirective,
-            TurnDirectiveReason = result.TurnDirectiveReason
-        };
-    }
-
-    private static IReadOnlyDictionary<string, object>? CopyMetadata(Dictionary<string, object>? metadata)
-        => metadata is { Count: > 0 } ? new Dictionary<string, object>(metadata) : null;
-
-    /// <summary>
-    /// 应用工具声明的“本执行内已加载”。只有声明了 <see cref="ToolCapabilityKeys.ExposureLoad"/>
-    /// 能力的工具才会被采纳；成功应用后写入 <c>exposure.loaded</c> 元数据供审计。
-    /// </summary>
-    private void ApplyDeclaredToolLoads(string toolName, ToolResult result, IExecutionToolScope? toolScope)
-    {
-        if (toolScope is null || result.LoadedToolIds is not { Count: > 0 })
-            return;
-
-        // 统一能力读取：只认 exposure.load="true"（fail-closed），并解包装饰器到最内层。
-        if (!ToolCapabilityReader.GetBool(_tools.GetTool(toolName), ToolCapabilityKeys.ExposureLoad))
-        {
-            _logger.LogWarning(
-                "[AgentExecutor] 工具声明加载但未启用 {Key} 能力，已忽略: {ToolName}",
-                ToolCapabilityKeys.ExposureLoad, toolName);
-            return;
-        }
-
-        var added = toolScope.TryLoad(result.LoadedToolIds);
-        if (added <= 0)
-            return;
-
-        // 第三方工具可能把 Metadata 置 null；审计写入不得把成功调用翻成失败。
-        result.Metadata ??= new Dictionary<string, object>();
-        result.Metadata["exposure.loaded"] = result.LoadedToolIds.ToArray();
-        _logger.LogInformation(
-            "[AgentExecutor] 工具声明加载已生效: {ToolName}, Count={Count}, Loaded={Loaded}",
-            toolName, added, result.LoadedToolIds);
-    }
-
-    /// <summary>
-    /// 评估权限
-    /// </summary>
-    private async Task<PermissionDecision> EvaluatePermissionAsync(
-        string toolName,
-        object? arguments,
-        Seeing.Agent.Abstractions.Agents.AgentDefinition agent,
-        AgentContext context,
-        IPermissionAuthorizer? permissionAuthorizer,
-        string callId)
-    {
-        var policy = ResolvePolicy(agent, context);
-        var permContext = PermissionIntegrity.FromAgentContext(context, policy, agent.Name);
-
-        var result = await _permissions.EvaluateToolAsync(toolName, null, permContext).ConfigureAwait(false);
-
-        if (result.NeedsConfirmation)
-        {
-            if (permissionAuthorizer is null)
-                return PermissionDecision.Deny("无权限授权器，已拒绝");
-
-            var resolution = await permissionAuthorizer.AuthorizeAsync(new PermissionRequest
-            {
-                SessionId = string.IsNullOrEmpty(context.SessionId)
-                    ? permissionAuthorizer.SessionId
-                    : context.SessionId,
-                CallId = callId,
-                AgentName = agent.Name,
-                PermissionKind = "tool.execute",
-                Resource = toolName,
-                Arguments = arguments,
-                Metadata = new Dictionary<string, object>
-                {
-                    ["arguments"] = arguments ?? new object()
-                }
-            }, context.CancellationToken).ConfigureAwait(false);
-
-            if (resolution.Decision != PermissionEffect.Allow)
-                return PermissionDecision.Deny(resolution.Reason ?? "用户拒绝");
-
-            return PermissionDecision.Allow("用户确认允许");
-        }
-
-        return result.ToDecision();
     }
 
     /// <summary>

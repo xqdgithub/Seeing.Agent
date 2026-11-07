@@ -708,99 +708,15 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
             return;
         }
 
-        var outcome = BuildOutcome(sessionId, record);
+        var outcome = ExecutionOutcomeFactory.Create(
+            record,
+            _services,
+            _logger,
+            // 本通道口径：墙钟（含排队与工具等待）。
+            // 事件通道的 outcome 用模型循环累计时长，两者刻意不同——见工厂类注释。
+            duration: null);
         foreach (var awaiter in awaiters)
             awaiter.TrySetResult(outcome);
-    }
-
-    /// <summary>
-    /// 组装终态快照。取 <see cref="ExecutionRecord"/> 上由执行链在 <c>finally</c> 落定的事实字段：
-    /// <c>AgentName</c>/<c>AgentExecuted</c>/<c>TotalSteps</c>/<c>Usage</c> 原样搬运，
-    /// 本方法不臆造任何数字（记录里是默认值就搬默认值）。
-    /// <para>
-    /// <b>注意 <c>Duration</c> 的口径差异</b>：本方法填的是**墙钟**（<c>CompletedAt - StartedAt</c>，
-    /// 含排队与工具等待）；而 <c>ExecutionCompleteEvent.Outcome.Duration</c> 填的是
-    /// **模型循环累计时长**（<c>ExecutionRunner</c> 汇总 <c>LoopCompleteEvent</c>）。
-    /// 两条通道的同名字段不是同一口径，消费方按用途选择：要「这一轮花了多久」用本方法，
-    /// 要「模型跑了多久」用事件里的 outcome。
-    /// </para>
-    /// </summary>
-    private ExecutionOutcome BuildOutcome(string sessionId, ExecutionRecord record)
-    {
-        // 非终态不该被组装成 outcome（契约：只陈述已发生的事实）。
-        // 正常情况下调用点已落定状态；此处是最后一道防线——把漏网的非终态标为 Failed 并告警，
-        // 而不是把 Running/Pending 当成终态上报给调用方。
-        var status = record.Status;
-        if (status is ExecutionStatus.Running or ExecutionStatus.Pending)
-        {
-            _logger.LogWarning(
-                "组装 outcome 时记录仍为非终态，按 Failed 收口: ExecutionId={ExecutionId}, Status={Status}",
-                record.ExecutionId, status);
-            status = ExecutionStatus.Failed;
-        }
-
-        var completedAt = record.CompletedAt ?? DateTime.UtcNow;
-        var duration = completedAt - record.StartedAt;
-        if (duration < TimeSpan.Zero)
-            duration = TimeSpan.Zero;
-
-        // 顶层判定与父会话同源：SessionData.Kind / 会话组父子关系。
-        // 不得读 ChatExecutionContext.IsTopLevel——该字段在唯一构造点从未被赋值，恒为默认 true。
-        // Origin 同一次读取得出，供观察者按来源过滤（无需回读会话）。
-        var (isTopLevel, parentSessionId, origin) = ResolveSessionRelation(sessionId);
-
-        return new ExecutionOutcome
-        {
-            SessionId = sessionId,
-            ExecutionId = record.ExecutionId,
-            Status = status,
-            // 这四个字段是「这一轮到底发生了什么」的权威事实，必须从记录搬运：
-            // 漏读会让 DeliverAndAwaitAsync 恒报「没执行 Agent、零消耗」，下游账本与反思节奏全部失真。
-            AgentName = record.AgentName,
-            AgentExecuted = record.AgentExecuted,
-            TotalSteps = record.TotalSteps,
-            Usage = record.Usage,
-            IsTopLevel = isTopLevel,
-            ParentSessionId = parentSessionId,
-            Origin = origin,
-            Duration = duration,
-            CompletedAt = completedAt
-        };
-    }
-
-    /// <summary>
-    /// 解析「是否顶层 + 父会话 Id + 会话来源」。读不到会话时按「顶层 + 用户来源」处理
-    /// （保守：不把根会话误判为子 Agent 或内部会话）。
-    /// <para>
-    /// 三者在同一次 <see cref="ISessionManager.Get"/> 内读出（命中内存缓存，不产生磁盘访问），
-    /// 使终态观察者无需为判定来源再回读会话。
-    /// </para>
-    /// </summary>
-    private (bool IsTopLevel, string? ParentSessionId, SessionOrigin Origin) ResolveSessionRelation(string sessionId)
-    {
-        try
-        {
-            using var scope = _services.CreateScope();
-            var sessionManager = scope.ServiceProvider.GetService<ISessionManager>();
-            var session = sessionManager?.Get(sessionId);
-            if (session is null)
-                return (true, null, SessionOrigin.User);
-
-            var origin = session.Origin;
-            if (session.Kind != SessionKind.SubAgent)
-                return (true, null, origin);
-
-            var groupManager = scope.ServiceProvider.GetService<ISessionGroupManager>();
-            var parentId = groupManager is not null && groupManager.TryGetParent(sessionId, out var parent)
-                ? parent
-                : null;
-            return (false, parentId, origin);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "读取会话关系失败，按顶层处理: SessionId={SessionId}", sessionId);
-            return (true, null, SessionOrigin.User);
-        }
     }
 
     /// <summary>取消一组等待槽（执行未启动 / 会话被停止 / 运行时释放）。</summary>

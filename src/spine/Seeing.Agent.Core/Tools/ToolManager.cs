@@ -24,8 +24,18 @@ namespace Seeing.Agent.Core.Tools
     /// - 重试策略（针对可重试异常）
     /// </para>
     /// <para>
-    /// 注意：权限检查由 AgentExecutor.EvaluatePermissionAsync() 统一处理，
-    /// 此类不重复检查以避免双重验证。
+    /// <b>权限检查分两层，两层都要跑（不是重复验证）：</b>
+    /// <list type="number">
+    /// <item><b>能力门</b>（<c>tool.execute</c>）：由 <see cref="AgentExecutor"/> 在调用工具前经
+    /// <c>IPermissionAuthorizer</c> 判定「这个 Agent 能不能用这个工具」。它按 Agent 规则 / 白黑名单
+    /// 裁决，不关心工具要访问哪个文件或 URL。</item>
+    /// <item><b>资源门</b>（<c>filesystem.read</c> / <c>shell.execute</c> / <c>network.fetch</c> …）：
+    /// 由本类经 <see cref="IToolPermissionPolicy"/> 把工具参数映射成资源标识后判定
+    /// 「这次调用能不能碰这个具体资源」。同一工具对不同参数可以得出不同结论，
+    /// 因此只能在参数解析之后（本类内）判定。</item>
+    /// </list>
+    /// 两门都会呈现给用户，故一次调用可能弹两张卡片（能力门一次 + 每个受限资源一次）——这是
+    /// 设计意图：先授权工具，再授权它要碰的东西。
     /// </para>
     /// </summary>
     public class ToolManager : IToolManager, IDisposable
