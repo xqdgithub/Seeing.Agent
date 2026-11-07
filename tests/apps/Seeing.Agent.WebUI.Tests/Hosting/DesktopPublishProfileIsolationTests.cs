@@ -265,6 +265,19 @@ public class DesktopPublishProfileIsolationTests
     }
 
     /// <summary>
+    /// Desktop 使用 Photino + WebView2，只能在 Windows 运行。
+    /// 对非 Windows RID 发布时必须明确报错，而不是静默产出坏包。
+    /// </summary>
+    [Fact]
+    public void Desktop_ShouldGuardAgainstNonWindowsRuntimeIdentifier()
+    {
+        var csproj = ReadRepoFile("samples/Seeing.Agent.Desktop/Seeing.Agent.Desktop.csproj");
+
+        csproj.Should().Contain("StartsWith('win')",
+            "Desktop 必须校验 RID 前缀为 win，否则会对 linux/mac 发布出不可运行的包");
+    }
+
+    /// <summary>
     /// 桌面发布的 publish 目录同样必须带 ChannelHost 的 .dll。
     /// </summary>
     [Fact]

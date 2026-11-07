@@ -80,6 +80,15 @@
   <Import Project="$(MSBuildThisFileDirectory)..\..\build\Seeing.Publish.targets" />
 
   <!--
+    Desktop 用 Photino + WebView2，只能在 Windows 运行。
+    对非 Windows RID 发布时必须明确报错，而不是产出一个跑不起来的包。
+  -->
+  <Target Name="_ValidateDesktopRuntimeIdentifier" BeforeTargets="Build">
+    <Error Condition="'$(RuntimeIdentifier)' != '' and !$(RuntimeIdentifier.StartsWith('win'))"
+           Text="Seeing.Agent.Desktop 仅支持 Windows（当前 RuntimeIdentifier=$(RuntimeIdentifier)）。请使用 -r win-x64。" />
+  </Target>
+
+  <!--
     ChannelHost 产物补全。
 
     为什么需要：WebUI 以 ReferenceOutputAssembly="false" 引用 ChannelHost，
