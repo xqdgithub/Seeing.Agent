@@ -732,9 +732,10 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
 
         data.SetJsonValue(JobDataKeys.RunProfile, ScheduleRunProfile.Heartbeat);
 
-        // interval 锚点：上次执行时间决定下次触发，重启不重置节律。
-        if (hb.LastRunAt is { } lastRun)
-            data[JobDataKeys.LastRunAt] = lastRun.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+        // interval 锚点：心跳必须始终带锚点，否则会落进「用户任务启动后 5 秒首触发」那条分支。
+        // 首次配置没有上次执行时间时用当前时刻，语义即「从现在起算一个完整周期」。
+        var anchor = hb.LastRunAt ?? DateTime.Now;
+        data[JobDataKeys.LastRunAt] = anchor.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
 
         return data;
     }
