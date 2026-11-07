@@ -7,8 +7,12 @@ using System.Diagnostics;
 
 /// <summary>
 /// MCP 进程监控器 - 监控 stdio 进程退出事件
+/// <para>
+/// 公开可见性是为让 <c>McpClientManager</c> 优先使用 DI 注册的实例：当它自行 <c>new</c> 时，
+/// <see cref="McpModule"/> 注册的单例将成为永远不被使用的死注册。
+/// </para>
 /// </summary>
-internal sealed class McpProcessMonitor
+public sealed class McpProcessMonitor
 {
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, Process> _processes = new();

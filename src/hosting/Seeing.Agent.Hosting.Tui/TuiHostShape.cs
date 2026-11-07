@@ -1,36 +1,45 @@
-using Seeing.Agent.Core.CapabilitySets;
+using Microsoft.Extensions.DependencyInjection;
+using Seeing.Agent.Core.Execution;
+using Seeing.Agent.Hosting;
 
 namespace Seeing.Agent.Hosting.Tui;
 
-/// <summary>
-/// Host Shape 描述：声明本形态可承载的模块类型 id（字符串，非 ProjectReference）。
-/// </summary>
-public sealed class HostShapeDescriptor
-{
-    public required string Id { get; init; }
-    public required IReadOnlyList<string> CarriableModuleTypes { get; init; }
-
-    /// <summary>未配置 seeing.json scenario 时的进程级默认场景。</summary>
-    public string? DefaultScenario { get; init; }
-}
-
-/// <summary>
-/// Tui Host Shape 常量与默认描述符。
-/// </summary>
+/// <summary>Tui Host Shape 常量。</summary>
 public static class TuiHostShape
 {
     public const string Id = "tui";
 
-    /// <summary>
-    /// 逐字沿用 WebHostShape 的既有字符串约定（tools.* / provider.* / token-budget），去掉 gateway 与 ui。
-    /// 该属性全仓无运行时读取方，仅作形态自描述；实施时以 sample 实际注册集为准。
-    /// </summary>
-    public static readonly IReadOnlyList<string> CarriableModuleTypes = BuiltInCapabilitySets.Full;
-
+    /// <summary>形态自描述（声明用；实际启用集由 sample 引用 + 结算决定）。</summary>
     public static HostShapeDescriptor Descriptor { get; } = new()
     {
         Id = Id,
-        CarriableModuleTypes = CarriableModuleTypes,
+        CarriableModuleTypes = Seeing.Agent.Core.CapabilitySets.BuiltInCapabilitySets.Full,
         DefaultScenario = "full",
     };
+}
+
+/// <summary>
+/// Tui Host Shape DI 扩展（薄接线，镜像 Hosting.Web / Hosting.Headless）。
+/// </summary>
+public static class TuiHostingServiceCollectionExtensions
+{
+    /// <summary>
+    /// 注册 Tui Host Shape：宿主基线（形态描述 + 进程结算选项 + 事件流权限通道
+    /// + AddSessionHosting + ExecutionEngine）。
+    /// <para>
+    /// 宿主 sample 仍须自行注册：
+    /// <list type="bullet">
+    /// <item><c>TuiSurfaceProvider</c>（向两个 SurfaceRegistry 注册）</item>
+    /// <item>引擎 / 渲染 / 输入 / 提示等 TUI 实现</item>
+    /// <item>能力包（Tools.* / Memory / Scheduler 等）— 本包不引用</item>
+    /// </list>
+    /// </para>
+    /// </summary>
+    /// <param name="services">服务集合</param>
+    /// <param name="configureExecution">可选执行引擎配置</param>
+    public static IServiceCollection AddSeeingHostingTui(
+        this IServiceCollection services,
+        Action<ExecutionOptions>? configureExecution = null)
+        // 权限通道与 Hosting.Web 共用同一个 EventStreamPermissionChannel（此前是两份逐字相同的副本）
+        => services.AddHostShapeBaseline(TuiHostShape.Descriptor, configureExecution);
 }

@@ -54,7 +54,9 @@ namespace Seeing.Agent.Mcp
             McpGlobalPolicy globalPolicy,
             IMcpConfigPersistence configPersistence,
             IHttpClientFactory? httpClientFactory = null,
-            OAuth.IMcpOAuthConnectionPreparer? oauthConnectionPreparer = null)
+            OAuth.IMcpOAuthConnectionPreparer? oauthConnectionPreparer = null,
+            IMcpToolRegistry? toolRegistry = null,
+            McpProcessMonitor? processMonitor = null)
         {
             _logger = logger;
             _loggerFactory = loggerFactory;
@@ -66,8 +68,11 @@ namespace Seeing.Agent.Mcp
             _httpClientFactory = httpClientFactory;
             _oauthConnectionPreparer = oauthConnectionPreparer;
 
-            _toolRegistry = new McpToolRegistry(_toolInvoker, _hookManager, logger);
-            _processMonitor = new McpProcessMonitor(logger);
+            // 优先用 DI 注入的实例（McpModule 已注册单例）。自行 new 会让 DI 里那两个单例
+            // 成为永远不被使用的死注册，诊断时容易误判「注册了两个 registry」。
+            _toolRegistry = toolRegistry as McpToolRegistry
+                ?? new McpToolRegistry(_toolInvoker, _hookManager, logger);
+            _processMonitor = processMonitor ?? new McpProcessMonitor(logger);
             _reconnector = new McpBackgroundReconnector(
                 logger,
                 _globalPolicy,

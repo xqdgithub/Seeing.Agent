@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Hosting.Tui;
-using Seeing.Agent.Hosting.Tui.Permissions;
+using Seeing.Agent.Hosting;
 
 namespace Seeing.Agent.Tui.Tests.Services;
 
@@ -31,6 +31,6 @@ public sealed class TuiChatEngineWiringTests
         descriptor.Id.Should().Be("tui");
         descriptor.DefaultScenario.Should().Be("full");
 
-        provider.GetRequiredService<IPermissionChannel>().Should().BeOfType<TuiPermissionChannel>();
+        provider.GetRequiredService<IPermissionChannel>().Should().BeOfType<EventStreamPermissionChannel>();
     }
 }

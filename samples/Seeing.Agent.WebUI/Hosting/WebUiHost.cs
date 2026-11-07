@@ -95,7 +95,14 @@ public static class WebUiHost
         // 勿再调用 AddSessionManager() / 重复注册 ISessionEventPublisher，避免双实例分裂
 
         // === Web Host Shape：Circuit + EventStreamPermissionChannel ===
-        builder.Services.AddSeeingHostingWeb();
+        builder.Services.AddSeeingHostingWeb(options =>
+        {
+            options.MaxConcurrentExecutions = -1;  // -1 = 无限制
+            options.EventBufferSize = 100;
+            options.ExecutionHistoryLimit = 100;
+            options.SessionIdleTimeout = TimeSpan.FromMinutes(30);
+            options.CleanupInterval = TimeSpan.FromMinutes(5);
+        });
         BootOverrideSource.ApplyToServices(builder.Services, args);
         builder.Services.AddSingleton<UiContributionRegistry>();
         builder.Services.AddSingleton<IUiContributionRegistry>(sp => sp.GetRequiredService<UiContributionRegistry>());
@@ -157,18 +164,12 @@ public static class WebUiHost
         // TokenBudget Hooks (依赖 IBudgetStatusNotifier)
         builder.Services.AddTokenBudgetHooks();
 
-        // === 会话运行时（ISessionRuntime）+ 会话目录（ISessionDirectory）统一入口 ===
-        builder.Services.AddSessionHosting();
-
-        // === 执行引擎（后台执行服务）===
-        builder.Services.AddExecutionEngine(options =>
-        {
-            options.MaxConcurrentExecutions = -1;  // -1 = 无限制
-            options.EventBufferSize = 100;
-            options.ExecutionHistoryLimit = 100;
-            options.SessionIdleTimeout = TimeSpan.FromMinutes(30);
-            options.CleanupInterval = TimeSpan.FromMinutes(5);
-        });
+        // === 宿主基线（会话运行时 + 执行引擎）已由 AddSeeingHostingWeb 提供 ===
+        // 执行参数必须在 AddSeeingHostingWeb 时经 AddExecutionEngine(configure) 传入：
+        // ExecutionOptions 是以**具体实例**注册的单例（AddExecutionEngine 里 new + AddSingleton），
+        // 不是 IOptions，因此事后 Configure<T>() 不会被任何消费者读到（Configure 注册的是
+        // IOptions<T>，仓内无该类型的 IOptions 消费者）。
+        // 见 WebUiHost 中 AddSeeingHostingWeb(...) 调用处的 configureExecution 参数。
 
         // === 命令服务 ===
         builder.Services.AddScoped<CommandListService>();

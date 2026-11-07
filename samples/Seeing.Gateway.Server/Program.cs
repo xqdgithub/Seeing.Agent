@@ -20,11 +20,9 @@ builder.Services.AddSingleton<IConfigSectionRegistry>(registry);
 builder.Services.AddSeeingFullCapabilities(registry, builder.Configuration, includeGatewayServer: true);
 builder.Services.AddTokenBudgetHooks();
 
+// Host Shape 基线已含会话运行时与执行引擎（AddSeeingHostingGateway → AddHostShapeBaseline），
+// 不再需要手动补 AddSessionHosting/AddExecutionEngine。
 builder.Services.AddSeeingHostingGateway();
-// Gateway 宿主不经过 Hosting.Web/Headless，必须自行补会话运行时与执行引擎；
-// 否则 GatewayHost.StartAsync 解析 ISessionRuntime 会失败。
-builder.Services.AddSessionHosting();
-builder.Services.AddExecutionEngine();
 
 BootOverrideSource.ApplyToServices(builder.Services, args);
 builder.Services.AddGatewayChannelRegistry();

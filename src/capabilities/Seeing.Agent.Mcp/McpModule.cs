@@ -103,6 +103,11 @@ public sealed class McpModule : ISeeingModule, IUiContribution
             return new McpToolRegistry(toolInvoker, hookManager, logger);
         });
 
+        // 同一实例也以接口暴露：McpClientManager 构造参数取 IMcpToolRegistry，
+        // 这样 DI 的这两个单例才是真正被使用的实例（历史缺陷：Manager 自行 new，
+        // 容器里的注册成了永不使用的死注册）。
+        services.AddSingleton<IMcpToolRegistry>(sp => sp.GetRequiredService<McpToolRegistry>());
+
         services.AddSingleton<McpProcessMonitor>(sp =>
         {
             var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<McpProcessMonitor>();

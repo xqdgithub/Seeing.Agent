@@ -38,7 +38,6 @@ using Seeing.Agent.Core.Hosting;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Core.Llm.Hooks;
-using Seeing.Agent.Core.Middlewares;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Core.Permission;
@@ -198,23 +197,6 @@ namespace Seeing.Agent.Core.Extensions
 
                 return new TModule();
             });
-            return services;
-        }
-
-        /// <summary>
-        /// 注册执行管道和中间件
-        /// </summary>
-        public static IServiceCollection AddExecutionPipeline(
-            this IServiceCollection services,
-            Action<PipelineBuilder>? configure = null)
-        {
-            // 注册管道
-            services.AddSingleton<IExecutionPipeline, ExecutionPipeline>();
-
-            // 注册默认中间件
-            services.AddTransient<LoggingMiddleware>();
-            services.AddTransient<RetryMiddleware>();
-
             return services;
         }
 
@@ -411,9 +393,6 @@ namespace Seeing.Agent.Core.Extensions
 
             // 提示词构建服务
             services.AddPromptBuilder();
-
-            // Agent 发现服务（MD 发现仍用于测试/其他调用方；注册路径不再同步 Discover）
-            services.AddSingleton<AgentDiscovery>();
 
             // Agent 存储（纯存储操作）
             services.AddSingleton<AgentStore>();
