@@ -114,6 +114,10 @@ public class ScheduleConversationTargetTests
 
         harness.Sessions.Should().ContainKey(firstSessionId).WhoseValue.ChannelRoute!.ExternalId.Should().Be(ExternalId);
         harness.Sessions.Should().ContainKey(secondSessionId).WhoseValue.ChannelRoute!.ExternalId.Should().Be(ExternalId);
+
+        // 新建会话必须带上定时任务的来源标记（否则会被当成用户会话参与视图与自动分析判定）
+        harness.Sessions[firstSessionId].Origin.Should().Be(SessionOrigin.Scheduler);
+        harness.Sessions[secondSessionId].Origin.Should().Be(SessionOrigin.Scheduler);
     }
 
     [Fact]
@@ -130,7 +134,12 @@ public class ScheduleConversationTargetTests
         // Assert
         harness.State.Context!.SessionId.Should().Be("s-cron");
         harness.SessionManager.Verify(
-            m => m.EnsureSessionAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()),
+            m => m.EnsureSessionAsync(
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<SessionOrigin?>()),
             Times.Never);
         harness.CreatedSessionIds.Should().BeEmpty(because: "无 conversation 时不应新建会话");
     }
@@ -208,12 +217,17 @@ public class ScheduleConversationTargetTests
 
         var sessionManager = new Mock<ISessionManager>();
         sessionManager
-            .Setup(m => m.EnsureSessionAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
-            .ReturnsAsync((string id, string? _, string? _, string? _) =>
+            .Setup(m => m.EnsureSessionAsync(
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<SessionOrigin?>()))
+            .ReturnsAsync((string id, string? _, string? _, string? _, SessionOrigin? origin) =>
             {
                 if (!sessions.TryGetValue(id, out var session))
                 {
-                    session = new SessionData { Id = id };
+                    session = new SessionData { Id = id, Origin = origin ?? SessionOrigin.User };
                     sessions[id] = session;
                 }
                 return session;

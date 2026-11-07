@@ -314,7 +314,8 @@ public sealed class FakeSessionManager : ISessionManager
         string id,
         string? selectedAgent = null,
         string? partitionId = null,
-        string? scenario = null) =>
+        string? scenario = null,
+        SessionOrigin? origin = null) =>
         Task.FromResult(_sessions.TryGetValue(id, out var session)
             ? session
             : Create(partitionId, selectedAgent, scenario));

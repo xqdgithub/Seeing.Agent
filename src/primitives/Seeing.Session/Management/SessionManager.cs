@@ -106,12 +106,14 @@ namespace Seeing.Session.Management
         /// <param name="selectedAgent">选中的 Agent ID（可选，仅新建时生效）</param>
         /// <param name="partitionId">分区 ID（可选，仅新建时生效）</param>
         /// <param name="scenario">会话级场景名（仅新建时生效；应物化进程默认工作模式）</param>
+        /// <param name="origin">会话来源（仅新建时生效；已有会话不覆盖）</param>
         /// <returns>已存在或新创建的 SessionData</returns>
         public async Task<SessionData> EnsureSessionAsync(
             string id,
             string? selectedAgent = null,
             string? partitionId = null,
-            string? scenario = null)
+            string? scenario = null,
+            SessionOrigin? origin = null)
         {
             if (string.IsNullOrEmpty(id))
                 throw new ArgumentException("Session id cannot be null or empty.", nameof(id));
@@ -123,7 +125,7 @@ namespace Seeing.Session.Management
 
             // 慢路径去重：并发同 id 共享同一次 Ensure（ExecutionAndPublication 保证单次执行）
             var lazy = _ensureInFlight.GetOrAdd(id, _ => new Lazy<Task<SessionData>>(
-                () => EnsureSessionCoreAsync(id, selectedAgent, partitionId, scenario),
+                () => EnsureSessionCoreAsync(id, selectedAgent, partitionId, scenario, origin),
                 LazyThreadSafetyMode.ExecutionAndPublication));
             try
             {
@@ -141,7 +143,8 @@ namespace Seeing.Session.Management
             string id,
             string? selectedAgent,
             string? partitionId,
-            string? scenario)
+            string? scenario,
+            SessionOrigin? origin)
         {
             var loaded = await LoadAsync(id).ConfigureAwait(false);
             if (loaded != null)
@@ -154,6 +157,7 @@ namespace Seeing.Session.Management
                 PartitionId = partitionId ?? "default",
                 SelectedAgent = selectedAgent ?? string.Empty,
                 Scenario = scenario,
+                Origin = origin ?? SessionOrigin.User,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
                 LastActiveAt = DateTime.UtcNow,

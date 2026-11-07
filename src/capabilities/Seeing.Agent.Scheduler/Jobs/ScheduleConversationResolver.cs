@@ -67,7 +67,9 @@ internal static class ScheduleConversationResolver
         // 仅 conversation：每次触发新建 Root 会话并挂上（每轮独立上下文，避免粘性会话历史膨胀）
         // id = 画像前缀（可读/可排序）+ 时间戳 + 短随机后缀（同秒多次触发唯一）
         var newSessionId = $"{profile.SessionKeyPrefix}_{jobId}_{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid().ToString("N")[..6]}";
-        await sessionManager.EnsureSessionAsync(newSessionId).ConfigureAwait(false);
+        await sessionManager.EnsureSessionAsync(
+            newSessionId,
+            origin: profile.OriginWhenCreated).ConfigureAwait(false);
         await AttachRouteAsync(sessionManager, newSessionId, conversation).ConfigureAwait(false);
 
         if (!string.IsNullOrWhiteSpace(jobName))
