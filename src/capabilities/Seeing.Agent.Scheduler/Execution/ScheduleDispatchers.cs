@@ -60,13 +60,14 @@ public sealed class SessionScheduleDispatcher : IScheduledJobDispatcher
             await _sessionManager.EnsureSessionAsync(request.SessionId)
                 .ConfigureAwait(false);
 
-            if (!string.IsNullOrEmpty(request.UserInput))
+            // 布局决定是否写任务提示。心跳用 AssistantOnly：
+            // 系统提示是未读输入，用户下次发消息会把它连同自己的话一起交给主链。
+            if (request.Layout == DispatchLayout.PromptAndResult && !string.IsNullOrEmpty(request.UserInput))
             {
-                // 既有调用方（AgentJob/HeartbeatJob）已包裹为 system-reminder 信封；此处解包后
-                // 由运行时以 Presentation=System 统一重渲染（避免双重包裹），并沿用原信封的
-                // source/kind（cron / heartbeat），保持既有语义。
+                // 既有调用方已包裹为 system-reminder 信封；此处解包后由运行时以 Presentation=System
+                // 统一重渲染（避免双重包裹），并沿用原信封的 source/kind。
                 var source = SystemReminder.Sources.Job;
-                var kind = SystemReminder.Kinds.Cron;
+                var kind = request.ReminderKind;
                 var body = request.UserInput;
                 if (_reminders.TryParse(request.UserInput!, out var parts))
                 {
@@ -80,7 +81,7 @@ public sealed class SessionScheduleDispatcher : IScheduledJobDispatcher
                 await _runtime.DeliverAsync(new InboxMessage
                 {
                     TargetSessionId = request.SessionId!,
-                    Sender = new InboxSender { Kind = InboxSenderKind.System, Id = "cron" },
+                    Sender = new InboxSender { Kind = InboxSenderKind.System, Id = request.SenderId },
                     Body = body,
                     Delivery = InboxDelivery.Inject,
                     Presentation = InboxPresentation.System,
@@ -89,16 +90,16 @@ public sealed class SessionScheduleDispatcher : IScheduledJobDispatcher
                 }, ct).ConfigureAwait(false);
             }
 
-            // 再保存助手响应（外部产出写回：落盘即 consumed，不唤醒）
+            // 助手响应（外部产出写回：落盘即 consumed，不唤醒）。
             await _runtime.DeliverAsync(new InboxMessage
             {
                 TargetSessionId = request.SessionId!,
-                Sender = new InboxSender { Kind = InboxSenderKind.System, Id = "cron" },
+                Sender = new InboxSender { Kind = InboxSenderKind.System, Id = request.SenderId },
                 Body = request.Content,
                 Delivery = InboxDelivery.Inject,
                 Presentation = InboxPresentation.Assistant,
                 SourceTag = SystemReminder.Sources.Job,
-                Kind = SystemReminder.Kinds.Cron
+                Kind = request.ReminderKind
             }, ct).ConfigureAwait(false);
 
             return DispatchResult.Ok();
