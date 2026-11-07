@@ -1,0 +1,41 @@
+@using Seeing.Agent.WebUI.Services
+@implements IDisposable
+@inject WorkspaceSwitchProgress Progress
+
+@*
+    工作区切换的全局进度层。
+    <para>
+    为什么必须覆盖全页：切换期间会取消在途执行、等会话收尾、停止 Gateway/渠道/调度器、
+    重读配置并重载模块，可能持续数秒。没有反馈时用户会以为界面卡死。
+    </para>
+    <para>
+    指示器用纯 CSS 圆环而不是 AntDesign 的 Spin：Spin 需要 IJSRuntime 与组件 id 生成器，
+    在静态渲染/预渲染路径下不可用，会抛异常把进度层变成新的故障点。
+    </para>
+*@
+@if (Progress.IsRunning)
+{
+    <div class="ws-progress-overlay" role="status" aria-live="polite">
+        <div class="ws-progress-card">
+            <div class="ws-progress-spinner" aria-hidden="true">
+                <span class="ws-progress-ring"></span>
+            </div>
+            <div class="ws-progress-text">
+                <div class="ws-progress-title">正在切换工作区</div>
+                <div class="ws-progress-step">@(Progress.Message ?? "正在处理…")</div>
+            </div>
+            <div class="ws-progress-bar">
+                <div class="ws-progress-bar-fill"></div>
+            </div>
+            <div class="ws-progress-hint">切换期间请勿关闭页面</div>
+        </div>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized() => Progress.Changed += OnChanged;
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Progress.Changed -= OnChanged;
+}

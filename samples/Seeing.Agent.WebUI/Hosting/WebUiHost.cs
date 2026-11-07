@@ -161,6 +161,12 @@ public static class WebUiHost
         // 目录选择：进程内服务，只给 DirectoryPicker 用（列出当前工作区之外的目录）
         builder.Services.AddSingleton<IDirectoryBrowser, DirectoryBrowser>();
 
+        // 工作区切换进度：单例切换器经 Hub 上报到当前 circuit 的覆盖层
+        builder.Services.AddSingleton<WorkspaceSwitchProgressHub>();
+        builder.Services.AddSingleton<IWorkspaceSwitchProgress>(sp =>
+            sp.GetRequiredService<WorkspaceSwitchProgressHub>());
+        builder.Services.AddScoped<WorkspaceSwitchProgress>();
+
         // 首次选定工作区后的补初始化（命令发现 / TokenBudget 钩子 / Gateway 渠道注册）
         builder.Services.AddSingleton<WorkspaceReadyInitializer>();
         builder.Services.AddSingleton<WorkspaceSwitcherReadiness>();

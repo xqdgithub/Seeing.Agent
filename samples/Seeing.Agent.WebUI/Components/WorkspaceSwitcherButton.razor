@@ -7,6 +7,7 @@
 @inject IWorkspaceSwitcher Switcher
 @inject NavigationManager Navigation
 @inject IMessageService Messages
+@inject WorkspaceSwitchProgress Progress
 
 @* 侧栏工作区入口：列出最近目录，选中后走唯一的 Apply 路径并整页重载。 *@
 <div class="ws-switcher">
@@ -81,21 +82,31 @@
             return;
 
         _busy = true;
-        try
-        {
-            var result = await Switcher.ApplyAsync(new WorkspaceApplyRequest(path));
-            if (!result.Success)
-            {
-                Messages.Error($"切换失败: {result.Error}");
-                return;
-            }
 
-            Navigation.NavigateTo("/", forceLoad: true);
-        }
-        finally
+        // 先渲染覆盖层，再开始耗时切换
+        Progress.Begin("正在切换工作区…");
+        await InvokeAsync(StateHasChanged);
+        await Task.Yield();
+
+        using (WorkspaceSwitchProgressHub.Use(Progress))
         {
-            _busy = false;
-            Refresh();
+            try
+            {
+                var result = await Switcher.ApplyAsync(new WorkspaceApplyRequest(path));
+                if (!result.Success)
+                {
+                    Messages.Error($"切换失败: {result.Error}");
+                    return;
+                }
+
+                Navigation.NavigateTo("/", forceLoad: true);
+            }
+            finally
+            {
+                Progress.End();
+                _busy = false;
+                Refresh();
+            }
         }
     }
 

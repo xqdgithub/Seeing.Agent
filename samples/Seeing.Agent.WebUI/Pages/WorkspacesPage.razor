@@ -7,6 +7,7 @@
 @inject IWorkspaceHistoryStore History
 @inject IWorkspaceSwitcher Switcher
 @inject NavigationManager Navigation
+@inject WorkspaceSwitchProgress Progress
 @layout EmptyLayout
 
 <PageTitle>工作区 - Seeing</PageTitle>
@@ -173,24 +174,32 @@
 
         _busy = true;
         _error = null;
+
+        // 先让覆盖层渲染出来，再开始耗时操作：否则整个 await 期间页面没有任何变化
+        Progress.Begin("正在切换工作区…");
         StateHasChanged();
+        await Task.Yield();
 
-        try
+        using (WorkspaceSwitchProgressHub.Use(Progress))
         {
-            var result = await Switcher.ApplyAsync(new WorkspaceApplyRequest(path));
-            if (!result.Success)
+            try
             {
-                _error = result.Error;
-                return;
-            }
+                var result = await Switcher.ApplyAsync(new WorkspaceApplyRequest(path));
+                if (!result.Success)
+                {
+                    _error = result.Error;
+                    return;
+                }
 
-            // 整页重载：切换到新工作区后必须重建 circuit，避免旧工作区的 scoped 状态残留
-            Navigation.NavigateTo("/", forceLoad: true);
-        }
-        finally
-        {
-            _busy = false;
-            StateHasChanged();
+                // 整页重载：切换到新工作区后必须重建 circuit，避免旧工作区的 scoped 状态残留
+                Navigation.NavigateTo("/", forceLoad: true);
+            }
+            finally
+            {
+                Progress.End();
+                _busy = false;
+                StateHasChanged();
+            }
         }
     }
 }

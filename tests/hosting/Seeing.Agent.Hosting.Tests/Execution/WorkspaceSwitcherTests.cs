@@ -95,6 +95,21 @@ public class WorkspaceSwitcherTests
         harness.Workspace.Verify(w => w.SetWorkspaceRoot(It.IsAny<string>()), Times.Never);
     }
 
+    [Fact]
+    public async Task Apply_Should_ReportProgress_FromBeginToEnd()
+    {
+        using var harness = new Harness(hasInFlight: true);
+
+        await harness.Switcher.ApplyAsync(
+            new WorkspaceApplyRequest(harness.NewRoot),
+            TestContext.Current.CancellationToken);
+
+        harness.Progress.Messages.Should().NotBeEmpty("切换过程中必须持续上报，否则界面像卡死");
+        harness.Progress.Messages.First().Should().Contain("正在");
+        harness.Progress.Begun.Should().BeTrue();
+        harness.Progress.Ended.Should().BeTrue("结束后必须关闭覆盖层");
+    }
+
     private sealed class Harness : IDisposable
     {
         public Harness(bool hasInFlight)
@@ -131,7 +146,8 @@ public class WorkspaceSwitcherTests
                 Runtime.Object,
                 Permissions.Object,
                 new[] { Participant },
-                NullLogger<WorkspaceSwitcher>.Instance);
+                NullLogger<WorkspaceSwitcher>.Instance,
+                Progress);
         }
 
         public string Root { get; }
@@ -145,6 +161,7 @@ public class WorkspaceSwitcherTests
         public FakeReloader Reloader { get; } = new();
         public RecordingParticipant Participant { get; }
         public WorkspaceSwitcher Switcher { get; }
+        public RecordingProgress Progress { get; } = new();
         public List<string> Calls { get; } = new();
         public List<string> Events { get; } = new();
 
@@ -168,6 +185,23 @@ public class WorkspaceSwitcherTests
     private sealed class FakeConfigReloader : IWorkspaceConfigReloader
     {
         public Task ReloadAsync(CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private sealed class RecordingProgress : IWorkspaceSwitchProgress
+    {
+        public List<string> Messages { get; } = new();
+        public bool Begun { get; private set; }
+        public bool Ended { get; private set; }
+
+        public void Begin(string message)
+        {
+            Begun = true;
+            Messages.Add(message);
+        }
+
+        public void Report(string message) => Messages.Add(message);
+
+        public void End() => Ended = true;
     }
 
     private sealed class FakeReloader : IWorkspaceReloadInvoker

@@ -65,6 +65,7 @@ public sealed class WorkspaceSwitcher : IWorkspaceSwitcher
     private readonly IPermissionRequestManager? _permissions;
     private readonly IReadOnlyList<IWorkspaceApplyParticipant> _participants;
     private readonly ILogger<WorkspaceSwitcher> _logger;
+    private readonly IWorkspaceSwitchProgress? _progress;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     /// <summary>创建切换器。</summary>
@@ -76,7 +77,8 @@ public sealed class WorkspaceSwitcher : IWorkspaceSwitcher
         IExecutionInFlightBoundary? inFlight,
         IPermissionRequestManager? permissions,
         IEnumerable<IWorkspaceApplyParticipant> participants,
-        ILogger<WorkspaceSwitcher> logger)
+        ILogger<WorkspaceSwitcher> logger,
+        IWorkspaceSwitchProgress? progress = null)
     {
         _workspace = workspace;
         _configReloader = configReloader;
@@ -86,6 +88,7 @@ public sealed class WorkspaceSwitcher : IWorkspaceSwitcher
         _permissions = permissions;
         _participants = participants.ToArray();
         _logger = logger;
+        _progress = progress;
     }
 
     /// <inheritdoc/>
@@ -111,6 +114,9 @@ public sealed class WorkspaceSwitcher : IWorkspaceSwitcher
 
             var hasInFlight = _inFlight?.HasInFlight() == true;
 
+            // 进度层必须尽早出现：后面的取消与重载可能要好几秒，没有反馈会像卡死
+            _progress?.Begin(hasInFlight ? "正在停止当前会话…" : "正在切换工作区…");
+
             // 1. 先拒绝未决审批：取消执行后，卡在审批上的工具靠这些拒绝解开。
             RejectPendingPermissions();
 
@@ -119,12 +125,17 @@ public sealed class WorkspaceSwitcher : IWorkspaceSwitcher
             {
                 var cancelled = await _inFlight.CancelAllInFlightAsync(ct).ConfigureAwait(false);
                 _logger.LogInformation("工作区切换：已请求取消 {Count} 个在途执行", cancelled);
+
+                _progress?.Report("正在等待会话收尾…");
                 await _inFlight.WaitUntilIdleAsync(ct).ConfigureAwait(false);
             }
 
             var context = new WorkspaceApplyContext(oldRoot, newRoot);
 
             // 3. 停掉跑在旧根上的运行时（Gateway / 渠道子进程 / 调度器）。
+            if (_participants.Count > 0)
+                _progress?.Report("正在停止后台服务…");
+
             foreach (var participant in _participants)
             {
                 try
@@ -141,9 +152,11 @@ public sealed class WorkspaceSwitcher : IWorkspaceSwitcher
             try
             {
                 // 4. 改根 → 重读项目配置 → 一轮显式重载。
+                _progress?.Report("正在加载新工作区配置…");
                 _workspace.SetWorkspaceRoot(newRoot);
                 await _configReloader.ReloadAsync(ct).ConfigureAwait(false);
 
+                _progress?.Report("正在重载会话与模块…");
                 var results = await _reloader.ReloadAsync(context, ct).ConfigureAwait(false);
                 var failed = results.Where(r => !r.Success).ToArray();
                 if (failed.Length > 0)
@@ -162,6 +175,9 @@ public sealed class WorkspaceSwitcher : IWorkspaceSwitcher
             }
 
             // 6. 按新根重新启动。
+            if (_participants.Count > 0)
+                _progress?.Report("正在启动后台服务…");
+
             foreach (var participant in _participants)
             {
                 try
@@ -178,6 +194,7 @@ public sealed class WorkspaceSwitcher : IWorkspaceSwitcher
         }
         finally
         {
+            _progress?.End();
             _gate.Release();
         }
     }
@@ -202,6 +219,8 @@ public sealed class WorkspaceSwitcher : IWorkspaceSwitcher
     {
         if (oldRoot is null)
             return WorkspaceApplyResult.Failed(error);
+
+        _progress?.Report("切换失败，正在恢复原工作区…");
 
         try
         {
