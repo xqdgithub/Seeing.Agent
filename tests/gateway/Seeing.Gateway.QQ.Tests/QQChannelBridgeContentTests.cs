@@ -30,6 +30,52 @@ public class QQChannelBridgeContentTests
         normalized.Attachments.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// 空内容提示必须区分两种病因：用户根本没发正文（群聊只 @ 不打字）vs 附件下载失败。
+    /// 历史缺陷：两者共用「图片等附件可能下载失败」，纯 @ 提及被误报成下载失败。
+    /// </summary>
+    [Fact]
+    public void DescribeEmptyInbound_NoAttachments_ShouldBlameMissingTextNotDownload()
+    {
+        var text = QQChannelBridge.DescribeEmptyInbound(attachmentCount: 0);
+
+        text.Should().NotContain("下载失败", "没有任何附件时不存在下载失败");
+        text.Should().Contain("@");
+    }
+
+    [Fact]
+    public void DescribeEmptyInbound_WithAttachments_ShouldReportDownloadFailure()
+    {
+        var text = QQChannelBridge.DescribeEmptyInbound(attachmentCount: 2);
+
+        text.Should().Contain("下载失败");
+    }
+
+    [Fact]
+    public void DescribeEmptyInbound_BothBranches_ShouldDiffer()
+    {
+        QQChannelBridge.DescribeEmptyInbound(0)
+            .Should().NotBe(QQChannelBridge.DescribeEmptyInbound(1));
+    }
+
+    [Fact]
+    public void EmptyInboundWithUninitializedRaw_ShouldStillProduceDiagnostic()
+    {
+        // Raw 未赋值（ValueKind=Undefined）时取原始文本必须不抛，否则诊断日志会吃掉用户可见提示
+        QQChannelBridge.SafeRawText(default).Should().Be("(unavailable)");
+    }
+
+    [Fact]
+    public void EmptyInboundWithRaw_ShouldTruncateTo500Chars()
+    {
+        using var doc = JsonDocument.Parse(
+            $$"""{"id":"m1","content":"{{new string('x', 900)}}"}""");
+
+        var text = QQChannelBridge.SafeRawText(doc.RootElement);
+
+        text.Length.Should().BeLessThanOrEqualTo(501, "超过 500 字符的 payload 必须截断");
+    }
+
     [Fact]
     public void OutboundPayload_WithNullAttachments_ShouldDeserializeWithoutThrowing()
     {

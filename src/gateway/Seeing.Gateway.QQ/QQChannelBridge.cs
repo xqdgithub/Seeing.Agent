@@ -305,6 +305,22 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
                 return;
             }
 
+            // 第一段：零成本可判定的真空内容——群聊 AT 事件剥掉提及后正文为空且无附件
+            // （用户只 @ 了机器人没打字）。必须在 ack 之前挡掉：先回「收到，正在处理…」
+            // 再拒绝一条根本不会处理的消息，用户会在同一条消息上收到两句矛盾回复。
+            if (string.IsNullOrWhiteSpace(parsed.Text) && parsed.Attachments.Count == 0)
+            {
+                // 带原始 payload：区分「用户只 @ 未打字」与「正文在未知字段里」需要看原文。
+                // Raw 未初始化时 GetRawText 会抛，护栏掉——诊断信息不值得吃掉用户可见提示。
+                _logger.LogWarning(
+                    "QQ message has no usable content {MsgId}: text and attachments both empty payload={Payload}",
+                    parsed.MsgId,
+                    SafeRawText(parsed.Raw));
+                await SendVisibleAsync(parsed, DescribeEmptyInbound(attachmentCount: 0), jobToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
             var ackText = _options.EffectiveAckMessage;
             if (ackText != null)
             {
@@ -334,16 +350,15 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
                 _commonOptions.Model,
                 mediaParts);
 
-            // 真空内容（文本空 + 媒体全部失败/缺失）：显式拒绝并告知用户，
-            // 不再把空 part 递给 agent 换来 provider 侧的 400。
+            // 第二段：下载后才知道的真空内容——附件全部取回失败（超限/过期/网络），
+            // 一段内容都没剩下。不再把空 part 递给 agent 换来 provider 侧的 400。
             if (request.Input is not { Count: > 0 })
             {
                 _logger.LogWarning(
-                    "QQ message has no usable content {MsgId}: attachments={AttachmentCount} parts={PartCount}",
+                    "QQ message has no usable content {MsgId} after media fetch: attachments={AttachmentCount}",
                     parsed.MsgId,
-                    parsed.Attachments.Count,
-                    mediaParts.Count);
-                await SendVisibleAsync(parsed, "消息内容为空（图片等附件可能下载失败），请重试。", jobToken)
+                    parsed.Attachments.Count);
+                await SendVisibleAsync(parsed, DescribeEmptyInbound(parsed.Attachments.Count), jobToken)
                     .ConfigureAwait(false);
                 return;
             }
@@ -453,6 +468,24 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
         var prepared = _adapter.ApplyPassiveWindow(parsed);
         await _qqHttp.SendTextAsync(prepared, text, keyboard, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// 真空入站内容的可读诊断。两种病因必须分开说明：
+    /// <list type="bullet">
+    /// <item>无附件：用户只 @ 了机器人但没打字（群聊 AT 事件剥掉提及后正文为空），提示补正文即可。</item>
+    /// <item>有附件：附件下载或格式校验失败导致一段内容都没留下，提示重发。</item>
+    /// </list>
+    /// </summary>
+    internal static string DescribeEmptyInbound(int attachmentCount) =>
+        attachmentCount == 0
+            ? "消息内容为空：只 @ 了机器人但没有正文，请补充你想说的话。"
+            : "消息内容为空：图片/附件可能下载失败，请重新发送。";
+
+    /// <summary>取原始 payload 文本用于诊断；<see cref="JsonElement"/> 未初始化时返回占位而非抛出。</summary>
+    internal static string SafeRawText(JsonElement raw) =>
+        raw.ValueKind == JsonValueKind.Undefined
+            ? "(unavailable)"
+            : Truncate(raw.GetRawText(), 500);
 
     private async Task SendVisibleAsync(ParsedQQMessage parsed, string text, CancellationToken cancellationToken)
     {
