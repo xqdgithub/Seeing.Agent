@@ -97,33 +97,37 @@
         }
     </Menu>
 
-    <div class="@GetFooterClass()">
+    @* 底部两行：工作区入口独占一行，关闭 / 折叠放在下一行，避免三者挤在一行互相压缩 *@
+    <div class="sider-footer-stack">
         <WorkspaceSwitcherButton Collapsed="@EffectiveCollapsed" />
-        <Popconfirm Title="确定关闭当前程序？关闭后需要重新启动程序才能再次访问。"
-                    OkText="关闭程序"
-                    CancelText="取消"
-                    OnConfirm="RequestShutdown">
-            <Button Type="@ButtonType.Text"
-                    Danger="true"
-                    Class="sider-footer-close"
-                    Disabled="@_shutdownRequested">
-                <Icon Type="@IconType.Outline.CloseCircle" />
-                <span class="sider-footer-label">@(_shutdownRequested ? "正在关闭..." : "关闭")</span>
-            </Button>
-        </Popconfirm>
 
-        @if (!AppState.IsMobile)
-        {
-            <Tooltip Title="@(EffectiveCollapsed ? "展开侧栏" : "折叠侧栏")" Placement="@Placement.Left">
+        <div class="@GetFooterClass()">
+            <Popconfirm Title="确定关闭当前程序？关闭后需要重新启动程序才能再次访问。"
+                        OkText="关闭程序"
+                        CancelText="取消"
+                        OnConfirm="RequestShutdown">
                 <Button Type="@ButtonType.Text"
-                        Shape="@ButtonShape.Circle"
-                        Size="@ButtonSize.Small"
-                        Class="sider-footer-collapse"
-                        OnClick="ToggleCollapse">
-                    <Icon Type="@(EffectiveCollapsed ? IconType.Outline.MenuUnfold : IconType.Outline.MenuFold)" />
+                        Danger="true"
+                        Class="sider-footer-close"
+                        Disabled="@_shutdownRequested">
+                    <Icon Type="@IconType.Outline.CloseCircle" />
+                    <span class="sider-footer-label">@(_shutdownRequested ? "正在关闭..." : "关闭")</span>
                 </Button>
-            </Tooltip>
-        }
+            </Popconfirm>
+
+            @if (!AppState.IsMobile)
+            {
+                <Tooltip Title="@(EffectiveCollapsed ? "展开侧栏" : "折叠侧栏")" Placement="@Placement.Left">
+                    <Button Type="@ButtonType.Text"
+                            Shape="@ButtonShape.Circle"
+                            Size="@ButtonSize.Small"
+                            Class="sider-footer-collapse"
+                            OnClick="ToggleCollapse">
+                        <Icon Type="@(EffectiveCollapsed ? IconType.Outline.MenuUnfold : IconType.Outline.MenuFold)" />
+                    </Button>
+                </Tooltip>
+            }
+        </div>
     </div>
 </Sider>
 

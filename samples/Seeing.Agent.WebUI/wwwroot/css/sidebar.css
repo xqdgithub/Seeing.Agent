@@ -190,7 +190,15 @@ aside.app-sider.ant-layout-sider {
     }
 }
 
-/* ========== 底部工具条（关闭 / 折叠） ========== */
+/* ========== 底部工具条（工作区 / 关闭 / 折叠） ========== */
+/* 工作区入口与关闭/折叠分两行：三者挤一行会把关闭与折叠按钮压没 */
+.sider-footer-stack {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid #e8e8e8;
+}
+
 .sider-footer {
     flex-shrink: 0;
     display: flex;
@@ -231,6 +239,17 @@ aside.app-sider.ant-layout-sider {
     justify-content: center;
     gap: 12px;
     padding: 0;
+}
+
+/* 折叠时工作区入口只显示图标并居中，避免被挤成一条竖线 */
+.app-sider.ant-layout-sider-collapsed .ws-switcher {
+    padding: 4px 0;
+}
+
+.app-sider.ant-layout-sider-collapsed .ws-switcher-button {
+    justify-content: center;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
 }
 
 .app-sider.ant-layout-sider-collapsed .sider-footer-close,

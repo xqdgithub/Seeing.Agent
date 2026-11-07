@@ -27,17 +27,29 @@
             </Menu>
         </Overlay>
         <ChildContent>
-            <Button Type="@ButtonType.Text"
-                    Class="ws-switcher-button"
-                    Block="true"
-                    Loading="@_busy"
-                    Disabled="@_busy">
-                <Icon Type="@IconType.Outline.FolderOpen" />
-                @if (!Collapsed)
-                {
+            @if (Collapsed)
+            {
+                <Tooltip Title="@($"工作区：{CurrentName}")" Placement="@Placement.Right">
+                    <Button Type="@ButtonType.Text"
+                            Class="ws-switcher-button"
+                            Block="true"
+                            Loading="@_busy"
+                            Disabled="@_busy">
+                        <Icon Type="@IconType.Outline.FolderOpen" />
+                    </Button>
+                </Tooltip>
+            }
+            else
+            {
+                <Button Type="@ButtonType.Text"
+                        Class="ws-switcher-button"
+                        Block="true"
+                        Loading="@_busy"
+                        Disabled="@_busy">
+                    <Icon Type="@IconType.Outline.FolderOpen" />
                     <span class="ws-switcher-label">@CurrentName</span>
-                }
-            </Button>
+                </Button>
+            }
         </ChildContent>
     </Dropdown>
 </div>
