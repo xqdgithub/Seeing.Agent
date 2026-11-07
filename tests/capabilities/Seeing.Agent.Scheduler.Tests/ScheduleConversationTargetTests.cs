@@ -123,7 +123,7 @@ public class ScheduleConversationTargetTests
     [Fact]
     public async Task Execute_NoConversation_ShouldKeepLegacyBehavior()
     {
-        // Arrange：无 conversation 键 → 不碰会话目录（现状），session id 原样
+        // Arrange：无 conversation 键 → 不新建 cron 前缀会话，session id 原样
         var harness = CreateHarness(
             sessions: new Dictionary<string, SessionData>(),
             dataMap: DataMap(sessionId: "s-cron", withConversation: false));
@@ -133,15 +133,13 @@ public class ScheduleConversationTargetTests
 
         // Assert
         harness.State.Context!.SessionId.Should().Be("s-cron");
-        harness.SessionManager.Verify(
-            m => m.EnsureSessionAsync(
-                It.IsAny<string>(),
-                It.IsAny<string?>(),
-                It.IsAny<string?>(),
-                It.IsAny<string?>(),
-                It.IsAny<SessionOrigin?>()),
-            Times.Never);
-        harness.CreatedSessionIds.Should().BeEmpty(because: "无 conversation 时不应新建会话");
+
+        // 目标会话本身仍会被补齐（工具结算、上下文基线、投递都读它），
+        // 但必须是「原 id 的会话」，不得另建一个带 cron 前缀的新会话。
+        harness.CreatedSessionIds.Should().NotContain(
+            id => id.StartsWith("cron_", StringComparison.Ordinal),
+            "无 conversation 时不应新建独立会话");
+        harness.CreatedSessionIds.Should().OnlyContain(id => id == "s-cron");
     }
 
     [Fact]

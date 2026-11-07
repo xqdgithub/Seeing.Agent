@@ -14,7 +14,7 @@ namespace Seeing.Agent.Scheduler.Tests.Execution;
 public class SessionScheduleDispatcherLayoutTests
 {
     [Fact]
-    public async Task AssistantOnly_WritesSingleConsumedAssistantMessage()
+    public async Task AssistantOnly_WritesVisiblePromptAndResultBothOffHistory()
     {
         var delivered = new List<InboxMessage>();
         var dispatcher = Build(delivered);
@@ -24,20 +24,47 @@ public class SessionScheduleDispatcherLayoutTests
             Source = ScheduleSources.Heartbeat,
             TaskType = ScheduleTaskTypes.Agent,
             Content = "一切正常",
-            UserInput = "<envelope>检查状态</envelope>",
+            UserInput = "<system-reminder source=\"job\" kind=\"heartbeat\"><notice>心跳已触发</notice><task>检查状态</task></system-reminder>",
             SessionId = "s1",
             ReminderKind = SystemReminder.Kinds.Heartbeat,
             SenderId = "heartbeat",
             Layout = DispatchLayout.AssistantOnly
         });
 
-        delivered.Should().ContainSingle("心跳不得在目标会话留下未读的系统提示");
-        delivered[0].Presentation.Should().Be(InboxPresentation.Assistant);
+        delivered.Should().HaveCount(2, "提示要可见，结果要留痕");
+
+        // 提示：可见但不进 LLM 历史（None 由 ExecutionRunner 按 inbox.presentation=none 排除）
+        delivered[0].Presentation.Should().Be(InboxPresentation.None);
         delivered[0].Delivery.Should().Be(InboxDelivery.Inject);
+        delivered[0].Body.Should().Be("检查状态", "信封必须被解包成任务正文");
         delivered[0].Kind.Should().Be(SystemReminder.Kinds.Heartbeat);
         delivered[0].Sender.Id.Should().Be("heartbeat");
-        delivered[0].SourceTag.Should().Be(SystemReminder.Sources.Job);
-        delivered[0].Body.Should().Be("一切正常");
+
+        // 结果：已消费的助手消息
+        delivered[1].Presentation.Should().Be(InboxPresentation.Assistant);
+        delivered[1].Body.Should().Be("一切正常");
+        delivered[1].Kind.Should().Be(SystemReminder.Kinds.Heartbeat);
+        delivered[1].Sender.Id.Should().Be("heartbeat");
+    }
+
+    [Fact]
+    public async Task AssistantOnly_ShouldNotWriteUnreadSystemPrompt()
+    {
+        var delivered = new List<InboxMessage>();
+        var dispatcher = Build(delivered);
+
+        await dispatcher.DispatchAsync(new DispatchRequest
+        {
+            Source = ScheduleSources.Heartbeat,
+            TaskType = ScheduleTaskTypes.Agent,
+            Content = "结果",
+            UserInput = "检查状态",
+            SessionId = "s1",
+            Layout = DispatchLayout.AssistantOnly
+        });
+
+        delivered.Should().NotContain(m => m.Presentation == InboxPresentation.System,
+            "心跳不得在目标会话留下未读系统输入");
     }
 
     [Fact]

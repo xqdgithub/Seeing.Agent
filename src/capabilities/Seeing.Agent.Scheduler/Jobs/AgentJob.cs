@@ -11,6 +11,7 @@ using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Models;
+using Seeing.Session.Core;
 using System.Text;
 
 namespace Seeing.Agent.Scheduler.Jobs;
@@ -441,6 +442,49 @@ public class AgentJob : IJob
     /// 否则 cron 会话里 tool_search 的发现永远不会生效。
     /// </para>
     /// </summary>
+    /// <summary>
+    /// 结算前确保目标会话存在（幂等）。
+    /// <para>
+    /// 工具视图、上下文基线、投递都读同一个会话，缺了它三处会同时降级。这里只做「存在性补齐」，
+    /// 不写消息、不改来源：已有会话原样返回。
+    /// </para>
+    /// </summary>
+    private static async Task EnsureSessionForSettlementAsync(
+        IServiceProvider services,
+        string sessionId,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return;
+
+        var sessionManager = services.GetService<ISessionManager>();
+        if (sessionManager is null)
+            return;
+
+        try
+        {
+            var existing = await sessionManager.TryGetOrLoadAsync(sessionId, cancellationToken)
+                .ConfigureAwait(false);
+            if (existing is not null)
+                return;
+
+            await sessionManager.EnsureSessionAsync(sessionId).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // 建会话失败不阻断任务：退化成空工具视图，但必须留下可见告警。
+            logger.LogWarning(
+                ex,
+                "目标会话补齐失败，本轮工具视图可能为空: SessionId={SessionId}",
+                sessionId);
+        }
+    }
+
     internal static async Task<SessionToolSchemaResolution?> ResolveToolSchemasAsync(
         IServiceProvider services,
         string sessionId,
@@ -448,6 +492,12 @@ public class AgentJob : IJob
         ILogger logger,
         CancellationToken cancellationToken)
     {
+        // 先确保会话存在：结算读的是会话级快照（scenario / 模块启用 / 工具禁用 / 暴露态），
+        // 会话不存在时解析器只能返回空视图 → LLM 请求无 tools → 模型把工具调用当文本吐出来。
+        // 旁路此前只对「仅 conversation」路径建会话，纯会话 id（如 main）会漏掉这里。
+        await EnsureSessionForSettlementAsync(services, sessionId, logger, cancellationToken)
+            .ConfigureAwait(false);
+
         // 轮首提升：cron 会话里 tool_search 的发现必须在下一次执行内联（与主链同语义）。
         // 会话不存在/加载失败时端口返回 false 且不抛，保持“旁路不阻断任务”。
         var exposureWriter = services.GetService<ISessionToolExposureWriter>();

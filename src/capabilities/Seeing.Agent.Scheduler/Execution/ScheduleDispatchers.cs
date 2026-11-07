@@ -60,8 +60,28 @@ public sealed class SessionScheduleDispatcher : IScheduledJobDispatcher
             await _sessionManager.EnsureSessionAsync(request.SessionId)
                 .ConfigureAwait(false);
 
-            // 布局决定是否写任务提示。心跳用 AssistantOnly：
-            // 系统提示是未读输入，用户下次发消息会把它连同自己的话一起交给主链。
+            // 心跳（AssistantOnly）：提示词用 None 承载——可持久化展示给用户看
+            // 「这轮心跳在做什么」，但按 inbox.presentation=none 被排除出 LLM 历史，
+            // 不会在目标会话留下未读输入，也不会污染下一轮上下文。
+            if (request.Layout == DispatchLayout.AssistantOnly && !string.IsNullOrEmpty(request.UserInput))
+            {
+                var body = request.UserInput;
+                if (_reminders.TryParse(request.UserInput!, out var parts))
+                    body = parts.Task;
+
+                await _runtime.DeliverAsync(new InboxMessage
+                {
+                    TargetSessionId = request.SessionId!,
+                    Sender = new InboxSender { Kind = InboxSenderKind.System, Id = request.SenderId },
+                    Body = body,
+                    Delivery = InboxDelivery.Inject,
+                    Presentation = InboxPresentation.None,
+                    SourceTag = SystemReminder.Sources.Job,
+                    Kind = request.ReminderKind
+                }, ct).ConfigureAwait(false);
+            }
+
+            // 布局决定是否写任务提示。定时任务（PromptAndResult）保持「未读系统提示 + 结果」。
             if (request.Layout == DispatchLayout.PromptAndResult && !string.IsNullOrEmpty(request.UserInput))
             {
                 // 既有调用方已包裹为 system-reminder 信封；此处解包后由运行时以 Presentation=System

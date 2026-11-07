@@ -39,7 +39,8 @@ internal static class SchedulerIntegrationTestsFactory
         SchedulerTestWorkspace ws,
         List<string>? executedPrompts = null,
         IScheduledJobDispatcher? dispatcher = null,
-        SchedulerOptions? schedulerOptions = null)
+        SchedulerOptions? schedulerOptions = null,
+        ISessionToolSchemaResolver? toolSchemaResolver = null)
     {
         executedPrompts ??= new List<string>();
 
@@ -73,7 +74,7 @@ internal static class SchedulerIntegrationTestsFactory
             optionsProvider,
             NullLogger<ScheduleManager>.Instance);
 
-        var services = new ServiceCollection()
+        var serviceCollection = new ServiceCollection()
             .AddSingleton(router)
             .AddSingleton(registry)
             .AddSingleton<IAgentSelectionResolver>(_ =>
@@ -86,8 +87,15 @@ internal static class SchedulerIntegrationTestsFactory
             .AddSingleton(dispatcher)
             .AddSingleton<IJobExecutionListener>(manager)
             .AddLogging()
-            .AddTransient<AgentJob>()
-            .BuildServiceProvider();
+            .AddTransient<AgentJob>();
+
+        if (toolSchemaResolver is not null)
+        {
+            // 需要真实工具视图的用例才注入；其余走「无 resolver → 空 schema」降级路径。
+            serviceCollection.AddSingleton(toolSchemaResolver);
+        }
+
+        var services = serviceCollection.BuildServiceProvider();
 
         scheduler.JobFactory = new MicrosoftDependencyInjectionJobFactory(
             services, Options.Create(new QuartzOptions()));
