@@ -72,6 +72,12 @@ public static class JobDataKeys
     /// <summary>执行 ID（每次执行唯一）</summary>
     public const string RunId = "runId";
 
+    /// <summary>执行画像 JSON（<see cref="Models.ScheduleRunProfile"/>）；缺键等于 cron 画像。</summary>
+    public const string RunProfile = "runProfile";
+
+    /// <summary>上次执行结束时间（本地墙钟，往返格式）；存在时作为 interval 触发器的起算锚点。</summary>
+    public const string LastRunAt = "lastRunAt";
+
     // ===== 心跳特有 =====
 
     /// <summary>投递目标：main / last / inbox</summary>
