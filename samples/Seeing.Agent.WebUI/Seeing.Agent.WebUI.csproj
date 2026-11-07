@@ -111,6 +111,16 @@
   -->
   <Import Project="$(MSBuildThisFileDirectory)..\..\build\Seeing.Publish.targets" />
 
+  <!--
+    无 RID 的发布缺平台原生库（libe_sqlite3.so / .dll），产物不可用（实测）。
+    只在**发布**阶段校验：`dotnet build` 不带 RID 是开发期常态，必须继续可用。
+  -->
+  <Target Name="_ValidateWebUIPublishRuntimeIdentifier"
+          BeforeTargets="Publish"
+          Condition="'$(_IsPublishing)' == 'true' or '$(DeployOnBuild)' == 'true'">
+    <CallTarget Targets="_SeeingValidateRuntimeIdentifier" />
+  </Target>
+
   <Target Name="CopyChannelHostForBuild"
           AfterTargets="Build">
     <!--

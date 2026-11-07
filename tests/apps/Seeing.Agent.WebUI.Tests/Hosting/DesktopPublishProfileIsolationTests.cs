@@ -278,6 +278,19 @@ public class DesktopPublishProfileIsolationTests
     }
 
     /// <summary>
+    /// 无 RID 的 WebUI 发布缺原生库，产物不可用（实测）。
+    /// 发布时必须给出明确诊断，不能静默产出坏包。
+    /// </summary>
+    [Fact]
+    public void WebUIPublish_ShouldRequireRuntimeIdentifier()
+    {
+        var csproj = ReadRepoFile("samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj");
+
+        csproj.Should().Contain("_SeeingValidateRuntimeIdentifier",
+            "WebUI 发布前必须校验 RuntimeIdentifier，否则会静默产出缺少原生库的包");
+    }
+
+    /// <summary>
     /// 桌面发布的 publish 目录同样必须带 ChannelHost 的 .dll。
     /// </summary>
     [Fact]
