@@ -1,161 +1,513 @@
-@using AntDesign
-@using Seeing.Agent.Scheduler.Abstractions
+﻿@using AntDesign
 @using Seeing.Agent.Scheduler
+@using Seeing.Agent.Scheduler.Abstractions
 @using Seeing.Agent.Scheduler.Models
-@using Seeing.Agent.WebUI.Services
-@using Seeing.Agent.Core.Configuration
-@using Seeing.Agent.Configuration
-@inject SeeingConfigService ConfigService
-@inject IScheduleManager ScheduleManager
+@using Seeing.Agent.WebUI.Components.CronJobs
+@inject IHeartbeatService HeartbeatService
 @inject IMessageService MessageService
+@implements IDisposable
 
 <PageTitle>心跳 - Seeing</PageTitle>
 
-<WorkspacePageShell>
+<WorkspacePageShell Loading="@_loading">
     <Breadcrumb>
         <BreadcrumbItem>控制中心</BreadcrumbItem>
         <BreadcrumbItem>心跳</BreadcrumbItem>
     </Breadcrumb>
     <Extra>
         <Space>
-            <Button Icon="@IconType.Outline.Thunderbolt" Loading="@_running" OnClick="RunOnce">立即执行</Button>
-            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveAsync">保存配置</Button>
+            <Button Icon="@IconType.Outline.Reload" OnClick="() => LoadAsync(true)">刷新</Button>
+            @if (_snapshot?.Enabled == true && _snapshot.SchedulerStarted && _snapshot.Status?.State != JobState.Running)
+            {
+                <Button Icon="@IconType.Outline.Thunderbolt" Loading="@_running" OnClick="RunNowAsync">
+                    立即执行
+                </Button>
+            }
+            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" Loading="@_saving" OnClick="SaveAsync">
+                保存配置
+            </Button>
         </Space>
     </Extra>
     <ChildContent>
-        <Row Gutter="16">
-            <Col Span="14">
-                <Card Title="@("心跳配置")">
-                    <Form Layout="@FormLayout.Vertical" Model="@_heartbeat" Context="formContext">
-                    <div>
-                        <FormItem Label="启用心跳"><Switch @bind-Checked="@_heartbeat.Enabled" /></FormItem>
-                        <FormItem Label="执行间隔"><Input @bind-Value="@_heartbeat.Every" Placeholder="6h、30m" /></FormItem>
-                        <FormItem Label="投递目标">
-                            <Select TItemValue="string" TItem="string" @bind-Value="@_heartbeat.Target">
-                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Main">main（主会话）</SelectOption>
-                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Last">last（最后活跃会话）</SelectOption>
-                                <SelectOption TItemValue="string" TItem="string" Value="@HeartbeatTargets.Inbox">inbox（收件箱）</SelectOption>
-                            </Select>
-                        </FormItem>
-                        <FormItem Label="心跳 Prompt">
-                            <TextArea @bind-Value="@_heartbeat.Prompt" 
-                                      Placeholder="输入心跳执行时的提示内容（支持 Markdown 格式）" 
-                                      Rows="6" 
-                                      AutoSize="true" />
-                            <br /><small style="color: #999;">必填。每次心跳执行时将发送此内容给 Agent。</small>
-                        </FormItem>
-                        <FormItem Label="Agent"><Input @bind-Value="@_heartbeat.Agent" Placeholder="留空使用默认 Agent" /></FormItem>
-                        <FormItem Label="Session ID"><Input @bind-Value="@_heartbeat.SessionId" /></FormItem>
-                        <FormItem Label="超时（秒）"><InputNumber @bind-Value="@_heartbeat.TimeoutSeconds" Min="10" Max="600" Style="width: 100%;" /></FormItem>
-                        <FormItem Label="活跃时段">
-                            <Space>
-                                <TimePicker TValue="DateTime?" @bind-Value="@_activeHoursStart" Format="HH:mm" />
-                                <span>-</span>
-                                <TimePicker TValue="DateTime?" @bind-Value="@_activeHoursEnd" Format="HH:mm" />
-                            </Space>
-                            <br /><small style="color: #999;">仅在指定时段内执行心跳</small>
-                        </FormItem>
-                    </div>
-                    </Form>
-                </Card>
-            </Col>
-            <Col Span="10">
-                <Card Title="配置说明">
-                    <div style="color: #666;">
-                        <h4>心跳功能说明</h4>
-                        <p>心跳是定时执行的 Agent 任务，用于：</p>
-                        <ul>
-                            <li>定期检查系统状态</li>
-                            <li>执行定时提醒</li>
-                            <li>自动化例行任务</li>
-                        </ul>
-                        
-                        <h4 style="margin-top: 16px;">Prompt 示例</h4>
-                        <pre style="background: #f5f5f5; padding: 12px; border-radius: 4px; font-size: 12px;">
-## 系统状态检查
+        @if (_snapshot is { SchedulerStarted: false })
+        {
+            <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 16px;"
+                   Message="调度器未启动，心跳不会自动触发"
+                   Description="心跳随调度器一起工作。请到「设置 → 调度器」启动调度器后再回来。" />
+        }
 
-请检查以下内容并汇报：
-1. 检查是否有未读消息
-2. 检查当前工作进度
-3. 提醒即将到来的日程</pre>
+        <Card Title="状态" Style="margin-bottom: 16px;">
+            <Descriptions Column="4">
+                <DescriptionsItem Title="配置">
+                    @if (_snapshot!.Configured)
+                    {
+                        <Tag Color="@("green")">已配置</Tag>
+                    }
+                    else
+                    {
+                        <Tag>未配置</Tag>
+                    }
+                </DescriptionsItem>
+                <DescriptionsItem Title="启用">
+                    @if (_snapshot.Configured)
+                    {
+                        <Switch Checked="@_form.Enabled" CheckedChanged="OnEnabledChanged" />
+                    }
+                    else
+                    {
+                        <span style="color:#999;">-</span>
+                    }
+                </DescriptionsItem>
+                <DescriptionsItem Title="下次触发">
+                    @if (_snapshot.Status?.NextFireTime is { } next)
+                    {
+                        <JobNextRunTimer NextRun="@next" State="@_snapshot.Status.State" Expired="false" />
+                    }
+                    else
+                    {
+                        <span>-</span>
+                    }
+                </DescriptionsItem>
+                <DescriptionsItem Title="上次执行">
+                    <div style="line-height:1.6;">
+                        @if (_snapshot.LastRun is { } last)
+                        {
+                            <Tag Color="@(last.Status == "success" ? "green" : "red")">
+                                @(last.Status == "success" ? "成功" : "失败")
+                            </Tag>
+                            <span>@last.StartedAt.ToString("MM-dd HH:mm:ss")</span>
+                            @if (last.Duration is { } d)
+                            {
+                                <span style="color:#999;">（@((int)Math.Round(d.TotalSeconds))s）</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(last.Error))
+                            {
+                                <div style="color:#cf1322; font-size:12px;">@last.Error</div>
+                            }
+                        }
+                        else
+                        {
+                            <span>从未执行</span>
+                        }
                     </div>
-                </Card>
-            </Col>
-        </Row>
+                </DescriptionsItem>
+            </Descriptions>
+
+            @if (_snapshot.Status?.State == JobState.Running)
+            {
+                <Button Danger Size="@ButtonSize.Small" Loading="@_cancelling" OnClick="CancelAsync" Style="margin-top:8px;">
+                    取消正在执行的心跳
+                </Button>
+            }
+        </Card>
+
+        <Card Title="配置" Style="margin-bottom: 16px;">
+            <Form Layout="@FormLayout.Vertical" Model="@_form" Context="hbForm">
+                <Row Gutter="16">
+                    <Col Span="8">
+                        <FormItem Label="执行间隔" Required>
+                            <Input @bind-Value="@_form.Every" Placeholder="6h、30m" />
+                            <small style="color:#999;">数字 + 单位（s/m/h/d）。心跳只支持间隔，不支持固定钟点。</small>
+                        </FormItem>
+                    </Col>
+                    <Col Span="8">
+                        <FormItem Label="时区">
+                            <Input @bind-Value="@_form.Timezone" Placeholder="Asia/Shanghai" />
+                        </FormItem>
+                    </Col>
+                    <Col Span="8">
+                        <FormItem Label="超时（秒）">
+                            <InputNumber @bind-Value="@_form.TimeoutSeconds" Min="10" Max="3600" Style="width:100%;" />
+                        </FormItem>
+                    </Col>
+                </Row>
+
+                <FormItem Label="生效时段（可选）">
+                    <small style="color:#999; display:block; margin-bottom:8px;">
+                        留空表示全天。时间均为上方时区的本地墙钟；开始默认 00:00，结束默认 23:59:59；允许跨午夜；不可交叠。
+                    </small>
+                    @for (var i = 0; i < _windows.Count; i++)
+                    {
+                        var index = i;
+                        <div style="display:flex; gap:8px; margin-bottom:8px;">
+                            <Input @bind-Value="@_windows[index].Start" Placeholder="开始 HH:mm" Style="flex:1;" />
+                            <Input @bind-Value="@_windows[index].End" Placeholder="结束 HH:mm:ss" Style="flex:1;" />
+                            <Button Danger OnClick="() => RemoveWindow(index)">删除</Button>
+                        </div>
+                    }
+                    <Button Type="@ButtonType.Dashed" Block OnClick="AddWindow">添加时段</Button>
+                </FormItem>
+
+                <Row Gutter="16">
+                    <Col Span="12">
+                        <FormItem Label="目标会话">
+                            <Input @bind-Value="@_form.SessionId" Placeholder="如 main" />
+                            <small style="color:#999;">心跳结果写入该会话（只留痕，不唤醒）。</small>
+                        </FormItem>
+                    </Col>
+                    <Col Span="12">
+                        <FormItem Label="出站对话（可选）">
+                            <ConversationPicker Placeholder="选择要推送的对话" OnSelected="OnConversationSelected" />
+                            @if (_form.Conversation is { IsComplete: true } conv)
+                            {
+                                <div style="margin-top:8px; font-size:12px;">
+                                    <Tag Color="@("blue")">@conv.ChannelId/@conv.Kind/@conv.ExternalId</Tag>
+                                    <a style="cursor:pointer;" @onclick="ClearConversation">清除</a>
+                                </div>
+                            }
+                        </FormItem>
+                    </Col>
+                </Row>
+
+                <Row Gutter="16">
+                    <Col Span="12">
+                        <FormItem Label="Agent">
+                            <Input @bind-Value="@_form.Agent" Placeholder="留空使用默认 Agent" />
+                        </FormItem>
+                    </Col>
+                    <Col Span="12">
+                        <FormItem Label="模型">
+                            <Input @bind-Value="@_form.Model" Placeholder="留空使用 Agent 默认模型" />
+                        </FormItem>
+                    </Col>
+                </Row>
+
+                <FormItem Label="心跳 Prompt" Required>
+                    <TextArea @bind-Value="@_form.Prompt" Rows="6" AutoSize="true"
+                              Placeholder="每次心跳交给 Agent 的指令" />
+                    <small style="color:#999;">
+                        必填。建议写明「检查什么、什么情况下汇报、没事怎么回复」。
+                        <a style="cursor:pointer; margin-left:6px;" @onclick="FillExample">填入示例</a>
+                    </small>
+                </FormItem>
+
+                @if (!string.IsNullOrWhiteSpace(_error))
+                {
+                    <Alert Type="@AlertType.Error" ShowIcon="true" Message="@_error" />
+                }
+            </Form>
+        </Card>
+
+        <Card Title="执行历史">
+            @if (_history.Count == 0)
+            {
+                <div style="padding:24px; text-align:center; color:#999;">
+                    还没有执行记录。@(_snapshot.Configured ? "保存配置后等待下一次触发，或点「立即执行」。" : "先保存配置。")
+                </div>
+            }
+            else
+            {
+                <Table TItem="JobExecutionRecord" DataSource="@_history" RowKey="@(r => r.RunId)">
+                    <PropertyColumn Property="r => r.StartedAt" Title="执行时间">
+                        @context.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")
+                    </PropertyColumn>
+                    <PropertyColumn Property="r => r.Source" Title="来源">
+                        <Tag Color="@(context.Source == ScheduleSources.Heartbeat ? "orange" : "blue")">@context.Source</Tag>
+                    </PropertyColumn>
+                    <PropertyColumn Property="r => r.Status" Title="状态">
+                        <Tag Color="@(context.Status == "success" ? "green" : "red")">
+                            @(context.Status == "success" ? "成功" : "失败")
+                        </Tag>
+                    </PropertyColumn>
+                    <PropertyColumn Property="r => r.Duration" Title="耗时">
+                        @(context.Duration is { } d ? $"{Math.Round(d.TotalSeconds)}s" : "-")
+                    </PropertyColumn>
+                    <PropertyColumn Property="r => r.Output" Title="内容">
+                        @Truncate(context.Output ?? context.Error, 60)
+                    </PropertyColumn>
+                    <ActionColumn Title="操作">
+                        <Button Size="@ButtonSize.Small" OnClick="() => ShowDetail(context)">查看详情</Button>
+                    </ActionColumn>
+                </Table>
+
+                @if (_hasMore)
+                {
+                    <div style="text-align:center; margin-top:16px;">
+                        <Button Loading="@_loadingMore" OnClick="LoadMoreAsync">加载更多</Button>
+                    </div>
+                }
+            }
+        </Card>
     </ChildContent>
 </WorkspacePageShell>
 
+<ExecutionResultModal Visible="@_detailVisible"
+                      VisibleChanged="@(v => _detailVisible = v)"
+                      Record="@_selectedRecord" />
+
 @code {
-    private SchedulerOptions _scheduler = new();
-    private HeartbeatOptions _heartbeat = new();
+    private const int PageSize = 20;
+
+    private HeartbeatSnapshot? _snapshot;
+    private FormModel _form = new();
+    private readonly List<WindowRow> _windows = new();
+    private readonly List<JobExecutionRecord> _history = new();
+    private JobExecutionRecord? _selectedRecord;
+    private bool _detailVisible;
+    private bool _loading;
+    private bool _saving;
     private bool _running;
-    private DateTime? _activeHoursStart;
-    private DateTime? _activeHoursEnd;
+    private bool _cancelling;
+    private bool _loadingMore;
+    private bool _hasMore;
+    private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
-        _scheduler = ConfigService.GetSchedulerOptions();
-        _heartbeat = _scheduler.Heartbeat;
-        _heartbeat.ActiveHours ??= new ActiveHoursOptions();
-        
-        // 解析活跃时段
-        if (_heartbeat.ActiveHours != null)
+        await LoadAsync(true);
+    }
+
+    /// <summary>
+    /// 加载快照与历史。
+    /// <para>快照是服务端深拷贝，表单改它不会写回配置缓存；保存成功后重新取一份。</para>
+    /// </summary>
+    private async Task LoadAsync(bool showLoading = false)
+    {
+        if (showLoading)
+            _loading = true;
+
+        try
         {
-            if (TimeSpan.TryParse(_heartbeat.ActiveHours.Start, out var startTime))
-                _activeHoursStart = DateTime.Today.Add(startTime);
-            if (TimeSpan.TryParse(_heartbeat.ActiveHours.End, out var endTime))
-                _activeHoursEnd = DateTime.Today.Add(endTime);
+            _snapshot = await HeartbeatService.GetAsync();
+            ApplySnapshotToForm(_snapshot);
+            await ReloadHistoryAsync();
         }
-        
-        await Task.CompletedTask;
+        catch (Exception ex)
+        {
+            MessageService.Error($"读取心跳状态失败: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ReloadHistoryAsync()
+    {
+        _history.Clear();
+        var page = await HeartbeatService.GetHistoryAsync(PageSize, 0);
+        _history.AddRange(page);
+        _hasMore = page.Count == PageSize;
+    }
+
+    private void ApplySnapshotToForm(HeartbeatSnapshot snapshot)
+    {
+        var spec = snapshot.Spec;
+        _form = new FormModel
+        {
+            Enabled = spec?.Intent == ScheduleIntent.Active,
+            Every = spec?.Schedule.Every ?? "6h",
+            Timezone = string.IsNullOrWhiteSpace(spec?.Schedule.Timezone)
+                ? TimeZoneInfo.Local.Id
+                : spec!.Schedule.Timezone,
+            SessionId = spec?.Dispatch?.Target?.SessionId ?? "main",
+            Conversation = spec?.Dispatch?.Target?.Conversation,
+            Agent = spec?.Agent,
+            Model = spec?.Model,
+            TimeoutSeconds = spec?.Runtime.TimeoutSeconds ?? SchedulerConstants.DefaultTimeoutSeconds,
+            Prompt = spec?.Prompt ?? string.Empty
+        };
+
+        _windows.Clear();
+        foreach (var w in spec?.Schedule.Windows ?? [])
+            _windows.Add(new WindowRow { Start = w.Start ?? "", End = w.End ?? "" });
+
+        _error = null;
+    }
+
+    private async Task OnEnabledChanged(bool enabled)
+    {
+        _form.Enabled = enabled;
+        await SaveAsync();
     }
 
     private async Task SaveAsync()
     {
-        // 验证 Prompt
-        if (string.IsNullOrWhiteSpace(_heartbeat.Prompt))
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_form.Prompt))
         {
-            MessageService.Warning("心跳 Prompt 为必填项");
+            _error = "心跳 Prompt 为必填项";
             return;
         }
-        
-        // 更新活跃时段配置
-        if (_heartbeat.ActiveHours != null)
+
+        _saving = true;
+        try
         {
-            _heartbeat.ActiveHours.Start = _activeHoursStart?.ToString("HH:mm") ?? "08:00";
-            _heartbeat.ActiveHours.End = _activeHoursEnd?.ToString("HH:mm") ?? "22:00";
+            var update = new HeartbeatUpdate
+            {
+                Enabled = _form.Enabled,
+                Prompt = _form.Prompt,
+                Every = _form.Every,
+                Timezone = _form.Timezone,
+                SessionId = _form.SessionId,
+                Conversation = _form.Conversation,
+                Agent = _form.Agent,
+                Model = _form.Model,
+                TimeoutSeconds = _form.TimeoutSeconds,
+                Windows = _windows
+                    .Where(w => !string.IsNullOrWhiteSpace(w.Start) || !string.IsNullOrWhiteSpace(w.End))
+                    .Select(w => new ScheduleWindow
+                    {
+                        Start = string.IsNullOrWhiteSpace(w.Start) ? null : w.Start.Trim(),
+                        End = string.IsNullOrWhiteSpace(w.End) ? null : w.End.Trim()
+                    })
+                    .ToList()
+            };
+
+            await HeartbeatService.UpdateAsync(update);
+            MessageService.Success("心跳配置已保存");
+            await LoadAsync();
         }
-        
-        await ConfigService.SaveSchedulerOptionsAsync(s =>
+        catch (ArgumentException ex)
         {
-            s.Heartbeat = _heartbeat;
-        });
-        await ScheduleManager.ReloadHeartbeatAsync();
-        MessageService.Success("心跳配置已保存");
+            _error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            MessageService.Error($"保存失败: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
     }
 
-    private async Task RunOnce()
+    private async Task RunNowAsync()
     {
         _running = true;
         try
         {
-            var result = await ScheduleManager.RunJobOnceAsync(SchedulerConstants.HeartbeatJobId);
+            var result = await HeartbeatService.RunNowAsync();
             switch (result)
             {
-                case TriggerResult.Accepted accepted:
-                    MessageService.Success($"心跳已触发，RunId={accepted.RunId}");
+                case TriggerResult.Accepted a:
+                    MessageService.Success($"心跳已触发，RunId={a.RunId}");
                     break;
                 case TriggerResult.NotFound:
-                    MessageService.Error("心跳任务未找到");
+                    MessageService.Warning("心跳未配置，请先保存配置");
                     break;
                 case TriggerResult.Disabled:
-                    MessageService.Warning("心跳任务已禁用");
+                    MessageService.Warning("心跳未启用或调度器未启动");
                     break;
-                case TriggerResult.Conflict conflict:
-                    MessageService.Warning($"触发冲突: {conflict.Reason}");
+                case TriggerResult.Conflict c:
+                    MessageService.Warning($"心跳正在执行中: {c.Reason}");
                     break;
             }
+
+            await LoadAsync();
         }
-        finally { _running = false; }
+        catch (Exception ex)
+        {
+            MessageService.Error($"触发失败: {ex.Message}");
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private async Task CancelAsync()
+    {
+        _cancelling = true;
+        try
+        {
+            var ok = await HeartbeatService.CancelAsync();
+            if (ok)
+                MessageService.Success("已请求取消");
+            else
+                MessageService.Warning("心跳当前不在执行中");
+
+            await LoadAsync();
+        }
+        finally
+        {
+            _cancelling = false;
+        }
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        _loadingMore = true;
+        try
+        {
+            var page = await HeartbeatService.GetHistoryAsync(PageSize, _history.Count);
+            _history.AddRange(page);
+            _hasMore = page.Count == PageSize;
+        }
+        finally
+        {
+            _loadingMore = false;
+        }
+    }
+
+    private void AddWindow() => _windows.Add(new WindowRow());
+
+    private void RemoveWindow(int index)
+    {
+        if (index >= 0 && index < _windows.Count)
+            _windows.RemoveAt(index);
+    }
+
+    private void OnConversationSelected(Seeing.Agent.Abstractions.Channels.ConversationInfo conversation)
+    {
+        _form.Conversation = new ConversationSpec
+        {
+            ChannelId = conversation.ChannelId,
+            Kind = conversation.Kind.ToString().ToLowerInvariant(),
+            ExternalId = conversation.ExternalId,
+            Title = conversation.Title
+        };
+    }
+
+    private void ClearConversation() => _form.Conversation = null;
+
+    private void FillExample()
+    {
+        _form.Prompt =
+            """
+            检查当前工作区状态：
+            1. 是否有未完成的待办
+            2. 是否有需要关注的变更或失败
+            如果没有需要处理的事，只回复「HEARTBEAT_OK」。
+            """;
+    }
+
+    private void ShowDetail(JobExecutionRecord record)
+    {
+        _selectedRecord = record;
+        _detailVisible = true;
+    }
+
+    private static string Truncate(string? text, int max)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return "-";
+
+        var flat = text.Replace("\r\n", " ").Replace('\n', ' ').Trim();
+        return flat.Length <= max ? flat : flat[..max] + "…";
+    }
+
+    public void Dispose() { }
+
+    private sealed class FormModel
+    {
+        public bool Enabled { get; set; }
+        public string Every { get; set; } = "6h";
+        public string Timezone { get; set; } = TimeZoneInfo.Local.Id;
+        public string SessionId { get; set; } = "main";
+        public ConversationSpec? Conversation { get; set; }
+        public string? Agent { get; set; }
+        public string? Model { get; set; }
+        public int TimeoutSeconds { get; set; } = SchedulerConstants.DefaultTimeoutSeconds;
+        public string Prompt { get; set; } = string.Empty;
+    }
+
+    private sealed class WindowRow
+    {
+        public string Start { get; set; } = "";
+        public string End { get; set; } = "";
     }
 }
+
