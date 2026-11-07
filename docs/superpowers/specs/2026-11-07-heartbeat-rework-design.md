@@ -1,316 +1,321 @@
 # 心跳功能重构设计
 
 **日期:** 2026-11-07
-**状态:** 待评审
-**范围:** `Seeing.Agent.Scheduler` 心跳执行路径、配置模型、可观测接口、Agent 工具、`/heartbeat` 页面
+**状态:** 已按架构审查修订（一期交付）
+**范围:** 调度执行内核的身份与投递参数化；心跳作为独立上层入口。定时任务的调度语义、列表与工具面保持不变。
 
 ---
 
 ## 1. 问题
 
-定时任务（cron）已经过若干轮重构：Quartz 引擎、`ScheduleIntent` 三态、投递目标矩阵（会话 + conversation）、执行历史、工具/技能/详情页/首页看板。**心跳是唯一没有跟进这条演进路径的旁路**，因此积累了一批确定性缺陷（都能复现，不是风格问题）：
+心跳是挂在调度器上的一条旁路：独立的 `HeartbeatJob`、独立的 `HeartbeatOptions`、独立的活跃时段检查。定时任务已经收敛到 Quartz、`ScheduledJobSpec`、投递目标矩阵和执行历史，心跳没有跟上，于是出现这些可复现的行为错误：
 
-| # | 缺陷 | 位置 | 后果 |
-|---|---|---|---|
-| 1 | main 目标的输出被静默丢弃 | `HeartbeatJob.cs:177-198` | 默认配置下心跳跑完什么都不留 |
-| 2 | 心跳执行历史永不落盘 | `ScheduleManager.cs:447-449`（`StartsWith('_')` 跳过） | 无任何执行记录 |
-| 3 | 心跳状态恒为 `Disabled` | `ScheduleManager.cs:146-152`（不在 `_jobsFile.Jobs`） | 页面无法展示任何状态 |
-| 4 | 活跃时段跳过 / Hook 拦截后 `_runningJobs` 永久残留 | `HeartbeatJob.cs:79-130` 提前 return 不通知 listener | 「立即执行」此后永远 `Conflict`，直到重启 |
-| 5 | 调度器未启动时「立即执行」假成功；心跳关闭时抛异常 | `ScheduleManager.cs:247-267` + `QuartzSchedulerEngine.cs:480` | 按钮说已触发/页面崩异常 |
-| 6 | 一个坏的 `Every` 让整个调度器起不来 | `RegisterHeartbeatAsync` → `ParseInterval` 抛出，`StartAsync` 无隔离 | cron 一起失效 |
-| 7 | 页面绑定活配置对象 | `HeartbeatPage.razor:94-100` | 未保存即生效、取消不回滚、与设置卡互覆盖 |
-| 8 | `ActiveHours` 与 cron `Windows` 是两套机制，且失败即放行 | `ActiveHoursChecker.cs:38-41`（`catch { return true; }`） | 同一概念双重实现，配置写错反而放开限制 |
-| 9 | `SessionOrigin.Heartbeat/Scheduler` 从未被赋值 | 全仓库仅 `Reflection` 有赋值点 | 心跳会话被当作 `User` 参与各处来源判定 |
-| 10 | interval 任务每次启动后 5 秒触发 | `QuartzSchedulerEngine.cs:617-620` | 重启几次就多打几次心跳，节律与「每 6h」不符 |
-| 11 | `last` / `inbox` 目标不可靠 | `HeartbeatJob.cs:269-280` | `last` 依赖未接线的 `ISessionCatalog`，常静默回落 main；`inbox` 会真的创建名为 `_inbox` 的普通会话 |
-| 12 | 心跳出现在定时任务统计口径里 | `QuartzSchedulerEngine.cs:70`（`TotalJobs`） | 任务总数比列表行数多 1 |
+| # | 现象 | 原因 |
+|---|---|---|
+| 1 | 默认目标下心跳跑完什么都不留 | `HeartbeatJob` 在 `Target=main` 时跳过投递 |
+| 2 | 没有执行历史 | `OnJobExecutedAsync` 跳过 `_` 前缀 |
+| 3 | 状态查询恒为 Disabled | 心跳不在 `_jobsFile.Jobs`，查找失败直接返回 Disabled |
+| 4 | 「立即执行」会永久冲突 | 活跃时段跳过和 Hook 拦截不通知监听器，`_runningJobs` 残留 |
+| 5 | 调度器没启动时按钮仍报已触发 | `TriggerJobAsync` 在 scheduler 为 null 时直接 return |
+| 6 | 一个非法间隔能让整个调度器起不来 | 心跳注册异常没有和用户任务隔离开 |
+| 7 | 页面改输入框就改了活配置 | 表单绑定的是配置缓存上的同一对象 |
+| 8 | 活跃时段写错等于不限制 | `ActiveHoursChecker` 解析失败时返回 true |
+| 9 | 心跳会话来源仍是 User | `SessionOrigin.Heartbeat` 没有任何赋值点 |
+| 10 | 每次进程启动约 5 秒就打一次心跳 | interval 触发器固定 `StartAt(now+5s)` |
+| 11 | `last` / `inbox` 不可用 | `last` 依赖未接线的目录；`inbox` 会创建名为 `_inbox` 的普通会话 |
+| 12 | 定时任务页的任务总数比列表多 1 | Quartz 计数包含 `_heartbeat` |
 
 ---
 
-## 2. 决策摘要
+## 2. 架构
 
-| 项 | 决策 |
+两层，一期一起交付。下层是调度执行内核，cron 和心跳共用。上层是两个互不进入对方集合的入口。
+
+```
+上层（分开，各自的 API / 工具 / 页面）
+  定时任务面    IScheduleManager 的用户任务 API
+                cron_* 工具、/cron-jobs、首页任务行、Gateway /api/admin/jobs
+  心跳面        IHeartbeatService
+                heartbeat_* 工具、/heartbeat、/heartbeat-run
+
+下层（一套设施，唯一写入者是 ScheduleManager）
+  JobsFile                 Jobs 列表 + Heartbeat 槽位
+  QuartzSchedulerEngine    只注册 AgentJob
+  ScheduleRunProfile       一次执行的身份（来源、提醒 kind、投递布局、新建会话来源）
+  AgentJob                 只读画像，不再写死 cron
+  IScheduledJobDispatcher  按画像选择投递布局
+  执行历史 / 运行锁 / Quartz 状态
+```
+
+约束：
+
+- Quartz、`jobs.json`、`jobs_history`、`_runningJobs` 只由 `ScheduleManager` 写。`IHeartbeatService` 是心跳的唯一外部 API，内部转调管理器，不自己注册触发器。
+- 定时任务面只遍历 `JobsFile.Jobs`。心跳不在这个集合里。
+- 保留 id `_heartbeat` 不能经用户任务 API 创建、替换、删除、改意图或触发。`cron_create` / `cron_run` 因此无法碰到心跳。
+- 心跳页和定时任务页不互相投影。进度事件仍从管理器发出，定时任务页按「id 属于 Jobs」过滤后再弹通知。
+
+---
+
+## 3. 决策
+
+| 项 | 决定 |
 |---|---|
-| 心跳身份 | `jobs.json` 内的**系统任务**，固定 `Id = "_heartbeat"`，不作为 `Jobs` 集合元素 |
-| 执行路径 | 复用 `AgentJob`；**删除** `HeartbeatJob` |
-| 配置来源 | **删除** `SchedulerOptions.Heartbeat` / `HeartbeatOptions`；心跳配置即 `ScheduledJobSpec` |
-| 窗口机制 | 统一用 `ScheduleSpec.Windows`；**删除** `ActiveHoursChecker` / `ActiveHoursOptions` |
-| 投递目标 | 会话（`Dispatch.Target.SessionId`）+ 可选 conversation；**删除** `main`/`last`/`inbox` 枚举 |
-| 结果写入 | 与 cron 一致：assistant 消息 `Inject` 落盘（不唤醒）+ conversation 出站 |
-| 可观测 | 新增 `IHeartbeatService`；心跳状态与历史不出现在 cron 面 |
-| 模块归属 | 仍在 `scheduler` 模块内，隔离靠**数据结构**而非模块拆分 |
-| 兼容 | **不做迁移**（直接移除旧配置键，忽略残留即可） |
+| 存储 | `JobsFile.Heartbeat` 独立槽位，类型仍是 `ScheduledJobSpec`，id 固定 `_heartbeat` |
+| 未配置 | 槽位为 null。不在首次访问时创建默认配置，也不因此注册 Quartz 任务 |
+| 执行类型 | 删除 `HeartbeatJob`。引擎只注册 `AgentJob` |
+| 身份 | `ScheduleRunProfile` 随 JobData 下发。缺画像时等于今天的 cron 行为 |
+| 投递 | 内核支持两种布局。cron 保持现状；心跳只用「一条已消费的助手消息」 |
+| 窗口 | 心跳用 `ScheduleSpec.Windows`。删除 `ActiveHoursChecker` |
+| 目标 | 会话 id，或出站 conversation。删除 `main` / `last` / `inbox` |
+| 节律 | 只改心跳触发器的起算点。用户 interval 任务仍是启动后约 5 秒、misfire 立即补一次 |
+| 配置迁移 | 不做。`Scheduler.Heartbeat` 删除后，旧 JSON 被忽略 |
+| 模块 | 仍在 `scheduler` 模块内 |
+| Hook | 只走 `scheduler.job.before_execute` / `after_execute`，载荷带 `source`。心跳专用 Hook 不再触发 |
+| 交付 | 一期。实现顺序是内核、槽位、服务、页面，同一次交付 |
 
 ---
 
-## 3. 数据模型
+## 4. 共享内核
 
-### 3.1 `JobsFile` 增独立槽位
+### 4.1 执行画像
+
+`Seeing.Agent.Scheduler.Models.ScheduleRunProfile`。注册任务时序列化进 `JobDataKeys.RunProfile`。`AgentJob` 启动时读一次；缺键或解析失败则使用 cron 默认画像，用户任务行为不变。
+
+| 字段 | cron 默认 | 心跳 |
+|---|---|---|
+| `Source` | `cron` | `heartbeat` |
+| `ReminderKind` | `cron` | `heartbeat` |
+| `SenderId` | `cron` | `heartbeat` |
+| `SessionKeyPrefix` | `cron` | `hb` |
+| `OriginWhenCreated` | `SessionOrigin.Scheduler` | `SessionOrigin.Heartbeat` |
+| `Layout` | `PromptAndResult` | `AssistantOnly` |
+
+`AgentJob` 用画像替换现在写死的常量，覆盖这些位置：
+
+- Hook 载荷里的 `source`（Hook 点仍是 `SchedulerJobBeforeExecute` / `SchedulerJobAfterExecute`）
+- `JobExecutionResult.Source`，从而执行历史的 `Source` 正确
+- 发给模型的提醒信封 kind
+- `AgentContext.Metadata["source"]`
+- `DispatchRequest` 的 `Source`、`ReminderKind`、`SenderId`、`Layout`
+- `ScheduleConversationResolver` 新建会话时的 id 前缀、标题前缀和 `Origin`
+
+`scheduler.heartbeat.before` / `scheduler.heartbeat.after` 标记为过时，本期内不再触发。仓库内没有订阅者。替代方式是任务 Hook 载荷中的 `source=heartbeat`。
+
+### 4.2 投递布局
+
+`DispatchRequest`（Abstractions）增加三个字段，默认值等于今天的 cron：
+
+```csharp
+public string ReminderKind { get; init; } = SystemReminder.Kinds.Cron;
+public string SenderId { get; init; } = "cron";
+public DispatchLayout Layout { get; init; } = DispatchLayout.PromptAndResult;
+```
+
+`DispatchLayout`：
+
+| 值 | 行为 |
+|---|---|
+| `PromptAndResult` | 现状。先写一条 `Presentation=System` 的任务提示（未读，下次 Wake 会带上），再写一条 `Presentation=Assistant` 的结果（生来已消费） |
+| `AssistantOnly` | 只写一条助手结果。不写系统提示，因此不会在目标会话留下未读输入 |
+
+`SessionScheduleDispatcher` 按 `Layout` 分支。助手消息的 `Kind` 和 `Sender.Id` 用请求上的字段，不再写死 `cron`。`PromptAndResult` 的系统提示继续从信封解包 kind（cron 路径不变）。
+
+`ChannelDeliveryScheduleDispatcher` 仍只出站结果正文，来源字符串用 `scheduler.{Source}`，心跳即为 `scheduler.heartbeat`。它不写会话，不看 `Layout`。
+
+心跳选择 `AssistantOnly` 的原因：心跳会写进用户正在使用的会话。系统提示是未读输入，下一次用户发消息会把心跳指令交给主链。助手结果是已消费记录，只留痕、不唤醒、不进下一轮输入。
+
+这不改变 cron。cron 的「提示 + 结果」是现有契约，本次不动。
+
+### 4.3 新建会话的来源
+
+`ISessionManager.EnsureSessionAsync` 增加可选参数 `SessionOrigin? origin = null`。只在**这次调用新建**会话时写入。缓存或磁盘上已有的会话保持原 `Origin`，并发 Ensure 仍由先进入的那次创建参数生效。
+
+`ScheduleConversationResolver` 在「仅 conversation、每次新建会话」这条路径把画像的 `OriginWhenCreated` 和 `SessionKeyPrefix` 传进去。会话 id 形如 `{prefix}_{jobId}_{timestamp}_{suffix}`，心跳前缀是 `hb`。
+
+已有用户会话被心跳写回时，`Origin` 保持 `User`。来源标记只承诺「本功能新建的会话」。写进用户会话的区分靠消息 `Kind=heartbeat`，不靠把用户会话改成心跳会话。因此这条消息不会把用户会话从任务视图里拿掉，也不会错误地关掉该会话的反思资格；反思看的是会话来源，心跳内容靠 kind 识别。
+
+### 4.4 保留 id
+
+`ScheduleManager` 把 `_heartbeat` 视为保留 id：
+
+| 用户任务 API | 行为 |
+|---|---|
+| `CreateOrReplaceJobAsync` | 拒绝，不写入 `Jobs` |
+| `DeleteJobAsync` / `SetJobIntentAsync` | 拒绝 |
+| `RunJobOnceAsync` | 返回 `NotFound` |
+| `GetJobAsync` / `ListJobsAsync` | 看不到心跳 |
+| `GetJobStatusAsync` | 先查 `Jobs`，再查心跳槽位。供心跳服务取真实 Quartz 状态，定时任务列表不会按这个 id 查询 |
+| `GetAllJobStatusesAsync` | 只含 `Jobs` |
+
+立即执行心跳只走 `IHeartbeatService.RunNowAsync` → 管理器内部方法。内部方法在调度器未启动或槽位为 null 时不返回 `Accepted`。
+
+`cron_run` 今天在 `GetJobAsync` 为空时仍会 `RunJobOnceAsync`。保留 id 在 `RunJobOnceAsync` 返回 `NotFound` 之后，这条路径不再触发心跳。
+
+### 4.5 历史、状态、计数
+
+- 去掉 `OnJobExecutedAsync` 里 `jobId.StartsWith('_')` 的跳过。`_heartbeat.json` 是合法文件名。
+- 回写 `LastRunAt` 时，id 命中心跳槽位则写槽位，不要求它出现在 `Jobs` 里。
+- `GetJobStatusAsync` 能查到槽位后，心跳不再恒为 Disabled。`AgentJob` 每条返回路径都通知监听器，`_runningJobs` 不再残留。
+- `QuartzSchedulerEngine.GetStatusAsync` 与引擎的 `GetAllJobStatusesAsync` 在计数和枚举时排除 `_heartbeat`。心跳自己的状态只经 `IHeartbeatService`。
+
+### 4.6 心跳触发器的起算
+
+只在注册心跳时传入锚点。`BuildSingleTrigger` 对用户任务的 interval 分支保持 `StartAt(now+5s)` 和 `NextWithExistingCount`。
+
+心跳 interval（无窗口）：
+
+- misfire 使用 `DoNothing`（错过的节拍丢弃，不补跑）
+- 有 `LastRunAt` 且 `LastRunAt + every` 仍在将来：`StartAt` 该时刻
+- 否则：`StartAt(now + every)`，不 `StartNow`
+
+`LastRunAt` 按本地墙钟解释，与 `ScheduleSpec.Timezone` 一致，不用 UTC 混算。
+
+心跳 interval（有窗口）：走现有 `BuildWindowIntervalTriggers`（`DailyTimeInterval` + `DoNothing`）。窗口本身就是锚点，不再叠加 `LastRunAt`。重启不会在窗口外立刻触发。
+
+启动顺序：取得 Quartz 实例后、`Start` 之前，删除持久化存储里的 `_heartbeat`。然后 `Start`，再按槽位 Upsert。这样升级后的第一次启动不会先按旧触发器 misfire 一次、再按新触发器打一次。用户任务的持久化触发器不动。
+
+单个任务注册失败（非法 cron、非法间隔）只记错误并跳过该任务，不中断 `StartAsync`。这条同时保护用户任务和心跳。
+
+---
+
+## 5. 心跳上层
+
+### 5.1 槽位
 
 ```csharp
 public class JobsFile
 {
-    public int Version { get; set; } = 3;
-
-    /// <summary>用户定时任务（cron 面）。心跳不在此集合内。</summary>
+    public int Version { get; set; } = 0;
     public List<ScheduledJobSpec> Jobs { get; set; } = new();
-
-    /// <summary>心跳系统任务（Id 固定 SchedulerConstants.HeartbeatJobId）。</summary>
     public ScheduledJobSpec? Heartbeat { get; set; }
 }
 ```
 
-**为什么是独立槽位而不是 `IsSystem` 标志**：所有 cron 面出口都遍历 `_jobsFile.Jobs`——`ListJobsAsync`、`GetAllJobStatusesAsync`、`CronListTool`、`CronJobsPage`、首页看板、`AdminEndpoints`。把它们挪进 `Jobs` 再逐处过滤，等于在六七个地方重复同一个谓词，日后必然漂移。放在独立槽位是**结构性排除**：默认不可见，需要时才显式读取。
+不把 `Version` 默认值改成 3，也不新增迁移步骤。旧文件没有该属性时反序列化为 null。
 
-### 3.2 `ScheduledJobSpec` 原样复用
+槽位为 null 表示未配置：不注册 Quartz 任务，页面是空状态，`RunNowAsync` 返回「未配置」。只有 `UpdateAsync` 成功后才写入槽位并注册。
 
-不新增 spec 类型、不新增字段。`Schedule` / `Dispatch` / `Runtime` / `LastRunAt` / `Intent` 全部现成语义。
+`ScheduledJobSpec` 不新增字段。心跳使用其中已有的 `Intent`、`Prompt`、`Agent`、`Model`、`Mode`、`Schedule`（type 固定 interval）、`Dispatch`、`Runtime`、`LastRunAt`。
 
-### 3.3 移除的类型
+删除 `SchedulerOptions.Heartbeat`、`HeartbeatOptions`、`ActiveHoursOptions`、`HeartbeatTargets`、`JobDataKeys.ActiveHours`、`JobDataKeys.HeartbeatTarget`。
 
-- `SchedulerOptions.Heartbeat` 属性
-- `HeartbeatOptions` 类
-- `ActiveHoursOptions` 类
-- `HeartbeatTargets` 静态类（`Main` / `Last` / `Inbox`）
-- `JobDataKeys.ActiveHours`、`JobDataKeys.HeartbeatTarget`
+### 5.2 `IHeartbeatService`
 
----
-
-## 4. 执行路径
-
-### 4.1 引擎只认一种 Job 类型
-
-`QuartzSchedulerEngine.UpsertJobAsync` 中：
-
-```csharp
-var jobType = jobId == SchedulerConstants.HeartbeatJobId
-    ? typeof(Jobs.HeartbeatJob)
-    : typeof(Jobs.AgentJob);
-```
-
-→ 恒为 `AgentJob`。`Jobs/HeartbeatJob.cs` 整个删除。
-
-### 4.2 `AgentJob` 的两处参数化
-
-| 用途 | 键 | 取值 | 默认 |
-|---|---|---|---|
-| 提醒信封 kind | `JobDataKeys.ReminderKind`（新增） | `SystemReminder.Kinds.Cron` / `.Heartbeat` | cron |
-| 执行来源 | `JobDataKeys.Source`（现成） | `ScheduleSources.Cron` / `.Heartbeat` | cron |
-
-`AgentJob` 用 `ReminderKind` 替换现在写死的 `SystemReminder.Kinds.Cron`；`Metadata["source"]` 用 `Source` 的实际值替换写死的 `ScheduleSources.Cron`。
-
-下游无需改动：`SessionScheduleDispatcher` 已经从信封解包并沿用原 kind，`JobExecutionRecord.Source` 也直接取 `result.Source`。
-
-### 4.3 继承到的心跳能力
-
-- **每条返回路径都 `NotifyExecutedAsync`** → `_runningJobs` 不再残留（缺陷 4）
-- **始终 `DispatchAsync` 写回会话** → main 目标的输出不再丢（缺陷 1）
-- schema 单点解析（`ResolveToolSchemasAsync`）+ 只读上下文装配（`SchedulerContextAssembly`）+ 目录基线补偿（`AppendCatalogToBaseline`）
-- `Model` / `Mode` 支持（心跳此前缺失）
-- conversation 出站目标矩阵（`ChannelDeliveryScheduleDispatcher` 优先级）
-
-### 4.4 启动隔离
-
-`ScheduleManager.StartAsync` 中，`RegisterUserJobAsync` 循环与 `RegisterHeartbeatAsync` 各自 try/catch：单个任务注册失败记 `LogError` 并跳过，不中断整体启动。缺陷 6 消失。
-
-### 4.5 interval 首触发与节律
-
-`BuildSingleTrigger` 的 `interval` 分支：
-
-- 有 `LastRunAt`：`nextDue = LastRunAt + interval`；`nextDue <= now` → 立即补跑一次（`StartNow`），否则 `StartAt(nextDue)`；
-- 无 `LastRunAt`：`StartAt(now + interval)`。
-
-`LastRunAt` 由 `ScheduleManager.OnJobExecutedAsync` 回写 spec 时持久化（心跳写 `_jobsFile.Heartbeat.LastRunAt`）。缺陷 10 消失。
-
-> 该行为对 cron interval 任务同样生效，属同一口径修正；cron/once 的首触发逻辑不变。
-
----
-
-## 5. 可观测接口
-
-新增 `Scheduler.Abstractions/IHeartbeatService.cs`：
+心跳的唯一外部 API。页面、三个工具、`/heartbeat-run` 只依赖它。
 
 ```csharp
 public interface IHeartbeatService
 {
-    /// <summary>当前心跳快照：配置副本 + 真实调度状态 + 最近一次执行。</summary>
     Task<HeartbeatSnapshot> GetAsync(CancellationToken ct = default);
-
-    /// <summary>局部更新；未提供的字段保持不变。</summary>
     Task<HeartbeatSnapshot> UpdateAsync(HeartbeatUpdate update, CancellationToken ct = default);
-
-    /// <summary>立即触发一次。</summary>
     Task<TriggerResult> RunNowAsync(CancellationToken ct = default);
-
-    /// <summary>取消正在执行的心跳。</summary>
     Task<bool> CancelAsync(CancellationToken ct = default);
-
-    /// <summary>执行历史（倒序）。</summary>
     Task<IReadOnlyList<JobExecutionRecord>> GetHistoryAsync(
         int limit, int offset = 0, CancellationToken ct = default);
 }
-
-public sealed record HeartbeatSnapshot(
-    ScheduledJobSpec? Spec,         // 深拷贝，调用方可安全绑定/修改；null = 尚未配置
-    JobStatus? Status,              // 真实 Quartz 状态（Running / NextFireTime / PreviousFireTime）
-    JobExecutionRecord? LastRun,
-    bool SchedulerStarted)
-{
-    public bool Configured => Spec is not null;
-}
-
-public sealed record HeartbeatUpdate
-{
-    public bool? Enabled { get; init; }
-    public string? Prompt { get; init; }
-    public string? Every { get; init; }
-    public IReadOnlyList<ScheduleWindow>? Windows { get; init; }
-    public string? Timezone { get; init; }
-    public string? SessionId { get; init; }
-    public ConversationSpec? Conversation { get; init; }
-    public string? Agent { get; init; }
-    public string? Model { get; init; }
-    public int? TimeoutSeconds { get; init; }
-}
 ```
 
-实现 `HeartbeatService`（`Scheduler` 包内）：
+`HeartbeatSnapshot` 含：槽位深拷贝（null 表示未配置）、Quartz `JobStatus`、最近一条历史、调度器是否已启动。
 
-- `GetAsync`：`ScheduleManager` 暴露内部访问器取 `_jobsFile.Heartbeat` 深拷贝 + `GetJobStatusAsync(HeartbeatJobId)` + `GetHistoryAsync(HeartbeatJobId, 1)`；
-- `UpdateAsync`：在副本上应用变更 → 校验（`Every` 可解析、Prompt 非空、目标至少一项）→ `CreateOrReplaceHeartbeatAsync` → `ReloadHeartbeatAsync`；
-- `RunNowAsync`：`ScheduleManager.RunJobOnceAsync(HeartbeatJobId)`，并把「未配置 / 调度器未启动 / 调度器已禁用」映射为对应的 `TriggerResult` 分支（不再假 `Accepted`）。
+`HeartbeatUpdate` 是局部更新：`Enabled`、`Prompt`、`Every`、`Windows`、`Timezone`、`SessionId`、`Conversation`、`Agent`、`Model`、`TimeoutSeconds`。未出现的字段保持不变。服务在副本上应用变更并校验，通过后才交给管理器写入。
 
-`IScheduleManager` 调整：
+校验：
 
-| 成员 | 变更 |
+- `Every` 能被 `ScheduleExpressionParser.ParseInterval` 解析
+- `Prompt` 非空
+- `SessionId` 与完整 conversation 至少有一项
+- `Windows` 通过 `ScheduleWindowsValidator`（与 cron 同一套规则）
+- `Schedule.Type` 固定为 interval。心跳不提供 cron 表达式和一次性时间
+
+`Enabled=false` 写成 `ScheduleIntent.Disabled`，管理器从 Quartz 移除该 job，槽位保留。
+
+从 `IScheduleManager` 删除 `ReloadHeartbeatAsync`。调度器设置卡保存的是启用、时区、并发和持久化，不再重载心跳。设置卡上的「重载配置」只重新注册 `Jobs` 里的用户任务。
+
+管理器对服务暴露的内部能力（不进入 `IScheduleManager`）：读槽位副本、保存槽位并注册或移除、内部触发、取消。画像由管理器在注册时按第 4.1 节的心跳列写入，服务不拼 JobData。
+
+### 5.3 工具与技能
+
+三个工具，不并入 `cron_*`。描述遵守 `docs/architecture/04` §9（R1–R9），正文用 `ScheduleTextFormatter` 已有的调度描述，并补最近一次执行的时间、成败和错误摘要。
+
+| 工具 | 行为 |
 |---|---|
-| `GetJobStatusAsync` | 查找顺序 `Jobs` → `Heartbeat`（缺陷 3） |
-| `OnJobExecutedAsync` | 去掉 `if (!jobId.StartsWith('_'))` 跳过；`LastRunAt` 回写覆盖心跳槽位（缺陷 2） |
-| `ListJobsAsync` | 不变（天然不含心跳） |
-| `ReloadHeartbeatAsync` | 移到 `IHeartbeatService` 或降为内部方法 |
+| `heartbeat_get` | 配置、是否启用、下次触发、上次执行 |
+| `heartbeat_update` | 局部更新，返回更新后的描述 |
+| `heartbeat_run` | `RunNowAsync`。未配置、调度器未启动、正在执行、已接受，四者文案不同 |
+
+技能 `Skills/heartbeat-management/SKILL.md`，随调度器模块激活注册、停用时注销。`SchedulerModule.ProvidedTools` 加入这三个 id。
+
+`/heartbeat-run` 改为调用 `RunNowAsync`。
+
+### 5.4 页面 `/heartbeat`
+
+绑定对象是 `GetAsync` 返回的深拷贝。保存成功后重新取快照。输入过程不写配置缓存。
+
+三段：
+
+1. **状态。** 启停（`Enabled`）、调度器是否在跑、下次触发（复用 `JobNextRunTimer`）、上次执行的时间与成败。运行中可取消。调度器未启动时不提供「立即执行」，并说明要先启动调度器。
+2. **配置。** 间隔、生效时段（复用定时任务编辑器那套窗口编辑和校验）、时区、目标会话、出站 conversation（复用 `ConversationPicker`）、Agent、模型、超时、Prompt。附一份可填入的示例提示。
+3. **历史。** `GetHistoryAsync` 的记录表，复用 `ExecutionResultModal`。
+
+未配置时只显示说明和「保存这份配置」的主按钮，不显示假的下次触发时间。
+
+定时任务页订阅执行通知时，忽略不属于 `Jobs` 的 id，避免弹出 `_heartbeat`。首页和 Gateway 任务列表已经只扫 `Jobs`，不用改数据源。
 
 ---
 
-## 6. Agent 工具与技能
+## 6. 破坏性变更
 
-三个工具（`src/capabilities/Seeing.Agent.Scheduler/Tools/`），**不并入 `cron_*`**：
+不做配置导入。
 
-| 工具 | 语义 |
+| 旧内容 | 结果 |
 |---|---|
-| `heartbeat_get` | 返回配置 + intent + 下次触发 + 上次执行（时间/成败/耗时/错误摘要） |
-| `heartbeat_update` | 局部更新，未提供字段不动；返回更新后的完整描述 |
-| `heartbeat_run` | 立即触发；明确区分 Accepted / Conflict / 调度器未启动 / 未配置 |
+| `seeing.json` 的 `Scheduler.Heartbeat`（含 Prompt、Every、Target、ActiveHours、Agent、SessionId） | 反序列化忽略。下次保存调度器节时该键消失。不生成 `JobsFile.Heartbeat` |
+| `main` / `last` / `inbox` | 删除。目标改为会话 id 或 conversation |
+| `ActiveHoursChecker` | 删除。时段用 `ScheduleSpec.Windows` |
+| `HeartbeatJob` | 删除 |
+| `scheduler.heartbeat.before` / `after` | 常量保留并标记过时，不再触发 |
+| `IScheduleManager.ReloadHeartbeatAsync` | 删除 |
+| `RunJobOnceAsync("_heartbeat")` | 返回 `NotFound` |
 
-文本呈现复用 `ScheduleTextFormatter.DescribeJob` + 新增 `DescribeHeartbeatLastRun`。
-
-技能：`Skills/heartbeat-management/SKILL.md`，由 `SchedulerSkillRegistrar` 与 cron 技能一起注册/注销；`SchedulerModule.ProvidedTools` 追加三个工具 id 并在 `ActivateAsync` 挂载。
-
-`/heartbeat-run` 命令改调 `IHeartbeatService.RunNowAsync`。
-
----
-
-## 7. 页面重做（`/heartbeat`）
-
-三段式，替换现在的单表单。
-
-### ① 状态条
-
-- 启停开关（= `Intent` Active / Disabled，写操作走 `UpdateAsync`）
-- 调度器状态（未启动 / 已停止 / 运行中 / 待机）——未启动时整页给出阻断提示与「去启动」入口
-- 下次触发（复用 `JobNextRunTimer`）；上次执行（时间 · 成功/失败 · 耗时 · 错误摘要）
-- 运行中显示「取消」（走 `CancelAsync`）
-
-### ② 配置卡
-
-- 调度：`every` 输入 + 生效时段编辑器（复用 `JobEditorModal` 的窗口 UI 与 `ScheduleWindowsValidator`）+ 时区
-- 投递：目标会话下拉 + `ConversationPicker`（与 cron 编辑器的 `_autoConversation` 快照语义一致）
-- 执行：Agent 选择（`AgentRegistry.GetPrimaryAgentsAsync`）+ 模型（`ModelSelectDropdown`）+ 超时
-- Prompt：`TextArea` + 示例模板一键填入
-
-### ③ 历史卡
-
-最近 20 条 `JobExecutionRecord` 表（时间 / 来源 / 状态 / 耗时 / 内容预览）+ 复用 `ExecutionResultModal` 看全文 + 「加载更多」。
-
-### 交互约束
-
-- **绑定副本**：`ScheduledJobCloner.Clone` 后绑定，保存成功才替换；缺陷 7 消失
-- **保存前完整校验**：`Every` 格式、Prompt 必填、目标至少一项；错误就地提示，不出「保存成功但调度器起不来」
-- **`TriggerResult` 四分支准确文案**，不再出现假 `Accepted`
-- **空状态可行动**：未配置时给「生成推荐配置」+「立即执行一次试试」，不是一句「暂无」
+需要改写的测试：`SchedulerOptionsProviderTests`、`SchedulerTestWorkspace`、`SchedulerIntegrationTests` 中两条心跳触发用例、`ActiveHoursCheckerTests`、直接 `new HeartbeatJob` 的旁路装配测试（改为经 `AgentJob` 与心跳画像）。
 
 ---
 
-## 8. 执行来源标记
-
-`ISessionManager.EnsureSessionAsync` 增加可选参数：
-
-```csharp
-Task<SessionData> EnsureSessionAsync(
-    string id,
-    string? selectedAgent = null,
-    string? partitionId = null,
-    string? scenario = null,
-    SessionOrigin? origin = null);
-```
-
-**仅在本次调用新建会话时应用**；已存在会话保持原 `Origin`（不覆盖用户会话历史标记）。
-
-调用点：
-
-| 调用方 | origin |
-|---|---|
-| `ScheduleConversationResolver.ResolveSessionIdAsync`（cron 新建会话） | `SessionOrigin.Scheduler` |
-| `HeartbeatService` 确保目标会话存在 | `SessionOrigin.Heartbeat` |
-
-实现落在 `SessionManager.EnsureSessionCoreAsync` 的 `new SessionData { Origin = origin ?? SessionOrigin.User }` 处。
-
----
-
-## 9. 统计口径
-
-`QuartzSchedulerEngine.GetStatusAsync`：`TotalJobs` / `RunningJobs` / `PausedJobs` 在计数时排除 `SchedulerConstants.HeartbeatJobId`。缺陷 12 消失。
-
-心跳自身状态只经 `IHeartbeatService` 暴露。
-
----
-
-## 10. 删除清单
-
-| 文件 / 成员 | 说明 |
-|---|---|
-| `Scheduler/Jobs/HeartbeatJob.cs` | 整体删除，逻辑并入 `AgentJob` |
-| `Scheduler/Engine/ActiveHoursChecker.cs` | 由 `ScheduleSpec.Windows` 取代 |
-| `samples/Seeing.Gateway.Server/HEARTBEAT.md` | 孤儿文件，代码无任何读取逻辑 |
-| `HeartbeatOptions` / `ActiveHoursOptions` / `HeartbeatTargets` | 见 §3.3 |
-| `JobDataKeys.ActiveHours` / `.HeartbeatTarget` | 见 §3.3 |
-| `SchedulerOptions.Heartbeat` | 见 §3.3 |
-
-兼容策略：**不做迁移**。旧 `seeing.json` 里残留的 `Scheduler.Heartbeat` 键在反序列化时被忽略（未知键不报错）；`jobs.json` 里的 `Version` 保持向前兼容（旧文件无 `Heartbeat` 槽位 → 首次访问创建默认配置）。
-
----
-
-## 11. 测试
+## 7. 测试
 
 | 用例 | 断言 |
 |---|---|
-| 结构性排除 | `ListJobsAsync` / `GetAllJobStatusesAsync` / `cron_list` 均不返回 `_heartbeat` |
-| 状态查询 | 心跳注册后 `GetJobStatusAsync("_heartbeat")` 不是 `Disabled`，且带 `NextFireTime` |
-| 历史落盘 | 心跳执行后 `GetHistoryAsync("_heartbeat", 1)` 有记录，`LastRunAt` 已回写 |
-| 投递 | 目标为普通会话时，会话里出现一条 `Presentation=Assistant`、`SourceTag=job`、`Kind=heartbeat` 的消息 |
-| 提醒 kind | 信封 kind 为 `heartbeat`（非 `cron`），`SessionScheduleDispatcher` 解包后仍为 `heartbeat` |
-| `_runningJobs` 不残留 | 活跃时段外触发 / Hook 拦截后，`RunJobOnceAsync` 再次仍返回 `Accepted` |
-| 假成功 | 调度器未启动时 `RunNowAsync` 返回非 `Accepted` 且文案明确 |
-| 坏配置隔离 | 心跳 `Every` 非法时 `StartAsync` 仍成功，cron 任务正常注册，日志有 Error |
-| 窗口一致性 | 心跳窗口与 cron 窗口经同一 `ScheduleWindowsValidator` 校验；跨午夜窗口 `GetNextOccurrence` 与 Quartz 触发时刻一致 |
-| interval 节律 | 有 `LastRunAt` 时首触发 = `LastRunAt + interval`；无则 = `now + interval`（不是 +5s） |
-| `heartbeat_update` 局部性 | 只给 `Enabled=false` 时 Prompt / Every / Agent 均不变 |
-| `SessionOrigin` | cron 新建会话 `Origin=Scheduler`；心跳目标会话 `Origin=Heartbeat`；已存在会话不被覆盖 |
-| 统计口径 | 只配 cron N 个 + 心跳时 `SchedulerStatus.TotalJobs == N` |
+| 槽位排除 | `ListJobsAsync`、`GetAllJobStatusesAsync`、`cron_list` 不含 `_heartbeat` |
+| 保留 id | `cron_create` / `CreateOrReplaceJobAsync` 使用 `_heartbeat` 被拒绝；`cron_run` 返回不存在 |
+| 未配置 | 新 `jobs.json` 的槽位为 null；启动后 Quartz 无该 job；`RunNowAsync` 不是 `Accepted` |
+| 状态 | 保存并启用后 `GetJobStatusAsync("_heartbeat")` 不是 Disabled，且有下次触发时间 |
+| 历史 | 执行结束后历史有一条，`Source=heartbeat`，槽位 `LastRunAt` 已更新 |
+| 画像 | 模型消息 kind、历史 Source、出站来源、助手消息 kind 与 Sender 均为 heartbeat |
+| 投递布局 | 目标会话只有一条助手消息，没有未读系统提示；cron 任务仍是提示加结果两条 |
+| 运行锁 | 窗口外或执行前 Hook 阻断之后，再次 `RunNowAsync` 仍可接受 |
+| 未启动 | 调度器未 `Start` 时 `RunNowAsync` 不是 `Accepted` |
+| 注册隔离 | 心跳间隔非法时，用户任务仍注册成功 |
+| 节律 | 心跳无窗口时下次触发是 `LastRunAt+every` 或 `now+every`，不是 `now+5s`。用户 interval 任务仍约为 5 秒后 |
+| 启动 | `Start` 前已删除旧的 `_heartbeat` 触发器，升级后第一次启动不会先 misfire 再按新表触发 |
+| 局部更新 | 只改 `Enabled` 时 Prompt、Every、Agent 不变 |
+| 来源 | 心跳因 conversation 新建的会话 `Origin=Heartbeat`、id 前缀 `hb_`。已存在的用户会话 Origin 不变 |
+| 计数 | 用户任务 N 个且心跳已启用时，调度器状态的任务总数是 N |
+| 通知 | 心跳执行完成后，定时任务页的成功/失败通知不出现 |
 
 ---
 
-## 12. 文档
+## 8. 实现顺序（同一次交付）
 
-- 新增 `docs/architecture/36-heartbeat-rework-release-notes.md`（含 §1 缺陷表与破坏性清单）
-- `docs/architecture/02-modules.md` 的 Scheduler 行补心跳说明
-- `AGENTS.md` / `CLAUDE.md` 的 WHERE TO LOOK 增加心跳入口
+1. 画像、`DispatchRequest` 布局、`AgentJob` 与两个投递器改读画像。cron 默认画像锁住现有行为。
+2. 保留 id、状态查找、历史落盘、计数排除、启动前删除旧心跳触发器、心跳专用起算。
+3. `JobsFile.Heartbeat`、删除 `HeartbeatJob` 与旧配置类型、按槽位注册。
+4. `IHeartbeatService`、三个工具、技能、命令。
+5. `/heartbeat` 页面、定时任务页通知过滤、设置卡去掉心跳重载。
+6. `EnsureSessionAsync` 的可选 `origin`，以及解析器按画像新建会话。
+7. 第 7 节的测试，并改写第 6 节列出的旧测试。
+
+## 9. 文档
+
+- 新增 `docs/architecture/36-heartbeat-rework-release-notes.md`，写明第 6 节的破坏性清单。
+- `docs/architecture/02-modules.md` 的 Scheduler 行注明：执行内核共用，心跳与定时任务是两个入口。
+- `AGENTS.md` 的 WHERE TO LOOK 增加 `IHeartbeatService` 与 `/heartbeat`。
