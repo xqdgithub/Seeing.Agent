@@ -74,6 +74,13 @@
     -->
     <ProjectReference Include="..\Seeing.Agent.WebUI\Seeing.Agent.WebUI.csproj">
       <GlobalPropertiesToRemove>PublishProfile;PublishUrl;WebPublishMethod</GlobalPropertiesToRemove>
+      <!--
+        Desktop 把 WebUI 作为**代码引用**内嵌（WebUiHost.BuildAsync），不产出
+        WebUI 的独立运行包。从 Desktop 发布时，WebUI 也会进入发布态但拿不到
+        Desktop 的 RID（实测为空），因此显式关掉 WebUI 自己的无-RID 校验 ——
+        否则桌面端发布会稳定失败。
+      -->
+      <AdditionalProperties>SeeingSkipRuntimeIdentifierValidation=true</AdditionalProperties>
     </ProjectReference>
   </ItemGroup>
 

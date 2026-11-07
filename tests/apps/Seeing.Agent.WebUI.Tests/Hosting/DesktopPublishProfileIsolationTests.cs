@@ -308,6 +308,31 @@ public class DesktopPublishProfileIsolationTests
     }
 
     /// <summary>
+    /// Desktop 内嵌 WebUI 时不产出 WebUI 独立运行包，且拿不到 Desktop 的 RID，
+    /// 必须显式关掉 WebUI 的无-RID 校验，否则桌面端发布会稳定失败（实测回归）。
+    /// </summary>
+    [Fact]
+    public void DesktopProjectReference_ShouldDisableWebUIRuntimeIdentifierValidation()
+    {
+        var csproj = ReadRepoFile("samples/Seeing.Agent.Desktop/Seeing.Agent.Desktop.csproj");
+
+        var node = Regex.Match(
+            csproj,
+            @"<ProjectReference[^>]*Seeing\.Agent\.WebUI\.csproj[^>]*>(.*?)</ProjectReference>",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+        node.Success.Should().BeTrue("桌面宿主必须引用 WebUI");
+
+        node.Value.Should().Contain("SeeingSkipRuntimeIdentifierValidation",
+            "从 Desktop 发布时 WebUI 拿不到 RID（实测为空），" +
+            "不关掉校验会让桌面端发布直接失败");
+
+        ReadRepoFile("samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj").Should()
+            .Contain("SeeingSkipRuntimeIdentifierValidation",
+                "WebUI 的校验必须支持被上层显式关闭");
+    }
+
+    /// <summary>
     /// 桌面发布的 publish 目录同样必须带 ChannelHost 的 .dll。
     /// </summary>
     [Fact]

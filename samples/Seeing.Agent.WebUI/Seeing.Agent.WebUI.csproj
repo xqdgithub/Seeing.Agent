@@ -114,10 +114,14 @@
   <!--
     无 RID 的发布缺平台原生库（libe_sqlite3.so / .dll），产物不可用（实测）。
     只在**发布**阶段校验：`dotnet build` 不带 RID 是开发期常态，必须继续可用。
+
+    从 Desktop 发布时，WebUI 作为被引用项目也会进入发布态，但 RID 属于 Desktop、
+    不会流进被引用项目（实测 RID 为空）。那种场景下 WebUI 不产出独立运行包，
+    RID 由 Desktop 的会话负责，因此由 Desktop 显式关掉本校验（见其 csproj）。
   -->
   <Target Name="_ValidateWebUIPublishRuntimeIdentifier"
           BeforeTargets="Publish"
-          Condition="'$(_IsPublishing)' == 'true' or '$(DeployOnBuild)' == 'true'">
+          Condition="'$(SeeingSkipRuntimeIdentifierValidation)' != 'true' and ('$(_IsPublishing)' == 'true' or '$(DeployOnBuild)' == 'true')">
     <CallTarget Targets="_SeeingValidateRuntimeIdentifier" />
   </Target>
 
