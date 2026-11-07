@@ -43,8 +43,13 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
             }
 
             var metaData = await _scheduler.GetMetaData(ct);
-            var jobKeys = await _scheduler.GetJobKeys(GroupMatcher<JobKey>.AnyGroup(), ct);
-            var runningJobs = await _scheduler.GetCurrentlyExecutingJobs(ct);
+            // 统计口径只含用户任务；心跳是内部任务，状态经 IHeartbeatService 暴露。
+            var jobKeys = (await _scheduler.GetJobKeys(GroupMatcher<JobKey>.AnyGroup(), ct))
+                .Where(k => !ScheduleIdPolicy.IsReserved(k.Name))
+                .ToList();
+            var runningJobs = (await _scheduler.GetCurrentlyExecutingJobs(ct))
+                .Where(j => !ScheduleIdPolicy.IsReserved(j.JobDetail.Key.Name))
+                .ToList();
 
             // 正确计算 PausedJobs：遍历所有 job 的 trigger 状态
             var pausedCount = 0;
@@ -151,7 +156,10 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
             if (_scheduler == null)
                 return Array.Empty<JobStatus>();
 
-            var jobKeys = await _scheduler.GetJobKeys(GroupMatcher<JobKey>.AnyGroup(), ct);
+            // 全量状态同样排除内部任务：调用方（含未来新增的 UI）不应看到心跳。
+            var jobKeys = (await _scheduler.GetJobKeys(GroupMatcher<JobKey>.AnyGroup(), ct))
+                .Where(k => !ScheduleIdPolicy.IsReserved(k.Name))
+                .ToList();
 
             // 批量获取正在执行的任务，避免每个 job 单独查询
             var executingJobs = await _scheduler.GetCurrentlyExecutingJobs(ct);

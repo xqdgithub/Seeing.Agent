@@ -233,6 +233,16 @@ public class JobsFile
 
     public List<ScheduledJobSpec> Jobs { get; set; } = new();
 
+    /// <summary>
+    /// 心跳系统任务（id 固定 <c>_heartbeat</c>）。
+    /// <para>
+    /// 独立槽位而非 <see cref="Jobs"/> 成员：定时任务面（列表、工具、页面、统计）全部遍历
+    /// <see cref="Jobs"/>，放这里即是结构性排除，不需要在六七个出口重复过滤谓词。
+    /// </para>
+    /// <para>null 表示用户尚未配置心跳：不注册触发器，也不自动生成默认配置。</para>
+    /// </summary>
+    public ScheduledJobSpec? Heartbeat { get; set; }
+
     /// <summary>迁移旧版本数据</summary>
     internal void MigrateIfNeeded()
     {

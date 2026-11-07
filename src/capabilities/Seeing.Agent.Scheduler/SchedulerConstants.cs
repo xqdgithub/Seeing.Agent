@@ -50,10 +50,25 @@ public static class ScheduleTypes
     public const string Once = "once";
 }
 
-/// <summary>心跳投递目标</summary>
+/// <summary>心跳投递目标（旧配置模型；随心跳槽位上线后移除）</summary>
 public static class HeartbeatTargets
 {
     public const string Main = "main";
     public const string Last = "last";
     public const string Inbox = "inbox";
+}
+
+/// <summary>任务 id 保留策略：内部任务 id 不得经用户任务 API 进入 Jobs。</summary>
+public static class ScheduleIdPolicy
+{
+    /// <summary>
+    /// 是否为平台保留 id。
+    /// <para>
+    /// 保留 id 属于内部任务（目前是心跳），只能经各自的服务入口操作，
+    /// 不得通过用户任务 API 进入 <c>JobsFile.Jobs</c>——否则它会出现在定时任务列表、
+    /// cron 工具与统计里，并与内部槽位争抢同一个 Quartz job key。
+    /// </para>
+    /// </summary>
+    public static bool IsReserved(string? jobId)
+        => string.Equals(jobId, SchedulerConstants.HeartbeatJobId, StringComparison.Ordinal);
 }

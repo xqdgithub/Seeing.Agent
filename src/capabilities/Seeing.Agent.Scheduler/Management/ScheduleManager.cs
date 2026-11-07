@@ -143,7 +143,8 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
     /// <inheritdoc/>
     public async Task<JobStatus> GetJobStatusAsync(string jobId, CancellationToken ct = default)
     {
-        var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
+        // 用户任务集合优先，其次内部槽位（心跳）。心跳不在 Jobs 里，但状态必须可查。
+        var job = FindJob(jobId);
         if (job == null)
         {
             return new JobStatus { JobId = jobId, State = JobState.Disabled };
@@ -203,6 +204,11 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
     /// <inheritdoc/>
     public async Task<ScheduledJobSpec> CreateOrReplaceJobAsync(ScheduledJobSpec job, CancellationToken ct = default)
     {
+        // 保留 id 只属于内部任务：放进 Jobs 会让它出现在列表/工具/统计里，并与内部槽位抢 Quartz key。
+        if (ScheduleIdPolicy.IsReserved(job.Id))
+            throw new InvalidOperationException(
+                $"'{job.Id}' 是平台保留任务 id，不能通过用户任务 API 创建或替换。");
+
         if (string.IsNullOrWhiteSpace(job.Id))
             job.Id = Guid.NewGuid().ToString("N");
 
@@ -225,6 +231,10 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
     /// <inheritdoc/>
     public async Task<bool> DeleteJobAsync(string jobId, CancellationToken ct = default)
     {
+        if (ScheduleIdPolicy.IsReserved(jobId))
+            throw new InvalidOperationException(
+                $"'{jobId}' 是平台保留任务 id，不能通过用户任务 API 删除。");
+
         var removed = _jobsFile.Jobs.RemoveAll(j => j.Id == jobId) > 0;
         if (!removed)
             return false;
@@ -237,34 +247,11 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
     /// <inheritdoc/>
     public async Task<TriggerResult> RunJobOnceAsync(string jobId, CancellationToken ct = default)
     {
-        // Heartbeat 是特殊任务，不在 _jobsFile.Jobs 中
-        if (jobId == SchedulerConstants.HeartbeatJobId)
-        {
-            var runId = Guid.NewGuid().ToString("N");
-            if (!_runningJobs.TryAdd(jobId, new RunInfo(runId, DateTime.Now)))
-                return new TriggerResult.Conflict("任务正在执行中");
-
-            try
-            {
-                // 确保 Heartbeat 已注册
-                var engineStatus = await _engine.GetJobStatusAsync(jobId, ct);
-                if (engineStatus.State == JobState.Disabled)
-                {
-                    await RegisterHeartbeatAsync(ct);
-                }
-
-                var additionalData = new JobDataMap { [JobDataKeys.Source] = ScheduleSources.Manual };
-                await _engine.TriggerJobAsync(jobId, runId, additionalData, ct);
-
-                _logger.LogInformation("Heartbeat triggered with RunId={RunId}", runId);
-                return new TriggerResult.Accepted(runId);
-            }
-            catch
-            {
-                _runningJobs.TryRemove(jobId, out _);
-                throw;
-            }
-        }
+        // 内部任务（心跳）不提供按 id 触发；立即执行走 IHeartbeatService.RunNowAsync。
+        // 这里必须返回 NotFound：cron_run 在 GetJobAsync 为空时也会调本方法，
+        // 若在这里放行，等于给了一条绕过心跳服务、且不带执行画像的触发路径。
+        if (ScheduleIdPolicy.IsReserved(jobId))
+            return new TriggerResult.NotFound();
 
         // 普通任务
         var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
@@ -304,6 +291,10 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
     /// <inheritdoc/>
     public async Task SetJobIntentAsync(string jobId, ScheduleIntent intent, CancellationToken ct = default)
     {
+        if (ScheduleIdPolicy.IsReserved(jobId))
+            throw new InvalidOperationException(
+                $"'{jobId}' 是平台保留任务 id，不能通过用户任务 API 改意图。");
+
         var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
         if (job == null)
         {
@@ -444,11 +435,12 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
             DispatchSessionId = result.DispatchSessionId
         };
 
-        if (!jobId.StartsWith('_'))
-            await _repository.AppendHistoryAsync(jobId, record, ct);
+        // 心跳历史同样落盘：_heartbeat.json 是合法文件名。内部任务缺执行记录时，
+        // 用户与页面都无从判断「上次跑成没跑成」。
+        await _repository.AppendHistoryAsync(jobId, record, ct);
 
-        // 更新任务最后运行时间
-        var job = _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId);
+        // 更新任务最后运行时间：槽位任务也要回写，否则 interval 锚点永远为空。
+        var job = FindJob(jobId);
         if (job != null)
         {
             job.LastRunAt = record.StartedAt;
@@ -477,6 +469,16 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
     }
 
     // ===== Private Methods =====
+
+    /// <summary>
+    /// 任务定义查找：用户任务集合优先，其次心跳槽位。
+    /// <para>仅供状态查询与执行结果回写使用；列表类出口只遍历 <c>Jobs</c>，不会看到心跳。</para>
+    /// </summary>
+    private ScheduledJobSpec? FindJob(string jobId)
+        => _jobsFile.Jobs.FirstOrDefault(j => j.Id == jobId)
+           ?? (_jobsFile.Heartbeat is { } hb && string.Equals(hb.Id, jobId, StringComparison.Ordinal)
+               ? hb
+               : null);
 
     private JobState ComputeState(ScheduledJobSpec job)
     {
