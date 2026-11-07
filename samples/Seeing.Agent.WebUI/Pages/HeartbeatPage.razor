@@ -1,9 +1,12 @@
 ﻿@using AntDesign
+@using Seeing.Agent.Abstractions.Agents
 @using Seeing.Agent.Scheduler
 @using Seeing.Agent.Scheduler.Abstractions
 @using Seeing.Agent.Scheduler.Models
 @using Seeing.Agent.WebUI.Components.CronJobs
+@using Seeing.Agent.WebUI.Components.Models
 @inject IHeartbeatService HeartbeatService
+@inject IAgentRegistry AgentRegistry
 @inject IMessageService MessageService
 @implements IDisposable
 
@@ -162,12 +165,34 @@
                 <Row Gutter="16">
                     <Col Span="12">
                         <FormItem Label="Agent">
-                            <Input @bind-Value="@_form.Agent" Placeholder="留空使用默认 Agent" />
+                            <Select TItemValue="string"
+                                    TItem="string"
+                                    Value="@_selectedAgent"
+                                    ValueChanged="OnAgentChanged"
+                                    DataSource="@_agentNames"
+                                    Placeholder="跟随默认 Agent"
+                                    EnableSearch="true"
+                                    AllowClear="true" />
+                            <small style="color:#999;">心跳使用的 Agent（留空使用默认）。</small>
                         </FormItem>
                     </Col>
                     <Col Span="12">
                         <FormItem Label="模型">
-                            <Input @bind-Value="@_form.Model" Placeholder="留空使用 Agent 默认模型" />
+                            @if (_isAcpPassthrough)
+                            {
+                                <Input @bind-Value="@_form.Model"
+                                       Placeholder="Provider/Model（如 openai/gpt-4）" />
+                                <small style="color:#999;">ACP Agent 的模型标识。</small>
+                            }
+                            else
+                            {
+                                <ModelSelectDropdown Value="@_form.Model"
+                                                     ValueChanged="OnModelChanged"
+                                                     FilterType="ModelType.Text"
+                                                     AllowClear="true"
+                                                     Placeholder="跟随 Agent 默认模型" />
+                                <small style="color:#999;">留空使用该 Agent 的默认模型。</small>
+                            }
                         </FormItem>
                     </Col>
                 </Row>
@@ -252,9 +277,33 @@
     private bool _hasMore;
     private string? _error;
 
+    // Agent / 模型选择器状态：与定时任务编辑器同一套来源（AgentRegistry + ModelSelectDropdown）
+    private List<string> _agentNames = [];
+    private string _selectedAgent = string.Empty;
+    private bool _isAcpPassthrough;
+
     protected override async Task OnInitializedAsync()
     {
+        await LoadAgentsAsync();
         await LoadAsync(true);
+    }
+
+    private async Task LoadAgentsAsync()
+    {
+        try
+        {
+            var agents = await AgentRegistry.GetPrimaryAgentsAsync();
+            _agentNames = agents
+                .Where(a => !string.IsNullOrEmpty(a.Name))
+                .Select(a => a.Name)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Warning($"读取 Agent 列表失败: {ex.Message}");
+            _agentNames = [];
+        }
     }
 
     /// <summary>
@@ -307,6 +356,10 @@
             TimeoutSeconds = spec?.Runtime.TimeoutSeconds ?? SchedulerConstants.DefaultTimeoutSeconds,
             Prompt = spec?.Prompt ?? string.Empty
         };
+
+        // 下拉选中项与运行时判定必须跟快照同步，否则切换页面后会显示上一个 Agent。
+        _selectedAgent = spec?.Agent ?? string.Empty;
+        RefreshAgentRuntime();
 
         _windows.Clear();
         foreach (var w in spec?.Schedule.Windows ?? [])
@@ -443,6 +496,43 @@
     }
 
     private void AddWindow() => _windows.Add(new WindowRow());
+
+    /// <summary>Agent 下拉选中：同步到表单，并按 Agent 运行时切换模型控件形态。</summary>
+    private void OnAgentChanged(string? value)
+    {
+        _selectedAgent = value ?? string.Empty;
+        _form.Agent = string.IsNullOrWhiteSpace(_selectedAgent) ? null : _selectedAgent;
+
+        var wasAcp = _isAcpPassthrough;
+        RefreshAgentRuntime();
+
+        // 运行时形态变化后旧的模型标识不再成立，清空避免存下一个对不上的值。
+        if (wasAcp != _isAcpPassthrough)
+            _form.Model = null;
+    }
+
+    private void OnModelChanged(string? value) => _form.Model = value;
+
+    /// <summary>按当前 Agent 的 <see cref="AgentRuntime"/> 判定是否 ACP 透传。</summary>
+    private void RefreshAgentRuntime()
+    {
+        if (string.IsNullOrWhiteSpace(_selectedAgent))
+        {
+            _isAcpPassthrough = false;
+            return;
+        }
+
+        try
+        {
+            var info = AgentRegistry.GetAgentAsync(_selectedAgent).GetAwaiter().GetResult();
+            _isAcpPassthrough = info?.Runtime == AgentRuntime.AcpPassthrough;
+        }
+        catch
+        {
+            // 查不到定义就按原生处理：模型下拉仍可用，最坏是选不到 ACP 标识。
+            _isAcpPassthrough = false;
+        }
+    }
 
     private void RemoveWindow(int index)
     {
