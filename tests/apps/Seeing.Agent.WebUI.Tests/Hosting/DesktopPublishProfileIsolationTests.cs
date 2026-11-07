@@ -204,6 +204,32 @@ public class DesktopPublishProfileIsolationTests
     }
 
     /// <summary>
+    /// ChannelHost 是 RID 无关产物：嵌套发布必须剥离 RuntimeIdentifier，
+    /// 否则会去找不存在的 apphost（NETSDK1047 / 找不到 apphost）。
+    /// </summary>
+    [Fact]
+    public void PublishContract_ShouldStripRuntimeIdentifierForChannelHost()
+    {
+        var targets = ReadRepoFile("build/Seeing.Publish.targets");
+
+        // 两处 ChannelHost 嵌套发布（Build 期 / Publish 期）都必须剥离 RID
+        var msbuildCalls = Regex.Matches(
+            targets,
+            @"<MSBuild[^>]*Seeing\.Gateway\.ChannelHost\.csproj[^>]*/>",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+        msbuildCalls.Should().NotBeEmpty("契约必须负责把 ChannelHost 发布到宿主目录");
+
+        foreach (Match call in msbuildCalls)
+        {
+            Regex.IsMatch(call.Value, @"RemoveProperties=""[^""]*RuntimeIdentifier", RegexOptions.CultureInvariant)
+                .Should().BeTrue(
+                    "ChannelHost 是 RID 无关产物（UseAppHost=false），" +
+                    "透传 RID 会让它去找不存在的 apphost / deps.json");
+        }
+    }
+
+    /// <summary>
     /// 桌面发布的 publish 目录同样必须带 ChannelHost 的 .dll。
     /// </summary>
     [Fact]
