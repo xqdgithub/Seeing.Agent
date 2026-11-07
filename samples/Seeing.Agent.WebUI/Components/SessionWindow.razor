@@ -225,14 +225,6 @@
                 }
             </div>
 
-            @* Todo 侧边面板（当有任务时显示） *@
-            @if (SessionState.CurrentTodoList != null && SessionState.CurrentTodoList.HasTasks)
-            {
-                <div Class="session-todo-panel">
-                    <TodoPanel TodoList="@SessionState.CurrentTodoList" />
-                </div>
-            }
-
             @* 文件面板插槽（模块启用时由 SlotHost 渲染） *@
             <SlotHost SlotName="session_file_panel" />
         </div>
@@ -1394,7 +1386,6 @@
         Context.SelectedThinkingEffort = SessionState.SelectedThinkingEffort;
         Context.SelectedAcpMode = SessionState.SelectedAcpMode;
         Context.ExecutionStatus = SessionState.ExecutionStatus;
-        Context.CurrentTodoList = SessionState.CurrentTodoList;
         Context.ModelInvalid = _modelInvalid;
         Context.SessionScenario = s?.Scenario;
         Context.EffectiveScenario = Services.SessionShellVisibility.ResolveEffectiveScenario(
@@ -2043,7 +2034,6 @@
 
             SessionState.CurrentSession.ClearMessages();
             SessionState.CurrentSession.Title = "新会话";
-            SessionState.CurrentTodoList = null;
             _currentStreamingMessageId = string.Empty;
             _handler?.ClearCache();
 

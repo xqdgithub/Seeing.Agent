@@ -40,25 +40,6 @@ namespace Seeing.Agent.WebUI.State
         /// </summary>
         public SessionData? CurrentSession { get; set; }
 
-        /// <summary>
-        /// 当前 Todo 列表（由 todowrite 工具更新）
-        /// </summary>
-        public TodoListViewModel? CurrentTodoList { get; set; }
-
-        /// <summary>
-        /// Todo 列表更新事件
-        /// </summary>
-        public event Action? OnTodoListChanged;
-
-        /// <summary>
-        /// 更新 Todo 列表
-        /// </summary>
-        public void UpdateTodoList(TodoListViewModel todoList)
-        {
-            CurrentTodoList = todoList;
-            OnTodoListChanged?.Invoke();
-        }
-
         #region Token Budget 状态
 
         /// <summary>

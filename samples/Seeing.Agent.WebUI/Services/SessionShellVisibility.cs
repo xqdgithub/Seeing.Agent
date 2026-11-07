@@ -108,21 +108,9 @@ public static class SessionShellVisibility
         return false;
     }
 
+    /// <summary>判定 <c>Requires</c> 是否全部启用 —— 委托唯一实现（<c>catalog is null</c> 时为 fail-closed）。</summary>
     private static bool AreRequirementsEnabled(IReadOnlyList<string> requires, IModuleCatalog? catalog)
-    {
-        if (requires.Count == 0 || catalog is null)
-            return true;
-
-        foreach (var id in requires)
-        {
-            if (string.IsNullOrWhiteSpace(id))
-                continue;
-            if (!catalog.IsEnabled(id))
-                return false;
-        }
-
-        return true;
-    }
+        => UiContributionVisibility.AreRequirementsEnabled(requires, catalog);
 
     private static IReadOnlySet<string>? ResolveScenarioModuleSet(
         string? effectiveScenario,

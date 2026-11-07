@@ -68,6 +68,18 @@ public static class UiContributionVisibility
             .ToList();
     }
 
+    /// <summary>
+    /// 判定贡献的 <c>Requires</c> 是否全部启用。
+    /// <para>
+    /// <b>本方法是全 WebUI 的唯一实现</b>（<c>SessionShellVisibility</c> 与 <c>ModuleRouteResolver</c>
+    /// 此前各有一份私有副本，且 <c>catalog is null</c> 的兜底方向相反——那份差异会让同一贡献
+    /// 在侧栏被隐藏、却能经 URL 直达）。
+    /// </para>
+    /// <para>
+    /// <b>null catalog 语义：fail-closed（返回 false）</b>。catalog 缺失说明结算/DI 接线异常，
+    /// 此时放行会暴露本应隐藏的入口；隐藏是安全方向，且宿主在启动期解析 catalog 属必需依赖。
+    /// </para>
+    /// </summary>
     internal static bool AreRequirementsEnabled(IReadOnlyList<string> requires, IModuleCatalog? catalog)
     {
         if (requires.Count == 0)

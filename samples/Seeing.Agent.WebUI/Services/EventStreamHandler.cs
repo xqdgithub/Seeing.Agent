@@ -115,11 +115,6 @@ namespace Seeing.Agent.WebUI.Services
                 or global::Seeing.Agent.Abstractions.Execution.ExecutionStatus.Pending;
 
         /// <summary>
-        /// 当前 Todo 列表（由 todowrite 工具 / TodoUpdateEvent 更新）
-        /// </summary>
-        public TodoListViewModel? CurrentTodoList { get; private set; }
-
-        /// <summary>
         /// 当前 Token Budget 状态（由 BudgetStatusEvent 更新）
         /// </summary>
         public BudgetStatusResponse? CurrentBudgetStatus { get; private set; }
@@ -274,6 +269,8 @@ namespace Seeing.Agent.WebUI.Services
                     HandleSkillContent((SkillContentEvent)evt);
                     break;
 
+                // ACP plan 更新：有意不投影（见 HandleTodoUpdate 注释）。
+                // 待办仅在 todowrite 工具调用的内联 TodoCard 中呈现；本事件在 WebUI 无需可见反馈。
                 case MessageEventType.TodoUpdate:
                     HandleTodoUpdate((TodoUpdateEvent)evt);
                     break;
@@ -459,31 +456,6 @@ namespace Seeing.Agent.WebUI.Services
                     return;
                 }
             }
-
-            // 处理 todowrite 工具：提取 Todo 列表并更新 UI 本地态
-            if (evt.ToolName?.ToLowerInvariant() == "todowrite" &&
-                evt.Status == ToolCallStatus.Success &&
-                !string.IsNullOrEmpty(evt.Output))
-            {
-                UpdateTodoList(evt.SessionId, evt.Output);
-            }
-        }
-
-        /// <summary>
-        /// 从 todowrite 工具输出更新 Todo 列表
-        /// </summary>
-        private void UpdateTodoList(string sessionId, string output)
-        {
-            try
-            {
-                var todoList = TodoListViewModel.FromJson(sessionId, output);
-                todoList.LastUpdated = DateTime.Now;
-                CurrentTodoList = todoList;
-            }
-            catch
-            {
-                // 解析失败，忽略
-            }
         }
 
         /// <summary>
@@ -613,52 +585,22 @@ namespace Seeing.Agent.WebUI.Services
         }
 
         /// <summary>
-        /// 处理 Todo 更新事件 - 从 ACP AgentPlanUpdate 映射
+        /// 处理 Todo 更新事件 - 从 ACP AgentPlanUpdate 映射。
+        /// <para>
+        /// 不投影到任何 UI 状态：WebUI 侧边待办面板已移除，待办改由 <c>todowrite</c> 工具调用的
+        /// 内联卡片（<c>TodoCard</c>）呈现；时间线刷新由 <c>SessionWindowTimelineSync</c> 处理。
+        /// </para>
+        /// <para>
+        /// <b>已知边界：</b>ACP 透传的 plan 更新不产生 <c>todowrite</c> 工具调用，因此该路径下
+        /// 待办没有卡片可依附（仅存在于 Agent 侧）。若需要 ACP 也可见，正确做法是在时间线
+        /// 新增一种独立条目，而不是恢复侧边栏。
+        /// </para>
         /// </summary>
-        private void HandleTodoUpdate(TodoUpdateEvent evt)
+        private static void HandleTodoUpdate(TodoUpdateEvent evt)
         {
-            var todoList = new TodoListViewModel
-            {
-                SessionId = evt.SessionId,
-                LastUpdated = evt.Timestamp
-            };
-
-            foreach (var item in evt.Todos)
-            {
-                todoList.Items.Add(new TodoItemViewModel
-                {
-                    Id = Guid.NewGuid().ToString()[..8],
-                    Content = item.Content,
-                    Status = MapTodoStatus(item.Status),
-                    Priority = MapTodoPriority(item.Priority)
-                });
-            }
-
-            CurrentTodoList = todoList;
+            // 有意留空：保留分支以说明该事件的去留决策，避免被误认为遗漏。
+            _ = evt;
         }
-
-        /// <summary>
-        /// 映射 Todo 状态
-        /// </summary>
-        private static TodoStatusViewModel MapTodoStatus(TodoStatus status) => status switch
-        {
-            TodoStatus.Pending => TodoStatusViewModel.Pending,
-            TodoStatus.InProgress => TodoStatusViewModel.InProgress,
-            TodoStatus.Completed => TodoStatusViewModel.Completed,
-            TodoStatus.Cancelled => TodoStatusViewModel.Cancelled,
-            _ => TodoStatusViewModel.Pending
-        };
-
-        /// <summary>
-        /// 映射 Todo 优先级
-        /// </summary>
-        private static TodoPriorityViewModel MapTodoPriority(TodoPriority priority) => priority switch
-        {
-            TodoPriority.Low => TodoPriorityViewModel.Low,
-            TodoPriority.Medium => TodoPriorityViewModel.Medium,
-            TodoPriority.High => TodoPriorityViewModel.High,
-            _ => TodoPriorityViewModel.Medium
-        };
 
         /// <summary>
         /// 格式化错误详情为用户友好的消息
@@ -743,6 +685,9 @@ namespace Seeing.Agent.WebUI.Services
             _currentLoopId = null;
             _currentLoop = null;
             _currentStep = 0;
+            // 预算投影属会话级瞬时视图：清空流状态时必须一并清掉，
+            // 否则「清空会话」后下一次事件会把旧预算状态重新投影回 UI。
+            CurrentBudgetStatus = null;
         }
 
         /// <summary>
@@ -798,7 +743,7 @@ namespace Seeing.Agent.WebUI.Services
         /// </summary>
         public void ProcessEvent(IMessageEvent evt)
         {
-            Task.Run(() => ProcessEventAsync(evt)).GetAwaiter().GetResult();
+            _ = ProcessEventAsync(evt);
         }
     }
 }

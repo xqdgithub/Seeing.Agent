@@ -110,7 +110,6 @@ public sealed class SessionWindowContext
     public string SelectedThinkingEffort { get; internal set; } = string.Empty;
     public string SelectedAcpMode { get; internal set; } = string.Empty;
     public ExecutionStatus? ExecutionStatus { get; internal set; }
-    public TodoListViewModel? CurrentTodoList { get; internal set; }
     /// <summary>当前 Agent 是否 ACP 透传（窗口计算刷新，外层头部据此切换 ACP Mode/Model 输入框）</summary>
     public bool IsAcpPassthrough { get; internal set; }
     /// <summary>Native 模型是否校验失败（发送时校验，外层头部据此标红模型下拉框）</summary>
