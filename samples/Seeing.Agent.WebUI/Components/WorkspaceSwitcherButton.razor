@@ -20,10 +20,6 @@
                         @Name(item)
                     </MenuItem>
                 }
-                <MenuItem Key="__pick" OnClick="OpenPicker">
-                    <Icon Type="@IconType.Outline.FolderAdd" />
-                    选择文件夹…
-                </MenuItem>
                 <MenuItem Key="__manage" OnClick="GoToWorkspacePage">
                     <Icon Type="@IconType.Outline.Setting" />
                     管理工作区…
@@ -58,13 +54,7 @@
     </Dropdown>
 </div>
 
-<DirectoryPicker @ref="_picker"
-                 Title="切换工作区"
-                 InitialPath="@(_recent.FirstOrDefault())"
-                 OnSelected="SwitchAsync" />
-
 @code {
-    private DirectoryPicker? _picker;
     private IReadOnlyList<string> _recent = Array.Empty<string>();
     private bool _busy;
 
@@ -84,12 +74,6 @@
         string.Equals(Workspace.ResolvedRoot, path, StringComparison.OrdinalIgnoreCase);
 
     private static string Name(string path) => new DirectoryInfo(path).Name;
-
-    private void OpenPicker()
-    {
-        Refresh();
-        _picker?.Show();
-    }
 
     private async Task SwitchAsync(string path)
     {

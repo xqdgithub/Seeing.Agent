@@ -21,7 +21,7 @@
         <img src="seeing-mark-64.png" alt="Seeing" class="ws-page-mark" />
         <div class="ws-page-heading">
             <h1>工作区</h1>
-            <p>选一个目录开始，或管理已有的工作区</p>
+            <p>管理已注册的工作区目录，新增或移除列表项；工作区内容本身不受影响</p>
         </div>
         <div class="ws-page-actions">
             @if (Workspace.IsResolved)
@@ -30,9 +30,6 @@
                     返回控制台
                 </Button>
             }
-            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.FolderAdd" OnClick="OpenPicker">
-                选择文件夹
-            </Button>
         </div>
     </header>
 
@@ -44,83 +41,87 @@
 
     <section class="ws-page-section">
         <div class="ws-page-section-title">
-            最近使用
-            <span class="ws-page-section-hint">共 @_cards.Count 个</span>
+            工作区
+            @if (_cards.Count > 0)
+            {
+                <span class="ws-page-section-hint">@_cards.Count 个</span>
+            }
         </div>
 
-        @if (_cards.Count == 0)
-        {
-            <div class="ws-page-empty">
-                <Icon Type="@IconType.Outline.FolderOpen" />
-                <p>还没有工作区</p>
-                <span>点右上角「选择文件夹」，选一个目录开始</span>
-            </div>
-        }
-        else
-        {
-            <div class="ws-page-grid">
-                @foreach (var card in _cards)
-                {
-                    <div class="ws-page-card @(card.IsCurrent ? "is-current" : null)" @key="card.Path">
-                        <div class="ws-page-card-main" @onclick="@(() => EnterAsync(card.Path))">
-                            <div class="ws-page-card-name">
-                                <Icon Type="@IconType.Outline.Folder" />
-                                <span>@card.Name</span>
-                                @if (card.IsCurrent)
-                                {
-                                    <span class="ws-tag ws-tag-current">当前</span>
-                                }
-                                else if (card.IsDefault)
-                                {
-                                    <span class="ws-tag">默认</span>
-                                }
-                            </div>
-                            <div class="ws-page-card-path" title="@card.Path">@card.Path</div>
-                            <div class="ws-page-card-meta">
-                                @if (card.Exists)
-                                {
-                                    <span>已存在</span>
-                                }
-                                else
-                                {
-                                    <span class="ws-missing">目录不存在</span>
-                                }
-                            </div>
+        @* 新增工作区入口就是网格里的一个卡片，与已有卡片同尺寸，不再单独放按钮 *@
+        <div class="ws-page-grid">
+            @foreach (var card in _cards)
+            {
+                <div class="ws-page-card @(card.IsCurrent ? "is-current" : null)" @key="card.Path">
+                    <div class="ws-page-card-main" @onclick="@(() => EnterAsync(card.Path))">
+                        <div class="ws-page-card-name">
+                            <Icon Type="@IconType.Outline.Folder" />
+                            <span>@card.Name</span>
+                            @if (card.IsCurrent)
+                            {
+                                <span class="ws-tag ws-tag-current">使用中</span>
+                            }
+                            else if (card.IsDefault)
+                            {
+                                <span class="ws-tag">默认</span>
+                            }
                         </div>
-                        <div class="ws-page-card-foot">
-                            <Button Size="@ButtonSize.Small"
-                                    Type="@ButtonType.Text"
-                                    Disabled="@(card.IsCurrent || _busy)"
-                                    OnClick="@(() => EnterAsync(card.Path))">
-                                @(card.IsCurrent ? "已在用" : "进入")
-                            </Button>
-                            <Button Size="@ButtonSize.Small"
-                                    Type="@ButtonType.Text"
-                                    OnClick="OpenPicker">
-                                换目录
-                            </Button>
-                            <Popconfirm Title="@($"从最近列表移除「{card.Name}」？")"
-                                        OkText="@("移除")"
-                                        CancelText="@("取消")"
-                                        OnConfirm="@(() => RemoveAsync(card.Path))">
-                                <Button Size="@ButtonSize.Small"
-                                        Type="@ButtonType.Text"
-                                        Danger="true"
-                                        Disabled="@card.IsCurrent"
-                                        Icon="@IconType.Outline.Delete" />
-                            </Popconfirm>
+                        <div class="ws-page-card-path" title="@card.Path">@card.Path</div>
+                        <div class="ws-page-card-meta">
+                            @if (!card.Exists)
+                            {
+                                <span class="ws-missing">目录不存在</span>
+                            }
+                            else if (!card.IsCurrent)
+                            {
+                                <span>可切换</span>
+                            }
                         </div>
                     </div>
-                }
-            </div>
-        }
+                    <div class="ws-page-card-foot">
+                        @if (card.IsCurrent)
+                        {
+                            <span class="ws-page-card-state">使用中</span>
+                        }
+                        else
+                        {
+                            <Button Size="@ButtonSize.Small"
+                                    Type="@ButtonType.Text"
+                                    Disabled="@_busy"
+                                    OnClick="@(() => EnterAsync(card.Path))">
+                                切换至此
+                            </Button>
+                        }
+                        <Popconfirm Title="@($"从列表中移除「{card.Name}」？")"
+                                    OkText="@("移除")"
+                                    CancelText="@("取消")"
+                                    OnConfirm="@(() => RemoveAsync(card.Path))">
+                            <Button Size="@ButtonSize.Small"
+                                    Type="@ButtonType.Text"
+                                    Danger="true"
+                                    Disabled="@card.IsCurrent"
+                                    Icon="@IconType.Outline.Delete" />
+                        </Popconfirm>
+                    </div>
+                </div>
+            }
+
+            <button type="button"
+                    class="ws-page-card ws-page-add"
+                    disabled="@_busy"
+                    @onclick="OpenPicker">
+                <span class="ws-page-add-plus">+</span>
+                <span class="ws-page-add-label">新增工作区</span>
+                <span class="ws-page-add-hint">选择一个目录</span>
+            </button>
+        </div>
     </section>
 
     <section class="ws-page-section ws-page-section--muted">
-        <div class="ws-page-section-title">关于「移除」</div>
+        <div class="ws-page-section-title">说明</div>
         <p class="ws-page-note">
-            移除只清掉最近列表里的这条记录，不动磁盘上的任何文件；当前正在使用的工作区不能移除。
-            删除目录请用文件管理器。
+            列表仅记录工作区路径，移除条目不删除磁盘上的任何文件；当前使用中的工作区不可移除。
+            如需删除目录，请使用文件管理器。
         </p>
     </section>
 </div>

@@ -979,36 +979,68 @@
     line-height: 1.7;
 }
 
-.ws-page-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    padding: 56px 0;
-    color: var(--color-text-tertiary, #999);
-    border: 1px dashed var(--color-border, #e8e8e8);
-    border-radius: 10px;
-}
-
-.ws-page-empty .anticon {
-    font-size: 30px;
-    opacity: .5;
-}
-
-.ws-page-empty p {
-    margin: 4px 0 0;
-    font-size: 14px;
-    color: var(--color-text, #333);
-}
-
-.ws-page-empty span {
-    font-size: 12px;
-}
-
 .ws-page-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 12px;
+}
+
+/* ========== 「添加工作区」卡片：与普通卡片同尺寸 ========== */
+
+.ws-page-add {
+    /* 重置 button 默认外观，让它看起来就是一张卡片 */
+    appearance: none;
+    -webkit-appearance: none;
+    font: inherit;
+    color: inherit;
+    text-align: center;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 128px;
+    padding: 18px 16px;
+    border: 1px dashed var(--color-border, #d9d9d9);
+    background: var(--color-bg-container, #fff);
+    cursor: pointer;
+}
+
+.ws-page-add:hover:not(:disabled) {
+    border-color: var(--color-primary, #1677ff);
+    background: rgba(22, 119, 255, .03);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .05);
+}
+
+.ws-page-add:focus-visible {
+    outline: 2px solid var(--color-primary, #1677ff);
+    outline-offset: 2px;
+}
+
+.ws-page-add:disabled {
+    cursor: progress;
+    opacity: .6;
+}
+
+.ws-page-add-plus {
+    font-size: 40px;
+    line-height: 1;
+    font-weight: 200;
+    color: var(--color-primary, #1677ff);
+    transition: transform .15s ease;
+}
+
+.ws-page-add:hover:not(:disabled) .ws-page-add-plus {
+    transform: scale(1.12);
+}
+
+.ws-page-add-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text, #333);
+}
+
+.ws-page-add-hint {
+    font-size: 12px;
+    color: var(--color-text-tertiary, #999);
 }
 
 .ws-page-card {
@@ -1092,6 +1124,12 @@
     gap: 2px;
     padding: 6px 10px;
     border-top: 1px solid var(--color-border-secondary, #f5f5f5);
+}
+
+.ws-page-card-state {
+    font-size: 12px;
+    color: var(--color-primary, #1677ff);
+    padding: 0 8px;
 }
 
 /* ========== 目录选择对话框 ========== */

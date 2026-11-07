@@ -58,6 +58,36 @@ public class StylesheetIntegrityTests
         File.ReadAllText(path).Should().NotContain("class=\"hc\"");
     }
 
+    [Fact]
+    public void WorkspacePage_Should_Use_AddCard_Instead_Of_Header_Picker_Button()
+    {
+        var page = Path.Combine(
+            FindRepositoryRoot(), "samples", "Seeing.Agent.WebUI", "Pages", "WorkspacesPage.razor");
+        var css = Path.Combine(
+            FindRepositoryRoot(), "samples", "Seeing.Agent.WebUI", "wwwroot", "css", "workspace-page.css");
+
+        var markup = File.ReadAllText(page);
+        markup.Should().Contain("ws-page-add", "新增工作区入口应是网格里的 + 卡片");
+        markup.Should().NotContain("选择文件夹</Button>", "页头不再放「选择文件夹」按钮");
+
+        var styles = File.ReadAllText(css);
+        styles.Should().Contain(".ws-page-add-plus", "+ 卡片需要独立的加号样式");
+    }
+
+    [Fact]
+    public void WorkspacePage_Should_Only_Add_Or_Remove()
+    {
+        var page = Path.Combine(
+            FindRepositoryRoot(), "samples", "Seeing.Agent.WebUI", "Pages", "WorkspacesPage.razor");
+        var markup = File.ReadAllText(page);
+
+        // 工作区只支持「新增 / 移除」：不提供在已有卡片上换目录的入口
+        markup.Should().NotContain("换目录");
+        // 状态文案用「使用中」，不用口语化的「已在用」
+        markup.Should().NotContain("已在用");
+        markup.Should().Contain("使用中");
+    }
+
     private static string FindRepositoryRoot()
     {
         // 不依赖输出目录：BaseOutputPath 可被重定向（CI、并行验证），那时向上找 slnx 会失败。
