@@ -38,6 +38,15 @@ internal static class RipgrepSearch
     private static volatile bool s_probed;
     private static volatile bool s_rgAvailable;
 
+    /// <summary>失败结果缓存的最短保留时长；过期后重探，使安装 rg 无需重启进程。</summary>
+    internal static readonly TimeSpan FailureCacheDuration = TimeSpan.FromSeconds(30);
+
+    /// <summary>探测缓存的时钟（测试注入虚拟时间）。</summary>
+    internal static TimeProvider TimeProviderForTests { get; set; } = TimeProvider.System;
+
+    /// <summary>失败缓存的到期时间（UTC）；<c>null</c> 表示无失败缓存。</summary>
+    private static DateTimeOffset? s_failureCacheExpiresAt;
+
     /// <summary>回退托管的原因（供工具拼装诊断），null 表示未回退。</summary>
     internal sealed record Fallback(string Reason);
 
@@ -55,21 +64,26 @@ internal static class RipgrepSearch
     }
 
     /// <summary>
-    /// 探测当前执行世界是否能启动 <c>rg</c>（结果进程内缓存）。
+    /// 探测当前执行世界是否能启动 <c>rg</c>。
+    /// <para>
+    /// 缓存策略：<b>成功长期缓存</b>（rg 中途消失属异常，重探只会增加子进程开销）；
+    /// <b>失败只缓存 <see cref="FailureCacheDuration"/></b>——用户常在宿主启动后才安装 rg，
+    /// 永久缓存失败会让工具一直报「ripgrep 不可用」直到重启进程。
+    /// </para>
     /// </summary>
     public static async Task<bool> IsRipgrepAvailableAsync(
         ISubprocessFactory subprocess,
         CancellationToken ct = default,
         ILogger? logger = null)
     {
-        if (s_probed)
-            return s_rgAvailable;
+        if (IsProbeCacheFresh(out var cachedAvailability))
+            return cachedAvailability;
 
         await s_probeGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (s_probed)
-                return s_rgAvailable;
+            if (IsProbeCacheFresh(out cachedAvailability))
+                return cachedAvailability;
 
             try
             {
@@ -90,13 +104,18 @@ internal static class RipgrepSearch
             }
             catch (Exception ex)
             {
-                // 探测失败只说明这台执行世界没有 rg，属正常降级；记一次便于排查
-                logger?.LogWarning(ex, "ripgrep 不可用，glob/grep 将使用托管回退");
+                // 探测失败只说明这台执行世界当前没有 rg，属正常降级；记一次便于排查
+                logger?.LogWarning(ex, "ripgrep 不可用，glob/grep 将使用托管回退（{Seconds}s 后重试探测）",
+                    FailureCacheDuration.TotalSeconds);
                 s_rgAvailable = false;
             }
             finally
             {
                 s_probed = true;
+                // 成功不设过期；失败设置窗口，过期后重新探测
+                s_failureCacheExpiresAt = s_rgAvailable
+                    ? null
+                    : TimeProviderForTests.GetUtcNow() + FailureCacheDuration;
             }
 
             return s_rgAvailable;
@@ -105,6 +124,25 @@ internal static class RipgrepSearch
         {
             s_probeGate.Release();
         }
+    }
+
+    /// <summary>判断探测缓存是否仍有效；有效时通过 <paramref name="available"/> 返回结果。</summary>
+    private static bool IsProbeCacheFresh(out bool available)
+    {
+        available = s_rgAvailable;
+
+        if (!s_probed)
+            return false;
+
+        if (s_rgAvailable)
+            return true;
+
+        // 失败缓存：过期即视为无缓存，需重探
+        var expiresAt = s_failureCacheExpiresAt;
+        if (expiresAt is null)
+            return true;
+
+        return TimeProviderForTests.GetUtcNow() < expiresAt.Value;
     }
 
     /// <summary>内容搜索：rg 可用则走子进程，否则托管 <see cref="FileSystemHelper.GrepSearch"/>。</summary>
@@ -154,6 +192,21 @@ internal static class RipgrepSearch
     {
         s_probed = false;
         s_rgAvailable = false;
+        s_failureCacheExpiresAt = null;
+        TimeProviderForTests = TimeProvider.System;
+    }
+
+    /// <summary>探测缓存的诊断原因（区分"确实没有"与"窗口内未重探"）。</summary>
+    private static string DescribeUnavailable()
+    {
+        if (s_probed && !s_rgAvailable && s_failureCacheExpiresAt is { } expiresAt)
+        {
+            var remaining = expiresAt - TimeProviderForTests.GetUtcNow();
+            if (remaining > TimeSpan.Zero)
+                return $"ripgrep 未探测到（{Math.Ceiling(remaining.TotalSeconds)}s 后重试）";
+        }
+
+        return "ripgrep 未安装";
     }
 
     /// <summary>托管回退的包装：Outcome 非空表示 rg 已给出可信结果或超时，调用方不得回退。</summary>
@@ -170,7 +223,7 @@ internal static class RipgrepSearch
         bool includeHidden)
     {
         if (!await IsRipgrepAvailableAsync(world.Subprocess, ct, logger).ConfigureAwait(false))
-            return new Attempt<GrepMatch>(null, new Fallback("ripgrep 未安装"));
+            return new Attempt<GrepMatch>(null, new Fallback(DescribeUnavailable()));
 
         try
         {
@@ -213,7 +266,7 @@ internal static class RipgrepSearch
         bool includeHidden)
     {
         if (!await IsRipgrepAvailableAsync(world.Subprocess, ct, logger).ConfigureAwait(false))
-            return new Attempt<string>(null, new Fallback("ripgrep 未安装"));
+            return new Attempt<string>(null, new Fallback(DescribeUnavailable()));
 
         try
         {

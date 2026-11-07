@@ -10,6 +10,7 @@ using Xunit;
 
 namespace Seeing.Agent.Tests.Tools;
 
+[Collection(RipgrepStaticStateCollection.Name)]
 public class GrepGlobSubprocessTests
 {
     public GrepGlobSubprocessTests()
