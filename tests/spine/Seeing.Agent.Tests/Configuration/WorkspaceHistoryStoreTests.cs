@@ -122,6 +122,53 @@ public class WorkspaceHistoryStoreTests
         merged.LastInteractive.Should().Be(a, "只有 asDefault 的写入改默认目录");
     }
 
+    [Fact]
+    public void Remove_ShouldDropEntry_AndClearDefaultWhenItPointsAtIt()
+    {
+        using var dir = new HistoryDir();
+        var store = dir.CreateStore();
+        var (a, b) = dir.CreateWorkspaces("a", "b");
+
+        store.RecordOpened(b, asDefault: true);
+        store.RecordOpened(a, asDefault: false);
+
+        store.Remove(b);
+
+        var snapshot = store.Read();
+        snapshot.Recent.Should().Equal(a);
+        snapshot.LastInteractive.Should().BeNull("被移除的目录正好是默认目录");
+    }
+
+    [Fact]
+    public void Remove_ShouldKeepDefault_WhenRemovingAnotherEntry()
+    {
+        using var dir = new HistoryDir();
+        var store = dir.CreateStore();
+        var (a, b) = dir.CreateWorkspaces("a", "b");
+
+        store.RecordOpened(a, asDefault: true);
+        store.RecordOpened(b, asDefault: false);
+
+        store.Remove(b);
+
+        var snapshot = store.Read();
+        snapshot.Recent.Should().Equal(a);
+        snapshot.LastInteractive.Should().Be(a);
+    }
+
+    [Fact]
+    public void Remove_ShouldNotTouchDisk()
+    {
+        using var dir = new HistoryDir();
+        var store = dir.CreateStore();
+        var (a, _) = dir.CreateWorkspaces("a", "b");
+
+        store.RecordOpened(a, asDefault: true);
+        store.Remove(a);
+
+        Directory.Exists(a).Should().BeTrue("移除只是清掉最近记录，不动磁盘");
+    }
+
     private sealed class HistoryDir : IDisposable
     {
         private readonly HashSet<string> _existing = new(StringComparer.OrdinalIgnoreCase);

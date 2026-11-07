@@ -103,6 +103,53 @@ public sealed class WorkspaceHistoryStore : IWorkspaceHistoryStore
         }
     }
 
+    /// <inheritdoc/>
+    public void Remove(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        var gate = AtomicFileWrite.GetLock(_filePath);
+        gate.Wait();
+        try
+        {
+            using var mutex = new Mutex(initiallyOwned: false, MutexName);
+            var ownsMutex = false;
+            try
+            {
+                try
+                {
+                    ownsMutex = mutex.WaitOne(MutexTimeout);
+                }
+                catch (AbandonedMutexException)
+                {
+                    ownsMutex = true;
+                }
+
+                var data = Load();
+                var remaining = data.Recent.Where(p => !IsSame(p, path)).ToList();
+                var lastInteractive = data.LastInteractive is not null && IsSame(data.LastInteractive, path)
+                    ? null
+                    : data.LastInteractive;
+
+                Save(new HistoryFile { Recent = remaining, LastInteractive = lastInteractive });
+            }
+            finally
+            {
+                if (ownsMutex)
+                    mutex.ReleaseMutex();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "移除工作区历史失败: {Path}", path);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     private HistoryFile Load()
     {
         try

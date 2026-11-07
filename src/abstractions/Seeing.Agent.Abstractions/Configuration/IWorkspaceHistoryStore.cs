@@ -13,4 +13,10 @@ public interface IWorkspaceHistoryStore
     /// 写入失败只记日志，不抛出。
     /// </summary>
     void RecordOpened(string path, bool asDefault);
+
+    /// <summary>
+    /// 从最近列表移除一个目录；若它正是 <c>lastInteractive</c>，一并清空。
+    /// 只影响历史，不触碰磁盘。写入失败只记日志，不抛出。
+    /// </summary>
+    void Remove(string path);
 }

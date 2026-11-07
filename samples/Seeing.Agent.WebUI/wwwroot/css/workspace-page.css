@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Workspace Page Styles - Skills, Tools, MCP, Sessions Management
  * 
  * Comprehensive styling for workspace management pages with card and list views.
@@ -898,73 +898,204 @@
     word-break: break-all;
     max-height: 200px;
     overflow-y: auto;
+
+/* ========== 工作区页面（独立于控制台 .hc 骨架） ========== */
+
+.ws-page {
+    /* 用普通文档流：空布局下没有侧栏，不能依赖 100vh 的 flex 链 */
+    min-height: 100vh;
+    box-sizing: border-box;
+    padding: 28px 32px 48px;
+    background: var(--color-bg-container, #fff);
+    color: var(--color-text);
+    font-size: 13px;
+    overflow-y: auto;
 }
 
-/* ========== 工作区首页 / 目录选择 / 侧栏入口 ========== */
+.ws-page-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--color-border-secondary, #f0f0f0);
+}
 
-.ws-cards {
+.ws-page-mark {
+    height: 34px;
+    width: auto;
+    flex: none;
+}
+
+.ws-page-heading {
+    min-width: 0;
+    flex: 1;
+}
+
+.ws-page-heading h1 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.ws-page-heading p {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: var(--color-text-tertiary, #999);
+}
+
+.ws-page-actions {
+    display: flex;
+    gap: 8px;
+    flex: none;
+}
+
+.ws-page-section {
+    margin-top: 24px;
+}
+
+.ws-page-section--muted {
+    margin-top: 32px;
+    color: var(--color-text-tertiary, #999);
+}
+
+.ws-page-section-title {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+.ws-page-section-hint {
+    font-weight: 400;
+    font-size: 12px;
+    color: var(--color-text-tertiary, #999);
+}
+
+.ws-page-note {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.7;
+}
+
+.ws-page-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 56px 0;
+    color: var(--color-text-tertiary, #999);
+    border: 1px dashed var(--color-border, #e8e8e8);
+    border-radius: 10px;
+}
+
+.ws-page-empty .anticon {
+    font-size: 30px;
+    opacity: .5;
+}
+
+.ws-page-empty p {
+    margin: 4px 0 0;
+    font-size: 14px;
+    color: var(--color-text, #333);
+}
+
+.ws-page-empty span {
+    font-size: 12px;
+}
+
+.ws-page-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: var(--space-3, 12px);
-    padding: var(--space-4, 16px) 0;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
 }
 
-.ws-card {
-    position: relative;
+.ws-page-card {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--color-border-secondary, #f0f0f0);
+    border-radius: 10px;
+    background: var(--color-bg-container, #fff);
+    transition: border-color .15s ease, box-shadow .15s ease;
+    overflow: hidden;
+}
+
+.ws-page-card:hover {
+    border-color: var(--color-primary, #1677ff);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .06);
+}
+
+.ws-page-card.is-current {
+    border-color: var(--color-primary, #1677ff);
+    background: rgba(22, 119, 255, .03);
+}
+
+.ws-page-card-main {
+    padding: 14px 16px 10px;
+    cursor: pointer;
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 14px 16px;
-    border: 1px solid var(--color-border, #f0f0f0);
-    border-radius: 8px;
-    background: var(--color-bg-container, #fff);
-    cursor: pointer;
-    transition: border-color .15s ease, box-shadow .15s ease;
 }
 
-.ws-card:hover {
-    border-color: var(--color-primary, #1677ff);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
-}
-
-.ws-card.is-default {
-    border-color: var(--color-primary, #1677ff);
-}
-
-.ws-card-name {
+.ws-page-card-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-weight: 600;
+    font-size: 14px;
+}
+
+.ws-page-card-name span:first-of-type {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.ws-card-path {
+.ws-page-card-path {
     font-size: 12px;
-    color: var(--color-text-secondary, #888);
+    color: var(--color-text-tertiary, #999);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    direction: rtl;
-    text-align: left;
 }
 
-.ws-card-badge {
-    position: absolute;
-    top: 10px;
-    right: 12px;
+.ws-page-card-meta {
     font-size: 11px;
+    color: var(--color-text-quaternary, #bbb);
+}
+
+.ws-missing {
+    color: #c9433c;
+}
+
+.ws-tag {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 400;
     padding: 1px 6px;
-    border-radius: 10px;
+    border-radius: 9px;
+    color: var(--color-text-tertiary, #999);
+    background: var(--color-bg-secondary, #f5f5f5);
+    flex: none;
+}
+
+.ws-tag-current {
     color: var(--color-primary, #1677ff);
     background: rgba(22, 119, 255, .1);
 }
 
-.ws-card-new {
+.ws-page-card-foot {
+    display: flex;
     align-items: center;
-    justify-content: center;
-    border-style: dashed;
-    color: var(--color-text-secondary, #888);
+    gap: 2px;
+    padding: 6px 10px;
+    border-top: 1px solid var(--color-border-secondary, #f5f5f5);
 }
+
+/* ========== 目录选择对话框 ========== */
 
 .dir-picker-path {
     display: flex;
@@ -976,7 +1107,7 @@
 .dir-picker-list {
     max-height: 320px;
     overflow-y: auto;
-    border: 1px solid var(--color-border, #f0f0f0);
+    border: 1px solid var(--color-border-secondary, #f0f0f0);
     border-radius: 6px;
     padding: 4px;
 }
@@ -991,8 +1122,10 @@
 }
 
 .dir-picker-item:hover {
-    background: rgba(0, 0, 0, .04);
+    background: var(--color-bg-secondary, #f5f5f5);
 }
+
+/* ========== 侧栏工作区入口 ========== */
 
 .ws-switcher {
     padding: 4px 8px;

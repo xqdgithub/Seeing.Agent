@@ -35,6 +35,8 @@ public class WorkspaceSwitchConfigReloadTests
         services.AddSingleton<WorkspaceProvider>();
         services.AddSingleton<IWorkspaceProvider>(sp => sp.GetRequiredService<WorkspaceProvider>());
         services.AddSingleton<ILoggerFactory>(LoggerFactory.Create(b => b.SetMinimumLevel(LogLevel.Warning)));
+        // 必须替换真实历史存储：否则初始化会把测试临时目录写进 ~/.seeing/workspace_history.json
+        services.AddSingleton<IWorkspaceHistoryStore>(new InMemoryHistory());
         services.AddSingleton(new WorkspaceLaunchRequest(new WorkspaceLaunchInput(
             WorkspaceLaunchMode.Interactive,
             startupWorkspace.Root,
@@ -106,6 +108,24 @@ public class WorkspaceSwitchConfigReloadTests
         public WorkspaceHistorySnapshot Read() => _snapshot;
 
         public void RecordOpened(string path, bool asDefault)
+        {
+        }
+
+        public void Remove(string path)
+        {
+        }
+    }
+
+    /// <summary>内存历史：避免测试把临时目录写进用户真实的 ~/.seeing/workspace_history.json。</summary>
+    private sealed class InMemoryHistory : IWorkspaceHistoryStore
+    {
+        public WorkspaceHistorySnapshot Read() => WorkspaceHistorySnapshot.Empty;
+
+        public void RecordOpened(string path, bool asDefault)
+        {
+        }
+
+        public void Remove(string path)
         {
         }
     }

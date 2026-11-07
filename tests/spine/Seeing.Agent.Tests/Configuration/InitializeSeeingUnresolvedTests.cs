@@ -95,5 +95,9 @@ public class InitializeSeeingUnresolvedTests
         public void RecordOpened(string path, bool asDefault)
         {
         }
+
+        public void Remove(string path)
+        {
+        }
     }
 }

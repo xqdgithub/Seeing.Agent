@@ -24,6 +24,10 @@
                     <Icon Type="@IconType.Outline.FolderAdd" />
                     选择文件夹…
                 </MenuItem>
+                <MenuItem Key="__manage" OnClick="GoToWorkspacePage">
+                    <Icon Type="@IconType.Outline.Setting" />
+                    管理工作区…
+                </MenuItem>
             </Menu>
         </Overlay>
         <ChildContent>
@@ -110,4 +114,7 @@
             Refresh();
         }
     }
+
+    /// <summary>打开工作区管理页（查看全部、换目录、移除记录）。</summary>
+    private void GoToWorkspacePage() => Navigation.NavigateTo("/workspaces");
 }

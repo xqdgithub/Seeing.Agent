@@ -9,65 +9,129 @@
 @inject NavigationManager Navigation
 @layout EmptyLayout
 
-<PageTitle>选择工作区 - Seeing</PageTitle>
+<PageTitle>工作区 - Seeing</PageTitle>
 
-<div class="hc">
-    <header class="hc-brand">
-        <img src="seeing-mark-64.png" alt="Seeing" class="hc-brand-mark" />
-        <div class="hc-brand-rule"></div>
-        <div class="hc-brand-copy">
-            <div class="hc-brand-tagline">先选一个工作区</div>
-            <div class="hc-brand-desc">选定后进入控制台，之后可在侧栏切换</div>
+@*
+    独立布局，不复用控制台的 .hc：
+    .hc 是「全高 + overflow:hidden」的控制台骨架，在没有侧栏的空布局里高度链会断，
+    内容塌成空白。这里用普通文档流页面，自带滚动。
+*@
+<div class="ws-page">
+    <header class="ws-page-header">
+        <img src="seeing-mark-64.png" alt="Seeing" class="ws-page-mark" />
+        <div class="ws-page-heading">
+            <h1>工作区</h1>
+            <p>选一个目录开始，或管理已有的工作区</p>
+        </div>
+        <div class="ws-page-actions">
+            @if (Workspace.IsResolved)
+            {
+                <Button Type="@ButtonType.Default" OnClick="@(() => Navigation.NavigateTo("/"))">
+                    返回控制台
+                </Button>
+            }
+            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.FolderAdd" OnClick="OpenPicker">
+                选择文件夹
+            </Button>
         </div>
     </header>
 
     @if (_error is not null)
     {
-        <Alert Type="@AlertType.Error" Message="@_error" ShowIcon="true" />
+        <Alert Type="@AlertType.Error" Message="@_error" ShowIcon="true" Closable="true"
+               OnClose="@(() => _error = null)" />
     }
 
-    @if (_busy)
-    {
-        <Spin Tip="正在切换到新工作区…">
-            <div style="height: 120px;"></div>
-        </Spin>
-    }
-    else
-    {
-        <div class="ws-cards">
-            @foreach (var card in _cards)
-            {
-                <div class="ws-card @(card.IsDefault ? "is-default" : null)"
-                     @onclick="@(() => EnterAsync(card.Path))">
-                    <div class="ws-card-name">@card.Name</div>
-                    @if (card.IsDefault)
-                    {
-                        <span class="ws-card-badge">默认</span>
-                    }
-                    <div class="ws-card-path">@card.Path</div>
-                </div>
-            }
-
-            <div class="ws-card ws-card-new" @onclick="OpenPicker">
-                <Icon Type="@IconType.Outline.FolderAdd" />
-                <div class="ws-card-name">选择文件夹</div>
-            </div>
+    <section class="ws-page-section">
+        <div class="ws-page-section-title">
+            最近使用
+            <span class="ws-page-section-hint">共 @_cards.Count 个</span>
         </div>
 
         @if (_cards.Count == 0)
         {
-            <Empty Description="@("还没有工作区，选一个文件夹开始")" />
+            <div class="ws-page-empty">
+                <Icon Type="@IconType.Outline.FolderOpen" />
+                <p>还没有工作区</p>
+                <span>点右上角「选择文件夹」，选一个目录开始</span>
+            </div>
         }
-    }
+        else
+        {
+            <div class="ws-page-grid">
+                @foreach (var card in _cards)
+                {
+                    <div class="ws-page-card @(card.IsCurrent ? "is-current" : null)" @key="card.Path">
+                        <div class="ws-page-card-main" @onclick="@(() => EnterAsync(card.Path))">
+                            <div class="ws-page-card-name">
+                                <Icon Type="@IconType.Outline.Folder" />
+                                <span>@card.Name</span>
+                                @if (card.IsCurrent)
+                                {
+                                    <span class="ws-tag ws-tag-current">当前</span>
+                                }
+                                else if (card.IsDefault)
+                                {
+                                    <span class="ws-tag">默认</span>
+                                }
+                            </div>
+                            <div class="ws-page-card-path" title="@card.Path">@card.Path</div>
+                            <div class="ws-page-card-meta">
+                                @if (card.Exists)
+                                {
+                                    <span>已存在</span>
+                                }
+                                else
+                                {
+                                    <span class="ws-missing">目录不存在</span>
+                                }
+                            </div>
+                        </div>
+                        <div class="ws-page-card-foot">
+                            <Button Size="@ButtonSize.Small"
+                                    Type="@ButtonType.Text"
+                                    Disabled="@(card.IsCurrent || _busy)"
+                                    OnClick="@(() => EnterAsync(card.Path))">
+                                @(card.IsCurrent ? "已在用" : "进入")
+                            </Button>
+                            <Button Size="@ButtonSize.Small"
+                                    Type="@ButtonType.Text"
+                                    OnClick="OpenPicker">
+                                换目录
+                            </Button>
+                            <Popconfirm Title="@($"从最近列表移除「{card.Name}」？")"
+                                        OkText="@("移除")"
+                                        CancelText="@("取消")"
+                                        OnConfirm="@(() => RemoveAsync(card.Path))">
+                                <Button Size="@ButtonSize.Small"
+                                        Type="@ButtonType.Text"
+                                        Danger="true"
+                                        Disabled="@card.IsCurrent"
+                                        Icon="@IconType.Outline.Delete" />
+                            </Popconfirm>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="ws-page-section ws-page-section--muted">
+        <div class="ws-page-section-title">关于「移除」</div>
+        <p class="ws-page-note">
+            移除只清掉最近列表里的这条记录，不动磁盘上的任何文件；当前正在使用的工作区不能移除。
+            删除目录请用文件管理器。
+        </p>
+    </section>
 </div>
 
 <DirectoryPicker @ref="_picker"
                  Title="选择工作区"
-                 InitialPath="@(Workspace.IsResolved ? Workspace.ResolvedRoot : null)"
+                 InitialPath="@(Workspace.IsResolved ? Workspace.ResolvedRoot : _cards.FirstOrDefault(c => c.Exists)?.Path)"
                  OnSelected="EnterAsync" />
 
 @code {
-    private sealed record WorkspaceCard(string Name, string Path, bool IsDefault);
+    private sealed record WorkspaceCard(string Name, string Path, bool IsDefault, bool IsCurrent, bool Exists);
 
     private List<WorkspaceCard> _cards = new();
     private DirectoryPicker? _picker;
@@ -79,16 +143,27 @@
     private void Reload()
     {
         var snapshot = History.Read();
+        var current = Workspace.ResolvedRoot;
+
         _cards = snapshot.Recent
-            .Where(Directory.Exists)
             .Select(p => new WorkspaceCard(
                 new DirectoryInfo(p).Name,
                 p,
-                string.Equals(p, snapshot.LastInteractive, StringComparison.OrdinalIgnoreCase)))
+                string.Equals(p, snapshot.LastInteractive, StringComparison.OrdinalIgnoreCase),
+                current is not null && string.Equals(p, current, StringComparison.OrdinalIgnoreCase),
+                Directory.Exists(p)))
             .ToList();
     }
 
     private void OpenPicker() => _picker?.Show();
+
+    private async Task RemoveAsync(string path)
+    {
+        History.Remove(path);
+        Reload();
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
 
     private async Task EnterAsync(string path)
     {
@@ -108,6 +183,7 @@
                 return;
             }
 
+            // 整页重载：切换到新工作区后必须重建 circuit，避免旧工作区的 scoped 状态残留
             Navigation.NavigateTo("/", forceLoad: true);
         }
         finally
