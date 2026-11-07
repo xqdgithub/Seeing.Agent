@@ -1,0 +1,143 @@
+<Project>
+  <!--
+    Seeing.Agent 宿主族发布契约（唯一嵌套发布出口）
+
+    背景：WebUI / Desktop / Cli 都需要把别的项目的发布产物装进自己目录，
+    历史上三处各写一套，踩过同一组坑（详见 docs/superpowers/specs/
+    2026-11-07-publish-path-unification-design.md）。这里把它固化成一份。
+
+    五条硬约束（每条都对应一次真实故障）：
+    1. 目录属性必须在使用它的 target 体内计算 —— target 一次构建只执行一次，
+       放进"供他人依赖"的独立 target 会在 Build 阶段求值后冻结。
+    2. **不能用 CallTarget 传属性**：实测 CallTarget 执行时看不到调用方 target
+       体内设置的属性（诊断输出全空）。必须改用 AfterTargets/DependsOnTargets
+       在"前一个 target"里设值，或直接在本 target 体内设值。
+    3. 发布目录要双写 $(PublishDir) 与 $(PublishIntermediateOutputPath) ——
+       VS/FileSystem 发布把后者当作收集源，只写前者会漏文件。
+    4. ChannelHost 必须剥离 RuntimeIdentifier —— 它是 RID 无关产物。
+    5. 目录参数必须绝对路径 —— 相对路径以被调用项目目录为基准解析。
+
+    每个"嵌套发布操作"在本文件里各有一个具名 target（不用共享 target）：
+    共享 target 在一次构建里只执行一次，被两处以不同参数调用时，
+    第二处会拿到第一处的属性 —— 正是约束 1 描述的冻结问题。
+  -->
+  <PropertyGroup>
+    <SeeingRequireRuntimeIdentifier Condition="'$(SeeingRequireRuntimeIdentifier)' == ''">true</SeeingRequireRuntimeIdentifier>
+  </PropertyGroup>
+
+  <Target Name="_SeeingValidateRuntimeIdentifier">
+    <Error Condition="'$(SeeingRequireRuntimeIdentifier)' == 'true' and '$(RuntimeIdentifier)' == ''"
+           Text="发布必须指定 RuntimeIdentifier（-r &lt;rid&gt;）。不带 RID 的产物缺少平台原生库（如 libe_sqlite3），无法运行。"
+           ContinueOnError="false" />
+  </Target>
+
+  <!--
+    ============================================================
+    共用的"把产物补到副目录"实现
+    ============================================================
+    由具体操作 target 调用；参数以 _SeeingCopy* 属性传入，
+    且必须在**同一个** target 体内设置后立即调用。
+  -->
+  <Target Name="_SeeingMirrorToStaging"
+          Inputs="$(SeeingMirrorSourceDir)"
+          Condition="'$(SeeingMirrorStagingDir)' != '' and '$(SeeingMirrorStagingDir)' != '$(SeeingMirrorSourceDir)'">
+    <ItemGroup>
+      <_SeeingMirrorFile Include="$(SeeingMirrorSourceDir)**\*.*" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_SeeingMirrorFile)"
+          DestinationFiles="@(_SeeingMirrorFile->'$(SeeingMirrorStagingDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_SeeingMirrorFile)' != ''" />
+  </Target>
+
+  <!--
+    ============================================================
+    操作：把 ChannelHost 补到 WebUI 的**构建输出**目录
+    ============================================================
+    开发期 ResolveChannelHost 需要输出目录里有完整四件套。
+  -->
+  <Target Name="_SeeingChannelHostForBuild">
+    <PropertyGroup>
+      <_SeeingPublishDirAbs Condition="!$([System.IO.Path]::IsPathRooted('$(OutDir)'))">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)$(OutDir)'))</_SeeingPublishDirAbs>
+      <_SeeingPublishDirAbs Condition="$([System.IO.Path]::IsPathRooted('$(OutDir)'))">$([MSBuild]::NormalizeDirectory('$(OutDir)'))</_SeeingPublishDirAbs>
+    </PropertyGroup>
+
+    <MSBuild Projects="$(MSBuildThisFileDirectory)../samples/Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj"
+             Targets="Publish"
+             RemoveProperties="PublishProfile;PublishUrl;WebPublishMethod;RuntimeIdentifier;SelfContained"
+             Properties="Configuration=$(Configuration);PublishDir=$(_SeeingPublishDirAbs);SelfContained=false" />
+  </Target>
+
+  <!--
+    ============================================================
+    操作：把 ChannelHost 补到 WebUI 的**发布**产物
+
+    时序与落点（实测，见 spec §7）：
+      · 发布阶段 $(PublishDir) 已被 SDK 改写成
+        obj/<config>/<tfm>/<rid>/PubTmp/Out/ —— 它是 FileSystemPublish 的**收集源**；
+        而 FileSystemPublish 属于 Publish 内部，等 AfterTargets="Publish" 时
+        收集与复制都已经完成。
+      · 因此只在此时往 $(PublishDir) 写，文件进不了最终产物（这正是现场 bug）。
+
+    所以本 target 直接把产物写到两个地方：
+      · $(PublishDir)：dotnet publish / -o 的最终目标（此时即目标目录）
+      · $(PublishUrl)：VS / FileSystem 发布的最终目录（DeployOnBuild 时才有值）
+    ============================================================
+  -->
+  <Target Name="_SeeingChannelHostForPublish">
+    <PropertyGroup>
+      <_SeeingPublishDirAbs Condition="!$([System.IO.Path]::IsPathRooted('$(PublishDir)'))">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)$(PublishDir)'))</_SeeingPublishDirAbs>
+      <_SeeingPublishDirAbs Condition="$([System.IO.Path]::IsPathRooted('$(PublishDir)'))">$([MSBuild]::NormalizeDirectory('$(PublishDir)'))</_SeeingPublishDirAbs>
+
+      <_SeeingPublishUrlAbs Condition="'$(PublishUrl)' != '' and !$([System.IO.Path]::IsPathRooted('$(PublishUrl)'))">$([System.IO.Path]::GetFullPath('$(PublishUrl)'))</_SeeingPublishUrlAbs>
+      <_SeeingPublishUrlAbs Condition="'$(PublishUrl)' != '' and $([System.IO.Path]::IsPathRooted('$(PublishUrl)'))">$([MSBuild]::NormalizeDirectory('$(PublishUrl)'))</_SeeingPublishUrlAbs>
+    </PropertyGroup>
+
+    <MSBuild Projects="$(MSBuildThisFileDirectory)../samples/Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj"
+             Targets="Publish"
+             RemoveProperties="PublishProfile;PublishUrl;WebPublishMethod;RuntimeIdentifier;SelfContained"
+             Properties="Configuration=$(Configuration);PublishDir=$(_SeeingPublishDirAbs);SelfContained=false" />
+
+    <!-- VS / FileSystem 发布：最终目录是 $(PublishUrl)，必须单独再写一遍 -->
+    <ItemGroup Condition="'$(_SeeingPublishUrlAbs)' != '' and '$(_SeeingPublishUrlAbs)' != '$(_SeeingPublishDirAbs)'">
+      <_SeeingChannelHostForPublishFile Include="$(_SeeingPublishDirAbs)Seeing.Gateway.ChannelHost.*" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_SeeingChannelHostForPublishFile)"
+          DestinationFolder="$(_SeeingPublishUrlAbs)"
+          SkipUnchangedFiles="true"
+          Condition="'@(_SeeingChannelHostForPublishFile)' != ''" />
+  </Target>
+
+  <!--
+    ============================================================
+    操作：把某个已发布的目录整体复制到目标（带 manifest 清理）
+    ============================================================
+    参数：SeeingCopySourceDir / SeeingCopyDestinationDir / SeeingCopyManifestPath
+  -->
+  <Target Name="SeeingCopyPublishedFiles">
+    <ReadLinesFromFile File="$(SeeingCopyManifestPath)" Condition="Exists('$(SeeingCopyManifestPath)')">
+      <Output TaskParameter="Lines" ItemName="_SeeingPreviousFiles" />
+    </ReadLinesFromFile>
+
+    <ItemGroup Condition="Exists('$(SeeingCopySourceDir)')">
+      <_SeeingCopySource Include="$(SeeingCopySourceDir)**\*" />
+    </ItemGroup>
+
+    <Delete Files="@(_SeeingPreviousFiles->'$(SeeingCopyDestinationDir)%(Identity)')"
+            Condition="@(_SeeingPreviousFiles) != ''" />
+
+    <Copy SourceFiles="@(_SeeingCopySource)"
+          DestinationFiles="@(_SeeingCopySource->'$(SeeingCopyDestinationDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="false"
+          OverwriteReadOnlyFiles="true"
+          Condition="'@(_SeeingCopySource)' != ''" />
+
+    <WriteLinesToFile File="$(SeeingCopyManifestPath)"
+                      Lines="@(_SeeingCopySource->'%(RecursiveDir)%(Filename)%(Extension)')"
+                      Overwrite="true"
+                      Encoding="UTF-8"
+                      Condition="'@(_SeeingCopySource)' != ''" />
+  </Target>
+</Project>

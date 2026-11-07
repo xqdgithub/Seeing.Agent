@@ -109,47 +109,29 @@
     （ReferenceOutputAssembly=false 不复制 .dll），
     运行期 ResolveChannelHost 找不到 Seeing.Gateway.ChannelHost.dll 而启动失败。
   -->
-  <Target Name="PassChannelHostPublishDirs">
-    <PropertyGroup>
-      <!--
-        不再向 ChannelHost 传 RuntimeIdentifier：它是 RID 无关的纯托管产物
-        （UseAppHost=false，只产出 .dll / .deps.json / .runtimeconfig.json），
-        一律 `dotnet Seeing.Gateway.ChannelHost.dll` 启动。
-        传 RID 会让它按 RID 去解析 assets（net10.0/<rid>）与原生 apphost，
-        而 RID 只存在于 WebUI 的 PublishProfile、不会进入 ChannelHost 的 restore，
-        于是 restore 与 build 的 RID 视图不一致，报 NETSDK1047 /
-        「无法复制 …linux-x64/apphost，原因是找不到该文件」。
-      -->
-      <!-- 嵌套 MSBuild 的 PublishDir 基准是被调用项目目录，必须给绝对路径；
-           若调用方已给绝对路径（如 -o / PublishDir 指定外部目录），
-           不能再拼 MSBuildThisFileDirectory，否则会得到 ...\samples\C:\... 这种非法路径 -->
-      <_ChannelHostBuildPublishDir Condition="!$([System.IO.Path]::IsPathRooted('$(OutDir)'))">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)$(OutDir)'))</_ChannelHostBuildPublishDir>
-      <_ChannelHostBuildPublishDir Condition="$([System.IO.Path]::IsPathRooted('$(OutDir)'))">$([MSBuild]::NormalizeDirectory('$(OutDir)'))</_ChannelHostBuildPublishDir>
-      <_ChannelHostRealPublishDir Condition="'$(PublishDir)' != '' and !$([System.IO.Path]::IsPathRooted('$(PublishDir)'))">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)$(PublishDir)'))</_ChannelHostRealPublishDir>
-      <_ChannelHostRealPublishDir Condition="'$(PublishDir)' != '' and $([System.IO.Path]::IsPathRooted('$(PublishDir)'))">$([MSBuild]::NormalizeDirectory('$(PublishDir)'))</_ChannelHostRealPublishDir>
-    </PropertyGroup>
-  </Target>
+  <Import Project="$(MSBuildThisFileDirectory)..\..\build\Seeing.Publish.targets" />
 
   <Target Name="CopyChannelHostForBuild"
-          AfterTargets="Build"
-          DependsOnTargets="PassChannelHostPublishDirs">
+          AfterTargets="Build">
     <!--
-      不要加 Condition 判断「是否在发布」：
-      历史上这里写过 '$(PublishDir)' == ''，但 PublishDir 有 SDK 默认值
-      （bin/<config>/<tfm>/<rid>/publish/）永远非空，目标从不执行 ——
-      输出目录只剩 ProjectReference 带来的 exe + deps + runtimeconfig
-      （ReferenceOutputAssembly=false 不复制 .dll），
-      运行期 ResolveChannelHost 找不到 Seeing.Gateway.ChannelHost.dll。
-      而发布场景下 Desktop 构建 WebUI 时会带 _IsPublishing 等标志，
-      用标志位判断同样不可靠（被引用项目与顶层项目的标志不一致）。
+      ⚠ 目录必须在**本 target 体内**计算（不能搬到独立 target）：
+      MSBuild 的 target 在一次构建里只执行一次。历史上目录算在独立的
+      PassChannelHostPublishDirs 里，此处依赖它后属性在 Build 阶段就求值并冻结；
+      到 Publish 阶段 $(PublishDir) 已不再是构建期那个值，
+      但那个 target 被「以前的生成已成功」跳过、属性不再重算，
+      于是嵌套发布写回旧目录，发布产物缺 .dll（现场问题根因）。
 
-      改为无条件执行：嵌套 Publish 是幂等的，
-      发布阶段由 PublishChannelHost 额外写一遍发布目录，两者互不冲突。
+      不加 Condition 判断「是否在发布」：PublishDir 有 SDK 默认值永远非空，
+      而发布场景下的 _IsPublishing 等标志在被引用项目里并不可靠。
+      嵌套 Publish 幂等，构建期与发布期各跑一次互不冲突。
     -->
-    <MSBuild Projects="$(MSBuildThisFileDirectory)../Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj"
-             Targets="Publish"
-             RemoveProperties="PublishProfile;PublishUrl;WebPublishMethod;RuntimeIdentifier;SelfContained"
-             Properties="Configuration=$(Configuration);PublishDir=$(_ChannelHostBuildPublishDir);SelfContained=false" />
+    <PropertyGroup>
+      <SeeingNestedProject>$(MSBuildThisFileDirectory)..\Seeing.Gateway.ChannelHost\Seeing.Gateway.ChannelHost.csproj</SeeingNestedProject>
+      <SeeingNestedExtraProperties>SelfContained=false</SeeingNestedExtraProperties>
+      <SeeingNestedExtraRemoveProperties>RuntimeIdentifier</SeeingNestedExtraRemoveProperties>
+    </PropertyGroup>
+
+    <CallTarget Targets="_SeeingChannelHostForBuild" />
 
     <!--
       再删 ProjectReference 带来的 exe / 无扩展名 apphost：
@@ -164,14 +146,28 @@
   </Target>
 
   <Target Name="PublishChannelHost"
-          AfterTargets="Publish;PublishOnly"
-          DependsOnTargets="PassChannelHostPublishDirs"
-          Condition="'$(_ChannelHostRealPublishDir)' != ''">
-    <!-- RemoveProperties 理由同上：发布配置不可下传给没有该配置的嵌套项目 -->
-    <MSBuild Projects="$(MSBuildThisFileDirectory)../Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj"
-             Targets="Publish"
-             RemoveProperties="PublishProfile;PublishUrl;WebPublishMethod;RuntimeIdentifier;SelfContained"
-             Properties="Configuration=$(Configuration);PublishDir=$(_ChannelHostRealPublishDir);SelfContained=false" />
+          AfterTargets="Publish;PublishOnly">
+    <!--
+      ⚠ 目录必须在**本 target 体内**计算，理由见 CopyChannelHostForBuild。
+      更关键的是：VS / FileSystem 发布（DeployOnBuild=true）会把 $(PublishDir) 重新指向
+      obj/<config>/<tfm>/<rid>/PubTmp/Out/，而 FileSystemPublish 只从
+      $(PublishIntermediateOutputPath)**\*.* 收集文件。
+      只写 $(PublishDir) 时 .dll 会落在收集目录之外，最终发布目录里
+      ChannelHost 只剩 deps.json / runtimeconfig.json（ProjectReference 带过去的半套文件），
+      运行期 ResolveChannelHost 找不到 .dll 直接启动失败。
+
+      因此两个目录都要覆盖（契约内去重后各写一次）：
+        · $(PublishDir)：dotnet publish 与外部 -o 场景的最终目标
+        · $(PublishIntermediateOutputPath)：VS / FileSystem 发布的实际收集源
+          （它的默认值就是 obj/<config>/<tfm>/<rid>/PubTmp/Out/）
+    -->
+    <PropertyGroup>
+      <SeeingNestedProject>$(MSBuildThisFileDirectory)..\Seeing.Gateway.ChannelHost\Seeing.Gateway.ChannelHost.csproj</SeeingNestedProject>
+      <SeeingNestedExtraProperties>SelfContained=false</SeeingNestedExtraProperties>
+      <SeeingNestedExtraRemoveProperties>RuntimeIdentifier</SeeingNestedExtraRemoveProperties>
+    </PropertyGroup>
+
+    <CallTarget Targets="_SeeingChannelHostForPublish" />
 
     <Delete Files="$(PublishDir)Seeing.Gateway.ChannelHost" Condition="Exists('$(PublishDir)Seeing.Gateway.ChannelHost')" />
   </Target>

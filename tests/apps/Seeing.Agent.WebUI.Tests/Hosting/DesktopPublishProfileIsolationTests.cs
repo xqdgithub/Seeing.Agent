@@ -60,21 +60,11 @@ public class DesktopPublishProfileIsolationTests
     [Fact]
     public void ChannelHostNestedPublish_ShouldRemovePublishProfileProperties()
     {
-        var csproj = ReadRepoFile("samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj");
+        var targets = ReadRepoFile("build/Seeing.Publish.targets");
 
-        var msbuildCalls = Regex.Matches(
-            csproj,
-            @"<MSBuild[^>]*Seeing\.Gateway\.ChannelHost\.csproj[^>]*/?>",
-            RegexOptions.Singleline | RegexOptions.CultureInvariant);
-
-        msbuildCalls.Should().NotBeEmpty("WebUI 需要把 ChannelHost 发布到输出/发布目录");
-
-        foreach (Match call in msbuildCalls)
-        {
-            call.Value.Should().Contain("RemoveProperties",
-                "嵌套 Publish 必须剔除 PublishProfile —— ChannelHost 没有该配置，" +
-                "套用外层名称会报 NETSDK1198 甚至把 RID 带偏");
-        }
+        targets.Should().Contain("PublishProfile",
+            "共享契约必须剥离 PublishProfile —— ChannelHost 没有该配置，" +
+            "套用外层名称会报 NETSDK1198 甚至把 RID 带偏");
     }
 
     /// <summary>
@@ -108,10 +98,109 @@ public class DesktopPublishProfileIsolationTests
         header.Should().NotContain("'$(PublishDir)' == ''",
             "PublishDir 有 SDK 默认值永远非空，用它判断构建阶段会让目标永不执行，导致缺 .dll");
 
-        // 嵌套 Publish 的目录必须转绝对路径：
-        // 相对路径会以被调用项目目录为基准解析，产物落回 ChannelHost 自己的 bin。
-        target.Value.Should().Contain("_ChannelHostBuildPublishDir",
-            "嵌套 MSBuild 的 PublishDir 必须是绝对路径，否则产物落回被调用项目的 bin");
+        // 绝对路径换算由共享契约在各自 target 体内完成（见 build/Seeing.Publish.targets），
+        // 项目文件只负责把控制权交给契约，不得自己再换算一遍。
+        target.Value.Should().Contain("_SeeingChannelHostForBuild",
+            "构建期补产物必须交给契约的专用 target，避免各写一套");
+
+        ReadRepoFile("build/Seeing.Publish.targets").Should().Contain("IsPathRooted",
+            "绝对路径换算必须存在于契约内（相对路径以被调用项目目录为基准解析）");
+    }
+
+    /// <summary>
+    /// 发布 ChannelHost 时必须同时覆盖 $(PublishIntermediateOutputPath)。
+    /// <para>
+    /// 现场症状：VS 用 WebUI 的 FolderProfile（linux-x64）发布后，
+    /// <c>Z:\Seeing-Agent\publish</c> 里只有 <c>Seeing.Gateway.ChannelHost.deps.json</c> 与
+    /// <c>.runtimeconfig.json</c>，**没有 .dll**，运行期 ResolveChannelHost 直接失败。
+    /// </para>
+    /// <para>
+    /// 根因：FileSystem / VS 发布（<c>DeployOnBuild=true</c>）会把
+    /// <c>_PrepareForAspNetCoreProjectSystemPublish</c> 里的 <c>PublishDir</c> 指向
+    /// <c>obj/&lt;Config&gt;/&lt;tfm&gt;/&lt;rid&gt;/PubTmp/Out/</c>，
+    /// 而 <c>FileSystemPublish</c> 只从 <c>$(PublishIntermediateOutputPath)**\*.*</c> 收集文件。
+    /// 只写 <c>$(PublishDir)</c> 时 .dll 落在收集目录之外，发布产物就只剩
+    /// ProjectReference（<c>ReferenceOutputAssembly=false</c>）带过去的「半套」文件。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ChannelHostPublishTarget_ShouldAlsoCoverPublishIntermediateOutputPath()
+    {
+        var csproj = ReadRepoFile("samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj");
+
+        var target = Regex.Match(
+            csproj,
+            @"<Target\s+Name=""PublishChannelHost""(.*?)</Target>",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+        target.Success.Should().BeTrue("WebUI 必须在发布后补齐 ChannelHost 的完整产物");
+
+        target.Value.Should().Contain("PublishIntermediateOutputPath",
+            "FileSystem/VS 发布只从 $(PublishIntermediateOutputPath)（obj/.../PubTmp/Out）收集文件，" +
+            "只写 $(PublishDir) 会把 .dll 漏在收集目录之外");
+    }
+
+    /// <summary>
+    /// 发布阶段用到的目录属性必须在使用它的 target 体内计算。
+    /// <para>
+    /// MSBuild 的 target 在一次构建里只执行一次。历史上目录属性算在独立的
+    /// <c>PassChannelHostPublishDirs</c> target 里，被 <c>CopyChannelHostForBuild</c>
+    /// 依赖后在 Build 阶段就求值并冻结为 <c>bin/&lt;Config&gt;/&lt;tfm&gt;/&lt;rid&gt;/publish/</c>；
+    /// 到 Publish 阶段 <c>$(PublishDir)</c> 已变成 <c>PubTmp\Out</c>，
+    /// 但该 target 被「以前的生成已成功」跳过，属性不会重算 ——
+    /// 于是嵌套发布仍然写回旧目录，最终发布目录缺 .dll。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ChannelHostPublishTarget_ShouldComputeDirsInsideTarget()
+    {
+        var csproj = ReadRepoFile("samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj");
+
+        var target = Regex.Match(
+            csproj,
+            @"<Target\s+Name=""PublishChannelHost""(.*?)</Target>",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+        target.Success.Should().BeTrue("WebUI 必须在发布后补齐 ChannelHost 的完整产物");
+
+        var header = Regex.Match(target.Value, @"<Target[^>]*>", RegexOptions.CultureInvariant).Value;
+
+        header.Should().NotContain("PassChannelHostPublishDirs",
+            "目录属性不能放在只执行一次的独立 target 里，否则 Build 阶段求值后就冻结，" +
+            "Publish 阶段拿到的是旧目录");
+
+        target.Value.Should().Contain("<PropertyGroup>",
+            "目录必须在本 target 体内计算，才能拿到发布阶段的实际值");
+    }
+
+    /// <summary>
+    /// 四个项目必须共用同一份发布契约，而不是各写一套嵌套发布逻辑。
+    /// </summary>
+    [Fact]
+    public void HostProjects_ShouldImportSharedPublishContract()
+    {
+        foreach (var project in new[]
+        {
+            "samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj",
+            "samples/Seeing.Agent.Desktop/Seeing.Agent.Desktop.csproj",
+            "samples/Seeing.Agent.Cli/Seeing.Agent.Cli.csproj",
+        })
+        {
+            ReadRepoFile(project).Should().Contain("Seeing.Publish.targets",
+                $"{project} 必须 Import 共享发布契约，否则又回到各写一套");
+        }
+    }
+
+    /// <summary>
+    /// WebUI 不得再自带嵌套发布实现（已收编进契约）。
+    /// </summary>
+    [Fact]
+    public void WebUI_ShouldNotOwnNestedPublishImplementation()
+    {
+        var csproj = ReadRepoFile("samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj");
+
+        csproj.Should().NotContain("<MSBuild Projects=\"$(MSBuildThisFileDirectory)../Seeing.Gateway.ChannelHost",
+            "嵌套 MSBuild 调用必须收敛到 Seeing.Publish.targets，项目文件里不得再直接写");
     }
 
     /// <summary>
@@ -173,22 +262,21 @@ public class DesktopPublishProfileIsolationTests
     [Fact]
     public void ChannelHostNestedPublish_ShouldNotPropagateRuntimeIdentifier()
     {
-        var csproj = ReadRepoFile("samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj");
+        var targets = ReadRepoFile("build/Seeing.Publish.targets");
 
-        var msbuildCalls = Regex.Matches(
-            csproj,
-            @"<MSBuild[^>]*Seeing\.Gateway\.ChannelHost\.csproj[^>]*/?>",
-            RegexOptions.Singleline | RegexOptions.CultureInvariant);
+        // ChannelHost 的 RID 无关性由契约在它自己的嵌套发布里剥离，
+        // 调用方不需要、也不应该重复声明。
+        Regex.IsMatch(
+                targets,
+                @"RemoveProperties=""[^""]*RuntimeIdentifier",
+                RegexOptions.CultureInvariant)
+            .Should().BeTrue(
+                "嵌套发布必须剔除 RuntimeIdentifier：ChannelHost 是 RID 无关产物，" +
+                "透传 RID 会让它去找不存在的 apphost / deps.json");
 
-        msbuildCalls.Should().NotBeEmpty("WebUI 需要把 ChannelHost 发布到输出/发布目录");
-
-        foreach (Match call in msbuildCalls)
-        {
-            Regex.IsMatch(call.Value, @"RemoveProperties=""[^""]*RuntimeIdentifier", RegexOptions.CultureInvariant)
-                .Should().BeTrue(
-                    "嵌套发布必须剔除 RuntimeIdentifier：ChannelHost 是 RID 无关产物，" +
-                    "透传 RID 会让它去找不存在的 apphost / deps.json");
-        }
+        ReadRepoFile("samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj").Should()
+            .Contain("_SeeingChannelHostForPublish",
+                "WebUI 发布阶段必须交给契约处理，而不是自己写一套嵌套调用");
     }
 
     /// <summary>

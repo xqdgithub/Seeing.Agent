@@ -77,6 +77,8 @@
     </ProjectReference>
   </ItemGroup>
 
+  <Import Project="$(MSBuildThisFileDirectory)..\..\build\Seeing.Publish.targets" />
+
   <!--
     ChannelHost 产物补全。
 
