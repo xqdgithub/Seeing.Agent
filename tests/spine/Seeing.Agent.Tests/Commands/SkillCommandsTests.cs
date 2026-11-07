@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Skills;
-using Seeing.Agent.Skills;
 using Seeing.Agent.Skills.Catalog;
 using Seeing.Agent.Skills.Commands;
 using Seeing.Session.Core;

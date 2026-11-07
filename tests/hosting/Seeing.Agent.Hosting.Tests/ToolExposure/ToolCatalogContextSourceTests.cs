@@ -6,7 +6,6 @@ using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Hosting.Execution.ToolExposure;
-using Seeing.Session.Core;
 using Xunit;
 
 namespace Seeing.Agent.Hosting.Tests.ToolExposure;

@@ -1,10 +1,10 @@
-using System.IO.Compression;
-using System.Text;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Skills.Catalog;
+using System.IO.Compression;
+using System.Text;
 using Xunit;
 
 namespace Seeing.Agent.Skills.Tests;

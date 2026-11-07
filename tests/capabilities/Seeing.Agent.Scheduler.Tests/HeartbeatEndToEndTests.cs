@@ -1,10 +1,7 @@
 using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Scheduling;
-using Seeing.Agent.Scheduler;
 using Seeing.Agent.Scheduler.Abstractions;
-using Seeing.Agent.Scheduler.Jobs;
 using Seeing.Agent.Scheduler.Management;
 using Seeing.Agent.Scheduler.Models;
 using Seeing.Agent.Scheduler.Persistence;
@@ -104,7 +101,10 @@ public class HeartbeatEndToEndTests
         {
             await service.UpdateAsync(new HeartbeatUpdate
             {
-                Enabled = true, Prompt = "x", Every = "1h", SessionId = "main"
+                Enabled = true,
+                Prompt = "x",
+                Every = "1h",
+                SessionId = "main"
             }, TestContext.Current.CancellationToken);
 
             await service.UpdateAsync(
@@ -140,7 +140,10 @@ public class HeartbeatEndToEndTests
         {
             await service.UpdateAsync(new HeartbeatUpdate
             {
-                Enabled = true, Prompt = "x", Every = "1h", SessionId = "main"
+                Enabled = true,
+                Prompt = "x",
+                Every = "1h",
+                SessionId = "main"
             }, TestContext.Current.CancellationToken);
 
             // 用户任务照常可建，且与心跳互不干扰

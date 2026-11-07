@@ -2,7 +2,6 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Llm.Support.Providers;
 using Xunit;
 
 namespace Seeing.Provider.SiliconFlow.Tests;

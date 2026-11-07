@@ -1,7 +1,6 @@
-using System.Linq;
-using System.Reflection;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
+using System.Reflection;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Llm;

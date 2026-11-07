@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Events;
-using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Session.Core;
 using Xunit;

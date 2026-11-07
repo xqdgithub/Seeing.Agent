@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using Seeing.Agent.Reflection;
 using Seeing.Agent.Reflection.Abstractions;
 using Seeing.Agent.Reflection.Extensions;
 using Xunit;

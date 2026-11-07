@@ -4,7 +4,6 @@ using Moq;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Extensions;
 using System.Text.Json;

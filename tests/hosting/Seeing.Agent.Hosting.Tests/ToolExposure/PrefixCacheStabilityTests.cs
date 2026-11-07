@@ -3,7 +3,6 @@ using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Prompts;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Hosting.Execution.ToolExposure;
 using Seeing.TokenEstimation;

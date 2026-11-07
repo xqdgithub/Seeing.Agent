@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Core.Graph;

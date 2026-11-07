@@ -2,14 +2,12 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Core.Execution;
+using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Helpers;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Tools;
-using Seeing.Agent.Core.Configuration;
 
 namespace Seeing.Agent.Core;
 

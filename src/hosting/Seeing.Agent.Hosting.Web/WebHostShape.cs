@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Components.Server.Circuits;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Core.Execution;
-using Seeing.Agent.Hosting;
 using Seeing.Agent.Hosting.Web.Circuits;
 
 namespace Seeing.Agent.Hosting.Web;

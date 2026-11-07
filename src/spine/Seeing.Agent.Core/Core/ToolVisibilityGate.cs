@@ -1,7 +1,7 @@
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Serialization;
 using Seeing.Agent.Core.Tools;
+using Seeing.Serialization;
 using System.Text.Json;
 
 namespace Seeing.Agent.Core;

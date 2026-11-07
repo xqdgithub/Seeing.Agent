@@ -1,4 +1,3 @@
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -14,6 +13,7 @@ using Seeing.Agent.Memory.Extensions;
 using Seeing.Agent.Memory.Integration;
 using Seeing.Agent.Memory.Integration.Hosting;
 using Seeing.Session.Core;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Memory.Tests.Integration;

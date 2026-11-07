@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Interactions;
-using Seeing.Agent.Abstractions.Models;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Gateway.Mapping;

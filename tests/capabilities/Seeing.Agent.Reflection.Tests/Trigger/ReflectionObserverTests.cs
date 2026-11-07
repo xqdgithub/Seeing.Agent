@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Reflection;
 using Seeing.Agent.Reflection.Abstractions;
 using Seeing.Agent.Reflection.Configuration;
 using Seeing.Agent.Reflection.Core;

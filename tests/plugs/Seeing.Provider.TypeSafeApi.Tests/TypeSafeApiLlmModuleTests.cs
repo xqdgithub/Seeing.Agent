@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Llm;

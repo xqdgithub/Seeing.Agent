@@ -1,12 +1,11 @@
-﻿using System.IO.Compression;
-using System.Text;
-using System.Text.RegularExpressions;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Skills;
-using Seeing.Serialization;
-using Seeing.Agent.Skills.Catalog;
 using Seeing.Agent.Paths;
+using Seeing.Agent.Skills.Catalog;
+using Seeing.Serialization;
+using System.IO.Compression;
+using System.Text;
 
 namespace Seeing.Agent.Skills;
 

@@ -159,7 +159,8 @@ internal static class ScheduleTextFormatter
         return $"{last.StartedAt:yyyy-MM-dd HH:mm:ss} {status}{duration}{error}";
     }
 
-    private static string DescribeWindows(IReadOnlyList<ScheduleWindow>? windows)    {
+    private static string DescribeWindows(IReadOnlyList<ScheduleWindow>? windows)
+    {
         if (windows is null || windows.Count == 0)
             return string.Empty;
 

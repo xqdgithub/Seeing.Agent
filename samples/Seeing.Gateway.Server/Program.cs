@@ -7,7 +7,6 @@ using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Gateway.Channels;
 using Seeing.Agent.HostComposition;
-using Seeing.Agent.Hosting;
 using Seeing.Agent.Hosting.Gateway;
 using Seeing.Agent.TokenBudget.Extensions;
 

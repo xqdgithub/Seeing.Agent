@@ -1,5 +1,4 @@
 using FluentAssertions;
-using System.Text.RegularExpressions;
 
 namespace Seeing.Agent.WebUI.Tests.Rendering;
 

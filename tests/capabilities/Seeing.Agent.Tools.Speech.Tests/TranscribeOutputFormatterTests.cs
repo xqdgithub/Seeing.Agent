@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Tools.Speech;
 using Xunit;
 
 namespace Seeing.Agent.Tools.Speech.Tests;

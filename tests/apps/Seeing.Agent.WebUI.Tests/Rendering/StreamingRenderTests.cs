@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Seeing.Agent.WebUI.Models.Messaging;
 using Seeing.Agent.WebUI.Rendering;
-using Xunit;
 
 namespace Seeing.Agent.WebUI.Tests.Rendering;
 

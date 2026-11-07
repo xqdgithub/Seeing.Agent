@@ -75,7 +75,8 @@ public class EmbeddingConnectionTesterTests
 
     [Fact]
     public async Task TestAsync_WhenNoModelIdAnywhere_ShouldFailWithoutCallingInvoker()
-    {        var sut = CreateTester(new MemoryOptions());
+    {
+        var sut = CreateTester(new MemoryOptions());
 
         var result = await sut.TestAsync(null, TestContext.Current.CancellationToken);
 

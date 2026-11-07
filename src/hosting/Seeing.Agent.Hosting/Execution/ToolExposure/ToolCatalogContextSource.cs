@@ -1,10 +1,10 @@
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Session.Core;
+using System.Text.Json;
 
 namespace Seeing.Agent.Hosting.Execution.ToolExposure;
 

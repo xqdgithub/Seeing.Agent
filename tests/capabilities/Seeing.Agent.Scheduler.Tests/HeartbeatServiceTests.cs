@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Seeing.Agent.Scheduler;
 using Seeing.Agent.Scheduler.Abstractions;
 using Seeing.Agent.Scheduler.Management;
 using Seeing.Agent.Scheduler.Models;

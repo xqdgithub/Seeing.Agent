@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Llm.Support.Http;
 using Seeing.Agent.Llm.Support.Speech;
 using System.Runtime.CompilerServices;
 using System.Text;

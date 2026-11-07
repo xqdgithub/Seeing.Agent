@@ -1,7 +1,7 @@
-using System.Text;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Reflection.Core;
+using System.Text;
 using Xunit;
 
 namespace Seeing.Agent.Reflection.Tests.Core;

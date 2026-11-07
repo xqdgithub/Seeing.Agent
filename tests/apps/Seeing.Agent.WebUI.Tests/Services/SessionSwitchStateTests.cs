@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.WebUI.State;
-using Xunit;
 
 namespace Seeing.Agent.WebUI.Tests.Services;
 

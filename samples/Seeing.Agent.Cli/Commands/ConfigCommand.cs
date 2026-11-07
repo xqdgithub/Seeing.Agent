@@ -3,7 +3,6 @@ using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Cli.Infrastructure;
 using Seeing.Agent.Core.Configuration;
 using System.CommandLine;
-using System.Text.Json;
 using SeeingConfigScope = Seeing.Agent.Abstractions.Configuration.ConfigScope;
 
 namespace Seeing.Agent.Cli.Commands;

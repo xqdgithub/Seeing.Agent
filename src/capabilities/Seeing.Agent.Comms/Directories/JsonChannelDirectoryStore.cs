@@ -2,10 +2,10 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
+using Seeing.Files;
 using Seeing.Serialization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Seeing.Files;
 
 namespace Seeing.Agent.Comms.Directories;
 

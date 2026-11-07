@@ -1,12 +1,12 @@
-﻿using System.Collections.Immutable;
+﻿using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Skills;
+using Seeing.Agent.Paths;
+using Seeing.Serialization;
+using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
-using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Skills;
-using Seeing.Serialization;
-using Seeing.Agent.Paths;
 namespace Seeing.Agent.Skills.Catalog;
 
 /// <summary>

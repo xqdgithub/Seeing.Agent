@@ -1,8 +1,6 @@
 using FluentAssertions;
-using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Tools;
-using Seeing.Agent.Tools.ToolDiscovery;
 using System.Text.Json;
 using Xunit;
 

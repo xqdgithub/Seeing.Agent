@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
+using Seeing.Files;
 using Seeing.Serialization;
 using System.Text.Json;
-using Seeing.Files;
 
 namespace Seeing.Agent.Mcp.OAuth
 {

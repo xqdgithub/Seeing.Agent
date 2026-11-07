@@ -2,7 +2,6 @@ using FluentAssertions;
 using Seeing.Agent.Scheduler;
 using Seeing.Agent.Scheduler.Models;
 using Seeing.Agent.WebUI.Services;
-using Xunit;
 
 namespace Seeing.Agent.WebUI.Tests.Services;
 

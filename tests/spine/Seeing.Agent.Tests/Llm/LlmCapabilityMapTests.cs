@@ -1,4 +1,3 @@
-using System.Linq;
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
 using Xunit;

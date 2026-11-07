@@ -1,4 +1,3 @@
-using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Execution;
@@ -7,6 +6,7 @@ using Seeing.Agent.Reflection.Abstractions;
 using Seeing.Agent.Reflection.Configuration;
 using Seeing.Agent.Reflection.Integration;
 using Seeing.Session.Core;
+using System.Text;
 
 namespace Seeing.Agent.Reflection.Core;
 

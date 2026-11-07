@@ -2,7 +2,6 @@ using FluentAssertions;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.WebUI.Components.Models;
 using System.Text.Json;
-using Xunit;
 
 namespace Seeing.Agent.WebUI.Tests.Components.Models;
 

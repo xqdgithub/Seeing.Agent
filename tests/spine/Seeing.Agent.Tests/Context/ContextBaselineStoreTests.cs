@@ -1,8 +1,8 @@
-using System.Text.Json.Nodes;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Core.Context;
 using Seeing.Session.Core;
+using System.Text.Json.Nodes;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Context;

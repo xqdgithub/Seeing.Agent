@@ -10,7 +10,6 @@ using Seeing.Agent.HostComposition;
 using Seeing.Agent.Hosting;
 using Seeing.Agent.Hosting.Web;
 using Seeing.Agent.Hosting.Web.Circuits;
-using Seeing.Agent.Tools.Support;
 using Seeing.Agent.TokenBudget.Extensions;
 using Seeing.Agent.WebUI.Endpoints;
 using Seeing.Agent.WebUI.Rendering;

@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Skills;
-using Seeing.Agent.Skills.Catalog;
 
 namespace Seeing.Agent.Skills
 {

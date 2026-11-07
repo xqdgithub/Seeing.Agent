@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.OpenAI.Clients;
 using System.Net;
-using System.Text;
 using System.Text.Json;
 using Xunit;
 

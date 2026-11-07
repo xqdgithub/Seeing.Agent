@@ -6,7 +6,6 @@ using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Llm;
-using Seeing.Agent.Llm;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Xunit;

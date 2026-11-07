@@ -156,7 +156,7 @@ public static class MemoryServiceExtensions
         services.TryAddEnumerable(
             ServiceDescriptor.Scoped<IContextSource, MemoryContextSource>());
 
-        services.TryAddSingleton<ChatMemoryHandler>();        services.TryAddSingleton<ToolMemoryHandler>();
+        services.TryAddSingleton<ChatMemoryHandler>(); services.TryAddSingleton<ToolMemoryHandler>();
 
         // 终态观察者登记必须同时满足两点：①「具体类型 + 接口」解析到同一实例（状态不分裂）；
         // ②重复调用 AddMemoryServices 不翻倍（翻倍会让 TryFlushAfterTurn 调两次，

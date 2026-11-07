@@ -1,11 +1,11 @@
-using System.Security.Cryptography;
-using System.Text;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Core.Context.Sources;
 using Seeing.Agent.Core.Instructions;
+using System.Security.Cryptography;
+using System.Text;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Context;

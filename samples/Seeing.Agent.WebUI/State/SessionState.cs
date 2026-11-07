@@ -1,6 +1,5 @@
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.TokenBudget.Api.Responses;
-using Seeing.Agent.WebUI.Models;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.WebUI.State

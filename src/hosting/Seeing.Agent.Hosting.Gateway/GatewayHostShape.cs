@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Seeing.Agent.Hosting;
 
 namespace Seeing.Agent.Hosting.Gateway;
 

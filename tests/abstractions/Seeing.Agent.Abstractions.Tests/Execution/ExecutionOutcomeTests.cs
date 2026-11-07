@@ -15,9 +15,12 @@ public class ExecutionOutcomeTests
     {
         var outcome = new ExecutionOutcome
         {
-            SessionId = "s1", ExecutionId = "e1",
+            SessionId = "s1",
+            ExecutionId = "e1",
             Status = ExecutionStatus.Completed,
-            AgentName = "build", AgentExecuted = true, IsTopLevel = true,
+            AgentName = "build",
+            AgentExecuted = true,
+            IsTopLevel = true,
             TotalSteps = 5,
             Usage = new TokenUsage { InputTokens = 100, OutputTokens = 50 }
         };
@@ -33,11 +36,15 @@ public class ExecutionOutcomeTests
         IExecutionOutcomeObserver observer = fake;
         observer.ShouldObserve(new ExecutionOutcome
         {
-            SessionId = "s", ExecutionId = "e", Status = ExecutionStatus.Completed
+            SessionId = "s",
+            ExecutionId = "e",
+            Status = ExecutionStatus.Completed
         }).Should().BeTrue();
         await observer.OnExecutionCompletedAsync(new ExecutionOutcome
         {
-            SessionId = "s", ExecutionId = "e", Status = ExecutionStatus.Completed
+            SessionId = "s",
+            ExecutionId = "e",
+            Status = ExecutionStatus.Completed
         });
         fake.Called.Should().BeTrue();
     }

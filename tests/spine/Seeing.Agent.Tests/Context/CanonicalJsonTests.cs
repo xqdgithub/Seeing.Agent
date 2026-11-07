@@ -1,6 +1,6 @@
-using System.Text.Json;
 using FluentAssertions;
 using Seeing.Agent.Core.Context;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Context;

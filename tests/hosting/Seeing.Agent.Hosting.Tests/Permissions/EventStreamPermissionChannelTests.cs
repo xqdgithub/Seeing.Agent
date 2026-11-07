@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Permissions;
-using Seeing.Agent.Hosting;
 using Xunit;
 
 namespace Seeing.Agent.Hosting.Tests.Permissions;

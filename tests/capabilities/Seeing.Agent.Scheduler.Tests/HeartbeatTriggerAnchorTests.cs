@@ -2,7 +2,6 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Quartz;
 using Quartz.Impl;
-using Seeing.Agent.Scheduler;
 using Seeing.Agent.Scheduler.Engine;
 using Seeing.Agent.Scheduler.Jobs;
 using Seeing.Agent.Scheduler.Models;

@@ -3,7 +3,6 @@ using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Session.Core;
 using System.Collections.Immutable;
-using Xunit;
 
 namespace Seeing.Agent.WebUI.Tests.Services;
 
@@ -48,7 +47,9 @@ public class SessionSummaryProjectorTests
     {
         var s = Session(new SessionMessage
         {
-            Id = "a1", Role = MessageRole.Assistant, Content = "",
+            Id = "a1",
+            Role = MessageRole.Assistant,
+            Content = "",
             ToolCalls = ImmutableList.Create(
                 new SessionToolCall { Id = "t1", Name = "task", Status = "running", TaskId = "c1" },
                 new SessionToolCall { Id = "t2", Name = "task", Status = "running", TaskId = "c2" })
@@ -65,7 +66,9 @@ public class SessionSummaryProjectorTests
     {
         var s = Session(new SessionMessage
         {
-            Id = "a1", Role = MessageRole.Assistant, Content = "",
+            Id = "a1",
+            Role = MessageRole.Assistant,
+            Content = "",
             ToolCalls = ImmutableList.Create(new SessionToolCall { Id = "t1", Name = "bash", Status = "running" })
         });
 

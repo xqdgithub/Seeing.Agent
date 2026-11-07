@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Core.Execution;
-using Seeing.Agent.Hosting;
 
 namespace Seeing.Agent.Hosting.Tui;
 

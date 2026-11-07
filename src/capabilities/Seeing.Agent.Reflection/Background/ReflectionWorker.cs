@@ -2,7 +2,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Reflection.Abstractions;
-using Seeing.Agent.Reflection.Core;
 
 namespace Seeing.Agent.Reflection.Background;
 

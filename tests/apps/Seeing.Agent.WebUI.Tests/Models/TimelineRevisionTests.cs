@@ -4,7 +4,6 @@ using Seeing.Agent.WebUI.Models.Timeline;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Session.Core;
 using System.Collections.Immutable;
-using Xunit;
 
 namespace Seeing.Agent.WebUI.Tests.Models;
 
@@ -50,7 +49,11 @@ public class TimelineRevisionTests
         var store = new MessageTimelineStore();
         var msg = new SessionMessage
         {
-            Id = "a1", Role = MessageRole.Assistant, LoopId = "loop1", Content = "内容", SessionId = "s1"
+            Id = "a1",
+            Role = MessageRole.Assistant,
+            LoopId = "loop1",
+            Content = "内容",
+            SessionId = "s1"
         };
         store.SyncAssistantMessage(msg, "s1");
 
@@ -72,8 +75,12 @@ public class TimelineRevisionTests
         var store = new MessageTimelineStore();
         var msg = new SessionMessage
         {
-            Id = "a1", Role = MessageRole.Assistant, LoopId = "loop1",
-            Content = "内容", ReasoningContent = "思考", SessionId = "s1"
+            Id = "a1",
+            Role = MessageRole.Assistant,
+            LoopId = "loop1",
+            Content = "内容",
+            ReasoningContent = "思考",
+            SessionId = "s1"
         };
         store.SyncAssistantMessage(msg, "s1", isComplete: true);
         // 手工模拟「已完成但思考未标完成」的中间态
@@ -97,10 +104,17 @@ public class TimelineRevisionTests
         var store = new MessageTimelineStore();
         SessionMessage Build(double durationMs) => new()
         {
-            Id = "a1", Role = MessageRole.Assistant, LoopId = "loop1", Content = "内容", SessionId = "s1",
+            Id = "a1",
+            Role = MessageRole.Assistant,
+            LoopId = "loop1",
+            Content = "内容",
+            SessionId = "s1",
             ToolCalls = ImmutableList.Create(new SessionToolCall
             {
-                Id = "t1", Name = "bash", Status = "success", DurationMs = durationMs
+                Id = "t1",
+                Name = "bash",
+                Status = "success",
+                DurationMs = durationMs
             })
         };
 

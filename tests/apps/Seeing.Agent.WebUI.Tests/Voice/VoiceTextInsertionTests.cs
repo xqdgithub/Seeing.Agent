@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Seeing.Agent.WebUI.Models;
-using Xunit;
 
 namespace Seeing.Agent.WebUI.Tests.Voice;
 

@@ -1,8 +1,8 @@
-using System.Collections.Concurrent;
-using System.Threading.Channels;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Reflection.Abstractions;
 using Seeing.Agent.Reflection.Configuration;
+using System.Collections.Concurrent;
+using System.Threading.Channels;
 
 namespace Seeing.Agent.Reflection.Core;
 

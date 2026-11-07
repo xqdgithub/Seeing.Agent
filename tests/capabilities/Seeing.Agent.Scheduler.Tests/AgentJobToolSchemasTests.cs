@@ -276,7 +276,8 @@ public class AgentJobToolSchemasTests
             "旁路记账失败不应升级为 Error（那会与真正的执行失败混淆）");
     }
 
-    private sealed class RecordingLogger<T> : ILogger<T>    {
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
         public List<(LogLevel Level, string Message)> Entries { get; } = [];
 
         public IEnumerable<string> Warnings =>

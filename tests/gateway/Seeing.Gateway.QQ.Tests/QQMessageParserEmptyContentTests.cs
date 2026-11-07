@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Seeing.Gateway.Models;
-using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Gateway.QQ.Tests;

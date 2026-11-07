@@ -1,6 +1,5 @@
-﻿using System.Security.Cryptography;
-using System.Text.Json;
-using Seeing.Serialization;
+﻿using Seeing.Serialization;
+using System.Security.Cryptography;
 
 namespace Seeing.Agent.Abstractions.Permissions;
 

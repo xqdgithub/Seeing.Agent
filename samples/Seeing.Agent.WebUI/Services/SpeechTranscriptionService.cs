@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Tools.Support.Llm;

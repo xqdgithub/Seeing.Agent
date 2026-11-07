@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Seeing.Agent.Tui.Services;
-using Xunit;
 
 namespace Seeing.Agent.Tui.Tests.Services;
 

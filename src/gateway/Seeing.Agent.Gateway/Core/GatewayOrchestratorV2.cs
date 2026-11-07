@@ -8,7 +8,6 @@ using Seeing.Agent.Gateway.Configuration;
 using Seeing.Gateway.Client;
 using Seeing.Gateway.Mapping;
 using Seeing.Gateway.Models;
-using Seeing.Session.Core;
 using System.Runtime.CompilerServices;
 
 namespace Seeing.Agent.Gateway.Core;

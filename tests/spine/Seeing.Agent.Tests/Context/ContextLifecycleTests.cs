@@ -1,4 +1,3 @@
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -6,10 +5,10 @@ using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Abstractions.Summarization;
 using Seeing.Agent.Core.Compression;
 using Seeing.Agent.Core.Context;
-using Seeing.Session;
 using Seeing.Session.Core;
 using Seeing.Session.Management;
 using Seeing.Session.Storage;
+using System.Text.Json;
 using Xunit;
 
 namespace Seeing.Agent.Tests.Context;

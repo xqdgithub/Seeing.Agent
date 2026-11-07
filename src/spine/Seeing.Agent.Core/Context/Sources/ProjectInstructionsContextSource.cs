@@ -1,11 +1,11 @@
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Core.Instructions;
 using Seeing.Serialization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Seeing.Agent.Core.Context.Sources;
 

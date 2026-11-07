@@ -19,7 +19,6 @@ using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Compression;
-using Seeing.Agent.Core.Context;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Llm;

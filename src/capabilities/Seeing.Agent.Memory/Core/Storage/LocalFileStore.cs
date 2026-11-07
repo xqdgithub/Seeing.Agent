@@ -1,13 +1,12 @@
 ﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Core.Models;
+using Seeing.Files;
 using System.Globalization;
 using System.Reactive.Subjects;
 using System.Text;
-
 // Alias to resolve conflict with Core.MemoryType
 using ReMeMemoryType = Seeing.Agent.Memory.Core.Models.MemoryType;
-using Seeing.Files;
 
 namespace Seeing.Agent.Memory.Core.Storage;
 

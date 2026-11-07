@@ -1,18 +1,17 @@
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Llm.Anthropic;
-using Seeing.Agent.Llm.OpenAI;
-using Seeing.Agent.Llm.TypeSafe;
-using Seeing.Agent.Llm.TypeSafe.Clients;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Core.CapabilitySets;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Core.Modules;
 using Seeing.Agent.Hosting;
+using Seeing.Agent.Llm.Anthropic;
+using Seeing.Agent.Llm.OpenAI;
+using Seeing.Agent.Llm.TypeSafe.Clients;
 
 namespace Seeing.Agent.HostComposition.Tests;
 

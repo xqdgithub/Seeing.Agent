@@ -99,7 +99,8 @@ public class TuiPromptInputRelayTests
         }
     }
 
-    private static async Task<ConsoleKeyInfo?> ReadPromptWithTimeoutAsync(TuiPromptInputRelay relay, TimeSpan timeout)    {
+    private static async Task<ConsoleKeyInfo?> ReadPromptWithTimeoutAsync(TuiPromptInputRelay relay, TimeSpan timeout)
+    {
         using var cts = new CancellationTokenSource(timeout);
         try
         {

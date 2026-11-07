@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Seeing.Agent.Scheduler;
 using Seeing.Agent.Scheduler.Models;
 using Seeing.Agent.Scheduler.Tests.Fixtures;
 using Xunit;

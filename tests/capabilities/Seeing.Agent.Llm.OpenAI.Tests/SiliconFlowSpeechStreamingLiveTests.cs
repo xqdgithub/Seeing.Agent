@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Agent.Llm.OpenAI;
 using Xunit;
 
 namespace Seeing.Agent.Llm.OpenAI.Tests;

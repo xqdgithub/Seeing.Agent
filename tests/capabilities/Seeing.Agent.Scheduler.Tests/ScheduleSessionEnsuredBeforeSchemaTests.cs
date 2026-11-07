@@ -1,12 +1,9 @@
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Execution;
-using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Agent.Scheduler.Jobs;
-using Seeing.Agent.Scheduler.Models;
 using Seeing.Session.Core;
 using Xunit;
 

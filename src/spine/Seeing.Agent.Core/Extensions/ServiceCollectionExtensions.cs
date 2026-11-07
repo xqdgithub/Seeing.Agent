@@ -17,7 +17,6 @@ using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Prompts;
-using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Summarization;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Tools;

@@ -1,5 +1,5 @@
-using System.Text;
 using Seeing.Agent.Abstractions.Skills;
+using System.Text;
 
 namespace Seeing.Agent.Skills.Catalog;
 

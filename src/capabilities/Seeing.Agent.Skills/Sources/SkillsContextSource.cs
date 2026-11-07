@@ -1,9 +1,9 @@
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Skills.Catalog;
+using System.Text.Json;
 
 namespace Seeing.Agent.Skills.Sources;
 

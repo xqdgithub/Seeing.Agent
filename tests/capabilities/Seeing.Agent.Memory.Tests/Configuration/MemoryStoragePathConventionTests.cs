@@ -1,11 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
-using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Core.Storage;
 using Seeing.Agent.Memory.Extensions;
 using Xunit;

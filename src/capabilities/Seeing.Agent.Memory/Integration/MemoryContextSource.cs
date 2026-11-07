@@ -1,7 +1,3 @@
-using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -12,6 +8,10 @@ using Seeing.Agent.Memory.Core;
 using Seeing.Agent.Memory.Core.Models;
 using Seeing.Agent.Memory.Integration.Hosting;
 using Seeing.Session.Core;
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 namespace Seeing.Agent.Memory.Integration;
 

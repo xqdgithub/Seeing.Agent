@@ -1,12 +1,10 @@
+using Photino.NET;
+using Seeing.Agent.Desktop.Services;
+using Seeing.Agent.WebUI.Hosting;
 using System.Diagnostics;
 using System.Drawing;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
-using Microsoft.Extensions.Logging;
-using Photino.NET;
-using Seeing.Agent.Desktop.Services;
-using Seeing.Agent.WebUI.Hosting;
 
 namespace Seeing.Agent.Desktop;
 

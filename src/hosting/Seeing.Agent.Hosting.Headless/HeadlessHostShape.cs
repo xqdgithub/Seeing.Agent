@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Permission;
-using Seeing.Agent.Hosting;
 
 namespace Seeing.Agent.Hosting.Headless;
 

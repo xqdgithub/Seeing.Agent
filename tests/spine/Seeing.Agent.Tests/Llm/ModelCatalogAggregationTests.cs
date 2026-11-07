@@ -657,7 +657,8 @@ public sealed class ModelCatalogAggregationTests : IDisposable
     }
 
     private sealed class TestProvider : ILlmProvider
-    {        private readonly IReadOnlyList<ModelConfig> _models;
+    {
+        private readonly IReadOnlyList<ModelConfig> _models;
         private readonly Exception? _error;
 
         public TestProvider(string id, IReadOnlyList<ModelConfig>? models = null, Exception? error = null)

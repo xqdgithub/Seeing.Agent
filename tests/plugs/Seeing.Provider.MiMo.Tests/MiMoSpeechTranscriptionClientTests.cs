@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Llm;
-using Seeing.Provider.MiMo;
 using System.Net;
 using System.Text.Json;
 using Xunit;

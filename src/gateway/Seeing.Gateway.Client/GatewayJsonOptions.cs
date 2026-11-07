@@ -1,6 +1,6 @@
+using Seeing.Serialization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Seeing.Serialization;
 
 namespace Seeing.Gateway.Client;
 

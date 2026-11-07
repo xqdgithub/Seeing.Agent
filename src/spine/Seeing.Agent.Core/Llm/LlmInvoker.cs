@@ -1,9 +1,9 @@
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
-using System.Text;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Llm;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace Seeing.Agent.Core.Llm;
 

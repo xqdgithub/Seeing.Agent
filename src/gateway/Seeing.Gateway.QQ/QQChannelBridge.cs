@@ -7,7 +7,6 @@ using Seeing.Gateway.Models;
 using Seeing.Gateway.Protocol;
 using Seeing.Gateway.QQ.Connection;
 using System.Collections.Concurrent;
-using System.Text;
 using System.Text.Json;
 
 namespace Seeing.Gateway.QQ;

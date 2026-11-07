@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Skills.Catalog;
 using Seeing.Agent.Skills.Configuration;
 
