@@ -328,84 +328,132 @@ namespace Seeing.Agent.Tools.FileSystem
         }
 
         /// <summary>
-        /// Glob 模式匹配（简化版，支持 * 和 **）
+        /// Glob 模式匹配（语义见 <see cref="GlobMatcher"/>）。
+        /// <para>
+        /// <paramref name="path"/> 应为「相对搜索根的路径」或「文件名」：
+        /// 含 <c>/</c> 的模式匹配相对路径，不含 <c>/</c> 的模式匹配文件名。
+        /// 传入绝对路径将不匹配任何相对模式。
+        /// </para>
         /// </summary>
         public static bool MatchesGlobPattern(string path, string pattern)
         {
-            // 将 glob 模式转换为正则表达式
-            var regexPattern = ConvertGlobToRegex(pattern);
-            return Regex.IsMatch(path, regexPattern, RegexOptions.IgnoreCase, RegexTimeout);
+            var caseSensitive = !IsCaseInsensitivePathComparison();
+            return GlobMatcher.Matches(path, pattern, caseSensitive);
+        }
+
+        /// <summary>按当前平台路径比较语义决定 glob 是否大小写敏感（与 rg 侧 --glob-case-insensitive 同源）。</summary>
+        internal static bool IsCaseInsensitivePathComparison()
+            => PathComparison == StringComparison.OrdinalIgnoreCase;
+
+        /// <summary>
+        /// 递归搜索目录。
+        /// </summary>
+        /// <param name="root">搜索根（用于计算相对路径与判重）。</param>
+        /// <param name="directory">当前遍历目录。</param>
+        /// <param name="pattern">glob 模式。</param>
+        /// <param name="caseSensitive">是否大小写敏感。</param>
+        /// <param name="includeHidden">是否包含隐藏项（对齐 rg 的 <c>--hidden</c>）。</param>
+        private static void SearchDirectory(
+            IFileSystem fileSystem,
+            string root,
+            string directory,
+            string pattern,
+            bool caseSensitive,
+            bool includeHidden,
+            List<string> files,
+            int limit,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (files.Count >= limit) return;
+
+            try
+            {
+                // 搜索文件
+                foreach (var file in fileSystem.EnumerateFiles(directory, "*", recursive: false))
+                {
+                    if (files.Count >= limit) break;
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    // 跳过隐藏文件（对齐 rg 默认：不输出隐藏项）
+                    if (!includeHidden && fileSystem.IsHidden(file)) continue;
+
+                    if (GlobMatcher.Matches(ToMatchTarget(root, file, pattern), pattern, caseSensitive))
+                        files.Add(file);
+                }
+
+                // 递归搜索子目录
+                foreach (var subDir in fileSystem.EnumerateDirectories(directory, "*", recursive: false))
+                {
+                    if (files.Count >= limit) break;
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    // 跳过隐藏目录（对齐 rg 默认）
+                    if (!includeHidden && fileSystem.IsHidden(subDir)) continue;
+
+                    SearchDirectory(fileSystem, root, subDir, pattern, caseSensitive, includeHidden, files, limit, cancellationToken);
+                }
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // 跳过无权限目录
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // 跳过不存在的目录
+            }
+            catch (IOException)
+            {
+                // 跳过不可枚举目录
+            }
         }
 
         /// <summary>
-        /// 将 Glob 模式转换为正则表达式
+        /// 计算 glob 匹配对象：含 <c>/</c> 的模式用「相对搜索根的路径」，否则用文件名。
         /// </summary>
-        private static string ConvertGlobToRegex(string glob)
+        private static string ToMatchTarget(string root, string file, string pattern)
         {
-            var regex = "^";
-            foreach (var c in glob)
+            if (!GlobMatcher.RequiresRelativePath(pattern))
+                return Path.GetFileName(file);
+
+            try
             {
-                switch (c)
-                {
-                    case '*':
-                        // ** 匹配任意深度目录
-                        if (regex.EndsWith(".*"))
-                        {
-                            regex = regex.Substring(0, regex.Length - 1) + ".*";
-                        }
-                        else
-                        {
-                            regex += "[^/\\\\]*";
-                        }
-                        break;
-                    case '?':
-                        regex += ".";
-                        break;
-                    case '.':
-                        regex += "\\.";
-                        break;
-                    case '/':
-                    case '\\':
-                        regex += "[/\\\\]";
-                        break;
-                    default:
-                        if (char.IsLetterOrDigit(c))
-                        {
-                            regex += c;
-                        }
-                        else
-                        {
-                            regex += "\\" + c;
-                        }
-                        break;
-                }
+                return Path.GetRelativePath(root, file).Replace('\\', '/');
             }
-            regex += "$";
-            return regex;
+            catch (ArgumentException)
+            {
+                // 不同驱动器等无法求相对路径的情况：退回文件名
+                return Path.GetFileName(file);
+            }
         }
 
         /// <summary>
         /// 递归搜索匹配 Glob 模式的文件。
         /// <para>托管回退可能遍历整棵树（数十万文件、分钟级），因此必须响应
         /// <paramref name="cancellationToken"/>，否则用户取消无法中断搜索。</para>
+        /// <para>
+        /// 匹配对象为「相对 <paramref name="directory"/> 的路径」（归一为 <c>/</c>），
+        /// 不含 <c>/</c> 的模式由 <see cref="GlobMatcher"/> 按 basename 解释。
+        /// 返回值恒为绝对路径，与 rg 后端一致。
+        /// </para>
         /// </summary>
         public static List<string> GlobSearch(
             IFileSystem fileSystem,
             string directory,
             string pattern,
             int limit = 100,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            bool includeHidden = false)
         {
             var files = new List<string>();
+            var caseSensitive = !IsCaseInsensitivePathComparison();
 
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // 处理不同类型的 glob 模式
-                var regexPattern = ConvertGlobToRegex(pattern);
-
-                SearchDirectory(fileSystem, directory, regexPattern, files, limit, cancellationToken);
+                SearchDirectory(fileSystem, directory, directory, pattern, caseSensitive, includeHidden, files, limit, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -424,62 +472,6 @@ namespace Seeing.Agent.Tools.FileSystem
         }
 
         /// <summary>
-        /// 递归搜索目录
-        /// </summary>
-        private static void SearchDirectory(
-            IFileSystem fileSystem,
-            string directory,
-            string regexPattern,
-            List<string> files,
-            int limit,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (files.Count >= limit) return;
-
-            try
-            {
-                // 搜索文件
-                foreach (var file in fileSystem.EnumerateFiles(directory, "*", recursive: false))
-                {
-                    if (files.Count >= limit) break;
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    if (Regex.IsMatch(file, regexPattern, RegexOptions.IgnoreCase, RegexTimeout))
-                    {
-                        files.Add(file);
-                    }
-                }
-
-                // 递归搜索子目录
-                foreach (var subDir in fileSystem.EnumerateDirectories(directory, "*", recursive: false))
-                {
-                    if (files.Count >= limit) break;
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    var name = Path.GetFileName(subDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-                    // 跳过隐藏目录（可选）
-                    if (name.StartsWith(".")) continue;
-
-                    SearchDirectory(fileSystem, subDir, regexPattern, files, limit, cancellationToken);
-                }
-            }
-            catch (UnauthorizedAccessException)
-            {
-                // 跳过无权限目录
-            }
-            catch (DirectoryNotFoundException)
-            {
-                // 跳过不存在的目录
-            }
-            catch (IOException)
-            {
-                // 跳过不可枚举目录
-            }
-        }
-
-        /// <summary>
         /// Grep 搜索 - 在文件内容中搜索正则表达式模式。
         /// <para>取消必须穿透到遍历循环，不能当作"搜索失败"静默返回部分结果。</para>
         /// </summary>
@@ -489,15 +481,18 @@ namespace Seeing.Agent.Tools.FileSystem
             string pattern,
             string? includePattern = null,
             int limit = 100,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            bool includeHidden = false)
         {
             var matches = new List<GrepMatch>();
             var regex = new Regex(pattern, RegexOptions.Compiled, RegexTimeout);
+            var caseSensitive = !IsCaseInsensitivePathComparison();
 
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                SearchDirectoryForContent(fileSystem, directory, regex, includePattern, matches, limit, cancellationToken);
+                SearchDirectoryForContent(
+                    fileSystem, directory, directory, regex, includePattern, caseSensitive, includeHidden, matches, limit, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -517,13 +512,17 @@ namespace Seeing.Agent.Tools.FileSystem
         }
 
         /// <summary>
-        /// 在目录中搜索文件内容
+        /// 在目录中搜索文件内容。
+        /// <para><paramref name="includePattern"/> 经 <see cref="GlobMatcher"/> 解释，与 rg 的 <c>-g</c> 语义一致。</para>
         /// </summary>
         private static void SearchDirectoryForContent(
             IFileSystem fileSystem,
+            string root,
             string directory,
             Regex regex,
             string? includePattern,
+            bool caseSensitive,
+            bool includeHidden,
             List<GrepMatch> matches,
             int limit,
             CancellationToken cancellationToken)
@@ -534,9 +533,7 @@ namespace Seeing.Agent.Tools.FileSystem
 
             try
             {
-                var includeRegex = includePattern != null
-                    ? new Regex(ConvertGlobToRegex(includePattern), RegexOptions.IgnoreCase | RegexOptions.Compiled, RegexTimeout)
-                    : null;
+                var hasInclude = !string.IsNullOrEmpty(includePattern);
 
                 // 搜索文件
                 foreach (var file in fileSystem.EnumerateFiles(directory, "*", recursive: false))
@@ -544,8 +541,11 @@ namespace Seeing.Agent.Tools.FileSystem
                     if (matches.Count >= limit) break;
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    // 检查 include 模式
-                    if (includeRegex != null && !includeRegex.IsMatch(file))
+                    // 跳过隐藏文件（对齐 rg 默认）
+                    if (!includeHidden && fileSystem.IsHidden(file)) continue;
+
+                    // 检查 include 模式（对象规则与 glob 工具一致）
+                    if (hasInclude && !GlobMatcher.Matches(ToMatchTarget(root, file, includePattern!), includePattern!, caseSensitive))
                         continue;
 
                     // 跳过二进制文件
@@ -562,11 +562,11 @@ namespace Seeing.Agent.Tools.FileSystem
                     if (matches.Count >= limit) break;
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    var name = Path.GetFileName(subDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-                    // 跳过隐藏目录（可选）
-                    if (name.StartsWith(".")) continue;
+                    // 跳过隐藏目录（对齐 rg 默认）
+                    if (!includeHidden && fileSystem.IsHidden(subDir)) continue;
 
-                    SearchDirectoryForContent(fileSystem, subDir, regex, includePattern, matches, limit, cancellationToken);
+                    SearchDirectoryForContent(
+                        fileSystem, root, subDir, regex, includePattern, caseSensitive, includeHidden, matches, limit, cancellationToken);
                 }
             }
             catch (UnauthorizedAccessException)

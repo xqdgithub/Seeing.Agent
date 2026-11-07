@@ -235,4 +235,11 @@ public class FileSystemHelperTests
 
         result.Should().BeFalse();
     }
+
+    [Fact]
+    public void MatchesGlobPattern_RelativePathWithDoubleStar_ShouldMatchNested()
+    {
+        // 回归：原实现用绝对路径撞锚定正则，任何模式都不匹配
+        FileSystemHelper.MatchesGlobPattern("src/deep/c.md", "**/*.md").Should().BeTrue();
+    }
 }

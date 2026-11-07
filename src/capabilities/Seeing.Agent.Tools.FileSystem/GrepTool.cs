@@ -4,7 +4,6 @@ using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.Support;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 
 namespace Seeing.Agent.Tools.FileSystem
 {
@@ -59,6 +58,12 @@ namespace Seeing.Agent.Tools.FileSystem
                 {
                     type = "string",
                     description = "要包含的文件模式（如 '*.js', '*.{ts,tsx}'）"
+                },
+                hidden = new
+                {
+                    type = "boolean",
+                    description = "是否搜索隐藏项（点前缀文件/目录，如 .github、.env）。默认 false；"
+                                + "开启后也会进入 .git、.venv、node_modules 等目录，慎用于大仓库"
                 }
             },
             required = new[] { "pattern" }
@@ -69,6 +74,7 @@ namespace Seeing.Agent.Tools.FileSystem
             var pattern = GetStringArgument(arguments, "pattern");
             var searchPath = GetStringArgument(arguments, "path") ?? _world.Cwd;
             var includePattern = GetStringArgument(arguments, "include");
+            var includeHidden = GetBoolArgument(arguments, "hidden") ?? false;
 
             if (string.IsNullOrEmpty(pattern))
             {
@@ -89,29 +95,32 @@ namespace Seeing.Agent.Tools.FileSystem
 
             try
             {
-                try
-                {
-                    _ = new Regex(pattern, RegexOptions.Compiled, FileSystemHelper.RegexTimeout);
-                }
-                catch (ArgumentException ex)
-                {
-                    return Failure($"无效的正则表达式: {ex.Message}");
-                }
-
                 if (!_world.FileSystem.Exists(searchPath))
                 {
                     return Failure($"目录不存在: {searchPath}");
                 }
 
-                // Prefer ripgrep via ISubprocess when available; else managed walk + IFileSystem.
-                var matches = await RipgrepSearch.GrepAsync(
+                // 正则预校验只在托管分支做：rg 用 Rust 正则，.NET 语法校验对它是错的编译器。
+                // 托管回退时 FileSystemHelper.GrepSearch 会自行构造 Regex 并在失败时抛错。
+                var outcome = await RipgrepSearch.GrepAsync(
                     _world,
                     searchPath,
                     pattern,
                     includePattern,
                     DefaultLimit,
                     context.CancellationToken,
-                    _logger);
+                    _logger,
+                    includeHidden);
+
+                // 超时不回退：明确告知而不是谎报"未找到"
+                if (outcome.TimedOut)
+                {
+                    return Failure($"搜索超时（超过 {RipgrepSearch.TimeoutDisplay}），请缩小 path 或使用更具体的模式");
+                }
+
+                // 全局截断在 C# 侧判定（rg 的 --max-count 是每文件上限）
+                var matches = outcome.Items.Take(DefaultLimit).ToList();
+                var truncated = outcome.Items.Count > DefaultLimit;
 
                 var output = new List<string>();
                 if (matches.Count == 0)
@@ -128,23 +137,32 @@ namespace Seeing.Agent.Tools.FileSystem
                         output.Add($"{match.Path}:{match.LineNum}:{truncatedLine}");
                     }
 
-                    if (matches.Count >= DefaultLimit)
+                    if (truncated)
                     {
                         output.Add("");
                         output.Add($"(显示前 {DefaultLimit} 条结果，可能还有更多匹配)");
                     }
                 }
 
-                return Success(
-                    $"搜索: {pattern}",
-                    string.Join("\n", output),
-                    new Dictionary<string, object>
-                    {
-                        ["pattern"] = pattern,
-                        ["path"] = searchPath,
-                        ["matches"] = matches.Count,
-                        ["truncated"] = matches.Count >= DefaultLimit
-                    });
+                if (outcome.Fallback is not null)
+                {
+                    output.Add("");
+                    output.Add($"(ripgrep 不可用，已回退托管搜索: {outcome.Fallback.Reason})");
+                }
+
+                var metadata = new Dictionary<string, object>
+                {
+                    ["pattern"] = pattern,
+                    ["path"] = searchPath,
+                    ["matches"] = matches.Count,
+                    ["truncated"] = truncated,
+                    ["backend"] = outcome.Backend
+                };
+
+                if (outcome.Fallback is not null)
+                    metadata["diagnostic"] = outcome.Fallback.Reason;
+
+                return Success($"搜索: {pattern}", string.Join("\n", output), metadata);
             }
             catch (UnauthorizedAccessException ex)
             {

@@ -98,5 +98,28 @@ public sealed class LocalFileSystem : IFileSystem
     public bool IsDirectory(string path) => Directory.Exists(path);
 
     /// <inheritdoc />
+    public bool IsHidden(string path)
+    {
+        // 点前缀：全平台一致（rg 语义）
+        var name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (name.Length > 0 && name[0] == '.')
+            return true;
+
+        // Windows 额外识别 Hidden 属性（rg 在 Windows 上同样跳过此类项）
+        if (!OperatingSystem.IsWindows())
+            return false;
+
+        try
+        {
+            return (File.GetAttributes(path) & FileAttributes.Hidden) != 0;
+        }
+        catch
+        {
+            // 缺失或无权限：按非隐藏处理，避免误伤
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
     public string GetFullPath(string path) => Path.GetFullPath(path);
 }

@@ -58,6 +58,16 @@ public interface IFileSystem
     /// <summary>路径是否为目录；缺失路径返回 <see langword="false"/>。</summary>
     bool IsDirectory(string path);
 
+    /// <summary>
+    /// 路径是否被视作隐藏项。
+    /// <para>
+    /// 语义对齐 ripgrep：所有平台判点前缀（<c>.git</c>、<c>.env</c>）；
+    /// Windows 额外判 <see cref="FileAttributes.Hidden"/> 属性。
+    /// 缺失路径返回 <see langword="false"/>。
+    /// </para>
+    /// </summary>
+    bool IsHidden(string path);
+
     /// <summary>解析为绝对路径。</summary>
     string GetFullPath(string path);
 }

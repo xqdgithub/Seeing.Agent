@@ -337,6 +337,8 @@ public class ReadToolFileSystemTests
 
         public bool IsDirectory(string path) => _directories.Contains(Normalize(path));
 
+        public bool IsHidden(string path) => Path.GetFileName(Normalize(path)).StartsWith('.');
+
         public string GetFullPath(string path) => Normalize(path);
 
         private static string Normalize(string path) => path.Replace('\\', '/').TrimEnd('/');

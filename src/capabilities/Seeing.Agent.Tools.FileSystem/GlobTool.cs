@@ -64,6 +64,12 @@ namespace Seeing.Agent.Tools.FileSystem
                     {
                         type = "string",
                         description = "搜索的目录：绝对路径，或相对当前工作目录的路径（默认当前工作目录）"
+                    },
+                    hidden = new
+                    {
+                        type = "boolean",
+                        description = "是否搜索隐藏项（点前缀文件/目录，如 .github、.env）。默认 false；"
+                                    + "开启后也会进入 .git、.venv、node_modules 等目录，慎用于大仓库"
                     }
                 },
                 required = new[] { "pattern" }
@@ -83,6 +89,7 @@ namespace Seeing.Agent.Tools.FileSystem
 
             // 获取 path 参数
             var searchPath = GetStringArgument(arguments, "path");
+            var includeHidden = GetBoolArgument(arguments, "hidden") ?? false;
             if (string.IsNullOrEmpty(searchPath))
             {
                 // 使用执行世界当前工作目录
@@ -108,7 +115,17 @@ namespace Seeing.Agent.Tools.FileSystem
             _logger.LogInformation("Glob 搜索: pattern={Pattern}, path={Path}", pattern, searchPath);
 
             // Prefer ripgrep --files via ISubprocess when available; else managed glob walk.
-            var files = await RipgrepSearch.GlobAsync(_world, searchPath, pattern, DefaultLimit, context.CancellationToken, _logger);
+            var outcome = await RipgrepSearch.GlobAsync(_world, searchPath, pattern, DefaultLimit, context.CancellationToken, _logger, includeHidden);
+
+            // 超时不回退：明确告知而不是谎报"未找到"
+            if (outcome.TimedOut)
+            {
+                return Failure($"搜索超时（超过 {RipgrepSearch.TimeoutDisplay}），请缩小 path 或使用更具体的模式");
+            }
+
+            // 全局截断在 C# 侧判定（rg --files 无全局上限参数）
+            var files = outcome.Items.Take(DefaultLimit).ToList();
+            var truncated = outcome.Items.Count > DefaultLimit;
 
             // 构建输出
             var outputLines = new List<string>();
@@ -121,8 +138,6 @@ namespace Seeing.Agent.Tools.FileSystem
             {
                 outputLines.AddRange(files);
 
-                // 检查是否有更多结果
-                var truncated = files.Count >= DefaultLimit;
                 if (truncated)
                 {
                     outputLines.Add("");
@@ -130,16 +145,28 @@ namespace Seeing.Agent.Tools.FileSystem
                 }
             }
 
+            if (outcome.Fallback is not null)
+            {
+                outputLines.Add("");
+                outputLines.Add($"(ripgrep 不可用，已回退托管搜索: {outcome.Fallback.Reason})");
+            }
+
+            var metadata = new Dictionary<string, object>
+            {
+                ["count"] = files.Count,
+                ["pattern"] = pattern,
+                ["path"] = searchPath,
+                ["truncated"] = truncated,
+                ["backend"] = outcome.Backend
+            };
+
+            if (outcome.Fallback is not null)
+                metadata["diagnostic"] = outcome.Fallback.Reason;
+
             return Success(
                 Path.GetFileName(searchPath) ?? searchPath,
                 string.Join("\n", outputLines),
-                new Dictionary<string, object>
-                {
-                    ["count"] = files.Count,
-                    ["pattern"] = pattern,
-                    ["path"] = searchPath,
-                    ["truncated"] = files.Count >= DefaultLimit
-                }
+                metadata
             );
         }
     }

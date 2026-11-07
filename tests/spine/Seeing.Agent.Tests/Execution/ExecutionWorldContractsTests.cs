@@ -26,6 +26,8 @@ public class ExecutionWorldContractsTests
         t.GetMethod(nameof(IFileSystem.GetLastWriteTimeUtc), [typeof(string)]).Should().NotBeNull();
         t.GetMethod(nameof(IFileSystem.EnumerateFiles), [typeof(string), typeof(string), typeof(bool)]).Should().NotBeNull();
         t.GetMethod(nameof(IFileSystem.EnumerateDirectories), [typeof(string), typeof(string), typeof(bool)]).Should().NotBeNull();
+        t.GetMethod(nameof(IFileSystem.IsDirectory), [typeof(string)]).Should().NotBeNull();
+        t.GetMethod(nameof(IFileSystem.IsHidden), [typeof(string)]).Should().NotBeNull();
         t.GetMethod(nameof(IFileSystem.GetFullPath), [typeof(string)]).Should().NotBeNull();
     }
 

@@ -166,6 +166,7 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 | P1-15 handoff 回滚复用已取消 ct | ✅ | `4451b53` | 回滚用 `CancellationToken.None` |
 | P1-16 Destroyed 事件未发布 | ✅ | `4451b53` | `session.destroyed` → 收敛在途 + `ClearSession` |
 | P1-17 Windows grep 匹配丢弃 | ✅ | `19140ee` | ripgrep `--json` 解析 + 异步超时 |
+| P1-30 glob/grep 双后端语义分裂（"未找到"永久静默失败） | ✅ | 本分支 | ① `Quote()` 在 POSIX 生成单引号 → 改 `ArgumentList`；② `**` 转换恒假 + 绝对路径撞锚定正则 → 新增 `GlobMatcher`；③ exit=1 被当错误、exit=2 被当正常 → 三态分离（1=可信空、不回退；2=回退+诊断）；④ 超时不回退；⑤ 排序/隐藏/大小写/截断对齐。见 `docs/superpowers/specs/2026-11-07-glob-grep-backend-parity-design.md` |
 | P1-18 codesearch 参数名错误 | ✅ | `7ade54e` | `parameters`→`params`（后补） |
 | P1-19 MCP 工具执行不可取消 | ✅ | `751cd50` | executor 委托接入 `CancellationToken` |
 | P1-20 Anthropic 流式 input_tokens=0 | ✅ | `38f17ea` | 解析 `message_start` usage |
