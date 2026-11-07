@@ -396,10 +396,8 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
                 return;
             }
 
-            // 创建 JobDetail
-            var jobType = jobId == SchedulerConstants.HeartbeatJobId
-                ? typeof(Jobs.HeartbeatJob)
-                : typeof(Jobs.AgentJob);
+            // 心跳与定时任务共用同一个 Job 类型；身份差异由执行画像承载。
+            var jobType = typeof(Jobs.AgentJob);
 
             var mergedData = jobData ?? new JobDataMap();
             mergedData[Jobs.JobDataKeys.ScheduleTimezone] = schedule.Timezone ?? TimeZoneInfo.Local.Id;
@@ -412,8 +410,12 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
 
             var jobDetail = jobBuilder.Build();
 
+            // interval 起算锚点：仅当 JobData 显式带 lastRunAt 时生效（心跳）。
+            // 用户任务不写该键，行为保持启动后约 5 秒。
+            var anchor = ReadAnchor(mergedData);
+
             // 创建触发器（可能多个 windows）
-            var triggers = BuildTriggers(jobId, schedule);
+            var triggers = BuildTriggers(jobId, schedule, anchor);
             await _scheduler.ScheduleJob(jobDetail, new HashSet<ITrigger>(triggers), replace: true, ct);
             _logger.LogDebug("Job {JobId} scheduled with {Count} trigger(s)", jobId, triggers.Count);
         }
@@ -429,7 +431,12 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
         await _lock.WaitAsync(ct);
         try
         {
-            if (_scheduler == null) return;
+            // 启动前调用：必须先拿到实例才能删除持久化存储里的旧触发器。
+            // 静默 return 会让「升级后先清理旧心跳」这一步变成空操作。
+            if (_scheduler == null)
+            {
+                _scheduler = await _schedulerFactory.GetScheduler(ct);
+            }
 
             var jobKey = new JobKey(jobId, SchedulerConstants.DefaultJobGroup);
             if (await _scheduler.CheckExists(jobKey, ct))
@@ -540,20 +547,38 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
     }
 
     /// <summary>构建触发器列表</summary>
-    private IReadOnlyList<ITrigger> BuildTriggers(string jobId, ScheduleSpec schedule)
+    /// <param name="anchor">interval 起算锚点（上次执行时间）；null 表示按既有「启动后 5 秒」行为。</param>
+    private IReadOnlyList<ITrigger> BuildTriggers(string jobId, ScheduleSpec schedule, DateTime? anchor)
     {
         if (!ScheduleWindowsValidator.ValidateForScheduleType(schedule.Type, schedule.Windows, out var windowsError))
             throw new InvalidOperationException(windowsError ?? "无效的生效时段");
 
         var timezone = ScheduleExpressionParser.ResolveTimeZone(schedule.Timezone);
 
+        // 有生效时段时窗口边界本身就是锚点，不再叠加 lastRunAt。
         if (schedule.Type == ScheduleTypes.Interval &&
             schedule.Windows is { Count: > 0 })
         {
             return BuildWindowIntervalTriggers(jobId, schedule, timezone);
         }
 
-        return new[] { BuildSingleTrigger(jobId, schedule, timezone) };
+        return new[] { BuildSingleTrigger(jobId, schedule, timezone, anchor) };
+    }
+
+    /// <summary>读取 interval 起算锚点：只有显式写入的 <c>lastRunAt</c> 才生效。</summary>
+    private static DateTime? ReadAnchor(JobDataMap data)
+    {
+        var raw = data.ContainsKey(JobDataKeys.LastRunAt) ? data.GetString(JobDataKeys.LastRunAt) : null;
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        return DateTime.TryParse(
+            raw,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.RoundtripKind,
+            out var parsed)
+            ? DateTime.SpecifyKind(parsed, DateTimeKind.Local)
+            : null;
     }
 
     private IReadOnlyList<ITrigger> BuildWindowIntervalTriggers(string jobId, ScheduleSpec schedule, TimeZoneInfo timezone)
@@ -614,20 +639,21 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
             .Build();
     }
 
-    private ITrigger BuildSingleTrigger(string jobId, ScheduleSpec schedule, TimeZoneInfo timezone)
+    private ITrigger BuildSingleTrigger(
+        string jobId,
+        ScheduleSpec schedule,
+        TimeZoneInfo timezone,
+        DateTime? anchor)
     {
         var triggerKey = new TriggerKey(jobId + "_trigger", SchedulerConstants.DefaultTriggerGroup);
 
-        // Cron 和 Once 从当前时间开始，Interval 从下一个整周期开始避免立即触发
-        var startNow = schedule.Type != ScheduleTypes.Interval;
         var triggerBuilder = TriggerBuilder.Create()
             .WithIdentity(triggerKey)
             .ForJob(jobId, SchedulerConstants.DefaultJobGroup);
 
-        if (startNow)
+        // 起始时间由各分支决定：cron 立即生效；interval 见下方锚点逻辑；once 用 runAt。
+        if (schedule.Type == ScheduleTypes.Cron)
             triggerBuilder.StartNow();
-        else
-            triggerBuilder.StartAt(DateBuilder.FutureDate(5, IntervalUnit.Second));
 
         switch (schedule.Type)
         {
@@ -648,10 +674,28 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
                     throw new InvalidOperationException("Interval schedule requires 'every'");
 
                 var interval = ScheduleExpressionParser.ParseInterval(schedule.Every);
-                triggerBuilder.WithSimpleSchedule(x => x
-                    .WithInterval(interval)
-                    .RepeatForever()
-                    .WithMisfireHandlingInstructionNextWithExistingCount());
+
+                if (anchor is { } lastRun)
+                {
+                    // 有锚点（心跳）：从「上次执行 + 间隔」续上，重启不重置节律。
+                    // 已逾期则从现在起算满一个周期——错过不补跑，避免启动瞬间打一次。
+                    var next = lastRun.Add(interval);
+                    var now = DateTime.Now;
+                    triggerBuilder.StartAt(next > now ? next : now + interval);
+                    triggerBuilder.WithSimpleSchedule(x => x
+                        .WithInterval(interval)
+                        .RepeatForever()
+                        .WithMisfireHandlingInstructionIgnoreMisfires());
+                }
+                else
+                {
+                    // 无锚点（用户任务）：保持既有行为——启动后约 5 秒首触发，错过则立即补一次。
+                    triggerBuilder.StartAt(DateBuilder.FutureDate(5, IntervalUnit.Second));
+                    triggerBuilder.WithSimpleSchedule(x => x
+                        .WithInterval(interval)
+                        .RepeatForever()
+                        .WithMisfireHandlingInstructionNextWithExistingCount());
+                }
                 break;
 
             case ScheduleTypes.Once:

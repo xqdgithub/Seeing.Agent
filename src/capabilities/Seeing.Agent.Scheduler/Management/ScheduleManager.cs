@@ -69,6 +69,10 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
             // 迁移旧版本数据
             _jobsFile.MigrateIfNeeded();
 
+            // 升级/重启兜底：先清掉持久化存储里的旧心跳触发器，避免它按旧计划 misfire 一次，
+            // 随后又按新锚点触发一次。用户任务的持久化触发器不动。
+            await _engine.RemoveJobAsync(SchedulerConstants.HeartbeatJobId, ct).ConfigureAwait(false);
+
             // 启动 Quartz 调度器
             await _engine.StartAsync(ct);
 
