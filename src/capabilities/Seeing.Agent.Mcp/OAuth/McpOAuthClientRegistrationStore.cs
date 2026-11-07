@@ -1,6 +1,7 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Seeing.Serialization;
 using System.Text.Json;
+using Seeing.Files;
 
 namespace Seeing.Agent.Mcp.OAuth
 {
@@ -63,11 +64,20 @@ namespace Seeing.Agent.Mcp.OAuth
             Directory.CreateDirectory(_storageDirectory);
             var json = JsonSerializer.Serialize(registration, s_jsonOptions);
 
-            // 先写临时文件再原子替换，避免中断留下半截缓存
+            // 先写唯一临时文件再原子替换，避免中断留下半截缓存
             var path = GetPath(serverName);
-            var tmpPath = path + ".tmp";
-            await File.WriteAllTextAsync(tmpPath, json).ConfigureAwait(false);
-            File.Move(tmpPath, path, overwrite: true);
+            var tmpPath = AtomicFileWrite.CreateTempPath(path);
+            try
+            {
+                await File.WriteAllTextAsync(tmpPath, json).ConfigureAwait(false);
+                await AtomicFileWrite.MoveWithRetryAsync(tmpPath, path, serverName, _logger, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch
+            {
+                AtomicFileWrite.TryDelete(tmpPath);
+                throw;
+            }
 
             _logger.LogDebug("已缓存动态客户端注册: {Server}", serverName);
         }

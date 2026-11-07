@@ -1,7 +1,8 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Llm;
 using System.Text.Json;
+using Seeing.Files;
 
 namespace Seeing.Agent.Llm.ModelCatalog.Builtin;
 
@@ -308,9 +309,10 @@ public sealed class BuiltinCapabilitySource : IBatchEditableModelCapabilitySourc
         var json = JsonSerializer.Serialize(_local, BuiltinJson.Options);
         if (File.Exists(_localPath))
             File.Copy(_localPath, _localBackupPath, overwrite: true);
-        var temp = _localPath + ".tmp";
-        File.WriteAllText(temp, json);
-        File.Move(temp, _localPath, overwrite: true);
+
+        // 唯一临时名 + 移动重试：固定 {path}.tmp 在「冷/热实例 + 宿主与 CLI」并发时
+        // 会互相消费临时文件（历史上表现为写入失败但内容其实已生成）。
+        AtomicFileWrite.WriteAllTextAtomic(_localPath, json, subject: "model-catalog", _logger);
     }
 
     private BuiltinCatalogDocument ReadLocalOrEmpty()

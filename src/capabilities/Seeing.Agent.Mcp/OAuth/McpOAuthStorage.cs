@@ -1,9 +1,10 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Seeing.Serialization;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Seeing.Files;
 
 namespace Seeing.Agent.Mcp.OAuth
 {
@@ -204,10 +205,9 @@ namespace Seeing.Agent.Mcp.OAuth
             if (!string.IsNullOrEmpty(dir))
                 Directory.CreateDirectory(dir);
 
-            // 先写临时文件再原子替换，避免中断留下半截密钥
-            var tmpPath = keyFilePath + ".tmp";
-            File.WriteAllBytes(tmpPath, key);
-            File.Move(tmpPath, keyFilePath, overwrite: true);
+            // 先写唯一临时文件再原子替换，避免中断留下半截密钥；
+            // 固定 {path}.tmp 在多实例下会互相消费临时文件。
+            AtomicFileWrite.WriteAllBytesAtomic(keyFilePath, key, subject: "mcp-oauth-key");
             return key;
         }
 

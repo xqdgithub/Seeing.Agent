@@ -1,10 +1,11 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Serialization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Seeing.Files;
 
 namespace Seeing.Agent.Comms.Directories;
 
@@ -199,10 +200,8 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
                 .ToList(),
         };
 
-        var tmpPath = path + ".tmp";
         var payload = JsonSerializer.Serialize(document, JsonOptions);
-        File.WriteAllText(tmpPath, payload);
-        File.Move(tmpPath, path, overwrite: true);
+        AtomicFileWrite.WriteAllTextAtomic(path, payload, subject: "channel-directory", _logger);
     }
 
     private static IReadOnlyList<T> Page<T>(IEnumerable<T> source, int skip, int take)

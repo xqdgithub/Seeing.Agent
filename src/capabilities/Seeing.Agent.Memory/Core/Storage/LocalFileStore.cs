@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Core.Models;
 using System.Globalization;
@@ -7,6 +7,7 @@ using System.Text;
 
 // Alias to resolve conflict with Core.MemoryType
 using ReMeMemoryType = Seeing.Agent.Memory.Core.Models.MemoryType;
+using Seeing.Files;
 
 namespace Seeing.Agent.Memory.Core.Storage;
 
@@ -153,12 +154,20 @@ public class LocalFileStore : IFileStore, IDisposable
             var exists = File.Exists(fullPath);
             var changeType = exists ? FileChangeType.Modified : FileChangeType.Created;
 
-            // 使用临时文件 + 原子替换确保写入完整性
-            var tempPath = fullPath + ".tmp";
-            await File.WriteAllTextAsync(tempPath, content, Encoding.UTF8, ct);
-
-            // 原子替换
-            File.Move(tempPath, fullPath, overwrite: true);
+            // 唯一临时名 + 移动重试（复制兜底）：固定 {path}.tmp 在多实例并发时
+            // 会被一方 Move 消费掉，另一方永远等不到 → 历史「文件丢失」成因。
+            var tempPath = AtomicFileWrite.CreateTempPath(fullPath);
+            try
+            {
+                await File.WriteAllTextAsync(tempPath, content, Encoding.UTF8, ct);
+                await AtomicFileWrite.MoveWithRetryAsync(tempPath, fullPath, path, _logger, ct)
+                    .ConfigureAwait(false);
+            }
+            catch
+            {
+                AtomicFileWrite.TryDelete(tempPath);
+                throw;
+            }
 
             _logger?.LogDebug("写入文件成功: {Path}", path);
 

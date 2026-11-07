@@ -21,6 +21,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="ModelContextProtocol.Core" />
     <ProjectReference Include="..\..\abstractions\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
+    <ProjectReference Include="..\..\primitives\Seeing.Files\Seeing.Files.csproj" />
   </ItemGroup>
 
 </Project>

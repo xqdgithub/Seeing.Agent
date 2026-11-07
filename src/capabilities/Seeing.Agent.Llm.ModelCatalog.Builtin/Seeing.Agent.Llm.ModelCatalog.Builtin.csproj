@@ -16,6 +16,7 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <ProjectReference Include="..\..\abstractions\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
+    <ProjectReference Include="..\..\primitives\Seeing.Files\Seeing.Files.csproj" />
   </ItemGroup>
 
   <ItemGroup>
