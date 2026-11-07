@@ -38,6 +38,7 @@
 - [Provider 语音能力接入 Release Notes](docs/architecture/33-provider-speech-capability-release-notes.md)
 - [WebUI 语音输入 Release Notes](docs/architecture/34-webui-voice-input-release-notes.md)
 - [语音转写工具 Release Notes](docs/architecture/35-speech-transcription-tool-release-notes.md)
+- [全系统设计审查与整改 Release Notes](docs/architecture/37-system-design-audit-release-notes.md)
 - [心跳重构 Release Notes](docs/architecture/36-heartbeat-rework-release-notes.md)
 
 设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
@@ -74,7 +75,7 @@ Seeing.Agent/
 
 | 层 | 项目 | 说明 |
 |----|------|------|
-| 原语层 | `Seeing.Session`、`Seeing.TokenEstimation`、`Seeing.ConfigSchema` | 零依赖或仅 BCL |
+| 原语层 | `Seeing.Session`、`Seeing.TokenEstimation`、`Seeing.ConfigSchema`、`Seeing.Files` | 零依赖或仅 BCL |
 | 契约层 | `Seeing.Agent.Abstractions` | 接口/DTO/注解/常量；允许引用原语层；**零实现纪律** |
 | 支持层 | `src/support/`：`Seeing.Agent.Llm.Support`、`Seeing.Agent.Tools.Support` | 仅引用 Abstractions + 原语；承载启发式/工具基类等实现；禁止引用上层包 |
 | 脊柱层 | `Seeing.Agent.Core`、`Seeing.Agent.Hosting*` | Core 瘦脊柱；Hosting 编排；Host Shape 不拉可选能力 |
@@ -114,6 +115,8 @@ Seeing.Agent/
 | 语音转写工具（agent 侧） | 能力包 `src/capabilities/Seeing.Agent.Tools.Speech/`；格式表 `src/support/Seeing.Agent.Tools.Support/Speech/AudioFormatSupport.cs`；工具 `TranscribeAudioTool.cs` | `transcribe_audio`：路径经 `IWorkspacePathGate`、读进 `MemoryStream`（可 seek）、经 `ILlmInvoker` 调 `ISpeechTranscriptionClient`；未配默认模型直接报错不猜；输出带不可信内容声明；见 `docs/architecture/35` |
 | 桌面发布「改了不生效」排查 | `docs/architecture/30-desktop-host-release-notes.md` 的「排查」章节 | 三步顺序：① 旧进程（`Get-Process -Name Seeing`，程序名是 `Seeing` 不是 `Seeing.Agent.Desktop`）② 进程实际加载的副本（`$p.Modules`）③ RID 目录分裂（`net10.0\` vs `net10.0\win-x64\`）；见 `docs/architecture/30` |
 | 共享/底层支持包 | `src/support/`（`Seeing.Agent.Llm.Support`、`Seeing.Agent.Tools.Support`） | 仅依赖 Abstractions + 原语；承载启发式/工具基类等实现，禁止引用上层包 |
+| 文件写入原语 | `src/primitives/Seeing.Files/`（`AtomicFileWrite`） | 唯一「原子替换」实现：进程级按路径锁 + GUID 临时名 + 移动重试 + 复制兜底。**禁止自建 `temp + Move`**；读-改-写周期须自行 `GetLock` 包住。见 `docs/architecture/37` |
+| 路径边界判定 | `src/abstractions/Seeing.Agent.Abstractions/Paths/PathBoundary.cs` | 唯一实现（含符号链接 realpath）。任何「是否在根内」判定都必须调它，禁止内联前缀比较。测试 `PathBoundaryTests` |
 | 会话文件浏览器 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Files/`；能力包 `src/capabilities/Seeing.Agent.Files/`；组件库 `samples/Seeing.Agent.WebUI.Files/`；宿主桥接 `samples/Seeing.Agent.WebUI/Services/AgentFileChangeBridge.cs` | 文件能力只描述磁盘事实，不订阅会话事件；agent 桥接在宿主层；见 `docs/architecture/16` |
 | Hook | `HookManager` 在 `src/spine/Seeing.Agent.Core/Core/Hooks/`；`HookPoints.*` 常量在 `src/primitives/Seeing.Session/Hooks/HookPoints.cs`（原语层） | 用 `HookPoints.*`，禁止魔法字符串 |
 | 权限（授权/审批） | 引擎/Manager/Store 在 `src/spine/Seeing.Agent.Core/Core/Permission/`；契约在 `src/abstractions/Seeing.Agent.Abstractions/Permissions/`；宿主通道 `Hosting.Web`/`Gateway` | `IPermissionAuthorizer` 决策链；在途真相源 `IPermissionRequestManager`；呈现判定 `IPermissionPresentationStore.CanSurface` + 宿主呈现端 `IPermissionPresenter`；见 `docs/architecture/08` |
@@ -231,6 +234,11 @@ public static async Task<string> GetWeather(
 | **Context 类添加业务逻辑** | Context 应为纯数据容器 |
 | **无交互宿主却期望审批** | 无 Presence → 立即 `Deny(NoChannel)`（不再等 5 分钟超时）；需显式配置宿主通道/Presence |
 | **同步包装阻塞 async** | `.GetAwaiter().GetResult()` 死锁风险 |
+| **自建 `temp + Move` 原子写 / 固定 `*.tmp` 名** | 多实例并发互相消费临时文件，历史「配置莫名回退」成因；一律走 `Seeing.Files.AtomicFileWrite` |
+| **内联路径前缀比较判「是否在根内」** | 必须调 `PathBoundary`（含符号链接 realpath）；内联版本会让硬边界可被 `root/evil -> C:\Windows` 绕过 |
+| **对 `ExecutionOptions` 事后 `Configure<T>()`** | 它是**具体实例**注册的单例（非 `IOptions`），`Configure` 注册的 `IOptions` 无人消费 → 参数静默回落默认值。必须经 `AddExecutionEngine(configure)` / `AddSeeingHosting*(configureExecution)` 传入 |
+| **能力包自建 `ISeeingModule` 却不进任何内置能力集** | 模块永远不会 Activate，Activate/Deactivate 成为死代码；要么登记进 `BuiltInCapabilitySets`，要么不建模块 |
+| **改 `ProviderConfig.MaxRetries` 的 `0` 语义** | `0` = 不限次数（受 120s `RetryTotalBudgetMs` 约束）是记录在案的设计决策；改成「有限」会削减既有用户的重试能力 |
 | **测试中使用固定时长等待** | 见下节「测试禁止等待型断言」；会拖慢套件并随机失败 |
 
 ## 测试禁止等待型断言（硬规则）
