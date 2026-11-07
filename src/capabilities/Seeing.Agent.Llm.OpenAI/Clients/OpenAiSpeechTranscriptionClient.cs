@@ -3,6 +3,8 @@ using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Llm.Support.Speech;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Seeing.Agent.Llm.OpenAI.Clients;
 
@@ -224,7 +226,7 @@ public sealed class OpenAiSpeechTranscriptionClient : ISpeechTranscriptionClient
         var audioContent = new StreamContent(new NonDisposingStreamWrapper(request.Audio));
         if (!string.IsNullOrWhiteSpace(request.MimeType))
             audioContent.Headers.ContentType = MediaTypeHeaderValue.Parse(request.MimeType);
-        content.Add(audioContent, "file", ResolveFileName(request));
+        content.Add(audioContent, "file", ToUploadFileName(ResolveFileName(request), request.MimeType, _logger));
 
         return content;
     }
@@ -235,19 +237,75 @@ public sealed class OpenAiSpeechTranscriptionClient : ISpeechTranscriptionClient
         if (!string.IsNullOrWhiteSpace(request.FileName))
             return request.FileName!;
 
-        var ext = (request.MimeType ?? "").ToLowerInvariant() switch
+        return "audio." + InferExtension(request.MimeType);
+    }
+
+    /// <summary>按 MIME 推断扩展名；未知 MIME 兜底 <c>mp3</c>（最常见音频形态）。</summary>
+    private static string InferExtension(string? mimeType) => (mimeType ?? "").ToLowerInvariant() switch
+    {
+        "audio/wav" or "audio/x-wav" or "audio/vnd.wave" => "wav",
+        "audio/mpeg" or "audio/mp3" => "mp3",
+        "audio/ogg" or "audio/opus" => "ogg",
+        "audio/flac" => "flac",
+        "audio/aac" => "aac",
+        "audio/mp4" or "audio/m4a" => "m4a",
+        "audio/webm" => "webm",
+        "audio/x-ms-wma" => "wma",
+        _ => "mp3",
+    };
+
+    /// <summary>
+    /// 上传用的文件名：非 ASCII 名换成稳定哈希名，扩展名保留。
+    /// <para>
+    /// <b>为什么必须换</b>：<see cref="MultipartFormDataContent"/> 在文件名含非 ASCII 字符时，
+    /// 会同时写出 RFC 2047 编码串（<c>filename="=?utf-8?B?...?="</c>）与 RFC 5987 的
+    /// <c>filename*=utf-8''...</c> 两份参数。SiliconFlow 的 multipart 解析器把前者当作字面文件名，
+    /// 其中 <c>?</c>、<c>=</c> 不合法，直接返回 <c>400</c> 且不带响应体。
+    /// 实测：ASCII 名、仅 RFC 5987、裸 UTF-8 三种写法都返回 200，只有 RFC 2047 形式失败。
+    /// </para>
+    /// <para>
+    /// <b>为什么保留扩展名</b>：whisper 系接口靠扩展名识别音频格式，改名丢扩展名会让格式判定失败；
+    /// 原扩展名不可用时回落到按 MIME 推断的扩展名，而不是上传一个无扩展名文件。
+    /// </para>
+    /// <para>
+    /// 原始文件名只用于日志与工具返回值（<see cref="TranscriptionRequest.FileName"/> 语义不变，
+    /// 仍描述来源文件），不进 multipart 头。
+    /// </para>
+    /// </summary>
+    private static string ToUploadFileName(string fileName, string? mimeType, ILogger logger)
+    {
+        if (string.IsNullOrEmpty(fileName))
+            return "audio." + InferExtension(mimeType);
+
+        if (IsAsciiPrintable(fileName))
+            return fileName;
+
+        var extension = Path.GetExtension(fileName);
+        if (!IsAsciiPrintable(extension) || extension.Length is 0 or > 16)
+            extension = "." + InferExtension(mimeType);
+
+        // 稳定哈希：同一原始文件名总是得到同一个上传名，便于在服务端日志里对照排查
+        var hash = Convert
+            .ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fileName)))
+            .ToLowerInvariant()[..8];
+
+        var upload = "audio-" + hash + extension;
+        logger.LogDebug(
+            "上传文件名含非 ASCII 字符，已转为哈希名: Original={OriginalName}, Upload={UploadName}",
+            fileName, upload);
+        return upload;
+    }
+
+    /// <summary>全为 ASCII 可打印字符（0x20–0x7E）时可直接进 multipart 头。</summary>
+    private static bool IsAsciiPrintable(string value)
+    {
+        foreach (var ch in value)
         {
-            "audio/wav" or "audio/x-wav" or "audio/vnd.wave" => "wav",
-            "audio/mpeg" or "audio/mp3" => "mp3",
-            "audio/ogg" or "audio/opus" => "ogg",
-            "audio/flac" => "flac",
-            "audio/aac" => "aac",
-            "audio/mp4" or "audio/m4a" => "m4a",
-            "audio/webm" => "webm",
-            "audio/x-ms-wma" => "wma",
-            _ => "mp3", // 未知 MIME 兜底按 mp3 上传（最常见音频形态）
-        };
-        return "audio." + ext;
+            if (ch < 0x20 || ch > 0x7E)
+                return false;
+        }
+
+        return value.Length > 0;
     }
 
     private void ApplyOutbound(HttpRequestMessage message, LlmCallContext? call)

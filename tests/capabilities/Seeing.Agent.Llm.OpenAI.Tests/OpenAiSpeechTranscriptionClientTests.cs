@@ -194,6 +194,95 @@ public class OpenAiSpeechTranscriptionClientTests
     }
 
     [Fact]
+    public async Task TranscribeAsync_NonAsciiFileName_ShouldUploadAsciiNameKeepingExtension()
+    {
+        // 回归：MultipartFormDataContent 对非 ASCII 文件名会同时写出 RFC 2047 编码串
+        // （filename="=?utf-8?B?...?="）与 RFC 5987 的 filename*。SiliconFlow 把前者当字面文件名，
+        // 其中的 ? 与 = 不合法 → HTTP 400 且无响应体。
+        var (sut, handler) = CreateSut();
+
+        await sut.TranscribeAsync(new TranscriptionRequest
+        {
+            Model = "XingChenASR-V3.2-Ultra",
+            Audio = new MemoryStream(new byte[8]),
+            MimeType = "audio/mp4",
+            FileName = "通话-中通快递-202611031527-20261107-114023-0a01.m4a"
+        });
+
+        var text = Decode(handler.Requests[0].Body);
+
+        text.Should().NotContain("=?utf-8?B?", "RFC 2047 编码文件名会让 SiliconFlow 返回 400");
+
+        // 形如 audio-{8位hash}.m4a：扩展名必须保留，whisper 系接口靠它识别格式
+        text.Should().Contain("filename=audio-");
+        text.Should().Contain(".m4a");
+        text.Should().MatchRegex(@"filename=audio-[0-9a-f]{8}\.m4a");
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_NonAsciiFileName_ShouldBeStableAcrossCalls()
+    {
+        // 稳定哈希：同一原始文件名每次都得到同一个上传名，便于在服务端日志里对照排查。
+        var (sut, handler) = CreateSut();
+        var request = () => new TranscriptionRequest
+        {
+            Model = "whisper-1",
+            Audio = new MemoryStream(new byte[8]),
+            FileName = "通话.m4a"
+        };
+
+        await sut.TranscribeAsync(request());
+        await sut.TranscribeAsync(request());
+
+        var first = Decode(handler.Requests[0].Body);
+        var second = Decode(handler.Requests[1].Body);
+
+        static string ExtractName(string text) =>
+            System.Text.RegularExpressions.Regex
+                .Match(text, @"filename=([^\s;""]+)")
+                .Groups[1].Value;
+
+        ExtractName(first).Should().Be(ExtractName(second));
+        ExtractName(first).Should().EndWith(".m4a");
+    }
+
+    [Theory]
+    [InlineData("a.wav", "a.wav")]
+    [InlineData("meeting-2026_11.mp3", "meeting-2026_11.mp3")]
+    public async Task TranscribeAsync_AsciiFileName_ShouldNotBeRewritten(string fileName, string expected)
+    {
+        var (sut, handler) = CreateSut();
+
+        await sut.TranscribeAsync(new TranscriptionRequest
+        {
+            Model = "whisper-1",
+            Audio = new MemoryStream(new byte[8]),
+            FileName = fileName
+        });
+
+        Decode(handler.Requests[0].Body).Should().Contain($"filename={expected}");
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_NonAsciiNameWithoutExtension_ShouldFallBackToMimeExtension()
+    {
+        // 非 ASCII 且无可用扩展名时，退回按 MIME 推断的扩展名，而不是上传一个无扩展名文件。
+        var (sut, handler) = CreateSut();
+
+        await sut.TranscribeAsync(new TranscriptionRequest
+        {
+            Model = "whisper-1",
+            Audio = new MemoryStream(new byte[8]),
+            MimeType = "audio/wav",
+            FileName = "通话"
+        });
+
+        var text = Decode(handler.Requests[0].Body);
+        text.Should().NotContain("=?utf-8?B?");
+        text.Should().MatchRegex(@"filename=audio-[0-9a-f]{8}\.wav");
+    }
+
+    [Fact]
     public async Task TranscribeAsync_StringSegmentId_ShouldParseWithoutThrowing()
     {
         // SiliconFlow（XingChenASR）把 segment.id 返回成字符串 "0"，不是数字。
