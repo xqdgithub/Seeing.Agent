@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Quartz;
 using Seeing.Agent.Abstractions.Scheduling;
+using Seeing.Agent.Scheduler.Models;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.Scheduler.Jobs;
@@ -40,12 +41,14 @@ internal static class ScheduleConversationResolver
     /// </summary>
     /// <param name="services">任务执行服务容器（Scheduler 宿主组合 Seeing.Session）</param>
     /// <param name="configuredSessionId">显式配置的会话 ID（JobDataMap 无 SessionId 键时为 null）</param>
+    /// <param name="profile">执行画像：决定新建会话的 id 前缀、标题前缀与来源标记</param>
     public static async Task<string> ResolveSessionIdAsync(
         IServiceProvider services,
         JobDataMap data,
         string jobId,
         string? jobName,
         string? configuredSessionId,
+        ScheduleRunProfile profile,
         CancellationToken ct)
     {
         var conversation = ReadConversation(data);
@@ -61,9 +64,9 @@ internal static class ScheduleConversationResolver
             return configuredSessionId;
         }
 
-        // 仅 conversation：每次触发新建 Root 会话并挂上（cron 每轮独立上下文，避免粘性会话历史膨胀）
-        // id = 时间戳前缀（可读/可排序）+ 短随机后缀（同秒多次触发唯一）
-        var newSessionId = $"cron_{jobId}_{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid().ToString("N")[..6]}";
+        // 仅 conversation：每次触发新建 Root 会话并挂上（每轮独立上下文，避免粘性会话历史膨胀）
+        // id = 画像前缀（可读/可排序）+ 时间戳 + 短随机后缀（同秒多次触发唯一）
+        var newSessionId = $"{profile.SessionKeyPrefix}_{jobId}_{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid().ToString("N")[..6]}";
         await sessionManager.EnsureSessionAsync(newSessionId).ConfigureAwait(false);
         await AttachRouteAsync(sessionManager, newSessionId, conversation).ConfigureAwait(false);
 
@@ -71,7 +74,7 @@ internal static class ScheduleConversationResolver
         {
             await sessionManager.SetTitleAsync(
                 newSessionId,
-                $"⏰ {jobName} {DateTime.Now:HH:mm}",
+                $"{profile.SessionTitlePrefix} {jobName} {DateTime.Now:HH:mm}",
                 ct).ConfigureAwait(false);
         }
 
