@@ -804,8 +804,7 @@
         }
     }    private void ReconcileTimelineFromSession() => _sync.ReconcileAppendFromSession();
     private void CompleteCurrentTimelineTurn() => _sync.CompleteTurn();
-    private void SyncTimelineAssistantFromStream(bool isComplete) => _sync.SyncAssistant(isComplete);
-
+    private void SyncTimelineAssistantFromStream() => _sync.CompleteCurrentAssistant();
     /// <summary>
     /// Resolve the assistant message currently being streamed (preserves timeline identity).
     /// </summary>
@@ -1357,6 +1356,10 @@
         // 聚合器回调来自子会话事件流后台线程；时间线变更必须调度回 Blazor 同步上下文，
         // 与渲染线程串行，避免并发修改集合。
         // 渲染请求走合并器：多子会话并发时不再每个事件都触发一次渲染。
+        //
+        // 不得声明完成态：这里只是刷新父会话消息的 TaskSteps，与「该消息是否还在流」无关。
+        // 曾以默认参数 isComplete:false 调用，子 Agent 每上报一个步骤就把父会话**已完成**的
+        // 回答改回流式态，绕过 SessionWindowTimelineSync 的全部门闸，Markdown 塌成纯文本。
         _ = InvokeAsync(() =>
         {
             Timeline.SyncAssistantMessage(msg, EffectiveSessionId);
@@ -1769,7 +1772,7 @@
         // 3) 收尾（无论后端结果如何都要执行）
         SessionState.CompleteExecution();
 
-        SyncTimelineAssistantFromStream(isComplete: true);
+        SyncTimelineAssistantFromStream();
         CompleteCurrentTimelineTurn();
         ReconcileTimelineFromSession();
         SyncContextState();
@@ -1800,7 +1803,7 @@
             MessageService.Error($"中断失败: {ex.Message}");
         }
 
-        SyncTimelineAssistantFromStream(isComplete: true);
+        SyncTimelineAssistantFromStream();
         CompleteCurrentTimelineTurn();
         ReconcileTimelineFromSession();
         SyncContextState();

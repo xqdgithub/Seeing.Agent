@@ -65,7 +65,30 @@ public sealed class SessionWindowTimelineSync
 
     public void CompleteTurn() => _timeline.CompleteTurn(_getLoopId());
 
-    public void SyncAssistant(bool isComplete)
+    /// <summary>
+    /// 同步当前助手消息时对「完成态」的声明。
+    /// <para>
+    /// <b>核心不变量</b>：<c>IsStreaming</c> 必须表示「这条消息**本身**还在流」，
+    /// 而不是「当前会话有别的东西在动」。因此只有真正携带流式语义的事件才能声明
+    /// <see cref="Streaming"/>；其余事件（收件箱通知、预算、Skill 展开、权限回执……）
+    /// 一律 <see cref="Preserve"/>，沿用时间线里已有的完成态。
+    /// </para>
+    /// </summary>
+    private enum CompletionHint
+    {
+        /// <summary>刷新内容但**不改**完成态（非流式事件）。</summary>
+        Preserve,
+
+        /// <summary>该消息正在流式输出（仅限 delta / 工具调用 / 流结束等真实流事件）。</summary>
+        Streaming,
+
+        /// <summary>该消息已完成（回合终态事件）。</summary>
+        Complete
+    }
+
+    public void CompleteCurrentAssistant() => SyncAssistant(CompletionHint.Complete);
+
+    private void SyncAssistant(CompletionHint hint)
     {
         var msg = _getStreamingMessage();
         if (msg == null)
@@ -74,12 +97,34 @@ public sealed class SessionWindowTimelineSync
             return;
         }
 
-        // 门闸：非完成态同步只认「属于当前回合」的消息。
-        // _getStreamingMessage 在新回合刚开启、新 assistant 消息尚未产生时会回退到上一轮末条；
-        // 若照常用 isComplete:false 同步它，会把已完成的回答降级为流式，
-        // 导致 Markdown 渲染退化为纯文本（用户可见「发新消息后旧回答排版失效」）。
-        if (!isComplete && !BelongsToCurrentLoop(msg))
-            return;
+        // 完成态声明：null = 不表态（沿用时间线既有完成态）。
+        bool? isComplete;
+        switch (hint)
+        {
+            case CompletionHint.Complete:
+                isComplete = true;
+                break;
+
+            case CompletionHint.Streaming:
+                // 门闸：非完成态同步只认「属于当前回合」的消息。
+                // _getStreamingMessage 在新回合刚开启、新 assistant 消息尚未产生时会回退到上一轮末条；
+                // 若照常用 isComplete:false 同步它，会把已完成的回答降级为流式，
+                // 导致 Markdown 渲染退化为纯文本（用户可见「发新消息后旧回答排版失效」）。
+                if (!BelongsToCurrentLoop(msg))
+                    return;
+                isComplete = false;
+                break;
+
+            default:
+                // Preserve：无流式语义的事件不对完成态表态。
+                // 历史缺陷：default 分支曾无条件以 isComplete:false 同步，而上面的回合门闸
+                // 在「上轮已 LoopComplete、新 LoopStart 尚未到达」窗口里失效——handler 的
+                // _currentLoopId 与末条 assistant 都还停在上轮，比对内部自洽而放行，
+                // 于是 InboxNotice / BudgetStatus / SkillContent 这类事件把刚完成的回答
+                // 打回流式态，Markdown 塌成纯文本，直到刷新页面才恢复。
+                isComplete = null;
+                break;
+        }
 
         _timeline.SyncAssistantMessage(msg, _sessionId, isComplete);
     }
@@ -130,17 +175,17 @@ public sealed class SessionWindowTimelineSync
                 ReconcileAppendFromSession();
                 break;
             case ExecutionCompleteEvent completeEvt:
-                SyncAssistant(isComplete: true);
+                CompleteCurrentAssistant();
                 CompleteTurn();
                 ReconcileAppendFromSession();
                 break;
             case LoopCompleteEvent:
-                SyncAssistant(isComplete: true);
+                CompleteCurrentAssistant();
                 CompleteTurn();
                 break;
             case LoopCancelledEvent:
             case ErrorEvent:
-                SyncAssistant(isComplete: true);
+                CompleteCurrentAssistant();
                 CompleteTurn();
                 ReconcileAppendFromSession();
                 break;
@@ -150,12 +195,18 @@ public sealed class SessionWindowTimelineSync
             case StreamStartEvent:
             case ToolCallEvent:
             case StreamCompleteEvent:
+                // 真实流式事件：这些事件确实意味着「当前助手消息还在产出」。
+                SyncAssistant(CompletionHint.Streaming);
+                break;
             case LoopStartEvent:
             case PermissionRequestEvent:
             case PermissionResolvedEvent:
             case TodoUpdateEvent:
             case ModeUpdateEvent:
-                SyncAssistant(isComplete: false);
+                // 回合骨架 / 审批 / 待办 / 模式类事件：出现时可能有 assistant 消息在流，
+                // 但它们本身**不携带**流式语义，因此不得据此把消息判为流式。
+                // 尤其是 LoopStart——此刻新回合尚无 assistant 消息，指针还停在上轮末条。
+                SyncAssistant(CompletionHint.Preserve);
                 break;
             case SessionTitleChangedEvent titleEvt:
                 if (string.Equals(_sessionId, titleEvt.SessionId, StringComparison.Ordinal))
@@ -200,7 +251,10 @@ public sealed class SessionWindowTimelineSync
                 ResetFromSession();
                 break;
             default:
-                SyncAssistant(isComplete: false);
+                // 不属于任何流式语义的事件（收件箱通知、预算状态、Skill 展开……）：
+                // 只刷新内容与补齐条目，绝不声明「正在流式」。
+                // 历史缺陷：这里曾无条件以 isComplete:false 同步，把刚完成的回答打回流式态。
+                SyncAssistant(CompletionHint.Preserve);
                 ReconcileAppendFromSession();
                 break;
         }
@@ -238,7 +292,8 @@ public sealed class SessionWindowTimelineSync
 
         if (_streamCharCount >= threshold || hasNewline || threshold == 0)
         {
-            SyncAssistant(isComplete: false);
+            // 这里是真流式：仅由 StreamDeltaEvent 驱动，消息确实还在产出。
+            SyncAssistant(CompletionHint.Streaming);
             _streamCharCount = 0;
         }
     }

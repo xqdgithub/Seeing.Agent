@@ -107,6 +107,76 @@ public class SessionWindowTimelineSyncTests
         store.Items.Single(i => i.Key == "loop1").Turn!.Messages.Single().IsComplete.Should().BeTrue();
     }
 
+    /// <summary>
+    /// 回归（2026-11-07）：**非流式事件**不得把已完成的回答降级为流式。
+    /// <para>
+    /// 现实路径：上一轮 LoopComplete 已把回答标为完成。用户发新消息后，
+    /// <c>InboxNoticeEvent</c>/<c>BudgetStatusEvent</c> 等事件落在 <c>ProcessEvent</c> 的
+    /// <c>default</c> 分支 → <c>SyncAssistant(isComplete: false)</c>。
+    /// 此刻 handler 的 <c>_currentLoopId</c> 仍是上一轮的（LoopStart 尚未到达），
+    /// 与消息 LoopId 比对**必然相等**，11-05 加的门闸形同虚设。
+    /// 结果：<c>IsComplete</c> 被改回 false → Markdown 退回纯文本，直到刷新页面。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ProcessEvent_NonStreamingEvent_ShouldNotDowngradeCompletedTurn()
+    {
+        var old = Assistant("a1", "loop1", "**旧回答**");
+        var messages = new List<SessionMessage> { User("u1", "旧提问"), old };
+
+        // handler 指针仍停在上轮（新 LoopStart 尚未到达）——这正是真实窗口
+        var (sync, store) = Create(messages, getStreamingMessage: () => old, getLoopId: () => "loop1");
+
+        sync.ProcessEvent(new LoopCompleteEvent { SessionId = "s1", LoopId = "loop1", Success = true });
+        store.Items.Single(i => i.Key == "loop1").Turn!.Messages.Single().IsComplete.Should().BeTrue();
+
+        // 用户发出新消息 → 投递通知（default 分支，非流式）
+        sync.ProcessEvent(new InboxNoticeEvent { SessionId = "s1", SenderKind = "human" });
+
+        store.Items.Single(i => i.Key == "loop1").Turn!.Messages.Single().IsComplete
+            .Should().BeTrue("非流式事件不得把已完成的回答降级为流式（否则 Markdown 塌成纯文本）");
+    }
+
+    /// <summary>
+    /// 同一条降级路径的第二个入口：Skill 展开事件同样是 default 分支的非流式事件。
+    /// </summary>
+    [Fact]
+    public void ProcessEvent_SkillContent_ShouldNotDowngradeCompletedTurn()
+    {
+        var old = Assistant("a1", "loop1", "旧回答");
+        var messages = new List<SessionMessage> { User("u1", "旧提问"), old };
+        var (sync, store) = Create(messages, getStreamingMessage: () => old, getLoopId: () => "loop1");
+
+        sync.ProcessEvent(new LoopCompleteEvent { SessionId = "s1", LoopId = "loop1", Success = true });
+
+        sync.ProcessEvent(new SkillContentEvent
+        {
+            SessionId = "s1",
+            OriginalContent = "/demo",
+            ExpandedContent = "展开内容"
+        });
+
+        store.Items.Single(i => i.Key == "loop1").Turn!.Messages.Single().IsComplete.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// 反向守门：真正的流式事件仍必须把**当前回合**的消息标为未完成。
+    /// 修复不得把「已完成」latch 成永不回退（同回合内 step 切换需要能回到未完成）。
+    /// </summary>
+    [Fact]
+    public void ProcessEvent_StreamStart_InSameLoop_ShouldStillMarkIncomplete()
+    {
+        var current = Assistant("a2", "loop2", "新回答");
+        var messages = new List<SessionMessage> { User("u1", "旧提问"), current };
+        var (sync, store) = Create(messages, getStreamingMessage: () => current, getLoopId: () => "loop2");
+
+        sync.ProcessEvent(new LoopStartEvent { SessionId = "s1", LoopId = "loop2" });
+        sync.ProcessEvent(new StreamStartEvent { SessionId = "s1", LoopId = "loop2", Step = 0 });
+
+        store.Items.Single(i => i.Key == "loop2").Turn!.Messages.Single().IsComplete
+            .Should().BeFalse("当前回合正在流式输出");
+    }
+
     [Fact]
     public void ProcessEvent_SessionUpdated_ShouldRebuildTimeline()
     {

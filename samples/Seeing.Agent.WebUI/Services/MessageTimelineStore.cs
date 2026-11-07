@@ -238,7 +238,20 @@ public sealed class MessageTimelineStore
     /// 认领/合并，否则会出现 Loop #1 + Loop #2，刷新后 ResetFromSession 又变回一个。
     /// </para>
     /// </summary>
-    public void SyncAssistantMessage(SessionMessage msg, string sessionId, bool isComplete = false)
+    /// <param name="msg">会话消息（真相源）。</param>
+    /// <param name="sessionId">所属会话 Id。</param>
+    /// <param name="isComplete">
+    /// 完成态声明。<c>null</c>（默认）= <b>沿用时间线中该消息的既有完成态</b>；
+    /// 消息尚未投影时按「未完成」处理。
+    /// <para>
+    /// <b>不要提供「默认流式」的语义</b>：默认值曾为 <c>false</c>，导致
+    /// <c>SessionWindow.OnAggregatorAssistantChanged</c>（子 Agent 每上报一个 TaskStep）
+    /// 把父会话里**已完成**的回答重新标成未完成，绕过 <c>SessionWindowTimelineSync</c>
+    /// 的全部门闸，Markdown 塌成纯文本，直到刷新页面才恢复。
+    /// 只有真正知道消息在流的调用方（流式同步）才可显式传 <c>false</c>。
+    /// </para>
+    /// </param>
+    public void SyncAssistantMessage(SessionMessage msg, string sessionId, bool? isComplete = null)
     {
         if (msg == null || !string.Equals(msg.Role, "assistant", StringComparison.OrdinalIgnoreCase))
             return;
@@ -249,7 +262,11 @@ public sealed class MessageTimelineStore
         if (msg.IsSummary)
             return;
 
-        var incoming = MessageViewModelFactory.FromSessionMessage(msg, sessionId, isComplete);
+        // 未声明完成态 → 沿用既有态。必须先查再建 VM：VM 工厂会据此推导 IsReasoningComplete。
+        var effectiveComplete = isComplete
+            ?? (TryFindMessage(msg.Id, out var current) && current.IsComplete);
+
+        var incoming = MessageViewModelFactory.FromSessionMessage(msg, sessionId, effectiveComplete);
         var item = ResolveAssistantTurnForSync(incoming, createIfMissing: true);
         if (item?.Turn == null)
             return;
@@ -551,6 +568,43 @@ public sealed class MessageTimelineStore
     /// </summary>
     private TimelineItem? FindItemForMessageId(string id) =>
         _itemByMessageId.TryGetValue(id, out var item) ? item : null;
+
+    /// <summary>
+    /// 按消息 Id 取时间线中已投影的视图模型（Loop 内的在 <c>Turn.Messages</c>，其余在 <c>Item.Message</c>）。
+    /// <para>供同步器在「不改变完成态」的同步中读取既有完成态：完成态的权威在时间线自身，
+    /// 不在执行器指针（指针在回合交界处是陈旧的）。</para>
+    /// </summary>
+    public bool TryFindMessage(string messageId, out MessageViewModel message)
+    {
+        message = null!;
+        if (string.IsNullOrEmpty(messageId))
+            return false;
+
+        var item = FindItemForMessageId(messageId);
+        if (item == null)
+            return false;
+
+        if (item.Message != null)
+        {
+            message = item.Message;
+            return true;
+        }
+
+        var turn = item.Turn;
+        if (turn == null)
+            return false;
+
+        foreach (var candidate in turn.Messages)
+        {
+            if (string.Equals(candidate.Id, messageId, StringComparison.Ordinal))
+            {
+                message = candidate;
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private void RefreshTailHint()
     {
