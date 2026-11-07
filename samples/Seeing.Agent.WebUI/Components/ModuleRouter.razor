@@ -1,6 +1,7 @@
 @namespace Seeing.Agent.WebUI.Components
 @using Microsoft.AspNetCore.Components.Routing
 @using Seeing.Agent.Abstractions.Modules
+@using Seeing.Agent.WebUI.Pages
 @using Seeing.Agent.WebUI.Services
 @using Seeing.Agent.WebUI.Shared
 @inject UiContributionRegistry Registry
@@ -9,7 +10,18 @@
 @inject Seeing.Agent.Configuration.IWorkspaceProvider Workspace
 @implements IDisposable
 
-@if (_resolution.Kind == ModuleRouteKind.Found && _resolution.ComponentType is not null)
+@*
+    未选定工作区时直接在原地渲染选择页，而不是 NavigateTo：
+    组件初始化阶段（含静态预渲染）导航会抛 NavigationException，把整个 circuit 打掉。
+    原地渲染也让 URL 保持不变，用户在首页选定后由 Apply 成功路径 forceLoad 进入 /。
+*@
+@if (_forceWorkspaceHome)
+{
+    <LayoutView Layout="@typeof(EmptyLayout)">
+        <WorkspacesPage />
+    </LayoutView>
+}
+else if (_resolution.Kind == ModuleRouteKind.Found && _resolution.ComponentType is not null)
 {
     <LayoutView Layout="@typeof(MainLayout)">
         <DynamicComponent @key="_locationKey"
@@ -34,6 +46,7 @@ else
 @code {
     private ModuleRouteResolution _resolution = new(ModuleRouteKind.Fallback);
     private string _locationKey = "/";
+    private bool _forceWorkspaceHome;
 
     protected override void OnInitialized()
     {
@@ -61,13 +74,10 @@ else
     {
         var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
 
-        // 工作区未选定时，任何业务路由都压回工作区首页
-        if (WorkspaceGate.ShouldForceWorkspaceHome(Workspace.IsResolved, relative))
-        {
-            _resolution = new ModuleRouteResolution(ModuleRouteKind.Fallback);
-            Navigation.NavigateTo(WorkspaceGate.HomePath, forceLoad: false);
+        // 工作区未选定时不导航（初始化阶段导航会抛 NavigationException），原地渲染选择页
+        _forceWorkspaceHome = WorkspaceGate.ShouldForceWorkspaceHome(Workspace.IsResolved, relative);
+        if (_forceWorkspaceHome)
             return;
-        }
 
         _locationKey = ModuleRouteResolver.NormalizePath(relative);
         _resolution = ModuleRouteResolver.Resolve(_locationKey, Registry, Catalog);
