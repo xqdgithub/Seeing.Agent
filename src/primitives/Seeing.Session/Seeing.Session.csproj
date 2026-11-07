@@ -22,4 +22,9 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 文件写入原语（原子替换）：会话落盘是此原语的消费者之一 -->
+    <ProjectReference Include="..\Seeing.Files\Seeing.Files.csproj" />
+  </ItemGroup>
+
 </Project>

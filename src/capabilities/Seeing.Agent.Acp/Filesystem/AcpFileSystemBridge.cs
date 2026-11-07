@@ -1,5 +1,6 @@
 using Acp.Messages;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Paths;
 
 namespace Seeing.Agent.Acp.Filesystem;
 
@@ -157,20 +158,9 @@ public sealed class AcpFileSystemBridge
             ? Path.GetFullPath(path)
             : Path.GetFullPath(Path.Combine(root, path));
 
-        var comparison = OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
-
-        // 分隔符边界：必须等于 root 本身，或以 root + 分隔符为前缀，
-        // 避免 E:\ws\apple 命中 root=E:\ws\app 的前缀逃逸
-        if (fullPath.Equals(root, comparison))
-            return true;
-
-        var rootPrefix = root.EndsWith(Path.DirectorySeparatorChar) || root.EndsWith(Path.AltDirectorySeparatorChar)
-            ? root
-            : root + Path.DirectorySeparatorChar;
-
-        return fullPath.StartsWith(rootPrefix, comparison)
-            || fullPath.StartsWith(root + Path.AltDirectorySeparatorChar, comparison);
+        // 边界判定必须走唯一实现：此前本处只做字符串前缀比较、不做符号链接真实路径解析，
+        // 于是 root 下指向外部的符号链接（root/evil -> C:\Windows）可以读写工作区之外的文件，
+        // 使 RestrictToWorkspace 在 ACP 路径上形同不存在。
+        return PathBoundary.IsWithin(fullPath, root);
     }
 }

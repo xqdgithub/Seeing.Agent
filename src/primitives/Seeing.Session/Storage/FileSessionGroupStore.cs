@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Seeing.Files;
 using Seeing.Serialization;
 using Seeing.Session.Core;
 using System.Collections.Concurrent;

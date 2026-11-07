@@ -19,6 +19,7 @@
   </Folder>
   <Folder Name="/src/primitives/">
     <Project Path="src/primitives/Seeing.ConfigSchema/Seeing.ConfigSchema.csproj" />
+    <Project Path="src/primitives/Seeing.Files/Seeing.Files.csproj" />
     <Project Path="src/primitives/Seeing.Session/Seeing.Session.csproj" />
     <Project Path="src/primitives/Seeing.TokenEstimation/Seeing.TokenEstimation.csproj" />
   </Folder>

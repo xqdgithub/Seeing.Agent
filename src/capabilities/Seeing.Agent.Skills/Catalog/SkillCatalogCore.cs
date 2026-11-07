@@ -1,4 +1,4 @@
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Serialization;
+using Seeing.Agent.Paths;
 namespace Seeing.Agent.Skills.Catalog;
 
 /// <summary>
@@ -490,25 +491,9 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
         return IsUnder(root, projectAnchor) ? SkillSource.ProjectFile : SkillSource.UserFile;
     }
 
+    /// <summary>判断 <paramref name="path"/> 是否严格位于 <paramref name="anchor"/> 之内（委托唯一实现，含 realpath）。</summary>
     private static bool IsUnder(string path, string anchor)
-    {
-        try
-        {
-            var normalizedPath = Path.GetFullPath(path)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var normalizedAnchor = Path.GetFullPath(anchor)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-            return normalizedPath.StartsWith(
-                normalizedAnchor + Path.DirectorySeparatorChar,
-                StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            // 路径非法按非项目根处理（分类失效不应让装配崩溃）
-            return false;
-        }
-    }
+        => PathBoundary.IsStrictlyWithin(path, anchor);
 
     // ===== 指纹 =====
 

@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
@@ -6,6 +6,7 @@ using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Serialization;
 using Seeing.Agent.Skills.Catalog;
+using Seeing.Agent.Paths;
 
 namespace Seeing.Agent.Skills;
 
@@ -810,45 +811,19 @@ public sealed class SkillWriter : ISkillWriter
     private static bool IsUnderOrEqual(string path, string root)
         => IsSamePath(path, root) || IsUnder(path, root);
 
-    /// <summary>规范化后判断两个路径是否指向同一位置（忽略大小写与尾部分隔符）。</summary>
+    /// <summary>规范化后判断两个路径是否指向同一位置（按平台大小写语义，忽略尾部分隔符）。</summary>
     private static bool IsSamePath(string left, string right)
-    {
-        try
-        {
-            var normalizedLeft = Path.GetFullPath(left)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var normalizedRight = Path.GetFullPath(right)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        => PathBoundary.AreSame(left, right);
 
-            return string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            // 非法路径按「不是同一位置」处理
-            return false;
-        }
-    }
-
-    /// <summary>规范化后判断 <paramref name="path"/> 是否严格位于 <paramref name="root"/> 之内。</summary>
+    /// <summary>
+    /// 规范化后判断 <paramref name="path"/> 是否严格位于 <paramref name="root"/> 之内。
+    /// <para>
+    /// 边界算法统一委托 <see cref="PathBoundary"/>（含符号链接真实路径解析）。
+    /// 此处此前是独立的前缀比较、不做 realpath，导致技能根下的符号链接可指向根外。
+    /// </para>
+    /// </summary>
     private static bool IsUnder(string path, string root)
-    {
-        try
-        {
-            var normalizedPath = Path.GetFullPath(path)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var normalizedRoot = Path.GetFullPath(root)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-            return normalizedPath.StartsWith(
-                normalizedRoot + Path.DirectorySeparatorChar,
-                StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            // 非法路径按「不在根内」处理（拒绝写入 / 删除）
-            return false;
-        }
-    }
+        => PathBoundary.IsStrictlyWithin(path, root);
 
     private void TryDeleteDirectory(string directory)
     {

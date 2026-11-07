@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Paths;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -24,11 +25,8 @@ namespace Seeing.Agent.Tools.FileSystem
         /// <summary>单行截断后缀</summary>
         public static string MaxLineSuffix => $"... (行已截断至 {MaxLineLength} 字符)";
 
-        /// <summary>平台相关的路径比较（Windows/macOS 大小写不敏感，Linux 敏感）</summary>
-        internal static StringComparison PathComparison =>
-            OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
-                ? StringComparison.OrdinalIgnoreCase
-                : StringComparison.Ordinal;
+        /// <summary>平台相关的路径比较（Windows/macOS 大小写不敏感，Linux 敏感）。委托唯一实现。</summary>
+        internal static StringComparison PathComparison => PathBoundary.PathComparison;
 
         /// <summary>二进制文件扩展名列表</summary>
         private static readonly HashSet<string> BinaryExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -294,62 +292,11 @@ namespace Seeing.Agent.Tools.FileSystem
         }
 
         /// <summary>
-        /// 验证路径是否在指定目录内（含符号链接真实路径解析，避免前缀误判）
+        /// 验证路径是否在指定目录内 — 委托给唯一实现 <see cref="PathBoundary"/>（含符号链接真实路径解析）。
+        /// <para>不要在此重新实现边界逻辑：该算法一旦分叉，安全语义就会在工具 / Skills / ACP 之间不一致。</para>
         /// </summary>
         public static bool IsPathWithinDirectory(string path, string baseDirectory)
-        {
-            try
-            {
-                var fullPath = ResolveRealPath(Path.GetFullPath(path));
-                var fullBase = ResolveRealPath(Path.GetFullPath(baseDirectory));
-
-                if (string.Equals(fullPath, fullBase, PathComparison))
-                    return true;
-
-                // 必须带分隔符前缀，避免 C:\foo 误匹配 C:\foobar
-                var prefix = fullBase.EndsWith(Path.DirectorySeparatorChar) || fullBase.EndsWith(Path.AltDirectorySeparatorChar)
-                    ? fullBase
-                    : fullBase + Path.DirectorySeparatorChar;
-
-                return fullPath.StartsWith(prefix, PathComparison);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// 解析符号链接真实路径；失败或非链接时返回原路径
-        /// </summary>
-        private static string ResolveRealPath(string fullPath)
-        {
-            try
-            {
-                if (Directory.Exists(fullPath))
-                {
-                    var info = new DirectoryInfo(fullPath);
-                    var target = info.ResolveLinkTarget(returnFinalTarget: true);
-                    return target?.FullName ?? info.FullName;
-                }
-                if (File.Exists(fullPath))
-                {
-                    var info = new FileInfo(fullPath);
-                    var target = info.ResolveLinkTarget(returnFinalTarget: true);
-                    return target?.FullName ?? info.FullName;
-                }
-                // 目标不存在：解析父目录，尾段原样拼回（保持已存在部分的真实路径）
-                var parent = Directory.GetParent(fullPath);
-                if (parent == null) return fullPath;
-                var resolvedParent = ResolveRealPath(parent.FullName);
-                return Path.Combine(resolvedParent, Path.GetFileName(fullPath));
-            }
-            catch
-            {
-                return fullPath;
-            }
-        }
-
+            => PathBoundary.IsWithin(path, baseDirectory);
         /// <summary>
         /// 查找相似的文件名建议
         /// </summary>
