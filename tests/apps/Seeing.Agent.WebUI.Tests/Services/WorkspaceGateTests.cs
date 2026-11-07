@@ -45,10 +45,10 @@ public class WorkspaceGateTests
 
     private static string FindRepositoryRoot()
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Seeing.Agent.slnx")))
-            dir = dir.Parent;
-
-        return dir?.FullName ?? throw new InvalidOperationException("找不到仓库根（Seeing.Agent.slnx）");
+        // 用编译期源文件路径定位仓库根：BaseOutputPath 可被重定向时输出目录不在仓库树下
+        return Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(CurrentFile())!, "..", "..", "..", ".."));
     }
+
+    private static string CurrentFile([System.Runtime.CompilerServices.CallerFilePath] string path = "") => path;
 }

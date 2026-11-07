@@ -13,9 +13,12 @@
 @*
     未选定工作区时直接在原地渲染选择页，而不是 NavigateTo：
     组件初始化阶段（含静态预渲染）导航会抛 NavigationException，把整个 circuit 打掉。
-    原地渲染也让 URL 保持不变，用户在首页选定后由 Apply 成功路径 forceLoad 进入 /。
+
+    /workspaces 无论工作区是否已选定，都用 EmptyLayout 整页渲染：
+    若走 MainLayout，内容区是「固定高度 + overflow:hidden」，工作区页会被裁掉且无法滚动
+    （曾表现为整页空白/错位）。
 *@
-@if (_forceWorkspaceHome)
+@if (_forceWorkspaceHome || _isWorkspacesRoute)
 {
     <LayoutView Layout="@typeof(EmptyLayout)">
         <WorkspacesPage />
@@ -48,6 +51,9 @@ else
     private string _locationKey = "/";
     private bool _forceWorkspaceHome;
 
+    /// <summary><c>/workspaces</c>：整页渲染，不套 MainLayout。</summary>
+    private bool _isWorkspacesRoute;
+
     protected override void OnInitialized()
     {
         Navigation.LocationChanged += OnLocationChanged;
@@ -73,13 +79,20 @@ else
     private void ResolveCurrent()
     {
         var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var normalized = ModuleRouteResolver.NormalizePath(relative);
+
+        // 工作区页始终整页渲染（不走 MainLayout 的固定高度 + overflow:hidden 内容区）
+        _isWorkspacesRoute = string.Equals(
+            normalized.Trim('/'), WorkspaceGate.HomePath.Trim('/'), StringComparison.OrdinalIgnoreCase);
 
         // 工作区未选定时不导航（初始化阶段导航会抛 NavigationException），原地渲染选择页
-        _forceWorkspaceHome = WorkspaceGate.ShouldForceWorkspaceHome(Workspace.IsResolved, relative);
-        if (_forceWorkspaceHome)
+        _forceWorkspaceHome = !_isWorkspacesRoute
+            && WorkspaceGate.ShouldForceWorkspaceHome(Workspace.IsResolved, relative);
+
+        if (_isWorkspacesRoute || _forceWorkspaceHome)
             return;
 
-        _locationKey = ModuleRouteResolver.NormalizePath(relative);
+        _locationKey = normalized;
         _resolution = ModuleRouteResolver.Resolve(_locationKey, Registry, Catalog);
     }
 

@@ -898,18 +898,17 @@
     word-break: break-all;
     max-height: 200px;
     overflow-y: auto;
+}
 
 /* ========== 工作区页面（独立于控制台 .hc 骨架） ========== */
 
 .ws-page {
-    /* 用普通文档流：空布局下没有侧栏，不能依赖 100vh 的 flex 链 */
-    min-height: 100vh;
+    /* 用普通文档流：外层 .fullpage-layout 负责整页高度与滚动 */
     box-sizing: border-box;
     padding: 28px 32px 48px;
     background: var(--color-bg-container, #fff);
     color: var(--color-text);
     font-size: 13px;
-    overflow-y: auto;
 }
 
 .ws-page-header {
@@ -1143,4 +1142,13 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 150px;
+}
+
+/* ========== 整页布局（工作区页用，无侧栏 / 无固定高度） ========== */
+
+.fullpage-layout {
+    min-height: 100vh;
+    box-sizing: border-box;
+    background: var(--color-bg-container, #fff);
+    overflow-y: auto;
 }

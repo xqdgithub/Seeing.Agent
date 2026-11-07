@@ -1,9 +1,13 @@
 @inherits LayoutComponentBase
-@using AntDesign
 
-@* 无侧栏布局：工作区尚未选定 / 正在选择时使用，避免业务页面入口出现在首页上。 *@
-<Layout Style="min-height: 100vh;">
-    <Content Class="content-area">
-        @Body
-    </Content>
-</Layout>
+@*
+    整页布局：无侧栏、无固定高度、无 overflow 裁剪。
+
+    为什么不用 MainLayout：它的内容区（.main-layout-content / .content-area）是
+    「height:100% + overflow:hidden + margin-left:240px」的业务页骨架，
+    套在工作区页上会把内容裁掉且无法滚动。
+    这里只提供一块可滚动的整页容器，页面自己决定内部排版。
+*@
+<div class="fullpage-layout">
+    @Body
+</div>
