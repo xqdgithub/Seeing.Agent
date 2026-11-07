@@ -291,51 +291,20 @@ public class DesktopPublishProfileIsolationTests
     }
 
     /// <summary>
-    /// 可跨平台的产物（WebUI）不得在 .pubxml 里写死 RID —— 平台由外层决定。
+    /// 发布配置（*.pubxml）被 .gitignore 排除，是每台开发机的本地设置，不入库。
+    /// 因此**不得**写依赖其内容或存在的测试 —— 在别的机器 / CI 上文件根本不存在。
     /// <para>
-    /// Desktop 例外：它是 Photino + WebView2，产物固有地只能跑 Windows，
-    /// 且必须带 RID 才会引入平台原生库（否则又回到「缺 libe_sqlite3」）。
-    /// 该类产物的 RID 由 csproj 的守卫兜底，pubxml 写在里面是正确表达。
+    /// 真正需要守住的不变量放在项目文件里：WebUI 的校验（Task 5）保证无 RID 发布
+    /// 会给出明确诊断，Desktop 的守卫（Task 4）保证非 Windows RID 被拦下。
+    /// 这两者都在版本控制内，才是可靠的守门点。
     /// </para>
     /// </summary>
     [Fact]
-    public void PublishProfiles_ShouldNotHardcodeRuntimeIdentifier()
+    public void PublishProfileFiles_ShouldNotBeVersionControlled()
     {
-        var profileDir = Path.Combine(
-            Path.GetDirectoryName(ReadRepoFileLocation("samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj"))!,
-            "Properties", "PublishProfiles");
-
-        Directory.Exists(profileDir).Should().BeTrue("WebUI 应有发布配置目录");
-
-        var profiles = Directory.GetFiles(profileDir, "*.pubxml");
-        profiles.Should().NotBeEmpty("WebUI 应至少有一个发布配置");
-
-        foreach (var profile in profiles)
-        {
-            var xml = File.ReadAllText(profile);
-            Regex.IsMatch(xml, @"<RuntimeIdentifier>", RegexOptions.CultureInvariant)
-                .Should().BeFalse(
-                    $"{Path.GetFileName(profile)} 不得写死 RuntimeIdentifier —— " +
-                    "WebUI 是跨平台产物，平台必须由外层 -r 决定");
-        }
-    }
-
-    /// <summary>
-    /// 桌面产物是 Windows-only 且必须有 RID（否则缺平台原生库），
-    /// 因此 pubxml 里保留 win-x64 是正确的，并由 csproj 守卫兜底。
-    /// </summary>
-    [Fact]
-    public void DesktopPublishProfile_ShouldPinWinRuntimeIdentifier()
-    {
-        var xml = ReadRepoFile("samples/Seeing.Agent.Desktop/Properties/PublishProfiles/FolderProfile.pubxml");
-
-        Regex.IsMatch(xml, @"<RuntimeIdentifier>\s*win-", RegexOptions.CultureInvariant)
-            .Should().BeTrue(
-                "Desktop 只能在 Windows 运行，且不带 RID 会缺 e_sqlite3.dll / WebView2 原生依赖");
-
-        ReadRepoFile("samples/Seeing.Agent.Desktop/Seeing.Agent.Desktop.csproj").Should()
-            .Contain("StartsWith('win')",
-                "同时必须有守卫，防止有人用 -r linux-x64 覆盖 pubxml 产出坏包");
+        ReadRepoFile(".gitignore").Should().Contain("*.pubxml",
+            "发布配置是本地设置（PublishUrl / RID 因机器而异），不入库；" +
+            "否则会互相覆盖。因此守门测试不得依赖 pubxml 的内容或存在性。");
     }
 
     /// <summary>
