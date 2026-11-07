@@ -38,6 +38,7 @@
 - [Provider 语音能力接入 Release Notes](docs/architecture/33-provider-speech-capability-release-notes.md)
 - [WebUI 语音输入 Release Notes](docs/architecture/34-webui-voice-input-release-notes.md)
 - [语音转写工具 Release Notes](docs/architecture/35-speech-transcription-tool-release-notes.md)
+- [心跳重构 Release Notes](docs/architecture/36-heartbeat-rework-release-notes.md)
 
 设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
 
@@ -100,6 +101,7 @@ Seeing.Agent/
 | 会话暴露状态写入 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Execution/ISessionToolExposureWriter.cs`；实现 `src/hosting/Seeing.Agent.Hosting/Execution/SessionToolExposureWriter.cs` | 提升/提交唯一出口；主链轮首 + Scheduler 旁路共用；见 `docs/architecture/19` |
 | 工具目录（唯一渲染 + 唯一入口） | 渲染 `src/hosting/Seeing.Agent.Hosting/Execution/ToolExposure/ToolExposureEngine.cs`（`BuildCatalog`）；上下文源 `ToolCatalogContextSource.cs` + 增量 `ToolCatalogDeltaRenderer.cs` | 目录是**上下文源**（`Target=System`、与技能清单同构）不是分节贡献者：初始渲染进系统提示词（第 1 轮即在位），运行时变化只产生一条 `context-update` 增量叙述；见 `docs/architecture/19` §4、`21` §8.3 |
 | Todo 存取 | `src/abstractions/.../Todo/` + Hosting 适配器 | 端口-适配器 |
+| 心跳 | 契约 `src/capabilities/Seeing.Agent.Scheduler/Abstractions/SchedulerAbstractions.cs`（`IHeartbeatService`）；实现 `Management/HeartbeatService.cs`；执行画像 `Models/ScheduleRunProfile.cs`；槽位 `Models/SchedulerModels.cs`（`JobsFile.Heartbeat`）；页面 `samples/Seeing.Agent.WebUI/Pages/HeartbeatPage.razor` | 与定时任务共用 `AgentJob`，身份由画像承载；`_heartbeat` 是保留 id，不在 `JobsFile.Jobs` 内；见 `docs/architecture/36` |
 | 模块生命周期 | `src/abstractions/.../Modules/` + `src/spine/.../SettlementEngine` | 结算 / Activate / Deactivate |
 | 契约类型总览 | `src/abstractions/Seeing.Agent.Abstractions/` | Events/Hooks/Tools/Agents/… |
 | 新增 Tool | `src/capabilities/Seeing.Agent.Tools.*` + `[Tool]` | 经 `AddSeeingModule`；Activate 挂载；**描述与参数 Schema 必须遵守 `docs/architecture/04` §9（R1–R9）** |

@@ -110,11 +110,17 @@ samples/WebUI             ← composes modules + UI
 
 ### Scheduler (`Seeing.Agent.Scheduler`)
 
-- Quartz.NET-based cron job engine with SQLite persistence.
-- Jobs: `AgentJob` (run an agent on schedule), `HeartbeatJob`.
-- `ScheduleManager` manages job CRUD as `ITool` implementations (`CronCreateTool`, `CronListTool`, etc.).
-- Schedule windows + active hours validation via `ActiveHoursChecker` and `ScheduleWindowsValidator`.
-- `JsonScheduleRepository` for schedule definition storage.
+- Quartz.NET-based scheduling engine with SQLite persistence.
+- One job type only: `AgentJob`. Execution identity comes from `ScheduleRunProfile` (source, reminder kind, sender, session prefix, created-session origin, dispatch layout); a missing profile equals cron.
+- Two upper-layer entries sharing that kernel:
+  - cron: `IScheduleManager` user-job API + `cron_*` tools + `/cron-jobs`.
+  - heartbeat: `IHeartbeatService` + `heartbeat_*` tools + `/heartbeat`.
+- Heartbeat lives in its own `JobsFile.Heartbeat` slot (id `_heartbeat`, reserved). It never appears in `JobsFile.Jobs`, so job lists, cron tools and status counts cannot see it.
+- `_heartbeat` cannot be created/deleted/re-intoned via the user-job API, and `RunJobOnceAsync("_heartbeat")` returns `NotFound`.
+- Heartbeat writes back a single consumed assistant message (`DispatchLayout.AssistantOnly`); cron keeps prompt + result.
+- Interval triggers honour a `lastRunAt` anchor when present (heartbeat): start at last run + interval, ignore misfires. Without an anchor (user jobs) the legacy "~5s after start" behaviour is kept.
+- Windows validation is shared: `ScheduleWindowsValidator`. (`ActiveHoursChecker` was removed.)
+- `JsonScheduleRepository` for schedule definitions and execution history.
 
 ### WebUI (`samples/Seeing.Agent.WebUI`)
 
