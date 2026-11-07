@@ -27,6 +27,9 @@ public sealed class SchedulerModule : ISeeingModule, IUiContribution
         "cron_disable",
         "cron_resume",
         "cron_run",
+        "heartbeat_get",
+        "heartbeat_update",
+        "heartbeat_run",
     ];
 
     private readonly SchedulerModuleActivity? _activity;
@@ -113,6 +116,14 @@ public sealed class SchedulerModule : ISeeingModule, IUiContribution
             await tm.RegisterToolAsync(resume, cancellationToken).ConfigureAwait(false);
         if (services.GetService<CronRunTool>() is { } run)
             await tm.RegisterToolAsync(run, cancellationToken).ConfigureAwait(false);
+
+        // 心跳工具单独挂载：它们只依赖 IHeartbeatService，与 cron 工具互不进入对方的配置面。
+        if (services.GetService<HeartbeatGetTool>() is { } hbGet)
+            await tm.RegisterToolAsync(hbGet, cancellationToken).ConfigureAwait(false);
+        if (services.GetService<HeartbeatUpdateTool>() is { } hbUpdate)
+            await tm.RegisterToolAsync(hbUpdate, cancellationToken).ConfigureAwait(false);
+        if (services.GetService<HeartbeatRunTool>() is { } hbRun)
+            await tm.RegisterToolAsync(hbRun, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task RegisterEmbeddedSkillsAsync(IServiceProvider services, CancellationToken cancellationToken)
@@ -138,12 +149,17 @@ public sealed class SchedulerModule : ISeeingModule, IUiContribution
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var commands = new ICommand[]
+        // 心跳命令依赖 IHeartbeatService；未注册时跳过该命令，而不是让整个模块激活失败。
+        var heartbeat = services.GetService<IHeartbeatService>();
+
+        var commands = new List<ICommand>
         {
             new CronListCommand(_manager),
-            new CronRunCommand(_manager),
-            new HeartbeatRunCommand(_manager)
+            new CronRunCommand(_manager)
         };
+
+        if (heartbeat is not null)
+            commands.Add(new HeartbeatRunCommand(heartbeat));
 
         _registeredCommandNames.Clear();
         foreach (var command in commands)

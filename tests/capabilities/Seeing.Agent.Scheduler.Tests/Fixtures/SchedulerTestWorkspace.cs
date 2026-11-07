@@ -32,16 +32,7 @@ public sealed class SchedulerTestWorkspace : IDisposable
             "Scheduler": {
               "Enabled": {{scheduler.Enabled.ToString().ToLower()}},
               "Timezone": "{{scheduler.Timezone}}",
-              "MaxConcurrentJobs": {{scheduler.MaxConcurrentJobs}},
-              "Heartbeat": {
-                "Enabled": {{scheduler.Heartbeat.Enabled.ToString().ToLower()}},
-                "Every": "{{scheduler.Heartbeat.Every}}",
-                "Target": "{{scheduler.Heartbeat.Target}}",
-                "Prompt": "{{scheduler.Heartbeat.Prompt.Replace("\"", "\\\"").Replace("\n", "\\n")}}",
-                "Agent": {{(scheduler.Heartbeat.Agent == null ? "null" : $"\"{scheduler.Heartbeat.Agent}\"")}},
-                "SessionId": "{{scheduler.Heartbeat.SessionId}}",
-                "TimeoutSeconds": {{scheduler.Heartbeat.TimeoutSeconds}}
-              }
+              "MaxConcurrentJobs": {{scheduler.MaxConcurrentJobs}}
             }
           }
         }
@@ -59,16 +50,7 @@ public sealed class SchedulerTestWorkspace : IDisposable
     {
         Enabled = true,
         Timezone = "UTC",
-        MaxConcurrentJobs = 2,
-        Heartbeat = new HeartbeatOptions
-        {
-            Enabled = true,
-            Every = "6h",
-            Target = HeartbeatTargets.Main,
-            Prompt = "检查系统状态并汇报",
-            SessionId = "main",
-            TimeoutSeconds = 30
-        }
+        MaxConcurrentJobs = 2
     };
 
     public void Dispose()

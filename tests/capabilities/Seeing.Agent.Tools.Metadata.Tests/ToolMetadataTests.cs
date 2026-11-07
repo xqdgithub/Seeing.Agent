@@ -184,7 +184,7 @@ public class ToolMetadataTests
         // 2) id 集合仍按产品事实锁定（SystemOneTool 一个类型 → 4 个 id）。
         var ids = BuiltInToolCatalog.All().Select(t => t.Id).ToArray();
 
-        ids.Should().HaveCount(53);
+        ids.Should().HaveCount(56);
         ids.Should().OnlyHaveUniqueItems();
         ids.Should().BeEquivalentTo(new[]
         {
@@ -195,6 +195,7 @@ public class ToolMetadataTests
             "memory_search", "memory_read", "memory_write",
             "editor_query", "editor_list_commands", "editor_command",
             "cron_create", "cron_list", "cron_disable", "cron_resume", "cron_run", "cron_delete",
+            "heartbeat_get", "heartbeat_update", "heartbeat_run",
             "websearch", "webfetch", "codesearch", "skill", "tool_search",
             "git_status", "git_diff", "git_log", "git_commit",
             "send_channel_message", "list_channel_conversations", "list_channel_users",

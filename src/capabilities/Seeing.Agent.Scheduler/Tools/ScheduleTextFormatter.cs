@@ -140,8 +140,26 @@ internal static class ScheduleTextFormatter
         return sb.ToString().TrimEnd();
     }
 
-    private static string DescribeWindows(IReadOnlyList<ScheduleWindow>? windows)
+    /// <summary>最近一次心跳执行的单行摘要；从未执行时返回固定说明。</summary>
+    public static string DescribeHeartbeatLastRun(JobExecutionRecord? last)
     {
+        if (last is null)
+            return "从未执行";
+
+        var status = last.Status switch
+        {
+            "success" => "成功",
+            "failed" => "失败",
+            _ => last.Status
+        };
+
+        var duration = last.Duration is { } d ? $"（耗时 {(int)Math.Round(d.TotalSeconds)}s）" : string.Empty;
+        var error = string.IsNullOrWhiteSpace(last.Error) ? string.Empty : $"；错误: {last.Error}";
+
+        return $"{last.StartedAt:yyyy-MM-dd HH:mm:ss} {status}{duration}{error}";
+    }
+
+    private static string DescribeWindows(IReadOnlyList<ScheduleWindow>? windows)    {
         if (windows is null || windows.Count == 0)
             return string.Empty;
 

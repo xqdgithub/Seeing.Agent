@@ -36,9 +36,12 @@ public class SchedulerToolRegistrationTests
         services.Should().Contain(d => d.ServiceType == typeof(CronDisableTool));
         services.Should().Contain(d => d.ServiceType == typeof(CronResumeTool));
         services.Should().Contain(d => d.ServiceType == typeof(CronRunTool));
+        services.Should().Contain(d => d.ServiceType == typeof(HeartbeatGetTool));
+        services.Should().Contain(d => d.ServiceType == typeof(HeartbeatUpdateTool));
+        services.Should().Contain(d => d.ServiceType == typeof(HeartbeatRunTool));
 
         services.Where(d => d.ServiceType == typeof(ITool)).Should().HaveCount(1,
-            "cron tools must not be registered as ITool in DI; Activate mounts them");
+            "cron/heartbeat tools must not be registered as ITool in DI; Activate mounts them");
     }
 
     private sealed class StubTool : ITool

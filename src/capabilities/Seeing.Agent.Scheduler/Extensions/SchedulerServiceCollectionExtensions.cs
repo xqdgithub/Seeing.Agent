@@ -1,4 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Quartz;
 using Seeing.Agent.Abstractions.Configuration;
@@ -32,6 +32,9 @@ public static class SchedulerServiceCollectionExtensions
         services.AddSingleton<CronDisableTool>();
         services.AddSingleton<CronResumeTool>();
         services.AddSingleton<CronRunTool>();
+        services.AddSingleton<HeartbeatGetTool>();
+        services.AddSingleton<HeartbeatUpdateTool>();
+        services.AddSingleton<HeartbeatRunTool>();
         return services;
     }
 
@@ -61,7 +64,6 @@ public static class SchedulerServiceCollectionExtensions
 
         // Quartz Jobs - 注册为 transient 以支持每次执行创建新实例
         services.AddTransient<AgentJob>();
-        services.AddTransient<HeartbeatJob>();
 
         // Quartz 配置 - 使用 AddQuartz 进行 DI 集成
         // 注意：AddQuartz 会自动使用 Microsoft DI JobFactory
@@ -86,6 +88,9 @@ public static class SchedulerServiceCollectionExtensions
         services.AddSingleton<IJobExecutionListener>(sp => sp.GetRequiredService<ScheduleManager>());
         services.AddSingleton<IScheduleStatusQuery>(sp =>
             new ScheduleStatusQueryAdapter(sp.GetRequiredService<IScheduleManager>()));
+
+        // 心跳上层入口：页面 / heartbeat_* 工具 / 命令只依赖该接口。
+        services.AddSingleton<IHeartbeatService, HeartbeatService>();
 
         RegisterScheduleDispatchers(services);
 
@@ -139,7 +144,6 @@ public static class SchedulerServiceCollectionExtensions
 
         // Quartz Jobs - 注册为 transient 以支持每次执行创建新实例
         services.AddTransient<AgentJob>();
-        services.AddTransient<HeartbeatJob>();
 
         // Quartz 配置 - 使用 AddQuartz 进行 DI 集成
         // 使用委托工厂方法，在运行时获取配置
@@ -194,6 +198,9 @@ public static class SchedulerServiceCollectionExtensions
         services.AddSingleton<IScheduleStatusQuery>(sp =>
             new ScheduleStatusQueryAdapter(sp.GetRequiredService<IScheduleManager>()));
 
+        // 心跳上层入口：页面 / heartbeat_* 工具 / 命令只依赖该接口。
+        services.AddSingleton<IHeartbeatService, HeartbeatService>();
+
         RegisterScheduleDispatchers(services);
 
         services.AddSeeingSchedulerTools();
@@ -224,3 +231,4 @@ public static class SchedulerServiceCollectionExtensions
         services.AddSingleton<IScheduledJobDispatcher, CompositeScheduleDispatcher>();
     }
 }
+

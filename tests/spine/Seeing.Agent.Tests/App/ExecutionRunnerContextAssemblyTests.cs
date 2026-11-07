@@ -25,6 +25,7 @@ using Seeing.Agent.Hosting.Execution;
 using Seeing.Agent.Llm;
 using Seeing.Agent.Scheduler;
 using Seeing.Agent.Scheduler.Jobs;
+using Seeing.Agent.Scheduler.Models;
 using Seeing.Agent.Skills.Commands;
 using Seeing.Agent.Tests.Context;
 using Seeing.Session.Core;
@@ -263,7 +264,6 @@ public class ExecutionRunnerContextAssemblyTests
     [Fact]
     public async Task HeartbeatBypass_ShouldNotEmitDeltaMessage()
     {
-        // Arrange
         var session = SessionData.Create();
         session.AddMessage(SessionMessage.UserMessage("heartbeat user message"));
         var messageCountBefore = session.Messages.Count;
@@ -297,10 +297,11 @@ public class ExecutionRunnerContextAssemblyTests
             .ReturnsAsync(session);
 
         var provider = CreateBypassServices(sessionManager.Object, catalog.Object, assembler);
-        var job = CreateHeartbeatJob(executor.Object, provider, sessionManager.Object);
+        // 心跳与定时任务共用 AgentJob：身份由执行画像承载，旁路装配语义不变。
+        var job = CreateAgentJob(executor.Object, provider);
 
         // Act
-        await job.Execute(CreateHeartbeatContextMock().Object);
+        await job.Execute(CreateBypassContextMock(ScheduleRunProfile.Heartbeat).Object);
 
         // Assert
         assembler.Calls.Should().ContainSingle();
@@ -571,44 +572,6 @@ public class ExecutionRunnerContextAssemblyTests
             NullLogger<AgentJob>.Instance);
     }
 
-    private static HeartbeatJob CreateHeartbeatJob(
-        IAgentExecutor executor,
-        IServiceProvider services,
-        ISessionManager sessionManager)
-    {
-        var agentRegistry = new Mock<IAgentRegistry>();
-        agentRegistry
-            .Setup(r => r.GetAgentAsync(It.IsAny<string>()))
-            .ReturnsAsync(new AgentDefinition { Name = "build", Runtime = AgentRuntime.Native });
-
-        var selectionResolver = new Mock<IAgentSelectionResolver>();
-        selectionResolver
-            .Setup(r => r.ResolveAgentIdAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("build");
-
-        var workspace = new Mock<IWorkspaceProvider>();
-        workspace.Setup(w => w.ProjectSeeingDirectory).Returns(@"E:\root\.seeing");
-
-        var world = new Mock<IExecutionWorld>();
-        world.Setup(w => w.Cwd).Returns("root");
-
-        var (hooks, reminders, dispatcher) = CreateSchedulerCollaborators();
-
-        return new HeartbeatJob(
-            executor,
-            agentRegistry.Object,
-            selectionResolver.Object,
-            workspace.Object,
-            world.Object,
-            sessionManager,
-            services,
-            hooks,
-            reminders,
-            dispatcher,
-            [],
-            NullLogger<HeartbeatJob>.Instance);
-    }
-
     private static (IHookManager Hooks, ISystemReminderRenderer Reminders, IScheduledJobDispatcher Dispatcher)
         CreateSchedulerCollaborators()
     {
@@ -660,20 +623,21 @@ public class ExecutionRunnerContextAssemblyTests
         return jobContext;
     }
 
-    private static Mock<IJobExecutionContext> CreateHeartbeatContextMock()
+    private static Mock<IJobExecutionContext> CreateBypassContextMock(ScheduleRunProfile profile)
     {
         var dataMap = new JobDataMap
         {
             { "sessionId", "s-hb" },
             { "agentId", "build" },
-            { "prompt", "心跳报时" }
+            { "prompt", "心跳报时" },
+            { JobDataKeys.RunProfile, System.Text.Json.JsonSerializer.Serialize(profile) }
         };
 
         var jobContext = new Mock<IJobExecutionContext>();
         jobContext.SetupAllProperties();
         jobContext.Setup(c => c.MergedJobDataMap).Returns(dataMap);
         jobContext.Setup(c => c.CancellationToken).Returns(CancellationToken.None);
-        jobContext.Setup(c => c.JobDetail).Returns(new JobDetailImpl("heartbeat", "group", typeof(HeartbeatJob)));
+        jobContext.Setup(c => c.JobDetail).Returns(new JobDetailImpl("bypass", "group", typeof(AgentJob)));
         jobContext.Setup(c => c.FireTimeUtc).Returns(DateTimeOffset.UtcNow);
         jobContext.Setup(c => c.ScheduledFireTimeUtc).Returns((DateTimeOffset?)DateTimeOffset.UtcNow);
         return jobContext;

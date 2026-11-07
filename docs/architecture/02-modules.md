@@ -44,7 +44,7 @@
 | `Seeing.Agent.Llm.ModelCapabilities` | `llm.modelcapabilities` | 模型能力元数据源注册与查询（`IModelCapabilitySource`） |
 | `Seeing.Agent.Llm.ModelCatalog.Builtin` | `llm.modelcatalog.builtin` | 内置精简能力目录（嵌入 `catalog.json` + local 覆盖，含思考档位；无网络）；`DependsOn: llm.modelcapabilities` |
 | `Seeing.Agent.Agents.BuiltIn` | `agents.builtin` | build/plan/explore/general… |
-| `Seeing.Agent.Scheduler` | `scheduler` | cron / heartbeat；`SessionScheduleDispatcher` 负责 Inject 写回 |
+| `Seeing.Agent.Scheduler` | `scheduler` | 执行内核（Quartz + `AgentJob` + `ScheduleRunProfile`）共用；上层两个入口：定时任务（`IScheduleManager` / `cron_*`）与心跳（`IHeartbeatService` / `heartbeat_*`），互不进入对方集合；见 `36` |
 | `Seeing.Agent.Comms` | `comms` | 渠道目录、出站投递、适配器注册表；`ChannelDeliveryScheduleDispatcher` 只按 `SessionData.ChannelRoute` 出站 |
 | `Seeing.Agent.Tools.ChannelMessaging` | `channel-messaging` | `send_channel_message`（文本 + 工作区附件）/ 列用户 / 列对话；`DependsOn: io.local`；无宿主时 no-op sink |
 | `Seeing.Agent.Memory` | `memory` | 记忆 |

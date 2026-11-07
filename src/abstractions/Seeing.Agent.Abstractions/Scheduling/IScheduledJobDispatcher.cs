@@ -1,3 +1,5 @@
+using Seeing.Agent.Abstractions.Reminders;
+
 namespace Seeing.Agent.Abstractions.Scheduling;
 
 /// <summary>调度任务结果投递抽象（Scheduler / Gateway 等实现）。</summary>
@@ -20,6 +22,15 @@ public sealed class DispatchRequest
 
     /// <summary>任务级 conversation 出站目标（优先于会话 <c>ChannelRoute</c>；出站投递器消费）。</summary>
     public DispatchConversation? Conversation { get; init; }
+
+    /// <summary>提醒信封 kind（cron / heartbeat）。系统提示与助手结果都按它标记。</summary>
+    public string ReminderKind { get; init; } = SystemReminder.Kinds.Cron;
+
+    /// <summary>系统发送者标签（cron / heartbeat）。写入会话消息的 <c>Sender.Id</c>。</summary>
+    public string SenderId { get; init; } = "cron";
+
+    /// <summary>会话写回布局。默认 <see cref="DispatchLayout.PromptAndResult"/>，与既有 cron 行为一致。</summary>
+    public DispatchLayout Layout { get; init; } = DispatchLayout.PromptAndResult;
 
     public Dictionary<string, object>? Metadata { get; init; }
 }

@@ -297,6 +297,10 @@
 
     private void OnJobError(object? sender, JobErrorEventArgs args)
     {
+        // 只处理定时任务面的通知；心跳是独立入口，不该在定时任务页弹出
+        if (!_jobs.Any(j => j.Id == args.JobId))
+            return;
+
         _ = InvokeAsync(async () =>
         {
             MessageService.Error($"任务 {args.JobId} 执行失败: {args.Error}");
@@ -307,6 +311,9 @@
 
     private void OnJobSuccess(object? sender, JobSuccessEventArgs args)
     {
+        if (!_jobs.Any(j => j.Id == args.JobId))
+            return;
+
         _ = InvokeAsync(async () =>
         {
             MessageService.Success($"任务 {args.JobId} 执行成功");
@@ -317,6 +324,9 @@
     
     private void OnJobProgress(object? sender, JobProgressEventArgs args)
     {
+        if (!_jobs.Any(j => j.Id == args.JobId))
+            return;
+
         _ = InvokeAsync(async () =>
         {
             switch (args.Stage)

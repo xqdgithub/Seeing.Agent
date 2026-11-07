@@ -137,45 +137,6 @@ public class SchedulerIntegrationTests
     }
 
     [Fact]
-    public async Task Heartbeat_TriggeredViaJobId()
-    {
-        using var ws = new SchedulerTestWorkspace();
-        var schedulerOptions = new SchedulerOptions
-        {
-            Enabled = true,
-            Heartbeat = new HeartbeatOptions
-            {
-                Enabled = true,
-                Prompt = "heartbeat test prompt",
-                SessionId = "heartbeat-main",
-                TimeoutSeconds = 30
-            }
-        };
-
-        var executedPrompts = new List<string>();
-        var (manager, engine, serviceProvider) = CreateScheduleManagerWithServices(ws, executedPrompts, schedulerOptions: schedulerOptions);
-
-        await manager.StartAsync(TestContext.Current.CancellationToken);
-
-        // 验证 scheduler 状态
-        var scheduler = engine.Scheduler;
-        scheduler.Should().NotBeNull();
-        scheduler!.IsStarted.Should().BeTrue();
-
-        // 验证 heartbeat job 已注册
-        var jobKey = new Quartz.JobKey(SchedulerConstants.HeartbeatJobId, SchedulerConstants.DefaultJobGroup);
-        var jobDetail = await scheduler.GetJobDetail(jobKey, TestContext.Current.CancellationToken);
-        jobDetail.Should().NotBeNull();
-        jobDetail!.JobDataMap.GetString(JobDataKeys.Prompt).Should().Be("heartbeat test prompt");
-
-        // 触发 job
-        var result = await manager.RunJobOnceAsync(SchedulerConstants.HeartbeatJobId, TestContext.Current.CancellationToken);
-        result.Should().BeOfType<TriggerResult.Accepted>();
-
-        await manager.StopAsync(TestContext.Current.CancellationToken);
-    }
-
-    [Fact]
     public void AddSeeingScheduler_RegistersAllServices()
     {
         // 简化测试：只验证类型可以注册
@@ -187,33 +148,6 @@ public class SchedulerIntegrationTests
 
         // 验证服务可以构建
         services.Should().NotBeNull();
-    }
-
-    [Fact]
-    public async Task ScheduleManager_ManualHeartbeatRunViaJobId()
-    {
-        using var ws = new SchedulerTestWorkspace();
-        var schedulerOptions = new SchedulerOptions
-        {
-            Enabled = true,
-            Heartbeat = new HeartbeatOptions { Enabled = true, Prompt = "heartbeat manual run" }
-        };
-
-        var executedPrompts = new List<string>();
-        var (manager, engine) = CreateScheduleManager(ws, executedPrompts, schedulerOptions: schedulerOptions);
-        await manager.StartAsync(TestContext.Current.CancellationToken);
-
-        // 验证 scheduler 状态
-        var scheduler = engine.Scheduler;
-        scheduler.Should().NotBeNull();
-        scheduler!.IsStarted.Should().BeTrue();
-
-        var result = await manager.RunJobOnceAsync(SchedulerConstants.HeartbeatJobId, TestContext.Current.CancellationToken);
-
-        // 验证触发成功
-        result.Should().BeOfType<TriggerResult.Accepted>();
-
-        await manager.StopAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -330,67 +264,13 @@ public class SchedulerIntegrationTests
         condition().Should().BeTrue(because);
     }
 
-    private static (ScheduleManager Manager, QuartzSchedulerEngine Engine, IServiceProvider ServiceProvider) CreateScheduleManagerWithServices(
-        SchedulerTestWorkspace ws,
-        List<string> executedPrompts,
-        IScheduledJobDispatcher? dispatcher = null,
-        SchedulerOptions? schedulerOptions = null)
-    {
-        var optionsProvider = new TestSchedulerOptionsProvider(schedulerOptions ?? ws.Options);
-        var router = CreateMockRouter(executedPrompts);
-        var registry = CreateMockRegistry();
-        var sessionManager = new SessionManager();
-        var hooks = new HookManager(NullLogger<HookManager>.Instance);
-
-        dispatcher ??= Mock.Of<IScheduledJobDispatcher>(d =>
-            d.DispatchAsync(It.IsAny<DispatchRequest>(), It.IsAny<CancellationToken>()) == Task.FromResult(DispatchResult.Ok()));
-
-        // 先创建 ScheduleManager，但需要 engine
-        var repo = new JsonScheduleRepository(ws.Workspace, NullLogger<JsonScheduleRepository>.Instance);
-
-        // Build Quartz scheduler with proper configuration
-        var properties = new System.Collections.Specialized.NameValueCollection
-        {
-            ["quartz.threadPool.type"] = "Quartz.Simpl.SimpleThreadPool, Quartz",
-            ["quartz.threadPool.threadCount"] = "10",
-            ["quartz.scheduler.instanceName"] = "TestScheduler"
-        };
-        var schedulerFactory = new StdSchedulerFactory(properties);
-        var scheduler = schedulerFactory.GetScheduler().GetAwaiter().GetResult();
-
-        // 使用包装工厂确保返回预配置的 scheduler
-        var wrapperFactory = new PreconfiguredSchedulerFactory(scheduler);
-        var engine = new QuartzSchedulerEngine(wrapperFactory, NullLogger<QuartzSchedulerEngine>.Instance);
-
-        var manager = new ScheduleManager(
-            repo,
-            engine,
-            optionsProvider,
-            NullLogger<ScheduleManager>.Instance);
-
-        // 注册所有依赖（包括 manager 作为 IJobExecutionListener）
-        var services = new ServiceCollection()
-            .AddSingleton<IAgentExecutor>(router)
-            .AddSingleton(registry)
-            .AddSingleton<IAgentSelectionResolver>(sp =>
-                new AgentSelectionResolver(new Mock<IAgentRuntimeManager>().Object))
-            .AddSingleton<IWorkspaceProvider>(ws.Workspace)
-            .AddSingleton(Mock.Of<IExecutionWorld>(w => w.Cwd == ws.Workspace.GetProjectRoot()))
-            .AddSingleton<ISessionManager>(sessionManager)
-            .AddSingleton<IHookManager>(hooks)
-            .AddSingleton<ISystemReminderRenderer, Seeing.Agent.Core.Reminders.SystemReminderRendererService>()
-            .AddSingleton(dispatcher)
-            .AddSingleton<IJobExecutionListener>(manager)  // 关键：注册 manager 作为监听器
-            .AddLogging()
-            .AddTransient<AgentJob>()
-            .AddTransient<HeartbeatJob>()
-            .BuildServiceProvider();
-
-        // 设置 Microsoft DI JobFactory
-        scheduler.JobFactory = new MicrosoftDependencyInjectionJobFactory(services, Options.Create(new QuartzOptions()));
-
-        return (manager, engine, services);
-    }
+    private static (ScheduleManager Manager, QuartzSchedulerEngine Engine, IServiceProvider ServiceProvider)
+        CreateScheduleManagerWithServices(
+            SchedulerTestWorkspace ws,
+            List<string> executedPrompts,
+            IScheduledJobDispatcher? dispatcher = null,
+            SchedulerOptions? schedulerOptions = null)
+        => Fixtures.SchedulerIntegrationTestsFactory.Create(ws, executedPrompts, dispatcher, schedulerOptions);
 
     // 兼容旧调用
     private static (ScheduleManager Manager, QuartzSchedulerEngine Engine) CreateScheduleManager(
@@ -403,42 +283,11 @@ public class SchedulerIntegrationTests
         return (manager, engine);
     }
 
-    /// <summary>包装工厂，返回预配置的 scheduler</summary>
-    private class PreconfiguredSchedulerFactory : ISchedulerFactory
-    {
-        private readonly IScheduler _scheduler;
-        public PreconfiguredSchedulerFactory(IScheduler scheduler) => _scheduler = scheduler;
-        public Task<IScheduler> GetScheduler(CancellationToken cancellationToken = default) => Task.FromResult(_scheduler);
-        public Task<IScheduler?> GetScheduler(string schedName, CancellationToken cancellationToken = default) => Task.FromResult<IScheduler?>(_scheduler);
-        public Task<IReadOnlyList<IScheduler>> GetAllSchedulers(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<IScheduler>>(new[] { _scheduler });
-    }
-
     private static IAgentExecutor CreateMockRouter(List<string> executedPrompts)
-    {
-        var router = new Mock<IAgentExecutor>();
-        router.Setup(r => r.ExecuteAsync(It.IsAny<AgentDefinition>(), It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<AgentContext>(), It.IsAny<CancellationToken>()))
-            .Returns((AgentDefinition _, IReadOnlyList<ChatMessage> messages, AgentContext ctx, CancellationToken _) =>
-            {
-                var prompt = messages.LastOrDefault()?.Content;
-                if (prompt != null)
-                    executedPrompts.Add(prompt);
-
-                return ToAsyncEnumerable(new StreamCompleteEvent
-                {
-                    SessionId = ctx.SessionId,
-                    Message = new ChatMessage { Role = ChatRole.Assistant, Content = "agent-response" }
-                });
-            });
-        return router.Object;
-    }
+        => Fixtures.SchedulerIntegrationTestsFactory.CreateMockRouter(executedPrompts);
 
     private static IAgentRegistry CreateMockRegistry()
-    {
-        var registry = new Mock<IAgentRegistry>();
-        registry.Setup(r => r.GetAgentAsync(It.IsAny<string>()))
-            .ReturnsAsync((string name) => new AgentDefinition { Name = name });
-        return registry.Object;
-    }
+        => Fixtures.SchedulerIntegrationTestsFactory.CreateMockRegistry();
 
     private static async IAsyncEnumerable<IMessageEvent> ToAsyncEnumerable(params IMessageEvent[] events)
     {

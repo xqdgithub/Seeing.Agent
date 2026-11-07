@@ -17,11 +17,16 @@ namespace Seeing.Session.Core
 
         /// <summary>确保会话存在（缓存 → 存储 → 创建）</summary>
         /// <param name="scenario">会话级场景名（仅新建时生效；应物化进程默认工作模式）</param>
+        /// <param name="origin">
+        /// 会话来源（仅本次新建时生效）。已有会话保持原来源，不覆盖。
+        /// 平台内部入口（定时任务 / 心跳 / 复盘）必须显式传入，否则会话会被当成用户会话参与任务视图与自动分析判定。
+        /// </param>
         Task<SessionData> EnsureSessionAsync(
             string id,
             string? selectedAgent = null,
             string? partitionId = null,
-            string? scenario = null);
+            string? scenario = null,
+            SessionOrigin? origin = null);
 
         /// <summary>获取会话</summary>
         SessionData? Get(string id);

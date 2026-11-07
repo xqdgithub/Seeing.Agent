@@ -129,13 +129,13 @@
         _schedulerLoading = true;
         try
         {
-            await ScheduleManager.ReloadHeartbeatAsync();
+            // 重新读取调度器状态即可：心跳配置由 IHeartbeatService 自己管理，不在本卡范围内。
             await LoadSchedulerStatusAsync();
-            MessageService.Success("配置已重载");
+            MessageService.Success("状态已刷新");
         }
         catch (Exception ex)
         {
-            MessageService.Error($"重载失败: {ex.Message}");
+            MessageService.Error($"刷新失败: {ex.Message}");
         }
         finally
         {
@@ -155,8 +155,7 @@
                 s.MaxConcurrentJobs = _scheduler.MaxConcurrentJobs;
                 s.Persistence = _scheduler.Persistence;
             });
-            await ScheduleManager.ReloadHeartbeatAsync();
-            MessageService.Success("保存成功");
+            MessageService.Success("保存成功（启用 / 时区 / 持久化需重启应用生效）");
         }
         catch (Exception ex)
         {

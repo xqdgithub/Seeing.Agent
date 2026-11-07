@@ -18,24 +18,13 @@ public class SchedulerOptionsProviderTests
         ws.WriteSeeingJson(new SchedulerOptions
         {
             Enabled = true,
-            Timezone = "Asia/Shanghai",
-            Heartbeat = new HeartbeatOptions
-            {
-                Enabled = true,
-                Every = "30m",
-                Target = HeartbeatTargets.Last,
-                Prompt = "检查系统状态"
-            }
+            Timezone = "Asia/Shanghai"
         });
 
         var provider = ws.CreateOptionsProvider();
 
         provider.Current.Enabled.Should().BeTrue();
         provider.Current.Timezone.Should().Be("Asia/Shanghai");
-        provider.Current.Heartbeat.Enabled.Should().BeTrue();
-        provider.Current.Heartbeat.Every.Should().Be("30m");
-        provider.Current.Heartbeat.Target.Should().Be(HeartbeatTargets.Last);
-        provider.Current.Heartbeat.Prompt.Should().Be("检查系统状态");
     }
 
     [Fact]
@@ -67,14 +56,7 @@ public class SchedulerOptionsProviderTests
         {
             Enabled = true,
             Timezone = "Asia/Shanghai",
-            MaxConcurrentJobs = 5,
-            Heartbeat = new HeartbeatOptions
-            {
-                Enabled = true,
-                Every = "30m",
-                Target = HeartbeatTargets.Last,
-                Prompt = "检查系统状态"
-            }
+            MaxConcurrentJobs = 5
         };
         await configManager.SaveSectionAsync("Scheduler", newOptions, ConfigLevel.Project, TestContext.Current.CancellationToken);
 
@@ -83,9 +65,6 @@ public class SchedulerOptionsProviderTests
         provider.Current.Enabled.Should().BeTrue();
         provider.Current.Timezone.Should().Be("Asia/Shanghai");
         provider.Current.MaxConcurrentJobs.Should().Be(5);
-        provider.Current.Heartbeat.Enabled.Should().BeTrue();
-        provider.Current.Heartbeat.Every.Should().Be("30m");
-        provider.Current.Heartbeat.Target.Should().Be(HeartbeatTargets.Last);
     }
 
     [Fact]

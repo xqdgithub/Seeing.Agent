@@ -63,6 +63,10 @@ public class AgentJob : IJob
         var jobId = data.GetStringValue(JobDataKeys.JobId) ?? context.JobDetail.Key.Name;
         var runId = data.GetStringValue(JobDataKeys.RunId) ?? Guid.NewGuid().ToString("N");
 
+        // 执行画像：缺键等于 cron。心跳与定时任务共用本 Job，身份差异全部由画像承载。
+        var profile = data.GetJsonValue<ScheduleRunProfile>(JobDataKeys.RunProfile)
+                      ?? ScheduleRunProfile.Cron;
+
         // 通知监听器任务开始
         _listener?.OnJobStart(jobId, runId);
 
@@ -90,6 +94,7 @@ public class AgentJob : IJob
             jobId,
             data.GetStringValue(JobDataKeys.JobName),
             configuredSessionId,
+            profile,
             timeoutCts.Token).ConfigureAwait(false);
 
         // 触发执行前 Hook
@@ -98,7 +103,7 @@ public class AgentJob : IJob
             sessionId,
             new Dictionary<string, object?>
             {
-                ["source"] = ScheduleSources.Cron,
+                ["source"] = profile.Source,
                 ["sessionId"] = sessionId,
                 ["jobId"] = jobId
             },
@@ -112,7 +117,7 @@ public class AgentJob : IJob
                 Success = false,
                 Error = hookResult.Error?.Message ?? "Blocked by hook",
                 TaskType = taskType,
-                Source = ScheduleSources.Cron,
+                Source = profile.Source,
                 SessionId = sessionId,
                 Agent = agentId,
                 Prompt = prompt,
@@ -123,7 +128,7 @@ public class AgentJob : IJob
             // 触发执行后 Hook
             _hooks.TriggerFireAndForget(HookRegistry.SchedulerJobAfterExecute, sessionId, new Dictionary<string, object?>
             {
-                ["source"] = ScheduleSources.Cron,
+                ["source"] = profile.Source,
                 ["sessionId"] = sessionId,
                 ["jobId"] = jobId,
                 ["success"] = false,
@@ -142,12 +147,12 @@ public class AgentJob : IJob
 
             if (taskType == ScheduleTaskTypes.Text)
             {
-                result = await ExecuteTextJobAsync(data, sessionId, timeoutCts.Token);
+                result = await ExecuteTextJobAsync(data, sessionId, profile, timeoutCts.Token);
                 userInput = data.GetStringValue(JobDataKeys.Text);  // Text 任务的用户输入
             }
             else
             {
-                result = await ExecuteAgentJobAsync(data, sessionId, timeoutCts.Token);
+                result = await ExecuteAgentJobAsync(data, sessionId, profile, timeoutCts.Token);
                 userInput = data.GetStringValue(JobDataKeys.Prompt);  // Agent 任务的用户输入
             }
 
@@ -155,8 +160,8 @@ public class AgentJob : IJob
             // 优先使用 DispatchSessionId，否则使用执行上下文的 sessionId
             if (result.Success && !string.IsNullOrEmpty(result.Output))
             {
-                var wrappedInput = WrapJobUserInput(userInput);
-                await DispatchAsync(data, result.Output, sessionId, wrappedInput, timeoutCts.Token);
+                var wrappedInput = WrapJobUserInput(userInput, profile);
+                await DispatchAsync(data, result.Output, sessionId, wrappedInput, profile, timeoutCts.Token);
             }
 
             context.Result = result;
@@ -164,7 +169,7 @@ public class AgentJob : IJob
             // 触发执行后 Hook
             _hooks.TriggerFireAndForget(HookRegistry.SchedulerJobAfterExecute, sessionId, new Dictionary<string, object?>
             {
-                ["source"] = ScheduleSources.Cron,
+                ["source"] = profile.Source,
                 ["sessionId"] = sessionId,
                 ["jobId"] = jobId,
                 ["success"] = result.Success,
@@ -186,7 +191,7 @@ public class AgentJob : IJob
                 Success = false,
                 Error = "Cancelled",
                 TaskType = taskType,
-                Source = ScheduleSources.Cron,
+                Source = profile.Source,
                 SessionId = sessionId,
                 Agent = agentId,
                 Prompt = prompt,
@@ -204,7 +209,7 @@ public class AgentJob : IJob
                 Success = false,
                 Error = ex.Message,
                 TaskType = taskType,
-                Source = ScheduleSources.Cron,
+                Source = profile.Source,
                 SessionId = sessionId,
                 Agent = agentId,
                 Prompt = prompt,
@@ -215,7 +220,7 @@ public class AgentJob : IJob
             // 触发执行后 Hook
             _hooks.TriggerFireAndForget(HookRegistry.SchedulerJobAfterExecute, sessionId, new Dictionary<string, object?>
             {
-                ["source"] = ScheduleSources.Cron,
+                ["source"] = profile.Source,
                 ["sessionId"] = sessionId,
                 ["jobId"] = jobId,
                 ["success"] = false,
@@ -267,6 +272,7 @@ public class AgentJob : IJob
     private async Task<JobExecutionResult> ExecuteTextJobAsync(
         JobDataMap data,
         string sessionId,
+        ScheduleRunProfile profile,
         CancellationToken ct)
     {
         var text = data.GetStringValue(JobDataKeys.Text) ?? string.Empty;
@@ -279,7 +285,7 @@ public class AgentJob : IJob
                 Success = false,
                 Error = "Text task has empty content",
                 TaskType = ScheduleTaskTypes.Text,
-                Source = ScheduleSources.Cron,
+                Source = profile.Source,
                 SessionId = sessionId,
                 Text = text,
                 DispatchSessionId = dispatchSessionId
@@ -291,7 +297,7 @@ public class AgentJob : IJob
             Success = true,
             Output = text,
             TaskType = ScheduleTaskTypes.Text,
-            Source = ScheduleSources.Cron,
+            Source = profile.Source,
             SessionId = sessionId,
             Text = text,
             DispatchSessionId = dispatchSessionId
@@ -301,6 +307,7 @@ public class AgentJob : IJob
     private async Task<JobExecutionResult> ExecuteAgentJobAsync(
         JobDataMap data,
         string sessionId,
+        ScheduleRunProfile profile,
         CancellationToken ct)
     {
         var agentId = data.GetStringValue(JobDataKeys.AgentId);
@@ -314,7 +321,7 @@ public class AgentJob : IJob
                 Success = false,
                 Error = "Agent task has empty prompt",
                 TaskType = ScheduleTaskTypes.Agent,
-                Source = ScheduleSources.Cron,
+                Source = profile.Source,
                 SessionId = sessionId,
                 Agent = agentId,
                 Prompt = prompt,
@@ -334,7 +341,7 @@ public class AgentJob : IJob
 
         var metadata = new Dictionary<string, object>
         {
-            ["source"] = ScheduleSources.Cron
+            ["source"] = profile.Source
         };
         if (!string.IsNullOrEmpty(model))
             metadata[AgentContextKeys.RequestModelId] = model;
@@ -349,7 +356,7 @@ public class AgentJob : IJob
                 Content = _reminders.Wrap(
                     prompt,
                     SystemReminder.Sources.Job,
-                    SystemReminder.Kinds.Cron)
+                    profile.ReminderKind)
             }
         };
 
@@ -401,7 +408,7 @@ public class AgentJob : IJob
             Output = output.ToString().Trim(),
             Error = errorMessage,
             TaskType = ScheduleTaskTypes.Agent,
-            Source = ScheduleSources.Cron,
+            Source = profile.Source,
             Agent = resolvedAgentId,
             SessionId = sessionId,
             Prompt = prompt,
@@ -479,7 +486,7 @@ public class AgentJob : IJob
         }
     }
 
-    private string? WrapJobUserInput(string? userInput)
+    private string? WrapJobUserInput(string? userInput, ScheduleRunProfile profile)
     {
         if (string.IsNullOrEmpty(userInput))
             return userInput;
@@ -488,20 +495,29 @@ public class AgentJob : IJob
         return _reminders.Wrap(
             userInput,
             SystemReminder.Sources.Job,
-            SystemReminder.Kinds.Cron);
+            profile.ReminderKind);
     }
 
-    private async Task DispatchAsync(JobDataMap data, string content, string defaultSessionId, string? userInput, CancellationToken ct)
+    private async Task DispatchAsync(
+        JobDataMap data,
+        string content,
+        string defaultSessionId,
+        string? userInput,
+        ScheduleRunProfile profile,
+        CancellationToken ct)
     {
         var dispatchSessionId = data.GetStringValue(JobDataKeys.DispatchSessionId) ?? defaultSessionId;
 
         var dispatchResult = await _dispatcher.DispatchAsync(new DispatchRequest
         {
-            Source = ScheduleSources.Cron,
+            Source = profile.Source,
             TaskType = ScheduleTaskTypes.Agent,
             Content = content,
             UserInput = userInput,
             SessionId = dispatchSessionId,
+            ReminderKind = profile.ReminderKind,
+            SenderId = profile.SenderId,
+            Layout = profile.Layout,
             // 任务级 conversation 出站目标（ChannelDeliveryScheduleDispatcher 优先于会话 ChannelRoute）
             Conversation = ScheduleConversationResolver.ReadConversation(data)
         }, ct);

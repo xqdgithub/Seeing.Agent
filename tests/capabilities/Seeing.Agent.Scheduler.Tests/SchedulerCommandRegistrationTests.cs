@@ -21,6 +21,7 @@ public class SchedulerCommandRegistrationTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<ICommandRegistry>(registry);
+        services.AddSingleton(Mock.Of<IHeartbeatService>());
         await using var provider = services.BuildServiceProvider();
 
         var module = new SchedulerModule(new SchedulerModuleActivity(), Mock.Of<IScheduleManager>());
