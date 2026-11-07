@@ -517,17 +517,37 @@ namespace Seeing.Session.Management
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// <para>
+        /// <b>为什么必须持组锁：</b>归档是「读成员快照 → 逐个归档」两步。不持锁时，期间发生的
+        /// 成员增删、恢复或新执行启动都无协调，结果是「半归档」——组内部分会话已归档、
+        /// 部分仍活跃，而 <c>ListAnchorSummariesAsync</c> 与 <c>ListArchivedAsync</c> 会给出互相矛盾的视图。
+        /// </para>
+        /// <para>
+        /// <b>失败语义：</b>任一成员归档失败即抛 <see cref="InvalidOperationException"/>，
+        /// 而不是像先前那样只记 Warning 并返回「有成员成功」——部分成功对调用方是无用信息：
+        /// 它既不能当成功（组没归档完），也不该被静默当作已完成。
+        /// </para>
+        /// </remarks>
         public async Task<bool> ArchiveGroupAsync(string groupId, CancellationToken ct = default)
         {
             if (string.IsNullOrEmpty(groupId))
                 return false;
+
+            // 组锁覆盖整个「读成员 → 逐个归档」周期，与 Add/Remove/Restore 互斥。
+            using var lease = await AcquireLockAsync(_groupLocks, groupId, ct).ConfigureAwait(false);
 
             var group = await GetGroupLiveAsync(groupId, ct).ConfigureAwait(false);
             if (group == null)
                 return false;
 
             var memberIds = group.Members.Select(m => m.SessionId).ToList();
+            if (memberIds.Count == 0)
+                return false;
+
             var archived = 0;
+            var failures = new List<(string SessionId, Exception Error)>();
+
             foreach (var id in memberIds)
             {
                 try
@@ -537,17 +557,34 @@ namespace Seeing.Session.Management
                 }
                 catch (NotSupportedException)
                 {
+                    // 存储不支持归档：整体语义未定义，直接上抛（不再对后续成员盲目尝试）
+                    throw;
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
                     throw;
                 }
                 catch (Exception ex)
                 {
+                    failures.Add((id, ex));
                     _logger.LogWarning(ex, "归档组成员失败: GroupId={GroupId}, SessionId={SessionId}", groupId, id);
                 }
             }
 
             // 组关系保留在组存储中，供 RestoreGroupAsync 恢复；列表经归档过滤自然隐藏
-            _logger.LogInformation("归档会话组: GroupId={GroupId}, Members={Count}, Archived={Archived}",
-                groupId, memberIds.Count, archived);
+            _logger.LogInformation(
+                "归档会话组: GroupId={GroupId}, Members={Count}, Archived={Archived}, Failed={Failed}",
+                groupId, memberIds.Count, archived, failures.Count);
+
+            if (failures.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"会话组归档未完成: {archived}/{memberIds.Count} 成功，" +
+                    $"{failures.Count} 个成员失败（{string.Join(", ", failures.Select(f => f.SessionId))}）。" +
+                    "组关系已保留，可重试 ArchiveGroupAsync。",
+                    failures[0].Error);
+            }
+
             return archived > 0;
         }
 

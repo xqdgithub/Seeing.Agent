@@ -21,11 +21,17 @@ internal sealed class SessionGroupTestHarness : IDisposable
     /// <param name="decorateGroupStore">
     /// 可选的组存储装饰器（如注入保存失败）；null 时直接使用 <see cref="FileSessionGroupStore"/>。
     /// </param>
-    public SessionGroupTestHarness(Func<ISessionGroupStore, ISessionGroupStore>? decorateGroupStore = null)
+    /// <param name="decorateSessionStore">
+    /// 可选的会话存储装饰器（如注入归档失败）；null 时直接使用 <see cref="InMemorySessionStore"/>。
+    /// </param>
+    public SessionGroupTestHarness(
+        Func<ISessionGroupStore, ISessionGroupStore>? decorateGroupStore = null,
+        Func<InMemorySessionStore, ISessionStore>? decorateSessionStore = null)
     {
         GroupStore = new FileSessionGroupStore(Dir);
         var effectiveStore = decorateGroupStore is null ? GroupStore : decorateGroupStore(GroupStore);
-        Sessions = new SessionManager(store: SessionStore, logger: new NullLogger<SessionManager>());
+        var sessionStore = decorateSessionStore is null ? SessionStore : decorateSessionStore(SessionStore);
+        Sessions = new SessionManager(store: sessionStore, logger: new NullLogger<SessionManager>());
         var forker = new SessionForker(new NullLogger<SessionForker>(), Sessions);
         Manager = new SessionGroupManager(Sessions, effectiveStore, forker, NullLogger<SessionGroupManager>.Instance);
     }

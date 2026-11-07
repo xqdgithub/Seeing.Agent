@@ -135,5 +135,11 @@ public class SQLitePersistenceTests
 
         public SchedulerOptions Current => _options;
         public void Reload() { }
+        public IDisposable OnChange(Action<SchedulerOptions> listener) => new NoopSubscription();
+
+        private sealed class NoopSubscription : IDisposable
+        {
+            public void Dispose() { }
+        }
     }
 }

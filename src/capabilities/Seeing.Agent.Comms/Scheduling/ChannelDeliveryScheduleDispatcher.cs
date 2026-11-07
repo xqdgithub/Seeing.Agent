@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Channels;
+using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Reminders;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Scheduling;
@@ -20,23 +21,38 @@ public sealed class ChannelDeliveryScheduleDispatcher : IScheduledJobDispatcher
     private readonly ISystemReminderRenderer _reminders;
     private readonly OutboundDeliveryService _delivery;
     private readonly ILogger<ChannelDeliveryScheduleDispatcher> _logger;
+    private readonly IModuleCatalog? _modules;
+
+    /// <summary>Comms 模块 id（与 <see cref="CommsModule.Id"/> 一致）。</summary>
+    private const string CommsModuleId = "comms";
 
     public ChannelDeliveryScheduleDispatcher(
         ISessionRuntime runtime,
         ISessionManager sessionManager,
         ISystemReminderRenderer reminders,
         OutboundDeliveryService delivery,
-        ILogger<ChannelDeliveryScheduleDispatcher>? logger = null)
+        ILogger<ChannelDeliveryScheduleDispatcher>? logger = null,
+        IModuleCatalog? modules = null)
     {
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
         _reminders = reminders ?? throw new ArgumentNullException(nameof(reminders));
         _delivery = delivery ?? throw new ArgumentNullException(nameof(delivery));
         _logger = logger ?? NullLogger<ChannelDeliveryScheduleDispatcher>.Instance;
+        _modules = modules;
     }
 
     public async Task<DispatchResult> DispatchAsync(DispatchRequest request, CancellationToken ct = default)
     {
+        // 模块门控：本 dispatcher 在 ConfigureServices 注册进 CompositeScheduleDispatcher，
+        // 模块级 Deactivate 无法移除它。若不再自查 com.cms 启用态，能力集禁用 comms 后
+        // 定时出站仍会照常投递（声明式边界失效）。
+        if (_modules is not null && !_modules.IsEnabled(CommsModuleId))
+        {
+            _logger.LogDebug("comms 模块未启用，跳过渠道出站调度: SessionId={SessionId}", request.SessionId);
+            return DispatchResult.Ok();
+        }
+
         if (string.IsNullOrEmpty(request.SessionId))
             return DispatchResult.Ok();
 

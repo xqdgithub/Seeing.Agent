@@ -81,5 +81,12 @@ public sealed class TestSchedulerOptionsProvider : ISchedulerOptionsProvider
 
     public void Reload() { }
 
+    public IDisposable OnChange(Action<SchedulerOptions> listener) => new NoopSubscription();
+
     public void SetOptions(SchedulerOptions options) => _options = options;
+
+    private sealed class NoopSubscription : IDisposable
+    {
+        public void Dispose() { }
+    }
 }

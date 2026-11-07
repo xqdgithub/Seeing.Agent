@@ -12,7 +12,7 @@ public sealed class FileWatcherPool : IDisposable
     }
 
     private readonly ConcurrentDictionary<string, Entry> _roots = new(StringComparer.OrdinalIgnoreCase);
-    private bool _disposed;
+    private int _disposedFlag;
 
     /// <summary>当前池化根数量（测试用）。</summary>
     internal int RootCount => _roots.Count;
@@ -20,6 +20,10 @@ public sealed class FileWatcherPool : IDisposable
     /// <summary>按根订阅；调用方 Dispose 时 Release。</summary>
     internal RootWatcher.Subscription Subscribe(string root)
     {
+        // 显式失败优于静默降级：池已真正 Dispose 后返回「订阅成功但永不触发」的
+        // watcher，会让文件变更静默不再刷新（模块停用再启用后的历史症状）。
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposedFlag) != 0, this);
+
         var normalized = Normalize(root);
         var entry = _roots.GetOrAdd(normalized, _ => new Entry { Watcher = new RootWatcher(normalized) });
         Interlocked.Increment(ref entry.RefCount);
@@ -35,13 +39,29 @@ public sealed class FileWatcherPool : IDisposable
             removed.Watcher.Dispose();
     }
 
+    /// <summary>
+    /// 停止全部监听并清空池，但<b>保留实例可复用</b>。
+    /// <para>
+    /// 供 <c>IModuleHostedService.StopAsync</c> 使用：模块 Deactivate 后再次 Activate 必须能重新订阅。
+    /// 直接用 <see cref="Dispose"/> 会把单例池标为已释放，后续 <see cref="Subscribe"/> 拿到的
+    /// watcher 已 Dispose，文件变更静默停更。
+    /// </para>
+    /// </summary>
+    public void StopAll()
+    {
+        foreach (var (_, e) in _roots)
+            e.Watcher.Dispose();
+
+        _roots.Clear();
+    }
+
     /// <inheritdoc />
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        foreach (var (_, e) in _roots) e.Watcher.Dispose();
-        _roots.Clear();
+        if (Interlocked.Exchange(ref _disposedFlag, 1) != 0)
+            return;
+
+        StopAll();
     }
 
     private static string Normalize(string root) =>

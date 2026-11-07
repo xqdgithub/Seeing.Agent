@@ -168,6 +168,11 @@ public class HookManager : IHookManager
         var list = _handlers.GetOrAdd(point, _ => new List<object>());
         lock (list)
         {
+            // 去重：同一处理器重复注册会让 Hook 执行多次（如 TokenBudget 重复接线导致预算双计）。
+            // 允许同一实例挂在**不同**钩子点（多点处理器），只拦同一点上的重复登记。
+            if (list.Contains(handler))
+                return false;
+
             list.Add(handler);
             list.Sort((a, b) => GetPriority(a).CompareTo(GetPriority(b)));
         }

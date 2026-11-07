@@ -133,6 +133,10 @@ public sealed class ReflectionModule : ISeeingModule, IUiContribution
 
         _activity.IsActive = false;
 
+        // UI 贡献必须与 Activate 的 Register 对称注销，否则 Deactivate → Activate 之后
+        // 侧栏「复盘记录」入口永久消失（其余模块 Memory/Scheduler/Acp/Skills/Mcp/Basic 均已对称）。
+        _ui?.Unregister(Id);
+
         // 允许注入 Worker 以便取消在途复盘；缺失时（独立装配）只能等它自然结束。
         services.GetService<Background.ReflectionWorker>()?.CancelInFlight();
 

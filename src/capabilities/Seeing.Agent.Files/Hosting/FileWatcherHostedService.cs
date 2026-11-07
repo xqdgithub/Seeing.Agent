@@ -46,7 +46,10 @@ public sealed class FileWatcherHostedService : IHostedService, IModuleHostedServ
     /// <inheritdoc />
     public Task StopAsync(CancellationToken cancellationToken = default)
     {
-        _pool.Dispose();
+        // 不要 Dispose 单例池：IModuleHostedService 契约要求 Deactivate 后能再次 Activate。
+        // Dispose 会把池标为已释放，重新启用后 Subscribe 拿到的是已 Dispose 的 watcher，
+        // 文件变更静默停更（历史症状：停用再启用文件面板不再刷新）。
+        _pool.StopAll();
         _run.End();
         return Task.CompletedTask;
     }

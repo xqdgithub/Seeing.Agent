@@ -453,8 +453,17 @@ public class LlmService : ILlmService
                 => new LlmStreamingException("流式响应读取失败", ioEx)
                 { ModelId = request.Model, ProviderId = resolvedProviderId, RetryCount = retryCount },
 
+            // 兜底分支必须重算 IsRetryable，不能硬编码 false：
+            // 传输层重试耗尽后原样抛出的 HttpRequestException（5xx / 429）会走到这里，
+            // 若标成不可重试，应用层轮次重试（DefaultLlmTurnRetryPolicy.CanRetry）直接返回 false，
+            // 「传输层耗尽后由应用层接管」的链路在此断掉。
             _ => new LlmException($"LLM 请求失败: {capturedException.Message}", capturedException)
-            { ModelId = request.Model, ProviderId = resolvedProviderId, IsRetryable = false, RetryCount = retryCount }
+            {
+                ModelId = request.Model,
+                ProviderId = resolvedProviderId,
+                IsRetryable = LlmRetryPolicy.IsRetryable(capturedException, CancellationToken.None),
+                RetryCount = retryCount
+            }
         };
     }
 
