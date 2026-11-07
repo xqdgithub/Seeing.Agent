@@ -50,7 +50,8 @@ public static class WebUiHost
     public static async Task<WebApplication> BuildAsync(
         string[] args,
         string? contentRoot = null,
-        Action<ILoggingBuilder>? configureLogging = null)
+        Action<ILoggingBuilder>? configureLogging = null,
+        string? startupDirectory = null)
     {
         var builder = contentRoot is null
             ? WebApplication.CreateBuilder(args)
@@ -157,6 +158,24 @@ public static class WebUiHost
         builder.Services.AddSingleton<GatewayClientSupervisor>();
         builder.Services.AddSingleton<WorkspaceSwitchService>();
 
+        // 目录选择：进程内服务，只给 DirectoryPicker 用（列出当前工作区之外的目录）
+        builder.Services.AddSingleton<IDirectoryBrowser, DirectoryBrowser>();
+
+        // 首次选定工作区后的补初始化（命令发现 / TokenBudget 钩子 / Gateway 渠道注册）
+        builder.Services.AddSingleton<WorkspaceReadyInitializer>();
+        builder.Services.AddSingleton<WorkspaceSwitcherReadiness>();
+
+        // 启动决议：宿主在 Build 之前登记。桌面外壳已经改过进程当前目录，
+        // 所以启动目录必须由调用方显式传入，不能在这里读 GetCurrentDirectory。
+        var launchStartupDirectory = startupDirectory ?? Directory.GetCurrentDirectory();
+        builder.Services.AddSingleton(new WorkspaceLaunchRequest(new WorkspaceLaunchInput(
+            Mode: WorkspaceLaunchMode.Interactive,
+            StartupDirectory: launchStartupDirectory,
+            ExecutableDirectory: AppContext.BaseDirectory,
+            ExplicitPath: ReadWorkspaceArgument(args),
+            InheritedEnvironment: Environment.GetEnvironmentVariable("SEEING_WORKSPACE_ROOT"),
+            History: WorkspaceHistorySnapshot.Empty)));
+
         // TokenBudget Notifier (必须在 AddTokenBudgetHooks 之前注册)
         builder.Services.AddSingleton<Seeing.Agent.TokenBudget.IBudgetStatusNotifier, BudgetStatusNotifier>();
 
@@ -233,17 +252,14 @@ public static class WebUiHost
                 ModulePageRouteBinder.BindExistingPages(uiRegistry);
             }
 
-            // 初始化命令发现
-            sp.InitializeCommands();
-            sp.InitializeAcpCommands();  // 注册 ACP 专属命令
-
-            // 注册 Memory Hook / Tools 由 AddMemoryServices 内 Bootstrap + ITool 自注册
-
-            // 注册 TokenBudget Hook Handler（自动管理 token 预算）
-            sp.UseTokenBudgetHooks();
-
-            var workspaceProvider = sp.GetRequiredService<IWorkspaceProvider>();
-            sp.ReloadGatewayChannelRegistry(workspaceProvider.GetProjectRoot());
+            // 命令发现 / TokenBudget 钩子 / Gateway 渠道注册。
+            // 未选定工作区时它们会构造依赖项目路径的单例（会话存储、调度器），必须先跳过，
+            // 等用户在工作区首页选定后由 WorkspaceReadyInitializer 补做（见该类注释）。
+            var ready = sp.GetRequiredService<WorkspaceReadyInitializer>();
+            if (sp.GetRequiredService<IWorkspaceProvider>().IsResolved)
+                ready.RunIfNeeded();
+            else
+                sp.GetRequiredService<WorkspaceSwitcherReadiness>().Attach(ready);
         }
 
         // 局域网 HTTP 分发默认关闭 HTTPS 跳转（SEEING_DISABLE_HTTPS_REDIRECTION=true 或配置 DisableHttpsRedirection）
@@ -280,5 +296,17 @@ public static class WebUiHost
         app.MapFallbackToPage("/_Host");
 
         return app;
+    }
+
+    /// <summary>读取 <c>--workspace &lt;目录&gt;</c>。</summary>
+    private static string? ReadWorkspaceArgument(string[] args)
+    {
+        for (var i = 0; i < args.Length - 1; i++)
+        {
+            if (string.Equals(args[i], "--workspace", StringComparison.OrdinalIgnoreCase))
+                return args[i + 1];
+        }
+
+        return null;
     }
 }

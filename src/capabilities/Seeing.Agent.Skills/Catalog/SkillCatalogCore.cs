@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Skills;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Paths;
 using Seeing.Serialization;
 using System.Collections.Immutable;
@@ -53,6 +54,9 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
     private readonly List<Action<SkillCatalogSnapshot>> _subscribers = [];
     private readonly object _rootsLock = new();
 
+    /// <summary>工作区提供者（判断项目级根是否可读）。</summary>
+    private readonly IWorkspaceProvider? _workspaces;
+
     /// <summary>注册通道（不可变字典，按名称索引）。</summary>
     private ImmutableDictionary<string, SkillCatalogEntry> _registered =
         ImmutableDictionary.Create<string, SkillCatalogEntry>(StringComparer.OrdinalIgnoreCase);
@@ -81,14 +85,20 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
     /// <param name="logger">目录日志。</param>
     /// <param name="directories">配置目录契约；为 null 时无法定位默认根与禁用状态（测试 / 极简宿主）。</param>
     /// <param name="writeGate">状态文件写闸（与 <c>SkillWriter</c> 共用）；为 null 时读侧不加闸。</param>
+    /// <param name="workspaces">
+    /// 工作区提供者；用于判断项目级根是否可读（未选定时 <c>ProjectSeeingDirectory</c> 会抛异常）。
+    /// 为 null 时按「目录契约始终可读」处理，保持既有测试语义。
+    /// </param>
     public SkillCatalogCore(
         ILogger<SkillCatalogCore> logger,
         ISeeingDirectories? directories = null,
-        SkillWriteGate? writeGate = null)
+        SkillWriteGate? writeGate = null,
+        IWorkspaceProvider? workspaces = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _directories = directories;
         _writeGate = writeGate;
+        _workspaces = workspaces;
         _roots = BuildDefaultRoots();
     }
 
@@ -469,10 +479,15 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
         return roots;
     }
 
-    /// <summary>项目根（<c>{root}/.seeing</c> 的父目录）；无目录契约时为 null。</summary>
+    /// <summary>项目根（<c>{root}/.seeing</c> 的父目录）；无目录契约或工作区未选定时为 null。</summary>
     private string? ProjectAnchor()
     {
-        if (_directories is null || string.IsNullOrWhiteSpace(_directories.ProjectSeeingDirectory))
+        // 工作区未选定时 ProjectSeeingDirectory 会抛异常：此时只有用户级根，没有项目级根。
+        if (_directories is null
+            || _workspaces is { IsResolved: false })
+            return null;
+
+        if (string.IsNullOrWhiteSpace(_directories.ProjectSeeingDirectory))
             return null;
 
         var seeing = _directories.ProjectSeeingDirectory.TrimEnd(

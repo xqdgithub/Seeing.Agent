@@ -11,6 +11,7 @@ using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Ui;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Skills.Catalog;
 using Seeing.Agent.Skills.Commands;
 using Seeing.Agent.Skills.Configuration;
@@ -90,7 +91,8 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
         services.AddSingleton<SkillCatalogCore>(sp => new SkillCatalogCore(
             sp.GetRequiredService<ILogger<SkillCatalogCore>>(),
             sp.GetService<ISeeingDirectories>(),
-            sp.GetRequiredService<SkillWriteGate>()));
+            sp.GetRequiredService<SkillWriteGate>(),
+            sp.GetService<IWorkspaceProvider>()));
         services.TryAddSingleton<ISkillCatalog>(sp => sp.GetRequiredService<SkillCatalogCore>());
 
         // 写入收口：文件通道唯一写入口（注册通道技能只读），skill-state.json 写闸串行化

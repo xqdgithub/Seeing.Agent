@@ -1,0 +1,9 @@
+@inherits LayoutComponentBase
+@using AntDesign
+
+@* 无侧栏布局：工作区尚未选定 / 正在选择时使用，避免业务页面入口出现在首页上。 *@
+<Layout Style="min-height: 100vh;">
+    <Content Class="content-area">
+        @Body
+    </Content>
+</Layout>

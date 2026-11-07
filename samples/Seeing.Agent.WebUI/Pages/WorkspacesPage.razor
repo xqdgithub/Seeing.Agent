@@ -1,0 +1,119 @@
+@page "/workspaces"
+@using AntDesign
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.Hosting.Execution
+@using Seeing.Agent.WebUI.Services
+@inject IWorkspaceProvider Workspace
+@inject IWorkspaceHistoryStore History
+@inject IWorkspaceSwitcher Switcher
+@inject NavigationManager Navigation
+@layout EmptyLayout
+
+<PageTitle>选择工作区 - Seeing</PageTitle>
+
+<div class="hc">
+    <header class="hc-brand">
+        <img src="seeing-mark-64.png" alt="Seeing" class="hc-brand-mark" />
+        <div class="hc-brand-rule"></div>
+        <div class="hc-brand-copy">
+            <div class="hc-brand-tagline">先选一个工作区</div>
+            <div class="hc-brand-desc">选定后进入控制台，之后可在侧栏切换</div>
+        </div>
+    </header>
+
+    @if (_error is not null)
+    {
+        <Alert Type="@AlertType.Error" Message="@_error" ShowIcon="true" />
+    }
+
+    @if (_busy)
+    {
+        <Spin Tip="正在切换到新工作区…">
+            <div style="height: 120px;"></div>
+        </Spin>
+    }
+    else
+    {
+        <div class="ws-cards">
+            @foreach (var card in _cards)
+            {
+                <div class="ws-card @(card.IsDefault ? "is-default" : null)"
+                     @onclick="@(() => EnterAsync(card.Path))">
+                    <div class="ws-card-name">@card.Name</div>
+                    @if (card.IsDefault)
+                    {
+                        <span class="ws-card-badge">默认</span>
+                    }
+                    <div class="ws-card-path">@card.Path</div>
+                </div>
+            }
+
+            <div class="ws-card ws-card-new" @onclick="OpenPicker">
+                <Icon Type="@IconType.Outline.FolderAdd" />
+                <div class="ws-card-name">选择文件夹</div>
+            </div>
+        </div>
+
+        @if (_cards.Count == 0)
+        {
+            <Empty Description="@("还没有工作区，选一个文件夹开始")" />
+        }
+    }
+</div>
+
+<DirectoryPicker @ref="_picker"
+                 Title="选择工作区"
+                 InitialPath="@(Workspace.IsResolved ? Workspace.ResolvedRoot : null)"
+                 OnSelected="EnterAsync" />
+
+@code {
+    private sealed record WorkspaceCard(string Name, string Path, bool IsDefault);
+
+    private List<WorkspaceCard> _cards = new();
+    private DirectoryPicker? _picker;
+    private string? _error;
+    private bool _busy;
+
+    protected override void OnInitialized() => Reload();
+
+    private void Reload()
+    {
+        var snapshot = History.Read();
+        _cards = snapshot.Recent
+            .Where(Directory.Exists)
+            .Select(p => new WorkspaceCard(
+                new DirectoryInfo(p).Name,
+                p,
+                string.Equals(p, snapshot.LastInteractive, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+    }
+
+    private void OpenPicker() => _picker?.Show();
+
+    private async Task EnterAsync(string path)
+    {
+        if (_busy)
+            return;
+
+        _busy = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Switcher.ApplyAsync(new WorkspaceApplyRequest(path));
+            if (!result.Success)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            Navigation.NavigateTo("/", forceLoad: true);
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+}

@@ -1,0 +1,136 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Services
+@inject IDirectoryBrowser Browser
+
+@* 浏览器与桌面共用的目录选择对话框：列出服务端目录，点击进入，不手填路径。 *@
+<Modal @bind-Visible="_visible"
+       Title="@Title"
+       Centered="true"
+       Width="720"
+       OnOk="Confirm"
+       OkText="@("使用此目录")"
+       OnCancel="Hide">
+    <Spin Spinning="@(_listing is null)">
+        <div class="dir-picker-path">
+            <Button Size="@ButtonSize.Small"
+                    Icon="@IconType.Outline.Home"
+                    OnClick="GoRoots"
+                    Title="磁盘根" />
+            @if (!_showingRoots && _listing?.ParentPath is not null)
+            {
+                <Button Size="@ButtonSize.Small"
+                        Icon="@IconType.Outline.ArrowUp"
+                        OnClick="@(() => Navigate(_listing!.ParentPath!))" />
+            }
+            <Text Code>@(_showingRoots ? "磁盘根" : _listing?.Path)</Text>
+        </div>
+
+        @if (_showingRoots)
+        {
+            <div class="dir-picker-list">
+                @foreach (var root in _roots)
+                {
+                    <div class="dir-picker-item" @onclick="@(() => Navigate(root.FullPath))">
+                        <Icon Type="@IconType.Outline.Hdd" /> @root.Name
+                    </div>
+                }
+            </div>
+        }
+        else if (_listing is not null)
+        {
+            <div class="dir-picker-list">
+                @foreach (var entry in _listing.Directories)
+                {
+                    <div class="dir-picker-item" @onclick="@(() => Navigate(entry.FullPath))">
+                        <Icon Type="@IconType.Outline.Folder" /> @entry.Name
+                    </div>
+                }
+                @if (_listing.Directories.Count == 0)
+                {
+                    <Empty Description="@("没有子目录")" />
+                }
+            </div>
+
+            @if (_listing.Error is not null)
+            {
+                <Alert Type="@AlertType.Error" Message="@_listing.Error" ShowIcon="true" />
+            }
+
+            <Divider />
+            <InputGroup Compact>
+                <Input @bind-Value="_newFolderName" Placeholder="新建文件夹名称" />
+                <Button OnClick="CreateFolder">新建文件夹</Button>
+            </InputGroup>
+        }
+    </Spin>
+</Modal>
+
+@code {
+    private bool _visible;
+    private bool _showingRoots;
+    private string _newFolderName = "";
+    private DirectoryListing? _listing;
+    private IReadOnlyList<DirectoryEntryView> _roots = Array.Empty<DirectoryEntryView>();
+
+    /// <summary>对话框标题。</summary>
+    [Parameter] public string Title { get; set; } = "选择目录";
+
+    /// <summary>打开时的起始目录；为空则从用户主目录开始。</summary>
+    [Parameter] public string? InitialPath { get; set; }
+
+    /// <summary>用户确认选择后的回调（参数为目录绝对路径）。</summary>
+    [Parameter] public EventCallback<string> OnSelected { get; set; }
+
+    /// <summary>显示对话框。</summary>
+    public void Show()
+    {
+        _visible = true;
+        _newFolderName = "";
+        _roots = Browser.GetRoots();
+        _showingRoots = false;
+        _listing = Browser.List(InitialPath ?? "");
+        StateHasChanged();
+    }
+
+    /// <summary>隐藏对话框（不选择）。</summary>
+    public void Hide()
+    {
+        _visible = false;
+        StateHasChanged();
+    }
+
+    private void Navigate(string path)
+    {
+        _showingRoots = false;
+        _listing = Browser.List(path);
+        _newFolderName = "";
+    }
+
+    private void GoRoots()
+    {
+        _roots = Browser.GetRoots();
+        _showingRoots = true;
+    }
+
+    private void CreateFolder()
+    {
+        if (_listing is null || _showingRoots)
+            return;
+
+        var result = Browser.CreateSubdirectory(_listing.Path, _newFolderName);
+        _listing = result;
+        if (result.Error is null)
+            _newFolderName = "";
+
+        StateHasChanged();
+    }
+
+    private async Task Confirm()
+    {
+        if (_showingRoots || _listing is null || _listing.Error is not null)
+            return;
+
+        _visible = false;
+        await OnSelected.InvokeAsync(_listing.Path);
+    }
+}

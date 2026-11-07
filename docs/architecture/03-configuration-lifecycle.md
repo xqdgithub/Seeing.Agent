@@ -1,4 +1,4 @@
-# 03 配置 · 结算 · 热重载
+﻿# 03 配置 · 结算 · 热重载
 
 ## 1. 配置文件位置
 
@@ -261,3 +261,28 @@ ReloadOrchestrator 路由变更节
 - **显式 flush 点**：Host 关闭、工作区切换（`SessionReloadHandler` / `SessionGroupReloadHandler` 在重定位前）、归档 / 分支 / 保存命令、Gateway 响应、执行终态。以上经 `IWriteBehindSessionStore` / `IPersistenceFlusher` 判定，未启用写回时自动 no-op。
 - **不做**：DB 后端、增量 / journal 持久化、跨进程写协调；JSON 全量快照格式与路径约定不变。
 - 破坏性契约（`CancellationToken`、`IAsyncEnumerable` 返回、快照契约、`ISessionCatalog`）与已知边界见 [10 会话持久化写回 Release Notes](10-session-persistence-release-notes.md)。
+## 工作区启动选择与切换（2026-11）
+
+启动工作区由 `WorkspaceLaunchPolicy`（Core，纯函数）决定。宿主在 `Host.Build` 之前登记
+`WorkspaceLaunchRequest`，`InitializeSeeingAsync` 消费它。
+
+| 宿主 | 模式 | 工作区来源 |
+|------|------|-----------|
+| WebUI / Desktop | Interactive | `--workspace` → 继承的 `SEEING_WORKSPACE_ROOT` → 启动目录命中最近列表 → `lastInteractive` → 未选定（显示 `/workspaces`） |
+| CLI / TUI | Invocation | 启动目录；TUI 位置参数可覆盖 |
+| 单独 Gateway.Server | Service | `--workspace` → `SEEING_WORKSPACE_ROOT` → 启动目录 |
+
+- `Workspace.CustomPath`、`Workspace.UseGlobal`、`GlobalWorkspaceRoot` **不再参与启动**（字段保留以兼容旧配置）。
+- 有界面宿主在未选定时进入**待定状态**：`IWorkspaceProvider.IsResolved == false`，
+  `ProjectSeeingDirectory` 返回占位目录（`%TEMP%/seeing-pending-workspace/project/.seeing`），
+  `GetProjectRoot()` 抛异常。原因是 Generic Host 启动期会构造大量拷贝项目路径的单例，
+  抛异常会把「停在首页」变成启动失败；占位目录保证它们不会写进真实工作区。
+- 未选定时 `InitializeSeeingAsync` 跳过结算 / Activate / `LoadAll`，`InitializeCommands`、
+  TokenBudget 钩子、Gateway 渠道注册也延后到首次选定（`WorkspaceReadyInitializer`）。
+- 切换工作区只有一条路径：`IWorkspaceSwitcher.ApplyAsync`（拒绝未决审批 → 取消在途并
+  `WaitUntilIdleAsync` → 参与者停止 → 改根 → 重读项目配置 → 一轮显式重载 → 参与者按新根重启）。
+  编排器的自动触发在切换期间由 `SuppressAutoReload()` 抑制，避免同一变更跑两轮。
+- 最近工作区历史在 `~/.seeing/workspace_history.json`（`IWorkspaceHistoryStore`）：
+  `recent` 按路径合并（跨进程命名互斥 + `AtomicFileWrite`），`lastInteractive` 后写胜出。
+- 目录选择是 WebUI 进程内服务 `IDirectoryBrowser`（不新增 HTTP 路由），不经过工作区路径门闸。
+

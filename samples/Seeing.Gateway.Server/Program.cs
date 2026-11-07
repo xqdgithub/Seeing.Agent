@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Core.Modules;
@@ -28,6 +29,15 @@ builder.Services.AddGatewayChannelRegistry();
 builder.Services.AddChannelHostManagement();
 builder.Services.AddSeeingCore(registry);
 
+// 单独运行的服务：没有首页。工作区按 --workspace → 继承的环境变量 → 启动目录
+builder.Services.AddSingleton(new WorkspaceLaunchRequest(new WorkspaceLaunchInput(
+    Mode: WorkspaceLaunchMode.Service,
+    StartupDirectory: Directory.GetCurrentDirectory(),
+    ExecutableDirectory: null,
+    ExplicitPath: ReadWorkspaceArgument(args),
+    InheritedEnvironment: Environment.GetEnvironmentVariable("SEEING_WORKSPACE_ROOT"),
+    History: WorkspaceHistorySnapshot.Empty)));
+
 var host = builder.Build();
 
 var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Seeing.Gateway.Server");
@@ -42,3 +52,15 @@ host.Services.ReloadGatewayChannelRegistry();
 logger.LogInformation("Gateway Server 就绪，按 Ctrl+C 退出。");
 
 await host.RunAsync();
+
+/// <summary>读取 <c>--workspace &lt;目录&gt;</c>。</summary>
+static string? ReadWorkspaceArgument(string[] args)
+{
+    for (var i = 0; i < args.Length - 1; i++)
+    {
+        if (string.Equals(args[i], "--workspace", StringComparison.OrdinalIgnoreCase))
+            return args[i + 1];
+    }
+
+    return null;
+}

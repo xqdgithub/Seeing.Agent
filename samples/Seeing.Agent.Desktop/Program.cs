@@ -34,14 +34,12 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        // 工作区必须在宿主组装之前确定：
-        // WorkspaceProvider 构造时就把「进程当前目录」记成 StartupDirectory，
-        // 之后再改 cwd 不会更新它，兜底路径会一直指向旧的启动目录。
-        // 桌面启动的 cwd 通常是 exe 目录（Program Files，不可写），不能当工作区。
-        //
+        // 捕获用户真正的启动位置：Apply() 之后进程当前目录会变，
+        // 而启动决议要用的正是「双击/终端里启动时」的目录。
+        var captureStartupDirectory = Directory.GetCurrentDirectory();
+
         // 这里只摆正「起始位置」，不裁决最终工作区：
-        // 最终工作区仍由 WorkspaceProvider 按 Core 优先级决定
-        // （环境变量 → 项目 CustomPath → UseGlobal 为真时的全局目录 → 启动目录）。
+        // 最终工作区由 WorkspaceLaunchPolicy 在宿主组装时按启动决议决定。
         var startLocation = DesktopWorkspace.Apply();
 
         // WinExe 没有控制台，日志必须落盘，否则出问题无从排查。
@@ -81,7 +79,8 @@ internal static class Program
                             // 清掉默认 Console 提供方（WinExe 下没有控制台，写入是空操作）。
                             logging.ClearProviders();
                             logging.AddProvider(logProvider);
-                        })
+                        },
+                        captureStartupDirectory)
                     .GetAwaiter()
                     .GetResult();
 

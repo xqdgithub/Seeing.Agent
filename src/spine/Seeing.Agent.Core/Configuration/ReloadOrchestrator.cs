@@ -33,6 +33,34 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
     private bool _debouncePending;
     private bool _startedRound;
     private bool _disposed;
+    private int _suppressDepth;
+
+    /// <summary>
+    /// 抑制自动重载的作用域。切换工作区时由 <c>WorkspaceSwitcher</c> 使用：
+    /// <c>SetWorkspaceRoot</c> 会触发 <c>WorkspaceRootChanged</c>，若同时再由调用方显式重载，
+    /// 同一变更会跑两轮，而模块生命周期与结算不是按可重入设计的。
+    /// </summary>
+    public IDisposable SuppressAutoReload()
+    {
+        Interlocked.Increment(ref _suppressDepth);
+        return new SuppressScope(this);
+    }
+
+    private bool IsSuppressed => Volatile.Read(ref _suppressDepth) > 0;
+
+    private sealed class SuppressScope : IDisposable
+    {
+        private ReloadOrchestrator? _owner;
+
+        public SuppressScope(ReloadOrchestrator owner) => _owner = owner;
+
+        public void Dispose()
+        {
+            var owner = Interlocked.Exchange(ref _owner, null);
+            if (owner is not null)
+                Interlocked.Decrement(ref owner._suppressDepth);
+        }
+    }
 
     /// <summary>
     /// 模块 Deactivate 在途策略（与 <see cref="Seeing.Agent.Core.Modules.ModuleReloadOptions.ForceCancelInFlight"/> 同步）。
@@ -207,6 +235,12 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
 
     private void OnConfigChanged(object? sender, ConfigChangedEventArgs e)
     {
+        if (IsSuppressed)
+        {
+            _logger.LogDebug("自动重载已抑制（手动切换进行中），跳过配置触发");
+            return;
+        }
+
         var isFull = e.ChangedSections.Length == 0;
         if (isFull)
         {
@@ -222,6 +256,12 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
 
     private void OnWorkspaceChanged(object? sender, WorkspaceChangedEventArgs e)
     {
+        if (IsSuppressed)
+        {
+            _logger.LogDebug("自动重载已抑制（手动切换进行中），跳过工作区触发");
+            return;
+        }
+
         EnqueueFullReload();
     }
 
@@ -394,6 +434,12 @@ internal sealed class ReloadOrchestratorStarter : IHostedService
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        // 工作区未选定时不能挂载：Handler 构造会读项目路径（如会话存储），
+        // 这类宿主会停在首页，首次 Apply 时由 WorkspaceReloadInvoker 再挂载。
+        var workspace = _services.GetService<IWorkspaceProvider>();
+        if (workspace is { IsResolved: false })
+            return Task.CompletedTask;
+
         _services.AttachReloadHandlers();
         return Task.CompletedTask;
     }

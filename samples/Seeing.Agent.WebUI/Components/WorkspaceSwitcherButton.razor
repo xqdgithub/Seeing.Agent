@@ -1,0 +1,101 @@
+@using AntDesign
+@using Seeing.Agent.Configuration
+@using Seeing.Agent.Hosting.Execution
+@using Seeing.Agent.WebUI.Services
+@inject IWorkspaceProvider Workspace
+@inject IWorkspaceHistoryStore History
+@inject IWorkspaceSwitcher Switcher
+@inject NavigationManager Navigation
+@inject IMessageService Messages
+
+@* 侧栏工作区入口：列出最近目录，选中后走唯一的 Apply 路径并整页重载。 *@
+<div class="ws-switcher">
+    <Dropdown Placement="@Placement.TopLeft">
+        <Overlay>
+            <Menu Mode="@MenuMode.Vertical">
+                @foreach (var item in _recent)
+                {
+                    <MenuItem Key="@item" OnClick="@(() => SwitchAsync(item))">
+                        <Icon Type="@(IsCurrent(item) ? IconType.Outline.Check : IconType.Outline.Folder)" />
+                        @Name(item)
+                    </MenuItem>
+                }
+                <MenuItem Key="__pick" OnClick="OpenPicker">
+                    <Icon Type="@IconType.Outline.FolderAdd" />
+                    选择文件夹…
+                </MenuItem>
+            </Menu>
+        </Overlay>
+        <ChildContent>
+            <Button Type="@ButtonType.Text"
+                    Class="ws-switcher-button"
+                    Block="true"
+                    Loading="@_busy"
+                    Disabled="@_busy">
+                <Icon Type="@IconType.Outline.FolderOpen" />
+                @if (!Collapsed)
+                {
+                    <span class="ws-switcher-label">@CurrentName</span>
+                }
+            </Button>
+        </ChildContent>
+    </Dropdown>
+</div>
+
+<DirectoryPicker @ref="_picker"
+                 Title="切换工作区"
+                 InitialPath="@(_recent.FirstOrDefault())"
+                 OnSelected="SwitchAsync" />
+
+@code {
+    private DirectoryPicker? _picker;
+    private IReadOnlyList<string> _recent = Array.Empty<string>();
+    private bool _busy;
+
+    /// <summary>侧栏是否折叠（折叠时只显示图标）。</summary>
+    [Parameter] public bool Collapsed { get; set; }
+
+    private string CurrentName =>
+        Workspace.IsResolved ? new DirectoryInfo(Workspace.ResolvedRoot!).Name : "未选定";
+
+    protected override void OnInitialized() => Refresh();
+
+    private void Refresh() =>
+        _recent = History.Read().Recent.Where(Directory.Exists).Take(8).ToList();
+
+    private bool IsCurrent(string path) =>
+        Workspace.IsResolved &&
+        string.Equals(Workspace.ResolvedRoot, path, StringComparison.OrdinalIgnoreCase);
+
+    private static string Name(string path) => new DirectoryInfo(path).Name;
+
+    private void OpenPicker()
+    {
+        Refresh();
+        _picker?.Show();
+    }
+
+    private async Task SwitchAsync(string path)
+    {
+        if (_busy || IsCurrent(path))
+            return;
+
+        _busy = true;
+        try
+        {
+            var result = await Switcher.ApplyAsync(new WorkspaceApplyRequest(path));
+            if (!result.Success)
+            {
+                Messages.Error($"切换失败: {result.Error}");
+                return;
+            }
+
+            Navigation.NavigateTo("/", forceLoad: true);
+        }
+        finally
+        {
+            _busy = false;
+            Refresh();
+        }
+    }
+}

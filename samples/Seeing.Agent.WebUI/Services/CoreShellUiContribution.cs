@@ -22,6 +22,7 @@ public sealed class CoreShellUiContribution : IUiContribution
         // 全限定：Index 与 System.Index 歧义；Session 与 Seeing.Session 命名空间冲突
         new RouteContribution("/", "首页", typeof(global::Seeing.Agent.WebUI.Pages.Index)),
         new RouteContribution("/home", "首页", typeof(Home)),
+        new RouteContribution("/workspaces", "选择工作区", typeof(WorkspacesPage)),
         new RouteContribution("/session", "会话", typeof(global::Seeing.Agent.WebUI.Pages.Session)),
         new RouteContribution("/session/{SessionId}", "会话", typeof(global::Seeing.Agent.WebUI.Pages.Session)),
         new RouteContribution("/conference", "会议视图", typeof(Conference)),

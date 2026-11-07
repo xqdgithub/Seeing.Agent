@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Cli.Infrastructure;
+using Seeing.Agent.Cli.Services;
 using Seeing.Agent.Core.Configuration;
 using System.CommandLine;
 using SeeingConfigScope = Seeing.Agent.Abstractions.Configuration.ConfigScope;
@@ -196,8 +197,7 @@ public static class ConfigCommand
 
     private static async Task InitWorkspace(UnifiedConfigManager config)
     {
-        var workspaceRoot = Environment.GetEnvironmentVariable("SEEING_WORKSPACE_ROOT")
-            ?? Directory.GetCurrentDirectory();
+        var workspaceRoot = CliWorkspace.Resolve();
 
         var seeingDir = Path.Combine(workspaceRoot, ".seeing");
         var agentsDir = Path.Combine(seeingDir, "agents");

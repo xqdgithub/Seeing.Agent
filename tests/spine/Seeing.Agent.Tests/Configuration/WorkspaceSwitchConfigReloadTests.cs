@@ -10,96 +10,103 @@ using Xunit;
 namespace Seeing.Agent.Tests.Configuration;
 
 /// <summary>
-/// 验证 <see cref="SeeingAgentInitializationExtensions.InitializeSeeingAsync"/> 在工作区
-/// 解析到全局/自定义路径后，会重新加载项目级配置（如 Permission.AutoApproveAll）。
+/// 验证 <see cref="SeeingAgentInitializationExtensions.InitializeSeeingAsync"/> 按启动决议
+/// 设定工作区，并在设根后重新加载项目级配置（如 Permission.AutoApproveAll）。
 /// </summary>
 public class WorkspaceSwitchConfigReloadTests
 {
     [Fact]
-    public async Task InitializeSeeing_WorkspaceSwitchToGlobal_ShouldReloadProjectConfig()
+    public async Task InitializeSeeing_ExplicitWorkspace_ShouldReloadProjectConfig()
     {
-        // Arrange：启动目录无 Permission；全局工作区含 Permission.AutoApproveAll=true
+        // Arrange：启动目录无 Permission；决议指向含 Permission.AutoApproveAll=true 的目录
         using var startupWorkspace = new TempWorkspace();
-        using var globalWorkspace = new TempWorkspace();
+        using var targetWorkspace = new TempWorkspace();
 
-        var startupSeeing = Path.Combine(startupWorkspace.Root, ".seeing");
-        Directory.CreateDirectory(startupSeeing);
+        var targetSeeing = Path.Combine(targetWorkspace.Root, ".seeing");
+        Directory.CreateDirectory(targetSeeing);
         await File.WriteAllTextAsync(
-            Path.Combine(startupSeeing, "seeing.json"),
-            """{ "SeeingAgent": { "Workspace": { "UseGlobal": true } } }""", TestContext.Current.CancellationToken);
+            Path.Combine(targetSeeing, "seeing.json"),
+            """{ "SeeingAgent": { "Permission": { "AutoApproveAll": true } } }""",
+            TestContext.Current.CancellationToken);
 
-        var globalSeeing = Path.Combine(globalWorkspace.Root, ".seeing");
-        Directory.CreateDirectory(globalSeeing);
-        await File.WriteAllTextAsync(
-            Path.Combine(globalSeeing, "seeing.json"),
-            """{ "SeeingAgent": { "Permission": { "AutoApproveAll": true } } }""", TestContext.Current.CancellationToken);
+        var services = new ServiceCollection();
+        var registry = ConfigSectionRegistry.CreateWithSpine();
+        services.AddSingleton<IConfigSectionRegistry>(registry);
+        services.AddSingleton<WorkspaceProvider>();
+        services.AddSingleton<IWorkspaceProvider>(sp => sp.GetRequiredService<WorkspaceProvider>());
+        services.AddSingleton<ILoggerFactory>(LoggerFactory.Create(b => b.SetMinimumLevel(LogLevel.Warning)));
+        services.AddSingleton(new WorkspaceLaunchRequest(new WorkspaceLaunchInput(
+            WorkspaceLaunchMode.Interactive,
+            startupWorkspace.Root,
+            ExecutableDirectory: null,
+            ExplicitPath: targetWorkspace.Root,
+            InheritedEnvironment: null,
+            History: WorkspaceHistorySnapshot.Empty)));
+        services.AddSeeingCore(registry);
 
-        var previousEnv = Environment.GetEnvironmentVariable("SEEING_WORKSPACE_ROOT");
-        Environment.SetEnvironmentVariable("SEEING_WORKSPACE_ROOT", globalWorkspace.Root);
+        await using var sp = services.BuildServiceProvider();
+        var configManager = sp.GetRequiredService<UnifiedConfigManager>();
 
-        try
-        {
-            var services = new ServiceCollection();
-            var registry = ConfigSectionRegistry.CreateWithSpine();
-            services.AddSingleton<IConfigSectionRegistry>(registry);
-            services.AddSingleton<IWorkspaceProvider, WorkspaceProvider>();
-            services.AddSingleton<WorkspaceProvider>();
-            services.AddSingleton<ILoggerFactory>(LoggerFactory.Create(b => b.SetMinimumLevel(LogLevel.Warning)));
-            services.AddSeeingCore(registry);
+        // Act
+        await sp.InitializeSeeingAsync(TestContext.Current.CancellationToken);
 
-            await using var sp = services.BuildServiceProvider();
-            var configManager = sp.GetRequiredService<UnifiedConfigManager>();
-
-            // Act
-            await sp.InitializeSeeingAsync(CancellationToken.None);
-
-            // Assert：工作区切换到全局后，项目级 Permission 应被读取
-            sp.GetRequiredService<IWorkspaceProvider>().GetProjectRoot().Should().Be(globalWorkspace.Root);
-            configManager.SeeingAgent.Permission?.AutoApproveAll.Should().BeTrue(
-                "全局工作区的 Permission.AutoApproveAll=true 应在工作区解析后重新加载");
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("SEEING_WORKSPACE_ROOT", previousEnv);
-        }
+        // Assert：决议生效后，项目级 Permission 应被读取
+        sp.GetRequiredService<IWorkspaceProvider>().GetProjectRoot().Should().Be(targetWorkspace.Root);
+        configManager.SeeingAgent.Permission?.AutoApproveAll.Should().BeTrue(
+            "工作区设定后必须重新加载项目级配置");
     }
 
     [Fact]
-    public async Task InitializeSeeing_StartupDirHasPermission_ShouldLoadIt()
+    public async Task InitializeSeeing_LastInteractive_ShouldLoadThatWorkspaceConfig()
     {
-        // Arrange：启动目录即工作区（无 UseGlobal），项目级 Permission=true
-        using var workspace = new TempWorkspace();
-        var seeingDir = Path.Combine(workspace.Root, ".seeing");
-        Directory.CreateDirectory(seeingDir);
+        // Arrange：启动目录与决议目录都不是「当前目录」，只有历史里记着目标目录
+        using var startupWorkspace = new TempWorkspace();
+        using var targetWorkspace = new TempWorkspace();
+
+        var targetSeeing = Path.Combine(targetWorkspace.Root, ".seeing");
+        Directory.CreateDirectory(targetSeeing);
         await File.WriteAllTextAsync(
-            Path.Combine(seeingDir, "seeing.json"),
-            """{ "SeeingAgent": { "Permission": { "AutoApproveAll": true } } }""", TestContext.Current.CancellationToken);
+            Path.Combine(targetSeeing, "seeing.json"),
+            """{ "SeeingAgent": { "Permission": { "AutoApproveAll": true } } }""",
+            TestContext.Current.CancellationToken);
 
-        var previousEnv = Environment.GetEnvironmentVariable("SEEING_WORKSPACE_ROOT");
-        Environment.SetEnvironmentVariable("SEEING_WORKSPACE_ROOT", workspace.Root);
+        var services = new ServiceCollection();
+        var registry = ConfigSectionRegistry.CreateWithSpine();
+        services.AddSingleton<IConfigSectionRegistry>(registry);
+        services.AddSingleton<WorkspaceProvider>();
+        services.AddSingleton<IWorkspaceProvider>(sp => sp.GetRequiredService<WorkspaceProvider>());
+        services.AddSingleton<ILoggerFactory>(LoggerFactory.Create(b => b.SetMinimumLevel(LogLevel.Warning)));
+        services.AddSingleton<IWorkspaceHistoryStore>(
+            new FixedHistory(new WorkspaceHistorySnapshot(new[] { targetWorkspace.Root }, targetWorkspace.Root)));
+        services.AddSingleton(new WorkspaceLaunchRequest(new WorkspaceLaunchInput(
+            WorkspaceLaunchMode.Interactive,
+            startupWorkspace.Root,
+            ExecutableDirectory: null,
+            ExplicitPath: null,
+            InheritedEnvironment: null,
+            History: WorkspaceHistorySnapshot.Empty)));
+        services.AddSeeingCore(registry);
 
-        try
+        await using var sp = services.BuildServiceProvider();
+        var configManager = sp.GetRequiredService<UnifiedConfigManager>();
+
+        // Act
+        await sp.InitializeSeeingAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        sp.GetRequiredService<IWorkspaceProvider>().GetProjectRoot().Should().Be(targetWorkspace.Root);
+        configManager.SeeingAgent.Permission?.AutoApproveAll.Should().BeTrue();
+    }
+
+    private sealed class FixedHistory : IWorkspaceHistoryStore
+    {
+        private readonly WorkspaceHistorySnapshot _snapshot;
+        public FixedHistory(WorkspaceHistorySnapshot snapshot) => _snapshot = snapshot;
+
+        public WorkspaceHistorySnapshot Read() => _snapshot;
+
+        public void RecordOpened(string path, bool asDefault)
         {
-            var services = new ServiceCollection();
-            var registry = ConfigSectionRegistry.CreateWithSpine();
-            services.AddSingleton<IConfigSectionRegistry>(registry);
-            services.AddSingleton<IWorkspaceProvider, WorkspaceProvider>();
-            services.AddSingleton<WorkspaceProvider>();
-            services.AddSingleton<ILoggerFactory>(LoggerFactory.Create(b => b.SetMinimumLevel(LogLevel.Warning)));
-            services.AddSeeingCore(registry);
-
-            await using var sp = services.BuildServiceProvider();
-            var configManager = sp.GetRequiredService<UnifiedConfigManager>();
-
-            // Act
-            await sp.InitializeSeeingAsync(CancellationToken.None);
-
-            // Assert
-            configManager.SeeingAgent.Permission?.AutoApproveAll.Should().BeTrue();
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("SEEING_WORKSPACE_ROOT", previousEnv);
         }
     }
 

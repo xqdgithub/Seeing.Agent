@@ -98,6 +98,8 @@ public class SQLitePersistenceTests
         }
 
         public string StartupDirectory => _workspaceRoot;
+        public bool IsResolved => true;
+        public string? ResolvedRoot => _workspaceRoot;
         public string ProjectSeeingDirectory => _workspaceRoot;
         public string UserSeeingDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".seeing");
         public WorkspaceResolutionSource ResolutionSource => WorkspaceResolutionSource.StartupDirectory;
@@ -106,6 +108,11 @@ public class SQLitePersistenceTests
 #pragma warning disable CS0067
         public event EventHandler<WorkspaceChangedEventArgs>? WorkspaceRootChanged;
 #pragma warning restore CS0067
+
+        public void SetInitialWorkspace(string workspaceRoot, WorkspaceResolutionSource source)
+        {
+            _workspaceRoot = workspaceRoot;
+        }
 
         public void SetWorkspaceRoot(string workspaceRoot)
         {

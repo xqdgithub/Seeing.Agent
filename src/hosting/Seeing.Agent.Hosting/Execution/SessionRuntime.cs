@@ -1453,6 +1453,19 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
     // IExecutionInFlightBoundary
     public bool HasInFlight() => HasAnyActiveExecution();
 
+    /// <summary>
+    /// 等到没有未终态执行为止。<see cref="CancelAllInFlightAsync"/> 只发出取消信号，
+    /// 循环还要跑完收尾才会清掉 <c>CurrentExecution</c>；切换工作区必须等它真的落地。
+    /// </summary>
+    public async Task WaitUntilIdleAsync(CancellationToken cancellationToken = default)
+    {
+        while (HasAnyActiveExecution())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Delay(50, cancellationToken).ConfigureAwait(false);   // 轮询间隔（E5）
+        }
+    }
+
     public IReadOnlyList<string> ListInFlightExecutionIds() =>
         _states.Values
             .Select(s => s.CurrentExecution?.ExecutionId)

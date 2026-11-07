@@ -64,19 +64,19 @@ public static class ReflectionServiceExtensions
 
         // 复盘产物根目录：跟随工作区的项目级 .seeing，缺失时退回临时目录（仅单元测试等无宿主场景）。
         // 用专用持有类型而非裸 string 注册：裸 string 会与容器里其它字符串服务冲突。
+        // 注意：工作区未选定时 ProjectSeeingDirectory 会抛异常，这里必须先看 IsResolved。
         services.TryAddSingleton(sp =>
         {
             var workspace = sp.GetService<IWorkspaceProvider>();
-            if (workspace is not null && !string.IsNullOrWhiteSpace(workspace.ProjectSeeingDirectory))
+            if (workspace is { IsResolved: true })
                 return new ReflectionStorageRoot(Path.Combine(workspace.ProjectSeeingDirectory, "reflection"));
 
             var fallback = Path.Combine(Path.GetTempPath(), "seeing-reflection");
             sp.GetService<ILoggerFactory>()?
                 .CreateLogger(typeof(ReflectionServiceExtensions))
-                .LogWarning("未找到工作区提供者，复盘日志与用量账本改用临时目录：{Directory}", fallback);
+                .LogWarning("工作区尚未选定，复盘日志与用量账本改用临时目录：{Directory}", fallback);
             return new ReflectionStorageRoot(fallback);
         });
-
         services.TryAddSingleton<IReflectionJournal>(sp =>
             new ReflectionJournal(sp.GetRequiredService<ReflectionStorageRoot>().Path));
         services.TryAddSingleton(sp =>

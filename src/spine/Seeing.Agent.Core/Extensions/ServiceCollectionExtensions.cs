@@ -60,6 +60,22 @@ namespace Seeing.Agent.Core.Extensions
     public static class ServiceCollectionExtensions
     {
         /// <summary>
+        /// 会话/会话组存储目录。
+        /// <para>
+        /// 工作区未选定时（有界面宿主停在首页）不能读 <c>ProjectSeeingDirectory</c>：
+        /// 先用进程内占位目录，首次 Apply 时由 <c>SessionReloadHandler</c> /
+        /// <c>SessionGroupReloadHandler</c> 重定位到真实工作区。
+        /// </para>
+        /// </summary>
+        private static string ResolveSessionStoragePath(IServiceProvider sp, string leaf)
+        {
+            var workspace = sp.GetRequiredService<IWorkspaceProvider>();
+            return workspace.IsResolved
+                ? Path.Combine(workspace.ProjectSeeingDirectory, leaf)
+                : Path.Combine(Path.GetTempPath(), "seeing-pending-workspace", leaf);
+        }
+
+        /// <summary>
         /// 注册 Seeing 脊柱核心服务。须在能力包 <see cref="AddSeeingModule{T}"/> / AddSeeing* 薄封装之后调用。
         /// </summary>
         /// <param name="services">服务集合</param>
@@ -440,6 +456,8 @@ namespace Seeing.Agent.Core.Extensions
                 ?.ImplementationInstance as Seeing.Session.Persistence.SessionPersistenceOptions)?.Enabled ?? true;
 
             // 会话管理器 - 必须注入 ISessionStore，否则 SaveAsync 只会警告「未配置 SessionStore」
+            // 工作区未选定时（有界面宿主停在首页）不能读 ProjectSeeingDirectory：
+            // 此时先用占位目录，首次 Apply 由 SessionReloadHandler 重定位到真实工作区。
             if (!services.Any(d => d.ServiceType == typeof(ISessionStore)))
             {
                 if (writeBehindEnabled)
@@ -448,8 +466,7 @@ namespace Seeing.Agent.Core.Extensions
                     // 调度器 Dispose 内部 Interlocked 幂等，重复捕获亦安全
                     services.AddSingleton<Seeing.Session.Persistence.WriteBehindSessionStore>(sp =>
                     {
-                        var workspace = sp.GetRequiredService<IWorkspaceProvider>();
-                        var path = Path.Combine(workspace.ProjectSeeingDirectory, "sessions");
+                        var path = ResolveSessionStoragePath(sp, "sessions");
                         var inner = new FileSessionStore(path, sp.GetService<ILogger<FileSessionStore>>());
                         var options = sp.GetRequiredService<Seeing.Session.Persistence.SessionPersistenceOptions>();
                         return new Seeing.Session.Persistence.WriteBehindSessionStore(
@@ -465,13 +482,9 @@ namespace Seeing.Agent.Core.Extensions
                 else
                 {
                     services.AddSingleton<ISessionStore>(sp =>
-                    {
-                        var workspace = sp.GetRequiredService<IWorkspaceProvider>();
-                        var path = Path.Combine(workspace.ProjectSeeingDirectory, "sessions");
-                        return new FileSessionStore(
-                            path,
-                            sp.GetService<ILogger<FileSessionStore>>());
-                    });
+                        new FileSessionStore(
+                            ResolveSessionStoragePath(sp, "sessions"),
+                            sp.GetService<ILogger<FileSessionStore>>()));
                 }
             }
 
@@ -498,8 +511,7 @@ namespace Seeing.Agent.Core.Extensions
                     // 调度器 Dispose 内部 Interlocked 幂等，重复捕获亦安全
                     services.AddSingleton<Seeing.Session.Persistence.WriteBehindSessionGroupStore>(sp =>
                     {
-                        var workspace = sp.GetRequiredService<IWorkspaceProvider>();
-                        var path = Path.Combine(workspace.ProjectSeeingDirectory, "session-groups");
+                        var path = ResolveSessionStoragePath(sp, "session-groups");
                         var inner = new FileSessionGroupStore(path, sp.GetService<ILogger<FileSessionGroupStore>>());
                         var options = sp.GetRequiredService<Seeing.Session.Persistence.SessionPersistenceOptions>();
                         return new Seeing.Session.Persistence.WriteBehindSessionGroupStore(
@@ -515,13 +527,9 @@ namespace Seeing.Agent.Core.Extensions
                 else
                 {
                     services.AddSingleton<ISessionGroupStore>(sp =>
-                    {
-                        var workspace = sp.GetRequiredService<IWorkspaceProvider>();
-                        var path = Path.Combine(workspace.ProjectSeeingDirectory, "session-groups");
-                        return new FileSessionGroupStore(
-                            path,
-                            sp.GetService<ILogger<FileSessionGroupStore>>());
-                    });
+                        new FileSessionGroupStore(
+                            ResolveSessionStoragePath(sp, "session-groups"),
+                            sp.GetService<ILogger<FileSessionGroupStore>>()));
                 }
             }
 
@@ -634,10 +642,22 @@ namespace Seeing.Agent.Core.Extensions
             services.AddSingleton<IToolManager>(sp => sp.GetRequiredService<ToolManager>());
 
             // 5. 工作区路径提供者（统一管理配置目录）
-            // 初始化时根据配置自动解析工作区
-            services.AddSingleton<WorkspaceProvider>();
-            services.AddSingleton<IWorkspaceProvider>(sp => sp.GetRequiredService<WorkspaceProvider>());
-            services.AddSingleton<ISeeingDirectories>(sp => sp.GetRequiredService<IWorkspaceProvider>());
+            // 有启动请求时进入「未决议」状态（等 WorkspaceLaunchPolicy 的结果）；
+            // 没有请求（测试 / 极简宿主）保持兼容语义：以启动目录为根。
+            services.TryAddSingleton<WorkspaceProvider>(sp =>
+                sp.GetService<WorkspaceLaunchRequest>() is null
+                    ? new WorkspaceProvider()
+                    : WorkspaceProvider.CreateUnresolved());
+            services.TryAddSingleton<IWorkspaceProvider>(sp => sp.GetRequiredService<WorkspaceProvider>());
+            services.TryAddSingleton<ISeeingDirectories>(sp => sp.GetRequiredService<IWorkspaceProvider>());
+
+            // 5.0 启动决议与历史
+            services.TryAddSingleton<IWorkspaceHistoryStore>(sp => new WorkspaceHistoryStore(
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    ".seeing", "workspace_history.json"),
+                sp.GetService<ILogger<WorkspaceHistoryStore>>()));
+            services.TryAddSingleton<WorkspaceLaunchState>();
+            services.TryAddSingleton<IWorkspaceLaunchState>(sp => sp.GetRequiredService<WorkspaceLaunchState>());
 
             // 5.1 统一重载编排器（订阅配置/工作区变更，调度所有 IReloadHandler）
             services.AddSingleton<ReloadOrchestrator>();
@@ -860,29 +880,44 @@ namespace Seeing.Agent.Core.Extensions
 
             UnifiedConfigManager? configManager = null;
 
-            // 初始化工作区（自动根据配置解析）
-            if (services.GetService<WorkspaceProvider>() is { } workspaceProvider)
+            // 初始化工作区：决议已由宿主在 Build 之前登记（WorkspaceLaunchPolicy），这里只消费它。
+            // 未决议时项目路径不可读，因此不结算、不 Activate、不 LoadAll（见 design §3.6）。
+            // 统一走接口：宿主可能把自己的 IWorkspaceProvider 替身注册进来（测试/TUI），
+            // 直接解析具体类型会拿到另一个实例，把根设到没人用的对象上。
+            if (services.GetService<IWorkspaceProvider>() is { } workspaceProvider)
             {
                 configManager = services.GetService<UnifiedConfigManager>();
                 var workspaceLogger = services.GetService<ILogger<WorkspaceProvider>>();
 
                 if (configManager != null)
                 {
-                    // 配置必须先于工作区解析加载（factory 不再同步 Load）
-                    await configManager.LoadAsync(cancellationToken);
-                    workspaceProvider.SetDependencies(configManager, workspaceLogger);
-                    await workspaceProvider.InitializeAsync(cancellationToken);
+                    // 用户级配置先加载：首页不需要项目级文件，未选定时项目路径不可读
+                    await configManager.LoadUserOnlyAsync(cancellationToken);
 
-                    // 工作区可能解析到全局默认/项目自定义路径，项目级配置随之切换；
-                    // 需在切换后重新加载，否则启动目录的项目级配置会覆盖全局工作区配置
-                    // （如 Permission.AutoApproveAll 读不到全局工作区 setting）。
-                    await configManager.LoadAsync(cancellationToken);
+                    // 具体实现才需要拿配置管理器句柄（接口替身无需）
+                    if (workspaceProvider is WorkspaceProvider concreteWorkspace)
+                        concreteWorkspace.SetDependencies(configManager, workspaceLogger);
+
+                    await ApplyLaunchRequestAsync(services, workspaceProvider, configManager, cancellationToken);
                 }
             }
             else if (services.GetService<UnifiedConfigManager>() is { } configOnly)
             {
                 configManager = configOnly;
-                await configOnly.LoadAsync(cancellationToken);
+                await configOnly.LoadUserOnlyAsync(cancellationToken);
+            }
+
+            // 工作区未选定时：项目路径不可读，挂载 Handler 会构造会话存储并读到项目路径，
+            // 因此整体跳过装载（见 design §3.6）。Handler 在首次 Apply 时再挂载。
+            var resolved = services.GetRequiredService<IWorkspaceProvider>();
+
+            if (!resolved.IsResolved)
+            {
+                // 切根时清空白名单与权限记忆：不依赖项目路径，可以照常挂接
+                services.GetService<WorkspaceBoundaryLifecycle>()?.Attach();
+
+                logger?.LogInformation("工作区未选定：跳过模块结算与组件加载，等待首页选择");
+                return Array.Empty<ComponentLoadResult>();
             }
 
             // 切根时清空白名单与权限记忆（须在工作区 Initialize 之后挂接，避免启动期误清）
@@ -895,7 +930,7 @@ namespace Seeing.Agent.Core.Extensions
             await SettleAndActivateModulesAsync(services, configManager, logger, cancellationToken);
 
             var componentManager = services.GetRequiredService<IComponentManager>();
-            var workspaceRoot = services.GetRequiredService<IWorkspaceProvider>().GetProjectRoot();
+            var workspaceRoot = resolved.GetProjectRoot();
 
             var results = await componentManager.LoadAllAsync(workspaceRoot, cancellationToken);
 
@@ -906,7 +941,50 @@ namespace Seeing.Agent.Core.Extensions
                 await toolInvoker.LoadToolStateAsync(cancellationToken);
             }
 
+            if (services.GetService<WorkspaceLaunchState>() is { } launchState)
+                launchState.MarkReady();
+
             return results;
+        }
+
+        /// <summary>
+        /// 消费宿主登记的启动决议：设根、按返回值写历史、重读项目配置。
+        /// <para>
+        /// 决议为 <see cref="WorkspaceLaunchOutcome.Failed"/> 时抛异常（宿主启动失败），
+        /// 不允许静默回落到历史或启动目录。
+        /// </para>
+        /// </summary>
+        private static async Task ApplyLaunchRequestAsync(
+            IServiceProvider services,
+            IWorkspaceProvider workspaceProvider,
+            UnifiedConfigManager configManager,
+            CancellationToken cancellationToken)
+        {
+            if (services.GetService<WorkspaceLaunchRequest>() is not { } request)
+            {
+                // 未登记请求（极简宿主 / 测试）：不自行决议，由调用方设根
+                await workspaceProvider.InitializeAsync(cancellationToken);
+                return;
+            }
+
+            var history = services.GetService<IWorkspaceHistoryStore>();
+            var decision = WorkspaceLaunchPolicy.Resolve(
+                request.Input with { History = history?.Read() ?? WorkspaceHistorySnapshot.Empty },
+                Directory.Exists);
+
+            if (decision.Outcome == WorkspaceLaunchOutcome.Failed)
+                throw new InvalidOperationException(decision.Error ?? "工作区决议失败");
+
+            if (decision.Outcome != WorkspaceLaunchOutcome.Resolved || decision.WorkspaceRoot is not { } root)
+                return;
+
+            workspaceProvider.SetInitialWorkspace(root, decision.Source);
+
+            if (decision.UpdateRecent || decision.UpdateLastInteractive)
+                history?.RecordOpened(root, decision.UpdateLastInteractive);
+
+            // 项目级配置随工作区一起变，必须重新加载
+            await configManager.LoadAsync(cancellationToken);
         }
 
         /// <summary>

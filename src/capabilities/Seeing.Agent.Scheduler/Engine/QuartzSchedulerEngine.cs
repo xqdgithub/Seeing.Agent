@@ -7,7 +7,7 @@ using Seeing.Agent.Scheduler.Models;
 namespace Seeing.Agent.Scheduler.Engine;
 
 /// <summary>Quartz.NET 调度引擎包装</summary>
-public sealed class QuartzSchedulerEngine : IAsyncDisposable
+public sealed class QuartzSchedulerEngine : IAsyncDisposable, IQuartzSchedulerLifecycle
 {
     private readonly ILogger<QuartzSchedulerEngine> _logger;
     private readonly ISchedulerFactory _schedulerFactory;
@@ -339,6 +339,36 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable
                 }
 
                 _logger.LogInformation("Quartz scheduler stopped");
+            }
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    /// <summary>
+    /// 丢弃已构造的调度器实例：下次 <see cref="StartAsync"/> 会让工厂按当前工作区重新解析连接串。
+    /// </summary>
+    public async Task RebuildAsync(CancellationToken ct = default)
+    {
+        await _lock.WaitAsync(ct);
+        try
+        {
+            if (_scheduler is not null)
+            {
+                try
+                {
+                    if (!_scheduler.IsShutdown)
+                        await _scheduler.Shutdown(false, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "重建调度器前关闭旧实例失败");
+                }
+
+                _scheduler = null;
+                _logger.LogInformation("Quartz scheduler 实例已丢弃，将在下次启动时按新工作区重建");
             }
         }
         finally

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
@@ -7,6 +8,8 @@ using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Comms.Extensions;
+using Seeing.Agent.Configuration;
+using Seeing.Agent.Gateway.Channels;
 using Seeing.Agent.Gateway.Configuration;
 using Seeing.Agent.Gateway.Core;
 using Seeing.Agent.Gateway.Hosting;
@@ -45,6 +48,7 @@ public static class GatewayServiceCollectionExtensions
         services.AddSingleton<ISeeingModule>(sp =>
             new GatewayModule(sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>()));
         services.AddGatewayPermissionChannel();
+        AddGatewayWorkspaceParticipant(services);
         return services;
     }
 
@@ -83,7 +87,17 @@ public static class GatewayServiceCollectionExtensions
         services.AddSingleton<ISeeingModule>(sp =>
             new GatewayModule(sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>()));
         services.AddGatewayPermissionChannel();
+        AddGatewayWorkspaceParticipant(services);
         return services;
+    }
+
+    /// <summary>
+    /// 注册工作区切换参与者：切换时停掉 Gateway 与渠道子进程，重载后按新根拉起。
+    /// </summary>
+    private static void AddGatewayWorkspaceParticipant(IServiceCollection services)
+    {
+        services.TryAddSingleton<IChannelHostController, ChannelHostController>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IWorkspaceApplyParticipant, GatewayWorkspaceParticipant>());
     }
 
     /// <summary>

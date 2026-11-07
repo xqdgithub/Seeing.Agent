@@ -899,3 +899,115 @@
     max-height: 200px;
     overflow-y: auto;
 }
+
+/* ========== 工作区首页 / 目录选择 / 侧栏入口 ========== */
+
+.ws-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: var(--space-3, 12px);
+    padding: var(--space-4, 16px) 0;
+}
+
+.ws-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 14px 16px;
+    border: 1px solid var(--color-border, #f0f0f0);
+    border-radius: 8px;
+    background: var(--color-bg-container, #fff);
+    cursor: pointer;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.ws-card:hover {
+    border-color: var(--color-primary, #1677ff);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+}
+
+.ws-card.is-default {
+    border-color: var(--color-primary, #1677ff);
+}
+
+.ws-card-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ws-card-path {
+    font-size: 12px;
+    color: var(--color-text-secondary, #888);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    direction: rtl;
+    text-align: left;
+}
+
+.ws-card-badge {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    color: var(--color-primary, #1677ff);
+    background: rgba(22, 119, 255, .1);
+}
+
+.ws-card-new {
+    align-items: center;
+    justify-content: center;
+    border-style: dashed;
+    color: var(--color-text-secondary, #888);
+}
+
+.dir-picker-path {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.dir-picker-list {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--color-border, #f0f0f0);
+    border-radius: 6px;
+    padding: 4px;
+}
+
+.dir-picker-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.dir-picker-item:hover {
+    background: rgba(0, 0, 0, .04);
+}
+
+.ws-switcher {
+    padding: 4px 8px;
+}
+
+.ws-switcher-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: flex-start;
+}
+
+.ws-switcher-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 150px;
+}

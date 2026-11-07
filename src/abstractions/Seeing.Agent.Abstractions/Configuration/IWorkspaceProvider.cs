@@ -49,6 +49,23 @@ public enum WorkspaceResolutionSource
 /// </summary>
 public interface IWorkspaceProvider : ISeeingDirectories
 {
+    /// <summary>工作区是否已选定。未选定时 <see cref="ISeeingDirectories.ProjectSeeingDirectory"/> 抛异常。</summary>
+    bool IsResolved { get; }
+
+    /// <summary>已决议的工作区根；未选定时为 <see langword="null"/>。与 <see cref="IsResolved"/> 同时可用。</summary>
+    string? ResolvedRoot { get; }
+
+    /// <summary>
+    /// 按启动决议设定工作区根（进程内首次选定）。
+    /// <para>
+    /// 与 <see cref="SetWorkspaceRoot"/> 的区别：本方法用于「还没有根」时建立根，
+    /// 保留决议来源（环境变量 / 启动目录 / 命令行参数等），设置页据此展示来源。
+    /// </para>
+    /// </summary>
+    /// <param name="workspaceRoot">工作区根目录。</param>
+    /// <param name="source">决议来源。</param>
+    void SetInitialWorkspace(string workspaceRoot, WorkspaceResolutionSource source);
+
     /// <summary>更新工作区根目录（运行时临时切换，不持久化；同时同步进程当前目录）</summary>
     void SetWorkspaceRoot(string workspaceRoot);
 

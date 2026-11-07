@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Modules;
+using Seeing.Agent.Hosting.Execution;
 
 namespace Seeing.Agent.Hosting;
 
@@ -68,6 +69,11 @@ public static class HostShapeRegistration
 
         services.AddSessionHosting();
         services.AddExecutionEngine(configureExecution);
+
+        // 工作区切换：所有宿主形态共用同一条 Apply 路径
+        services.TryAddSingleton<IWorkspaceConfigReloader, WorkspaceConfigReloader>();
+        services.TryAddSingleton<IWorkspaceReloadInvoker, WorkspaceReloadInvoker>();
+        services.TryAddSingleton<IWorkspaceSwitcher, WorkspaceSwitcher>();
 
         return services;
     }

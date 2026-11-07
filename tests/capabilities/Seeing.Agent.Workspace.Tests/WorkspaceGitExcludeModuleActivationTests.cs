@@ -117,6 +117,8 @@ public class WorkspaceGitExcludeModuleActivationTests : IDisposable
         public string UserSeeingDirectory => Path.Combine(root, ".user-seeing");
         public string ProjectSeeingDirectory => Path.Combine(root, ".seeing");
         public string StartupDirectory => root;
+        public bool IsResolved => true;
+        public string? ResolvedRoot => root;
         public WorkspaceResolutionSource ResolutionSource => WorkspaceResolutionSource.StartupDirectory;
         public string? GlobalWorkspaceRoot => null;
 
@@ -124,6 +126,7 @@ public class WorkspaceGitExcludeModuleActivationTests : IDisposable
         public event EventHandler<WorkspaceChangedEventArgs>? WorkspaceRootChanged;
 #pragma warning restore CS0067
 
+        public void SetInitialWorkspace(string workspaceRoot, WorkspaceResolutionSource source) { }
         public void SetWorkspaceRoot(string workspaceRoot) { }
         public string GetSeeingDirectory(ConfigLevel level) => ProjectSeeingDirectory;
         public Task InitializeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;

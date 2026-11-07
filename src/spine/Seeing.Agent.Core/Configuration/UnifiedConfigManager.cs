@@ -65,23 +65,42 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
 
     // ===== 配置加载 =====
 
-    /// <summary>加载所有配置</summary>
-    public async Task LoadAsync(CancellationToken ct = default)
+    /// <summary>
+    /// 加载配置。
+    /// <para>
+    /// 工作区尚未选定时项目路径不可读（见 design §3.6），此时只能用
+    /// <see cref="LoadUserOnlyAsync"/> 加载用户级配置。
+    /// </para>
+    /// </summary>
+    public Task LoadAsync(CancellationToken ct = default) => LoadCoreAsync(userOnly: false, ct);
+
+    /// <summary>
+    /// 只加载用户级配置（跳过项目级 <c>seeing.json</c> 与独立项目配置文件）。
+    /// 用于「工作区还未选定」的启动阶段。
+    /// </summary>
+    public Task LoadUserOnlyAsync(CancellationToken ct = default) => LoadCoreAsync(userOnly: true, ct);
+
+    private async Task LoadCoreAsync(bool userOnly, CancellationToken ct)
     {
         // 先构建完整新快照（局部变量），最后在锁内一次性替换，消除加载过程中的空缓存/半更新窗口。
         var userSeeing = await LoadFileAsync<SeeingAgentOptions>(ConfigLevel.User, "seeing.json", "SeeingAgent", ct);
-        var projectSeeing = await LoadFileAsync<SeeingAgentOptions>(ConfigLevel.Project, "seeing.json", "SeeingAgent", ct);
+        SeeingAgentOptions? projectSeeing = null;
+        if (!userOnly)
+            projectSeeing = await LoadFileAsync<SeeingAgentOptions>(ConfigLevel.Project, "seeing.json", "SeeingAgent", ct);
         var mergedSeeing = MergeDeep.Merge(userSeeing ?? new(), projectSeeing ?? new());
 
         var newCache = new Dictionary<string, object>();
 
         // 能力包嵌套节 → newCache（不进入 SeeingAgentOptions）
-        await CollectSeeingJsonSectionsToCacheAsync(newCache, ct);
+        await CollectSeeingJsonSectionsToCacheAsync(newCache, ct, userOnly);
 
-        // 加载独立配置文件
-        foreach (var meta in _sectionRegistry.Sections.Where(m => m.FileName != "seeing.json"))
+        if (!userOnly)
         {
-            await CollectSectionToCacheAsync(meta, newCache, ct);
+            // 加载独立配置文件
+            foreach (var meta in _sectionRegistry.Sections.Where(m => m.FileName != "seeing.json"))
+            {
+                await CollectSectionToCacheAsync(meta, newCache, ct);
+            }
         }
 
         lock (_lock)
@@ -95,18 +114,21 @@ public sealed class UnifiedConfigManager : IConfigSectionStore
                 _cache[key] = value;
         }
 
-        _logger.LogInformation("配置已加载完成");
+        _logger.LogInformation("配置已加载完成{Scope}", userOnly ? "（仅用户级）" : "");
         OnConfigChanged(Array.Empty<string>());
     }
 
     private async Task CollectSeeingJsonSectionsToCacheAsync(
         IDictionary<string, object> target,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool userOnly = false)
     {
         foreach (var meta in _sectionRegistry.Sections.Where(m => m.FileName == "seeing.json"))
         {
             var userNode = await LoadSeeingNestedNodeAsync(ConfigLevel.User, meta.Key, ct);
-            var projectNode = await LoadSeeingNestedNodeAsync(ConfigLevel.Project, meta.Key, ct);
+            var projectNode = userOnly
+                ? null
+                : await LoadSeeingNestedNodeAsync(ConfigLevel.Project, meta.Key, ct);
 
             JsonNode? merged = meta.Scope switch
             {

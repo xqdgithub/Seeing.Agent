@@ -209,6 +209,10 @@ public class LlmRoutingEndToEndTests
 
         public string StartupDirectory => _root;
 
+        public bool IsResolved => true;
+
+        public string? ResolvedRoot => _root;
+
         public WorkspaceResolutionSource ResolutionSource => WorkspaceResolutionSource.StartupDirectory;
 
         public string? GlobalWorkspaceRoot => null;
@@ -219,6 +223,7 @@ public class LlmRoutingEndToEndTests
             remove { }
         }
 
+        public void SetInitialWorkspace(string workspaceRoot, WorkspaceResolutionSource source) { }
         public void SetWorkspaceRoot(string workspaceRoot) { }
 
         public Task InitializeAsync(CancellationToken cancellationToken = default)

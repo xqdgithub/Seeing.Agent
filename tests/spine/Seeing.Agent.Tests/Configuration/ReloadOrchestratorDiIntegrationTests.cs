@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Extensions;
@@ -72,7 +73,15 @@ public class ReloadOrchestratorDiIntegrationTests
         });
         await using (provider)
         {
-            provider.AttachReloadHandlers();
+            // 挂载 Handler 会构造会话存储等依赖项目路径的服务：必须先设定工作区
+            var workspaceDir = Path.Combine(Path.GetTempPath(), "seeing-reload-di-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(workspaceDir);
+            try
+            {
+                provider.GetRequiredService<IWorkspaceProvider>()
+                    .SetInitialWorkspace(workspaceDir, WorkspaceResolutionSource.StartupDirectory);
+
+                provider.AttachReloadHandlers();
 
             var handlers = provider.GetServices<IReloadHandler>().ToList();
             handlers.Should().Contain(h => h is ProviderReloadHandler);
@@ -91,6 +100,17 @@ public class ReloadOrchestratorDiIntegrationTests
 
             results.Should().NotBeNull();
             results.Select(r => r.ComponentId).Should().Contain("session");
+            }
+            finally
+            {
+                try
+                {
+                    Directory.Delete(workspaceDir, true);
+                }
+                catch (IOException)
+                {
+                }
+            }
         }
     }
 }

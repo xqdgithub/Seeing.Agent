@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Quartz;
 using Seeing.Agent.Abstractions.Configuration;
@@ -81,6 +82,8 @@ public static class SchedulerServiceCollectionExtensions
 
         // 调度引擎（管理 Quartz 生命周期）
         services.AddSingleton<QuartzSchedulerEngine>();
+        services.TryAddSingleton<IQuartzSchedulerLifecycle>(sp => sp.GetRequiredService<QuartzSchedulerEngine>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IWorkspaceApplyParticipant, SchedulerWorkspaceParticipant>());
 
         // 调度管理器
         services.AddSingleton<ScheduleManager>();
@@ -190,6 +193,8 @@ public static class SchedulerServiceCollectionExtensions
 
         // 调度引擎（管理 Quartz 生命周期）
         services.AddSingleton<QuartzSchedulerEngine>();
+        services.TryAddSingleton<IQuartzSchedulerLifecycle>(sp => sp.GetRequiredService<QuartzSchedulerEngine>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IWorkspaceApplyParticipant, SchedulerWorkspaceParticipant>());
 
         // 调度管理器
         services.AddSingleton<ScheduleManager>();

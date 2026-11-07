@@ -47,10 +47,5 @@ public static class StatusCommand
         return command;
     }
 
-    private static string ResolveWorkspaceRoot()
-    {
-        var env = Environment.GetEnvironmentVariable("SEEING_WORKSPACE_ROOT");
-        if (!string.IsNullOrEmpty(env) && Directory.Exists(env)) return env;
-        return Directory.GetCurrentDirectory();
-    }
+    private static string ResolveWorkspaceRoot() => CliWorkspace.Resolve();
 }

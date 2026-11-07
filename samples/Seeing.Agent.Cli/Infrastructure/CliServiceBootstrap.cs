@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Core.Modules;
@@ -57,6 +58,15 @@ public static class CliServiceBootstrap
         builder.Services.AddSeeingCore(registry);
         builder.Services.AddSeeingHostingHeadless();
         BootOverrideSource.ApplyToServices(builder.Services, args);
+
+        // CLI 是「工具」：工作区就是本次调用的目录，不需要首页也不需要历史里的默认目录
+        builder.Services.AddSingleton(new WorkspaceLaunchRequest(new WorkspaceLaunchInput(
+            Mode: WorkspaceLaunchMode.Invocation,
+            StartupDirectory: Directory.GetCurrentDirectory(),
+            ExecutableDirectory: null,
+            ExplicitPath: null,
+            InheritedEnvironment: null,
+            History: WorkspaceHistorySnapshot.Empty)));
 
         var host = builder.Build();
 

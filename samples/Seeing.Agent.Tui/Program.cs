@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Runtime;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Extensions;
@@ -21,9 +22,6 @@ using Seeing.Agent.Tui.Services;
 TuiConsoleEncoding.EnsureUtf8();
 
 var options = TuiCliOptions.Parse(args);
-
-if (options.Workspace is not null)
-    Environment.SetEnvironmentVariable("SEEING_WORKSPACE_ROOT", options.Workspace);
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders();
@@ -53,6 +51,15 @@ builder.Services.AddSingleton<Seeing.Agent.TokenBudget.IBudgetStatusNotifier, Tu
 builder.Services.AddTokenBudgetHooks();
 
 BootOverrideSource.ApplyToServices(builder.Services, args);
+
+// TUI 是「工具」：工作区是本次启动目录；位置参数可显式覆盖
+builder.Services.AddSingleton(new WorkspaceLaunchRequest(new WorkspaceLaunchInput(
+    Mode: WorkspaceLaunchMode.Invocation,
+    StartupDirectory: Directory.GetCurrentDirectory(),
+    ExecutableDirectory: null,
+    ExplicitPath: options.Workspace,
+    InheritedEnvironment: null,
+    History: WorkspaceHistorySnapshot.Empty)));
 
 using var host = builder.Build();
 
