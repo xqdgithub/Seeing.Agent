@@ -66,9 +66,9 @@ internal sealed class CronRunCommand : ICommand
 
 internal sealed class HeartbeatRunCommand : ICommand
 {
-    private readonly IScheduleManager _manager;
+    private readonly IHeartbeatService _heartbeat;
 
-    public HeartbeatRunCommand(IScheduleManager manager) => _manager = manager;
+    public HeartbeatRunCommand(IHeartbeatService heartbeat) => _heartbeat = heartbeat;
 
     public CommandMetadata Metadata => CommandMetadata.Simple(
         "heartbeat-run",
@@ -78,12 +78,12 @@ internal sealed class HeartbeatRunCommand : ICommand
 
     public async Task<CommandResult> ExecuteAsync(CommandContext context, CancellationToken cancellationToken = default)
     {
-        var result = await _manager.RunJobOnceAsync(SchedulerConstants.HeartbeatJobId, cancellationToken).ConfigureAwait(false);
+        var result = await _heartbeat.RunNowAsync(cancellationToken).ConfigureAwait(false);
         return result switch
         {
             TriggerResult.Accepted a => CommandResult.Ok($"Heartbeat triggered with RunId: {a.RunId}"),
-            TriggerResult.NotFound => CommandResult.Fail("Heartbeat job not found."),
-            TriggerResult.Disabled => CommandResult.Fail("Heartbeat is disabled."),
+            TriggerResult.NotFound => CommandResult.Fail("Heartbeat is not configured."),
+            TriggerResult.Disabled => CommandResult.Fail("Heartbeat is disabled or scheduler is not started."),
             TriggerResult.Conflict c => CommandResult.Fail(c.Reason),
             _ => CommandResult.Fail("Unknown result.")
         };

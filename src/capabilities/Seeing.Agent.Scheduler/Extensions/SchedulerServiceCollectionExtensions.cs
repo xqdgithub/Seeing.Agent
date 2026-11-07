@@ -32,6 +32,9 @@ public static class SchedulerServiceCollectionExtensions
         services.AddSingleton<CronDisableTool>();
         services.AddSingleton<CronResumeTool>();
         services.AddSingleton<CronRunTool>();
+        services.AddSingleton<HeartbeatGetTool>();
+        services.AddSingleton<HeartbeatUpdateTool>();
+        services.AddSingleton<HeartbeatRunTool>();
         return services;
     }
 

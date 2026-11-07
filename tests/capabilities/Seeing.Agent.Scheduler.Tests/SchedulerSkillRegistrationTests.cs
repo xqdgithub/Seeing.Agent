@@ -18,7 +18,8 @@ public class SchedulerSkillRegistrationTests
         "cron-management",
         "cron-create",
         "cron-list-run",
-        "cron-lifecycle"
+        "cron-lifecycle",
+        "heartbeat-management"
     ];
 
     private static ServiceProvider BuildProvider()
@@ -37,7 +38,7 @@ public class SchedulerSkillRegistrationTests
         new(new SchedulerModuleActivity(), Mock.Of<IScheduleManager>());
 
     [Fact]
-    public async Task Activate_注册四个内嵌技能_Deactivate_全部注销()
+    public async Task Activate_注册全部内嵌技能_Deactivate_全部注销()
     {
         await using var provider = BuildProvider();
         var module = CreateModule();
@@ -54,7 +55,7 @@ public class SchedulerSkillRegistrationTests
             entry.Info.Content.Should().NotBeNullOrWhiteSpace();
             entry.ProviderId.Should().Be("scheduler");
         }
-        ExpectedSkillNames.Count(n => catalog.Find(n) is not null).Should().Be(4);
+        ExpectedSkillNames.Count(n => catalog.Find(n) is not null).Should().Be(ExpectedSkillNames.Length);
 
         await module.DeactivateAsync(provider);
 
