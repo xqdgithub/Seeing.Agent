@@ -86,6 +86,9 @@ public static class SchedulerServiceCollectionExtensions
         services.AddSingleton<IScheduleStatusQuery>(sp =>
             new ScheduleStatusQueryAdapter(sp.GetRequiredService<IScheduleManager>()));
 
+        // 心跳上层入口：页面 / heartbeat_* 工具 / 命令只依赖该接口。
+        services.AddSingleton<IHeartbeatService, HeartbeatService>();
+
         RegisterScheduleDispatchers(services);
 
         services.AddSeeingSchedulerTools();
@@ -192,6 +195,9 @@ public static class SchedulerServiceCollectionExtensions
         services.AddSingleton<IScheduleStatusQuery>(sp =>
             new ScheduleStatusQueryAdapter(sp.GetRequiredService<IScheduleManager>()));
 
+        // 心跳上层入口：页面 / heartbeat_* 工具 / 命令只依赖该接口。
+        services.AddSingleton<IHeartbeatService, HeartbeatService>();
+
         RegisterScheduleDispatchers(services);
 
         services.AddSeeingSchedulerTools();
@@ -222,3 +228,4 @@ public static class SchedulerServiceCollectionExtensions
         services.AddSingleton<IScheduledJobDispatcher, CompositeScheduleDispatcher>();
     }
 }
+
