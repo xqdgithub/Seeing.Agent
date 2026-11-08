@@ -127,6 +127,7 @@ Seeing.Agent/
 | 会话管理 | `src/primitives/Seeing.Session/` | 独立包 |
 | ACP | `src/capabilities/Seeing.Agent.Acp/` | 能力模块 |
 | 通联 / 出站投递 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Channels/`；能力包 `src/capabilities/Seeing.Agent.Comms/`；适配器 `src/gateway/Seeing.Gateway.QQ` 与 `.WeCom`；工具 `src/capabilities/Seeing.Agent.Tools.ChannelMessaging/` | 目录登记即准入；`ChannelRoute` 出站；调度 Inject 在 Scheduler、出站在 Comms；见 `docs/architecture/17` |
+| 通联目录管理（对话/用户/屏蔽） | 数据 `~/.seeing/comms/directory.json`（`Comms.DirectoryFilePath`）；契约 `IChannelDirectory.AdmitInbound`（准入+登记，返回 `InboundAdmission`）+ 改名/删除/屏蔽/解封；实现 `JsonChannelDirectoryStore`、`ChannelDirectoryService`；UI `samples/Seeing.Agent.WebUI/Components/Gateway/ChannelDirectoryManager.razor`（挂在 `/gateway` 页） | **入站唯一入口是 `AdmitInbound`**，名字表明它是决策而非纯副作用，调用方（WS handler / QQ 桥 / WeCom 桥）必须消费 `Accepted` 才能继续；**出站准入段同样先判屏蔽**（Direct 走按用户分支，只查用户表会漏）；**「删除」是弱删除**（对方再发消息即重新登记），**「屏蔽」持久拦住双向**（`BlockedConversation`，需手动解封）；`Kind`/`ExternalId` 是平台身份不可编辑，只有 `Title` 可改；见 `docs/architecture/17` |
 | 出站附件 / 渠道能力 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Channels/ChannelAttachments.cs` + `ChannelCapabilities.cs`（派生查询 `ChannelCapabilitiesExtensions.cs`）；裁决 `src/capabilities/Seeing.Agent.Comms/Delivery/`；QQ `SendAttachmentAsync`（`src/gateway/Seeing.Gateway.QQ/`） | 内容（文本 + 附件）与能力（`SupportsReplyAnchor`、类型/大小/条数上限）在契约层；Comms 唯一裁决；工具 `send_channel_message` 经 `IWorkspacePathGate.EnsureWithinWorkspace` 校验；见 `docs/architecture/17` |
 
 ## CONVENTIONS（仅非标准）

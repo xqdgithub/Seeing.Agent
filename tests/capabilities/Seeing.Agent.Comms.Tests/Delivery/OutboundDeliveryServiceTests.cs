@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Channels;
@@ -29,9 +29,9 @@ public class OutboundDeliveryServiceTests
         var directory = new ChannelDirectoryService(
             new MemoryDirectoryStore(),
             Options.Create(new CommsOptions()));
-        directory.RegisterInbound(Inbound("qq", "u1"));
+        directory.AdmitInbound(Inbound("qq", "u1"));
         await directory.SetOptOutAsync("qq", "u1", true);
-        directory.RegisterInbound(Inbound("qq", "u1"));
+        directory.AdmitInbound(Inbound("qq", "u1"));
 
         var user = await directory.FindUserAsync("qq", "u1");
         user.Should().NotBeNull();
@@ -59,7 +59,7 @@ public class OutboundDeliveryServiceTests
         var directory = new ChannelDirectoryService(
             new MemoryDirectoryStore(),
             Options.Create(new CommsOptions { RateLimitPerHour = 2 }));
-        directory.RegisterInbound(Inbound("qq", "u1"));
+        directory.AdmitInbound(Inbound("qq", "u1"));
 
         var adapter = new Mock<IChannelAdapter>();
         adapter.Setup(a => a.ChannelId).Returns("qq");
@@ -500,6 +500,73 @@ public class OutboundDeliveryServiceTests
         await act.Should().ThrowAsync<ArgumentException>();
     }
 
+    /// <summary>
+    /// 屏蔽是双向的：入站被拒之外，出站也不得投递。
+    /// <para>Direct 对话的出站走「按用户准入」分支，用户仍在目录里，所以只查用户表会漏掉屏蔽——
+    /// 这条测试守住「屏蔽判定必须先于按用户准入」。</para>
+    /// </summary>
+    [Fact]
+    public async Task DeliverAsync_BlockedConversation_ReturnsNotInDirectory_AndNeverSends()
+    {
+        var directory = new ChannelDirectoryService(
+            new MemoryDirectoryStore(),
+            Options.Create(new CommsOptions()));
+
+        // 先登记（用户与对话都在目录里），再屏蔽。
+        directory.AdmitInbound(Inbound("qq", "u1"));
+        await directory.BlockConversationAsync("qq", ConversationKind.Direct, "u1");
+
+        var adapter = new Mock<IChannelAdapter>();
+        adapter.Setup(a => a.ChannelId).Returns("qq");
+        adapter.SetupGet(a => a.Capabilities).Returns(new ChannelCapabilities { SupportsReplyAnchor = false });
+
+        var svc = BuildDeliveryService(adapter.Object, directory);
+
+        var result = await svc.DeliverAsync(BuildPush("qq", "u1"));
+
+        result.Delivered.Should().BeFalse();
+        result.FailureKind.Should().Be(OutboundFailureKind.NotInDirectory);
+        result.Detail.Should().Contain("屏蔽");
+        adapter.Verify(
+            a => a.SendAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    /// <summary>群对话同理：屏蔽后按对话准入的分支也必须拒投。</summary>
+    [Fact]
+    public async Task DeliverAsync_BlockedGroup_ReturnsNotInDirectory_AndNeverSends()
+    {
+        var directory = new ChannelDirectoryService(
+            new MemoryDirectoryStore(),
+            Options.Create(new CommsOptions()));
+        await directory.BlockConversationAsync("qq", ConversationKind.Group, "g1");
+
+        var adapter = new Mock<IChannelAdapter>();
+        adapter.Setup(a => a.ChannelId).Returns("qq");
+        adapter.SetupGet(a => a.Capabilities).Returns(new ChannelCapabilities { SupportsReplyAnchor = false });
+
+        var svc = BuildDeliveryService(adapter.Object, directory);
+
+        var result = await svc.DeliverAsync(BuildPush("qq", "g1") with
+        {
+            Target = new DeliveryTarget
+            {
+                Conversation = new ConversationInfo
+                {
+                    ChannelId = "qq",
+                    Kind = ConversationKind.Group,
+                    ExternalId = "g1"
+                }
+            }
+        });
+
+        result.Delivered.Should().BeFalse();
+        result.FailureKind.Should().Be(OutboundFailureKind.NotInDirectory);
+        adapter.Verify(
+            a => a.SendAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     private static OutboundDeliveryService BuildDeliveryService(
         IChannelDirectory directory,
         IChannelAdapterRegistry registry,
@@ -516,8 +583,7 @@ public class OutboundDeliveryServiceTests
     }
 
     /// <summary>仅登记单个直聊用户的目录；其余目录查询保持 Moq 默认值。</summary>
-    private static IChannelDirectory DirectoryWith(string channelId, string userId)
-    {
+    private static IChannelDirectory DirectoryWith(string channelId, string userId)    {
         var directory = new Mock<IChannelDirectory>();
         directory.Setup(d => d.FindUserAsync(channelId, userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(User(channelId, userId));

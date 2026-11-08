@@ -1,0 +1,374 @@
+@using AntDesign
+@using Seeing.Agent.Abstractions.Channels
+@inject IChannelDirectory Directory
+@inject IMessageService MessageService
+@implements IDisposable
+
+@* 通联目录管理：数据来自 ~/.seeing/comms/directory.json（渠道消息入站时经 AdmitInbound 准入并登记）。
+   「删除」只移除当前条目，对方再发消息会重新登记；「屏蔽」会持久拦住入站，需手动解封。 *@
+
+<Space Style="margin-bottom: 12px;" Wrap>
+    <Select TItemValue="string" TItem="string"
+            Value="@_channelId"
+            ValueChanged="OnChannelChanged"
+            DataSource="@_channelIds"
+            Placeholder="选择通道"
+            Style="width: 180px;" />
+    <Button Icon="@IconType.Outline.Reload" Loading="@_loading" OnClick="ReloadAsync">刷新</Button>
+</Space>
+
+@if (string.IsNullOrEmpty(_channelId))
+{
+    <Empty Description="@("请选择通道")" />
+}
+else
+{
+    <Tabs>
+        <TabPane Key="conversations" Tab="对话">
+            <Table TItem="ConversationRow" DataSource="@_conversations" RowKey="@(r => r.Key)"
+                   Size="@TableSize.Small" PageSize="10" Loading="@_loading">
+                <Column TData="ConversationRow" Title="类型" Width="90">
+                    <span>@UiText.ConversationKindText(context.Kind)</span>
+                </Column>
+                <Column TData="ConversationRow" Title="外部 ID" Width="220" Ellipsis>
+                    <Tooltip Title="@context.ExternalId">
+                        <span>@context.ExternalId</span>
+                    </Tooltip>
+                </Column>
+                <Column TData="ConversationRow" Title="显示名">
+                    <span>@(string.IsNullOrWhiteSpace(context.Title) ? "—" : context.Title)</span>
+                </Column>
+                <Column TData="ConversationRow" Title="成员" Width="80">
+                    <span>@context.MemberCount</span>
+                </Column>
+                <Column TData="ConversationRow" Title="最后活跃" Width="160">
+                    <span>@context.LastSeenDisplay</span>
+                </Column>
+                <ActionColumn Title="操作" Width="280" Fixed="@ColumnFixPlacement.Right">
+                    <Space>
+                        <Button Size="@ButtonSize.Small" OnClick="@(() => ShowRename(context))">改显示名</Button>
+                        <Popconfirm Title="仅从目录删除。对方再次发消息会被重新登记。" OnConfirm="@(() => DeleteConversationAsync(context))">
+                            <Button Size="@ButtonSize.Small">删除</Button>
+                        </Popconfirm>
+                        <Popconfirm Title="删除并屏蔽：之后入站不再登记，需在本页手动解封。" OnConfirm="@(() => BlockConversationAsync(context))">
+                            <Button Size="@ButtonSize.Small" Danger>屏蔽</Button>
+                        </Popconfirm>
+                    </Space>
+                </ActionColumn>
+            </Table>
+        </TabPane>
+
+        <TabPane Key="users" Tab="用户">
+            <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 12px;"
+                   Message="私聊出站按用户准入；「已退订」的用户不会被主动推送（被动回复仍可送达）。" />
+            <Table TItem="UserRow" DataSource="@_users" RowKey="@(r => r.Key)"
+                   Size="@TableSize.Small" PageSize="10" Loading="@_loading">
+                <Column TData="UserRow" Title="外部 ID" Width="220" Ellipsis>
+                    <Tooltip Title="@context.ExternalId">
+                        <span>@context.ExternalId</span>
+                    </Tooltip>
+                </Column>
+                <Column TData="UserRow" Title="显示名">
+                    <span>@(string.IsNullOrWhiteSpace(context.DisplayName) ? "—" : context.DisplayName)</span>
+                </Column>
+                <Column TData="UserRow" Title="最后活跃" Width="160">
+                    <span>@context.LastSeenDisplay</span>
+                </Column>
+                <Column TData="UserRow" Title="已退订" Width="90">
+                    <AntDesign.Switch Checked="@context.OptedOut" OnChange="@(v => SetOptOutAsync(context, v))" />
+                </Column>
+                <ActionColumn Title="操作" Width="120" Fixed="@ColumnFixPlacement.Right">
+                    <Popconfirm Title="仅从目录删除。对方再次发消息会被重新登记。" OnConfirm="@(() => DeleteUserAsync(context))">
+                        <Button Size="@ButtonSize.Small" Danger>删除</Button>
+                    </Popconfirm>
+                </ActionColumn>
+            </Table>
+        </TabPane>
+
+        <TabPane Key="blocked" Tab="屏蔽名单">
+            @if (_blocked.Count == 0)
+            {
+                <Empty Description="@("当前通道没有屏蔽的对话")" />
+            }
+            else
+            {
+                <Table TItem="BlockedRow" DataSource="@_blocked" RowKey="@(r => r.Key)"
+                       Size="@TableSize.Small" HidePagination>
+                    <Column TData="BlockedRow" Title="类型" Width="90">
+                        <span>@UiText.ConversationKindText(context.Kind)</span>
+                    </Column>
+                    <Column TData="BlockedRow" Title="外部 ID" Width="220" Ellipsis>
+                        <Tooltip Title="@context.ExternalId">
+                            <span>@context.ExternalId</span>
+                        </Tooltip>
+                    </Column>
+                    <Column TData="BlockedRow" Title="屏蔽前显示名">
+                        <span>@(string.IsNullOrWhiteSpace(context.Title) ? "—" : context.Title)</span>
+                    </Column>
+                    <Column TData="BlockedRow" Title="屏蔽时间" Width="160">
+                        <span>@context.BlockedAtDisplay</span>
+                    </Column>
+                    <ActionColumn Title="操作" Width="110" Fixed="@ColumnFixPlacement.Right">
+                        <Button Size="@ButtonSize.Small" OnClick="@(() => UnblockAsync(context))">解封</Button>
+                    </ActionColumn>
+                </Table>
+            }
+        </TabPane>
+    </Tabs>
+}
+
+<Modal Title="@($"修改显示名 · {_renameTarget?.ExternalId}")"
+       Visible="@_renameVisible"
+       ConfirmLoading="@_renaming"
+       OnOk="ConfirmRenameAsync"
+       OnCancel="@(() => _renameVisible = false)">
+    @if (_renameVisible)
+    {
+        <div>
+            <div style="color: #888; font-size: 12px; margin-bottom: 8px;">
+                只改展示名（选择器文案 / 本页显示）。平台身份（类型 + 外部 ID）不可改——那是投递地址。
+            </div>
+            <Input @bind-Value="@_renameTitle" Placeholder="留空则清除显示名（显示外部 ID）" AllowClear />
+        </div>
+    }
+</Modal>
+
+@code {
+    private string? _channelId;
+    private IReadOnlyList<string> _channelIds = [];
+    private List<ConversationRow> _conversations = [];
+    private List<UserRow> _users = [];
+    private List<BlockedRow> _blocked = [];
+    private bool _loading;
+
+    private bool _renameVisible;
+    private bool _renaming;
+    private string? _renameTitle;
+    private ConversationRow? _renameTarget;
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _channelIds = await Directory.ListChannelIdsAsync();
+
+            if (string.IsNullOrEmpty(_channelId) || !_channelIds.Contains(_channelId))
+                _channelId = _channelIds.FirstOrDefault();
+
+            await LoadChannelAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"加载通联目录失败：{ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadChannelAsync()
+    {
+        _conversations = [];
+        _users = [];
+        _blocked = [];
+
+        if (string.IsNullOrEmpty(_channelId))
+            return;
+
+        // 一次取足够多的条目；目录规模是「收到过消息的对话/用户」，不是海量数据。
+        var conversations = await Directory.ListConversationsAsync(_channelId, take: 500);
+        _conversations = conversations
+            .Select(c => new ConversationRow
+            {
+                Conversation = c.Conversation,
+                Kind = c.Conversation.Kind,
+                ExternalId = c.Conversation.ExternalId,
+                Title = c.Conversation.Title,
+                MemberCount = c.MemberExternalIds.Count,
+                LastSeen = c.LastSeenAt
+            })
+            .OrderByDescending(r => r.LastSeen)
+            .ToList();
+
+        var users = await Directory.ListUsersAsync(_channelId, take: 500);
+        _users = users
+            .Select(u => new UserRow
+            {
+                ChannelId = u.ChannelId,
+                ExternalId = u.ExternalId,
+                DisplayName = u.DisplayName,
+                OptedOut = u.OptedOut,
+                LastSeen = u.LastSeenAt
+            })
+            .OrderByDescending(r => r.LastSeen)
+            .ToList();
+
+        var blocked = await Directory.ListBlockedConversationsAsync();
+        _blocked = blocked
+            .Where(b => string.Equals(b.ChannelId, _channelId, StringComparison.Ordinal))
+            .Select(b => new BlockedRow
+            {
+                ChannelId = b.ChannelId,
+                Kind = b.Kind,
+                ExternalId = b.ExternalId,
+                Title = b.Title,
+                BlockedAt = b.BlockedAt
+            })
+            .ToList();
+    }
+
+    private async Task OnChannelChanged(string? value)
+    {
+        _channelId = value;
+        await LoadChannelAsync();
+    }
+
+    private void ShowRename(ConversationRow row)
+    {
+        _renameTarget = row;
+        _renameTitle = row.Title;
+        _renameVisible = true;
+    }
+
+    private async Task ConfirmRenameAsync()
+    {
+        if (_renameTarget is null)
+            return;
+
+        _renaming = true;
+        try
+        {
+            await Directory.RenameConversationAsync(
+                _renameTarget.ChannelId,
+                _renameTarget.Kind,
+                _renameTarget.ExternalId,
+                _renameTitle);
+            _renameVisible = false;
+            await LoadChannelAsync();
+            MessageService.Success("显示名已更新");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"更新失败：{ex.Message}");
+        }
+        finally
+        {
+            _renaming = false;
+        }
+    }
+
+    private async Task DeleteConversationAsync(ConversationRow row)
+    {
+        try
+        {
+            await Directory.DeleteConversationAsync(row.ChannelId, row.Kind, row.ExternalId);
+            await LoadChannelAsync();
+            MessageService.Success("已从目录删除（对方再次发消息会重新登记）");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"删除失败：{ex.Message}");
+        }
+    }
+
+    private async Task BlockConversationAsync(ConversationRow row)
+    {
+        try
+        {
+            await Directory.BlockConversationAsync(row.ChannelId, row.Kind, row.ExternalId);
+            await LoadChannelAsync();
+            MessageService.Success("已删除并屏蔽");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"屏蔽失败：{ex.Message}");
+        }
+    }
+
+    private async Task UnblockAsync(BlockedRow row)
+    {
+        try
+        {
+            await Directory.UnblockConversationAsync(row.ChannelId, row.Kind, row.ExternalId);
+            await LoadChannelAsync();
+            MessageService.Success("已解封（对方下次发消息会重新登记）");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"解封失败：{ex.Message}");
+        }
+    }
+
+    private async Task SetOptOutAsync(UserRow row, bool optedOut)
+    {
+        try
+        {
+            await Directory.SetOptOutAsync(row.ChannelId, row.ExternalId, optedOut);
+            row.OptedOut = optedOut;
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"更新退订状态失败：{ex.Message}");
+        }
+    }
+
+    private async Task DeleteUserAsync(UserRow row)
+    {
+        try
+        {
+            await Directory.DeleteUserAsync(row.ChannelId, row.ExternalId);
+            await LoadChannelAsync();
+            MessageService.Success("已从目录删除");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"删除失败：{ex.Message}");
+        }
+    }
+
+    public void Dispose()
+    {
+        _conversations.Clear();
+        _users.Clear();
+        _blocked.Clear();
+    }
+
+    private sealed class ConversationRow
+    {
+        public required ConversationInfo Conversation { get; init; }
+        public string ChannelId => Conversation.ChannelId;
+        public ConversationKind Kind { get; init; }
+        public string ExternalId { get; init; } = "";
+        public string? Title { get; init; }
+        public int MemberCount { get; init; }
+        public DateTimeOffset LastSeen { get; init; }
+        public string LastSeenDisplay => LastSeen.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+        public string Key => $"{Kind}|{ExternalId}";
+    }
+
+    private sealed class UserRow
+    {
+        public string ChannelId { get; init; } = "";
+        public string ExternalId { get; init; } = "";
+        public string? DisplayName { get; init; }
+        public DateTimeOffset LastSeen { get; init; }
+        public bool OptedOut { get; set; }
+        public string LastSeenDisplay => LastSeen.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+        public string Key => ExternalId;
+    }
+
+    private sealed class BlockedRow
+    {
+        public string ChannelId { get; init; } = "";
+        public ConversationKind Kind { get; init; }
+        public string ExternalId { get; init; } = "";
+        public string? Title { get; init; }
+        public DateTimeOffset BlockedAt { get; init; }
+        public string BlockedAtDisplay => BlockedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+        public string Key => $"{Kind}|{ExternalId}";
+    }
+}

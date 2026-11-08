@@ -124,4 +124,21 @@ internal sealed class MemoryDirectoryStore : IChannelDirectoryStore
 
     public Task LoadIntoAsync(Action<ChannelUserEntry, ConversationEntry?> sink, CancellationToken ct = default) =>
         Task.CompletedTask;
+
+    public Task DeleteUserAsync(string channelId, string externalId, CancellationToken ct = default) =>
+        Task.CompletedTask;
+
+    public Task DeleteConversationAsync(
+        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default) =>
+        Task.CompletedTask;
+
+    public Task<IReadOnlyList<BlockedConversation>> ListBlockedConversationsAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<BlockedConversation>>([]);
+
+    public Task SaveBlockedConversationAsync(BlockedConversation entry, CancellationToken ct = default) =>
+        Task.CompletedTask;
+
+    public Task DeleteBlockedConversationAsync(
+        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default) =>
+        Task.CompletedTask;
 }

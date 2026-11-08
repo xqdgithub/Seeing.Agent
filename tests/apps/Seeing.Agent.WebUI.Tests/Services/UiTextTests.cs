@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
@@ -151,6 +152,20 @@ public class UiTextTests
     [Fact]
     public void ToolCategoryText_StringOverload_UnknownName_ShouldFallBackRaw()
         => UiText.ToolCategoryText("Custom").Should().Be("Custom");
+
+    [Theory]
+    [InlineData(ConversationKind.Direct, "私聊")]
+    [InlineData(ConversationKind.Group, "群聊")]
+    [InlineData(ConversationKind.Guild, "频道")]
+    public void ConversationKindText_ShouldMapToChinese(ConversationKind kind, string expected)
+        => UiText.ConversationKindText(kind).Should().Be(expected);
+
+    [Fact]
+    public void ConversationKindText_ShouldNeverReturnEnumName()
+    {
+        foreach (var kind in Enum.GetValues<ConversationKind>())
+            UiText.ConversationKindText(kind).Should().NotBe(kind.ToString());
+    }
 
     [Theory]
     [InlineData(ModelType.Text, "文本")]

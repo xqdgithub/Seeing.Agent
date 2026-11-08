@@ -73,10 +73,14 @@ public sealed class QQChannelAdapter : IChannelAdapter
 
     public bool HasDirectory => _directory != null;
 
-    public void RegisterDirectoryInbound(ChannelInboundMessage message)
+    /// <summary>
+    /// 入站准入 + 登记。<c>Accepted == false</c> 时必须丢弃这条消息（不解析、不提交、不回复）。
+    /// <para>无目录时不做准入判定（目录可选，与既有行为一致）：一律放行。</para>
+    /// </summary>
+    public InboundAdmission AdmitDirectoryInbound(ChannelInboundMessage message)
     {
         ArgumentNullException.ThrowIfNull(message);
-        _directory?.RegisterInbound(message);
+        return _directory?.AdmitInbound(message) ?? InboundAdmission.Accept();
     }
 
     public Task SetOptOutAsync(string externalId, bool optedOut, CancellationToken cancellationToken = default)

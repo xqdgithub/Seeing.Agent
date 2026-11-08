@@ -203,8 +203,20 @@ public sealed class WeComChannelBridge : IChannelBridge, IAsyncDisposable
 
         if (WeComChannelAdapter.TryMapInbound(parsed, _options, out var inbound) && inbound != null)
         {
+            // 入站准入：被拒即丢弃，不进入后续解析/命令/提交/回复。
+            // 同时跳过 RememberInbound——被屏蔽的对话不会产生出站，缓存其入站帧只会让
+            // _inboundFrames 无限增长（该字典唯一用途是出站时回填被动回复）。
+            var admission = _adapter.AdmitDirectoryInbound(inbound);
+            if (!admission.Accepted)
+            {
+                _logger.LogInformation(
+                    "WeCom inbound rejected ({Reason}): userId={UserId}",
+                    admission.Reason,
+                    parsed.UserId);
+                return;
+            }
+
             _adapter.RememberInbound(parsed);
-            _adapter.RegisterDirectoryInbound(inbound);
         }
 
         var sessionId = _sessionTracker.ResolveSessionId(parsed);

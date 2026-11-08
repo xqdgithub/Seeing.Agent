@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Channels;
@@ -55,7 +55,7 @@ public class ChannelMessageSinkTests
         var directory = new ChannelDirectoryService(
             new MemoryDirectoryStore(),
             Options.Create(new CommsOptions()));
-        directory.RegisterInbound(new ChannelInboundMessage
+        directory.AdmitInbound(new ChannelInboundMessage
         {
             Sender = new ChannelUserIdentity { ChannelId = "qq", ExternalId = "u1" },
             Conversation = new ConversationInfo

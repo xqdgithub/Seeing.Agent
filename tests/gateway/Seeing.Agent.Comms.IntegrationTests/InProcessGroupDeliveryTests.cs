@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Comms.IntegrationTests.Support;
 using Xunit;
@@ -8,10 +8,10 @@ namespace Seeing.Agent.Comms.IntegrationTests;
 public class InProcessGroupDeliveryTests
 {
     [Fact]
-    public async Task RegisterInbound_ThenDeliverGroup_ReachesMemoryAdapter()
+    public async Task AdmitInbound_ThenDeliverGroup_ReachesMemoryAdapter()
     {
         var directory = CommsIntegrationFixture.Directory();
-        directory.RegisterInbound(CommsIntegrationFixture.Inbound(ConversationKind.Group, "g1", "qq_group_g1"));
+        directory.AdmitInbound(CommsIntegrationFixture.Inbound(ConversationKind.Group, "g1", "qq_group_g1"));
         var (delivery, adapter) = CommsIntegrationFixture.Delivery(directory);
 
         var result = await delivery.DeliverAsync(new OutboundMessage

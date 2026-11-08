@@ -280,8 +280,21 @@ public sealed class QQChannelBridge : IChannelBridge, IAsyncDisposable
 
         try
         {
+            // 入站准入：被屏蔽的对话在准入段就被拒，后续解析/命令/提交/回复一律不发生。
+            // 用结果类型强制显式消费——「登记」不再是可忽略的副作用调用。
+            var admission = _adapter.AdmitDirectoryInbound(inbound);
+            if (!admission.Accepted)
+            {
+                _logger.LogInformation(
+                    "QQ inbound rejected ({Reason}): type={Type} group={Group} sender={Sender}",
+                    admission.Reason,
+                    parsed.MessageType,
+                    parsed.GroupOpenId,
+                    parsed.SenderOpenId);
+                return;
+            }
+
             _adapter.RegisterInbound(parsed.MsgId, DateTimeOffset.UtcNow);
-            _adapter.RegisterDirectoryInbound(inbound);
 
             var sessionId = _sessionTracker.Resolve(parsed);
             var cmd = _commandInterceptor.TryParse(parsed.Text, out _);

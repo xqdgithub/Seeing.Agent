@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Comms.Directories;
@@ -17,7 +17,7 @@ public class JsonChannelDirectoryStoreTests : IDisposable
         var store = new JsonChannelDirectoryStore(options);
         var service = new ChannelDirectoryService(store, options);
         var seen = DateTimeOffset.UtcNow;
-        service.RegisterInbound(new ChannelInboundMessage
+        service.AdmitInbound(new ChannelInboundMessage
         {
             Sender = new ChannelUserIdentity { ChannelId = "qq", ExternalId = "u1", DisplayName = "Ada" },
             Conversation = new ConversationInfo
@@ -47,7 +47,7 @@ public class JsonChannelDirectoryStoreTests : IDisposable
         conversations[0].Conversation.Kind.Should().Be(ConversationKind.Group);
         conversations[0].MemberExternalIds.Should().Contain("u1");
 
-        reloaded.RegisterInbound(new ChannelInboundMessage
+        reloaded.AdmitInbound(new ChannelInboundMessage
         {
             Sender = new ChannelUserIdentity { ChannelId = "qq", ExternalId = "u1" },
             Conversation = new ConversationInfo

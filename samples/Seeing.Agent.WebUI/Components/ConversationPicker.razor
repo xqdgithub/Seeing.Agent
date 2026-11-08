@@ -26,7 +26,7 @@
 @code {
     /// <summary>
     /// conversation 目录选择器（与 list_conversations 工具同源：主程序 IChannelDirectory，
-    /// 渠道消息经 WS 入站时服务端 RegisterInbound 登记）。
+    /// 渠道消息经 WS 入站时服务端 AdmitInbound 准入并登记）。
     /// 选中后经 <see cref="OnSelected"/> 回填 4 字段；目录为空时宿主可保留手填兜底。
     /// </summary>
     [Parameter]

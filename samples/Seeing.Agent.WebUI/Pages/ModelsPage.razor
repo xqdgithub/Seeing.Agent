@@ -41,7 +41,9 @@
         }
 
         <Row Gutter="16">
-            <Col Span="6">
+            @* Provider 列表只是导航（名称 + 选中态），不需要宽栏；窄栏把空间让给右侧详情与模型表格。
+               4/20 = 1:5，24 栅格下左侧约占 1/6。 *@
+            <Col Span="4">
                 <Card Title="Provider 列表" Size="@CardSize.Small">
                     @* 按来源分组：用户先找自己配的，再看插件带的。组内按显示名排序（而非 id）——
                        显示的是 Name，用 id 排序会出现「看起来毫无规律」的顺序。 *@
@@ -52,8 +54,12 @@
                                 @foreach (var p in group.Items)
                                 {
                                     <MenuItem Key="@p.Key">
-                                        <span style="display: inline-flex; align-items: center; gap: 8px;">
-                                            @(p.Value.Name ?? p.Key)
+                                        @* 窄栏下长名称必须截断，否则会把菜单撑出卡片 *@
+                                        <span style="display: inline-flex; align-items: center; gap: 8px; max-width: 100%;"
+                                              title="@(p.Value.Name ?? p.Key)">
+                                            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                                @(p.Value.Name ?? p.Key)
+                                            </span>
                                         </span>
                                     </MenuItem>
                                 }
@@ -62,7 +68,7 @@
                     </Menu>
                 </Card>
             </Col>
-            <Col Span="18">
+            <Col Span="20">
                 @if (_currentProviderInfo != null)
                 {
                     <Card Title="@($"Provider 详情 · {_selectedProviderId}")">
@@ -257,18 +263,29 @@
                                         Disabled="@(ModelManager.GetEnabledModelIds(_selectedProviderId).Count == 0)">全部禁用</Button>
                             </Space>
                         </div>
+                        @* ScrollX 用 max-content：列宽由内容决定、永不压缩到窗口宽度以下，
+                           窄窗口时出现横向滚动条；操作列 Fixed=Right 始终贴在右侧可见。 *@
                         <Table TItem="ModelRow" DataSource="@_filteredRows" RowKey="@(m => m.Key)" Size="@TableSize.Small"
-                               PageSize="20">
-                            <Column TData="ModelRow" Title="启用" Width="70">
+                               PageSize="20" ScrollX="@("max-content")">
+                            <Column TData="ModelRow" Title="启用" Width="80" Fixed="@ColumnFixPlacement.Left">
                                 <AntDesign.Switch Checked="context.IsEnabled" CheckedChildren="启用" UnCheckedChildren="禁用"
                                                  OnChange="@(v => ToggleModelEnabled(context, v))" />
                             </Column>
-                            <PropertyColumn Property="c => c.Id" Title="模型 ID" />
-                            <PropertyColumn Property="c => c.Name" Title="名称" />
-                            <PropertyColumn Property="c => c.Provider" Title="Provider" />
-                            <PropertyColumn Property="c => c.TypesDisplay" Title="类型" />
+                            <Column TData="ModelRow" Title="模型 ID" Width="240" Ellipsis>
+                                <Tooltip Title="@context.Id">
+                                    <span>@context.Id</span>
+                                </Tooltip>
+                            </Column>
+                            <Column TData="ModelRow" Title="名称" Width="180" Ellipsis>
+                                <Tooltip Title="@context.Name">
+                                    <span>@context.Name</span>
+                                </Tooltip>
+                            </Column>
+                            <Column TData="ModelRow" Title="类型" Width="150">
+                                <span>@context.TypesDisplay</span>
+                            </Column>
                             @* 可路由能力 = Provider 能力与模型类型取交集；不一致只告警，不阻止保存 *@
-                            <Column TData="ModelRow" Title="可路由能力" Width="170">
+                            <Column TData="ModelRow" Title="可路由能力" Width="180">
                                 <span>@(string.IsNullOrEmpty(context.RoutableDisplay) ? "—" : context.RoutableDisplay)</span>
                                 @if (!string.IsNullOrEmpty(context.CapabilityGapDisplay))
                                 {
@@ -277,22 +294,16 @@
                                     </Tooltip>
                                 }
                             </Column>
-                            <Column TData="ModelRow" Title="免费" Width="90">
-                                @if (context.IsFree)
-                                {
-                                    <Tag Color="@("green")">免费</Tag>
-                                }
-                                else
-                                {
-                                    <span>-</span>
-                                }
+                            <Column TData="ModelRow" Title="上下文" Width="110">
+                                <span>@context.Context</span>
                             </Column>
-                            <PropertyColumn Property="c => c.Context" Title="上下文" />
-                            <PropertyColumn Property="c => c.Output" Title="输出" />
-                            <Column TData="ModelRow" Title="思考" Width="90">
+                            <Column TData="ModelRow" Title="输出" Width="110">
+                                <span>@context.Output</span>
+                            </Column>
+                            <Column TData="ModelRow" Title="思考" Width="120">
                                 <span>@context.ThinkingDisplay</span>
                             </Column>
-                            <ActionColumn Title="操作" Width="360">
+                            <ActionColumn Title="操作" Width="360" Fixed="@ColumnFixPlacement.Right">
                                 <Space>
                                     <Button Size="@ButtonSize.Small" OnClick="@(() => ShowEditModel(context))">编辑</Button>
                                     @if (context.IsOverridden)
@@ -917,7 +928,6 @@
                     Types = effective.ToList(),
                     RoutableDisplay = CapabilityLabels.Describe(routable),
                     CapabilityGapDisplay = CapabilityLabels.Describe(missing),
-                    IsFree = IsFreeModel(m.Value),
                     IsEnabled = enabledIds.Contains(m.Value.Id),
                     IsOverridden = ModelManager.GetModelOverride(m.Value.Provider, m.Value.Id) is not null,
                     ThinkingDisplay = DescribeThinkingColumn(m.Value.Options?.Thinking)
@@ -1058,29 +1068,6 @@
 
     private void OnTestModelKeyChanged(string? value)
         => _testModelKey = value ?? "";
-
-    /// <summary>
-    /// 从模型扩展元数据读取免费标记（支持 bool 与 JSON 反序列化的 JsonElement/字符串）。
-    /// </summary>
-    private static bool IsFreeModel(Seeing.Agent.Abstractions.Llm.ModelConfig config)
-    {
-        if (config.Metadata is null ||
-            !config.Metadata.TryGetValue(Seeing.Agent.Abstractions.Llm.ModelMetadataKeys.IsFree, out var value) ||
-            value is null)
-        {
-            return false;
-        }
-
-        return value switch
-        {
-            bool b => b,
-            JsonElement { ValueKind: JsonValueKind.True } => true,
-            JsonElement { ValueKind: JsonValueKind.String } element
-                when bool.TryParse(element.GetString(), out var parsed) => parsed,
-            string s when bool.TryParse(s, out var parsed) => parsed,
-            _ => false
-        };
-    }
 
     private async Task SaveProviderConfigAsync()
     {
@@ -1818,7 +1805,6 @@
         public string DefaultForDisplay => string.Join(", ", DefaultFor.Select(LlmCapabilityMap.ToConfigKey));
         /// <summary>「设为默认」下拉的候选能力（具备该能力且该能力当前还没指向本模型）。</summary>
         public List<LlmCapabilityKind> DefaultCandidates { get; set; } = [];
-        public bool IsFree { get; set; }
         public bool IsEnabled { get; set; }
         public bool IsOverridden { get; set; }
         public List<ModelType> Types { get; set; } = new();

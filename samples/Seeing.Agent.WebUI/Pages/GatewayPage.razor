@@ -43,38 +43,65 @@
         <Row Gutter="16">
             <Col Span="12">
                 <Card Title="Gateway 配置">
+                    @* 六项都是短字段，双列排布让整卡高度减半——下方通联目录才是本页主体，
+                       配置区不该占掉首屏。 *@
                     <Form Layout="@FormLayout.Vertical" Model="@_gateway" Context="formContext">
                     <div>
-                        <FormItem Label="启用"><Switch @bind-Checked="@_gateway.Enabled" /></FormItem>
-                        <FormItem Label="自动启动"><Switch @bind-Checked="@_gateway.AutoStart" /></FormItem>
-                        <FormItem Label="端口"><InputNumber @bind-Value="@_gateway.Port" Min="1" Max="65535" Style="width: 100%;" /></FormItem>
-                        <FormItem Label="绑定地址"><Input @bind-Value="@_gateway.BindAddress" /></FormItem>
-                        <FormItem Label="启用 WebSocket"><Switch @bind-Checked="@_gateway.EnableWebSocket" /></FormItem>
-                        <FormItem Label="WebSocket 路径"><Input @bind-Value="@_gateway.WebSocketPath" /></FormItem>
+                        <Row Gutter="16">
+                            <Col Span="12">
+                                <FormItem Label="启用"><Switch @bind-Checked="@_gateway.Enabled" /></FormItem>
+                            </Col>
+                            <Col Span="12">
+                                <FormItem Label="自动启动"><Switch @bind-Checked="@_gateway.AutoStart" /></FormItem>
+                            </Col>
+                            <Col Span="12">
+                                <FormItem Label="端口">
+                                    <InputNumber @bind-Value="@_gateway.Port" Min="1" Max="65535" Style="width: 100%;" />
+                                </FormItem>
+                            </Col>
+                            <Col Span="12">
+                                <FormItem Label="绑定地址"><Input @bind-Value="@_gateway.BindAddress" /></FormItem>
+                            </Col>
+                            <Col Span="12">
+                                <FormItem Label="启用 WebSocket"><Switch @bind-Checked="@_gateway.EnableWebSocket" /></FormItem>
+                            </Col>
+                            <Col Span="12">
+                                <FormItem Label="WebSocket 路径"><Input @bind-Value="@_gateway.WebSocketPath" /></FormItem>
+                            </Col>
+                        </Row>
                     </div>
                     </Form>
-                    <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-top: 12px;"
+                    <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-top: 4px; padding: 4px 12px;"
                            Message="Gateway 权限模式请前往「安全」页面配置。" />
                 </Card>
             </Col>
             <Col Span="12">
                 <Card Title="API 端点">
-                    <Descriptions Column="1" Bordered Size="@DescriptionsSize.Small">
+                    @* 双列：五项压成三行，与左侧配置卡高度接近，避免整行被这一侧撑高。 *@
+                    <Descriptions Column="2" Bordered Size="@DescriptionsSize.Small">
                         <DescriptionsItem Title="健康检查">GET /api/gateway/health</DescriptionsItem>
                         <DescriptionsItem Title="流式对话">POST /api/gateway/chat</DescriptionsItem>
                         <DescriptionsItem Title="停止对话">POST /api/gateway/chat/stop</DescriptionsItem>
                         <DescriptionsItem Title="待审批权限">GET /api/gateway/permissions/pending</DescriptionsItem>
-                        <DescriptionsItem Title="WebSocket">@_gateway.WebSocketPath</DescriptionsItem>
+                        <DescriptionsItem Title="WebSocket" Span="2">@_gateway.WebSocketPath</DescriptionsItem>
                     </Descriptions>
-                    @if (!string.IsNullOrEmpty(_healthMessage))
+                    @* 健康检查失败时才展示详情：成功状态已由上方 Stats 表达，重复一遍只是噪音。 *@
+                    @if (!_healthy && !string.IsNullOrEmpty(_healthMessage))
                     {
-                        <Alert Type="@AlertType.Info" Message="@_healthMessage" ShowIcon="true" Style="margin-top: 16px;" />
+                        <Alert Type="@AlertType.Error" Message="@_healthMessage" ShowIcon="true"
+                               Style="margin-top: 8px; padding: 4px 12px;" />
                     }
-                    <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-top: 16px;"
+                    <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-top: 8px; padding: 4px 12px;"
                            Message="修改端口或绑定地址后可能需要重启应用才能生效。" />
                 </Card>
             </Col>
         </Row>
+
+        @* 通联目录：QQ / WeCom 等渠道的对话与用户登记表。
+           数据由渠道消息入站时经 IChannelDirectory.AdmitInbound 准入并写入 ~/.seeing/comms/directory.json。 *@
+        <Card Title="通联目录" Style="margin-top: 12px;">
+            <ChannelDirectoryManager />
+        </Card>
     </ChildContent>
 </WorkspacePageShell>
 

@@ -20,6 +20,30 @@ public sealed record ConversationInfo
 
 public enum OutboundDeliveryKind { Reply, Push, SystemNotice }
 
+/// <summary>
+/// 入站准入结果。由 <see cref="IChannelDirectory.AdmitInbound"/> 返回：
+/// 它同时是「要不要处理这条消息」的<b>决策</b>与「登记进目录」的<b>副作用</b>。
+/// </summary>
+public sealed record InboundAdmission
+{
+    public required bool Accepted { get; init; }
+
+    /// <summary>被拒时的原因；<see cref="Accepted"/> 为 true 时必为 null。</summary>
+    public InboundRejectionReason? Reason { get; init; }
+
+    public static InboundAdmission Accept() => new() { Accepted = true };
+
+    public static InboundAdmission Reject(InboundRejectionReason reason) =>
+        new() { Accepted = false, Reason = reason };
+}
+
+/// <summary>入站被拒原因。</summary>
+public enum InboundRejectionReason
+{
+    /// <summary>该对话在屏蔽名单内（管理员显式屏蔽）。</summary>
+    Blocked
+}
+
 public sealed record DeliveryTarget
 {
     public required ConversationInfo Conversation { get; init; }
@@ -81,4 +105,33 @@ public sealed record ConversationEntry
     public required DateTimeOffset FirstSeenAt { get; init; }
     public required DateTimeOffset LastSeenAt { get; init; }
     public required IReadOnlyList<string> MemberExternalIds { get; init; }  // Group 场景惰性发现
+}
+
+/// <summary>
+/// 被屏蔽的对话：目录不再登记它，也不会出站投递。
+/// <para>「删除」与「屏蔽」的区别就在这里——删除只是从当前目录移除，
+/// 对方再发一条消息就会被 <see cref="IChannelDirectory.AdmitInbound"/> 重新登记；
+/// 屏蔽则持久生效（双向：入站被拒、出站拒投），需手动解除。</para>
+/// </summary>
+public sealed record BlockedConversation
+{
+    public required string ChannelId { get; init; }
+    public required ConversationKind Kind { get; init; }
+    public required string ExternalId { get; init; }
+
+    /// <summary>屏蔽前的显示名（便于回看「我到底屏蔽了谁」）。</summary>
+    public string? Title { get; init; }
+
+    public required DateTimeOffset BlockedAt { get; init; }
+
+    public string? Reason { get; init; }
+
+    /// <summary>投影回 <see cref="ConversationInfo"/>（不含 Title 以外的元数据）。</summary>
+    public ConversationInfo ToConversationInfo() => new()
+    {
+        ChannelId = ChannelId,
+        Kind = Kind,
+        ExternalId = ExternalId,
+        Title = Title
+    };
 }

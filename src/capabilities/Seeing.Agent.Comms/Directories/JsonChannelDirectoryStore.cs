@@ -26,6 +26,7 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
     private readonly object _gate = new();
     private readonly Dictionary<string, ChannelUserEntry> _users = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ConversationEntry> _conversations = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, BlockedConversation> _blocked = new(StringComparer.Ordinal);
 
     public JsonChannelDirectoryStore(IOptions<CommsOptions> options, ILogger<JsonChannelDirectoryStore>? logger = null)
     {
@@ -124,6 +125,81 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         }
     }
 
+    public Task DeleteUserAsync(string channelId, string externalId, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (_users.Remove(ChannelKeys.User(channelId, externalId)))
+                PersistLocked();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteConversationAsync(
+        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (_conversations.Remove(ChannelKeys.Conversation(new ConversationInfo
+                {
+                    ChannelId = channelId,
+                    Kind = kind,
+                    ExternalId = externalId
+                })))
+            {
+                PersistLocked();
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<BlockedConversation>> ListBlockedConversationsAsync(CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            IReadOnlyList<BlockedConversation> list = _blocked.Values
+                .OrderBy(b => b.ChannelId, StringComparer.Ordinal)
+                .ThenBy(b => b.ExternalId, StringComparer.Ordinal)
+                .ToList();
+            return Task.FromResult(list);
+        }
+    }
+
+    public Task SaveBlockedConversationAsync(BlockedConversation entry, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ct.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            _blocked[BlockedKey(entry.ChannelId, entry.Kind, entry.ExternalId)] = entry;
+            PersistLocked();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteBlockedConversationAsync(
+        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (_blocked.Remove(BlockedKey(channelId, kind, externalId)))
+                PersistLocked();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>屏蔽名单键：与目录键同一套规则（渠道 + 类型 + 外部 id）。</summary>
+    internal static string BlockedKey(string channelId, ConversationKind kind, string externalId)
+        => ChannelKeys.Conversation(channelId, kind, externalId);
+
     public Task LoadIntoAsync(Action<ChannelUserEntry, ConversationEntry?> sink, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(sink);
@@ -170,10 +246,13 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
             {
                 _users.Clear();
                 _conversations.Clear();
+                _blocked.Clear();
                 foreach (var user in document.Users)
                     _users[ChannelKeys.User(user.ChannelId, user.ExternalId)] = user;
                 foreach (var conversation in document.Conversations)
                     _conversations[ChannelKeys.Conversation(conversation.Conversation)] = conversation;
+                foreach (var blocked in document.Blocked)
+                    _blocked[BlockedKey(blocked.ChannelId, blocked.Kind, blocked.ExternalId)] = blocked;
             }
         }
         catch (Exception ex) when (ex is JsonException or IOException)
@@ -198,6 +277,10 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
                 .OrderBy(c => c.Conversation.ChannelId, StringComparer.Ordinal)
                 .ThenBy(c => c.Conversation.ExternalId, StringComparer.Ordinal)
                 .ToList(),
+            Blocked = _blocked.Values
+                .OrderBy(b => b.ChannelId, StringComparer.Ordinal)
+                .ThenBy(b => b.ExternalId, StringComparer.Ordinal)
+                .ToList(),
         };
 
         var payload = JsonSerializer.Serialize(document, JsonOptions);
@@ -215,5 +298,8 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
     {
         public List<ChannelUserEntry> Users { get; set; } = [];
         public List<ConversationEntry> Conversations { get; set; } = [];
+
+        /// <summary>屏蔽名单。旧文件没有这个键 → 反序列化为空列表，向前兼容。</summary>
+        public List<BlockedConversation> Blocked { get; set; } = [];
     }
 }

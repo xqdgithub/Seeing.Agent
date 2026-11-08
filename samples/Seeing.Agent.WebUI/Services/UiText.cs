@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Permissions;
@@ -48,6 +49,15 @@ public static class UiText
 
     /// <summary>未选择任何值时统一占位符。</summary>
     public const string None = "—";
+
+    /// <summary>通道对话类型的界面称呼。</summary>
+    public static string ConversationKindText(ConversationKind kind) => kind switch
+    {
+        ConversationKind.Direct => "私聊",
+        ConversationKind.Group => "群聊",
+        ConversationKind.Guild => "频道",
+        _ => kind.ToString()
+    };
 
     /// <summary>
     /// 会话级「思考强度未指定」的文案。

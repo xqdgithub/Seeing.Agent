@@ -10,12 +10,30 @@ public interface IChannelDirectoryStore          // Store：纯存取
     Task<IReadOnlyList<ChannelUserEntry>> ListUsersAsync(string channelId, int skip, int take, CancellationToken ct = default);
     Task<IReadOnlyList<ConversationEntry>> ListConversationsAsync(string channelId, int skip, int take, CancellationToken ct = default);
     Task LoadIntoAsync(Action<ChannelUserEntry, ConversationEntry?> sink, CancellationToken ct = default);  // 启动载入
+
+    /// <summary>删除用户条目（已不存在的键视为成功）。</summary>
+    Task DeleteUserAsync(string channelId, string externalId, CancellationToken ct = default);
+
+    /// <summary>删除对话条目（已不存在的键视为成功）。</summary>
+    Task DeleteConversationAsync(string channelId, ConversationKind kind, string externalId, CancellationToken ct = default);
+
+    /// <summary>屏蔽名单（启动载入，用于压住「收到消息即登记」）。</summary>
+    Task<IReadOnlyList<BlockedConversation>> ListBlockedConversationsAsync(CancellationToken ct = default);
+
+    Task SaveBlockedConversationAsync(BlockedConversation entry, CancellationToken ct = default);
+
+    Task DeleteBlockedConversationAsync(string channelId, ConversationKind kind, string externalId, CancellationToken ct = default);
 }
 
 public interface IChannelDirectory              // Manager：登记/查询/退订/频控
 {
-    /// <summary>登记入站；消息带 ReplyToMsgId 时同时刷新该对话的回复锚点。登记不清除 OptedOut。</summary>
-    void RegisterInbound(ChannelInboundMessage message);
+    /// <summary>
+    /// 入站准入 + 登记：判断该对话是否可以处理，可则登记（用户/对话/成员/锚点）。
+    /// <para><b>这是入站唯一入口</b>——调用方必须先取结果、再决定是否继续处理：
+    /// <c>Accepted == false</c>（如对话已被屏蔽）时<b>不得</b>把消息交给 agent。</para>
+    /// <para>命名刻意用 <c>Admit</c> 而非 <c>Register</c>：它是决策，不只是副作用。</para>
+    /// </summary>
+    InboundAdmission AdmitInbound(ChannelInboundMessage message);
 
     /// <summary>该对话最近一条入站消息 ID；从未登记返回 null。有效性由适配器判定。</summary>
     string? ResolveReplyAnchor(ConversationInfo conversation);
@@ -31,6 +49,35 @@ public interface IChannelDirectory              // Manager：登记/查询/退�
     Task SetOptOutAsync(string channelId, string externalId, bool optedOut, CancellationToken ct = default);
     bool IsRateLimited(string channelId, string externalId);   // 滑窗判定（已投递计数）
     void RecordDelivery(string channelId, string externalId);  // 投递成功后计数
+
+    /// <summary>
+    /// 修改对话显示名（<see cref="ConversationInfo.Title"/>）。仅影响展示与选择器文案，
+    /// 不改变 <see cref="ConversationInfo.Kind"/> / <see cref="ConversationInfo.ExternalId"/>——
+    /// 后两者是平台身份，改了就无法投递。
+    /// </summary>
+    Task RenameConversationAsync(
+        string channelId, ConversationKind kind, string externalId, string? title, CancellationToken ct = default);
+
+    /// <summary>删除对话目录条目。该对话若仍在入站活跃，下一条消息会重新登记（要彻底拦住用屏蔽）。</summary>
+    Task DeleteConversationAsync(
+        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default);
+
+    /// <summary>删除用户目录条目。Direct 对话与出站准入都会因此失效（对方再次来消息会重新登记）。</summary>
+    Task DeleteUserAsync(string channelId, string externalId, CancellationToken ct = default);
+
+    /// <summary>屏蔽对话：从目录移除并加入屏蔽名单，之后入站不再登记。幂等。</summary>
+    Task BlockConversationAsync(
+        string channelId, ConversationKind kind, string externalId, string? reason = null, CancellationToken ct = default);
+
+    /// <summary>解除屏蔽；该对话之后收到消息会重新登记。</summary>
+    Task UnblockConversationAsync(
+        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default);
+
+    /// <summary>屏蔽名单快照。</summary>
+    Task<IReadOnlyList<BlockedConversation>> ListBlockedConversationsAsync(CancellationToken ct = default);
+
+    /// <summary>该对话当前是否处于屏蔽状态。</summary>
+    bool IsBlocked(string channelId, ConversationKind kind, string externalId);
 }
 
 public interface IChannelMessageSink            // Sink：agent 工具唯一单向出口

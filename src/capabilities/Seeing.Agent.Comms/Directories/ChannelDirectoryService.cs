@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
 
 namespace Seeing.Agent.Comms.Directories;
@@ -15,6 +15,7 @@ public sealed class ChannelDirectoryService : IChannelDirectory
     private readonly object _gate = new();
     private readonly Dictionary<string, ChannelUserEntry> _users = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ConversationEntry> _conversations = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, BlockedConversation> _blocked = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _replyAnchors = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Queue<DateTimeOffset>> _deliveries = new(StringComparer.Ordinal);
 
@@ -23,11 +24,21 @@ public sealed class ChannelDirectoryService : IChannelDirectory
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _store.LoadIntoAsync(Absorb, CancellationToken.None).GetAwaiter().GetResult();
+
+        // 屏蔽名单与用户/对话分开载入（Store 的 LoadInto 只覆盖目录两张表）。
+        var blocked = _store.ListBlockedConversationsAsync(CancellationToken.None).GetAwaiter().GetResult();
+        foreach (var entry in blocked)
+            _blocked[BlockedKey(entry.ChannelId, entry.Kind, entry.ExternalId)] = entry;
     }
 
-    public void RegisterInbound(ChannelInboundMessage message)
+    public InboundAdmission AdmitInbound(ChannelInboundMessage message)
     {
         ArgumentNullException.ThrowIfNull(message);
+
+        // 准入判定（决策）与登记（副作用）在同一处，调用方无法「只登记、不问准入」。
+        if (IsBlocked(message.Conversation.ChannelId, message.Conversation.Kind, message.Conversation.ExternalId))
+            return InboundAdmission.Reject(InboundRejectionReason.Blocked);
+
         var now = DateTimeOffset.UtcNow;
         ChannelUserEntry user;
         ConversationEntry conversation;
@@ -43,6 +54,7 @@ public sealed class ChannelDirectoryService : IChannelDirectory
 
         _store.SaveUserAsync(user).GetAwaiter().GetResult();
         _store.SaveConversationAsync(conversation).GetAwaiter().GetResult();
+        return InboundAdmission.Accept();
     }
 
     /// <inheritdoc />
@@ -104,12 +116,7 @@ public sealed class ChannelDirectoryService : IChannelDirectory
         lock (_gate)
         {
             _conversations.TryGetValue(
-                ChannelKeys.Conversation(new ConversationInfo
-                {
-                    ChannelId = channelId,
-                    Kind = kind,
-                    ExternalId = externalId
-                }),
+                ChannelKeys.Conversation(channelId, kind, externalId),
                 out var entry);
             return Task.FromResult(entry);
         }
@@ -120,8 +127,11 @@ public sealed class ChannelDirectoryService : IChannelDirectory
         ct.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            // 屏蔽名单里的通道也算「有数据的通道」：否则某通道的对话全被屏蔽后，
+            // 它就从列表里消失，用户再也进不到该通道去解封。
             IReadOnlyList<string> channelIds = _conversations.Values
                 .Select(c => c.Conversation.ChannelId)
+                .Concat(_blocked.Values.Select(b => b.ChannelId))
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(c => c, StringComparer.Ordinal)
                 .ToList();
@@ -197,6 +207,126 @@ public sealed class ChannelDirectoryService : IChannelDirectory
             Prune(queue, now);
         }
     }
+
+    public async Task RenameConversationAsync(
+        string channelId, ConversationKind kind, string externalId, string? title, CancellationToken ct = default)
+    {
+        ConversationEntry? updated;
+        lock (_gate)
+        {
+            var key = ChannelKeys.Conversation(channelId, kind, externalId);
+            if (!_conversations.TryGetValue(key, out var existing))
+                return;
+
+            updated = existing with
+            {
+                Conversation = existing.Conversation with
+                {
+                    Title = string.IsNullOrWhiteSpace(title) ? null : title.Trim()
+                }
+            };
+            _conversations[key] = updated;
+        }
+
+        await _store.SaveConversationAsync(updated, ct).ConfigureAwait(false);
+    }
+
+    public async Task DeleteConversationAsync(
+        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            _conversations.Remove(ChannelKeys.Conversation(channelId, kind, externalId));
+
+            // 锚点属于该对话：一并清掉，避免删除后仍被当作被动回复目标。
+            _replyAnchors.Remove(ChannelKeys.Conversation(channelId, kind, externalId));
+        }
+
+        await _store.DeleteConversationAsync(channelId, kind, externalId, ct).ConfigureAwait(false);
+    }
+
+    public async Task DeleteUserAsync(string channelId, string externalId, CancellationToken ct = default)
+    {
+        lock (_gate)
+            _users.Remove(ChannelKeys.User(channelId, externalId));
+
+        await _store.DeleteUserAsync(channelId, externalId, ct).ConfigureAwait(false);
+    }
+
+    public async Task BlockConversationAsync(
+        string channelId,
+        ConversationKind kind,
+        string externalId,
+        string? reason = null,
+        CancellationToken ct = default)
+    {
+        ConversationEntry? existing;
+        lock (_gate)
+        {
+            var key = ChannelKeys.Conversation(channelId, kind, externalId);
+            _conversations.TryGetValue(key, out existing);
+            _conversations.Remove(key);
+            _replyAnchors.Remove(key);
+        }
+
+        await _store.DeleteConversationAsync(channelId, kind, externalId, ct).ConfigureAwait(false);
+
+        // 已屏蔽时只刷新理由/标题，不重复落盘时间戳。
+        var blockedAt = BlockedAtOf(channelId, kind, externalId) ?? DateTimeOffset.UtcNow;
+        var entry = new BlockedConversation
+        {
+            ChannelId = channelId,
+            Kind = kind,
+            ExternalId = externalId,
+            Title = existing?.Conversation.Title,
+            BlockedAt = blockedAt,
+            Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim()
+        };
+
+        lock (_gate)
+            _blocked[BlockedKey(channelId, kind, externalId)] = entry;
+
+        await _store.SaveBlockedConversationAsync(entry, ct).ConfigureAwait(false);
+    }
+
+    public async Task UnblockConversationAsync(
+        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default)
+    {
+        lock (_gate)
+            _blocked.Remove(BlockedKey(channelId, kind, externalId));
+
+        await _store.DeleteBlockedConversationAsync(channelId, kind, externalId, ct).ConfigureAwait(false);
+    }
+
+    public Task<IReadOnlyList<BlockedConversation>> ListBlockedConversationsAsync(CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            IReadOnlyList<BlockedConversation> list = _blocked.Values
+                .OrderBy(b => b.ChannelId, StringComparer.Ordinal)
+                .ThenBy(b => b.ExternalId, StringComparer.Ordinal)
+                .ToList();
+            return Task.FromResult(list);
+        }
+    }
+
+    public bool IsBlocked(string channelId, ConversationKind kind, string externalId)
+    {
+        lock (_gate)
+            return _blocked.ContainsKey(BlockedKey(channelId, kind, externalId));
+    }
+
+    private DateTimeOffset? BlockedAtOf(string channelId, ConversationKind kind, string externalId)
+    {
+        lock (_gate)
+            return _blocked.TryGetValue(BlockedKey(channelId, kind, externalId), out var entry)
+                ? entry.BlockedAt
+                : null;
+    }
+
+    private static string BlockedKey(string channelId, ConversationKind kind, string externalId)
+        => ChannelKeys.Conversation(channelId, kind, externalId);
 
     private void Absorb(ChannelUserEntry user, ConversationEntry? conversation)
     {

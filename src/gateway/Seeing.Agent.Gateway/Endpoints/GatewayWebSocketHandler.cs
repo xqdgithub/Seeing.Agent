@@ -226,9 +226,26 @@ public sealed class GatewayWebSocketHandler
             //    桥侧 GatewayAssistantReplyCollector 轮次门控会忽略上一轮仍在途的尾流。
             using var replyStream = _orchestrator.BeginReplyStream(request.SessionId);
 
-            // ② 先登记入站（刷新该对话的回复锚点），再投递唤醒消费循环：
+            // ② 先准入并登记入站（刷新该对话的回复锚点），再投递唤醒消费循环：
             //    消费循环可能立刻出站被动回复，锚点必须先可读。
-            RegisterInbound(request);
+            //    准入被拒（对话已屏蔽）时直接回 nack，消息不进入 agent。
+            var admission = AdmitInbound(request);
+            if (!admission.Accepted)
+            {
+                await connection.SendFrameAsync(
+                    GatewayWsFrameSerializer.Create(
+                        GatewayWsFrameType.SubmitAck,
+                        frame.Id,
+                        new GatewaySubmitAckPayload
+                        {
+                            SessionId = request.SessionId,
+                            RequestId = frame.Id,
+                            Success = false,
+                            Error = DescribeRejection(admission)
+                        }),
+                    cancellationToken).ConfigureAwait(false);
+                return;
+            }
 
             // ③ 投递并唤醒消费循环
             var submit = await _orchestrator.SubmitAsync(request, cancellationToken).ConfigureAwait(false);
@@ -352,16 +369,20 @@ public sealed class GatewayWebSocketHandler
             cancellationToken);
     }
 
-    private void RegisterInbound(GatewayRequest request)
+    /// <summary>
+    /// 入站准入 + 登记。
+    /// <para>无渠道上下文的直连调用（无 sender / conversation）不参与准入，直接放行。</para>
+    /// </summary>
+    private InboundAdmission AdmitInbound(GatewayRequest request)
     {
         if (request.Sender is null || request.Conversation is null)
-            return;
+            return InboundAdmission.Accept();
 
         var text = request.Input is null
             ? string.Empty
             : string.Join("\n", request.Input.OfType<GatewayTextContentPart>().Select(part => part.Text));
 
-        _channelDirectory.RegisterInbound(new ChannelInboundMessage
+        return _channelDirectory.AdmitInbound(new ChannelInboundMessage
         {
             Sender = request.Sender,
             Conversation = request.Conversation,
@@ -371,6 +392,13 @@ public sealed class GatewayWebSocketHandler
             CommandToken = null
         });
     }
+
+    /// <summary>把入站拒绝原因翻成给客户端看的一句话。</summary>
+    private static string DescribeRejection(InboundAdmission admission) => admission.Reason switch
+    {
+        InboundRejectionReason.Blocked => "该对话已被屏蔽",
+        _ => "入站被拒绝"
+    };
 
     private Task SendErrorAsync(GatewayWsConnection connection, string message, string code) =>
         connection.SendFrameAsync(

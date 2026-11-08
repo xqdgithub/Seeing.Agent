@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Channels;
@@ -84,7 +84,7 @@ public class ScheduleChannelRouteTests
     {
         var directory = CommsIntegrationFixture.Directory();
         var conversationKind = kind == "group" ? ConversationKind.Group : ConversationKind.Direct;
-        directory.RegisterInbound(CommsIntegrationFixture.Inbound(conversationKind, externalId, sessionId));
+        directory.AdmitInbound(CommsIntegrationFixture.Inbound(conversationKind, externalId, sessionId));
         var (delivery, adapter) = CommsIntegrationFixture.Delivery(directory);
 
         var session = SessionData.Create();

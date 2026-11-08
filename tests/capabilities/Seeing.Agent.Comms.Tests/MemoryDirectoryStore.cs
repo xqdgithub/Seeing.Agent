@@ -6,6 +6,7 @@ internal sealed class MemoryDirectoryStore : IChannelDirectoryStore
 {
     private readonly Dictionary<string, ChannelUserEntry> _users = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ConversationEntry> _conversations = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, BlockedConversation> _blocked = new(StringComparer.Ordinal);
 
     public Task SaveUserAsync(ChannelUserEntry user, CancellationToken ct = default)
     {
@@ -55,6 +56,35 @@ internal sealed class MemoryDirectoryStore : IChannelDirectoryStore
                 sink(anchor, conversation);
         }
 
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteUserAsync(string channelId, string externalId, CancellationToken ct = default)
+    {
+        _users.Remove(channelId + "\u001f" + externalId);
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteConversationAsync(
+        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default)
+    {
+        _conversations.Remove(channelId + "\u001f" + kind + "\u001f" + externalId);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<BlockedConversation>> ListBlockedConversationsAsync(CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<BlockedConversation>>(_blocked.Values.ToList());
+
+    public Task SaveBlockedConversationAsync(BlockedConversation entry, CancellationToken ct = default)
+    {
+        _blocked[entry.ChannelId + "\u001f" + entry.Kind + "\u001f" + entry.ExternalId] = entry;
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteBlockedConversationAsync(
+        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default)
+    {
+        _blocked.Remove(channelId + "\u001f" + kind + "\u001f" + externalId);
         return Task.CompletedTask;
     }
 }

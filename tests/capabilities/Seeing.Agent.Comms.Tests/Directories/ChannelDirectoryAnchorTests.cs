@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Comms.Directories;
@@ -13,8 +13,8 @@ public class ChannelDirectoryAnchorTests
     public void RegisterInbound_ShouldRememberLastReplyToMsgId_PerConversation()
     {
         var directory = NewDirectory();
-        directory.RegisterInbound(Inbound("qq", ConversationKind.Group, "g1", replyTo: "m1"));
-        directory.RegisterInbound(Inbound("qq", ConversationKind.Group, "g1", replyTo: "m2"));
+        directory.AdmitInbound(Inbound("qq", ConversationKind.Group, "g1", replyTo: "m1"));
+        directory.AdmitInbound(Inbound("qq", ConversationKind.Group, "g1", replyTo: "m2"));
 
         directory.ResolveReplyAnchor(Conversation("qq", ConversationKind.Group, "g1")).Should().Be("m2");
         directory.ResolveReplyAnchor(Conversation("qq", ConversationKind.Group, "g2")).Should().BeNull();
@@ -24,8 +24,8 @@ public class ChannelDirectoryAnchorTests
     public void RegisterInbound_WithoutReplyToMsgId_ShouldKeepPreviousAnchor()
     {
         var directory = NewDirectory();
-        directory.RegisterInbound(Inbound("qq", ConversationKind.Direct, "u1", replyTo: "m1"));
-        directory.RegisterInbound(Inbound("qq", ConversationKind.Direct, "u1"));
+        directory.AdmitInbound(Inbound("qq", ConversationKind.Direct, "u1", replyTo: "m1"));
+        directory.AdmitInbound(Inbound("qq", ConversationKind.Direct, "u1"));
 
         directory.ResolveReplyAnchor(Conversation("qq", ConversationKind.Direct, "u1")).Should().Be("m1");
     }

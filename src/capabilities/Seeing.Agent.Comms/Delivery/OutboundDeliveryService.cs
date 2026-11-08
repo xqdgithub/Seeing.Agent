@@ -38,6 +38,12 @@ public class OutboundDeliveryService
         var conversation = message.Target.Conversation;
         var userId = ResolveSubjectUserId(message);
 
+        // ── 准入段 ──
+        // 屏蔽与「不在目录」是同一类事实（该目标不允许投递），故共用准入段：
+        // 且必须在按用户判定之前——Direct 对话只查用户表会漏掉屏蔽（用户仍在目录里）。
+        if (_directory.IsBlocked(conversation.ChannelId, conversation.Kind, conversation.ExternalId))
+            return OutboundDeliveryResult.Fail(OutboundFailureKind.NotInDirectory, "该对话已被屏蔽");
+
         // 私聊（或群内定向到某人）按用户准入；群/频道整体投递按对话是否已登记准入。
         if (!string.IsNullOrEmpty(userId))
         {
