@@ -86,24 +86,6 @@ aside.app-sider.ant-layout-sider {
     transition: opacity 0.2s;
 }
 
-.app-logo-collapsed {
-    margin: 0 auto;
-    display: block;
-}
-
-/* ========== Agent Selector ========== */
-.sider-agent-selector {
-    padding: 12px 16px;
-    border-bottom: 1px solid #e8e8e8;
-    flex-shrink: 0;
-}
-
-.agent-option {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
 /* ========== Menu ========== */
 /* 菜单是侧栏唯一的滚动容器：隐藏滚动条，但保留滚轮/触屏滚动能力 */
 .sider-menu {
@@ -165,6 +147,24 @@ aside.app-sider.ant-layout-sider {
     display: none !important;
 }
 
+/*
+ * 走 MenuItem.Icon 参数渲染的图标位于 .ant-menu-title-content 之外，
+ * 上面「隐藏 title-content 里的文字」对它们不起作用：图标与空容器并列，
+ * 会被 flex 布局推到左缘（实测图标中心 15px，而侧栏中心 40px）。
+ * 折叠态下这类菜单项只剩图标，因此让 title-content 完全不占位、图标接管整行宽度。
+ */
+.app-sider.ant-layout-sider-collapsed .sider-menu .ant-menu-item > .anticon {
+    flex: 1 !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    margin: 0 !important;
+}
+
+.app-sider.ant-layout-sider-collapsed .sider-menu .ant-menu-item > .ant-menu-title-content {
+    display: none !important;
+}
+
 /* ========== Responsive ========== */
 @media (max-width: 768px) {
     .sider-header {
@@ -172,22 +172,19 @@ aside.app-sider.ant-layout-sider {
     }
 }
 
-/* ========== Dark Theme Support ========== */
-@media (prefers-color-scheme: dark) {
-    .app-sider,
-    .app-sider.ant-layout-sider {
-        background: #141414 !important;
-        border-right-color: #303030 !important;
-    }
-    
-    /* 菜单固定为 Light 主题（MenuTheme.Light），页头保持白色与菜单一致 */
-    .sider-header {
-        background: #ffffff;
-    }
+/* ========== 深色模式 ========== */
+/* 全站统一用 <html data-theme="dark">（app.js initializeTheme 写入）。
+   这里原先用系统偏好 media query，与全站机制不一致：
+   用户在设置里手动切主题时侧栏不会跟随。 */
+[data-theme="dark"] .app-sider,
+[data-theme="dark"] .app-sider.ant-layout-sider {
+    background: var(--color-bg-secondary) !important;
+    border-right-color: var(--color-border-secondary) !important;
+}
 
-    .sider-agent-selector {
-        border-bottom-color: #303030;
-    }
+/* 菜单固定为 Light 主题（MenuTheme.Light），页头保持白色与菜单一致 */
+[data-theme="dark"] .sider-header {
+    background: #ffffff;
 }
 
 /* ========== 底部工具条（工作区 / 关闭 / 折叠） ========== */
@@ -241,9 +238,24 @@ aside.app-sider.ant-layout-sider {
     padding: 0;
 }
 
-/* 折叠时工作区入口只显示图标并居中，避免被挤成一条竖线 */
+/* 折叠时工作区入口只显示图标 */
 .app-sider.ant-layout-sider-collapsed .ws-switcher {
     padding: 4px 0;
+}
+
+/* AntDesign 的 Dropdown 触发器包裹层是 inline-block + fit-content，
+   宽度会收缩到图标大小并贴左边。不拉满整行的话，里层按钮的居中/Block 都失效：
+   展开态文字不占满整行、折叠态图标紧贴侧栏左缘。
+   这一条对两种模式都必要，所以不加折叠态前缀。 */
+.ws-switcher .antblazor-overlay-trigger-wrapper {
+    display: block !important;
+    width: 100% !important;
+}
+
+.ws-switcher-button {
+    display: flex !important;
+    align-items: center;
+    width: 100%;
 }
 
 .app-sider.ant-layout-sider-collapsed .ws-switcher-button {
@@ -263,10 +275,9 @@ aside.app-sider.ant-layout-sider {
 }
 
 /* ========== 深色模式：底部工具条 ========== */
-@media (prefers-color-scheme: dark) {
-    .sider-footer {
-        border-top-color: #303030;
-    }
+[data-theme="dark"] .sider-footer,
+[data-theme="dark"] .sider-footer-stack {
+    border-top-color: var(--color-border-secondary);
 }
 
 /* ========== 移动端侧边栏 ========== */
@@ -278,12 +289,12 @@ aside.app-sider.ant-layout-sider {
 }
 
 .app-sider.sider-overlay {
-    width: 240px !important;
-    min-width: 240px !important;
-    max-width: 240px !important;
+    width: var(--sider-width) !important;
+    min-width: var(--sider-width) !important;
+    max-width: var(--sider-width) !important;
     box-shadow: var(--shadow-lg);
     z-index: 200 !important;
-    flex: 0 0 240px !important;
+    flex: 0 0 var(--sider-width) !important;
 }
 
 .app-sider.sider-overlay .ant-layout-sider-zero-width-trigger {

@@ -9,9 +9,12 @@
 @inject IMessageService Messages
 @inject WorkspaceSwitchProgress Progress
 
-@* 侧栏工作区入口：列出最近目录，选中后走唯一的 Apply 路径并整页重载。 *@
+@* 侧栏工作区入口：列出最近目录，选中后走唯一的 Apply 路径并整页重载。
+   折叠状态切换时用 @key 重建：AntDesign 的 Dropdown 浮层挂在 body 上，
+   侧栏折叠不会自动关闭它，会留下悬浮在原位的下拉（与主菜单同一类残留问题）。 *@
 <div class="ws-switcher">
-    <Dropdown Placement="@Placement.TopLeft">
+    <Dropdown @key="@(Collapsed ? "ws-dropdown-collapsed" : "ws-dropdown-expanded")"
+              Placement="@Placement.TopLeft">
         <Overlay>
             <Menu Mode="@MenuMode.Vertical">
                 @foreach (var item in _recent)
@@ -28,6 +31,10 @@
             </Menu>
         </Overlay>
         <ChildContent>
+            @*
+                折叠态只显示图标（窄栏放不下文字），并用 Tooltip 承载完整工作区名；
+                展开态显示图标 + 目录名。
+            *@
             @if (Collapsed)
             {
                 <Tooltip Title="@($"工作区：{CurrentName}")" Placement="@Placement.Right">

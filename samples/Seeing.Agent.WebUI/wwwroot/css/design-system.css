@@ -5,6 +5,12 @@
  */
 
 :root {
+  /* ========== 侧栏宽度（兜底） ========== */
+  /* 运行时由 MainLayout 注入同名变量（值来自 AppSidebar.ExpandedWidth/CollapsedWidth）。
+     这里保留默认值，防止变量未注入时内容区 margin-left 塌成 0。 */
+  --sider-width: 240px;
+  --sider-collapsed-width: 80px;
+
   /* ========== 颜色系统 ========== */
   
   /* 主色调 */
@@ -118,8 +124,10 @@
   --transition-slow: 0.5s ease;
   
   /* ========== 布局系统 ========== */
-  --sidebar-width: 200px;
-  --sidebar-collapsed-width: 64px;
+  /* 侧栏宽度不在这里定义：真实值来自 AppSidebar.ExpandedWidth / CollapsedWidth，
+     经 MainLayout 注入 --sider-width / --sider-collapsed-width。
+     此处曾有一对 --sidebar-width/--sidebar-collapsed-width（200/64），
+     从未被引用且数值与实现漂移，已删除以免再被误用。 */
   --header-height: 56px;
   --footer-height: 40px;
   --message-max-width: 85%;

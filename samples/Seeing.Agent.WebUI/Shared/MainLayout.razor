@@ -21,10 +21,10 @@
 @inject Seeing.Agent.WebUI.Services.HostRequestDispatcher HostDispatcher
 @implements IDisposable
 
-<Layout Class="app-layout" Style="min-height: 100vh;">
-    <AppSidebar @ref="_sidebarRef"
-                Collapsed="@AppState.SidebarCollapsed"
-                CollapsedChanged="@OnSiderCollapse" />
+<Layout Class="app-layout"
+        Style="@($"--sider-width:{AppSidebar.ExpandedWidth}px;--sider-collapsed-width:{AppSidebar.CollapsedWidth}px;min-height:100vh;")">
+    @* 折叠态由 AppState 单一持有，AppSidebar 自己读写，不再经参数往返 *@
+    <AppSidebar @ref="_sidebarRef" />
 
     @if (AppState.IsMobile && AppState.MobileSidebarOpen)
     {
@@ -151,11 +151,6 @@
         if (AppState.IsMobile)
             return "main-layout-content main-layout-content--mobile";
         return AppState.SidebarCollapsed ? "main-layout-content collapsed" : "main-layout-content";
-    }
-
-    private void OnSiderCollapse(bool collapsed)
-    {
-        AppState.SidebarCollapsed = collapsed;
     }
 
     private void ToggleMobileSidebar()

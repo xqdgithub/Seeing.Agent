@@ -22,16 +22,15 @@
 @inject UiOverlayService Overlays
 
 <Sider Class="@GetSiderClass()"
-       Width="240"
-       CollapsedWidth="80"
-       Collapsed="@EffectiveCollapsed"
-       CollapsedChanged="@OnCollapsedChanged"
+       Width="@ExpandedWidth"
+       CollapsedWidth="@CollapsedWidth"
+       Collapsed="@IsMenuCollapsed"
        Collapsible="@(!AppState.IsMobile)"
        NoTrigger="true"
        Theme="@SiderTheme.Light"
        Style="@GetSiderStyle()">
     <a href="/" class="sider-header" style="cursor: pointer; text-decoration: none;">
-        @if (!EffectiveCollapsed)
+        @if (!IsMenuCollapsed)
         {
             @* 品牌标识本身就是字标（SEEING），不再另写文字，避免重复 *@
             <div class="logo-section">
@@ -46,29 +45,46 @@
         }
     </a>
 
+    @* 折叠态 AntDesign 会自动给菜单项套 Tooltip，其内容取自 MenuItem 的 content
+       （Title 或 ChildContent）。所以图标必须走 MenuItem 的 Icon 参数 —— 该参数
+       渲染在 content 之外，不会出现在 tooltip 里；若把 <Icon> 写进 ChildContent，
+       折叠悬停时就会出现「图标 + 图标 + 文字」的重复装饰。 *@
     <Menu Mode="@MenuMode.Inline"
+          @key="@(IsMenuCollapsed ? "sider-menu-collapsed" : "sider-menu-expanded")"
           Theme="@MenuTheme.Light"
           SelectedKeys="@_selectedKeys"
-          @bind-OpenKeys="_openKeys"
+          OpenKeys="@MenuOpenKeys"
+          DefaultOpenKeys="@MenuOpenKeys"
+          OpenKeysChanged="@OnOpenKeysChanged"
           Class="sider-menu">
 
-        <MenuItem Key="chat" OnClick="@(() => NavigateTo(GetChatPath()))">
-            <Icon Type="@IconType.Outline.Message" />
+        <MenuItem Key="chat" Icon="@IconType.Outline.Message" OnClick="@(() => NavigateTo(GetChatPath()))">
             <span>聊天</span>
         </MenuItem>
 
+        @*
+            审批中心的角标放在 IconTemplate 里，而不是 ChildContent：
+            折叠态 Ant 用 content（Title / ChildContent）作 tooltip 文本，
+            若 Badge 在 ChildContent 中，它会被一并复制进 tooltip，
+            而 Ant 的 .ant-badge 规则自带 color: rgba(0,0,0,0.85)，
+            会让 tooltip 文字变黑（其它菜单项是白字）。
+            IconTemplate 渲染在 content 之外，既保住角标又不会污染 tooltip。
+        *@
         <MenuItem Key="permission-center" OnClick="OpenPermissionCenter">
-            <Icon Type="@IconType.Outline.SafetyCertificate" />
-            <Badge Count="@PermissionView.TotalCount">
+            <IconTemplate>
+                <Badge Count="@PermissionView.TotalCount">
+                    <Icon Type="@IconType.Outline.SafetyCertificate" />
+                </Badge>
+            </IconTemplate>
+            <ChildContent>
                 <span>审批中心</span>
-            </Badge>
+            </ChildContent>
         </MenuItem>
 
         @foreach (var item in _ungroupedNav)
         {
             var key = NavKey(item);
-            <MenuItem @key="key" Key="@key" OnClick="@(() => NavigateTo(ResolveNavPath(item)))">
-                <Icon Type="@item.Icon" />
+            <MenuItem @key="key" Key="@key" Icon="@item.Icon" OnClick="@(() => NavigateTo(ResolveNavPath(item)))">
                 <span>@item.Title</span>
             </MenuItem>
         }
@@ -87,8 +103,7 @@
                     @foreach (var item in group.Items)
                     {
                         var key = NavKey(item);
-                        <MenuItem @key="key" Key="@key" OnClick="@(() => NavigateTo(ResolveNavPath(item)))">
-                            <Icon Type="@item.Icon" />
+                        <MenuItem @key="key" Key="@key" Icon="@item.Icon" OnClick="@(() => NavigateTo(ResolveNavPath(item)))">
                             <span>@item.Title</span>
                         </MenuItem>
                     }
@@ -99,7 +114,7 @@
 
     @* 底部两行：工作区入口独占一行，关闭 / 折叠放在下一行，避免三者挤在一行互相压缩 *@
     <div class="sider-footer-stack">
-        <WorkspaceSwitcherButton Collapsed="@EffectiveCollapsed" />
+        <WorkspaceSwitcherButton Collapsed="@IsMenuCollapsed" />
 
         <div class="@GetFooterClass()">
             <Popconfirm Title="确定关闭当前程序？关闭后需要重新启动程序才能再次访问。"
@@ -117,13 +132,13 @@
 
             @if (!AppState.IsMobile)
             {
-                <Tooltip Title="@(EffectiveCollapsed ? "展开侧栏" : "折叠侧栏")" Placement="@Placement.Left">
+                <Tooltip Title="@(IsMenuCollapsed ? "展开侧栏" : "折叠侧栏")" Placement="@Placement.Left">
                     <Button Type="@ButtonType.Text"
                             Shape="@ButtonShape.Circle"
                             Size="@ButtonSize.Small"
                             Class="sider-footer-collapse"
                             OnClick="ToggleCollapse">
-                        <Icon Type="@(EffectiveCollapsed ? IconType.Outline.MenuUnfold : IconType.Outline.MenuFold)" />
+                        <Icon Type="@(IsMenuCollapsed ? IconType.Outline.MenuUnfold : IconType.Outline.MenuFold)" />
                     </Button>
                 </Tooltip>
             }
@@ -135,21 +150,68 @@
                         OpenChanged="@(open => _permissionCenterOpen = open)" />
 
 @code {
-    [Parameter] public bool Collapsed { get; set; }
-    [Parameter] public EventCallback<bool> CollapsedChanged { get; set; }
+    /// <summary>展开态侧栏宽度（px）。与 <c>MainLayout</c> 注入的 CSS 变量同源，不要在别处重复写字面量。</summary>
+    public const int ExpandedWidth = 240;
+
+    /// <summary>折叠态侧栏宽度（px）。同上。</summary>
+    public const int CollapsedWidth = 80;
 
     private string[] _selectedKeys = Array.Empty<string>();
+
+    /// <summary>
+    /// 用户维护的展开分组（仅展开态有意义）。
+    /// <para>默认只展开「控制中心」，其余分组保持折叠，避免侧栏过长出现滚动。</para>
+    /// </summary>
     private string[] _openKeys =
     [
-        // 默认只展开「控制中心」，其余分组保持折叠，避免侧栏过长出现滚动
         NavGroups.Control,
     ];
+
     private IReadOnlyList<NavContribution> _visibleNav = Array.Empty<NavContribution>();
     private IReadOnlyList<NavContribution> _ungroupedNav = Array.Empty<NavContribution>();
     private IReadOnlyList<NavGroupView> _groupedNav = Array.Empty<NavGroupView>();
     private bool _shutdownRequested;
     private bool _permissionCenterOpen;
     private IDisposable? _optionsSubscription;
+
+    /// <summary>
+    /// 桌面端折叠态。唯一来源是 <see cref="AppState"/>（Singleton），组件不持副本。
+    /// </summary>
+    private bool Collapsed => AppState.SidebarCollapsed;
+
+    /// <summary>
+    /// 菜单是否按折叠态渲染。
+    /// <para>移动端 overlay 模式下菜单始终展开，只有桌面折叠才切到折叠渲染。</para>
+    /// </summary>
+    private bool IsMenuCollapsed => !AppState.IsMobile && Collapsed;
+
+    /// <summary>
+    /// 传给 Menu 的展开分组键。
+    /// <para>
+    /// 折叠态必须为空：AntDesign 在折叠（inline-collapsed）时不再内联展开，
+    /// 而是<b>按 OpenKeys 把子菜单渲染成浮层</b>。若仍传默认分组，
+    /// 折叠瞬间浮层会被自动弹出并长期占据 —— 既导致后续 hover 因浮层已处于展开态而不响应，
+    /// 也会在展开后残留。折叠态交给 hover 自行弹出即可，两种模式行为因此一致。
+    /// </para>
+    /// <para>
+    /// 同时用于 <c>OpenKeys</c> 与 <c>DefaultOpenKeys</c>：AntDesign 的
+    /// <c>Menu.OnInitialized</c> 会执行 <c>OpenKeys = DefaultOpenKeys?.ToArray() ?? OpenKeys</c>。
+    /// 由于 <c>DefaultOpenKeys</c> 的默认值是空集合（不是 null），只传 OpenKeys 时，
+    /// 菜单一旦因折叠重建就会把展开态覆盖成空 —— 表现为「切回展开后默认分组丢了」。
+    /// </para>
+    /// </summary>
+    private string[] MenuOpenKeys => IsMenuCollapsed ? [] : _openKeys;
+
+    /// <summary>
+    /// Menu 展开键变更回调。折叠态的展开/收起是浮层的瞬时状态，不是用户偏好，不回写。
+    /// </summary>
+    private void OnOpenKeysChanged(string[] keys)
+    {
+        if (IsMenuCollapsed)
+            return;
+
+        _openKeys = keys;
+    }
 
     /// <summary>打开审批中心抽屉（供移动端悬浮按钮经 @ref 调用）。</summary>
     public void OpenPermissionCenter() => _ = InvokeAsync(() =>
@@ -159,10 +221,6 @@
     });
 
     private void OnPermissionChanged() => _ = InvokeAsync(StateHasChanged);
-
-    /// <summary>有效折叠状态：移动端 overlay 模式时强制展开 Sider</summary>
-    private bool EffectiveCollapsed =>
-        AppState.IsMobile ? !AppState.MobileSidebarOpen : Collapsed;
 
     /// <summary>根据设备和 overlay 状态返回不同 CSS class</summary>
     private string GetSiderClass()
@@ -185,8 +243,18 @@
     private string GetFooterClass() =>
         AppState.IsMobile ? "sider-footer sider-footer--centered" : "sider-footer";
 
-    /// <summary>自定义折叠按钮（已关闭 Sider 内置 Trigger）</summary>
-    private Task ToggleCollapse() => OnCollapsedChanged(!EffectiveCollapsed);
+    /// <summary>
+    /// 桌面端折叠切换。唯一来源是 <see cref="AppState"/>；写回后广播变更，
+    /// 让 MainLayout（内容区边距）与 Session 页（工具栏文字）一起重渲染。
+    /// </summary>
+    private void ToggleCollapse()
+    {
+        if (AppState.IsMobile)
+            return;
+
+        AppState.SidebarCollapsed = !AppState.SidebarCollapsed;
+        AppState.NotifyChange();
+    }
 
     /// <summary>打开移动端侧边栏 overlay</summary>
     public void OpenMobileSidebar()
@@ -348,13 +416,4 @@
         !string.IsNullOrEmpty(AppState.CurrentSessionId)
             ? $"/session/{AppState.CurrentSessionId}"
             : "/sessions";
-
-    /// <summary>折叠状态变更回调：移动端关闭 Sider 内置折叠，只用 CSS 控制</summary>
-    private async Task OnCollapsedChanged(bool collapsed)
-    {
-        if (AppState.IsMobile) return;
-        Collapsed = collapsed;
-        if (CollapsedChanged.HasDelegate)
-            await CollapsedChanged.InvokeAsync(collapsed);
-    }
 }

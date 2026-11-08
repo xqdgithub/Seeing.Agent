@@ -28,18 +28,20 @@
 }
 
 /* ========== 主内容区域 ========== */
+/* 侧栏宽度由 MainLayout 注入的 CSS 变量提供（与 AppSidebar 常量同源），
+   这里不再写字面量，避免侧栏改了而内容区没跟上。 */
 .main-layout-content {
     background: #f5f5f5 !important;
     height: 100vh !important;
     max-height: 100vh !important;
     overflow: hidden !important;
-    margin-left: 240px;
+    margin-left: var(--sider-width);
     transition: margin-left 0.2s ease;
     flex: 1 !important;
 }
 
 .main-layout-content.collapsed {
-    margin-left: 80px;
+    margin-left: var(--sider-collapsed-width);
 }
 
 /* 移动端：Sider 隐藏，移除内容区左边距 */
@@ -106,31 +108,15 @@
 }
 
 /* ========== 深色模式 ========== */
-@media (prefers-color-scheme: dark) {
-    .app-layout {
-        background: #0a0a0a !important;
-    }
-    
-    .main-layout-content {
-        background: #0a0a0a !important;
-    }
-    
-    .status-bar {
-        background: #141414;
-        border-top-color: #303030;
-    }
-    
-    .status-label {
-        color: #8c8c8c;
-    }
-    
-    .status-value {
-        color: #e6e6e6;
-    }
-    
-    .status-text {
-        color: #a6a6a6;
-    }
+/* 与全站一致用 <html data-theme="dark">，不用系统偏好 media query */
+[data-theme="dark"] .app-layout,
+[data-theme="dark"] .main-layout-content {
+    background: var(--color-bg) !important;
+}
+
+[data-theme="dark"] .status-bar {
+    background: var(--color-bg-secondary);
+    border-top-color: var(--color-border-secondary);
 }
 
 /* ========== 移动端侧边栏遮罩 ========== */
@@ -154,8 +140,6 @@
 }
 
 /* ========== 深色模式遮罩 ========== */
-@media (prefers-color-scheme: dark) {
-    .sidebar-overlay-mask {
-        background: rgba(0, 0, 0, 0.65);
-    }
+[data-theme="dark"] .sidebar-overlay-mask {
+    background: rgba(0, 0, 0, 0.65);
 }
