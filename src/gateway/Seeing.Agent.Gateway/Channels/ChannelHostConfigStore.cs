@@ -23,7 +23,6 @@ public sealed class ChannelHostConfigStore
     private readonly IConfigSectionStore _configStore;
     private readonly IWorkspaceProvider _workspaceProvider;
     private readonly GatewayChannelRegistry _registry;
-    private readonly string _clientsDirectory;
 
     public ChannelHostConfigStore(
         IConfigSectionStore configStore,
@@ -33,10 +32,16 @@ public sealed class ChannelHostConfigStore
         _configStore = configStore;
         _workspaceProvider = workspaceProvider;
         _registry = registry;
-        _clientsDirectory = Path.Combine(_workspaceProvider.ProjectSeeingDirectory, "gateway-clients");
     }
 
-    public string ClientsDirectory => _clientsDirectory;
+    /// <summary>
+    /// 渠道运行时文件目录（<c>{项目}/.seeing/gateway-clients</c>）。
+    /// <para><b>每次现算，不缓存</b>：本类是单例，而路径由当前工作区推导。
+    /// 缓存构造时的值会让工作区切换后的「按新根重启 ChannelHost」去读旧工作区的配置文件——
+    /// 新工作区没有该文件时 <c>StartCoreAsync</c> 会静默跳过启动，表现为「切换后渠道全没了」。</para>
+    /// </summary>
+    public string ClientsDirectory =>
+        Path.Combine(_workspaceProvider.ProjectSeeingDirectory, "gateway-clients");
 
     public IReadOnlyList<ChannelHostEntry> GetChannelHosts()
     {
@@ -67,10 +72,10 @@ public sealed class ChannelHostConfigStore
     }
 
     public string GetRuntimeConfigPath(string channelId) =>
-        Path.Combine(_clientsDirectory, $"{channelId}.json");
+        Path.Combine(ClientsDirectory, $"{channelId}.json");
 
     public string GetRuntimeStatePath(string channelId) =>
-        Path.Combine(_clientsDirectory, $"{channelId}.state.json");
+        Path.Combine(ClientsDirectory, $"{channelId}.state.json");
 
     public async Task<GatewayClientRuntimeState> LoadRuntimeStateAsync(string channelId, CancellationToken ct = default)
     {
@@ -85,8 +90,11 @@ public sealed class ChannelHostConfigStore
 
     public async Task SaveRuntimeStateAsync(string channelId, GatewayClientRuntimeState state, CancellationToken ct = default)
     {
-        Directory.CreateDirectory(_clientsDirectory);
         var path = GetRuntimeStatePath(channelId);
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory))
+            Directory.CreateDirectory(directory);
+
         var json = JsonSerializer.Serialize(state, s_jsonOptions);
         await File.WriteAllTextAsync(path, json, ct);
     }

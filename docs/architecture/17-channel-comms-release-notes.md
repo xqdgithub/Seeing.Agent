@@ -169,3 +169,36 @@ WebUI 出站绑定改为读写 `ChannelRoute`（工具栏、会话窗、会话�
 
 - **跨进程写入是「合并」而非「合并冲突」**：两个进程同时改同一条目时按「内存优先」覆盖，不做字段级合并或版本校验。
 - **路径切换期间的写入**：`AlignPathLocked` 会清空内存再写入本次条目，若恰有其它进程在同一瞬间写旧工作区，旧条目不会被带入新文件（这是刻意的方向）。
+
+---
+
+## 8. 工作区切换时 Gateway / ChannelHost 的协调（2026-11-08）
+
+### 8.1 协调者与顺序
+
+`WorkspaceSwitcher.ApplyAsync`（`IWorkspaceSwitcher`）是唯一入口，参与者经 `IWorkspaceApplyParticipant` 枚举：
+
+| 阶段 | 动作 |
+|---|---|
+| 1 | `RejectPendingPermissions`：拒绝未决审批，解开卡在审批上的工具 |
+| 2 | `CancelAllInFlightAsync` + `WaitUntilIdleAsync`：等执行真的收尾（此时改根会让收尾写进新工作区） |
+| 3 | `foreach participant → OnApplyingAsync`：停旧根。任一失败则整次切换判失败 |
+| 4 | `SetWorkspaceRoot` → 重读配置 → `WorkspaceChange` + `ConfigChange` 两轮重载 |
+| 5 | `foreach participant → OnAppliedAsync`：起新根。失败只记日志，不判切换失败 |
+
+登记的参与者：`scheduler`（停 Quartz → `RebuildAsync` + 按切换前状态决定是否 `StartAsync`）、`comms`（重置目录/锚点/频控）、`gateway`（`StopAllAsync` 子进程 → `Gateway.StopAsync`；之后 `Gateway.StartAsync` → `StartAllAsync` 子进程）。
+
+`gateway` 的起停顺序不可颠倒：ChannelHost 连上来时 Gateway 必须已监听。
+
+### 8.2 两个必须由工作区驱动的路径
+
+- **`ChannelHostConfigStore.ClientsDirectory` 必须每次现算**（`{项目}/.seeing/gateway-clients`）。曾缓存在构造函数里，导致工作区切换后 `StartAllAsync` 读旧工作区的 `{channel}.json`——新工作区没有该文件时 `ChannelHostManager.StartCoreAsync` 静默 `return`，表现为「切换后渠道全部消失」；保存渠道配置也会写进旧工作区。
+- **`GatewayChannelRegistry` 必须在 `WorkspaceChange` 轮重扫**（`GatewayChannelRegistryReloadHandler`）。它扫描 `{工作区}/.seeing/gateway-channels` 与用户级目录；不重扫则新工作区装的渠道不出现、已删除的仍被尝试拉起。时机在参与者 `OnAppliedAsync` 之前，`StartAllAsync` 看到的一定是新清单。
+
+### 8.3 已知边界
+
+- **参与者的 `OnAppliedAsync` 失败不判切换失败**：渠道起不来只记 Error 日志，界面仍会导航到新工作区。
+- **ChannelHost 有自己的 `WorkspaceProvider`**：子进程按 `--config` 路径反推工作区根（`ChannelHostWorkspace.InferFromConfigPath`），因此工作区切换只能靠重启子进程生效，不能靠父进程改根传递。
+- **注册表在首次选定工作区之前无法重扫**：`GatewayChannelRegistry.Reload` 需要可用根，未决议时 `WorkspaceReadyInitializer` 会把它延后到首次选定。
+
+

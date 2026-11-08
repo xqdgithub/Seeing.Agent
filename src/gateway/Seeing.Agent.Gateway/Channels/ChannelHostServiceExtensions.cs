@@ -22,6 +22,8 @@ public static class ChannelHostServiceExtensions
 
         // 配置重载处理器（依赖 ChannelHostHostedService，必须在其后注册）
         services.AddSingleton<IReloadHandler, ChannelHostReloadHandler>();
+        // 工作区切换：渠道插件注册表按新根重扫（早于参与者的 StartAllAsync）
+        services.AddSingleton<IReloadHandler, GatewayChannelRegistryReloadHandler>();
         return services;
     }
 }
