@@ -1,12 +1,22 @@
-@using AntDesign
+﻿@using AntDesign
 @using Seeing.Agent.Abstractions.Channels
 @inject IChannelDirectory Directory
 @inject IMessageService MessageService
+@inject ILogger<ChannelDirectoryManager> Logger
 @implements IDisposable
 
-@* 通联目录管理：数据来自 ~/.seeing/comms/directory.json（渠道消息入站时经 AdmitInbound 准入并登记）。
+@* 通联目录管理：数据来自 {项目}/.seeing/comms/directory.json（工作区未选定时回退用户级）。
+   渠道消息入站时经 IChannelDirectory.AdmitInbound 准入并登记。
    「删除」只移除当前条目，对方再发消息会重新登记；「屏蔽」会持久拦住入站，需手动解封。 *@
 
+@if (!string.IsNullOrEmpty(_loadError))
+{
+    <Alert Type="@AlertType.Error" ShowIcon="true" Style="margin-bottom: 12px;"
+           Message="加载通联目录失败" Description="@_loadError" />
+}
+
+@* 诊断条改回静默默认：仅在「加载完成且通道为空」时由下面的 Space 提示，
+   平时不占版面。 *@
 <Space Style="margin-bottom: 12px;" Wrap>
     <Select TItemValue="string" TItem="string"
             Value="@_channelId"
@@ -15,106 +25,134 @@
             Placeholder="选择通道"
             Style="width: 180px;" />
     <Button Icon="@IconType.Outline.Reload" Loading="@_loading" OnClick="ReloadAsync">刷新</Button>
+    @if (_channelIds.Count == 0 && !_loading)
+    {
+        <span style="color: #888; font-size: 12px;">
+            目录中还没有任何通道；收到渠道消息后会自动登记。
+        </span>
+    }
 </Space>
 
-@if (string.IsNullOrEmpty(_channelId))
+@if (_loading)
 {
-    <Empty Description="@("请选择通道")" />
+    <div style="padding: 24px; text-align: center;">
+        <Spin Size="@SpinSize.Large" />
+        <div style="margin-top: 8px; color: #888; font-size: 12px;">加载通联目录…</div>
+    </div>
 }
-else
+else if (!string.IsNullOrEmpty(_channelId))
 {
-    <Tabs>
-        <TabPane Key="conversations" Tab="对话">
+    @* 对话 *@
+    <Card Size="@CardSize.Small" Title="@($"对话 · {_conversations.Count}")" Style="margin-bottom: 12px;">
+        @if (_conversations.Count == 0)
+        {
+            <Empty Description="@("该通道暂无已登记对话")" />
+        }
+        else
+        {
             <Table TItem="ConversationRow" DataSource="@_conversations" RowKey="@(r => r.Key)"
-                   Size="@TableSize.Small" PageSize="10" Loading="@_loading">
+                   Size="@TableSize.Small" PageSize="10">
                 <Column TData="ConversationRow" Title="类型" Width="90">
                     <span>@UiText.ConversationKindText(context.Kind)</span>
                 </Column>
-                <Column TData="ConversationRow" Title="外部 ID" Width="220" Ellipsis>
+                <Column TData="ConversationRow" Title="外部 ID" Width="260" Ellipsis>
                     <Tooltip Title="@context.ExternalId">
                         <span>@context.ExternalId</span>
                     </Tooltip>
                 </Column>
                 <Column TData="ConversationRow" Title="显示名">
-                    <span>@(string.IsNullOrWhiteSpace(context.Title) ? "—" : context.Title)</span>
+                    <span>@(string.IsNullOrWhiteSpace(context.Title) ? UiText.None : context.Title)</span>
                 </Column>
                 <Column TData="ConversationRow" Title="成员" Width="80">
                     <span>@context.MemberCount</span>
                 </Column>
-                <Column TData="ConversationRow" Title="最后活跃" Width="160">
+                <Column TData="ConversationRow" Title="最后活跃" Width="150">
                     <span>@context.LastSeenDisplay</span>
                 </Column>
-                <ActionColumn Title="操作" Width="280" Fixed="@ColumnFixPlacement.Right">
+                <ActionColumn Title="操作" Width="270" Fixed="@ColumnFixPlacement.Right">
                     <Space>
                         <Button Size="@ButtonSize.Small" OnClick="@(() => ShowRename(context))">改显示名</Button>
                         <Popconfirm Title="仅从目录删除。对方再次发消息会被重新登记。" OnConfirm="@(() => DeleteConversationAsync(context))">
                             <Button Size="@ButtonSize.Small">删除</Button>
                         </Popconfirm>
-                        <Popconfirm Title="删除并屏蔽：之后入站不再登记，需在本页手动解封。" OnConfirm="@(() => BlockConversationAsync(context))">
+                        <Popconfirm Title="删除并屏蔽：之后入站不再登记，需手动解封。" OnConfirm="@(() => BlockConversationAsync(context))">
                             <Button Size="@ButtonSize.Small" Danger>屏蔽</Button>
                         </Popconfirm>
                     </Space>
                 </ActionColumn>
             </Table>
-        </TabPane>
+        }
+    </Card>
 
-        <TabPane Key="users" Tab="用户">
-            <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 12px;"
-                   Message="私聊出站按用户准入；「已退订」的用户不会被主动推送（被动回复仍可送达）。" />
+    @* 用户 *@
+    <Card Size="@CardSize.Small" Title="@($"用户 · {_users.Count}")" Style="margin-bottom: 12px;">
+        <div style="margin-bottom: 8px; color: #888; font-size: 12px;">
+            私聊出站按用户准入；「已退订」的用户不会被主动推送（被动回复仍可送达）。
+        </div>
+        @if (_users.Count == 0)
+        {
+            <Empty Description="@("该通道暂无已登记用户")" />
+        }
+        else
+        {
             <Table TItem="UserRow" DataSource="@_users" RowKey="@(r => r.Key)"
-                   Size="@TableSize.Small" PageSize="10" Loading="@_loading">
-                <Column TData="UserRow" Title="外部 ID" Width="220" Ellipsis>
+                   Size="@TableSize.Small" PageSize="10">
+                <Column TData="UserRow" Title="外部 ID" Width="260" Ellipsis>
                     <Tooltip Title="@context.ExternalId">
                         <span>@context.ExternalId</span>
                     </Tooltip>
                 </Column>
                 <Column TData="UserRow" Title="显示名">
-                    <span>@(string.IsNullOrWhiteSpace(context.DisplayName) ? "—" : context.DisplayName)</span>
+                    <span>@(string.IsNullOrWhiteSpace(context.DisplayName) ? UiText.None : context.DisplayName)</span>
                 </Column>
-                <Column TData="UserRow" Title="最后活跃" Width="160">
+                <Column TData="UserRow" Title="最后活跃" Width="150">
                     <span>@context.LastSeenDisplay</span>
                 </Column>
                 <Column TData="UserRow" Title="已退订" Width="90">
                     <AntDesign.Switch Checked="@context.OptedOut" OnChange="@(v => SetOptOutAsync(context, v))" />
                 </Column>
-                <ActionColumn Title="操作" Width="120" Fixed="@ColumnFixPlacement.Right">
+                <ActionColumn Title="操作" Width="100" Fixed="@ColumnFixPlacement.Right">
                     <Popconfirm Title="仅从目录删除。对方再次发消息会被重新登记。" OnConfirm="@(() => DeleteUserAsync(context))">
                         <Button Size="@ButtonSize.Small" Danger>删除</Button>
                     </Popconfirm>
                 </ActionColumn>
             </Table>
-        </TabPane>
+        }
+    </Card>
 
-        <TabPane Key="blocked" Tab="屏蔽名单">
-            @if (_blocked.Count == 0)
-            {
-                <Empty Description="@("当前通道没有屏蔽的对话")" />
-            }
-            else
-            {
-                <Table TItem="BlockedRow" DataSource="@_blocked" RowKey="@(r => r.Key)"
-                       Size="@TableSize.Small" HidePagination>
-                    <Column TData="BlockedRow" Title="类型" Width="90">
-                        <span>@UiText.ConversationKindText(context.Kind)</span>
-                    </Column>
-                    <Column TData="BlockedRow" Title="外部 ID" Width="220" Ellipsis>
-                        <Tooltip Title="@context.ExternalId">
-                            <span>@context.ExternalId</span>
-                        </Tooltip>
-                    </Column>
-                    <Column TData="BlockedRow" Title="屏蔽前显示名">
-                        <span>@(string.IsNullOrWhiteSpace(context.Title) ? "—" : context.Title)</span>
-                    </Column>
-                    <Column TData="BlockedRow" Title="屏蔽时间" Width="160">
-                        <span>@context.BlockedAtDisplay</span>
-                    </Column>
-                    <ActionColumn Title="操作" Width="110" Fixed="@ColumnFixPlacement.Right">
-                        <Button Size="@ButtonSize.Small" OnClick="@(() => UnblockAsync(context))">解封</Button>
-                    </ActionColumn>
-                </Table>
-            }
-        </TabPane>
-    </Tabs>
+    @* 屏蔽名单 *@
+    <Card Size="@CardSize.Small" Title="@($"屏蔽名单 · {_blocked.Count}")">
+        <div style="margin-bottom: 8px; color: #888; font-size: 12px;">
+            屏蔽是双向的：入站不再登记，出站也不会投递。解封后对方下次发消息会重新登记。
+        </div>
+        @if (_blocked.Count == 0)
+        {
+            <Empty Description="@("当前通道没有屏蔽的对话")" />
+        }
+        else
+        {
+            <Table TItem="BlockedRow" DataSource="@_blocked" RowKey="@(r => r.Key)"
+                   Size="@TableSize.Small" HidePagination>
+                <Column TData="BlockedRow" Title="类型" Width="90">
+                    <span>@UiText.ConversationKindText(context.Kind)</span>
+                </Column>
+                <Column TData="BlockedRow" Title="外部 ID" Width="260" Ellipsis>
+                    <Tooltip Title="@context.ExternalId">
+                        <span>@context.ExternalId</span>
+                    </Tooltip>
+                </Column>
+                <Column TData="BlockedRow" Title="屏蔽前显示名">
+                    <span>@(string.IsNullOrWhiteSpace(context.Title) ? UiText.None : context.Title)</span>
+                </Column>
+                <Column TData="BlockedRow" Title="屏蔽时间" Width="150">
+                    <span>@context.BlockedAtDisplay</span>
+                </Column>
+                <ActionColumn Title="操作" Width="100" Fixed="@ColumnFixPlacement.Right">
+                    <Button Size="@ButtonSize.Small" OnClick="@(() => UnblockAsync(context))">解封</Button>
+                </ActionColumn>
+            </Table>
+        }
+    </Card>
 }
 
 <Modal Title="@($"修改显示名 · {_renameTarget?.ExternalId}")"
@@ -134,12 +172,22 @@ else
 </Modal>
 
 @code {
+    /// <summary>
+    /// 外部刷新信号：宿主页面自增此值即让本组件重读目录。
+    /// <para>与宿主「刷新」按钮联动，避免目录页要单独再按一次刷新。</para>
+    /// </summary>
+    [Parameter]
+    public int RefreshVersion { get; set; }
+
     private string? _channelId;
     private IReadOnlyList<string> _channelIds = [];
     private List<ConversationRow> _conversations = [];
     private List<UserRow> _users = [];
     private List<BlockedRow> _blocked = [];
     private bool _loading;
+    /// <summary>加载失败原因；非空时页面顶部显示错误块（比一闪而过的 toast 可靠）。</summary>
+    private string? _loadError;
+    private int _observedRefreshVersion;
 
     private bool _renameVisible;
     private bool _renaming;
@@ -148,9 +196,21 @@ else
 
     protected override Task OnInitializedAsync() => ReloadAsync();
 
-    private async Task ReloadAsync()
+    protected override async Task OnParametersSetAsync()
+    {
+        // 只在 RefreshVersion 变化时重读（初始值 0 → 首帧不重复加载）。
+        if (RefreshVersion == _observedRefreshVersion)
+            return;
+
+        _observedRefreshVersion = RefreshVersion;
+        await ReloadAsync();
+    }
+
+    /// <summary>重读目录（公开给宿主页面在刷新时调用）。</summary>
+    public async Task ReloadAsync()
     {
         _loading = true;
+        _loadError = null;
         try
         {
             _channelIds = await Directory.ListChannelIdsAsync();
@@ -162,7 +222,13 @@ else
         }
         catch (Exception ex)
         {
-            MessageService.Error($"加载通联目录失败：{ex.Message}");
+            // 页面内展示而不是只发 toast：目录解析失败时用户至少知道为什么是空的。
+            _loadError = ex.Message;
+            _channelIds = [];
+            _conversations = [];
+            _users = [];
+            _blocked = [];
+            Logger.LogError(ex, "加载通联目录失败");
         }
         finally
         {

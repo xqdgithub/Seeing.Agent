@@ -6,8 +6,10 @@
 @using Seeing.Agent.Core.Models
 @using Seeing.Agent.Core.Configuration
 @using Seeing.Agent.Configuration
+@using Seeing.Agent.Abstractions.Channels
 @inject IAgentRegistry AgentRegistry
 @inject Seeing.Session.Core.ISessionManager SessionManager
+@inject IChannelDirectory ChannelDirectory
 
 <Modal Title="@(IsEdit ? "编辑任务" : "新建任务")"
        Visible="@Visible"
@@ -169,6 +171,20 @@
                     <ConversationPicker Placeholder="从目录选择出站会话（可选）"
                                         OnSelected="@OnConversationSelected" />
                     <small style="color: #999;">推送目标对话，优先于会话绑定。留空则保存时从目标会话的出站绑定补上。</small>
+                    @* 目录是投递准入门槛：对话不在目录里，触发时会被 OutboundDeliveryService 拒绝
+                       （NotInDirectory）。这里只提示、不阻止保存——目录可能暂时缺该条记录
+                       （桥重装后对方还没再发消息），用户可能仍想先把任务配好。 *@
+                    @switch (_conversationCheck)
+                    {
+                        case DirectoryCheckState.Checking:
+                            <small style="color: #999;">正在校验目录…</small>
+                            break;
+                        case DirectoryCheckState.NotInDirectory:
+                            <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-top: 6px; padding: 4px 10px;"
+                                   Message="该对话未在渠道目录登记，推送时会被拒绝（不在目录中）"
+                                   Description="等对方再发一条消息触发登记，或从上方选择器重新选择一个已登记的对话。" />
+                            break;
+                    }
                 </FormItem>
             </Col>
         </Row>
@@ -304,6 +320,8 @@
             _showConversationFields = !_autoConversation;
             if (_autoConversation)
                 _ = FillConversationFromSessionAsync(Job.Dispatch.Target.SessionId);
+            else
+                _ = RefreshConversationDirectoryCheckAsync();
 
             RefreshAgentRuntime();
         }
@@ -311,6 +329,21 @@
 
     /// <summary>conversation 手填字段展开状态（目录选择或手动展开时 true）。</summary>
     private bool _showConversationFields;
+
+    /// <summary>目录校验状态。</summary>
+    private enum DirectoryCheckState
+    {
+        /// <summary>未校验（如刚手改字段）：不显示任何提示。</summary>
+        Unknown,
+        /// <summary>校验中：显示加载提示。</summary>
+        Checking,
+        /// <summary>已在目录：不显示提示。</summary>
+        InDirectory,
+        /// <summary>不在目录：显示「推送会被拒绝」警告。</summary>
+        NotInDirectory
+    }
+
+    private DirectoryCheckState _conversationCheck = DirectoryCheckState.Unknown;
 
     /// <summary>当前 conversation 是从会话绑定自动带上的；改目标会话时可以换，手选后不再覆盖。</summary>
     private bool _autoConversation;
@@ -321,6 +354,48 @@
         new("group", "群聊"),
         new("guild", "频道"),
     ];
+
+    /// <summary>
+    /// 校验当前 conversation 是否在渠道目录里。
+    /// <para>目录是投递准入门槛（<c>OutboundDeliveryService</c> 不在目录即拒绝），
+    /// 而「从会话绑定自动预填」这条路径的来源是 <c>SessionData.ChannelRoute</c>，
+    /// 两者可能不一致（会话绑定指向的对话可能从未登记，或目录被清空过）。
+    /// 这里只提示、不阻止保存。</para>
+    /// </summary>
+    private async Task RefreshConversationDirectoryCheckAsync()
+    {
+        var conversation = Job.Dispatch.Target.Conversation;
+        if (conversation is null
+            || string.IsNullOrWhiteSpace(conversation.ChannelId)
+            || string.IsNullOrWhiteSpace(conversation.ExternalId)
+            || !TryParseKind(conversation.Kind, out var kind))
+        {
+            _conversationCheck = DirectoryCheckState.Unknown;
+            return;
+        }
+
+        _conversationCheck = DirectoryCheckState.Checking;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var entry = await ChannelDirectory.FindConversationAsync(
+                conversation.ChannelId, kind, conversation.ExternalId);
+            _conversationCheck = entry is not null
+                ? DirectoryCheckState.InDirectory
+                : DirectoryCheckState.NotInDirectory;
+        }
+        catch
+        {
+            // 目录不可用（模块未启用等）：不给出「不在目录」的误报。
+            _conversationCheck = DirectoryCheckState.Unknown;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static bool TryParseKind(string? kind, out ConversationKind parsed)
+        => Enum.TryParse(kind, ignoreCase: true, out parsed);
 
     private async Task OnSessionIdCommitted()
     {
@@ -350,16 +425,27 @@
                 _showConversationFields = false;
             }
 
+            await RefreshConversationDirectoryCheckAsync();
             await InvokeAsync(StateHasChanged);
             return;
         }
 
         _autoConversation = true;
         _showConversationFields = true;
+
+        // 自动预填的来源是会话绑定（SessionChannelRoute），不是目录：
+        // 校验一下，不在目录时给出「推送会被拒绝」的提示。
+        await RefreshConversationDirectoryCheckAsync();
         await InvokeAsync(StateHasChanged);
     }
 
-    private void LockManualConversation() => _autoConversation = false;
+    private void LockManualConversation()
+    {
+        _autoConversation = false;
+        // 手填字段改了 → 之前的目录校验结论作废。逐键查询目录没有意义，
+        // 保存时再统一校验（见 SaveAsync）。
+        _conversationCheck = DirectoryCheckState.Unknown;
+    }
 
     /// <summary>目录选择器选中 → 回填 conversation 4 字段并展开手填区。</summary>
     private void OnConversationSelected(Seeing.Agent.Abstractions.Channels.ConversationInfo conversation)
@@ -373,6 +459,10 @@
         };
         _autoConversation = false;
         _showConversationFields = true;
+
+        // 来自选择器 → 必然在目录里，免一次查询。
+        _conversationCheck = DirectoryCheckState.InDirectory;
+
         InvokeAsync(StateHasChanged);
     }
 
@@ -530,6 +620,20 @@
 
         if (Job.Dispatch?.Target?.Conversation is { IsComplete: false })
             Job.Dispatch.Target.Conversation = null;
+
+        // 目录是投递准入门槛。这里只提示、不阻断保存：目录可能暂时缺该条记录
+        // （桥重装后对方还没再发消息），用户可能仍想先把任务配好。
+        // 手填路径不会逐键校验，所以保存时兜底一次。
+        if (Job.Dispatch?.Target?.Conversation is { IsComplete: true } conversation
+            && _conversationCheck == DirectoryCheckState.Unknown)
+        {
+            await RefreshConversationDirectoryCheckAsync();
+            if (_conversationCheck == DirectoryCheckState.NotInDirectory)
+            {
+                await OnError.InvokeAsync(
+                    $"出站对话 {conversation.ChannelId}/{conversation.ExternalId} 未在渠道目录登记，推送时会被拒绝");
+            }
+        }
 
         if (Job.Schedule.Type == ScheduleTypes.Once && !string.IsNullOrWhiteSpace(_runAtText))
         {

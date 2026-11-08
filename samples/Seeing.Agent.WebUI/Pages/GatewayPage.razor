@@ -19,7 +19,7 @@
     <Extra>
         <Space>
             <ConfigLevelSelector @bind-Value="_saveLevel" SectionName="Gateway" />
-            <Button Icon="@IconType.Outline.Reload" OnClick="CheckHealth">检查状态</Button>
+            <Button Icon="@IconType.Outline.Reload" Loading="@_refreshing" OnClick="RefreshAsync">刷新</Button>
             <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveAsync">保存配置</Button>
         </Space>
     </Extra>
@@ -98,9 +98,11 @@
         </Row>
 
         @* 通联目录：QQ / WeCom 等渠道的对话与用户登记表。
-           数据由渠道消息入站时经 IChannelDirectory.AdmitInbound 准入并写入 ~/.seeing/comms/directory.json。 *@
+           数据由渠道消息入站时经 IChannelDirectory.AdmitInbound 准入并写入
+           {项目}/.seeing/comms/directory.json（工作区未选定时回退 ~/.seeing/comms/directory.json）。
+           页面「刷新」按钮通过 RefreshVersion 触发它重读目录。 *@
         <Card Title="通联目录" Style="margin-top: 12px;">
-            <ChannelDirectoryManager />
+            <ChannelDirectoryManager RefreshVersion="_directoryRefreshVersion" />
         </Card>
     </ChildContent>
 </WorkspacePageShell>
@@ -111,7 +113,11 @@
     private ConfigLevel _saveLevel = ConfigLevel.Project;
     private bool _loading;
     private bool _healthy;
+    private bool _refreshing;
     private string? _healthMessage;
+
+    /// <summary>通联目录刷新信号：自增即让子组件重读目录。</summary>
+    private int _directoryRefreshVersion;
 
     protected override async Task OnInitializedAsync()
     {
@@ -119,21 +125,56 @@
         await CheckHealth();
     }
 
+    /// <summary>
+    /// 刷新：重读配置 + 重探健康状态 + 让通联目录重读目录。
+    /// 用一个按钮覆盖「页面上的数据重新拉一遍」，避免用户猜哪个块该按哪个键。
+    /// </summary>
+    private async Task RefreshAsync()
+    {
+        _refreshing = true;
+        try
+        {
+            await LoadAsync();
+            await CheckHealth();
+
+            // 让通联目录重读：只靠 RefreshVersion 一个入口，避免同一次点击触发两轮加载。
+            _directoryRefreshVersion++;
+
+            MessageService.Success("已刷新");
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+
     private async Task LoadAsync()
     {
         _loading = true;
-        _gateway = await ConfigService.LoadGatewayAtLevelAsync(ConfigLevel.Project);
-        _originalGateway = new GatewayOptions
+        try
         {
-            Enabled = _gateway.Enabled,
-            AutoStart = _gateway.AutoStart,
-            Port = _gateway.Port,
-            BindAddress = _gateway.BindAddress,
-            PermissionMode = _gateway.PermissionMode,
-            EnableWebSocket = _gateway.EnableWebSocket,
-            WebSocketPath = _gateway.WebSocketPath
-        };
-        _loading = false;
+            _gateway = await ConfigService.LoadGatewayAtLevelAsync(ConfigLevel.Project);
+            _originalGateway = new GatewayOptions
+            {
+                Enabled = _gateway.Enabled,
+                AutoStart = _gateway.AutoStart,
+                Port = _gateway.Port,
+                BindAddress = _gateway.BindAddress,
+                PermissionMode = _gateway.PermissionMode,
+                EnableWebSocket = _gateway.EnableWebSocket,
+                WebSocketPath = _gateway.WebSocketPath
+            };
+        }
+        catch (Exception ex)
+        {
+            // 配置读取失败（如工作区未选定：Gateway 节是 ProjectOnly）不能让 _loading 永久为 true——
+            // 那会让 WorkspacePageShell 只渲染 spinner，整页内容（含下方通联目录）全部不可见。
+            MessageService.Warning($"读取 Gateway 配置失败：{ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
     private async Task SaveAsync()

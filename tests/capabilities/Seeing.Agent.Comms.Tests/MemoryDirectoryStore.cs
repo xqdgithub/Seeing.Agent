@@ -75,6 +75,17 @@ internal sealed class MemoryDirectoryStore : IChannelDirectoryStore
     public Task<IReadOnlyList<BlockedConversation>> ListBlockedConversationsAsync(CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<BlockedConversation>>(_blocked.Values.ToList());
 
+    public Task<IReadOnlyList<string>> ListChannelIdsAsync(CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<string>>(
+            _conversations.Values.Select(c => c.Conversation.ChannelId)
+                .Concat(_blocked.Values.Select(b => b.ChannelId))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(c => c, StringComparer.Ordinal)
+                .ToList());
+
+    public bool IsBlocked(string channelId, ConversationKind kind, string externalId)
+        => _blocked.ContainsKey(channelId + "\u001f" + kind + "\u001f" + externalId);
+
     public Task SaveBlockedConversationAsync(BlockedConversation entry, CancellationToken ct = default)
     {
         _blocked[entry.ChannelId + "\u001f" + entry.Kind + "\u001f" + entry.ExternalId] = entry;

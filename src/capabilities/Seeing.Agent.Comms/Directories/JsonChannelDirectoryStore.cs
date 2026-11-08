@@ -2,6 +2,8 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
+using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Configuration;
 using Seeing.Files;
 using Seeing.Serialization;
 using System.Text.Json;
@@ -10,7 +12,9 @@ using System.Text.Json.Serialization;
 namespace Seeing.Agent.Comms.Directories;
 
 /// <summary>
-/// <c>~/.seeing/comms/directory.json</c> 目录存储。构造时载入；每次写入 temp + move。
+/// 渠道目录存储（默认 <c>{项目}/.seeing/comms/directory.json</c>，工作区未选定时回退
+/// <c>~/.seeing/comms/directory.json</c>）。构造时载入；读取前按文件时间戳增量同步，
+/// 写入前先把磁盘上的外部条目合并进来。
 /// </summary>
 public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
 {
@@ -23,22 +27,61 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
 
     private readonly IOptions<CommsOptions> _options;
     private readonly ILogger<JsonChannelDirectoryStore> _logger;
+    private readonly ISeeingDirectories? _directories;
     private readonly object _gate = new();
     private readonly Dictionary<string, ChannelUserEntry> _users = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ConversationEntry> _conversations = new(StringComparer.Ordinal);
     private readonly Dictionary<string, BlockedConversation> _blocked = new(StringComparer.Ordinal);
 
-    public JsonChannelDirectoryStore(IOptions<CommsOptions> options, ILogger<JsonChannelDirectoryStore>? logger = null)
+    /// <summary>
+    /// 上次与磁盘同步时的文件时间戳。用于判断内存快照是否已落后于磁盘。
+    /// <para><b>为什么需要它</b>：本文件是<b>多进程共享</b>的（WebUI 主进程 / GatewayServer /
+    /// ChannelHost 桥子进程）。只在构造时读一次盘会让「后写入方的条目」永远不出现在本进程内存里
+    /// ——表现为「定时任务能选到出站会话，目录页却是空的」。</para>
+    /// </summary>
+    private DateTime _syncedWriteUtc = DateTime.MinValue;
+
+    public JsonChannelDirectoryStore(
+        IOptions<CommsOptions> options,
+        ILogger<JsonChannelDirectoryStore>? logger = null,
+        ISeeingDirectories? directories = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? NullLogger<JsonChannelDirectoryStore>.Instance;
+        _directories = directories;
         LoadFromDisk();
     }
 
-    public static string ResolveDirectoryPath(CommsOptions options)
+    /// <summary>
+    /// 解析目录文件路径。
+    /// <para><b>默认落在项目级</b>：<c>{项目}/.seeing/comms/directory.json</c>——
+    /// 目录是「这个工作区收到过哪些渠道对话」的事实，随工作区走才不会串场
+    /// （同一台机器上跑多个项目时，用户级单一路径会让不同项目的对话混在一起）。</para>
+    /// <para>工作区未选定（占位目录）时回退用户级 <c>~/.seeing/comms/directory.json</c>：
+    /// 此时没有项目可归属，但桥进程仍可能在运行并需要落盘。</para>
+    /// </summary>
+    public static string ResolveDirectoryPath(CommsOptions options, ISeeingDirectories? directories = null)
     {
         if (!string.IsNullOrWhiteSpace(options.DirectoryFilePath))
             return options.DirectoryFilePath;
+
+        // ProjectSeeingDirectory 在工作区未选定时<b>会抛异常</b>（契约如此），
+        // 这里不能让它冒泡到构造函数——否则 IChannelDirectory 整个服务都解析不出来。
+        string? projectSeeingDirectory = null;
+        try
+        {
+            projectSeeingDirectory = directories?.ProjectSeeingDirectory;
+        }
+        catch (Exception)
+        {
+            // 未选定工作区 / 提供者尚未就绪：走下面的用户级回退。
+        }
+
+        if (!string.IsNullOrWhiteSpace(projectSeeingDirectory)
+            && !WorkspaceProviderPlaceholder.IsPlaceholder(projectSeeingDirectory))
+        {
+            return Path.Combine(projectSeeingDirectory, "comms", "directory.json");
+        }
 
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return Path.Combine(home, ".seeing", "comms", "directory.json");
@@ -73,6 +116,7 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         ct.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            SyncFromDiskIfNewerLocked();
             _users.TryGetValue(ChannelKeys.User(channelId, externalId), out var user);
             return Task.FromResult(user);
         }
@@ -90,6 +134,7 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         });
         lock (_gate)
         {
+            SyncFromDiskIfNewerLocked();
             _conversations.TryGetValue(key, out var entry);
             return Task.FromResult(entry);
         }
@@ -101,6 +146,7 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         ct.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            SyncFromDiskIfNewerLocked();
             IReadOnlyList<ChannelUserEntry> page = Page(
                 _users.Values.Where(u => u.ChannelId == channelId).OrderBy(u => u.ExternalId, StringComparer.Ordinal),
                 skip,
@@ -115,6 +161,7 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         ct.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            SyncFromDiskIfNewerLocked();
             IReadOnlyList<ConversationEntry> page = Page(
                 _conversations.Values
                     .Where(c => c.Conversation.ChannelId == channelId)
@@ -122,6 +169,25 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
                 skip,
                 take);
             return Task.FromResult(page);
+        }
+    }
+
+    public Task<IReadOnlyList<string>> ListChannelIdsAsync(CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            SyncFromDiskIfNewerLocked();
+
+            // 屏蔽名单里的通道也算「有数据的通道」：否则某通道的对话全被屏蔽后，
+            // 它就从列表里消失，用户再也进不到该通道去解封。
+            IReadOnlyList<string> channelIds = _conversations.Values
+                .Select(c => c.Conversation.ChannelId)
+                .Concat(_blocked.Values.Select(b => b.ChannelId))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(c => c, StringComparer.Ordinal)
+                .ToList();
+            return Task.FromResult(channelIds);
         }
     }
 
@@ -162,6 +228,7 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         ct.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            SyncFromDiskIfNewerLocked();
             IReadOnlyList<BlockedConversation> list = _blocked.Values
                 .OrderBy(b => b.ChannelId, StringComparer.Ordinal)
                 .ThenBy(b => b.ExternalId, StringComparer.Ordinal)
@@ -196,6 +263,15 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         return Task.CompletedTask;
     }
 
+    public bool IsBlocked(string channelId, ConversationKind kind, string externalId)
+    {
+        lock (_gate)
+        {
+            SyncFromDiskIfNewerLocked();
+            return _blocked.ContainsKey(BlockedKey(channelId, kind, externalId));
+        }
+    }
+
     /// <summary>屏蔽名单键：与目录键同一套规则（渠道 + 类型 + 外部 id）。</summary>
     internal static string BlockedKey(string channelId, ConversationKind kind, string externalId)
         => ChannelKeys.Conversation(channelId, kind, externalId);
@@ -228,9 +304,12 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
 
     private void LoadFromDisk()
     {
-        var path = ResolveDirectoryPath(_options.Value);
+        var path = ResolveDirectoryPath(_options.Value, _directories);
         if (!File.Exists(path))
+        {
+            _syncedWriteUtc = DateTime.MinValue;
             return;
+        }
 
         try
         {
@@ -254,6 +333,8 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
                 foreach (var blocked in document.Blocked)
                     _blocked[BlockedKey(blocked.ChannelId, blocked.Kind, blocked.ExternalId)] = blocked;
             }
+
+            _syncedWriteUtc = ReadWriteTimeUtc(path);
         }
         catch (Exception ex) when (ex is JsonException or IOException)
         {
@@ -261,12 +342,84 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         }
     }
 
+    /// <summary>
+    /// 读取文件时间戳；文件不存在或不可读返回 <see cref="DateTime.MinValue"/>。
+    /// </summary>
+    private static DateTime ReadWriteTimeUtc(string path)
+    {
+        try
+        {
+            return File.GetLastWriteTimeUtc(path);
+        }
+        catch (IOException)
+        {
+            return DateTime.MinValue;
+        }
+    }
+
+    /// <summary>
+    /// 磁盘比内存新时重新载入（调用方须持有 <c>_gate</c>）。
+    /// <para>每次读/写前都过一遍：文件由多进程共享，任一方写入后其它进程必须能看见。</para>
+    /// <para>只做「变新才重载」而不是无条件重读：同进程内的连续读写不会反复解析 JSON。</para>
+    /// </summary>
+    private void SyncFromDiskIfNewerLocked()
+    {
+        var path = ResolveDirectoryPath(_options.Value, _directories);
+        var diskWriteUtc = ReadWriteTimeUtc(path);
+
+        // 文件不存在（或读不到时间戳）时不重载：内存里的条目仍应可读，
+        // 下次写入会把它们重新落盘。
+        if (diskWriteUtc == DateTime.MinValue || diskWriteUtc <= _syncedWriteUtc)
+            return;
+
+        LoadFromDiskLocked(path);
+    }
+
+    /// <summary>重载指定文件到内存（调用方须持有 <c>_gate</c>；失败只告警，保留现有内存）。</summary>
+    private void LoadFromDiskLocked(string path)
+    {
+        try
+        {
+            var json = File.ReadAllText(path);
+            if (string.IsNullOrWhiteSpace(json))
+                return;
+
+            var document = JsonSerializer.Deserialize<DirectoryDocument>(json, JsonOptions);
+            if (document is null)
+                return;
+
+            _users.Clear();
+            _conversations.Clear();
+            _blocked.Clear();
+            foreach (var user in document.Users)
+                _users[ChannelKeys.User(user.ChannelId, user.ExternalId)] = user;
+            foreach (var conversation in document.Conversations)
+                _conversations[ChannelKeys.Conversation(conversation.Conversation)] = conversation;
+            foreach (var blocked in document.Blocked)
+                _blocked[BlockedKey(blocked.ChannelId, blocked.Kind, blocked.ExternalId)] = blocked;
+
+            _syncedWriteUtc = ReadWriteTimeUtc(path);
+        }
+        catch (Exception ex) when (ex is JsonException or IOException)
+        {
+            // 读失败时保留当前内存：宁可短暂陈旧，也不要因为一次读失败把目录清空。
+            _logger?.LogWarning(ex, "渠道目录增量重载失败，沿用内存快照: {Path}", path);
+        }
+    }
+
+    /// <summary>
+    /// 把内存快照落盘（调用方须持有 <c>_gate</c>）。
+    /// <para><b>写前先合并磁盘</b>：本文件由多进程共享，若直接覆盖会丢掉其它进程刚写入的条目。
+    /// 合并方向是「磁盘有、内存没有」的记录补进来；内存里已有的以内存为准（它含本次修改）。</para>
+    /// </summary>
     private void PersistLocked()
     {
-        var path = ResolveDirectoryPath(_options.Value);
+        var path = ResolveDirectoryPath(_options.Value, _directories);
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory))
             Directory.CreateDirectory(directory);
+
+        MergeFromDiskLocked(path);
 
         var document = new DirectoryDocument
         {
@@ -285,6 +438,42 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
 
         var payload = JsonSerializer.Serialize(document, JsonOptions);
         AtomicFileWrite.WriteAllTextAtomic(path, payload, subject: "channel-directory", _logger);
+        _syncedWriteUtc = ReadWriteTimeUtc(path);
+    }
+
+    /// <summary>
+    /// 把磁盘上「内存里还没有」的条目补进内存（调用方须持有 <c>_gate</c>）。
+    /// <para>只补缺失键、不覆盖已有键：内存是本次修改的结果，磁盘可能是别的进程较早的快照。</para>
+    /// </summary>
+    private void MergeFromDiskLocked(string path)
+    {
+        if (!File.Exists(path))
+            return;
+
+        try
+        {
+            var json = File.ReadAllText(path);
+            if (string.IsNullOrWhiteSpace(json))
+                return;
+
+            var document = JsonSerializer.Deserialize<DirectoryDocument>(json, JsonOptions);
+            if (document is null)
+                return;
+
+            foreach (var user in document.Users)
+                _users.TryAdd(ChannelKeys.User(user.ChannelId, user.ExternalId), user);
+
+            foreach (var conversation in document.Conversations)
+                _conversations.TryAdd(ChannelKeys.Conversation(conversation.Conversation), conversation);
+
+            foreach (var blocked in document.Blocked)
+                _blocked.TryAdd(BlockedKey(blocked.ChannelId, blocked.Kind, blocked.ExternalId), blocked);
+        }
+        catch (Exception ex) when (ex is JsonException or IOException)
+        {
+            // 磁盘内容坏了不该阻断写入：本次快照仍要落盘（否则本进程的修改永远保存不了）。
+            _logger?.LogWarning(ex, "渠道目录写前合并失败，按内存快照覆盖: {Path}", path);
+        }
     }
 
     private static IReadOnlyList<T> Page<T>(IEnumerable<T> source, int skip, int take)

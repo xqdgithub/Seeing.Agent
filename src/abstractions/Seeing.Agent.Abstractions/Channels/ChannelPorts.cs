@@ -20,6 +20,12 @@ public interface IChannelDirectoryStore          // Store：纯存取
     /// <summary>屏蔽名单（启动载入，用于压住「收到消息即登记」）。</summary>
     Task<IReadOnlyList<BlockedConversation>> ListBlockedConversationsAsync(CancellationToken ct = default);
 
+    /// <summary>已出现过的渠道 ID 集合（目录 + 屏蔽名单的并集）。</summary>
+    Task<IReadOnlyList<string>> ListChannelIdsAsync(CancellationToken ct = default);
+
+    /// <summary>该对话当前是否在屏蔽名单内。</summary>
+    bool IsBlocked(string channelId, ConversationKind kind, string externalId);
+
     Task SaveBlockedConversationAsync(BlockedConversation entry, CancellationToken ct = default);
 
     Task DeleteBlockedConversationAsync(string channelId, ConversationKind kind, string externalId, CancellationToken ct = default);

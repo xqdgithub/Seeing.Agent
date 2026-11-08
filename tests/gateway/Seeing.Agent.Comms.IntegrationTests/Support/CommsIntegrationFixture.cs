@@ -101,44 +101,104 @@ internal sealed class RecordingRuntime : ISessionRuntime
     public Task<int> ReconcileIncompleteTasksAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(0);
 }
 
+/// <summary>
+/// 有状态的目录存储桩：<see cref="ChannelDirectoryService"/> 不再持有内存副本，
+/// 读一律穿透到 store，所以桩必须真的记住写入内容，否则投递准入会误判为「不在目录」。
+/// </summary>
 internal sealed class MemoryDirectoryStore : IChannelDirectoryStore
 {
-    public Task SaveUserAsync(ChannelUserEntry user, CancellationToken ct = default) => Task.CompletedTask;
+    private readonly Dictionary<string, ChannelUserEntry> _users = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ConversationEntry> _conversations = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, BlockedConversation> _blocked = new(StringComparer.Ordinal);
 
-    public Task SaveConversationAsync(ConversationEntry entry, CancellationToken ct = default) => Task.CompletedTask;
+    private static string UserKey(string channelId, string externalId) => channelId + "\u001f" + externalId;
 
-    public Task<ChannelUserEntry?> FindUserAsync(string channelId, string externalId, CancellationToken ct = default) =>
-        Task.FromResult<ChannelUserEntry?>(null);
+    private static string ConversationKey(string channelId, ConversationKind kind, string externalId)
+        => channelId + "\u001f" + kind + "\u001f" + externalId;
+
+    public Task SaveUserAsync(ChannelUserEntry user, CancellationToken ct = default)
+    {
+        _users[UserKey(user.ChannelId, user.ExternalId)] = user;
+        return Task.CompletedTask;
+    }
+
+    public Task SaveConversationAsync(ConversationEntry entry, CancellationToken ct = default)
+    {
+        var info = entry.Conversation;
+        _conversations[ConversationKey(info.ChannelId, info.Kind, info.ExternalId)] = entry;
+        return Task.CompletedTask;
+    }
+
+    public Task<ChannelUserEntry?> FindUserAsync(string channelId, string externalId, CancellationToken ct = default)
+        => Task.FromResult(_users.TryGetValue(UserKey(channelId, externalId), out var user) ? user : null);
 
     public Task<ConversationEntry?> FindConversationAsync(
-        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default) =>
-        Task.FromResult<ConversationEntry?>(null);
+        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default)
+        => Task.FromResult(
+            _conversations.TryGetValue(ConversationKey(channelId, kind, externalId), out var entry) ? entry : null);
 
     public Task<IReadOnlyList<ChannelUserEntry>> ListUsersAsync(
-        string channelId, int skip, int take, CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<ChannelUserEntry>>([]);
+        string channelId, int skip, int take, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<ChannelUserEntry>>(
+            _users.Values.Where(u => u.ChannelId == channelId)
+                .OrderBy(u => u.ExternalId, StringComparer.Ordinal)
+                .Skip(skip).Take(take).ToList());
 
     public Task<IReadOnlyList<ConversationEntry>> ListConversationsAsync(
-        string channelId, int skip, int take, CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<ConversationEntry>>([]);
+        string channelId, int skip, int take, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<ConversationEntry>>(
+            _conversations.Values.Where(c => c.Conversation.ChannelId == channelId)
+                .OrderBy(c => c.Conversation.ExternalId, StringComparer.Ordinal)
+                .Skip(skip).Take(take).ToList());
 
-    public Task LoadIntoAsync(Action<ChannelUserEntry, ConversationEntry?> sink, CancellationToken ct = default) =>
-        Task.CompletedTask;
+    public Task LoadIntoAsync(Action<ChannelUserEntry, ConversationEntry?> sink, CancellationToken ct = default)
+    {
+        foreach (var user in _users.Values.ToList())
+            sink(user, null);
 
-    public Task DeleteUserAsync(string channelId, string externalId, CancellationToken ct = default) =>
-        Task.CompletedTask;
+        foreach (var conversation in _conversations.Values.ToList())
+            sink(_users.Values.First(u => u.ChannelId == conversation.Conversation.ChannelId), conversation);
+
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteUserAsync(string channelId, string externalId, CancellationToken ct = default)
+    {
+        _users.Remove(UserKey(channelId, externalId));
+        return Task.CompletedTask;
+    }
 
     public Task DeleteConversationAsync(
-        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default) =>
-        Task.CompletedTask;
+        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default)
+    {
+        _conversations.Remove(ConversationKey(channelId, kind, externalId));
+        return Task.CompletedTask;
+    }
 
-    public Task<IReadOnlyList<BlockedConversation>> ListBlockedConversationsAsync(CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<BlockedConversation>>([]);
+    public Task<IReadOnlyList<BlockedConversation>> ListBlockedConversationsAsync(CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<BlockedConversation>>(_blocked.Values.ToList());
 
-    public Task SaveBlockedConversationAsync(BlockedConversation entry, CancellationToken ct = default) =>
-        Task.CompletedTask;
+    public Task<IReadOnlyList<string>> ListChannelIdsAsync(CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<string>>(
+            _conversations.Values.Select(c => c.Conversation.ChannelId)
+                .Concat(_blocked.Values.Select(b => b.ChannelId))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(c => c, StringComparer.Ordinal)
+                .ToList());
+
+    public bool IsBlocked(string channelId, ConversationKind kind, string externalId)
+        => _blocked.ContainsKey(ConversationKey(channelId, kind, externalId));
+
+    public Task SaveBlockedConversationAsync(BlockedConversation entry, CancellationToken ct = default)
+    {
+        _blocked[ConversationKey(entry.ChannelId, entry.Kind, entry.ExternalId)] = entry;
+        return Task.CompletedTask;
+    }
 
     public Task DeleteBlockedConversationAsync(
-        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default) =>
-        Task.CompletedTask;
+        string channelId, ConversationKind kind, string externalId, CancellationToken ct = default)
+    {
+        _blocked.Remove(ConversationKey(channelId, kind, externalId));
+        return Task.CompletedTask;
+    }
 }
