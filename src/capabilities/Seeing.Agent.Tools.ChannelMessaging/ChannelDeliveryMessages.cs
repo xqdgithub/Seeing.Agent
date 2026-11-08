@@ -15,7 +15,7 @@ internal static class ChannelDeliveryMessages
 
         return result.FailureKind switch
         {
-            OutboundFailureKind.NotInDirectory => DetailOr(result, "该用户尚未与机器人建立对话，无法推送"),
+            OutboundFailureKind.NotInDirectory => DetailOr(result, "目标不可达（该对话可能已被屏蔽）"),
             OutboundFailureKind.OptedOut => "用户已退订",
             OutboundFailureKind.RateLimited => "超出投递频率限制",
             OutboundFailureKind.ChannelUnavailable => DetailOr(result, "通道投递未配置或通道不可用"),

@@ -10,17 +10,66 @@ namespace Seeing.Agent.Comms.Tests;
 
 public class OutboundDeliveryServiceTests
 {
+    /// <summary>
+    /// 目录是记录本不是白名单：未登记的用户也照样投递。
+    /// 「首次主动找还没来过的人」必须能发出去——拿登记状态当闸门会把它永久拦死。
+    /// </summary>
     [Fact]
-    public async Task DeliverAsync_UserNotInDirectory_ReturnsNotInDirectory()
+    public async Task DeliverAsync_UserNotInDirectory_StillDelivers()
     {
         var directory = new Mock<IChannelDirectory>();
         directory.Setup(d => d.FindUserAsync("qq", "u1", It.IsAny<CancellationToken>()))
             .ReturnsAsync((ChannelUserEntry?)null);
-        var svc = BuildDeliveryService(directory.Object, registry: new ChannelAdapterRegistry());
+        directory.Setup(d => d.IsRateLimited("qq", "u1")).Returns(false);
+
+        var adapter = new Mock<IChannelAdapter>();
+        adapter.SetupGet(a => a.ChannelId).Returns("qq");
+        adapter.SetupGet(a => a.Capabilities).Returns(new ChannelCapabilities { SupportsReplyAnchor = false });
+        adapter.Setup(a => a.SendAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OutboundDeliveryResult.Ok());
+        var registry = new ChannelAdapterRegistry();
+        registry.Register(adapter.Object);
+        var svc = BuildDeliveryService(directory.Object, registry);
 
         var result = await svc.DeliverAsync(BuildPush("qq", "u1"));
 
-        result.FailureKind.Should().Be(OutboundFailureKind.NotInDirectory);
+        result.Delivered.Should().BeTrue("未登记不等于不可投递");
+        adapter.Verify(a => a.SendAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>群对话同理：没登记过也照样投递（目录只用于展示与屏蔽）。</summary>
+    [Fact]
+    public async Task DeliverAsync_GroupNotInDirectory_StillDelivers()
+    {
+        var directory = new Mock<IChannelDirectory>();
+        directory.Setup(d => d.FindConversationAsync("qq", ConversationKind.Group, "g1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ConversationEntry?)null);
+        directory.Setup(d => d.IsRateLimited("qq", "g1")).Returns(false);
+
+        var adapter = new Mock<IChannelAdapter>();
+        adapter.SetupGet(a => a.ChannelId).Returns("qq");
+        adapter.SetupGet(a => a.Capabilities).Returns(new ChannelCapabilities { SupportsReplyAnchor = false });
+        adapter.Setup(a => a.SendAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OutboundDeliveryResult.Ok());
+        var registry = new ChannelAdapterRegistry();
+        registry.Register(adapter.Object);
+        var svc = BuildDeliveryService(directory.Object, registry);
+
+        var result = await svc.DeliverAsync(BuildPush("qq", "g1") with
+        {
+            Target = new DeliveryTarget
+            {
+                Conversation = new ConversationInfo
+                {
+                    ChannelId = "qq",
+                    Kind = ConversationKind.Group,
+                    ExternalId = "g1"
+                }
+            }
+        });
+
+        result.Delivered.Should().BeTrue("群对话未登记不等于不可投递");
+        adapter.Verify(a => a.SendAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

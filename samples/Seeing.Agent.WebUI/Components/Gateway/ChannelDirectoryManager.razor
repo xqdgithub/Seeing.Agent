@@ -87,7 +87,8 @@ else if (!string.IsNullOrEmpty(_channelId))
     @* 用户 *@
     <Card Size="@CardSize.Small" Title="@($"用户 · {_users.Count}")" Style="margin-bottom: 12px;">
         <div style="margin-bottom: 8px; color: #888; font-size: 12px;">
-            私聊出站按用户准入；「已退订」的用户不会被主动推送（被动回复仍可送达）。
+            私聊出站按用户判定退订与频控；「已退订」的用户不会被主动推送（被动回复仍可送达）。
+            未登记的用户不会被拦截——首次主动联系照样能发出去。
         </div>
         @if (_users.Count == 0)
         {

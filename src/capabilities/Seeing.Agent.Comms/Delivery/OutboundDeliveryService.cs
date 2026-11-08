@@ -5,7 +5,10 @@ using Seeing.Agent.Abstractions.Channels;
 namespace Seeing.Agent.Comms.Delivery;
 
 /// <summary>
-/// 出站投递管道：目标解析 → 准入 → 适配器 → 成功后记频控并通知。
+/// 出站投递管道：目录闸门 → 能力裁决 → 适配器 → 成功后记频控并通知。
+/// <para><b>目录闸门只有一条：屏蔽。</b>目录记录「这个工作区见过哪些渠道对话」，
+/// 不是可投递白名单；未登记的目标照样投递（首次主动联系、新装的会话绑定都可能没登记）。
+/// 退订与频控是用户/运维语义的限制，与「是否登记」无关。</para>
 /// </summary>
 public class OutboundDeliveryService
 {
@@ -39,19 +42,22 @@ public class OutboundDeliveryService
         var userId = ResolveSubjectUserId(message);
 
         // ── 准入段 ──
-        // 屏蔽与「不在目录」是同一类事实（该目标不允许投递），故共用准入段：
-        // 且必须在按用户判定之前——Direct 对话只查用户表会漏掉屏蔽（用户仍在目录里）。
+        // 「没有被屏蔽就放行」是本管道的唯一目录类硬闸门：目录是**记录本**，不是白名单。
+        // 出站目标由会话绑定 / 工具显式指定 / 调度画像给出，这些来源本身就是可信的——
+        // 再拿「是否已登记」去拦，只会让「首次主动找某个还没来过的用户」永远失败。
+        //
+        // 屏蔽判定必须先于按用户判定：Direct 对话的用户条目仍在目录里，
+        // 只看用户表会漏掉屏蔽。
         if (_directory.IsBlocked(conversation.ChannelId, conversation.Kind, conversation.ExternalId))
             return OutboundDeliveryResult.Fail(OutboundFailureKind.NotInDirectory, "该对话已被屏蔽");
 
-        // 私聊（或群内定向到某人）按用户准入；群/频道整体投递按对话是否已登记准入。
+        // 私聊（或群内定向到某人）按用户判定退订与频控；群/频道整体投递按对话判定频控。
         if (!string.IsNullOrEmpty(userId))
         {
             var user = await _directory.FindUserAsync(conversation.ChannelId, userId, ct).ConfigureAwait(false);
-            if (user is null)
-                return OutboundDeliveryResult.Fail(OutboundFailureKind.NotInDirectory, "用户不在目录中");
 
-            if (user.OptedOut)
+            // 未登记不放行判定为通过：退订是用户显式表达，只在有记录时成立。
+            if (user?.OptedOut == true)
                 return OutboundDeliveryResult.Fail(OutboundFailureKind.OptedOut, "用户已退订");
 
             if (_directory.IsRateLimited(conversation.ChannelId, userId))
@@ -59,16 +65,12 @@ public class OutboundDeliveryService
         }
         else if (conversation.Kind is ConversationKind.Group or ConversationKind.Guild)
         {
-            var known = await _directory.FindConversationAsync(
-                conversation.ChannelId, conversation.Kind, conversation.ExternalId, ct).ConfigureAwait(false);
-            if (known is null)
-                return OutboundDeliveryResult.Fail(OutboundFailureKind.NotInDirectory, "对话不在目录中");
-
             if (_directory.IsRateLimited(conversation.ChannelId, conversation.ExternalId))
                 return OutboundDeliveryResult.Fail(OutboundFailureKind.RateLimited, "超出每小时投递上限");
         }
         else
         {
+            // Direct 对话但没有任何可判定主体：这是目标构造缺陷，不是目录准入。
             return OutboundDeliveryResult.Fail(OutboundFailureKind.NotInDirectory, "缺少投递用户");
         }
 

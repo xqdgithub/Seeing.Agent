@@ -13,7 +13,7 @@ namespace Seeing.Agent.Tools.ChannelMessaging.Tests;
 public class SendMessageToolTests
 {
     [Theory]
-    [InlineData(OutboundFailureKind.NotInDirectory, "该用户尚未与机器人建立对话，无法推送")]
+    [InlineData(OutboundFailureKind.NotInDirectory, "目标不可达（该对话可能已被屏蔽）")]
     [InlineData(OutboundFailureKind.OptedOut, "用户已退订")]
     [InlineData(OutboundFailureKind.RateLimited, "超出投递频率限制")]
     [InlineData(OutboundFailureKind.ChannelUnavailable, "通道投递未配置或通道不可用")]

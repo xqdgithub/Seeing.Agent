@@ -148,7 +148,21 @@ WebUI 出站绑定改为读写 `ChannelRoute`（工具栏、会话窗、会话�
 
 - `IChannelDirectory.RegisterInbound`（void/bool 副作用命名）→ `InboundAdmission AdmitInbound(ChannelInboundMessage)`，返回 `{ Accepted, Reason }`（`InboundRejectionReason.Blocked`）。**决策与登记在同一处**，调用方无法「只登记、不问准入」。
 - 三个入站桥都必须消费结果并丢弃被拒消息：`GatewayWebSocketHandler`（WS）、`QQChannelAdapter.AdmitDirectoryInbound`、`WeComChannelAdapter.AdmitDirectoryInbound`。
-- `OutboundDeliveryService.DeliverAsync` 的准入段也先判 `IsBlocked`：屏蔽是**双向**的（入站不登记、出站不投递）。
+- **入站唯一的拦截理由是屏蔽**：未登记的用户/对话一律放行并登记，`OptedOut` 只影响主动出站，不回拦入站。
+
+### 7.2.1 出站闸门（2026-11-08 收敛）
+
+`OutboundDeliveryService.DeliverAsync` 的目录类闸门**只剩屏蔽**：
+
+| 判定 | 是否拒投 | 说明 |
+|---|---|---|
+| `IsBlocked` | 是（`NotInDirectory` + 「该对话已被屏蔽」） | 唯一的目录类硬闸门，必须先于按用户判定（Direct 的用户条目仍在目录里） |
+| 未登记（用户 / 对话） | **否** | 目录是**记录本**，不是可投递白名单——首次主动联系一个还没来过的人必须能发出去 |
+| `OptedOut` | 是（`OptedOut`） | 用户显式表达的意愿，只在有记录时成立 |
+| 频控滑窗 | 是（`RateLimited`） | `Comms.RateLimitPerHour`（0 关闭） |
+
+「未登记即拒投」此前让三类合法场景全部失败：首次主动找新用户、新装渠道的会话绑定、目录被清空后仍要回复。`OutboundFailureKind.NotInDirectory` 保留（契约兼容），语义收窄为「目标不可达（已被屏蔽）」。
+
 
 ### 7.3 管理能力（`/gateway` 页卡片）
 

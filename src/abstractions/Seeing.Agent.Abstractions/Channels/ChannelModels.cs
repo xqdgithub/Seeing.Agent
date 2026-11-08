@@ -63,6 +63,7 @@ public sealed record OutboundMessage
 
 public enum OutboundFailureKind
 {
+    /// <summary>目标不可达。目前唯一的来源是<b>该对话已被屏蔽</b>；目录未登记不算拒投理由。</summary>
     NotInDirectory,
     OptedOut,
     RateLimited,
