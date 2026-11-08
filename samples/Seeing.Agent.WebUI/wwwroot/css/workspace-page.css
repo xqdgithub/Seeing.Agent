@@ -1063,12 +1063,24 @@
     background: rgba(22, 119, 255, .03);
 }
 
+/*
+ * flex: 1 让卡片主体占满剩余高度，把 .ws-page-card-foot 始终推到底部。
+ * 不加的话：当前项卡片的 meta 行是空的（没有「可切换」文案），主体比其他卡片矮，
+ * foot 会紧跟主体上移，分割线位置参差不齐、下方留一片空白。
+ */
 .ws-page-card-main {
+    flex: 1;
     padding: 14px 16px 10px;
     cursor: pointer;
     display: flex;
     flex-direction: column;
     gap: 6px;
+}
+
+.ws-page-card-meta {
+    min-height: 16px;
+    font-size: 11px;
+    color: var(--color-text-quaternary, #bbb);
 }
 
 .ws-page-card-name {

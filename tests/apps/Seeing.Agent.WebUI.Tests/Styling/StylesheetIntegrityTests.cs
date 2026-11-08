@@ -88,6 +88,22 @@ public class StylesheetIntegrityTests
         markup.Should().Contain("使用中");
     }
 
+    [Fact]
+    public void Workspace_Card_Main_Should_Grow_So_Divider_Aligns()
+    {
+        var css = Path.Combine(
+            FindRepositoryRoot(), "samples", "Seeing.Agent.WebUI", "wwwroot", "css", "workspace-page.css");
+        var styles = File.ReadAllText(css);
+
+        // .ws-page-card 是纵向 flex，foot（带分割线）跟在 main 后面。
+        // main 若不占满剩余高度，内容少的卡片（如当前项：meta 行为空）主体更矮，
+        // 分割线会跟着上移，同一行卡片的分割线参差不齐。
+        styles.Should().Contain("flex: 1;",
+            "卡片主体需要 flex:1 把 foot 推到底部，否则分割线位置随内容高度漂移");
+        styles.Should().Contain(".ws-page-card-meta",
+            "meta 行需要固定最小高度，保证各卡片主体内部节奏一致");
+    }
+
     private static string FindRepositoryRoot()
     {
         // 不依赖输出目录：BaseOutputPath 可被重定向（CI、并行验证），那时向上找 slnx 会失败。
