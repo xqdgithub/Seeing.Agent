@@ -128,3 +128,44 @@ WebUI 出站绑定改为读写 `ChannelRoute`（工具栏、会话窗、会话�
 - **同机文件假设**：`LocalPath` 由适配器进程直接读取，跨机 ChannelHost 不在本期范围。
 - 不做附件级权限审批（主场景是把本次任务产物发给正在对话的用户）；普通终态回复只发文本，附件只能由工具显式发送；无 WebUI 附件发送 UI、无附件重试队列与审计。
 - QQ 部分附件失败返回 `PlatformError` 且工具可见；终态回复沿现有「记 Warning」行为，不计入「工具可见失败」承诺。
+
+---
+
+## 7. 目录管理与工作区切换增量（2026-11-08）
+
+**相关模块：** `Seeing.Agent.Abstractions`（`Channels`）、`Seeing.Agent.Comms`、`Seeing.Agent.Gateway`、`Seeing.Gateway.QQ` / `Seeing.Gateway.WeCom`、`samples/Seeing.Agent.WebUI`
+
+### 7.1 目录落在项目级，且多进程共享
+
+- **路径**：`{项目}/.seeing/comms/directory.json`；工作区未选定（占位目录）或工作区提供者未就绪时回退 `~/.seeing/comms/directory.json`。`Comms.DirectoryFilePath` 仍可显式覆盖。目录是「这个工作区收到过哪些渠道对话」的事实，随工作区走才不会串场。
+- **多进程同步**：同一文件由 WebUI 主进程、GatewayServer、ChannelHost 桥子进程共同读写。
+  - 读：每次读前比较文件 `LastWriteTimeUtc`，磁盘更新则重载（`SyncFromDiskIfNewerLocked`）。
+  - 写：落盘前把「磁盘有、内存没有」的条目补进内存再序列化（`MergeFromDiskLocked`），只补缺失键，不覆盖内存里本次的修改。
+  - 落盘一律经 `Seeing.Files.AtomicFileWrite`。
+- **服务层不再缓存目录条目**：`ChannelDirectoryService` 只保留两类进程内语义状态——回复锚点（入站副产物）与频控滑窗（投递计数）。此前构造时读一次盘并缓存的写法，会让「后写入方的条目」永远不可见（页面空目录的根因）。
+
+### 7.2 入站准入统一为 `AdmitInbound`
+
+- `IChannelDirectory.RegisterInbound`（void/bool 副作用命名）→ `InboundAdmission AdmitInbound(ChannelInboundMessage)`，返回 `{ Accepted, Reason }`（`InboundRejectionReason.Blocked`）。**决策与登记在同一处**，调用方无法「只登记、不问准入」。
+- 三个入站桥都必须消费结果并丢弃被拒消息：`GatewayWebSocketHandler`（WS）、`QQChannelAdapter.AdmitDirectoryInbound`、`WeComChannelAdapter.AdmitDirectoryInbound`。
+- `OutboundDeliveryService.DeliverAsync` 的准入段也先判 `IsBlocked`：屏蔽是**双向**的（入站不登记、出站不投递）。
+
+### 7.3 管理能力（`/gateway` 页卡片）
+
+`ChannelDirectoryManager` 组件（`Components/Gateway/`）提供：对话改显示名（弱）、从目录删除（弱，对方再发消息会重新登记）、删除并屏蔽（持久，需手动解封）、用户退订开关、屏蔽名单解封。
+
+- 平台身份（`Kind` + `ExternalId`）**不可编辑**——那是投递地址。
+- 屏蔽把对话从目录移除并写入 `blocked` 列表（保留原 `BlockedAt`，重复屏蔽不重置时间）。
+- `ListChannelIdsAsync` 计入屏蔽名单里的通道：否则某通道对话全被屏蔽后它从列表消失，用户再也进不去解封。
+- 定时任务从会话绑定自动预填出站对话时会校验目录，不在则标红提示（只提示、不阻断）。
+
+### 7.4 工作区切换
+
+- 目录路径由工作区推导，切换后路径变。**正确性不依赖参与者**：store 的读写路径各自都会 `AlignPathLocked()`（路径与快照路径不一致时无条件重载），`PersistLocked` 要求调用方在**改内存之前**已对齐——先改再对齐会把本次修改一起冲掉。
+- `CommsWorkspaceParticipant`（`IWorkspaceApplyParticipant`，`ComponentId = "comms"`）在 `OnAppliedAsync` 枚举 `ICommsWorkspaceScopedState` 让持有者自己重置（`JsonChannelDirectoryStore` 重载条目、`ChannelDirectoryService` 清锚点与频控滑窗）。作用只是**让切换后的第一帧界面看不到旧数据**；单个状态重置失败只记日志，不视为切换失败。
+- `ICommsWorkspaceScopedState` 是 Comms 包**内部**的生命周期缝隙，不进 `Abstractions`：它只服务本能力的工作区切换参与者。
+
+### 7.5 已知边界
+
+- **跨进程写入是「合并」而非「合并冲突」**：两个进程同时改同一条目时按「内存优先」覆盖，不做字段级合并或版本校验。
+- **路径切换期间的写入**：`AlignPathLocked` 会清空内存再写入本次条目，若恰有其它进程在同一瞬间写旧工作区，旧条目不会被带入新文件（这是刻意的方向）。

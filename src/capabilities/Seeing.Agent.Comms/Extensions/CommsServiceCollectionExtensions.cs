@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Abstractions.Configuration;
@@ -7,6 +8,7 @@ using Seeing.Agent.Abstractions.Scheduling;
 using Seeing.Agent.Comms.Delivery;
 using Seeing.Agent.Comms.Directories;
 using Seeing.Agent.Comms.Scheduling;
+using Seeing.Agent.Configuration;
 
 namespace Seeing.Agent.Comms.Extensions;
 
@@ -39,6 +41,12 @@ public static class CommsServiceCollectionExtensions
         services.AddSingleton<IChannelDirectoryStore>(sp => sp.GetRequiredService<JsonChannelDirectoryStore>());
         services.AddSingleton<ChannelDirectoryService>();
         services.AddSingleton<IChannelDirectory>(sp => sp.GetRequiredService<ChannelDirectoryService>());
+        // 工作区切换后目录路径会变（{项目}/.seeing/comms），单例里的工作区级状态必须由持有者重置，
+        // 否则新工作区里显示的是旧工作区的对话，写入还会把旧条目带进新文件。
+        services.AddSingleton<ICommsWorkspaceScopedState>(sp => sp.GetRequiredService<JsonChannelDirectoryStore>());
+        services.AddSingleton<ICommsWorkspaceScopedState>(sp => sp.GetRequiredService<ChannelDirectoryService>());
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IWorkspaceApplyParticipant, CommsWorkspaceParticipant>());
         services.AddSingleton<ChannelAdapterRegistry>();
         services.AddSingleton<IChannelAdapterRegistry>(sp => sp.GetRequiredService<ChannelAdapterRegistry>());
         services.AddSingleton<OutboundDeliveryService>();

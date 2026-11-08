@@ -234,6 +234,193 @@ public class JsonChannelDirectoryStoreTests : IDisposable
         act.Should().NotThrow();
     }
 
+    // ===== 工作区切换 =====
+
+    /// <summary>
+    /// 切换工作区后目录必须重载：单例 store 内存里留着旧工作区的对话/屏蔽名单，
+    /// 不重载会让新工作区显示旧数据，且下一次写入会把旧条目合并进新文件。
+    /// </summary>
+    [Fact]
+    public async Task ReloadFromDisk_SwitchingWorkspace_ReplacesEntries()
+    {
+        var rootA = Path.Combine(Path.GetTempPath(), "ws-a-" + Guid.NewGuid().ToString("N"));
+        var rootB = Path.Combine(Path.GetTempPath(), "ws-b-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(rootA, ".seeing", "comms"));
+        Directory.CreateDirectory(Path.Combine(rootB, ".seeing", "comms"));
+
+        var directories = new MutableDirectories(Path.Combine(rootA, ".seeing"));
+        var options = Options.Create(new CommsOptions());
+
+        try
+        {
+            var store = new JsonChannelDirectoryStore(options, directories: directories);
+
+            // 工作区 A：登记一条对话。
+            await store.SaveConversationAsync(Conversation("qq", "g-in-A"));
+            (await store.ListConversationsAsync("qq", 0, 50))
+                .Should().ContainSingle(c => c.Conversation.ExternalId == "g-in-A");
+
+            // 切到工作区 B（B 的目录文件里有另一条）。
+            directories.ProjectSeeingDirectory = Path.Combine(rootB, ".seeing");
+            var storeB = new JsonChannelDirectoryStore(options, directories: directories);
+            await storeB.SaveConversationAsync(Conversation("qq", "g-in-B"));
+
+            // A→B：同一实例重载后只应看到 B 的条目。
+            store.ReloadFromDisk();
+            var afterB = await store.ListConversationsAsync("qq", 0, 50);
+            afterB.Should().ContainSingle(c => c.Conversation.ExternalId == "g-in-B");
+            afterB.Should().NotContain(c => c.Conversation.ExternalId == "g-in-A");
+
+            // B→A：再切回去必须恢复 A 的条目，B 的条目不得残留。
+            directories.ProjectSeeingDirectory = Path.Combine(rootA, ".seeing");
+            store.ReloadFromDisk();
+            var afterA = await store.ListConversationsAsync("qq", 0, 50);
+            afterA.Should().ContainSingle(c => c.Conversation.ExternalId == "g-in-A");
+            afterA.Should().NotContain(c => c.Conversation.ExternalId == "g-in-B");
+        }
+        finally
+        {
+            TryDelete(rootA);
+            TryDelete(rootB);
+        }
+    }
+
+    /// <summary>
+    /// 切到的目标工作区还没有目录文件时，必须清空内存——不能把旧工作区的条目留着，
+    /// 否则下一次写入会把它们带进新工作区的文件。
+    /// </summary>
+    [Fact]
+    public async Task ReloadFromDisk_TargetHasNoFile_ClearsEntries()
+    {
+        var rootA = Path.Combine(Path.GetTempPath(), "ws-a-" + Guid.NewGuid().ToString("N"));
+        var rootB = Path.Combine(Path.GetTempPath(), "ws-b-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(rootA, ".seeing", "comms"));
+        Directory.CreateDirectory(Path.Combine(rootB, ".seeing", "comms"));
+
+        var directories = new MutableDirectories(Path.Combine(rootA, ".seeing"));
+        var options = Options.Create(new CommsOptions());
+
+        try
+        {
+            var store = new JsonChannelDirectoryStore(options, directories: directories);
+            await store.SaveConversationAsync(Conversation("qq", "g-in-A"));
+
+            directories.ProjectSeeingDirectory = Path.Combine(rootB, ".seeing");
+            store.ReloadFromDisk();
+
+            (await store.ListConversationsAsync("qq", 0, 50)).Should().BeEmpty(
+                "目标工作区没有目录文件时内存必须清空，否则会显示上一个工作区的内容");
+        }
+        finally
+        {
+            TryDelete(rootA);
+            TryDelete(rootB);
+        }
+    }
+
+    /// <summary>
+    /// 切换工作区后写入必须落到新工作区的文件，不得把旧工作区的条目合并过去。
+    /// </summary>
+    [Fact]
+    public async Task Persist_AfterWorkspaceSwitch_WritesOnlyNewWorkspaceEntries()
+    {
+        var rootA = Path.Combine(Path.GetTempPath(), "ws-a-" + Guid.NewGuid().ToString("N"));
+        var rootB = Path.Combine(Path.GetTempPath(), "ws-b-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(rootA, ".seeing", "comms"));
+        Directory.CreateDirectory(Path.Combine(rootB, ".seeing", "comms"));
+
+        var directories = new MutableDirectories(Path.Combine(rootA, ".seeing"));
+        var options = Options.Create(new CommsOptions());
+
+        try
+        {
+            var store = new JsonChannelDirectoryStore(options, directories: directories);
+            await store.SaveConversationAsync(Conversation("qq", "g-in-A"));
+
+            directories.ProjectSeeingDirectory = Path.Combine(rootB, ".seeing");
+            store.ReloadFromDisk();
+            await store.SaveConversationAsync(Conversation("qq", "g-in-B"));
+
+            var fileB = Path.Combine(rootB, ".seeing", "comms", "directory.json");
+            var reader = new JsonChannelDirectoryStore(
+                Options.Create(new CommsOptions { DirectoryFilePath = fileB }));
+            var inB = await reader.ListConversationsAsync("qq", 0, 50);
+
+            inB.Should().ContainSingle(c => c.Conversation.ExternalId == "g-in-B");
+            inB.Should().NotContain(c => c.Conversation.ExternalId == "g-in-A",
+                "旧工作区的条目不得被合并进新工作区的文件");
+        }
+        finally
+        {
+            TryDelete(rootA);
+            TryDelete(rootB);
+        }
+    }
+
+    /// <summary>
+    /// 切换工作区后如果没有显式 <c>ReloadFromDisk</c>（例如后台桥进程先写入），
+    /// 写入路径自己也要对齐：本次写入必须落进新工作区文件，且不得带上旧工作区的条目，
+    /// 更不能因为「先对齐、后改内存」的顺序颠倒而把这次写入冲掉。
+    /// </summary>
+    [Fact]
+    public async Task Persist_WorkspaceSwitchedWithoutExplicitReload_KeepsNewEntryOnly()
+    {
+        var rootA = Path.Combine(Path.GetTempPath(), "ws-a-" + Guid.NewGuid().ToString("N"));
+        var rootB = Path.Combine(Path.GetTempPath(), "ws-b-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(rootA, ".seeing", "comms"));
+        Directory.CreateDirectory(Path.Combine(rootB, ".seeing", "comms"));
+
+        var directories = new MutableDirectories(Path.Combine(rootA, ".seeing"));
+        var options = Options.Create(new CommsOptions());
+
+        try
+        {
+            var store = new JsonChannelDirectoryStore(options, directories: directories);
+            await store.SaveConversationAsync(Conversation("qq", "g-in-A"));
+
+            // 只切路径，不显式重载：直接写。
+            directories.ProjectSeeingDirectory = Path.Combine(rootB, ".seeing");
+            await store.SaveConversationAsync(Conversation("qq", "g-in-B"));
+
+            (await store.ListConversationsAsync("qq", 0, 50))
+                .Should().ContainSingle(c => c.Conversation.ExternalId == "g-in-B",
+                    "路径切换后的写入必须落进新工作区，且不能被对齐动作冲掉");
+
+            var fileB = Path.Combine(rootB, ".seeing", "comms", "directory.json");
+            var reader = new JsonChannelDirectoryStore(
+                Options.Create(new CommsOptions { DirectoryFilePath = fileB }));
+            var inB = await reader.ListConversationsAsync("qq", 0, 50);
+            inB.Should().ContainSingle(c => c.Conversation.ExternalId == "g-in-B");
+            inB.Should().NotContain(c => c.Conversation.ExternalId == "g-in-A");
+        }
+        finally
+        {
+            TryDelete(rootA);
+            TryDelete(rootB);
+        }
+    }
+
+    private static void TryDelete(string directory)
+    {
+        try
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+        catch (IOException)
+        {
+        }
+    }
+
+    /// <summary>可变的目录提供者：模拟工作区切换时 ProjectSeeingDirectory 变化。</summary>
+    private sealed class MutableDirectories(string projectSeeingDirectory) : ISeeingDirectories
+    {
+        public string UserSeeingDirectory =>
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".seeing");
+
+        public string ProjectSeeingDirectory { get; set; } = projectSeeingDirectory;
+    }
+
     private sealed class ThrowingDirectories : ISeeingDirectories
     {
         public string UserSeeingDirectory =>

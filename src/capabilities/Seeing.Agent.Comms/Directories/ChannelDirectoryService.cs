@@ -11,7 +11,7 @@ namespace Seeing.Agent.Comms.Directories;
 /// <para>只保留两类进程内状态：<b>回复锚点</b>（入站登记的副产物，无需跨进程一致）
 /// 与<b>频控滑窗</b>（投递计数，天然是进程内语义）。</para>
 /// </summary>
-public sealed class ChannelDirectoryService : IChannelDirectory
+public sealed class ChannelDirectoryService : IChannelDirectory, ICommsWorkspaceScopedState
 {
     private static readonly TimeSpan Window = TimeSpan.FromHours(1);
 
@@ -25,6 +25,22 @@ public sealed class ChannelDirectoryService : IChannelDirectory
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+    }
+
+    /// <summary>
+    /// 清空本进程内与工作区绑定的状态（由 <c>CommsWorkspaceParticipant</c> 在切换后调用）。
+    /// <para><b>为什么服务层也要参与</b>：目录条目在 store 里，但<b>回复锚点</b>与<b>频控滑窗</b>
+    /// 是服务层独有状态，且都描述「旧工作区里发生过什么」——
+    /// 不清掉会让新工作区的第一条回复去回复旧工作区的消息，或被旧工作区的计数误限流。</para>
+    /// <para>只清自己的状态，不碰 store：重载由切换流程统一编排。</para>
+    /// </summary>
+    public void ResetForNewWorkspace()
+    {
+        lock (_gate)
+        {
+            _replyAnchors.Clear();
+            _deliveries.Clear();
+        }
     }
 
     public InboundAdmission AdmitInbound(ChannelInboundMessage message)

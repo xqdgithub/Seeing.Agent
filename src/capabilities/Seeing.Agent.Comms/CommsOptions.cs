@@ -11,7 +11,7 @@ public sealed class CommsOptions
     /// <summary>每用户每小时主动投递上限。0 关闭频控。</summary>
     public int RateLimitPerHour { get; set; } = 20;
 
-    /// <summary>目录文件。空则 <c>~/.seeing/comms/directory.json</c>。</summary>
+    /// <summary>目录文件。空则 <c>{项目}/.seeing/comms/directory.json</c>（工作区未选定时回退 <c>~/.seeing/comms/directory.json</c>）。</summary>
     public string? DirectoryFilePath { get; set; }
 
     /// <summary>审计日志。空则不写。</summary>

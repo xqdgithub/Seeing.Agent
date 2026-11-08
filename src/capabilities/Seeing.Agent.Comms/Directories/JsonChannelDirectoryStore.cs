@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Paths;
 using Seeing.Files;
 using Seeing.Serialization;
 using System.Text.Json;
@@ -16,7 +17,7 @@ namespace Seeing.Agent.Comms.Directories;
 /// <c>~/.seeing/comms/directory.json</c>）。构造时载入；读取前按文件时间戳增量同步，
 /// 写入前先把磁盘上的外部条目合并进来。
 /// </summary>
-public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
+public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore, ICommsWorkspaceScopedState
 {
     private static readonly JsonSerializerOptions JsonOptions = SeeingJson.Create(indented: true, o =>
     {
@@ -41,6 +42,9 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
     /// </summary>
     private DateTime _syncedWriteUtc = DateTime.MinValue;
 
+    /// <summary>上次同步的目录文件路径（用于诊断与「路径变化」兜底检查）。</summary>
+    private string? _syncedPath;
+
     public JsonChannelDirectoryStore(
         IOptions<CommsOptions> options,
         ILogger<JsonChannelDirectoryStore>? logger = null,
@@ -49,7 +53,7 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? NullLogger<JsonChannelDirectoryStore>.Instance;
         _directories = directories;
-        LoadFromDisk();
+        ReloadFromDiskCore(ResolveDirectoryPath(_options.Value, _directories));
     }
 
     /// <summary>
@@ -92,6 +96,9 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         ct.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            // 改内存前先对齐路径：切了工作区还往旧内存里合并，会把旧工作区的条目写进新文件。
+            // 对齐动作必须早于本次修改——否则重载会把这次待写入的条目一起清掉。
+            AlignPathLocked();
             _users[ChannelKeys.User(user.ChannelId, user.ExternalId)] = user;
             PersistLocked();
         }
@@ -104,6 +111,7 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         ct.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            AlignPathLocked();
             _conversations[ChannelKeys.Conversation(entry.Conversation)] = entry;
             PersistLocked();
         }
@@ -196,6 +204,7 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         ct.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            AlignPathLocked();
             if (_users.Remove(ChannelKeys.User(channelId, externalId)))
                 PersistLocked();
         }
@@ -209,6 +218,7 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         ct.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            AlignPathLocked();
             if (_conversations.Remove(ChannelKeys.Conversation(new ConversationInfo
                 {
                     ChannelId = channelId,
@@ -243,6 +253,7 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         ct.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            AlignPathLocked();
             _blocked[BlockedKey(entry.ChannelId, entry.Kind, entry.ExternalId)] = entry;
             PersistLocked();
         }
@@ -256,11 +267,46 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         ct.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            AlignPathLocked();
             if (_blocked.Remove(BlockedKey(channelId, kind, externalId)))
                 PersistLocked();
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 重新从磁盘载入（工作区切换后由 <c>CommsWorkspaceParticipant</c> 调用）。
+    /// <para><b>为什么必须显式重载</b>：目录文件路径由工作区推导，切换后路径会变。
+    /// 只靠读前的时间戳比较不够——新旧文件的时间戳没有可比性，
+    /// 会把上一个工作区的对话/屏蔽名单留在内存里，甚至写进新工作区的文件。</para>
+    /// </summary>
+    public void ReloadFromDisk()
+    {
+        lock (_gate)
+        {
+            ReloadFromDiskCore(ResolveDirectoryPath(_options.Value, _directories));
+        }
+    }
+
+    /// <inheritdoc/>
+    public void ResetForNewWorkspace() => ReloadFromDisk();
+
+    /// <summary>
+    /// 按给定路径清空并重载（调用方须持有 <c>_gate</c>）。
+    /// </summary>
+    private void ReloadFromDiskCore(string path)
+    {
+        _users.Clear();
+        _conversations.Clear();
+        _blocked.Clear();
+        _syncedPath = path;
+        _syncedWriteUtc = DateTime.MinValue;
+
+        if (!File.Exists(path))
+            return;
+
+        LoadFromDiskLocked(path);
     }
 
     public bool IsBlocked(string channelId, ConversationKind kind, string externalId)
@@ -285,6 +331,9 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         List<ConversationEntry> conversations;
         lock (_gate)
         {
+            // 启动载入也要先对齐路径：否则构造后首次 LoadInto 可能读到旧工作区快照。
+            SyncFromDiskIfNewerLocked();
+
             users = _users.Values.ToList();
             conversations = _conversations.Values.ToList();
         }
@@ -300,46 +349,6 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         }
 
         return Task.CompletedTask;
-    }
-
-    private void LoadFromDisk()
-    {
-        var path = ResolveDirectoryPath(_options.Value, _directories);
-        if (!File.Exists(path))
-        {
-            _syncedWriteUtc = DateTime.MinValue;
-            return;
-        }
-
-        try
-        {
-            var json = File.ReadAllText(path);
-            if (string.IsNullOrWhiteSpace(json))
-                return;
-
-            var document = JsonSerializer.Deserialize<DirectoryDocument>(json, JsonOptions);
-            if (document is null)
-                return;
-
-            lock (_gate)
-            {
-                _users.Clear();
-                _conversations.Clear();
-                _blocked.Clear();
-                foreach (var user in document.Users)
-                    _users[ChannelKeys.User(user.ChannelId, user.ExternalId)] = user;
-                foreach (var conversation in document.Conversations)
-                    _conversations[ChannelKeys.Conversation(conversation.Conversation)] = conversation;
-                foreach (var blocked in document.Blocked)
-                    _blocked[BlockedKey(blocked.ChannelId, blocked.Kind, blocked.ExternalId)] = blocked;
-            }
-
-            _syncedWriteUtc = ReadWriteTimeUtc(path);
-        }
-        catch (Exception ex) when (ex is JsonException or IOException)
-        {
-            _logger.LogWarning(ex, "渠道目录载入失败，按空目录启动: {Path}", path);
-        }
     }
 
     /// <summary>
@@ -358,12 +367,15 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
     }
 
     /// <summary>
-    /// 磁盘比内存新时重新载入（调用方须持有 <c>_gate</c>）。
+    /// 磁盘比内存新（或路径已变）时重新载入（调用方须持有 <c>_gate</c>）。
     /// <para>每次读/写前都过一遍：文件由多进程共享，任一方写入后其它进程必须能看见。</para>
-    /// <para>只做「变新才重载」而不是无条件重读：同进程内的连续读写不会反复解析 JSON。</para>
+    /// <para><b>路径变化优先于时间戳</b>：工作区切换后解析路径会变，此时旧文件的时间戳毫无意义，
+    /// 必须无条件重载（含「新路径没有文件 → 清空内存」），否则会把上一个工作区的条目带过来。</para>
     /// </summary>
     private void SyncFromDiskIfNewerLocked()
     {
+        AlignPathLocked();
+
         var path = ResolveDirectoryPath(_options.Value, _directories);
         var diskWriteUtc = ReadWriteTimeUtc(path);
 
@@ -375,6 +387,21 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         LoadFromDiskLocked(path);
     }
 
+    /// <summary>
+    /// 解析路径与内存快照的同步路径不一致时**无条件**重载（调用方须持有 <c>_gate</c>）。
+    /// <para>必须在<b>改内存之前</b>调用：<c>ReloadFromDiskCore</c> 会清空快照，
+    /// 先改再对齐会把本次修改一起冲掉（表现为「写入丢失」）。</para>
+    /// </summary>
+    private void AlignPathLocked()
+    {
+        var path = ResolveDirectoryPath(_options.Value, _directories);
+        if (!PathsEqual(path, _syncedPath))
+            ReloadFromDiskCore(path);
+    }
+
+    private static bool PathsEqual(string? left, string? right)
+        => string.Equals(left, right, PathBoundary.PathComparison);
+
     /// <summary>重载指定文件到内存（调用方须持有 <c>_gate</c>；失败只告警，保留现有内存）。</summary>
     private void LoadFromDiskLocked(string path)
     {
@@ -382,11 +409,19 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
         {
             var json = File.ReadAllText(path);
             if (string.IsNullOrWhiteSpace(json))
+            {
+                _syncedPath = path;
+                _syncedWriteUtc = ReadWriteTimeUtc(path);
                 return;
+            }
 
             var document = JsonSerializer.Deserialize<DirectoryDocument>(json, JsonOptions);
             if (document is null)
+            {
+                _syncedPath = path;
+                _syncedWriteUtc = ReadWriteTimeUtc(path);
                 return;
+            }
 
             _users.Clear();
             _conversations.Clear();
@@ -399,6 +434,7 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
                 _blocked[BlockedKey(blocked.ChannelId, blocked.Kind, blocked.ExternalId)] = blocked;
 
             _syncedWriteUtc = ReadWriteTimeUtc(path);
+            _syncedPath = path;
         }
         catch (Exception ex) when (ex is JsonException or IOException)
         {
@@ -411,14 +447,18 @@ public sealed class JsonChannelDirectoryStore : IChannelDirectoryStore
     /// 把内存快照落盘（调用方须持有 <c>_gate</c>）。
     /// <para><b>写前先合并磁盘</b>：本文件由多进程共享，若直接覆盖会丢掉其它进程刚写入的条目。
     /// 合并方向是「磁盘有、内存没有」的记录补进来；内存里已有的以内存为准（它含本次修改）。</para>
+    /// <para><b>调用前置条件</b>：本次修改<b>之前</b>已经过 <see cref="AlignPathLocked"/>。
+    /// 这里不能再对齐——那会重载并清空内存，把正要写入的修改冲掉。</para>
     /// </summary>
     private void PersistLocked()
     {
         var path = ResolveDirectoryPath(_options.Value, _directories);
+
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory))
             Directory.CreateDirectory(directory);
 
+        // 补上其它进程写入、本进程内存还没有的条目（不覆盖内存里已有的键）。
         MergeFromDiskLocked(path);
 
         var document = new DirectoryDocument
