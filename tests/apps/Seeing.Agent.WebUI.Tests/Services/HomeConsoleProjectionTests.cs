@@ -60,7 +60,7 @@ public class HomeConsoleProjectionTests
     [InlineData(McpConnectionState.Connecting, "连接中")]
     [InlineData(McpConnectionState.Reconnecting, "重连中")]
     [InlineData(McpConnectionState.Paused, "已暂停")]
-    [InlineData(McpConnectionState.Error, "错误")]
+    [InlineData(McpConnectionState.Error, "异常")]
     [InlineData(McpConnectionState.Pending, "等待中")]
     [InlineData(McpConnectionState.Removed, "已移除")]
     [InlineData(McpConnectionState.Disabled, "已禁用")]
@@ -123,7 +123,8 @@ public class HomeConsoleProjectionTests
     [Fact]
     public void AgentRuntimeText_Native_ShouldBeNative()
     {
-        // 默认值即 Native：内置 Agent 不显式设置 Runtime
+        // 默认值即 Native：内置 Agent 不显式设置 Runtime。
+        // Native / ACP 是运行时分类名，按 §10 U1 保留原文，不译成中文。
         var agent = new AgentDefinition { Name = "build" };
 
         HomeDashboardView.AgentRuntimeText(agent).Should().Be("Native");

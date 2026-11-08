@@ -258,30 +258,11 @@ public static class HomeDashboardView
     /// <summary>
     /// MCP 服务器状态文案（首页短词）。
     /// <para>
-    /// 它是这条文案的<b>唯一出口</b>：首页与 <c>McpStatusPanel</c> 都走这里，
-    /// 避免同一种连接状态在不同页面各写一套译名而漂移。
-    /// 覆盖全部枚举值，并让 <c>Config.Disabled</c> 优先于运行时状态。
+    /// 它是这条文案的<b>唯一出口</b>：首页与 <c>McpStatusPanel</c>、MCP 页都走这里，
+    /// 避免同一种连接状态在不同页面各写一套译名而漂移。实际映射表在 <see cref="UiText.McpState"/>。
     /// </para>
     /// </summary>
-    public static string McpStateText(McpServerStatus status)
-    {
-        ArgumentNullException.ThrowIfNull(status);
-
-        if (status.IsDisabled)
-            return "已禁用";
-
-        return status.State switch
-        {
-            McpConnectionState.Connected => "已连接",
-            McpConnectionState.Connecting => "连接中",
-            McpConnectionState.Reconnecting => "重连中",
-            McpConnectionState.Paused => "已暂停",
-            McpConnectionState.Error => "错误",
-            McpConnectionState.Pending => "等待中",
-            McpConnectionState.Removed => "已移除",
-            _ => status.State.ToString()
-        };
-    }
+    public static string McpStateText(McpServerStatus status) => UiText.McpState(status);
 
     /// <summary>MCP 状态对应色调：连接成功绿、错误红、暂停/重连告警、其余弱化。</summary>
     public static string McpStateTone(McpServerStatus status)
@@ -301,12 +282,8 @@ public static class HomeDashboardView
         };
     }
 
-    /// <summary>智能体运行时标签：Native / ACP。</summary>
-    public static string AgentRuntimeText(AgentDefinition agent)
-    {
-        ArgumentNullException.ThrowIfNull(agent);
-        return agent.Runtime == AgentRuntime.AcpPassthrough ? "ACP" : "Native";
-    }
+    /// <summary>智能体运行时标签：Native / ACP（映射表在 <see cref="UiText.AgentRuntimeLabel"/>）。</summary>
+    public static string AgentRuntimeText(AgentDefinition agent) => UiText.AgentRuntimeLabel(agent);
 
     /// <summary>会话分布中的一档：文案 + 数量 + 色调类名。</summary>
     public sealed record SessionStatusBucket(string Label, int Count, string Tone);

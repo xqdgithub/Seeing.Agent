@@ -188,7 +188,7 @@
     <SlotHost SlotName="message_toolbar"
               SessionScenario="@(SessionState?.CurrentSession?.Scenario)" />
     
-    <!-- 底部提示栏：Token 预算（左） + 自动批准开关（右）；移动端仅显示自动批准 -->
+    <!-- 底部提示栏：Token 预算（左） + 会话审批策略（右）；移动端仅显示审批策略 -->
     <div class="prompt-footer">
         @if (!AppState.IsMobile && BudgetStatus != null && BudgetStatus.MaxTokens > 0)
         {
@@ -254,7 +254,7 @@
     /// 占位符文本
     /// </summary>
     [Parameter]
-    public string Placeholder { get; set; } = "输入消息...";
+    public string Placeholder { get; set; } = "输入消息……";
 
     /// <summary>
     /// 帮助提示文本
@@ -333,7 +333,7 @@
     public EventCallback<SessionAutoApprove> OnAutoApproveChanged { get; set; }
 
     /// <summary>
-    /// 全局自动批准当前值（用于「跟随全局」段展示开/关）
+    /// 全局自动批准当前值（用于「默认」段展示受全局开/关影响）
     /// </summary>
     [Parameter]
     public bool GlobalAutoApprove { get; set; }

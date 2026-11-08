@@ -39,7 +39,7 @@
         @if (Status.NeedsCompaction)
         {
             <Alert Type="@AlertType.Warning"
-                   Message="Token 使用率较高，建议压缩会话以释放空间"
+                   Message="Token 使用率偏高，建议压缩会话以释放上下文空间"
                    ShowIcon="true"
                    Style="margin-top: 16px;" />
             <div style="margin-top: 12px; text-align: center;">

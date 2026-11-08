@@ -4,7 +4,7 @@
 @inject IToolManager ToolInvoker
 @inject IMessageService MessageService
 
-<PageTitle>工具 - Seeing</PageTitle>
+<PageTitle>工具 · Seeing</PageTitle>
 
 <div class="workspace-page">
     <div class="page-header">
@@ -33,7 +33,7 @@
                 <div class="stat-icon">@GetCategoryIcon(category.Key)</div>
                 <div class="stat-content">
                     <span class="stat-value">@category.Value</span>
-                    <span class="stat-label">@category.Key</span>
+                    <span class="stat-label">@UiText.ToolCategoryText(category.Key)</span>
                 </div>
             </div>
         }
@@ -41,14 +41,14 @@
             <div class="stat-icon" style="background: var(--color-success-bg); color: var(--color-success);"><Icon Type="@IconType.Outline.CheckCircle" /></div>
             <div class="stat-content">
                 <span class="stat-value">@_enabledCount</span>
-                <span class="stat-label">Enabled</span>
+                <span class="stat-label">已启用</span>
             </div>
         </div>
         <div class="stat-item">
             <div class="stat-icon" style="background: var(--color-bg-tertiary); color: var(--color-text-tertiary);"><Icon Type="@IconType.Outline.Stop" /></div>
             <div class="stat-content">
                 <span class="stat-value">@(_tools.Count - _enabledCount)</span>
-                <span class="stat-label">Disabled</span>
+                <span class="stat-label">已禁用</span>
             </div>
         </div>
     </div>
@@ -56,24 +56,24 @@
     <!-- Filters -->
     <div class="page-filters">
         <div class="filter-search">
-            <Input @bind-Value="_searchText" Placeholder="搜索工具..." AllowClear="true" DebounceMilliseconds="300">
+            <Input @bind-Value="_searchText" Placeholder="搜索工具……" AllowClear="true" DebounceMilliseconds="300">
                 <Prefix><Icon Type="@IconType.Outline.Search" /></Prefix>
             </Input>
         </div>
         <div class="filter-divider"></div>
         <div class="filter-group">
-            <span class="filter-label">Category:</span>
-            <Select TItemValue="string" TItem="string" @bind-Value="_selectedCategory" Style="min-width: 140px;" AllowClear=true Placeholder="All Categories">
+            <span class="filter-label">分类：</span>
+            <Select TItemValue="string" TItem="string" @bind-Value="_selectedCategory" Style="min-width: 140px;" AllowClear=true Placeholder="全部分类">
                 @foreach (var cat in _categories) {
-                    <SelectOption TItemValue="string" TItem="string" Value="@cat">@cat</SelectOption>
+                    <SelectOption TItemValue="string" TItem="string" Value="@cat">@UiText.ToolCategoryText(cat)</SelectOption>
                 }
             </Select>
         </div>
         <div class="filter-group">
-            <span class="filter-label">Status:</span>
-            <Select TItemValue="string" TItem="string" @bind-Value="_selectedStatus" Style="min-width: 120px;" AllowClear=true Placeholder="All">
-                <SelectOption TItemValue="string" TItem="string" Value="@("enabled")">Enabled</SelectOption>
-                <SelectOption TItemValue="string" TItem="string" Value="@("disabled")">Disabled</SelectOption>
+            <span class="filter-label">状态：</span>
+            <Select TItemValue="string" TItem="string" @bind-Value="_selectedStatus" Style="min-width: 120px;" AllowClear=true Placeholder="全部">
+                <SelectOption TItemValue="string" TItem="string" Value="@("enabled")">已启用</SelectOption>
+                <SelectOption TItemValue="string" TItem="string" Value="@("disabled")">已禁用</SelectOption>
             </Select>
         </div>
     </div>
@@ -87,8 +87,8 @@
         else if (!_filteredTools.Any()) {
             <div class="empty-state">
                 <div class="empty-state-icon"><Icon Type="@IconType.Outline.Search" /></div>
-                <div class="empty-state-title">No tools found</div>
-                <div class="empty-state-description">Try adjusting your search or filter criteria</div>
+                <div class="empty-state-title">没有符合条件的工具</div>
+                <div class="empty-state-description">请调整搜索关键词或筛选条件后重试</div>
             </div>
         }
         else {
@@ -100,7 +100,7 @@
                         <div class="card-title-section">
                             <h3 class="card-title">@tool.Id</h3>
                             <div class="card-status-row">
-                                <Tag Color="@GetCategoryColor(tool.Category)">@tool.Category</Tag>
+                                <Tag Color="@UiText.ToolCategoryColor(tool.Category)">@UiText.ToolCategoryText(tool.Category)</Tag>
                                 @if (tool is McpTool mcpTool)
                                 {
                                     <Tag Color="@("geekblue")">MCP</Tag>
@@ -111,7 +111,7 @@
                                     <Tag Color="@("orange")">内置</Tag>
                                 }
                                 <Tag Color="@(ToolInvoker.IsToolEnabled(tool.Id) ? "success" : "default")">
-                                    @(ToolInvoker.IsToolEnabled(tool.Id) ? "Enabled" : "Disabled")
+                                    @(ToolInvoker.IsToolEnabled(tool.Id) ? "已启用" : "已禁用")
                                 </Tag>
                             </div>
                         </div>
@@ -141,7 +141,7 @@
         @if (_detailTool != null)
         {
             <div class="detail-section">
-                <span class="detail-label">参数 Schema:</span>
+                <span class="detail-label">参数定义（JSON Schema）：</span>
                 <pre class="detail-code">@_detailTool.ParametersSchema.GetRawText()</pre>
             </div>
         }
@@ -224,13 +224,7 @@
         "Computation" => "🖥️",
         "LlmInteraction" => "🤖",
         "ExternalService" => "🔌",
+        "Database" => "🗄️",
         _ => "🔧"
-    };
-    
-    string GetCategoryColor(ToolCategory c) => c switch {
-        ToolCategory.FileSystem => "blue",
-        ToolCategory.Network => "cyan",
-        ToolCategory.LlmInteraction => "purple",
-        _ => "default"
     };
 }

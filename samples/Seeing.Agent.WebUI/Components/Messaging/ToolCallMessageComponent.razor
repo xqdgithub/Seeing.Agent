@@ -52,7 +52,7 @@ else
                                         @bind-Value="_paramViewMode"
                                         ButtonStyle="@RadioButtonStyle.Solid"
                                         Size="@InputSize.Small">
-                                <Radio Value="@("kv")">Key-Value</Radio>
+                                <Radio Value="@("kv")">表格</Radio>
                                 <Radio Value="@("json")">JSON</Radio>
                             </RadioGroup>
                             <Space Size="@SpaceSize.Small" Class="tool-call-section-actions">
@@ -226,14 +226,14 @@ else
                 // ignore
             }
         }
-        if (firstLine.Length > 40) return firstLine[..40] + "...";
+        if (firstLine.Length > 40) return firstLine[..40] + "……";
         return firstLine;
     }
 
     private string GetErrorPreview()
     {
         if (string.IsNullOrEmpty(ToolCall.Error)) return "";
-        if (ToolCall.Error.Length > 40) return ToolCall.Error[..40] + "...";
+        if (ToolCall.Error.Length > 40) return ToolCall.Error[..40] + "……";
         return ToolCall.Error;
     }
 

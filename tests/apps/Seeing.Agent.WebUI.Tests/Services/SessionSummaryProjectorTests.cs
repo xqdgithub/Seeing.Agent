@@ -57,7 +57,7 @@ public class SessionSummaryProjectorTests
 
         var snapshot = Build(s, isExecuting: true, status: ExecutionStatus.Running);
 
-        snapshot.ActionLine.Should().Contain("2 个子代理");
+        snapshot.ActionLine.Should().Contain("2 个子智能体");
         snapshot.StateKind.Should().Be(SummaryState.Running);
     }
 

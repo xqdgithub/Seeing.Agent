@@ -35,7 +35,7 @@
                     @if (_expandedTools.Contains(tool.Name))
                     {
                         <div class="tool-schema-section">
-                            <div class="schema-label">参数 Schema</div>
+                            <div class="schema-label">参数定义</div>
                             @if (tool.Schema != null && tool.Schema.Count > 0)
                             {
                                 <pre class="schema-content">@FormatSchema(tool.Schema)</pre>

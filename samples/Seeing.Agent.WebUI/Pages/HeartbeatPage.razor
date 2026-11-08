@@ -10,7 +10,7 @@
 @inject IMessageService MessageService
 @implements IDisposable
 
-<PageTitle>心跳 - Seeing</PageTitle>
+<PageTitle>心跳 · Seeing</PageTitle>
 
 <WorkspacePageShell Loading="@_loading">
     <Breadcrumb>
@@ -81,7 +81,7 @@
                             <span>@last.StartedAt.ToString("MM-dd HH:mm:ss")</span>
                             @if (last.Duration is { } d)
                             {
-                                <span style="color:#999;">（@((int)Math.Round(d.TotalSeconds))s）</span>
+                                <span style="color:#999;">（耗时 @((int)Math.Round(d.TotalSeconds)) 秒）</span>
                             }
                             @if (!string.IsNullOrWhiteSpace(last.Error))
                             {
@@ -110,7 +110,7 @@
                     <Col Span="8">
                         <FormItem Label="执行间隔" Required>
                             <Input @bind-Value="@_form.Every" Placeholder="6h、30m" />
-                            <small style="color:#999;">数字 + 单位（s/m/h/d）。心跳只支持间隔，不支持固定钟点。</small>
+                            <small style="color:#999;">由数字加单位组成，可用单位 s（秒）、m（分）、h（时）、d（天）。心跳只按固定间隔触发，不支持指定钟点。</small>
                         </FormItem>
                     </Col>
                     <Col Span="8">
@@ -125,9 +125,9 @@
                     </Col>
                 </Row>
 
-                <FormItem Label="生效时段（可选）">
+                        <FormItem Label="生效时段（可选）">
                     <small style="color:#999; display:block; margin-bottom:8px;">
-                        留空表示全天。时间均为上方时区的本地墙钟；开始默认 00:00，结束默认 23:59:59；允许跨午夜；不可交叠。
+                        留空表示全天生效。时间按上方时区计算；开始时间默认 00:00，结束时间默认 23:59:59；支持跨午夜时段，各时段不可重叠。
                     </small>
                     @for (var i = 0; i < _windows.Count; i++)
                     {
@@ -145,7 +145,7 @@
                     <Col Span="12">
                         <FormItem Label="目标会话">
                             <Input @bind-Value="@_form.SessionId" Placeholder="如 main" />
-                            <small style="color:#999;">心跳结果写入该会话（只留痕，不唤醒）。</small>
+                            <small style="color:#999;">心跳结果写入该会话，只留记录，不唤醒会话。</small>
                         </FormItem>
                     </Col>
                     <Col Span="12">
@@ -164,16 +164,16 @@
 
                 <Row Gutter="16">
                     <Col Span="12">
-                        <FormItem Label="Agent">
+                        <FormItem Label="智能体">
                             <Select TItemValue="string"
                                     TItem="string"
                                     Value="@_selectedAgent"
                                     ValueChanged="OnAgentChanged"
                                     DataSource="@_agentNames"
-                                    Placeholder="跟随默认 Agent"
+                                    Placeholder="跟随默认智能体"
                                     EnableSearch="true"
                                     AllowClear="true" />
-                            <small style="color:#999;">心跳使用的 Agent（留空使用默认）。</small>
+                            <small style="color:#999;">心跳使用的智能体，留空则使用默认智能体。</small>
                         </FormItem>
                     </Col>
                     <Col Span="12">
@@ -182,7 +182,7 @@
                             {
                                 <Input @bind-Value="@_form.Model"
                                        Placeholder="Provider/Model（如 openai/gpt-4）" />
-                                <small style="color:#999;">ACP Agent 的模型标识。</small>
+                                <small style="color:#999;">ACP 智能体使用的模型标识。</small>
                             }
                             else
                             {
@@ -190,18 +190,18 @@
                                                      ValueChanged="OnModelChanged"
                                                      FilterType="ModelType.Text"
                                                      AllowClear="true"
-                                                     Placeholder="跟随 Agent 默认模型" />
-                                <small style="color:#999;">留空使用该 Agent 的默认模型。</small>
+                                                     Placeholder="跟随智能体默认模型" />
+                                <small style="color:#999;">留空则使用该智能体的默认模型。</small>
                             }
                         </FormItem>
                     </Col>
                 </Row>
 
-                <FormItem Label="心跳 Prompt" Required>
+                <FormItem Label="心跳提示词" Required>
                     <TextArea @bind-Value="@_form.Prompt" Rows="6" AutoSize="true"
-                              Placeholder="每次心跳交给 Agent 的指令" />
+                              Placeholder="每次心跳交给智能体的指令" />
                     <small style="color:#999;">
-                        必填。建议写明「检查什么、什么情况下汇报、没事怎么回复」。
+                        必填。建议写明需要检查什么、什么情况下汇报、没有异常时如何回复。
                         <a style="cursor:pointer; margin-left:6px;" @onclick="FillExample">填入示例</a>
                     </small>
                 </FormItem>
@@ -227,15 +227,15 @@
                         @context.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")
                     </PropertyColumn>
                     <PropertyColumn Property="r => r.Source" Title="来源">
-                        <Tag Color="@(context.Source == ScheduleSources.Heartbeat ? "orange" : "blue")">@context.Source</Tag>
+                        <Tag Color="@(context.Source == ScheduleSources.Heartbeat ? "orange" : "blue")">@UiText.ScheduleSource(context.Source)</Tag>
                     </PropertyColumn>
                     <PropertyColumn Property="r => r.Status" Title="状态">
-                        <Tag Color="@(context.Status == "success" ? "green" : "red")">
-                            @(context.Status == "success" ? "成功" : "失败")
+                        <Tag Color="@UiText.ExecutionStatusColor(context.Status)">
+                            @UiText.ExecutionStatus(context.Status)
                         </Tag>
                     </PropertyColumn>
                     <PropertyColumn Property="r => r.Duration" Title="耗时">
-                        @(context.Duration is { } d ? $"{Math.Round(d.TotalSeconds)}s" : "-")
+                        @(context.Duration is { } d ? UiText.Duration(d) : "-")
                     </PropertyColumn>
                     <PropertyColumn Property="r => r.Output" Title="内容">
                         @Truncate(context.Output ?? context.Error, 60)
@@ -301,7 +301,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Warning($"读取 Agent 列表失败: {ex.Message}");
+            MessageService.Warning($"读取智能体列表失败：{ex.Message}");
             _agentNames = [];
         }
     }
@@ -323,7 +323,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"读取心跳状态失败: {ex.Message}");
+            MessageService.Error($"读取心跳状态失败：{ex.Message}");
         }
         finally
         {
@@ -380,7 +380,7 @@
 
         if (string.IsNullOrWhiteSpace(_form.Prompt))
         {
-            _error = "心跳 Prompt 为必填项";
+            _error = "心跳提示词为必填项";
             return;
         }
 
@@ -419,7 +419,7 @@
         catch (Exception ex)
         {
             _error = ex.Message;
-            MessageService.Error($"保存失败: {ex.Message}");
+            MessageService.Error($"保存失败：{ex.Message}");
         }
         finally
         {
@@ -445,7 +445,7 @@
                     MessageService.Warning("心跳未启用或调度器未启动");
                     break;
                 case TriggerResult.Conflict c:
-                    MessageService.Warning($"心跳正在执行中: {c.Reason}");
+                    MessageService.Warning($"心跳正在执行中：{c.Reason}");
                     break;
             }
 
@@ -453,7 +453,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"触发失败: {ex.Message}");
+            MessageService.Error($"触发失败：{ex.Message}");
         }
         finally
         {

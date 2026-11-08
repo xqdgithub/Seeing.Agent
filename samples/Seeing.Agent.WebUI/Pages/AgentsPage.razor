@@ -9,10 +9,10 @@
 @inject IMessageService MessageService
 @inject IWorkspaceProvider WorkspaceProvider
 
-<PageTitle>智能体管理 - Seeing</PageTitle>
+<PageTitle>智能体管理 · Seeing</PageTitle>
 
 <WorkspacePageShell Loading="@_loading" IsEmpty="@(!_rows.Any())"
-                    EmptyTitle="暂无智能体" EmptyDescription="请检查 Agent 配置">
+                    EmptyTitle="暂无智能体" EmptyDescription="请检查智能体配置">
     <Breadcrumb>
         <BreadcrumbItem>设置</BreadcrumbItem>
         <BreadcrumbItem>智能体管理</BreadcrumbItem>
@@ -228,7 +228,7 @@
         try
         {
             await AgentManager.CreateMdConfigAsync(_createForm.Name, _createForm.Level);
-            MessageService.Success($"已创建 MD 配置: {_createForm.Name}");
+            MessageService.Success($"已创建 MD 配置：{_createForm.Name}");
             _createModalVisible = false;
             await LoadAsync();
             
@@ -237,7 +237,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"创建失败: {ex.Message}");
+            MessageService.Error($"创建失败：{ex.Message}");
         }
         finally
         {
@@ -250,13 +250,13 @@
         try
         {
             await AgentManager.CreateMdConfigAsync(name, _selectedLevel);
-            MessageService.Success($"已创建覆盖配置: {name}");
+            MessageService.Success($"已创建覆盖配置：{name}");
             await LoadAsync();
             GoConfig(name);
         }
         catch (Exception ex)
         {
-            MessageService.Error($"创建失败: {ex.Message}");
+            MessageService.Error($"创建失败：{ex.Message}");
         }
     }
 
@@ -267,7 +267,7 @@
             var success = await AgentManager.DeleteMdConfigAsync(name, level);
             if (success)
             {
-                MessageService.Success($"已删除 MD 配置: {name}");
+                MessageService.Success($"已删除 MD 配置：{name}");
                 await LoadAsync();
             }
             else
@@ -277,7 +277,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"删除失败: {ex.Message}");
+            MessageService.Error($"删除失败：{ex.Message}");
         }
     }
 
@@ -298,7 +298,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"操作失败: {ex.Message}");
+            MessageService.Error($"操作失败：{ex.Message}");
         }
     }
 

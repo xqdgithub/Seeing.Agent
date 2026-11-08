@@ -10,7 +10,7 @@
 @inject IMessageService MessageService
 @implements IDisposable
 
-<PageTitle>任务详情 - Seeing</PageTitle>
+<PageTitle>任务详情 · Seeing</PageTitle>
 
 @if (_notFound)
 {
@@ -43,19 +43,19 @@ else if (_job != null)
             }
             <Card Title="任务信息" Style="margin-bottom: 16px;">
                 <Descriptions Column="3">
-                    <DescriptionsItem Title="ID">@_job.Id</DescriptionsItem>
+                    <DescriptionsItem Title="任务编号">@_job.Id</DescriptionsItem>
                     <DescriptionsItem Title="名称">@_job.Name</DescriptionsItem>
                     <DescriptionsItem Title="状态">
                         <JobStatusBadge State="@_status" Expired="@_isExpired" />
                     </DescriptionsItem>
                     <DescriptionsItem Title="类型">
-                        <Tag Color="@GetTaskTypeColor(_job.TaskType)">@_job.TaskType</Tag>
+                        <Tag Color="@GetTaskTypeColor(_job.TaskType)">@UiText.ScheduleTaskType(_job.TaskType)</Tag>
                     </DescriptionsItem>
-                    <DescriptionsItem Title="Agent">@(_job.Agent ?? "默认")</DescriptionsItem>
+                    <DescriptionsItem Title="智能体">@(_job.Agent ?? "默认")</DescriptionsItem>
                     <DescriptionsItem Title="调度">@GetScheduleText(_job)</DescriptionsItem>
                     <DescriptionsItem Title="创建时间">@(_createdAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")</DescriptionsItem>
                     <DescriptionsItem Title="最后运行">@(_job.LastRunAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")</DescriptionsItem>
-                    <DescriptionsItem Title="Session">@(_job.Dispatch?.Target?.SessionId ?? "main")</DescriptionsItem>
+                    <DescriptionsItem Title="目标会话">@(_job.Dispatch?.Target?.SessionId ?? "main")</DescriptionsItem>
                     <DescriptionsItem Title="出站目标">@FormatConversation(_job)</DescriptionsItem>
                 </Descriptions>
             </Card>
@@ -72,12 +72,12 @@ else if (_job != null)
                             @context.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")
                         </PropertyColumn>
                         <PropertyColumn Property="r => r.Source" Title="来源">
-                            <Tag Color="@GetSourceColor(context.Source)">@context.Source</Tag>
+                            <Tag Color="@GetSourceColor(context.Source)">@UiText.ScheduleSource(context.Source)</Tag>
                         </PropertyColumn>
                         <PropertyColumn Property="r => r.TaskType" Title="类型">
                             @if (!string.IsNullOrEmpty(context.TaskType))
                             {
-                                <Tag Color="@GetTaskTypeColor(context.TaskType)">@context.TaskType</Tag>
+                                <Tag Color="@GetTaskTypeColor(context.TaskType)">@UiText.ScheduleTaskType(context.TaskType)</Tag>
                             }
                         </PropertyColumn>
                         <PropertyColumn Property="r => r.Prompt" Title="内容预览">
@@ -231,7 +231,7 @@ else if (_job != null)
                 MessageService.Warning("任务已禁用");
                 break;
             case TriggerResult.Conflict conflict:
-                MessageService.Warning($"触发冲突: {conflict.Reason}");
+                MessageService.Warning($"触发冲突：{conflict.Reason}");
                 break;
         }
     }
@@ -275,22 +275,22 @@ else if (_job != null)
 
     private static string GetScheduleText(ScheduledJobSpec job) => job.Schedule.Type switch
     {
-        ScheduleTypes.Cron => job.Schedule.Cron ?? "cron",
+        ScheduleTypes.Cron => job.Schedule.Cron ?? "Cron 表达式",
         ScheduleTypes.Interval => FormatInterval(job.Schedule),
-        ScheduleTypes.Once => job.Schedule.RunAt?.ToString("yyyy-MM-dd HH:mm") ?? "once",
+        ScheduleTypes.Once => job.Schedule.RunAt?.ToString("yyyy-MM-dd HH:mm") ?? "一次性",
         _ => job.Schedule.Type
     };
 
     private static string FormatInterval(ScheduleSpec s)
     {
-        var every = s.Every ?? "interval";
+        var every = s.Every ?? "固定间隔";
         if (s.Windows == null || s.Windows.Count == 0)
             return every;
         var parts = s.Windows.Select(w => $"{w.Start ?? "00:00"}–{w.End ?? "23:59:59"}");
         return $"{every} · {string.Join(", ", parts)}";
     }
 
-    /// <summary>出站 conversation（未显式配置时为空，运行时回落到会话绑定）。</summary>
+    /// <summary>出站对话（未显式配置时为空，运行时回落到会话绑定）。</summary>
     private static string FormatConversation(ScheduledJobSpec job)
     {
         var conversation = job.Dispatch?.Target?.Conversation;
@@ -302,14 +302,9 @@ else if (_job != null)
     }
 
     private static string Truncate(string text, int maxLength) =>
-        text.Length <= maxLength ? text : text[..maxLength] + "...";
+        text.Length <= maxLength ? text : text[..maxLength] + "……";
 
-    private static string FormatDuration(TimeSpan duration)
-    {
-        if (duration.TotalMinutes >= 1)
-            return $"{(int)duration.TotalMinutes}m {duration.Seconds}s";
-        return $"{duration.Seconds}s";
-    }
+    private static string FormatDuration(TimeSpan duration) => UiText.Duration(duration);
 
     private static string GetSourceColor(string? source) => source switch
     {

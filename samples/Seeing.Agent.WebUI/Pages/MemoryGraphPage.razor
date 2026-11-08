@@ -6,10 +6,10 @@
 @inject NavigationManager Navigation
 @inject IMessageService MessageService
 
-<PageTitle>知识图谱 - Seeing</PageTitle>
+<PageTitle>知识图谱 · Seeing</PageTitle>
 
 <WorkspacePageShell Loading="@_loading" IsEmpty="@(!_nodes.Any())"
-                    EmptyTitle="暂无图谱数据" EmptyDescription="记忆文件之间通过 Wikilink 建立关联关系">
+                    EmptyTitle="暂无图谱数据" EmptyDescription="记忆文件之间通过双向链接（[[名称]]）建立关联后，这里会显示图谱">
     <Breadcrumb>
         <BreadcrumbItem>工作区</BreadcrumbItem>
         <BreadcrumbItem Href="/memory">记忆</BreadcrumbItem>
@@ -52,7 +52,7 @@
     </Stats>
     <Filters>
         <div class="filter-search" style="flex: 1;">
-            <Search Placeholder="搜索节点路径或标题..." @bind-Value="@_searchQuery" OnSearch="FilterNodes" AllowClear="true" EnterButton="true" />
+            <Search Placeholder="搜索节点路径或标题……" @bind-Value="@_searchQuery" OnSearch="FilterNodes" AllowClear="true" EnterButton="true" />
         </div>
     </Filters>
     <ChildContent>
@@ -130,7 +130,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"加载图谱失败: {ex.Message}");
+            MessageService.Error($"加载图谱失败：{ex.Message}");
         }
         finally
         {
@@ -143,12 +143,12 @@
         try
         {
             await MemoryGraph.RemoveNodeAsync(path);
-            MessageService.Success($"已删除节点: {path}");
+            MessageService.Success($"已删除节点：{path}");
             await LoadGraphAsync();
         }
         catch (Exception ex)
         {
-            MessageService.Error($"删除节点失败: {ex.Message}");
+            MessageService.Error($"删除节点失败：{ex.Message}");
         }
     }
 
@@ -158,7 +158,7 @@
         {
             if (!Enum.TryParse<EdgeType>(edge.Type, out var type))
             {
-                MessageService.Error($"未知边类型: {edge.Type}");
+                MessageService.Error($"未知边类型：{edge.Type}");
                 return;
             }
 
@@ -168,7 +168,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"删除边失败: {ex.Message}");
+            MessageService.Error($"删除边失败：{ex.Message}");
         }
     }
 
@@ -183,7 +183,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"清空图谱失败: {ex.Message}");
+            MessageService.Error($"清空图谱失败：{ex.Message}");
         }
         finally
         {
@@ -236,7 +236,7 @@
         if (neighbors.Count == 0) return "无";
 
         var preview = string.Join(", ", neighbors.Select(n =>
-            n.Length > 30 ? "..." + n[^27..] : n));
+            n.Length > 30 ? "……" + n[^27..] : n));
 
         var totalCount = _edges
             .Count(e => e.SourcePath == path || e.TargetPath == path);

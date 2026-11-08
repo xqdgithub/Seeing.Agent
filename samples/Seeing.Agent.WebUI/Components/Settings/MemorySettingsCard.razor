@@ -18,7 +18,7 @@
 @if (_options is not null)
 {
     <Alert Type="@AlertType.Info"
-           Message="@($"向量状态: {(EmbeddingStatus.IsAvailable ? "已启用" : EmbeddingStatus.Reason)}")"
+           Message="@($"向量检索状态：{(EmbeddingStatus.IsAvailable ? "已启用" : EmbeddingStatus.Reason)}")"
            ShowIcon="true" Style="margin-bottom: 16px;" />
 
     <Form Model="@_options" Layout="@FormLayout.Vertical">
@@ -29,21 +29,21 @@
                 <Switch @bind-Value="@_options.Capture.CaptureTools" Disabled />
                 <div style="color:#888;font-size:12px;margin-top:4px;">批量抽取模式下工具捕获已停用</div>
             </FormItem>
-            <FormItem Label="Snippet 上限"><AntDesign.InputNumber @bind-Value="@_options.Capture.MaxSnippetChars" Min="256" Max="32000" /></FormItem>
+            <FormItem Label="单条片段长度上限"><AntDesign.InputNumber @bind-Value="@_options.Capture.MaxSnippetChars" Min="256" Max="32000" /></FormItem>
             <FormItem Label="队列容量"><AntDesign.InputNumber @bind-Value="@_options.Capture.QueueCapacity" Min="8" Max="4096" /></FormItem>
         </Card>
         <Card Title="抽取" Style="margin-bottom: 16px;">
-            <FormItem Label="启用 LLM 抽取"><Switch @bind-Value="@_options.Extraction.Enabled" /></FormItem>
+            <FormItem Label="启用模型抽取"><Switch @bind-Value="@_options.Extraction.Enabled" /></FormItem>
             <FormItem Label="最低重要性"><AntDesign.InputNumber @bind-Value="@_options.Extraction.MinImportance" Min="0" Max="1" Step="0.1" /></FormItem>
-            <FormItem Label="每 N 轮抽取"><AntDesign.InputNumber @bind-Value="@_options.Extraction.ExtractEveryNTurns" Min="0" Max="100" /></FormItem>
-            <FormItem Label="空闲 Flush 分钟"><AntDesign.InputNumber @bind-Value="@_options.Extraction.FlushIdleMinutes" Min="0" Max="1440" /></FormItem>
-            <FormItem Label="每分钟 Flush 上限"><AntDesign.InputNumber @bind-Value="@_options.Extraction.MaxCandidatesPerMinute" Min="1" Max="60" /></FormItem>
+            <FormItem Label="每 N 轮抽取一次"><AntDesign.InputNumber @bind-Value="@_options.Extraction.ExtractEveryNTurns" Min="0" Max="100" /></FormItem>
+            <FormItem Label="空闲多少分钟后写入"><AntDesign.InputNumber @bind-Value="@_options.Extraction.FlushIdleMinutes" Min="0" Max="1440" /></FormItem>
+            <FormItem Label="每分钟写入条数上限"><AntDesign.InputNumber @bind-Value="@_options.Extraction.MaxCandidatesPerMinute" Min="1" Max="60" /></FormItem>
             <FormItem Label="抽取模型">
                 <ModelSelectDropdown Value="@_extractionKey"
                                      ValueChanged="OnExtractionKeyChanged"
                                      FilterType="ModelType.Text"
                                      AllowClear="true"
-                                     Placeholder="空则使用 chat 默认模型"
+                                     Placeholder="留空则使用对话默认模型"
                                      Style="width: 100%;" />
             </FormItem>
         </Card>
@@ -51,30 +51,30 @@
             <FormItem Label="启用演化"><Switch @bind-Value="@_options.Evolution.Enabled" /></FormItem>
             <FormItem Label="会话结束时演化"><Switch @bind-Value="@_options.Evolution.OnSessionEnd" /></FormItem>
             <FormItem Label="空闲分钟"><AntDesign.InputNumber @bind-Value="@_options.Evolution.IdleMinutes" Min="1" Max="1440" /></FormItem>
-            <FormItem Label="Digest 重要性阈值"><AntDesign.InputNumber @bind-Value="@_options.Evolution.PromoteToDigestMinImportance" Min="0" Max="1" Step="0.1" /></FormItem>
+            <FormItem Label="晋升为长期摘要的重要性阈值"><AntDesign.InputNumber @bind-Value="@_options.Evolution.PromoteToDigestMinImportance" Min="0" Max="1" Step="0.1" /></FormItem>
         </Card>
-        <Card Title="Embedding" Style="margin-bottom: 16px;">
+        <Card Title="向量检索" Style="margin-bottom: 16px;">
             <FormItem Label="启用向量检索">
                 <Switch @bind-Value="@_options.Embedding.Enabled" />
                 <div style="color:#888;font-size:12px;margin-top:4px;">
-                    默认关闭。向量索引一开跑就有后台成本，必须显式开启（决议 10）
+                    默认关闭。开启后会在后台持续建立索引并产生调用开销，需要时请手动开启
                 </div>
             </FormItem>
-            <FormItem Label="Embedding 模型">
+            <FormItem Label="向量模型">
                 <ModelSelectDropdown Value="@_embeddingKey"
                                      ValueChanged="OnEmbeddingKeyChanged"
                                      FilterType="ModelType.Embedding"
                                      AllowClear="true"
-                                     Placeholder="空则不启用向量检索"
+                                     Placeholder="留空表示不使用向量检索"
                                      Style="width: 100%;" />
                 <div style="color:#888;font-size:12px;margin-top:4px;">
-                    必须显式选择 <c>provider/model</c>；不读全局 embedding 默认值，也不自动挑模型。
+                    需要明确选择一个向量模型，不会沿用其他位置配置的默认向量模型，也不会自动挑选。
                 </div>
             </FormItem>
             @if (!ModelManager.GetModelsByType(ModelType.Embedding).Any())
             {
                 <Alert Type="@AlertType.Warning"
-                       Message="请先在模型管理中为模型勾选 Embedding 类型"
+                       Message="请先在「模型」页面为模型勾选「向量」类型"
                        ShowIcon="true"
                        Style="margin-bottom: 12px;" />
             }
@@ -95,26 +95,26 @@
                     @if (_embeddingTestDimensions is int dims)
                     {
                         @* 维度只展示：配置项已删除，不再落盘（探测值随模型而变，写死反而会漂移） *@
-                        <span style="color: #888;">维度: @dims（仅探测结果，不写入配置）</span>
+                        <span style="color: #888;">向量维度：@dims（仅测试结果，不写入配置）</span>
                     }
                 </Space>
             </FormItem>
         </Card>
         <Card Title="召回">
-            <FormItem Label="模式">
+            <FormItem Label="检索模式">
                 <Select TItem="MemoryRetrievalMode"
                         TItemValue="MemoryRetrievalMode"
                         @bind-Value="@_options.Retrieval.Mode"
                         Style="width: 240px;">
                     <SelectOptions>
-                        <SelectOption TItem="MemoryRetrievalMode" TItemValue="MemoryRetrievalMode" Value="MemoryRetrievalMode.Both" Label="Both" />
-                        <SelectOption TItem="MemoryRetrievalMode" TItemValue="MemoryRetrievalMode" Value="MemoryRetrievalMode.AutoInject" Label="AutoInject" />
-                        <SelectOption TItem="MemoryRetrievalMode" TItemValue="MemoryRetrievalMode" Value="MemoryRetrievalMode.ToolsOnly" Label="ToolsOnly" />
+                        <SelectOption TItem="MemoryRetrievalMode" TItemValue="MemoryRetrievalMode" Value="MemoryRetrievalMode.Both" Label="混合（自动注入 + 工具）" />
+                        <SelectOption TItem="MemoryRetrievalMode" TItemValue="MemoryRetrievalMode" Value="MemoryRetrievalMode.AutoInject" Label="仅自动注入" />
+                        <SelectOption TItem="MemoryRetrievalMode" TItemValue="MemoryRetrievalMode" Value="MemoryRetrievalMode.ToolsOnly" Label="仅工具调用" />
                     </SelectOptions>
                 </Select>
             </FormItem>
-            <FormItem Label="TopK"><AntDesign.InputNumber @bind-Value="@_options.Retrieval.TopK" Min="1" Max="50" /></FormItem>
-            <FormItem Label="注入超时(ms)"><AntDesign.InputNumber @bind-Value="@_options.Retrieval.InjectTimeoutMs" Min="50" Max="5000" /></FormItem>
+            <FormItem Label="最多召回条数"><AntDesign.InputNumber @bind-Value="@_options.Retrieval.TopK" Min="1" Max="50" /></FormItem>
+            <FormItem Label="注入超时（毫秒）"><AntDesign.InputNumber @bind-Value="@_options.Retrieval.InjectTimeoutMs" Min="50" Max="5000" /></FormItem>
         </Card>
     </Form>
 
@@ -231,7 +231,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"保存失败: {ex.Message}");
+            MessageService.Error($"保存失败：{ex.Message}");
         }
         finally
         {

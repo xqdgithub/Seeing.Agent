@@ -22,7 +22,7 @@
 @inject ICapabilitySetCatalog CapabilitySetCatalog
 @implements IDisposable
 
-<PageTitle>系统设置 - Seeing</PageTitle>
+<PageTitle>系统设置 · Seeing</PageTitle>
 
 <WorkspacePageShell>
     <Breadcrumb>
@@ -48,7 +48,7 @@
                     @if (_modulesEnabledWarning)
                     {
                         <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 16px;"
-                               Message="检测到 Modules.Enabled：该字段已废除，结算会忽略。请到「启动能力」页签使用 Boot + 能力集；Modules.Disabled 仍可用作全局模块黑名单。" />
+                               Message="配置中的 Modules.Enabled 已废弃，不会再生效。请改用「启动能力」页签的 Boot 与能力集；Modules.Disabled 仍可作为全局模块黑名单使用。" />
                     }
                     <FormItem Label="默认智能体">
                         <Select TItemValue="string" TItem="AgentOption"
@@ -61,26 +61,26 @@
                             }
                         </Select>
                     </FormItem>
-                    <FormItem Label="启动能力 Boot">
+                    <FormItem Label="启动能力集">
                         <Select TItemValue="string" TItem="string"
                                 @bind-Value="@_options.Boot"
-                                Placeholder="* / 能力集名（清空回退 Host 默认）"
+                                Placeholder="全部可用（*）或指定能力集"
                                 AllowClear="true"
                                 Style="width: 100%;">
-                            <SelectOption TItemValue="string" TItem="string" Value="@("*")" Label="@("*（全 Available）")" />
+                            <SelectOption TItemValue="string" TItem="string" Value="@("*")" Label="@("全部可用（*）")" />
                             @foreach (var name in _bootOptions)
                             {
                                 <SelectOption TItemValue="string" TItem="string" Value="@name" Label="@name" />
                             }
                         </Select>
                         <div style="margin-top: 4px; font-size: 12px; color: #888;">
-                            决定进程 Activate / bootEnabled。详细能力集 CRUD 见「启动能力」页签。
+                            决定本次启动启用哪些模块；需要新建或编辑能力集，请到「启动能力」页签。
                         </div>
                     </FormItem>
                     <FormItem Label="默认工作模式">
                         <Select TItemValue="string" TItem="ScenarioOption"
                                 @bind-Value="@_options.Scenario"
-                                Placeholder="选择默认工作模式（会话滤镜；详细 CRUD 见「工作模式」页签）"
+                                Placeholder="选择默认工作模式"
                                 AllowClear="true"
                                 Style="width: 100%;">
                             @foreach (var s in _scenarioOptions)
@@ -90,11 +90,11 @@
                             }
                         </Select>
                         <div style="margin-top: 4px; font-size: 12px; color: #888;">
-                            仅影响新会话默认工作模式与会话滤镜，不缩启动集。编辑模块清单请打开「工作模式」页签。
+                            仅用于新会话的默认工作模式与会话可见范围，不会改变启动时启用的模块。需要编辑模块清单，请到「工作模式」页签。
                         </div>
                     </FormItem>
                     <Divider Orientation="@DividerOrientation.Left">默认模型（按能力）</Divider>
-                    @* 决议 11/13：默认值按能力各配一格，留空即「未配置」，脊柱不回落、不猜测。 *@
+                    @* 默认值按能力各配一格，留空即「未配置」，不做任何回落或猜测。 *@
                     @foreach (var capability in CapabilityLabels.All)
                     {
                         <FormItem Label="@CapabilityLabels.Label(capability)">
@@ -103,34 +103,34 @@
                                                  ValueChanged="@(value => SetCapabilityDefault(capability, value))"
                                                  FilterType="@CapabilityLabels.FilterTypeFor(capability)"
                                                  AllowClear="true"
-                                                 Placeholder="留空 = 未配置该能力的默认模型（格式: provider/model）"
+                                                 Placeholder="留空表示未配置；格式为 提供方/模型名"
                                                  Style="width: 100%;" />
                         </FormItem>
                     }
                     <div style="margin-bottom: 8px; font-size: 12px; color: #888;">
-                        写入 <c>seeing.json</c> 的 <c>DefaultModels</c> 字典（键为能力配置键）。
-                        记忆向量检索用的模型请在「记忆」页签显式配置，不读这里的 <c>embedding</c>。
+                        以上默认模型会写入用户级或项目级配置，按使用的模型能力分别生效。
+                        记忆的向量检索模型请在「记忆」设置中单独指定，不沿用这里的选择。
                     </div>
                     <Divider Orientation="@DividerOrientation.Left">工作区设置</Divider>
                     
                     <FormItem Label="当前工作区">
                         <Input Value="@_workspacePath" Disabled="true" />
                         <div style="margin-top: 4px; font-size: 12px; color: #888;">
-                            来源: @WorkspaceSwitchService.ResolutionSourceDescription。切换工作区请用左侧栏底部的工作区入口。
+                            来源：@WorkspaceSwitchService.ResolutionSourceDescription。如需切换工作区，请使用左侧栏底部的工作区入口。
                         </div>
                     </FormItem>
 
                     <FormItem Label="启动目录">
                         <Input Value="@WorkspaceSwitchService.StartupDirectory" Disabled="true" />
                         <div style="margin-top: 4px; font-size: 12px; color: #888;">
-                            程序启动时的当前目录；启动时是否用它由启动决议决定
+                            程序启动时所在的目录，是否用作工作区由启动时的判定结果决定。
                         </div>
                     </FormItem>
 
-                    <FormItem Label="工作区文件硬边界">
+                    <FormItem Label="工作区文件访问范围">
                         <Switch @bind-Value="@_restrictToWorkspace" />
                         <div style="margin-top: 4px; font-size: 12px; color: #888;">
-                            开启后，文件工具（read/write/edit/delete/glob/grep）仅可在当前工作区与会话白名单内操作；越界将询问授权。不约束 bash。
+                            开启后，文件类工具只能操作当前工作区与会话白名单内的路径，越界操作会先请求授权。该限制不影响命令执行工具。
                         </div>
                     </FormItem>
                 </Form>
@@ -150,7 +150,7 @@
             <TabPane Key="plugins" Tab="插件">
                 @if (_options.Plugins.Count == 0 && _options.PluginEnabled.Count == 0)
                 {
-                    <Empty Description="@("未配置插件，可在 seeing.json 的 Plugins 节添加")" />
+                    <Empty Description="@("尚未配置插件")" />
                 }
                 else
                 {
@@ -190,7 +190,7 @@
         _options = await ConfigService.LoadProjectOptionsAsync();
         _modulesEnabledWarning = _options.Modules?.Enabled is { Count: > 0 };
         _scenarioOptions = ScenarioCatalog.ListAll()
-            .Select(s => new ScenarioOption(s.Name, $"{s.Name}（默认 Agent: {s.DefaultAgent}，{s.Modules.Count} 模块）"))
+            .Select(s => new ScenarioOption(s.Name, $"{s.Name}（默认智能体：{s.DefaultAgent}，{s.Modules.Count} 个模块）"))
             .ToList();
         _bootOptions = CapabilitySetCatalog.ListAll().Select(s => s.Name).ToList();
 
@@ -289,7 +289,7 @@
     }
 
     /// <summary>
-    /// 写入某能力的默认模型；留空即移除该键（决议 13：未配置就是没有默认值，不做回落）。
+    /// 写入某能力的默认模型；留空即移除该键（未配置就是没有默认值，不做回落）。
     /// </summary>
     private void SetCapabilityDefault(LlmCapabilityKind capability, string? value)
     {
@@ -342,7 +342,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"保存失败: {ex.Message}");
+            MessageService.Error($"保存失败：{ex.Message}");
         }
     }
 

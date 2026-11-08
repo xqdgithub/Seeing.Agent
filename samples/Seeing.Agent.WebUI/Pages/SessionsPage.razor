@@ -10,7 +10,7 @@
 @inject IMessageService MessageService
 @inject NavigationManager NavigationManager
 
-<PageTitle>会话管理 - Seeing</PageTitle>
+<PageTitle>会话管理 · Seeing</PageTitle>
 
 <div class="workspace-page">
     <!-- Page Header -->
@@ -62,7 +62,7 @@
             </div>
             <div class="stat-content">
                 <div class="stat-value">@_activeCount</div>
-                <div class="stat-label">活跃 (24h)</div>
+                <div class="stat-label">活跃（24 小时内）</div>
             </div>
         </div>
     </div>
@@ -70,7 +70,7 @@
     <!-- Filters Bar -->
     <div class="page-filters">
         <div class="filter-search">
-            <Input @bind-Value="_searchText" Placeholder="搜索会话..." AllowClear="true"
+            <Input @bind-Value="_searchText" Placeholder="搜索会话……" AllowClear="true"
                    OnChange="@((string _) => OnSearchChanged())">
                 <Prefix><Icon Type="@IconType.Outline.Search" /></Prefix>
             </Input>
@@ -196,7 +196,7 @@
                                         <Icon Type="@IconType.Outline.Message" /> @session.MessageCount 条消息
                                     </span>
                                     <span Class="meta-item">
-                                        Channel: @FormatOutbound(session.ChannelId)
+                                        渠道：@FormatOutbound(session.ChannelId)
                                     </span>
                                 </div>
                                 <div Class="session-card-actions" @onclick:stopPropagation>
@@ -245,28 +245,28 @@
            OkText="@("确定")"
            CancelText="@("取消")">
         <Form Model="@_outboundForm" Layout="@FormLayout.Horizontal">
-            <FormItem Label="ChannelId">
+            <FormItem Label="渠道标识">
                 <Input @bind-Value="@_outboundForm.ChannelId"
-                       Placeholder="如 qq / wecom，全部留空则清除绑定" />
+                       Placeholder="如 qq、wecom；全部留空则清除绑定" />
             </FormItem>
-            <FormItem Label="Kind">
+            <FormItem Label="对话类型">
                 <Select TItemValue="string"
                         TItem="KindOption"
                         @bind-Value="@_outboundForm.Kind"
                         DataSource="@_kindOptions"
                         ValueName="@nameof(KindOption.Value)"
                         LabelName="@nameof(KindOption.Label)"
-                        Placeholder="direct / group / guild"
+                        Placeholder="单聊 / 群聊 / 频道"
                         AllowClear="true"
                         Style="width: 100%;" />
             </FormItem>
-            <FormItem Label="ExternalId">
+            <FormItem Label="对话标识">
                 <Input @bind-Value="@_outboundForm.ExternalId"
-                       Placeholder="对话 ExternalId" />
+                       Placeholder="外部对话标识" />
             </FormItem>
-            <FormItem Label="Title">
+            <FormItem Label="显示名称">
                 <Input @bind-Value="@_outboundForm.Title"
-                       Placeholder="可选标题" />
+                       Placeholder="可选，便于识别" />
             </FormItem>
         </Form>
     </Modal>
@@ -447,15 +447,15 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error(string.Format("保存失败: {0}", ex.Message));
+            MessageService.Error(string.Format("保存失败：{0}", ex.Message));
         }
     }
 
     static readonly KindOption[] _kindOptions =
     [
-        new("direct", "direct"),
-        new("group", "group"),
-        new("guild", "guild"),
+        new("direct", "单聊"),
+        new("group", "群聊"),
+        new("guild", "频道"),
     ];
 
     static string? NormalizeOutbound(string? value) =>
@@ -475,7 +475,7 @@
 
         if (channelId == null || externalId == null || kind is not ("direct" or "group" or "guild"))
         {
-            error = "出站绑定需要 ChannelId、Kind（direct/group/guild）和 ExternalId；全部留空则清除绑定";
+            error = "出站绑定需要填写渠道标识、对话类型（单聊 / 群聊 / 频道）和对话标识；若要清除绑定，请将全部字段留空";
             return false;
         }
 
@@ -547,7 +547,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error(string.Format("归档失败: {0}", ex.Message));
+            MessageService.Error(string.Format("归档失败：{0}", ex.Message));
         }
     }
 
@@ -562,7 +562,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error(string.Format("恢复失败: {0}", ex.Message));
+            MessageService.Error(string.Format("恢复失败：{0}", ex.Message));
         }
     }
 
@@ -662,7 +662,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error(string.Format("创建失败: {0}", ex.Message));
+            MessageService.Error(string.Format("创建失败：{0}", ex.Message));
         }
     }
     
@@ -677,7 +677,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error(string.Format("删除失败: {0}", ex.Message));
+            MessageService.Error(string.Format("删除失败：{0}", ex.Message));
         }
     }
 
@@ -693,7 +693,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error(string.Format("分支失败: {0}", ex.Message));
+            MessageService.Error(string.Format("分支失败：{0}", ex.Message));
         }
     }
     

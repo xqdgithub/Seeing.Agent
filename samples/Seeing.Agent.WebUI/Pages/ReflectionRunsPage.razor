@@ -4,7 +4,7 @@
 @using Seeing.Agent.Reflection.Ui
 @inject ReflectionRunReader Reader
 
-<PageTitle>复盘记录 - Seeing</PageTitle>
+<PageTitle>复盘记录 · Seeing</PageTitle>
 
 <WorkspacePageShell Loading="@_loading" IsEmpty="@(_runs.Count == 0 && !_loading)">
     <Breadcrumb>
@@ -33,15 +33,15 @@
 
             <table class="items-table">
                 <thead>
-                    <tr>
+                        <tr>
                         <th style="width: 110px;">时间</th>
                         <th style="width: 90px;">触发</th>
                         <th style="width: 150px;">结果</th>
                         <th style="width: 70px;">建议</th>
                         <th style="width: 70px;">技能</th>
-                        <th style="width: 80px;">Token</th>
+                        <th style="width: 90px;">Token 用量</th>
                         <th>模型</th>
-                        <th style="width: 70px;"></th>
+                        <th style="width: 70px;">操作</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -49,12 +49,12 @@
                     {
                         <tr @key="run.FilePath">
                             <td>@run.At.ToLocalTime().ToString("MM-dd HH:mm")</td>
-                            <td>@KindLabel(run.Kind)</td>
-                            <td><Tag Color="@OutcomeColor(run)">@run.Outcome</Tag></td>
+                            <td>@UiText.ReflectionTriggerText(run.Kind)</td>
+                            <td><Tag Color="@OutcomeColor(run)">@UiText.ReflectionOutcomeText(run.Outcome)</Tag></td>
                             <td>@run.Suggestions.Count</td>
                             <td>@run.CreatedSkills.Count</td>
                             <td>@run.TotalTokens</td>
-                            <td>@(run.ModelId ?? "（继承）")</td>
+                            <td>@(run.ModelId ?? "沿用源会话")</td>
                             <td>
                                 <Button Type="@ButtonType.Link" Size="@ButtonSize.Small"
                                         OnClick="@(() => ToggleDetail(run))">
@@ -72,13 +72,13 @@
                 <Card Title="@($"复盘详情 · {_detail.ExecutionId}")">
                     <Descriptions Bordered Column="2">
                         <DescriptionsItem Title="源会话">@_detail.SessionId</DescriptionsItem>
-                        <DescriptionsItem Title="触发方式">@KindLabel(_detail.Kind)</DescriptionsItem>
-                        <DescriptionsItem Title="结果">@_detail.Outcome</DescriptionsItem>
-                        <DescriptionsItem Title="模型">@(_detail.ModelId ?? "（继承源会话）")</DescriptionsItem>
-                        <DescriptionsItem Title="Token">
+                        <DescriptionsItem Title="触发方式">@UiText.ReflectionTriggerText(_detail.Kind)</DescriptionsItem>
+                        <DescriptionsItem Title="结果">@UiText.ReflectionOutcomeText(_detail.Outcome)</DescriptionsItem>
+                        <DescriptionsItem Title="模型">@(_detail.ModelId ?? "沿用源会话")</DescriptionsItem>
+                        <DescriptionsItem Title="Token 用量">
                             @($"{_detail.InputTokens} 输入 / {_detail.OutputTokens} 输出")
                         </DescriptionsItem>
-                        <DescriptionsItem Title="文件">@_detail.FilePath</DescriptionsItem>
+                        <DescriptionsItem Title="记录文件">@_detail.FilePath</DescriptionsItem>
                     </Descriptions>
 
                     @if (!string.IsNullOrWhiteSpace(_detail.Detail))
@@ -135,8 +135,8 @@
         _onlyFailures ? _runs.Where(x => x.IsFailure) : _runs;
 
     private string EmptyDescription =>
-        "还没有复盘记录。复盘默认关闭：在 seeing.json 的 Reflection 节把 Enabled 设为 true 后，"
-        + "回合收尾会异步复盘并把结论写到这里。";
+        "还没有复盘记录。复盘功能默认关闭，需在系统设置中开启后，"
+        + "每轮对话结束时会自动复盘，并把结论记录在这里。";
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -163,14 +163,7 @@
     private void ToggleDetail(ReflectionRunSummary run)
         => _detail = ReferenceEquals(_detail, run) ? null : run;
 
+    /// <summary>结果对应的颜色：失败红、成功绿。</summary>
     private static string OutcomeColor(ReflectionRunSummary run)
         => run.IsFailure ? "red" : "green";
-
-    private static string KindLabel(ReflectionTriggerKind kind) => kind switch
-    {
-        ReflectionTriggerKind.TurnNudge => "轮次",
-        ReflectionTriggerKind.Idle => "空闲",
-        ReflectionTriggerKind.Manual => "手动",
-        _ => kind.ToString()
-    };
 }

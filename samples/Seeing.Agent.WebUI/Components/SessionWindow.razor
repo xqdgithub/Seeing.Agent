@@ -280,7 +280,7 @@
                 </div>
                 @if (IsRunningSummary)
                 {
-                    <div class="conference-tile-action">@(_summarySnapshot?.ActionLine ?? "⚙ 正在执行")</div>
+                    <div class="conference-tile-action">@(_summarySnapshot?.ActionLine ?? "正在执行")</div>
                 }
                 @* 预览正文：沿用原始三分支（最新 assistant 截断 120 字 → 运行中工具 → 暂无消息），始终可见 *@
                 <div class="conference-tile-body">
@@ -1284,7 +1284,7 @@
                 // 交接成功：由结果元数据驱动导航到后继（兜底仅限交接驱动，不对用户点击切换做 URL 同步）
                 NavigationManager.NavigateTo($"/session/{handoffTarget}");
             else if (evt is CompactionFailedEvent cfe && !string.IsNullOrEmpty(cfe.ErrorMessage))
-                MessageService.Error($"压缩失败: {cfe.ErrorMessage}");
+                MessageService.Error($"压缩失败：{cfe.ErrorMessage}");
 
             // Full 走合并器（内容刷新路径）；Summary 的事件已被白名单压到极低，直接渲染
             if (isFull)
@@ -1800,7 +1800,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"中断失败: {ex.Message}");
+            MessageService.Error($"中断失败：{ex.Message}");
         }
 
         SyncTimelineAssistantFromStream();
@@ -1843,11 +1843,11 @@
             if (result.Success)
                 MessageService.Success("已推送子会话产出给父会话");
             else
-                MessageService.Error($"推送失败: {result.Error}");
+                MessageService.Error($"推送失败：{result.Error}");
         }
         catch (Exception ex)
         {
-            MessageService.Error($"推送失败: {ex.Message}");
+            MessageService.Error($"推送失败：{ex.Message}");
         }
     }
 
@@ -1934,7 +1934,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"创建会话失败: {ex.Message}");
+            MessageService.Error($"创建会话失败：{ex.Message}");
         }
     }
 
@@ -2117,8 +2117,8 @@
     private string GetPlaceholderText()
     {
         if (SessionState.IsExecuting)
-            return "正在处理...";
-        return $"向 {SessionState.SelectedAgent} Agent 发送消息...";
+            return "正在处理……";
+        return $"向 {SessionState.SelectedAgent} 智能体发送消息……";
     }
 
     /// <summary>

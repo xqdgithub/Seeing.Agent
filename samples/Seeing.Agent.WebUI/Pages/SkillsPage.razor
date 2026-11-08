@@ -5,7 +5,7 @@
 @inject NavigationManager NavigationManager
 @implements IDisposable
 
-<PageTitle>技能 - Seeing</PageTitle>
+<PageTitle>技能 · Seeing</PageTitle>
 
 <div class="workspace-page">
     <div class="page-header">
@@ -64,16 +64,16 @@
     
     <div class="page-filters">
         <div class="filter-search">
-            <Input @bind-Value="_searchText" Placeholder="搜索技能..." AllowClear="true" DebounceMilliseconds="300">
+            <Input @bind-Value="_searchText" Placeholder="搜索技能……" AllowClear="true" DebounceMilliseconds="300">
                 <Prefix><Icon Type="@IconType.Outline.Search" /></Prefix>
             </Input>
         </div>
         <div class="filter-divider"></div>
         <div class="view-mode-toggle">
-            <button class="view-mode-btn @(_isCardView ? "active" : "")" onclick="@(() => SetViewMode(true))" title="Card View">
+            <button class="view-mode-btn @(_isCardView ? "active" : "")" onclick="@(() => SetViewMode(true))" title="卡片视图">
                 <Icon Type="@IconType.Outline.Appstore" />
             </button>
-            <button class="view-mode-btn @(!_isCardView ? "active" : "")" onclick="@(() => SetViewMode(false))" title="List View">
+            <button class="view-mode-btn @(!_isCardView ? "active" : "")" onclick="@(() => SetViewMode(false))" title="列表视图">
                 <Icon Type="@IconType.Outline.UnorderedList" />
             </button>
         </div>
@@ -88,19 +88,19 @@
         else if (!_filteredSkills.Any()) {
             <div class="empty-state">
                 <div class="empty-state-icon"><Icon Type="@IconType.Outline.FileText" /></div>
-                <h3 class="empty-state-title">@(_searchText.Length > 0 ? "No skills found" : "No skills yet")</h3>
+                <h3 class="empty-state-title">@(_searchText.Length > 0 ? "没有符合条件的技能" : "还没有技能")</h3>
                 <p class="empty-state-description">
                     @if (_searchText.Length > 0) {
-                        @:No skills match your search criteria. Try a different search term.
+                        @:没有技能匹配当前关键词，请换一个搜索词试试。
                     } else {
-                        @:Get started by creating your first skill to extend the agent's capabilities.
+                        @:创建第一个技能，让智能体具备更多能力。
                     }
                 </p>
                 <div class="empty-state-action">
                     @if (_searchText.Length > 0) {
-                        <Button OnClick="ClearSearch">Clear Search</Button>
+                        <Button OnClick="ClearSearch">清除搜索</Button>
                     } else {
-                        <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="CreateSkill">Create Skill</Button>
+                        <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="CreateSkill">创建技能</Button>
                     }
                 </div>
             </div>
@@ -118,7 +118,7 @@
                             <div class="card-status-row">
                                 <Tag Color="@GetSourceColor(entry)">@GetSourceLabel(entry)</Tag>
                                 <Tag Color="@(IsEnabled(entry) ? "success" : "default")">
-                                    @(IsEnabled(entry) ? "Enabled" : "Disabled")
+                                    @(IsEnabled(entry) ? "已启用" : "已禁用")
                                 </Tag>
                             </div>
                         </div>
@@ -151,11 +151,11 @@
                 <table class="items-table">
                     <thead>
                         <tr>
-                            <th>Name</th>
-                            <th>Source</th>
-                            <th>Status</th>
-                            <th>Description</th>
-                            <th>Actions</th>
+                            <th>名称</th>
+                            <th>来源</th>
+                            <th>状态</th>
+                            <th>描述</th>
+                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -174,7 +174,7 @@
                             </td>
                             <td>
                                 <Tag Color="@(IsEnabled(entry) ? "success" : "default")">
-                                    @(IsEnabled(entry) ? "Enabled" : "Disabled")
+                                    @(IsEnabled(entry) ? "已启用" : "已禁用")
                                 </Tag>
                             </td>
                             <td>
@@ -333,8 +333,8 @@
         string.Join("；", snapshot.Issues.Take(5).Select(issue => $"{issue.Path}：{issue.Reason}"))
         + (snapshot.Issues.Count > 5 ? $"；等 {snapshot.Issues.Count} 项" : "");
 
-    string GetDescriptionPreview(string? d) => string.IsNullOrEmpty(d) ? "无描述" : (d.Length > 100 ? d[..100] + "..." : d);
-    string GetLocationPreview(string? loc) => loc?.Length > 40 ? "..." + loc[^Math.Min(40, loc.Length)..] : loc ?? "";
+    string GetDescriptionPreview(string? d) => string.IsNullOrEmpty(d) ? "无描述" : (d.Length > 100 ? d[..100] + "……" : d);
+    string GetLocationPreview(string? loc) => loc?.Length > 40 ? "……" + loc[^Math.Min(40, loc.Length)..] : loc ?? "";
     void ViewSkill(string name) => NavigationManager.NavigateTo($"/skills/{name}");
     void CreateSkill() => NavigationManager.NavigateTo("/skills/create");
 

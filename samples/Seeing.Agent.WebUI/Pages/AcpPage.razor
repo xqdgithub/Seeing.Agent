@@ -11,10 +11,10 @@
 @inject IAgentRegistry AgentRegistry
 @inject IMessageService MessageService
 
-<PageTitle>ACP - Seeing</PageTitle>
+<PageTitle>ACP · Seeing</PageTitle>
 
 <WorkspacePageShell Loading="@_loading" IsEmpty="@(!_backends.Any())"
-                    EmptyTitle="暂无 ACP 后端" EmptyDescription="添加 ACP 后端以委派外部 Agent（如 OpenCode）">
+                    EmptyTitle="暂无 ACP 后端" EmptyDescription="添加 ACP 后端后，可把任务委派给外部智能体（如 OpenCode）执行">
     <Breadcrumb>
         <BreadcrumbItem>工作区</BreadcrumbItem>
         <BreadcrumbItem>ACP</BreadcrumbItem>
@@ -27,13 +27,13 @@
     </Extra>
     <ChildContent>
         <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 12px;"
-               Message="ACP 配置为用户级私有配置（后端命令与环境变量与用户环境绑定），统一保存在用户级配置文件。" />
+               Message="ACP 配置属于用户级私有配置（后端命令与环境变量与当前用户环境相关），统一保存在用户级配置文件中。" />
         <div class="config-path-info" style="margin-bottom: 16px;">
             <span>保存到：</span>
             <Text Type="@TextElementType.Secondary">@ConfigService.GetConfigPath(ConfigLevel.User)</Text>
         </div>
         <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
-               Message="Passthrough Agent 命名规则：acp-{backendId}。启用 ACP 后可通过 acp 工具委派执行。" />
+               Message="每个后端会自动生成一个名为 acp-{后端标识} 的智能体；启用 ACP 后可通过 ACP 工具委派执行。" />
         <Form Layout="@FormLayout.Vertical" Model="@_acp" Context="formContext">
         <div>
             <FormItem Label="启用 ACP"><Switch @bind-Checked="@_acp.Enabled" /></FormItem>
@@ -55,18 +55,18 @@
                 <InputNumber TValue="int" @bind-Value="@_idleTimeoutMinutes" Min="1" Max="120" Style="width: 120px;" />
                 <Text Type="@TextElementType.Secondary" Style="margin-left: 8px;">分钟</Text>
             </FormItem>
-            <FormItem Label="会话宽限期" Tooltip="Session 销毁后保留进程的时间，便于快速恢复对话。设置为 0 则立即终止。">
+            <FormItem Label="会话宽限期" Tooltip="会话销毁后保留进程的时间，便于快速恢复对话。设置为 0 表示立即终止。">
                 <InputNumber TValue="int" @bind-Value="@_gracePeriodMinutes" Min="0" Max="60" Style="width: 120px;" />
                 <Text Type="@TextElementType.Secondary" Style="margin-left: 8px;">分钟（0 = 禁用）</Text>
             </FormItem>
         </div>
         </Form>
         <Table TItem="BackendRow" DataSource="@_backends" RowKey="@(b => b.Key)" Style="margin-top: 16px;">
-            <PropertyColumn Property="c => c.Key" Title="后端 ID" />
+            <PropertyColumn Property="c => c.Key" Title="后端标识" />
             <PropertyColumn Property="c => c.Command" Title="命令" />
             <PropertyColumn Property="c => c.ArgsText" Title="参数" />
-            <PropertyColumn Property="c => c.EnvCount" Title="环境变量" />
-            <PropertyColumn Property="c => c.LinkedAgents" Title="关联 Agent" />
+            <PropertyColumn Property="c => c.EnvCount" Title="环境变量数" />
+            <PropertyColumn Property="c => c.LinkedAgents" Title="关联智能体" />
             <PropertyColumn Property="c => c.Source" Title="来源" />
             <ActionColumn Title="操作">
                 <Space>
@@ -88,10 +88,10 @@
     {
         <Form Layout="@FormLayout.Vertical" Model="@_editBackendForm">
         <div>
-            <FormItem Label="后端 ID"><Input @bind-Value="@_editBackendForm.Id" Disabled="@_isEdit" /></FormItem>
+            <FormItem Label="后端标识"><Input @bind-Value="@_editBackendForm.Id" Disabled="@_isEdit" /></FormItem>
             <FormItem Label="命令"><Input @bind-Value="@_editBackendForm.Command" /></FormItem>
             <FormItem Label="参数（空格分隔）"><Input @bind-Value="@_editBackendForm.ArgsText" /></FormItem>
-            <FormItem Label="环境变量（每行 key=value）"><TextArea Rows="4" @bind-Value="@_editBackendForm.EnvText" /></FormItem>
+            <FormItem Label="环境变量（每行一个，格式为 名称=值）"><TextArea Rows="4" @bind-Value="@_editBackendForm.EnvText" /></FormItem>
         </div>
         </Form>
     }
@@ -180,7 +180,7 @@
         catch (Exception ex)
         {
             _loading = false;
-            MessageService.Error($"保存失败: {ex.Message}");
+            MessageService.Error($"保存失败：{ex.Message}");
         }
         finally
         {
@@ -224,7 +224,7 @@
     {
         if (!_acp.Backends.TryGetValue(key, out var cfg)) return;
         _isEdit = true;
-        _modalTitle = $"编辑: {key}";
+        _modalTitle = $"编辑：{key}";
         _editBackendForm = new AcpBackendEditForm
         {
             Id = key,
@@ -247,7 +247,7 @@
 
         if (string.IsNullOrWhiteSpace(id))
         {
-            MessageService.Error("后端 ID 不能为空");
+            MessageService.Error("后端标识不能为空");
             return;
         }
 
@@ -259,7 +259,7 @@
 
         if (!_isEdit && _acp.Backends.Keys.Any(k => string.Equals(k, id, StringComparison.OrdinalIgnoreCase)))
         {
-            MessageService.Error($"后端 ID 已存在: {id}");
+            MessageService.Error($"后端标识已存在：{id}");
             return;
         }
 
@@ -310,7 +310,7 @@
         string backendId,
         IReadOnlyDictionary<string, AcpBackendConfig> userBackends)
     {
-        return userBackends.ContainsKey(backendId) ? "用户" : "生效";
+        return userBackends.ContainsKey(backendId) ? "用户级" : "内置";
     }
 
     private sealed class BackendRow

@@ -18,7 +18,7 @@
 <Divider />
 
 <Alert Type="@AlertType.Info" ShowIcon="true"
-       Message="调度器使用 Quartz.NET 框架，支持持久化和任务恢复"
+       Message="调度器基于 Quartz.NET 实现，支持任务持久化与应用重启后自动恢复"
        Style="margin-bottom: 16px;" />
 
 <Form Layout="@FormLayout.Vertical" Model="@_scheduler" Context="schedulerForm">
@@ -50,7 +50,7 @@
         {
             <FormItem Label="数据库路径">
                 <Input @bind-Value="@_scheduler.Persistence.ConnectionString"
-                       Placeholder="Data Source=.seeing/quartz.db" />
+                       Placeholder="Data Source=.seeing/quartz.db"（数据库连接串） />
             </FormItem>
         }
     }
@@ -97,7 +97,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"启动失败: {ex.Message}");
+            MessageService.Error($"启动失败：{ex.Message}");
         }
         finally
         {
@@ -116,7 +116,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"停止失败: {ex.Message}");
+            MessageService.Error($"停止失败：{ex.Message}");
         }
         finally
         {
@@ -135,7 +135,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"刷新失败: {ex.Message}");
+            MessageService.Error($"刷新失败：{ex.Message}");
         }
         finally
         {
@@ -159,7 +159,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"保存失败: {ex.Message}");
+            MessageService.Error($"保存失败：{ex.Message}");
         }
         finally
         {

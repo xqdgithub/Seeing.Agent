@@ -30,7 +30,7 @@
 @inject ILogger<Index> Logger
 @inject Seeing.Agent.Scheduler.Abstractions.IScheduleRepository ScheduleRepository
 
-<PageTitle>控制台 - Seeing</PageTitle>
+<PageTitle>控制台 · Seeing</PageTitle>
 
 @*
     首页控制台：品牌细条（88px）+ 三栏分区（会话 / 调度 / 状态）。
@@ -48,7 +48,7 @@
 
         <div class="hc-brand-copy">
             <div class="hc-brand-tagline">行到水穷处，坐看云起时</div>
-            <div class="hc-brand-desc">会话、定时任务与待办一屏总览</div>
+            <div class="hc-brand-desc">会话、定时任务与待处理事项一屏总览</div>
         </div>
 
         <div class="hc-brand-spacer"></div>
@@ -57,7 +57,7 @@
         <div class="hc-brand-stats">
             <span class="hc-brand-stat">会话 <b>@_sessionCount</b></span>
             <span class="hc-brand-stat">任务 <b>@_activeJobCount</b></span>
-            <span class="hc-brand-stat @(_pendingTotal > 0 ? "is-warn" : null)">待办 <b>@_pendingTotal</b></span>
+            <span class="hc-brand-stat @(_pendingTotal > 0 ? "is-warn" : null)">待处理 <b>@_pendingTotal</b></span>
         </div>
 
         <div class="hc-brand-rule"></div>
@@ -364,7 +364,7 @@
                 @if (_schedulerStatus is { ThreadPoolSize: > 0 })
                 {
                     <div class="hc-row">
-                        <span class="t">线程池</span>
+                        <span class="t">并发任务数上限</span>
                         <span class="m">@_schedulerStatus.ThreadPoolSize</span>
                     </div>
                 }

@@ -14,7 +14,7 @@ namespace Seeing.Agent.WebUI.Services;
 public static class SessionSummaryProjector
 {
     /// <summary>运行中动作行的默认文案。</summary>
-    private const string DefaultActionLine = "⚙ 正在执行";
+    private const string DefaultActionLine = "正在执行";
 
     /// <summary>无消息时的预览文案。</summary>
     private const string EmptyPreview = "暂无消息";
@@ -136,12 +136,12 @@ public static class SessionSummaryProjector
                 .Count();
 
             return subagentCount > 0
-                ? $"{DefaultActionLine} task · {subagentCount} 个子代理"
-                : $"{DefaultActionLine} task";
+                ? $"{DefaultActionLine}：子任务（{subagentCount} 个子智能体）"
+                : $"{DefaultActionLine}：子任务";
         }
 
         return firstRunningToolName is not null
-            ? $"{DefaultActionLine} {firstRunningToolName}"
+            ? $"{DefaultActionLine}：{firstRunningToolName}"
             : DefaultActionLine;
     }
 

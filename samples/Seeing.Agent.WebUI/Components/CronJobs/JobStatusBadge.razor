@@ -1,19 +1,10 @@
 @using AntDesign
 @using Seeing.Agent.Scheduler.Models
-
-@code {
-    [Parameter] public JobState State { get; set; }
-
-    /// <summary>启用但不会再有后续自动触发（一次性已过期等）。优先于 State 呈现。</summary>
-    [Parameter] public bool Expired { get; set; }
-
-    [Parameter] public bool ShowText { get; set; } = true;
-}
+@using Seeing.Agent.WebUI.Services
 
 @{
-    var (color, icon, text) = Expired && State == JobState.Scheduled
-        ? ("default", IconType.Outline.ClockCircle, "已过期")
-        : GetStateDisplay(State);
+    var (color, icon) = GetStateDisplay(State);
+    var text = UiText.JobStateText(State, Expired);
 }
 
 <Tag Color="@color">
@@ -29,12 +20,21 @@
 </Tag>
 
 @code {
-    private static (string color, string icon, string text) GetStateDisplay(JobState state) => state switch
+    /// <summary>任务状态（<see cref="JobState"/>）。</summary>
+    [Parameter] public JobState State { get; set; }
+
+    /// <summary>启用但不会再有后续自动触发（一次性已过期等）。优先于 State 呈现。</summary>
+    [Parameter] public bool Expired { get; set; }
+
+    /// <summary>是否显示文字（false 时只渲染图标）。</summary>
+    [Parameter] public bool ShowText { get; set; } = true;
+
+    private static (string color, string icon) GetStateDisplay(JobState state) => state switch
     {
-        JobState.Scheduled => ("green", IconType.Outline.CheckCircle, "已调度"),
-        JobState.Running => ("blue", IconType.Outline.Sync, "运行中"),
-        JobState.Paused => ("orange", IconType.Outline.PauseCircle, "已暂停"),
-        JobState.Disabled => ("default", IconType.Outline.Stop, "已禁用"),
-        _ => ("default", IconType.Outline.QuestionCircle, "未知")
+        JobState.Scheduled => ("green", IconType.Outline.CheckCircle),
+        JobState.Running => ("blue", IconType.Outline.Sync),
+        JobState.Paused => ("orange", IconType.Outline.PauseCircle),
+        JobState.Disabled => ("default", IconType.Outline.Stop),
+        _ => ("default", IconType.Outline.QuestionCircle)
     };
 }

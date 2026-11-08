@@ -13,7 +13,7 @@
 @inject IMessageService MessageService
 @implements IDisposable
 
-<PageTitle>模型 - Seeing</PageTitle>
+<PageTitle>模型 · Seeing</PageTitle>
 
 <WorkspacePageShell Loading="@_loading">
     <Breadcrumb>
@@ -30,7 +30,7 @@
         </Space>
     </Extra>
     <ChildContent>
-        @* 决议 11：默认模型按能力各一格；ValidateDefaultModels 只报告不清除（决议 23）。 *@
+        @* 默认模型按能力各配一格；失效项只报告、不清除。 *@
         <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 12px;"
                Message="@DefaultModelsSummary" />
         @if (_invalidDefaults.Count > 0)
@@ -65,7 +65,7 @@
             <Col Span="18">
                 @if (_currentProviderInfo != null)
                 {
-                    <Card Title="@($"Provider: {_selectedProviderId}")">
+                    <Card Title="@($"Provider 详情 · {_selectedProviderId}")">
                         @* 配置来源信息：帮助定位 Provider 从哪个文件加载（用户级 / 项目级 / 扩展） *@
                         <div style="margin-bottom: 16px; padding: 8px 12px; background: #e6f4ff; border: 1px solid #91caff; border-radius: 6px; font-size: 13px;">
                             来源：
@@ -112,8 +112,8 @@
                         {
                             <Form Layout="@FormLayout.Vertical" Model="@_currentProvider" Context="formContext">
                             <div>
-                                <FormItem Label="ID"><Input @bind-Value="@_currentProvider.Id" Disabled="true" /></FormItem>
-                                <FormItem Label="类型">
+                                <FormItem Label="标识"><Input @bind-Value="@_currentProvider.Id" Disabled="true" /></FormItem>
+                                <FormItem Label="协议类型">
                                     <Select TItemValue="string" TItem="string" @bind-Value="@_currentProvider.Type">
                                         @foreach (var protocol in AvailableProtocols)
                                         {
@@ -122,8 +122,8 @@
                                         }
                                     </Select>
                                 </FormItem>
-                                @* 决议 5：Provider 能力多选框。写入 ProviderConfig.Capabilities（唯一真相，决议 15）。 *@
-                                <FormItem Label="能力（Capabilities）">
+                                @* Provider 能力多选框：写入 Provider 自身的能力声明（唯一真相）。 *@
+                                <FormItem Label="支持能力">
                                     <Select Mode="@SelectMode.Multiple"
                                             TItemValue="string"
                                             TItem="string"
@@ -131,7 +131,7 @@
                                             Values="@_providerCapabilities"
                                             ValuesChanged="OnProviderCapabilitiesChanged"
                                             Style="width: 100%;"
-                                            Placeholder="留空 = 使用该 Provider 的默认能力">
+                                            Placeholder="留空表示使用该 Provider 的默认能力">
                                         @foreach (var kind in CapabilityLabels.All)
                                         {
                                             <SelectOption TItemValue="string" TItem="string"
@@ -143,21 +143,21 @@
                                         @ProviderCapabilitiesHint
                                     </div>
                                 </FormItem>
-                                <FormItem Label="名称"><Input @bind-Value="@_currentProvider.Name" /></FormItem>
-                                <FormItem Label="Base URL"><Input @bind-Value="@_currentProvider.BaseUrl" /></FormItem>
-                                <FormItem Label="API Key"><Input Password @bind-Value="@_currentProvider.ApiKey" /></FormItem>
-                                <FormItem Label="自定义 Headers（JSON）">
+                                <FormItem Label="显示名称"><Input @bind-Value="@_currentProvider.Name" /></FormItem>
+                                <FormItem Label="接口地址（Base URL）"><Input @bind-Value="@_currentProvider.BaseUrl" /></FormItem>
+                                <FormItem Label="访问密钥（API Key）"><Input Password @bind-Value="@_currentProvider.ApiKey" /></FormItem>
+                                <FormItem Label="自定义请求头（JSON）">
                                     <TextArea Rows="6" @bind-Value="@_headersJson"
                                               Placeholder="{ &quot;Authorization&quot;: &quot;Bearer ...&quot; }"
                                               Style="font-family: monospace;" />
                                     <div style="color: #888; font-size: 12px; margin-top: 4px;">
-                                        每个键值会透传到 Provider 请求；同名内置请求头将被覆盖。请勿提交无效 JSON。
+                                        每个键值都会附加到 Provider 请求中，与内置请求头同名时会覆盖内置值。请勿填写无效 JSON。
                                     </div>
                                 </FormItem>
-                                <FormItem Label="合并远端模型目录（listModels）">
+                                <FormItem Label="合并远端模型列表">
                                     <AntDesign.Switch @bind-Value="@_currentProvider.ListModels" />
                                     <div style="color: #888; font-size: 12px; margin-top: 4px;">
-                                        开启且客户端支持时，模型目录 = 静态 Models ∪ 远端列表。
+                                        开启且该协议支持时，模型列表取「配置中的模型」与「远端返回的模型」的并集。
                                     </div>
                                 </FormItem>
                                 <div style="margin-top: 12px;">
@@ -171,7 +171,7 @@
                         else
                         {
                             <Descriptions>
-                                <DescriptionsItem Title="ID">@_currentProviderInfo!.Id</DescriptionsItem>
+                                <DescriptionsItem Title="标识">@_currentProviderInfo!.Id</DescriptionsItem>
                                 <DescriptionsItem Title="名称">@(_currentProviderInfo.Name ?? _currentProviderInfo.Id)</DescriptionsItem>
                                 <DescriptionsItem Title="来源">
                                     @if (_currentProviderInfo.Origin == ProviderOrigin.Extension)
@@ -186,7 +186,7 @@
                                 <DescriptionsItem Title="模型数">@_modelRows.Count</DescriptionsItem>
                             </Descriptions>
                             <Alert Type="@AlertType.Info" ShowIcon="true"
-                                   Message="扩展 Provider 由扩展管理，不能在此编辑连接配置。" />
+                                   Message="该 Provider 由扩展提供，连接配置需要在扩展自身中修改。" />
                         }
 
                         @* Shared Test Connection — schema, handcrafted, and extension tracks (not load-error-only) *@
@@ -245,7 +245,7 @@
                                         AllowClear>
                                     @foreach (var t in Enum.GetValues<ModelType>())
                                     {
-                                        <SelectOption TItemValue="ModelType" TItem="ModelType" Value="@t" Label="@t.ToString()" />
+                                        <SelectOption TItemValue="ModelType" TItem="ModelType" Value="@t" Label="@UiText.ModelTypeText(t)" />
                                     }
                                 </Select>
                                 <Divider Type="@DividerType.Vertical" />
@@ -267,13 +267,13 @@
                             <PropertyColumn Property="c => c.Name" Title="名称" />
                             <PropertyColumn Property="c => c.Provider" Title="Provider" />
                             <PropertyColumn Property="c => c.TypesDisplay" Title="类型" />
-                            @* 决议 6：可路由能力 = Provider 能力 ∩ 模型类型投影；不一致只告警不拦保存 *@
+                            @* 可路由能力 = Provider 能力与模型类型取交集；不一致只告警，不阻止保存 *@
                             <Column TData="ModelRow" Title="可路由能力" Width="170">
                                 <span>@(string.IsNullOrEmpty(context.RoutableDisplay) ? "—" : context.RoutableDisplay)</span>
                                 @if (!string.IsNullOrEmpty(context.CapabilityGapDisplay))
                                 {
-                                    <Tooltip Title="@($"此模型已标记 {context.CapabilityGapDisplay}，但所属 Provider 未开启该能力 → 调用时会被拒绝。")">
-                                        <Tag Color="@("warning")" Style="margin: 0;">缺能力</Tag>
+                                    <Tooltip Title="@($"该模型声明了 {context.CapabilityGapDisplay}，但所属 Provider 未开启对应能力，调用时会被拒绝。")">
+                                        <Tag Color="@("warning")" Style="margin: 0;">缺少能力</Tag>
                                     </Tooltip>
                                 }
                             </Column>
@@ -301,7 +301,7 @@
                                             <Button Size="@ButtonSize.Small">恢复默认</Button>
                                         </Popconfirm>
                                     }
-                                    @* 决议 11/12：设为默认要先选「设为哪个能力的默认」；不具备该能力的项置灰 *@
+                                    @* 设为默认时需先指定目标能力；不具备该能力的选项置灰 *@
                                     <Dropdown>
                                         <Overlay>
                                             <Menu Selectable="false">
@@ -353,8 +353,8 @@
     {
         <Form Layout="@FormLayout.Vertical" Model="@_addProviderForm" Context="formContext">
         <div>
-            <FormItem Label="Provider ID"><Input @bind-Value="@_newProviderId" Placeholder="如 openai" /></FormItem>
-            <FormItem Label="类型">
+            <FormItem Label="Provider 标识"><Input @bind-Value="@_newProviderId" Placeholder="如 openai" /></FormItem>
+            <FormItem Label="协议类型">
                 <Select TItemValue="string" TItem="string" @bind-Value="@_newProviderType">
                     @foreach (var protocol in AvailableProtocols)
                     {
@@ -363,7 +363,7 @@
                     }
                 </Select>
                 <div style="color: #888; font-size: 12px; margin-top: 4px;">
-                    协议来自已加载的 LLM 模块；同一协议只允许一个客户端工厂。
+                    协议由已加载的模型模块提供；同一协议只能对应一个客户端实现。
                 </div>
             </FormItem>
         </div>
@@ -376,7 +376,7 @@
     @if (_addModelVisible)
     {
         <Form Layout="@FormLayout.Vertical" Model="@_addModelForm">
-            <FormItem Label="Provider">
+            <FormItem Label="所属 Provider">
                 <Input Value="@_selectedProviderId" Disabled="true" />
             </FormItem>
             <FormItem Label="添加方式">
@@ -414,10 +414,10 @@
                         Values="@_addModelTypes"
                         ValuesChanged="OnAddModelTypesChanged"
                         Style="width: 100%;"
-                        Placeholder="默认 Text">
+                        Placeholder="默认：文本">
                     @foreach (var t in Enum.GetValues<ModelType>())
                     {
-                        <SelectOption TItemValue="ModelType" TItem="ModelType" Value="@t" Label="@t.ToString()" />
+                        <SelectOption TItemValue="ModelType" TItem="ModelType" Value="@t" Label="@UiText.ModelTypeText(t)" />
                     }
                 </Select>
             </FormItem>
@@ -436,7 +436,7 @@
     @if (_editModelVisible)
     {
         <Form Layout="@FormLayout.Vertical" Model="@_editModelForm">
-            <FormItem Label="Provider">
+            <FormItem Label="所属 Provider">
                 <Input Value="@_selectedProviderId" Disabled="true" />
             </FormItem>
             <FormItem Label="模型 ID">
@@ -452,10 +452,10 @@
                         Values="@_editTypes"
                         ValuesChanged="OnEditTypesChanged"
                         Style="width: 100%;"
-                        Placeholder="选择用途类型（空=Text）">
+                        Placeholder="选择用途类型（留空表示文本）">
                     @foreach (var t in Enum.GetValues<ModelType>())
                     {
-                        <SelectOption TItemValue="ModelType" TItem="ModelType" Value="@t" Label="@t.ToString()" />
+                        <SelectOption TItemValue="ModelType" TItem="ModelType" Value="@t" Label="@UiText.ModelTypeText(t)" />
                     }
                 </Select>
             </FormItem>
@@ -479,7 +479,7 @@
                     }
                 </Select>
             </FormItem>
-            @* 语音合成（TTS）看输出模态，转写（ASR）看输入模态——两者缺一都会在路由时被拒（决议 24） *@
+            @* 语音合成看输出模态、语音转写看输入模态，两者缺一都会在路由时被拒绝 *@
             <FormItem Label="输出模态">
                 <Select Mode="@SelectMode.Tags"
                         TItemValue="string"
@@ -536,7 +536,7 @@
     private IReadOnlyDictionary<string, ModelConfig> _addModelCandidates = new Dictionary<string, ModelConfig>();
     private IEnumerable<ModelType> _addModelTypes = new[] { ModelType.Text };
     private string _testModelKey = "";
-    /// <summary>测试连接的目标能力（决议 9：UI 显式选择，不做推导）。</summary>
+    /// <summary>测试连接的目标能力（由用户显式选择，不做推导）。</summary>
     private LlmCapabilityKind _testCapability = LlmCapabilityKind.Chat;
     private string _headersJson = "{}";
     /// <summary>Provider 表单里的能力多选值（配置键，小驼峰，出处是 <see cref="LlmCapabilityMap.ToConfigKey"/>）。</summary>
@@ -549,7 +549,7 @@
     private ProviderCapabilityView _capabilityView = ProviderCapabilityProjection.Build(null, null);
     /// <summary>已配置的能力默认值（能力 → <c>provider/model</c>），随目录刷新重取。</summary>
     private IReadOnlyDictionary<LlmCapabilityKind, string> _capabilityDefaults = new Dictionary<LlmCapabilityKind, string>();
-    /// <summary>失效的默认模型诊断（<c>ValidateDefaultModels</c>）：只报告，不清除（决议 23）。</summary>
+    /// <summary>失效的默认模型诊断：只报告，不清除。</summary>
     private IReadOnlyDictionary<LlmCapabilityKind, string> _invalidDefaults = new Dictionary<LlmCapabilityKind, string>();
 
     private IConfigurableLlmProvider? _configurable;
@@ -614,7 +614,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"刷新失败: {ex.Message}");
+            MessageService.Error($"刷新失败：{ex.Message}");
         }
         finally
         {
@@ -636,7 +636,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"刷新失败: {ex.Message}");
+            MessageService.Error($"刷新失败：{ex.Message}");
         }
         finally
         {
@@ -810,11 +810,11 @@
                     Provider = m.Value.Provider,
                     Context = m.Value.Limit.Context,
                     Output = m.Value.Limit.Output,
-                    // 任一能力的默认即算默认（决议 11）
+                    // 任一能力的默认即算默认
                     IsDefault = defaultFor.Count > 0,
                     DefaultFor = defaultFor,
                     DefaultCandidates = defaultCandidates,
-                    TypesDisplay = string.Join(", ", effective),
+                    TypesDisplay = string.Join("、", effective.Select(UiText.ModelTypeText)),
                     Types = effective.ToList(),
                     RoutableDisplay = CapabilityLabels.Describe(routable),
                     CapabilityGapDisplay = CapabilityLabels.Describe(missing),
@@ -836,19 +836,19 @@
     /// <summary>顶部提示：按能力列出已配置的默认模型；一个都没有时提示去设置页配置。</summary>
     private string DefaultModelsSummary =>
         _capabilityDefaults.Count == 0
-            ? "默认模型: 未配置任何能力的默认模型（设置页可按能力配置）"
-            : "默认模型（按能力）: "
-              + string.Join(" | ", _capabilityDefaults
+            ? "默认模型：尚未为任何能力配置默认模型（可在「设置」页按能力配置）"
+            : "默认模型（按能力）："
+              + string.Join("｜", _capabilityDefaults
                   .OrderBy(pair => (int)pair.Key)
-                  .Select(pair => $"{LlmCapabilityMap.ToConfigKey(pair.Key)}={pair.Value}"));
+                  .Select(pair => $"{CapabilityLabels.Label(pair.Key)}={pair.Value}"));
 
-    /// <summary>失效告警文案（<c>ValidateDefaultModels</c> 原样呈现，不自动清除）。</summary>
+    /// <summary>失效告警文案（只报告，不自动清除）。</summary>
     private string InvalidDefaultsSummary =>
-        string.Join(" | ", _invalidDefaults
+        string.Join("｜", _invalidDefaults
             .OrderBy(pair => (int)pair.Key)
             .Select(pair => pair.Key == LlmCapabilityKind.None
                 ? pair.Value
-                : $"{LlmCapabilityMap.ToConfigKey(pair.Key)}: {pair.Value}"));
+                : $"{CapabilityLabels.Label(pair.Key)}：{pair.Value}"));
 
     /// <summary>能力多选区提示：区分「配置覆盖」与「生效能力」，两者不可混淆。</summary>
     private string ProviderCapabilitiesHint
@@ -862,16 +862,16 @@
             {
                 // 覆盖是用户写的：清空后回到 Provider 自己的默认值（具体是什么由 Provider 决定）
                 ProviderCapabilitySource.Declared =>
-                    $"已声明 {_capabilityView.DeclaredText}；全部取消后保存 = 交回该 Provider 的默认能力。",
+                    $"已声明 {_capabilityView.DeclaredText}；全部取消后保存，表示交回该 Provider 的默认能力。",
                 ProviderCapabilitySource.Disabled =>
-                    "配置已显式关闭全部能力（该 Provider 当前不供出任何能力）；勾选任意项即可恢复。",
+                    "配置中已显式关闭全部能力（该 Provider 当前不提供任何能力）；勾选任意一项即可恢复。",
                 // 未配置覆盖：此时运行时生效值就是默认值，直接照实说，不要用协议缺省去冒充
-                _ => $"未配置覆盖 = 使用默认能力：{_capabilityView.EffectiveText}。"
+                _ => $"未配置覆盖，使用默认能力：{_capabilityView.EffectiveText}。"
             };
         }
     }
 
-    /// <summary>多选值回填：只认已登记的能力名，未登记的名字保留原样供后端抛错（决议 19）。</summary>
+    /// <summary>多选值回填：只认已登记的能力名，未登记的名字保留原样供后端报错。</summary>
     private static IEnumerable<string> ToCapabilityKeys(List<string>? values) =>
         values is null
             ? Array.Empty<string>()
@@ -952,7 +952,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"保存启用清单失败: {ex.Message}");
+            MessageService.Error($"保存启用清单失败：{ex.Message}");
         }
     }
 
@@ -1025,7 +1025,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"保存失败: {ex.Message}");
+            MessageService.Error($"保存失败：{ex.Message}");
         }
         finally
         {
@@ -1076,16 +1076,16 @@
         }
         catch (ArgumentException ex)
         {
-            // 后端写时校验：裸 ID / 模型不存在 / 能力不符（决议 14/21）
-            MessageService.Error($"设置默认模型失败: {ex.Message}");
+            // 后端写入时校验：裸标识、模型不存在、能力不匹配
+            MessageService.Error($"设置默认模型失败：{ex.Message}");
         }
         catch (Exception ex)
         {
-            MessageService.Error($"写入配置失败: {ex.Message}");
+            MessageService.Error($"写入配置失败：{ex.Message}");
         }
     }
 
-    /// <summary>该模型是否是任一能力的默认（决议 11：不再有单一默认模型）。</summary>
+    /// <summary>该模型是否是任一能力的默认（没有全局唯一默认模型）。</summary>
     private bool IsDefaultForAnyCapability(string modelKey) =>
         _capabilityDefaults.Values.Any(reference =>
             string.Equals(reference, modelKey, StringComparison.OrdinalIgnoreCase));
@@ -1104,7 +1104,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"删除失败: {ex.Message}");
+            MessageService.Error($"删除失败：{ex.Message}");
             return;
         }
 
@@ -1115,7 +1115,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Warning($"模型已删除，但目录刷新失败: {ex.Message}");
+            MessageService.Warning($"模型已删除，但目录刷新失败：{ex.Message}");
         }
 
         RefreshModelRows();
@@ -1177,7 +1177,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"保存失败: {ex.Message}");
+            MessageService.Error($"保存失败：{ex.Message}");
         }
         finally
         {
@@ -1196,7 +1196,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"恢复失败: {ex.Message}");
+            MessageService.Error($"恢复失败：{ex.Message}");
         }
     }
 
@@ -1237,7 +1237,7 @@
         ProviderTypes.OpenAi => "OpenAI",
         ProviderTypes.OpenAiResponses => "OpenAI Responses",
         ProviderTypes.Anthropic => "Anthropic",
-        ProviderTypes.TypeSafe => "TypeSafe (Decision)",
+        ProviderTypes.TypeSafe => "TypeSafe（决策）",
         _ => protocol
     };
 
@@ -1328,7 +1328,7 @@
                 return;
             }
 
-            MessageService.Warning($"模型已存在: {key}");
+            MessageService.Warning($"模型已存在：{key}");
             return;
         }
 
@@ -1387,7 +1387,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"添加失败: {ex.Message}");
+            MessageService.Error($"添加失败：{ex.Message}");
         }
         finally
         {
@@ -1469,7 +1469,7 @@
         public int Context { get; set; }
         public int Output { get; set; }
         public bool IsDefault { get; set; }
-        /// <summary>该模型作为哪几个能力的默认（决议 11：一个模型可同时是多个能力的默认）。</summary>
+        /// <summary>该模型作为哪几个能力的默认（一个模型可同时是多个能力的默认）。</summary>
         public IReadOnlyList<LlmCapabilityKind> DefaultFor { get; set; } = [];
         /// <summary>默认身份文案，如 <c>chat, embedding</c>。</summary>
         public string DefaultForDisplay => string.Join(", ", DefaultFor.Select(LlmCapabilityMap.ToConfigKey));
@@ -1480,7 +1480,7 @@
         public bool IsOverridden { get; set; }
         public List<ModelType> Types { get; set; } = new();
         public string TypesDisplay { get; set; } = "Text";
-        /// <summary>可路由能力 = Provider 能力 ∩ 模型类型投影（决议 6）。</summary>
+        /// <summary>可路由能力 = Provider 能力与模型类型的交集。</summary>
         public string RoutableDisplay { get; set; } = "";
         /// <summary>模型声明了但 Provider 未开启的能力；非空即告警，不阻止保存。</summary>
         public string CapabilityGapDisplay { get; set; } = "";

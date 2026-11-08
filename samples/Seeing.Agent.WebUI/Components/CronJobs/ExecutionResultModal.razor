@@ -1,42 +1,43 @@
 @using AntDesign
 @using Seeing.Agent.Scheduler.Models
+@using Seeing.Agent.WebUI.Services
 
 <Modal Title="@("执行详情")" Visible="@Visible" OnCancel="@OnCancel" Width="800" Footer="@null">
     @if (Record != null)
     {
         <Descriptions Column="2" Bordered="true">
-            <DescriptionsItem Title="RunId">@Record.RunId</DescriptionsItem>
+            <DescriptionsItem Title="运行编号">@Record.RunId</DescriptionsItem>
             <DescriptionsItem Title="状态">
-                <Tag Color="@(Record.Status == "success" ? "green" : Record.Status == "failed" ? "red" : "blue")">
-                    @(Record.Status == "success" ? "成功" : Record.Status == "failed" ? "失败" : "运行中")
+                <Tag Color="@UiText.ExecutionStatusColor(Record.Status)">
+                    @UiText.ExecutionStatus(Record.Status)
                 </Tag>
             </DescriptionsItem>
-            <DescriptionsItem Title="来源">@Record.Source</DescriptionsItem>
-            <DescriptionsItem Title="类型">@Record.TaskType</DescriptionsItem>
+            <DescriptionsItem Title="来源">@UiText.ScheduleSource(Record.Source)</DescriptionsItem>
+            <DescriptionsItem Title="类型">@UiText.ScheduleTaskType(Record.TaskType)</DescriptionsItem>
             <DescriptionsItem Title="开始时间">@Record.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")</DescriptionsItem>
-            <DescriptionsItem Title="完成时间">@Record.CompletedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-"</DescriptionsItem>
+            <DescriptionsItem Title="完成时间">@(Record.CompletedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</DescriptionsItem>
             @if (Record.Duration.HasValue)
             {
-                <DescriptionsItem Title="耗时">@FormatDuration(Record.Duration.Value)</DescriptionsItem>
+                <DescriptionsItem Title="耗时">@UiText.Duration(Record.Duration.Value)</DescriptionsItem>
             }
-            <DescriptionsItem Title="Agent">@Record.Agent</DescriptionsItem>
-            <DescriptionsItem Title="Session">@Record.SessionId</DescriptionsItem>
+            <DescriptionsItem Title="智能体">@Record.Agent</DescriptionsItem>
+            <DescriptionsItem Title="会话">@Record.SessionId</DescriptionsItem>
             @if (!string.IsNullOrEmpty(Record.DispatchSessionId))
             {
-                <DescriptionsItem Title="Dispatch Session">@Record.DispatchSessionId</DescriptionsItem>
+                <DescriptionsItem Title="投递会话">@Record.DispatchSessionId</DescriptionsItem>
             }
         </Descriptions>
 
         @if (!string.IsNullOrEmpty(Record.Prompt))
         {
-            <Card Title="Prompt" Style="margin-top: 16px;">
+            <Card Title="提示内容" Style="margin-top: 16px;">
                 <pre Style="white-space: pre-wrap; word-break: break-word; margin: 0; background: #f5f5f5; padding: 12px; border-radius: 4px;">@Record.Prompt</pre>
             </Card>
         }
 
         @if (!string.IsNullOrEmpty(Record.Text))
         {
-            <Card Title="Text" Style="margin-top: 16px;">
+            <Card Title="文本内容" Style="margin-top: 16px;">
                 <pre Style="white-space: pre-wrap; word-break: break-word; margin: 0; background: #f5f5f5; padding: 12px; border-radius: 4px;">@Record.Text</pre>
             </Card>
         }
@@ -56,21 +57,17 @@
 </Modal>
 
 @code {
+    /// <summary>弹窗可见性。</summary>
     [Parameter] public bool Visible { get; set; }
+
+    /// <summary>可见性变更回调。</summary>
     [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+
+    /// <summary>展示的执行记录。</summary>
     [Parameter] public JobExecutionRecord? Record { get; set; }
 
     private void OnCancel()
     {
         _ = VisibleChanged.InvokeAsync(false);
-    }
-
-    private static string FormatDuration(TimeSpan duration)
-    {
-        if (duration.TotalMinutes >= 1)
-            return $"{(int)duration.TotalMinutes}m {duration.Seconds}s";
-        if (duration.TotalSeconds >= 1)
-            return $"{(int)duration.TotalSeconds}s";
-        return $"{duration.TotalMilliseconds:F0}ms";
     }
 }

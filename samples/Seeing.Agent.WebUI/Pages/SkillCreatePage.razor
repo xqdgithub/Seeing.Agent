@@ -9,7 +9,7 @@
 @inject OnlineSkillParserAggregator ParserAggregator
 @inject ILogger<SkillCreatePage> Logger
 
-<PageTitle>创建技能 - Seeing</PageTitle>
+<PageTitle>创建技能 · Seeing</PageTitle>
 
 <WorkspacePageShell>
     <Breadcrumb>
@@ -22,11 +22,11 @@
             <TabPane Key="online" Tab="在线下载">
                 <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin: 16px 0;"
                        Message="从技能市场下载"
-                       Description="输入技能页面 URL，解析后确认保存。" />
+                       Description="输入技能页面地址，解析后确认保存。" />
                 
                 <Card Style="margin-bottom: 16px;">
                     <div style="margin-bottom: 16px;">
-                        <label style="font-weight: 500; display: block; margin-bottom: 8px;">技能页面 URL <span style="color: red;">*</span></label>
+                        <label style="font-weight: 500; display: block; margin-bottom: 8px;">技能页面地址 <span style="color: red;">*</span></label>
                         <InputGroup Compact>
                             <Input @bind-Value="@_onlineUrl" Style="width: calc(100% - 80px)" Placeholder="https://www.skills.sh/... 或 https://modelscope.cn/skills/..." />
                             <Button Type="@ButtonType.Primary" OnClick="ParseOnlineSkill" Loading="@_onlineLoading">解析</Button>
@@ -159,12 +159,12 @@
             <TabPane Key="form" Tab="表单创建">
                 <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin: 16px 0;"
                        Message="填写基本信息创建技能"
-                       Description="将生成包含 YAML frontmatter 的 SKILL.md 文件。" />
+                       Description="将生成一个带 YAML 头部信息的 SKILL.md 文件。" />
                 
                 <Card Style="margin-bottom: 16px;">
                     <div style="margin-bottom: 16px;">
                         <label style="font-weight: 500; display: block; margin-bottom: 8px;">技能名称 <span style="color: red;">*</span></label>
-                        <Input @bind-Value="@_form.Name" Placeholder="my-skill (小写字母、数字、连字符)" />
+                        <Input @bind-Value="@_form.Name" Placeholder="如 my-skill，仅小写字母、数字与连字符" />
                     </div>
                     <div style="margin-bottom: 16px;">
                         <label style="font-weight: 500; display: block; margin-bottom: 8px;">存储位置 <span style="color: red;">*</span></label>
@@ -324,7 +324,7 @@
             sb.AppendLine($"tags: {_form.Tags}");
         sb.AppendLine("---");
         sb.AppendLine();
-        sb.AppendLine(_form.Content ?? "# 技能说明\n\n在此编写技能内容...");
+        sb.AppendLine(_form.Content ?? "# 技能说明\n\n在此编写技能内容……");
         return sb.ToString();
     }
 
@@ -362,13 +362,13 @@
             var draft = new SkillDraft(
                 _form.Name,
                 _form.Description,
-                _form.Content ?? "# 技能说明\n\n在此编写技能内容...",
+                _form.Content ?? "# 技能说明\n\n在此编写技能内容……",
                 metadata.Count > 0 ? metadata : null);
 
             var result = await SkillWriter.CreateAsync(draft, ToLevel(_form.Level), overwrite: false);
             if (!result.Success)
             {
-                MessageService.Error($"创建失败: {result.Error}");
+                MessageService.Error($"创建失败：{result.Error}");
                 return;
             }
 
@@ -377,7 +377,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"创建失败: {ex.Message}");
+            MessageService.Error($"创建失败：{ex.Message}");
         }
     }
 
@@ -416,7 +416,7 @@
 
             if (!result.Success)
             {
-                MessageService.Error($"创建失败: {result.Error}");
+                MessageService.Error($"创建失败：{result.Error}");
                 return;
             }
 
@@ -425,7 +425,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"创建失败: {ex.Message}");
+            MessageService.Error($"创建失败：{ex.Message}");
         }
     }
 
@@ -433,7 +433,7 @@
     {
         if (string.IsNullOrWhiteSpace(_onlineUrl))
         {
-            MessageService.Warning("请输入技能页面 URL");
+            MessageService.Warning("请输入技能页面地址");
             return;
         }
 
@@ -552,7 +552,7 @@
             else
             {
                 Logger.LogInformation("解析技能成功: {Name}, 文件数: {FileCount}", result.Name, _onlineFiles.Count);
-                MessageService.Success($"解析成功: {result.Name}" + (_onlineFiles.Count > 0 ? $" ({_onlineFiles.Count} 个文件)" : ""));
+                MessageService.Success($"解析成功：{result.Name}" + (_onlineFiles.Count > 0 ? $" ({_onlineFiles.Count} 个文件)" : ""));
             }
         }
         catch (Exception ex)
@@ -621,7 +621,7 @@
             if (!result.Success)
             {
                 Logger.LogWarning("保存技能失败: {Name}, 原因: {Error}", _onlinePreview.Name, result.Error);
-                MessageService.Error($"保存失败: {result.Error}");
+                MessageService.Error($"保存失败：{result.Error}");
                 return;
             }
 
@@ -632,7 +632,7 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "保存技能失败: {Name}", _onlinePreview.Name);
-            MessageService.Error($"保存失败: {ex.Message}");
+            MessageService.Error($"保存失败：{ex.Message}");
         }
     }
 

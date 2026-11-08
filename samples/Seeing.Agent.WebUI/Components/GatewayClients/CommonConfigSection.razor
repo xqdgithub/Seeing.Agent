@@ -11,28 +11,28 @@
     <FormItem Label="启用">
         <Switch Checked="@Enabled" CheckedChanged="@(v => EnabledChanged.InvokeAsync(v))" />
     </FormItem>
-    <Divider>Agent 与连接</Divider>
-    <FormItem Label="默认 Agent">
+    <Divider>智能体与连接</Divider>
+    <FormItem Label="默认智能体">
         <Select TItemValue="string" TItem="string"
                 Style="width: 100%;"
                 AllowClear="true"
-                Placeholder="留空则使用全局 DefaultAgent"
+                Placeholder="留空则使用全局默认智能体"
                 Value="@Agent"
                 ValueChanged="@OnAgentChangedAsync"
                 DataSource="@_agentNames" />
     </FormItem>
     @if (_isAcpPassthrough)
     {
-        <FormItem Label="ACP Mode">
+        <FormItem Label="ACP 运行模式">
             <Input Value="@Mode"
                    ValueChanged="@ModeChanged"
-                   Placeholder="留空则使用 ACP 后端默认 mode" />
+                   Placeholder="留空则使用 ACP 后端默认模式" />
         </FormItem>
     }
-    <FormItem Label="默认 Model">
+    <FormItem Label="默认模型">
         <Input Value="@ModelId"
                ValueChanged="@ModelIdChanged"
-               Placeholder="@(_isAcpPassthrough ? "留空则使用 ACP 后端默认 model" : "留空则按 Agent / 全局 chat 默认模型解析")" />
+               Placeholder="@(_isAcpPassthrough ? "留空则使用 ACP 后端默认模型" : "留空则按智能体或全局对话默认模型解析")" />
     </FormItem>
     <Divider>Gateway 连接</Divider>
     <FormItem Label="服务地址" Required="true">
@@ -52,7 +52,7 @@
     <FormItem Label="WebSocket 路径">
         <Input @bind-Value="@Gateway.WebSocketPath" />
     </FormItem>
-    <FormItem Label="API Key">
+    <FormItem Label="访问密钥（API Key）">
         <Input @bind-Value="@Gateway.ApiKey" Type="InputType.Password" />
     </FormItem>
 </Form>

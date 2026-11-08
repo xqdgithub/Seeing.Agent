@@ -94,7 +94,7 @@
     private string GetContentPreview()
     {
         if (!IsComplete)
-            return "思考中...";
+            return "思考中……";
 
         if (string.IsNullOrEmpty(Content))
             return "0 字符";
@@ -108,7 +108,7 @@
             firstLine = text.Split('\n').FirstOrDefault()?.Trim() ?? "";
         
         if (firstLine.Length > 60)
-            return firstLine[..60] + "...";
+            return firstLine[..60] + "……";
         
         return firstLine;
     }

@@ -7,7 +7,7 @@
 @inject NavigationManager Navigation
 @inject IMessageService MessageService
 
-<PageTitle>记忆详情 - Seeing</PageTitle>
+<PageTitle>记忆详情 · Seeing</PageTitle>
 
 <WorkspacePageShell Loading="@_loading" IsEmpty="@(_file == null && !_loading)"
                     EmptyTitle="文件不存在" EmptyDescription="无法找到指定的记忆文件">
@@ -37,21 +37,7 @@
             <Descriptions Column="2" Bordered Size="@DescriptionsSize.Small" Style="margin-bottom: 16px;">
                 <DescriptionsItem Title="路径" Span="2">@_file.Path</DescriptionsItem>
                 <DescriptionsItem Title="类型">
-                    @switch (_file.Metadata.Type)
-                    {
-                        case MemoryType.Session:
-                            <Tag Color="@("blue")">会话</Tag>
-                            break;
-                        case MemoryType.Daily:
-                            <Tag Color="@("green")">每日</Tag>
-                            break;
-                        case MemoryType.Digest:
-                            <Tag Color="@("orange")">整合</Tag>
-                            break;
-                        default:
-                            <Tag>@_file.Metadata.Type</Tag>
-                            break;
-                    }
+                    <Tag Color="@GetMemoryTypeColor()">@UiText.MemoryTypeText(_file.Metadata.Type)</Tag>
                 </DescriptionsItem>
                 <DescriptionsItem Title="大小">@FormatSize(_contentSize)</DescriptionsItem>
                 <DescriptionsItem Title="修改时间">@_file.ModifiedTime.ToString("yyyy-MM-dd HH:mm:ss")</DescriptionsItem>
@@ -96,6 +82,14 @@
 
 @code {
     [Parameter] public string? FilePath { get; set; }
+
+    private string GetMemoryTypeColor() => _file?.Metadata.Type switch
+    {
+        MemoryType.Session => "blue",
+        MemoryType.Daily => "green",
+        MemoryType.Digest => "orange",
+        _ => "default"
+    };
 
     private FileNode? _file;
     private string? _fileContent;
@@ -145,7 +139,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"加载记忆详情失败: {ex.Message}");
+            MessageService.Error($"加载记忆详情失败：{ex.Message}");
         }
         finally
         {
@@ -176,7 +170,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"保存失败: {ex.Message}");
+            MessageService.Error($"保存失败：{ex.Message}");
         }
     }
 
@@ -192,7 +186,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"删除失败: {ex.Message}");
+            MessageService.Error($"删除失败：{ex.Message}");
         }
     }
 

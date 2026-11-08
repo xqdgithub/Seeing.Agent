@@ -13,24 +13,24 @@
 @implements IDisposable
 
 <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
-       Message="启动能力（Boot + 能力集）决定进程 Activate / bootEnabled。工作模式（Scenario）只影响会话滤镜与默认 Agent，不缩启动集。编辑能力集或切换 Boot 会热重载并重新结算。" />
+       Message="本次启动启用哪些模块，由「启动能力集」决定；工作模式只决定每个会话能看到哪些模块与默认智能体，不会改变启动时已启用的模块。" />
 
 @if (_modulesEnabledWarning)
 {
     <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 16px;"
-           Message="检测到 Modules.Enabled：该字段已废除，结算会忽略。请改用上方 Boot + 能力集；Modules.Disabled 仍可作为全局模块黑名单。" />
+           Message="配置中的 Modules.Enabled 已废弃，不会再生效。请改用上方启动能力集配置；Modules.Disabled 仍可作为全局模块黑名单使用。" />
 }
 
 <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
-    <span>当前 Boot：</span>
+    <span>当前启动能力集：</span>
     <Select TItemValue="string" TItem="string"
             Value="@_activeBoot"
             ValueChanged="OnActiveBootChanged"
-            Placeholder="*（全 Available）/ Host 默认"
+            Placeholder="默认（全部可用）"
             AllowClear="true"
             Style="width: 260px;"
             Disabled="@_busy">
-        <SelectOption TItemValue="string" TItem="string" Value="@("*")" Label="@("*（全 Available）")" />
+        <SelectOption TItemValue="string" TItem="string" Value="@("*")" Label="@("全部可用（*）")" />
         @foreach (var name in _allSetNames)
         {
             <SelectOption TItemValue="string" TItem="string" Value="@name" Label="@name" />
@@ -43,24 +43,24 @@
 </div>
 
 <div style="margin-bottom: 12px; font-size: 12px; color: #888;">
-    清空 Boot 后回退 Host Shape 的 HostDefaultBoot（未设则 *）。进程默认工作模式请到「工作模式」页签配置。
+    清空后使用宿主默认设置（全部可用）。进程默认工作模式请在「工作模式」页签配置。
 </div>
 
 <Table TItem="CapabilitySetRow" DataSource="@_rows" RowKey="r => r.Name" Loading="@_busy" Size="@TableSize.Middle">
     <PropertyColumn Property="c => c.Name" Title="名称" Width="140" />
     <PropertyColumn Property="c => c.Kind" Title="类型" Width="100" />
-    <PropertyColumn Property="c => c.ModuleSummary" Title="模块" />
-    <PropertyColumn Property="c => c.DisabledSummary" Title="Disabled" Width="160" />
+    <PropertyColumn Property="c => c.ModuleSummary" Title="包含模块" />
+    <PropertyColumn Property="c => c.DisabledSummary" Title="排除模块" Width="160" />
     <ActionColumn Title="操作" Width="260">
         <Space>
             <Button Size="@ButtonSize.Small" OnClick="() => ViewOrEdit(context)">详情</Button>
             @if (context.IsActive)
             {
-                <Tag Color="@("blue")">当前 Boot</Tag>
+                <Tag Color="@("blue")">当前使用</Tag>
             }
             else
             {
-                <Button Size="@ButtonSize.Small" Type="@ButtonType.Link" OnClick="() => ActivateAsync(context.Name)">设为 Boot</Button>
+                <Button Size="@ButtonSize.Small" Type="@ButtonType.Link" OnClick="() => ActivateAsync(context.Name)">启用</Button>
             }
             <Button Size="@ButtonSize.Small" Type="@ButtonType.Link" OnClick="() => CloneAsCustom(context)">另存为</Button>
             @if (!context.IsBuiltIn || context.HasOverride)
@@ -81,14 +81,14 @@
        Width="720"
        DestroyOnClose="true">
     <Form Layout="@FormLayout.Vertical" Model="@_editModel">
-        <FormItem Label="能力集名">
-            <Input @bind-Value="@_editModel.Name" Disabled="@(!_editIsNew)" Placeholder="小写字母/数字/连字符，如 my-secure" />
+        <FormItem Label="能力集名称">
+            <Input @bind-Value="@_editModel.Name" Disabled="@(!_editIsNew)" Placeholder="小写字母、数字或连字符，如 my-secure" />
         </FormItem>
-        <FormItem Label="模块（勾选 Available；可用 * 表示全量）">
+        <FormItem Label="包含模块（勾选需要启用的模块）">
             <div style="margin-bottom: 8px;">
                 <Checkbox Checked="@_editModel.UseStar"
                           CheckedChanged="OnUseStarChanged">
-                    使用 ["*"]（解析层展开为全部 Available）
+                    包含全部可用模块
                 </Checkbox>
             </div>
             @if (!_editModel.UseStar)
@@ -109,18 +109,18 @@
                     }
                 </div>
                 <div style="margin-top: 6px; font-size: 12px; color: #888;">
-                    也可手写额外模块 id（逗号分隔）：
+                    也可手动补充其他模块标识（逗号分隔）：
                 </div>
                 <Input @bind-Value="@_editModel.ExtraModulesCsv" Placeholder="例如 experimental.foo" Style="margin-top: 4px;" />
             }
         </FormItem>
-        <FormItem Label="Disabled（模块层黑名单，逗号分隔）">
+        <FormItem Label="排除模块（模块级黑名单，逗号分隔）">
             <Input @bind-Value="@_editModel.DisabledCsv" Placeholder="shell, mcp" />
         </FormItem>
         @if (_editIsBuiltInBase)
         {
             <Alert Type="@AlertType.Warning" ShowIcon="true"
-                   Message="保存将把该内置能力集的覆盖写入 seeing.json CapabilitySets；删除覆盖可恢复内置默认。" />
+                   Message="保存后会为该内置能力集生成项目级覆盖配置；删除覆盖即可恢复内置默认。" />
         }
     </Form>
 </Modal>
@@ -178,7 +178,7 @@
     }
 
     private static string KindLabel(bool builtin, bool over) =>
-        builtin ? (over ? "内置·已覆盖" : "内置") : "自定义";
+        builtin ? (over ? "内置（已覆盖）" : "内置") : "自定义";
 
     private async Task OnActiveBootChanged(string? value)
     {
@@ -202,13 +202,13 @@
                 ["Boot"] = _activeBoot
             });
             MessageService.Success(_activeBoot is null
-                ? "已清空 Boot（回退 Host 默认 / *）"
-                : $"Boot 已切换为 {_activeBoot}");
+                ? "已清空启动能力集，将使用宿主默认设置（全部可用）"
+                : $"已切换到能力集 {_activeBoot}");
             Refresh();
         }
         catch (Exception ex)
         {
-            MessageService.Error($"保存失败: {ex.Message}");
+            MessageService.Error($"保存失败：{ex.Message}");
         }
         finally
         {
@@ -241,7 +241,7 @@
         _editIsNew = false;
         _editIsBuiltInBase = row.IsBuiltIn;
         _editorTitle = row.IsBuiltIn && !row.HasOverride
-            ? $"查看内置能力集 · {row.Name}（保存即覆盖）"
+            ? $"查看内置能力集 · {row.Name}（保存后生成覆盖）"
             : $"编辑能力集 · {row.Name}";
 
         var useStar = def.Modules.Count == 1 &&
@@ -301,7 +301,7 @@
     {
         if (string.IsNullOrWhiteSpace(_editModel.Name))
         {
-            MessageService.Error("能力集名不能为空");
+            MessageService.Error("能力集名称不能为空");
             return;
         }
 
@@ -309,7 +309,7 @@
         if (_editIsNew && CapabilitySetCatalog.ListAll().Any(s =>
                 string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase)))
         {
-            MessageService.Error($"能力集名 '{name}' 已存在，请换名或编辑现有项");
+            MessageService.Error($"能力集名称「{name}」已存在，请换一个名称或编辑现有条目");
             return;
         }
 
@@ -352,13 +352,13 @@
             {
                 ["CapabilitySets"] = options.CapabilitySets
             });
-            MessageService.Success($"能力集 '{name}' 已保存");
+            MessageService.Success($"能力集「{name}」已保存");
             _editorVisible = false;
             Refresh();
         }
         catch (Exception ex)
         {
-            MessageService.Error($"保存失败: {ex.Message}");
+            MessageService.Error($"保存失败：{ex.Message}");
         }
         finally
         {
@@ -374,7 +374,7 @@
             var options = await ConfigService.LoadProjectOptionsAsync();
             if (options.CapabilitySets is null || !options.CapabilitySets.Remove(row.Name))
             {
-                MessageService.Warning("配置中无该能力集条目");
+                MessageService.Warning("配置中不存在该能力集");
                 return;
             }
 
@@ -392,12 +392,12 @@
                 });
             }
 
-            MessageService.Success(row.IsBuiltIn ? $"已清除 '{row.Name}' 的配置覆盖" : $"已删除能力集 '{row.Name}'");
+            MessageService.Success(row.IsBuiltIn ? $"已清除「{row.Name}」的配置覆盖" : $"已删除能力集「{row.Name}」");
             Refresh();
         }
         catch (Exception ex)
         {
-            MessageService.Error($"删除失败: {ex.Message}");
+            MessageService.Error($"删除失败：{ex.Message}");
         }
         finally
         {

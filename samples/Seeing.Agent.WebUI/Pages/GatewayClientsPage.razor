@@ -10,10 +10,10 @@
 @inject IMessageService MessageService
 @inject IJSRuntime JsRuntime
 
-<PageTitle>Gateway 客户端 - Seeing</PageTitle>
+<PageTitle>Gateway 客户端 · Seeing</PageTitle>
 
 <WorkspacePageShell Loading="@_loading" IsEmpty="@(!_clients.Any())"
-                    EmptyTitle="暂无 Gateway 客户端" EmptyDescription="安装 Channel 插件或刷新注册表以发现可用客户端">
+                    EmptyTitle="暂无 Gateway 客户端" EmptyDescription="安装渠道插件或刷新注册表，即可发现可用的客户端">
     <Breadcrumb>
         <BreadcrumbItem>设置</BreadcrumbItem>
         <BreadcrumbItem>Gateway 客户端</BreadcrumbItem>
@@ -257,7 +257,7 @@
         }
 
         await ConfigService.InstallPluginAsync(tempPath);
-        MessageService.Success($"已安装插件: {file.Name}");
+        MessageService.Success($"已安装插件：{file.Name}");
         await LoadAsync();
     }
 

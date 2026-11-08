@@ -6,14 +6,14 @@
 @inject NavigationManager Navigation
 
 <div class="not-enabled-fragment" style="padding: 48px 24px; max-width: 640px; margin: 0 auto;">
-    <PageTitle>未启用 - @(FeatureTitle ?? "功能")</PageTitle>
+    <PageTitle>未启用 · @(FeatureTitle ?? "功能") · Seeing</PageTitle>
     <Alert Type="@AlertType.Info"
            ShowIcon="true"
-           Message="@($"当前场景未启用「{FeatureTitle ?? "该功能"}」")"
+           Message="@($"当前工作模式未启用「{FeatureTitle ?? "该功能"}」")"
            Description="@BuildDescription()"
            Style="margin-bottom: 24px;" />
     <Space>
-        <Button Type="@ButtonType.Primary" OnClick="GoSettings">切换场景（前往设置）</Button>
+        <Button Type="@ButtonType.Primary" OnClick="GoSettings">前往设置切换工作模式</Button>
         <Button OnClick="GoHome">返回首页</Button>
     </Space>
 </div>
@@ -22,17 +22,17 @@
     /// <summary>功能显示名（如「记忆」「MCP」）。</summary>
     [Parameter] public string? FeatureTitle { get; set; }
 
-    /// <summary>提供该页的模块 id。</summary>
+    /// <summary>提供该页的模块 id（仅用于查找可切换的工作模式，不展示给用户）。</summary>
     [Parameter] public string? ModuleId { get; set; }
 
     private string BuildDescription()
     {
-        var module = string.IsNullOrWhiteSpace(ModuleId) ? "相关模块" : $"模块 {ModuleId}";
+        var name = FeatureTitle ?? "该功能";
         var scenarios = SuggestScenarios();
         if (scenarios.Count == 0)
-            return $"{module} 未在当前场景启用。请切换到包含该能力的场景后重试。";
+            return $"当前工作模式不包含「{name}」。请前往设置切换到包含该功能的工作模式，或调整该工作模式包含的模块。";
 
-        return $"{module} 未在当前场景启用。可切换到包含它的场景：{string.Join(" / ", scenarios)}。";
+        return $"当前工作模式不包含「{name}」。可切换到包含它的工作模式：{string.Join("、", scenarios)}。";
     }
 
     private IReadOnlyList<string> SuggestScenarios()

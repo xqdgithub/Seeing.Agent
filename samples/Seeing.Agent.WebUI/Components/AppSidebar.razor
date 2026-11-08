@@ -126,7 +126,7 @@
                         Class="sider-footer-close"
                         Disabled="@_shutdownRequested">
                     <Icon Type="@IconType.Outline.CloseCircle" />
-                    <span class="sider-footer-label">@(_shutdownRequested ? "正在关闭..." : "关闭")</span>
+                    <span class="sider-footer-label">@(_shutdownRequested ? "正在关闭……" : "关闭")</span>
                 </Button>
             </Popconfirm>
 
@@ -384,7 +384,7 @@
         catch (Exception ex)
         {
             _shutdownRequested = false;
-            MessageService.Error($"关闭 WebUI 失败: {ex.Message}");
+            MessageService.Error($"关闭 WebUI 失败：{ex.Message}");
         }
     }
 

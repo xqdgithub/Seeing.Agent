@@ -119,7 +119,7 @@
                                     </SpaceItem>
                                 }
                                 <SpaceItem>
-                                    <Tooltip Title="多 Agent 会议大屏">
+                                    <Tooltip Title="多会话会议视图">
                                         <Button Type="@ButtonType.Text"
                                                 Size="@ButtonSize.Small"
                                                 Icon="@IconType.Outline.VideoCamera"
@@ -154,7 +154,7 @@
                                 @sec.Entries.Count
                                 @if (sec.PendingPermissionTotal > 0)
                                 {
-                                    <text> · 待批 @sec.PendingPermissionTotal</text>
+                                    <text> · 待审批 @sec.PendingPermissionTotal</text>
                                 }
                             </span>
                         </div>
@@ -544,7 +544,7 @@
         catch (Exception ex)
         {
             // JS 互操作在 circuit 断开时会抛错；不影响主流程
-            MessageService.Error($"打开新标签失败: {ex.Message}");
+            MessageService.Error($"打开新标签失败：{ex.Message}");
         }
     }
 
@@ -601,7 +601,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"重命名失败: {ex.Message}");
+            MessageService.Error($"重命名失败：{ex.Message}");
         }
         await RefreshRelationAsync();
     }
@@ -618,7 +618,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"删除会话失败: {ex.Message}");
+            MessageService.Error($"删除会话失败：{ex.Message}");
             return;
         }
 

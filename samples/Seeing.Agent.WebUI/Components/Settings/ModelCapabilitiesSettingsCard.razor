@@ -11,7 +11,7 @@
 @implements IDisposable
 
 <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
-       Message="默认使用内置精简目录（GPT / Claude / DeepSeek / GLM / Kimi / MiniMax / Qwen / Grok / Zen 免费源，含思考档位）；编辑写入 local 覆盖。" />
+       Message="默认使用内置的精简模型目录（包含 GPT、Claude、DeepSeek、GLM、Kimi、MiniMax、Qwen、Grok 与 Zen 免费源，并含思考档位）；在下方编辑后写入本地覆盖配置。" />
 
 <Form Layout="@FormLayout.Vertical" Model="@_options">
     <FormItem Label="启用能力补全">
@@ -19,21 +19,21 @@
     </FormItem>
     <FormItem Label="变更时刷新模型目录">
         <Switch @bind-Checked="@_options.InvalidateModelCatalogOnChange" />
-        <span style="margin-left: 8px; color: #888;">默认 false；保存时按此开关 Notify</span>
+        <span style="margin-left: 8px; color: #888;">默认关闭；保存时按此开关决定是否通知刷新</span>
     </FormItem>
-    <FormItem Label="Providers（* 或 ProviderId）">
+    <FormItem Label="适用 Provider（可填 * 或 Provider 标识）">
         <Select TItemValue="string" TItem="string"
                 Mode="SelectMode.Tags"
                 Values="@_providers"
                 ValuesChanged="OnProvidersChanged"
-                Placeholder="输入 * 或 ProviderId 后回车"
+                Placeholder="输入 * 或 Provider 标识后回车"
                 Style="width: 100%;" />
-        <div style="margin-top: 4px; font-size: 12px; color: #888;">逗号分隔亦可：在下方文本框编辑后失焦同步</div>
+        <div style="margin-top: 4px; font-size: 12px; color: #888;">也可以用逗号分隔：在下方文本框编辑后失焦即同步</div>
         <Input @bind-Value="@_providersText" OnBlur="SyncProvidersFromText" Placeholder="*, openai" Style="margin-top: 8px;" />
     </FormItem>
     <FormItem>
         <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveAsync" Loading="@_saving">
-            保存编排配置
+            保存配置
         </Button>
         <Button Style="margin-left: 8px;" Icon="@IconType.Outline.Reload" OnClick="ReloadRegistrations">
             刷新列表
@@ -41,7 +41,7 @@
     </FormItem>
 </Form>
 
-<Divider Orientation="@DividerOrientation.Left">已注册能力源</Divider>
+<Divider Orientation="@DividerOrientation.Left">已注册的能力源</Divider>
 
 @if (_rows.Count == 0)
 {
@@ -50,16 +50,16 @@
 else
 {
     <Table TItem="Row" DataSource="@_rows" HidePagination Size="@TableSize.Small" RowKey="r => r.Id">
-        <PropertyColumn Property="c => c.Id" Title="Source Id" />
+        <PropertyColumn Property="c => c.Id" Title="源标识" />
         <PropertyColumn Property="c => c.DisplayName" Title="名称" />
-        <ActionColumn Title="Order" Width="110">
+        <ActionColumn Title="排序" Width="110">
             <InputNumber TValue="int" Value="@context.Order" Min="0"
                          ValueChanged="v => OnOrderChanged(context, v)" Style="width: 88px;" />
         </ActionColumn>
         <ActionColumn Title="启用" Width="80">
             <Switch Checked="@context.Enabled" OnChange="v => OnEnabledChanged(context, v)" />
         </ActionColumn>
-        <PropertyColumn Property="c => c.RegisteredLabel" Title="已加载" />
+        <PropertyColumn Property="c => c.RegisteredLabel" Title="加载状态" />
         <ActionColumn Title="操作" Width="280">
             <Space>
                 <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Up"
@@ -100,17 +100,17 @@ else
     else
     {
         <Space Align="SpaceAlign.Center" Wrap Style="margin-bottom: 12px;">
-            <Input Placeholder="筛选 model / provider / name" Style="width: 280px;"
+            <Input Placeholder="按模型、Provider 或名称筛选" Style="width: 280px;"
                    Value="@_entryFilter" OnInput="OnEntryFilterInput" />
-            <span style="color: #888; font-size: 12px;">共 @_entryTotal 条 · 每页 @_entryPageSize</span>
+            <span style="color: #888; font-size: 12px;">共 @_entryTotal 条 · 每页 @_entryPageSize 条</span>
         </Space>
         <Table TItem="EntryRow" DataSource="@_pageEntries" HidePagination Size="@TableSize.Small"
                RowKey="e => e.Key" Style="margin-bottom: 8px;" Loading="@_detailLoading">
-            <PropertyColumn Property="c => c.ModelId" Title="Id" />
+            <PropertyColumn Property="c => c.ModelId" Title="模型标识" />
             <PropertyColumn Property="c => c.ProviderId" Title="Provider" />
-            <PropertyColumn Property="c => c.ContextLabel" Title="Context" />
-            <PropertyColumn Property="c => c.OutputLabel" Title="Output" />
-            <PropertyColumn Property="c => c.ThinkingLabel" Title="Thinking" />
+            <PropertyColumn Property="c => c.ContextLabel" Title="上下文长度" />
+            <PropertyColumn Property="c => c.OutputLabel" Title="输出长度" />
+            <PropertyColumn Property="c => c.ThinkingLabel" Title="思考档位" />
             <ActionColumn Title="">
                 @if (_detailCanEdit)
                 {
@@ -126,12 +126,12 @@ else
                     ShowSizeChanger="false"
                     Style="margin-bottom: 16px;" />
 
-        <Divider Orientation="@DividerOrientation.Left">别名</Divider>
+        <Divider Orientation="@DividerOrientation.Left">模型别名</Divider>
         <Table TItem="AliasRow" DataSource="@_aliases" HidePagination Size="@TableSize.Small"
                RowKey="a => a.Key" Style="margin-bottom: 12px;">
             <PropertyColumn Property="c => c.ProviderId" Title="Provider" />
-            <PropertyColumn Property="c => c.FromModelId" Title="From" />
-            <PropertyColumn Property="c => c.ToModelId" Title="To" />
+            <PropertyColumn Property="c => c.FromModelId" Title="原模型" />
+            <PropertyColumn Property="c => c.ToModelId" Title="目标模型" />
             <ActionColumn Title="">
                 @if (_detailCanEdit)
                 {
@@ -144,10 +144,10 @@ else
         @if (_detailCanEdit)
         {
             <Space Align="SpaceAlign.Center" Wrap Style="margin-bottom: 16px;">
-                <Input @bind-Value="@_aliasProvider" Placeholder="Provider（可空）" Style="width: 140px;" />
-                <Input @bind-Value="@_aliasFrom" Placeholder="FromModelId" Style="width: 160px;" />
-                <Input @bind-Value="@_aliasTo" Placeholder="ToModelId" Style="width: 160px;" />
-                <Button Type="@ButtonType.Default" Loading="@_aliasSaving" OnClick="SaveAliasAsync">添加/更新别名</Button>
+                <Input @bind-Value="@_aliasProvider" Placeholder="Provider（可留空）" Style="width: 140px;" />
+                <Input @bind-Value="@_aliasFrom" Placeholder="原模型标识" Style="width: 160px;" />
+                <Input @bind-Value="@_aliasTo" Placeholder="目标模型标识" Style="width: 160px;" />
+                <Button Type="@ButtonType.Default" Loading="@_aliasSaving" OnClick="SaveAliasAsync">添加或更新别名</Button>
             </Space>
         }
 
@@ -155,28 +155,28 @@ else
         {
             <Divider Orientation="@DividerOrientation.Left">编辑 @_editEntry.ModelId</Divider>
             <Space Align="SpaceAlign.Center" Wrap Style="margin-bottom: 12px;">
-                <span>Context</span>
+                <span>上下文长度</span>
                 <InputNumber TValue="int?" @bind-Value="@_editContext" Min="1" Style="width: 140px;" />
-                <span>Output</span>
+                <span>输出长度</span>
                 <InputNumber TValue="int?" @bind-Value="@_editOutput" Min="1" Style="width: 140px;" />
             </Space>
             <Space Align="SpaceAlign.Center" Wrap Style="margin-bottom: 12px;">
-                <span>Thinking</span>
+                <span>支持思考</span>
                 <Switch @bind-Checked="@_editThinkingSupported" CheckedChildren="开" UnCheckedChildren="关" />
-                <span>Interleaved</span>
+                <span>思考内容字段</span>
                 <Input @bind-Value="@_editInterleaved" Placeholder="如 reasoning_content" Style="width: 200px;" />
             </Space>
             <Table TItem="LevelEditRow" DataSource="@_editLevels" HidePagination Size="@TableSize.Small"
                    RowKey="l => l.RowId" Style="margin-bottom: 8px; max-width: 520px;">
-                <ActionColumn Title="Key">
+                <ActionColumn Title="档位标识">
                     <Input @bind-Value="@context.Key" Style="width: 120px;" />
                 </ActionColumn>
-                <ActionColumn Title="Label">
+                <ActionColumn Title="显示名称">
                     <Input @bind-Value="@context.Label" Style="width: 120px;" />
                 </ActionColumn>
                 <ActionColumn Title="" Width="70">
                     <Button Size="@ButtonSize.Small" Type="@ButtonType.Link" Danger
-                            OnClick="() => RemoveLevel(context)">删</Button>
+                            OnClick="() => RemoveLevel(context)">删除</Button>
                 </ActionColumn>
             </Table>
             <Space Style="margin-bottom: 12px;">
@@ -385,7 +385,7 @@ else
         }
         catch (Exception ex)
         {
-            MessageService.Error($"保存失败: {ex.Message}");
+            MessageService.Error($"保存失败：{ex.Message}");
         }
         finally
         {
@@ -408,7 +408,7 @@ else
         }
         catch (Exception ex)
         {
-            MessageService.Error($"刷新失败: {ex.Message}");
+            MessageService.Error($"刷新失败：{ex.Message}");
         }
         finally
         {
@@ -442,7 +442,7 @@ else
         }
         catch (Exception ex)
         {
-            MessageService.Error($"加载条目失败: {ex.Message}");
+            MessageService.Error($"加载条目失败：{ex.Message}");
         }
         finally
         {
@@ -519,7 +519,7 @@ else
         }
         catch (Exception ex)
         {
-            MessageService.Error($"翻页失败: {ex.Message}");
+            MessageService.Error($"翻页失败：{ex.Message}");
             _detailLoading = false;
         }
     }
@@ -542,7 +542,7 @@ else
         }
         catch (Exception ex)
         {
-            MessageService.Error($"筛选失败: {ex.Message}");
+            MessageService.Error($"筛选失败：{ex.Message}");
             _detailLoading = false;
         }
     }
@@ -645,7 +645,7 @@ else
         }
         catch (Exception ex)
         {
-            MessageService.Error($"保存条目失败: {ex.Message}");
+            MessageService.Error($"保存条目失败：{ex.Message}");
         }
         finally
         {
@@ -683,7 +683,7 @@ else
         }
         catch (Exception ex)
         {
-            MessageService.Error($"保存别名失败: {ex.Message}");
+            MessageService.Error($"保存别名失败：{ex.Message}");
         }
         finally
         {
@@ -710,7 +710,7 @@ else
         }
         catch (Exception ex)
         {
-            MessageService.Error($"删除别名失败: {ex.Message}");
+            MessageService.Error($"删除别名失败：{ex.Message}");
         }
     }
 

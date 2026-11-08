@@ -20,7 +20,7 @@
 | [01 系统架构总览](01-overview.md) | 分层、Host Shape × Scenario、执行路径、数据一致性 |
 | [02 系统模块地图](02-modules.md) | 包职责、模块 id、磁盘路径、Scenario、samples |
 | [03 配置·结算·热重载](03-configuration-lifecycle.md) | seeing.json、结算公式、Reload 时序、禁止事项、排障 |
-| [04 开发规范与反模式](04-development-standards.md) | 强制约定、PR 检查清单、反模式 |
+| [04 开发规范与反模式](04-development-standards.md) | 强制约定、PR 检查清单、反模式、工具描述规范（R1–R9）、**WebUI 界面文案规范（U1–U9）** |
 | [05 扩展指南](05-extension-guide.md) | 新工具包 / 模块 / UI / LLM / Scenario / Gateway |
 | [06 合规审查](06-compliance-audit.md) | 当前仓库对照规格的结论与残留 |
 | [07 WebUI 统一模型选择](07-webui-model-picker.md) | Session Badge+Modal / 配置页 Dropdown、目录新鲜度 |

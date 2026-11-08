@@ -13,7 +13,7 @@
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
 
-<PageTitle>安全 - Seeing</PageTitle>
+<PageTitle>安全 · Seeing</PageTitle>
 
 <WorkspacePageShell>
     <Breadcrumb>
@@ -28,7 +28,7 @@
     </Extra>
     <ChildContent>
         <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 12px;"
-               Message="页面展示的是合并后的生效配置（项目级覆盖用户级）。保存时写入所选级别。" />
+               Message="本页展示合并后的生效配置（项目级覆盖用户级），保存时写入你选择的级别。" />
         <Tabs>
             <TabPane Key="global" Tab="全局策略">
                 <Card>
@@ -40,7 +40,7 @@
                     </div>
                     </Form>
                     <Alert Type="@AlertType.Warning" ShowIcon="true"
-                           Message="启用自动批准后，工具调用将不再弹出确认对话框。" />
+                           Message="启用后，工具调用将不再弹出确认对话框，请谨慎使用。" />
                     <Divider />
                     <Form Layout="@FormLayout.Vertical" Model="@_gateway" Context="gatewayForm">
                     <div>
@@ -53,7 +53,7 @@
                     </div>
                     </Form>
                     <Alert Type="@AlertType.Info" ShowIcon="true"
-                           Message="控制 Gateway HTTP/WS 请求的权限审批行为。框架级自动批准请使用上方开关。" />
+                           Message="控制 Gateway 收到的请求如何审批权限。全局自动批准请使用上方开关。" />
                 </Card>
             </TabPane>
             <TabPane Key="tools" Tab="工具守卫">
@@ -66,7 +66,7 @@
                 {
                     <Table TItem="RuleRow" DataSource="@_ruleRows" RowKey="@(r => r.Id)" Style="margin-top: 16px;">
                         <PropertyColumn Property="c => c.Kind" Title="类型" />
-                        <PropertyColumn Property="c => c.Pattern" Title="模式" />
+                        <PropertyColumn Property="c => c.Pattern" Title="匹配模式" />
                         <PropertyColumn Property="c => c.Effect" Title="效果" />
                         <PropertyColumn Property="c => c.Priority" Title="优先级" />
                     </Table>
@@ -79,11 +79,11 @@
             <TabPane Key="approval" Tab="审批流程">
                 <Descriptions Column="1" Bordered>
                     <DescriptionsItem Title="待处理权限请求">@PermissionRequests.PendingCount</DescriptionsItem>
-                    <DescriptionsItem Title="当前会话智能体">@SessionState.SelectedAgent</DescriptionsItem>
+                    <DescriptionsItem Title="当前会话的智能体">@SessionState.SelectedAgent</DescriptionsItem>
                     <DescriptionsItem Title="审批通道">执行事件流内联卡片</DescriptionsItem>
                 </Descriptions>
                 <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-top: 16px;"
-                       Message="在聊天会话中执行工具时，将弹出权限确认对话框。" />
+                       Message="在会话中执行工具时，会就地弹出权限确认卡片。" />
             </TabPane>
         </Tabs>
     </ChildContent>
@@ -111,9 +111,9 @@
         _ruleRows = _agentRules.Select(r => new RuleRow
         {
             Id = r.Id,
-            Kind = r.Kind.ToString(),
+            Kind = UiText.PermissionKindText(r.Kind),
             Pattern = r.Pattern,
-            Effect = r.Effect.ToString(),
+            Effect = UiText.PermissionEffectText(r.Effect),
             Priority = r.Priority
         }).ToList();
     }
@@ -135,7 +135,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"保存失败: {ex.Message}");
+            MessageService.Error($"保存失败：{ex.Message}");
         }
     }
 

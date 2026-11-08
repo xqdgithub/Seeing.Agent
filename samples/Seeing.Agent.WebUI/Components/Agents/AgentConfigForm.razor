@@ -17,11 +17,13 @@
                     <Row Gutter="16">
                         <Col Span="8">
                             <FormItem Label="模式">
-                                <Select TItemValue="string" TItem="string"
+                                <Select TItemValue="string" TItem="AgentModeOption"
                                         Value="@_modeName"
                                         ValueExpression="@(() => _modeName)"
                                         ValueChanged="OnModeNameChanged"
                                         DataSource="@_modeNames"
+                                        ValueName="@nameof(AgentModeOption.Value)"
+                                        LabelName="@nameof(AgentModeOption.Label)"
                                         AllowClear
                                         Placeholder="默认" />
                             </FormItem>
@@ -44,21 +46,21 @@
                                                          ValueChanged="OnModelKeyChanged"
                                                          FilterType="ModelType.Text"
                                                          AllowClear="true"
-                                                         Placeholder="空则 Task 时继承主 Agent 模型" />
+                                                         Placeholder="留空则在派生任务时沿用主智能体的模型" />
                                 }
                             </FormItem>
                         </Col>
                     </Row>
                     <Row Gutter="16">
-                        <Col Span="8"><FormItem Label="温度"><InputNumber @bind-Value="@EditModel.Temperature" Min="0" Max="2" Step="0.1" Style="width: 100%;" /></FormItem></Col>
-                        <Col Span="8"><FormItem Label="TopP"><InputNumber @bind-Value="@EditModel.TopP" Min="0" Max="1" Step="0.05" Style="width: 100%;" /></FormItem></Col>
-                        <Col Span="8"><FormItem Label="最大步骤"><InputNumber @bind-Value="@EditModel.MaxSteps" Min="1" Style="width: 100%;" /></FormItem></Col>
+                        <Col Span="8"><FormItem Label="温度（Temperature）"><InputNumber @bind-Value="@EditModel.Temperature" Min="0" Max="2" Step="0.1" Style="width: 100%;" /></FormItem></Col>
+                        <Col Span="8"><FormItem Label="采样范围（Top P）"><InputNumber @bind-Value="@EditModel.TopP" Min="0" Max="1" Step="0.05" Style="width: 100%;" /></FormItem></Col>
+                        <Col Span="8"><FormItem Label="最大步骤数"><InputNumber @bind-Value="@EditModel.MaxSteps" Min="1" Style="width: 100%;" /></FormItem></Col>
                     </Row>
                     <Row Gutter="16">
                         <Col Span="8">
                             <FormItem Label="隐藏">
                                 <Switch @bind-Value="@EditModel.IsHidden" CheckedChildren="是" UnCheckedChildren="否" />
-                                <span style="color: #999; font-size: 12px; margin-left: 8px;">不在选择列表显示，仍可作子智能体</span>
+                                <span style="color: #999; font-size: 12px; margin-left: 8px;">不在选择列表中显示，仍可作为子智能体调用</span>
                             </FormItem>
                         </Col>
                         <Col Span="8">
@@ -81,17 +83,17 @@
             <div class="permissions-container">
                 <div class="rule-add-section">
                     <Space>
-                        <Select TItemValue="string" TItem="string" @bind-Value="_newRuleKind" Style="width: 120px;">
-                            <SelectOption TItemValue="string" TItem="string" Value="@("Tool")">Tool</SelectOption>
-                            <SelectOption TItemValue="string" TItem="string" Value="@("File")">File</SelectOption>
-                            <SelectOption TItemValue="string" TItem="string" Value="@("Shell")">Shell</SelectOption>
-                            <SelectOption TItemValue="string" TItem="string" Value="@("McpTool")">McpTool</SelectOption>
+                        <Select TItemValue="string" TItem="string" @bind-Value="_newRuleKind" Style="width: 130px;">
+                            <SelectOption TItemValue="string" TItem="string" Value="@("Tool")">工具</SelectOption>
+                            <SelectOption TItemValue="string" TItem="string" Value="@("File")">文件</SelectOption>
+                            <SelectOption TItemValue="string" TItem="string" Value="@("Shell")">命令</SelectOption>
+                            <SelectOption TItemValue="string" TItem="string" Value="@("McpTool")">MCP 工具</SelectOption>
                         </Select>
-                        <Input @bind-Value="_newRulePattern" Placeholder="模式 (如: read, *.md)" Style="width: 200px;" />
-                        <Select TItemValue="string" TItem="string" @bind-Value="_newRuleEffect" Style="width: 100px;">
-                            <SelectOption TItemValue="string" TItem="string" Value="@("Allow")">Allow</SelectOption>
-                            <SelectOption TItemValue="string" TItem="string" Value="@("Deny")">Deny</SelectOption>
-                            <SelectOption TItemValue="string" TItem="string" Value="@("Ask")">Ask</SelectOption>
+                        <Input @bind-Value="_newRulePattern" Placeholder="匹配模式（如 read、*.md）" Style="width: 200px;" />
+                        <Select TItemValue="string" TItem="string" @bind-Value="_newRuleEffect" Style="width: 110px;">
+                            <SelectOption TItemValue="string" TItem="string" Value="@("Allow")">允许</SelectOption>
+                            <SelectOption TItemValue="string" TItem="string" Value="@("Deny")">拒绝</SelectOption>
+                            <SelectOption TItemValue="string" TItem="string" Value="@("Ask")">询问</SelectOption>
                         </Select>
                         <InputNumber @bind-Value="_newRulePriority" Min="0" Max="1000" Style="width: 100px;" Placeholder="优先级" />
                         <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="AddRule">添加</Button>
@@ -100,17 +102,19 @@
                 <div class="default-effect-section">
                     <label Style="display: inline-block; margin-right: 12px; font-weight: 500;">默认效果：</label>
                     <RadioGroup @bind-Value="@EditModel.PermissionDefaultEffect">
-                        <Radio Value="@PermissionEffect.Allow">Allow</Radio>
-                        <Radio Value="@PermissionEffect.Deny">Deny</Radio>
-                        <Radio Value="@PermissionEffect.Ask">Ask</Radio>
+                        <Radio Value="@PermissionEffect.Allow">允许</Radio>
+                        <Radio Value="@PermissionEffect.Deny">拒绝</Radio>
+                        <Radio Value="@PermissionEffect.Ask">询问</Radio>
                     </RadioGroup>
                 </div>
                 <div class="rules-table-section">
                     <Table TItem="PermissionRuleEntry" DataSource="@EditModel.PermissionRules" RowKey="@(r => r.Id)" Size="@TableSize.Small" ScrollY="100%">
-                        <PropertyColumn Property="c => c.Kind" Title="类型" Style="width: 100px;" />
-                        <PropertyColumn Property="c => c.Pattern" Title="模式" />
+                        <PropertyColumn Property="c => c.Kind" Title="类型" Style="width: 100px;">
+                            @UiText.PermissionKindText(context.Kind)
+                        </PropertyColumn>
+                        <PropertyColumn Property="c => c.Pattern" Title="匹配模式" />
                         <PropertyColumn Property="c => c.Effect" Title="效果" Style="width: 80px;">
-                            <Tag Color="@GetEffectColor(context.Effect)">@context.Effect</Tag>
+                            <Tag Color="@GetEffectColor(context.Effect)">@UiText.PermissionEffectText(context.Effect)</Tag>
                         </PropertyColumn>
                         <PropertyColumn Property="c => c.Priority" Title="优先级" Style="width: 80px;" />
                         <ActionColumn Title="" Style="width: 60px;">
@@ -202,7 +206,13 @@
 @code {
     [Parameter] public AgentEditModel EditModel { get; set; } = new();
 
-    private static readonly List<string> _modeNames = new() { "Primary", "SubAgent", "All" };
+    /// <summary>模式下拉选项：值仍是枚举名（用于回写模型），标签改为界面中文。</summary>
+    private static readonly List<AgentModeOption> _modeNames =
+    [
+        new(nameof(AgentMode.Primary), UiText.AgentModeLabel(AgentMode.Primary)),
+        new(nameof(AgentMode.SubAgent), UiText.AgentModeLabel(AgentMode.SubAgent)),
+        new(nameof(AgentMode.All), UiText.AgentModeLabel(AgentMode.All))
+    ];
 
     private string _modeName = "";
     private string _modelKey = "";
@@ -220,8 +230,6 @@
             : "";
 
         _modeName = EditModel.Mode.ToString();
-        if (!string.IsNullOrEmpty(_modeName) && !_modeNames.Contains(_modeName))
-            _modeName = "";
     }
 
     private void OnModeNameChanged(string value)
@@ -290,4 +298,7 @@
         PermissionEffect.Ask => "orange",
         _ => "default"
     };
+
+    /// <summary>模式下拉项：<c>Value</c> 是枚举名（回写用），<c>Label</c> 是界面文案。</summary>
+    private sealed record AgentModeOption(string Value, string Label);
 }

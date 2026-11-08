@@ -35,7 +35,7 @@
             }
             @if (Context.GetWorkspace != null)
             {
-                <Tooltip Title="@($"工作目录：{Context.GetWorkspace()}（点击打开/关闭文件面板）")">
+                <Tooltip Title="@($"工作目录：{Context.GetWorkspace()}（点击打开或关闭文件面板）")">
                     <button type="button"
                             class="session-workspace-badge @(PanelActive ? "active" : "")"
                             @onclick="ToggleFilePanel">
@@ -70,7 +70,7 @@
                 }
                 @if (Context.PendingInputCount > 0)
                 {
-                    <Badge Status="@BadgeStatus.Default" Text="@($"待处理 ({Context.PendingInputCount})" )" />
+                    <Badge Status="@BadgeStatus.Default" Text="@($"待处理（{Context.PendingInputCount} 条）")" />
                 }
                 else if (Context.HasActiveExecution)
                 {
@@ -80,15 +80,15 @@
 
             @if (Context.ShowSubAgentBadge)
             {
-                <div class="subagent-meta" title="子代理">
+                <div class="subagent-meta" title="子智能体">
                     <span class="subagent-meta-chip">
-                        <span class="subagent-meta-label">Agent</span>
+                        <span class="subagent-meta-label">智能体</span>
                         <span class="subagent-meta-value">@(string.IsNullOrEmpty(Context.SelectedAgent) ? "—" : Context.SelectedAgent)</span>
                     </span>
                     @if (!string.IsNullOrEmpty(Context.SelectedModel))
                     {
                         <span class="subagent-meta-chip">
-                            <span class="subagent-meta-label">Model</span>
+                            <span class="subagent-meta-label">模型</span>
                             <span class="subagent-meta-value">@Context.SelectedModel</span>
                         </span>
                     }
@@ -109,8 +109,8 @@
             {
                 <Input Value="@Context.SelectedAcpMode"
                        ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModeChanged)"
-                       Placeholder="Mode"
-                       Style="width: 80px;"
+                       Placeholder="模式"
+                       Style="width: 100px;"
                        Size="@InputSize.Small" />
                 <Input Value="@Context.SelectedModel"
                        ValueChanged="EventCallback.Factory.Create<string?>(this, OnAcpModelChanged)"
@@ -214,14 +214,14 @@
 
 @if (ScenarioModalVisible)
 {
-    <Modal Title="编辑场景"
+    <Modal Title="编辑工作模式"
            Visible="true"
            OnOk="@OnScenarioConfirm"
            OnCancel="@OnScenarioCancel"
            OkText="@OkText"
            CancelText="@CancelText">
         <Form Model="@ScenarioFormModel" Layout="@FormLayout.Vertical">
-            <FormItem Label="场景">
+            <FormItem Label="工作模式">
                 <Select TItemValue="string"
                         TItem="ScenarioOption"
                         @bind-Value="@ScenarioFormModel.Scenario"
@@ -245,32 +245,32 @@
            OkText="@OkText"
            CancelText="@CancelText">
         <Form Model="@OutboundForm" Layout="@FormLayout.Horizontal">
-            <FormItem Label="目录选择">
+            <FormItem Label="从目录选择">
                 <ConversationPicker Placeholder="从目录选择会话，自动填充下方字段"
                                     OnSelected="@OnOutboundConversationSelected" />
             </FormItem>
-            <FormItem Label="ChannelId">
+            <FormItem Label="渠道标识">
                 <Input @bind-Value="@OutboundForm.ChannelId"
-                       Placeholder="如 qq / wecom，全部留空则清除绑定" />
+                       Placeholder="如 qq、wecom；全部留空则清除绑定" />
             </FormItem>
-            <FormItem Label="Kind">
+            <FormItem Label="对话类型">
                 <Select TItemValue="string"
                         TItem="KindOption"
                         @bind-Value="@OutboundForm.Kind"
                         DataSource="@_kindOptions"
                         ValueName="@nameof(KindOption.Value)"
                         LabelName="@nameof(KindOption.Label)"
-                        Placeholder="direct / group / guild"
+                        Placeholder="单聊 / 群聊 / 频道"
                         AllowClear="true"
                         Style="width: 100%;" />
             </FormItem>
-            <FormItem Label="ExternalId">
+            <FormItem Label="对话标识">
                 <Input @bind-Value="@OutboundForm.ExternalId"
-                       Placeholder="对话 ExternalId" />
+                       Placeholder="外部对话标识" />
             </FormItem>
-            <FormItem Label="Title">
+            <FormItem Label="显示名称">
                 <Input @bind-Value="@OutboundForm.Title"
-                       Placeholder="可选标题" />
+                       Placeholder="可选，便于识别" />
             </FormItem>
         </Form>
     </Modal>
@@ -312,8 +312,8 @@
 
     private string ScenarioBadgeTooltip =>
         Context.SessionScenario is null
-            ? $"会话场景：跟随进程（{EffectiveScenarioDisplay}）"
-            : $"会话场景：{Context.SessionScenario}（仅影响下一次 Submit）";
+            ? $"工作模式：跟随进程（{EffectiveScenarioDisplay}）"
+            : $"工作模式：{Context.SessionScenario}（仅对下一次提交生效）";
 
     protected override async Task OnInitializedAsync()
     {
@@ -616,9 +616,9 @@
 
     private static readonly KindOption[] _kindOptions =
     [
-        new("direct", "direct"),
-        new("group", "group"),
-        new("guild", "guild"),
+        new("direct", "单聊"),
+        new("group", "群聊"),
+        new("guild", "频道"),
     ];
 
     private sealed class OutboundEditForm

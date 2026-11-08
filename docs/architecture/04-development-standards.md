@@ -210,3 +210,35 @@ dotnet vstest tests/spine/Seeing.Agent.Tests/bin/Debug/net10.0/Seeing.Agent.Test
 参数 Schema 同规则：每个属性（含 `items` 与嵌套对象）必须有非空 `description`；有默认值写进描述；离散取值用 `enum` 且描述列出取值；数值给 `minimum`/`maximum` 与单位；`required` 必须与实现一致。
 
 约束由 `tests/capabilities/Seeing.Agent.Tools.Metadata.Tests` 机械校验（52 个内置工具全覆盖）；提示词路由段由 `tests/capabilities/Seeing.Agent.Agents.BuiltIn.Tests/PromptRoutingTests.cs` 校验。
+
+## 10. WebUI 界面文案规范（U1–U9）
+
+适用于 `samples/Seeing.Agent.WebUI` 及其组件库 `Seeing.Agent.WebUI.Files` 中一切面向用户的文字（标签、按钮、占位符、帮助文字、提示消息、空状态、弹窗标题、`PageTitle`、`Tooltip`、`aria-label`）。
+
+- **U1 语言**：一律简体中文。仅允许保留五类英文：① 产品/协议专名（MCP、Gateway、ACP、WebSocket、JSON、SQLite、Quartz）；② 通用技术词（Token、Embedding、Prompt、Provider、API Key、Base URL）；③ 运行时与状态分类名（Native、ACP 等用于区分实现/运行方式的值，它们是稳定的技术标识而非可意译的概念）；④ 用户自己输入的数据（模型 id、路径、渠道标识、`provider/model` 形式的引用）；⑤ 状态枚举的**内部取值**——但必须经映射后展示，不得直出。
+- **U2 术语唯一**：Agent→**智能体**、Session→**会话**、Scenario→**工作模式**（禁止再写「场景」）、conversation→**对话**、Tool→**工具**、Skill→**技能**。同一概念全站只有一个说法，页面不得自行发明译名。
+- **U3 单一出口**：术语、状态标签、单位格式统一走 `samples/Seeing.Agent.WebUI/Services/UiText.cs`。页面与组件禁止就地拼状态文案；新增状态先加到 `UiText`。
+- **U4 不直出枚举**：`JobState`、`McpConnectionState`、`ToolCategory`、`ModelType`、`MemoryType`、`PermissionKind`、`PermissionEffect`、`ReflectionTriggerKind`、`ScheduleSources`/`ScheduleTaskTypes` 等一律经 `UiText.*` 映射后再展示。`Enum.ToString()` 只允许出现在调试输出。
+- **U5 无内部语言**：界面不得出现配置键名（`DefaultModels`、`Boot`、`Modules.Enabled`、`Tools.Disabled`、`Seams`）、进程内部动词（Activate、结算、bootEnabled、Host Shape、Passthrough）、设计决策编号（「决议 N」）、或指导用户去手改 JSON 的说明。这类内容只留在文档与代码注释里；界面用用户能懂的行为描述替代。
+- **U6 无口语与文学化**：不使用「没事怎么回复」「一开跑就有成本」「留痕」等口语，也不用诗句、比喻、感叹号。用祈使句 + 事实陈述。
+- **U7 标点统一**：中文语境用全角标点（`，。：；（）「」`）；省略号统一 `……`（禁止 `...` 与 `…` 混用）；页面标题分隔用 `·`。
+- **U8 单位与数字**：耗时用「2 小时 5 分」「12 分 3 秒」「750 毫秒」；文件大小用「512 字节」「2 KB」；不要出现 `12s`、`3m7s`、`250ms`。
+- **U9 空状态可行动**：空状态必须同时说明「为什么空」与「下一步做什么」，并提供对应操作按钮；不得只写「暂无数据」。
+
+守门测试：`tests/apps/Seeing.Agent.WebUI.Tests/Services/UiTextTests.cs` 断言术语唯一、状态映射完整、单位格式不含拉丁后缀。
+
+审查命令（新增/修改页面时人工过一遍）：
+
+```bash
+# 1) 仍在界面上直出的英文（排除注释与代码行）
+rg -n --no-heading -g '*.razor' \
+   '(Label|Title|Tab|Placeholder|Message|EmptyTitle|EmptyDescription|OkText|CancelText|Description)="[^"@]*[A-Za-z]{3,}' \
+   samples/Seeing.Agent.WebUI
+
+# 2) 不应出现的内部语言
+rg -n -g '*.razor' '决议|Activate|bootEnabled|Host Shape|Tools\.Disabled|Modules\.Enabled|Seams|DefaultModels' \
+   samples/Seeing.Agent.WebUI
+
+# 3) 非法省略号与半角冒号
+rg -n -g '*.razor' '(\.\.\.|…)|>：[^/]' samples/Seeing.Agent.WebUI
+```

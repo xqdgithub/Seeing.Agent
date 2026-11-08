@@ -66,7 +66,7 @@
                                     @sec.Entries.Count
                                     @if (sec.PendingPermissionTotal > 0)
                                     {
-                                        <text> · 待批 @sec.PendingPermissionTotal</text>
+                                        <text> · 待审批 @sec.PendingPermissionTotal</text>
                                     }
                                 </span>
                             </div>
@@ -342,7 +342,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"重命名失败: {ex.Message}");
+            MessageService.Error($"重命名失败：{ex.Message}");
         }
         await RefreshRelationAsync();
     }
@@ -357,7 +357,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"删除会话失败: {ex.Message}");
+            MessageService.Error($"删除会话失败：{ex.Message}");
             return;
         }
 

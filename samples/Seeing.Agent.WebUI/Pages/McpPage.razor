@@ -10,7 +10,7 @@
 @inject IMessageService MessageService
 @implements IDisposable
 
-<PageTitle>MCP - Seeing</PageTitle>
+<PageTitle>MCP · Seeing</PageTitle>
 
 <div class="workspace-page">
     <div class="page-header">
@@ -42,7 +42,7 @@
                 </div>
                 <div class="stat-content">
                     <span class="stat-value">@_statuses.Count</span>
-                    <span class="stat-label">Total</span>
+                    <span class="stat-label">客户端总数</span>
                 </div>
             </div>
             <div class="stat-item">
@@ -51,7 +51,7 @@
                 </div>
                 <div class="stat-content">
                     <span class="stat-value">@_connectedCount</span>
-                    <span class="stat-label">Connected</span>
+                    <span class="stat-label">已连接</span>
                 </div>
             </div>
             <div class="stat-item">
@@ -60,7 +60,7 @@
                 </div>
                 <div class="stat-content">
                     <span class="stat-value">@_errorCount</span>
-                    <span class="stat-label">Error</span>
+                    <span class="stat-label">连接异常</span>
                 </div>
             </div>
             <div class="stat-item">
@@ -69,7 +69,7 @@
                 </div>
                 <div class="stat-content">
                     <span class="stat-value">@_pausedCount</span>
-                    <span class="stat-label">Paused</span>
+                    <span class="stat-label">已暂停</span>
                 </div>
             </div>
             <div class="stat-item">
@@ -78,7 +78,7 @@
                 </div>
                 <div class="stat-content">
                     <span class="stat-value">@_disabledCount</span>
-                    <span class="stat-label">Disabled</span>
+                    <span class="stat-label">已禁用</span>
                 </div>
             </div>
         </div>
@@ -96,8 +96,8 @@
                 <div class="empty-state-icon">
                     <Icon Type="@IconType.Outline.Api" />
                 </div>
-                <h3 class="empty-state-title">No MCP Clients</h3>
-                <p class="empty-state-description">Add an MCP client to connect to external tools and services.</p>
+                <h3 class="empty-state-title">还没有 MCP 客户端</h3>
+                <p class="empty-state-description">添加 MCP 客户端后，智能体即可调用外部工具与服务。</p>
                 <div class="empty-state-action">
                     <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus" OnClick="ShowAddModal">添加客户端</Button>
                 </div>
@@ -126,7 +126,7 @@
                                 {
                                     <div class="meta-item">
                                         <Icon Type="@IconType.Outline.Code" />
-                                        <span class="meta-label">Command:</span>
+                                        <span class="meta-label">启动命令：</span>
                                         <span class="meta-value">@status.Config.Command</span>
                                     </div>
                                 }
@@ -134,7 +134,7 @@
                                 {
                                     <div class="meta-item">
                                         <Icon Type="@IconType.Outline.ConsoleSql" />
-                                        <span class="meta-label">Args:</span>
+                                        <span class="meta-label">启动参数：</span>
                                         <span class="meta-value">@(string.Join(" ", status.Config.Args))</span>
                                     </div>
                                 }
@@ -142,22 +142,22 @@
                                 {
                                     <div class="meta-item">
                                         <Icon Type="@IconType.Outline.Link" />
-                                        <span class="meta-label">URL:</span>
+                                        <span class="meta-label">服务地址：</span>
                                         <span class="meta-value">@status.Config.Url.ToString()</span>
                                     </div>
                                 }
                             }
                             <div class="meta-item">
                                 <Icon Type="@IconType.Outline.Tool" />
-                                <span class="meta-label">Tools:</span>
+                                <span class="meta-label">工具数量：</span>
                                 <span class="meta-value">@status.ToolCount</span>
                             </div>
                             @if (status.LastConnectedAt.HasValue)
                             {
                                 <div class="meta-item">
                                     <Icon Type="@IconType.Outline.ClockCircle" />
-                                    <span class="meta-label">Last connected:</span>
-                                    <span class="meta-value">@status.LastConnectedAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
+                                    <span class="meta-label">最近连接：</span>
+                                    <span class="meta-value">@status.LastConnectedAt.Value.ToLocalTime().ToString("MM-dd HH:mm:ss")</span>
                                 </div>
                             }
                         </div>
@@ -166,30 +166,30 @@
                         <div class="card-actions">
                             <Space Size="@SpaceSize.Small">
                                 @if (!status.IsDisabled && status.State == McpConnectionState.Connected) {
-                                    <SpaceItem><Button Size="@ButtonSize.Small" Icon="@IconType.Outline.PauseCircle" OnClick="@(() => PauseServer(status.Name))">Pause</Button></SpaceItem>
+                                    <SpaceItem><Button Size="@ButtonSize.Small" Icon="@IconType.Outline.PauseCircle" OnClick="@(() => PauseServer(status.Name))">暂停</Button></SpaceItem>
                                 }
                                 else if (!status.IsDisabled && status.State == McpConnectionState.Paused) {
-                                    <SpaceItem><Button Size="@ButtonSize.Small" Icon="@IconType.Outline.PlayCircle" Type="@ButtonType.Primary" OnClick="@(() => ResumeServer(status.Name))">Resume</Button></SpaceItem>
+                                    <SpaceItem><Button Size="@ButtonSize.Small" Icon="@IconType.Outline.PlayCircle" Type="@ButtonType.Primary" OnClick="@(() => ResumeServer(status.Name))">恢复</Button></SpaceItem>
                                 }
                                 else if (!status.IsDisabled && status.State == McpConnectionState.Error) {
-                                    <SpaceItem><Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Reload" Type="@ButtonType.Primary" OnClick="@(() => ReconnectServer(status.Name))">Reconnect</Button></SpaceItem>
+                                    <SpaceItem><Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Reload" Type="@ButtonType.Primary" OnClick="@(() => ReconnectServer(status.Name))">重新连接</Button></SpaceItem>
                                 }
                                 else if (!status.IsDisabled && (status.State == McpConnectionState.Connecting || status.State == McpConnectionState.Reconnecting)) {
-                                    <SpaceItem><Button Size="@ButtonSize.Small" Disabled><Spin Size="@SpinSize.Small" /> Connecting...</Button></SpaceItem>
+                                    <SpaceItem><Button Size="@ButtonSize.Small" Disabled><Spin Size="@SpinSize.Small" /> 连接中……</Button></SpaceItem>
                                 }
-                                @* Edit, Delete, Enable/Disable buttons *@
+                                @* 编辑、删除、启用/禁用 *@
                                 <SpaceItem>
                                     <Button Size="@ButtonSize.Small" 
                                             Type="@ButtonType.Text"
                                             Icon="@IconType.Outline.Edit"
-                                            OnClick="@(() => EditServer(status.Name))">Edit</Button>
+                                            OnClick="@(() => EditServer(status.Name))">编辑</Button>
                                 </SpaceItem>
                                 <SpaceItem>
                                     <Button Size="@ButtonSize.Small" 
                                             Type="@ButtonType.Text"
                                             Icon="@IconType.Outline.Delete"
                                             Danger="true"
-                                            OnClick="@(() => DeleteServer(status.Name))">Delete</Button>
+                                            OnClick="@(() => DeleteServer(status.Name))">删除</Button>
                                 </SpaceItem>
                                 @if (status.IsDisabled)
                                 {
@@ -197,7 +197,7 @@
                                         <Button Size="@ButtonSize.Small" 
                                                 Type="@ButtonType.Primary"
                                                 Icon="@IconType.Outline.PlayCircle"
-                                                OnClick="@(() => EnableServer(status.Name))">Enable</Button>
+                                                OnClick="@(() => EnableServer(status.Name))">启用</Button>
                                     </SpaceItem>
                                 }
                                 else if (!status.IsDisabled && status.State != McpConnectionState.Connecting && status.State != McpConnectionState.Reconnecting)
@@ -205,7 +205,7 @@
                                     <SpaceItem>
                                         <Button Size="@ButtonSize.Small"
                                                 Icon="@IconType.Outline.Stop"
-                                                OnClick="@(() => DisableServer(status.Name))">Disable</Button>
+                                                OnClick="@(() => DisableServer(status.Name))">禁用</Button>
                                     </SpaceItem>
                                 }
                             </Space>
@@ -228,16 +228,16 @@
     </div>
 </div>
 
-@* Add/Edit JSON Modal *@
+@* 添加 / 编辑 JSON 弹窗 *@
 <Modal @bind-Visible="_jsonEditorVisible" 
-       Title="@(_editMode == "add" ? "Add MCP Server" : "Edit MCP Server")" 
+       Title="@(_editMode == "add" ? "添加 MCP 服务器" : "编辑 MCP 服务器")" 
        Width="800"
        OnOk="SaveJsonEdit"
-       OkText="@("Save")"
-       CancelText="@("Cancel")"
+       OkText="@("保存")"
+       CancelText="@("取消")"
        ConfirmLoading="_saving">
-    <Alert Type="@AlertType.Info" Message="Config Format" 
-           Description="JSON must contain mcpServers object with server configurations." ShowIcon="true" />
+    <Alert Type="@AlertType.Info" Message="配置格式" 
+           Description="JSON 顶层需包含 mcpServers 对象，其下每个键是一个服务器的配置。" ShowIcon="true" />
     
     <div class="json-editor-container">
         <TextArea @bind-Value="_editingJson"
@@ -246,10 +246,10 @@
     </div>
     
     <div class="config-path-info">
-        <span>Save to:</span>
+        <span>保存到：</span>
         <Select TItem="ConfigLevel" TItemValue="ConfigLevel" @bind-Value="_saveLevel" Style="width: 200px;">
-            <SelectOption TItem="ConfigLevel" TItemValue="ConfigLevel" Value="@ConfigLevel.Project">Project Level</SelectOption>
-            <SelectOption TItem="ConfigLevel" TItemValue="ConfigLevel" Value="@ConfigLevel.User">User Level</SelectOption>
+            <SelectOption TItem="ConfigLevel" TItemValue="ConfigLevel" Value="@ConfigLevel.Project">项目级</SelectOption>
+            <SelectOption TItem="ConfigLevel" TItemValue="ConfigLevel" Value="@ConfigLevel.User">用户级</SelectOption>
         </Select>
         <Text Type="@TextElementType.Secondary">@McpStateService.GetConfigFilePath(_saveLevel)</Text>
     </div>
@@ -277,14 +277,14 @@
   ""mcpServers"": {
     ""server-name"": {
       ""type"": ""stdio"" | ""http"" | ""sse"",
-      ""command"": ""npx"",           // stdio only
-      ""args"": [""-y"", ""package""], // stdio only
-      ""env"": { ""KEY"": ""value"" }, // stdio only, optional
-      ""workingDirectory"": ""path"",  // stdio only, optional
-      ""url"": ""https://..."",        // http/sse only
-      ""headers"": { ""Auth"": ""Bearer token"" }, // http only, optional
-      ""autoStart"": true,             // optional
-      ""disabled"": false              // optional
+      ""command"": ""npx"",           // 仅 stdio
+      ""args"": [""-y"", ""package""], // 仅 stdio
+      ""env"": { ""KEY"": ""value"" }, // 仅 stdio，可选
+      ""workingDirectory"": ""path"",  // 仅 stdio，可选
+      ""url"": ""https://..."",        // 仅 http/sse
+      ""headers"": { ""Auth"": ""Bearer token"" }, // 仅 http，可选
+      ""autoStart"": true,             // 可选
+      ""disabled"": false              // 可选
     }
   }
 }";
@@ -324,7 +324,7 @@
         _isLoading = true;
         StateHasChanged();
         Task.Run(async () => {
-            await Task.Delay(100); // Brief delay for UX
+            await Task.Delay(100); // 短暂延迟，让刷新状态可见
             RefreshStatus();
             _isLoading = false;
             await InvokeAsync(StateHasChanged);
@@ -380,15 +380,15 @@
         _ => ""
     };
     
-    string GetDisplayState(McpServerStatus status) => status.State.ToString();
-    
+    string GetDisplayState(McpServerStatus status) => UiText.McpState(status);
+
     string GetTransportType(McpServerStatus status) {
-        if (status.Config == null) return "Unknown";
+        if (status.Config == null) return "未知";
         return status.Config.TransportType switch {
-            McpTransportType.Stdio => $"Stdio: {status.Config.Command ?? "N/A"}",
+            McpTransportType.Stdio => $"标准输入输出：{status.Config.Command ?? UiText.None}",
             McpTransportType.StreamableHttp => "HTTP",
             McpTransportType.Sse => "SSE",
-            _ => "Unknown"
+            _ => "未知"
         };
     }
     
@@ -413,14 +413,14 @@
             if (imported > 0)
             {
                 MessageService.Success(_editMode == "add" 
-                    ? $"Successfully added {imported} MCP server(s)" 
-                    : "Configuration saved and persisted successfully");
+                    ? $"已添加 {imported} 个 MCP 服务器" 
+                    : "配置已保存");
                 RefreshStatus();
                 // Modal 会自动关闭（@bind-Visible 会处理）
             }
             else
             {
-                MessageService.Warning("No servers imported. Please check your JSON configuration.");
+                MessageService.Warning("未导入任何服务器，请检查 JSON 配置。");
                 // 保持 Modal 打开，让用户修正
                 await Task.Delay(100); // 等待 UI 更新
                 _jsonEditorVisible = true;
@@ -429,7 +429,7 @@
         }
         catch (JsonException ex)
         {
-            MessageService.Error($"JSON format error: {ex.Message}");
+            MessageService.Error($"JSON 格式错误：{ex.Message}");
             // 保持 Modal 打开
             await Task.Delay(100);
             _jsonEditorVisible = true;
@@ -437,7 +437,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"Save failed: {ex.Message}");
+            MessageService.Error($"保存失败：{ex.Message}");
             await Task.Delay(100);
             _jsonEditorVisible = true;
             StateHasChanged();
@@ -453,12 +453,12 @@
         var result = await McpManager.RemoveServerAsync(name);
         if (result.Success)
         {
-            MessageService.Success("Server deleted");
+            MessageService.Success("服务器已删除");
             RefreshStatus();
         }
         else
         {
-            MessageService.Error($"Delete failed: {result.Error?.UserMessage}");
+            MessageService.Error($"删除失败：{result.Error?.UserMessage}");
         }
     }
     
@@ -467,12 +467,12 @@
         var result = await McpManager.EnableServerAsync(name);
         if (result.Success)
         {
-            MessageService.Success("Server enabled");
+            MessageService.Success("服务器已启用");
             RefreshStatus();
         }
         else
         {
-            MessageService.Error($"Enable failed: {result.Error?.UserMessage}");
+            MessageService.Error($"启用失败：{result.Error?.UserMessage}");
         }
     }
     
@@ -481,12 +481,12 @@
         var result = await McpManager.DisableServerAsync(name);
         if (result.Success)
         {
-            MessageService.Success("Server disabled");
+            MessageService.Success("服务器已禁用");
             RefreshStatus();
         }
         else
         {
-            MessageService.Error($"Disable failed: {result.Error?.UserMessage}");
+            MessageService.Error($"禁用失败：{result.Error?.UserMessage}");
         }
     }
     

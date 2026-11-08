@@ -9,7 +9,7 @@
 @inject IMessageService MessageService
 @inject IGatewayServer GatewayServer
 
-<PageTitle>Gateway - Seeing</PageTitle>
+<PageTitle>Gateway · Seeing</PageTitle>
 
 <WorkspacePageShell Loading="@_loading">
     <Breadcrumb>
@@ -122,7 +122,7 @@
             }
             catch (Exception ex)
             {
-                MessageService.Error($"启动 Gateway 服务失败: {ex.Message}");
+                MessageService.Error($"启动 Gateway 服务失败：{ex.Message}");
             }
         }
         else if (!_gateway.Enabled && _originalGateway.Enabled)
@@ -134,7 +134,7 @@
             }
             catch (Exception ex)
             {
-                MessageService.Error($"停止 Gateway 服务失败: {ex.Message}");
+                MessageService.Error($"停止 Gateway 服务失败：{ex.Message}");
             }
         }
 

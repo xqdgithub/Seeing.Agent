@@ -26,8 +26,8 @@ else
         <div class="permission-card-header">
             <Icon Type="@IconType.Outline.SafetyCertificate" Style="color: #faad14;" />
             <span class="permission-card-title">需要权限确认</span>
-            <Tag Color="@RiskColor" Style="margin-left: 6px; font-size: 11px;">@Card.RiskLevel</Tag>
-            <Tag Style="margin-left: 4px; font-size: 11px;">@Card.PermissionKind</Tag>
+            <Tag Color="@RiskColor" Style="margin-left: 6px; font-size: 11px;">@RiskText</Tag>
+            <Tag Style="margin-left: 4px; font-size: 11px;">@KindText</Tag>
         </div>
 
         @if (!string.IsNullOrEmpty(Card.Message) || !string.IsNullOrEmpty(Card.Resource))
@@ -139,6 +139,10 @@ else
         "low" => "green",
         _ => "gold"
     };
+
+    private string RiskText => UiText.RiskLevelText(Card?.RiskLevel);
+
+    private string KindText => UiText.PermissionKindCodeText(Card?.PermissionKind);
 
     private string ResultIcon => Card?.Decision == PermissionEffect.Allow
         ? IconType.Outline.CheckCircle

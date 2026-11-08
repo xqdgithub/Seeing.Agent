@@ -22,13 +22,13 @@
     <div class="panel-summary">
         <Space>
             <SpaceItem>
-                <Badge Status="@BadgeStatus.Success" Text="@($"{_connectedCount} 已连接")" />
+                <Badge Status="@BadgeStatus.Success" Text="@($"{_connectedCount} 个已连接")" />
             </SpaceItem>
             <SpaceItem>
-                <Badge Status="@BadgeStatus.Error" Text="@($"{_errorCount} 错误")" />
+                <Badge Status="@BadgeStatus.Error" Text="@($"{_errorCount} 个异常")" />
             </SpaceItem>
             <SpaceItem>
-                <Badge Status="@BadgeStatus.Default" Text="@($"共 {_totalTools} 工具")" />
+                <Badge Status="@BadgeStatus.Default" Text="@($"共 {_totalTools} 个工具")" />
             </SpaceItem>
         </Space>
     </div>
@@ -66,17 +66,17 @@
                     {
                         <div class="server-details">
                             <div class="detail-row">
-                                <span class="label">传输:</span>
-                                <span class="value">@kvp.Value.Config?.TransportType</span>
+                                <span class="label">传输方式：</span>
+                                <span class="value">@TransportText(kvp.Value)</span>
                             </div>
                             <div class="detail-row">
-                                <span class="label">工具:</span>
+                                <span class="label">工具数量：</span>
                                 <span class="value">@kvp.Value.ToolCount 个</span>
                             </div>
                             @if (kvp.Value.LastError != null)
                             {
                                 <div class="detail-row error">
-                                    <span class="label">错误:</span>
+                                    <span class="label">错误信息：</span>
                                     <span class="value">@kvp.Value.LastError.UserMessage</span>
                                 </div>
                             }
@@ -198,7 +198,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"刷新失败: {ex.Message}");
+            MessageService.Error($"刷新失败：{ex.Message}");
         }
     }
     
@@ -277,6 +277,10 @@
     };
     
     private string GetStateText(McpServerStatus status) => HomeDashboardView.McpStateText(status);
+
+    /// <summary>传输方式文案（不直出 <c>StreamableHttp</c> 一类枚举名）。</summary>
+    private static string TransportText(McpServerStatus status) =>
+        status.Config is null ? UiText.None : UiText.McpTransport(status.Config.TransportType);
 
     public void Dispose()
     {

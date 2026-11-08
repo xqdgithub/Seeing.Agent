@@ -6,7 +6,7 @@
 @inject IMessageService MessageService
 @inject NavigationManager Navigation
 
-<PageTitle>记忆 - Seeing</PageTitle>
+<PageTitle>记忆 · Seeing</PageTitle>
 
 <WorkspacePageShell Loading="@_loading" IsEmpty="@false">
     <Breadcrumb>
@@ -92,9 +92,9 @@
                         Value="@TypeFilterValue" ValueChanged="OnTypeFilterValueChanged"
                         Placeholder="全部类型" AllowClear="true" Style="width: 140px;">
                     <SelectOption TItem="string" TItemValue="string" Value="@("all")" Label="全部类型" />
-                    <SelectOption TItem="string" TItemValue="string" Value="@("session")" Label="会话" />
-                    <SelectOption TItem="string" TItemValue="string" Value="@("daily")" Label="每日" />
-                    <SelectOption TItem="string" TItemValue="string" Value="@("digest")" Label="整合" />
+                    <SelectOption TItem="string" TItemValue="string" Value="@("session")" Label="@UiText.MemoryTypeText(MemoryType.Session)" />
+                    <SelectOption TItem="string" TItemValue="string" Value="@("daily")" Label="@UiText.MemoryTypeText(MemoryType.Daily)" />
+                    <SelectOption TItem="string" TItemValue="string" Value="@("digest")" Label="@UiText.MemoryTypeText(MemoryType.Digest)" />
                 </Select>
                 @*
                     实时本地过滤用 Input + OnInput（项目内既有可用模式，见 ModelsPage）。
@@ -174,9 +174,9 @@
     /// <summary>概览卡类型集合：顺序即展示顺序。</summary>
     private static readonly (MemoryType Type, string Label)[] TypeCards =
     [
-        (MemoryType.Session, "会话"),
-        (MemoryType.Daily, "每日"),
-        (MemoryType.Digest, "整合"),
+        (MemoryType.Session, UiText.MemoryTypeText(MemoryType.Session)),
+        (MemoryType.Daily, UiText.MemoryTypeText(MemoryType.Daily)),
+        (MemoryType.Digest, UiText.MemoryTypeText(MemoryType.Digest)),
     ];
 
     private MemoryOverview? Overview;
@@ -211,7 +211,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"加载记忆失败: {ex.Message}");
+            MessageService.Error($"加载记忆失败：{ex.Message}");
         }
         finally
         {
@@ -361,7 +361,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"检索失败: {ex.Message}");
+            MessageService.Error($"检索失败：{ex.Message}");
         }
         finally
         {
@@ -388,12 +388,12 @@
         try
         {
             await MemoryService.DeleteAsync(path);
-            MessageService.Success($"已删除: {path}");
+            MessageService.Success($"已删除：{path}");
             await LoadAsync();
         }
         catch (Exception ex)
         {
-            MessageService.Error($"删除失败: {ex.Message}");
+            MessageService.Error($"删除失败：{ex.Message}");
         }
     }
 
@@ -410,7 +410,7 @@
         }
         catch (Exception ex)
         {
-            MessageService.Error($"清空失败: {ex.Message}");
+            MessageService.Error($"清空失败：{ex.Message}");
         }
         finally
         {
@@ -418,13 +418,7 @@
         }
     }
 
-    private static string TypeLabel(MemoryType type) => type switch
-    {
-        MemoryType.Session => "会话",
-        MemoryType.Daily => "每日",
-        MemoryType.Digest => "整合",
-        _ => type.ToString(),
-    };
+    private static string TypeLabel(MemoryType type) => UiText.MemoryTypeText(type);
 
     private static string TypeColor(MemoryType type) => type switch
     {
