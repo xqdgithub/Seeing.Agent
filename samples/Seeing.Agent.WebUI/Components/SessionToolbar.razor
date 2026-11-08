@@ -437,7 +437,9 @@
         if (thinking is not { Supported: true } || thinking.Levels is null || thinking.Levels.Count == 0)
             return false;
 
-        levels.Add(new ThinkingLevelOption("", "默认"));
+        // 首项 = 「不指定」：清空会话级档位，交给模型声明的默认档。
+        // 不能用「默认」——那是模型配置里的概念（默认档），两者撞词后用户分不清在改哪一层。
+        levels.Add(new ThinkingLevelOption("", Services.UiText.ThinkingEffortUnspecified));
         foreach (var level in thinking.Levels)
         {
             if (string.IsNullOrWhiteSpace(level.Key))

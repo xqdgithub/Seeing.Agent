@@ -119,17 +119,59 @@ public class ThinkingLevel
     public int? BudgetTokens { get; set; }
 }
 
-/// <summary>思考强度约定（关闭档等）</summary>
+/// <summary>
+/// 思考强度约定（关闭档等）。
+/// <para><b>关闭思考的唯一有效表达</b>：让 <see cref="ChatRequest.ThinkingEffort"/> 落在关闭档 key 上
+/// （<see cref="DisabledKey"/> / <c>off</c> / <c>none</c>）。把 <see cref="ThinkingOptions.Supported"/>
+/// 设为 <c>false</c> <b>不</b>是关闭——它表示「本模型不支持思考」，请求侧会清空
+/// <c>ThinkingEffort</c>，OpenAI 兼容出站反而落进「缺省开启」分支，结果关不掉。</para>
+/// </summary>
 public static class ThinkingEffortKeys
 {
+    /// <summary>关闭档的默认 key（模型级「关闭思考」在档位表缺失时补这一档）。</summary>
+    public const string DisabledKey = "disabled";
+
+    /// <summary>关闭档默认文案。</summary>
+    public const string DisabledLabel = "关闭";
+
+    /// <summary>该 key 是否是关闭档（大小写不敏感）。</summary>
     public static bool IsOff(string? key) =>
         !string.IsNullOrWhiteSpace(key) &&
         (key.Equals("disabled", StringComparison.OrdinalIgnoreCase)
          || key.Equals("off", StringComparison.OrdinalIgnoreCase)
          || key.Equals("none", StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// 该模型是否声明了可用思考档位（<c>Supported=true</c> 且档位非空）。
+    /// <para>注意：关闭态模型同样满足本判定（<c>Supported=true</c> + 含关闭档 + 默认指向关闭档），
+    /// 因此「支持思考」与「默认是否开启」是两件事，不要用本方法判断思考是否开启。</para>
+    /// </summary>
     public static bool IsSupported(ThinkingOptions? thinking) =>
         thinking is { Supported: true, Levels.Count: > 0 };
+
+    /// <summary>该模型的默认档是否落在关闭档（即模型级「默认关闭思考」）。</summary>
+    public static bool IsDefaultOff(ThinkingOptions? thinking) =>
+        thinking is not null && IsOff(thinking.Default);
+
+    /// <summary>
+    /// 业界通用的思考强度档位（用于 UI 快速选择；<b>不</b>代表某个模型一定支持）。
+    /// <para>取值来自 OpenAI 兼容端点的 <c>reasoning_effort</c> 校验清单：
+    /// <c>none</c> / <c>minimal</c> / <c>low</c> / <c>medium</c> / <c>high</c> / <c>xhigh</c> /
+    /// <c>max</c> / <c>ultra</c>。其中 <c>none</c> 等同关闭档，由 <see cref="DisabledKey"/> 表达，
+    /// 故不在此列——避免同一语义出现两个 key。</para>
+    /// <para><b>只是候选清单</b>：每个模型真实支持的档位以它自己的 <see cref="ThinkingOptions.Levels"/> 为准，
+    /// 写错值会被服务端以 400 拒绝（<c>'reasoning_effort' must be one of ...</c>）。</para>
+    /// </summary>
+    public static IReadOnlyList<ThinkingLevel> WellKnownLevels { get; } =
+    [
+        new ThinkingLevel { Key = "minimal", Label = "最小" },
+        new ThinkingLevel { Key = "low", Label = "低" },
+        new ThinkingLevel { Key = "medium", Label = "中" },
+        new ThinkingLevel { Key = "high", Label = "高" },
+        new ThinkingLevel { Key = "xhigh", Label = "极高" },
+        new ThinkingLevel { Key = "max", Label = "最大" },
+        new ThinkingLevel { Key = "ultra", Label = "极限" }
+    ];
 }
 
 /// <summary>

@@ -42,6 +42,17 @@ public class UiTextTests
     public void Ellipsis_ShouldBeFullWidthDoubleEllipsis()
         => UiText.Ellipsis.Should().Be("……");
 
+    /// <summary>
+    /// 会话级思考强度的「未指定」项不得写作「默认」——
+    /// 那与模型配置里的「默认档」撞词，用户分不清是在改会话还是改模型。
+    /// </summary>
+    [Fact]
+    public void ThinkingEffortUnspecified_ShouldNotCollideWithModelDefault()
+    {
+        UiText.ThinkingEffortUnspecified.Should().Be("不指定");
+        UiText.ThinkingEffortUnspecified.Should().NotBe("默认");
+    }
+
     // ===== 状态不直出枚举 =====
 
     [Theory]

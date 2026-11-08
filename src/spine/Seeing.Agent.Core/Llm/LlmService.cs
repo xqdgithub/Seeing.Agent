@@ -204,9 +204,9 @@ public class LlmService : ILlmService
             ? null
             : request.ThinkingEffort.Trim();
 
-        if (string.IsNullOrEmpty(candidate) && !string.IsNullOrWhiteSpace(thinking.Default))
-            candidate = thinking.Default.Trim();
-
+        // 不再在这里回落到 thinking.Default：默认档是「会话绑定模型时的初值」
+        // （见 ModelManager.ApplyModelToSession）。请求期再回落会让会话里明确选的
+        // 「不指定」被模型默认档悄悄顶替，用户看到「不指定」却仍然发出思考字段。
         if (string.IsNullOrEmpty(candidate))
         {
             request.ThinkingEffort = null;
@@ -218,22 +218,18 @@ public class LlmService : ILlmService
         var match = FindLevel(levels, candidate);
         if (match is null)
         {
+            // 也不回落到 thinking.Default：Default 只在会话首次绑定模型时作为初值写入会话
+            // （ModelManager.ApplyModelToSession）。请求期再回落等于把模型默认档当兜底，
+            // 会让会话里明确设的档位被静默改写。
             logger?.LogWarning(
-                "思考强度 key 不在模型 levels 内，将回落: Model={Model}, Key={Key}, Default={Default}",
+                "思考强度 key 不在模型 levels 内，将按未指定处理: Model={Model}, Key={Key}",
                 modelConfig.Id,
-                candidate,
-                thinking.Default);
+                candidate);
 
-            if (!string.IsNullOrWhiteSpace(thinking.Default))
-                match = FindLevel(levels, thinking.Default.Trim());
-
-            if (match is null)
-            {
-                request.ThinkingEffort = null;
-                request.ThinkingBudgetTokens = null;
-                request.EchoReasoningContent = false;
-                return;
-            }
+            request.ThinkingEffort = null;
+            request.ThinkingBudgetTokens = null;
+            request.EchoReasoningContent = false;
+            return;
         }
 
         request.ThinkingEffort = match.Key;

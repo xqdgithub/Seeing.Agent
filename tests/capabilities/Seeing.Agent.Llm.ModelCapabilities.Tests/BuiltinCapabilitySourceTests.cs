@@ -118,9 +118,82 @@ public class BuiltinCapabilitySourceTests
         }
     }
 
+    /// <summary>
+    /// 本地条目显式关闭思考（supported=false + 无档位）必须压住嵌入目录的 supported=true，
+    /// 否则「关掉思考」会被 Merge 的 Levels 回落复活，用户看到档位依然存在。
+    /// </summary>
     [Fact]
-    public async Task TryGet_FreeModel_FallsBackToNonFreeId()
+    public async Task LocalThinkingExplicitOff_BeatsEmbeddedLevels()
     {
+        var dir = CreateTempDir();
+        try
+        {
+            var source = new BuiltinCapabilitySource(dir);
+            await source.LoadAsync(TestContext.Current.CancellationToken);
+
+            var embedded = await source.TryGetAsync("", "deepseek-v4-flash", TestContext.Current.CancellationToken);
+            embedded!.Options!.Thinking!.Supported.Should().BeTrue("前提：嵌入目录声明了思考");
+
+            await source.UpsertEntryAsync(new ModelCapabilityEntry
+            {
+                ProviderId = null,
+                ModelId = "deepseek-v4-flash",
+                Options = new ModelOptions
+                {
+                    Thinking = new ThinkingOptions { Supported = false }
+                }
+            }, TestContext.Current.CancellationToken);
+
+            var entry = await source.TryGetAsync("", "deepseek-v4-flash", TestContext.Current.CancellationToken);
+            entry!.Options!.Thinking!.Supported.Should().BeFalse();
+            entry.Options.Thinking.Levels.Should().BeNullOrEmpty("显式关闭不回落下层档位");
+        }
+        finally
+        {
+            TryDelete(dir);
+        }
+    }
+
+    /// <summary>
+    /// 本地条目只改档位（supported=true + 档位）时，默认档同样来自本地；空的本地档位仍回落下层。
+    /// </summary>
+    [Fact]
+    public async Task LocalThinkingWithDefault_KeepsDefaultAndLevels()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var source = new BuiltinCapabilitySource(dir);
+            await source.LoadAsync(TestContext.Current.CancellationToken);
+
+            await source.UpsertEntryAsync(new ModelCapabilityEntry
+            {
+                ProviderId = null,
+                ModelId = "deepseek-v4-flash",
+                Options = new ModelOptions
+                {
+                    Thinking = new ThinkingOptions
+                    {
+                        Supported = true,
+                        Default = "max",
+                        Levels = [new ThinkingLevel { Key = "max", Label = "最大" }]
+                    }
+                }
+            }, TestContext.Current.CancellationToken);
+
+            var entry = await source.TryGetAsync("", "deepseek-v4-flash", TestContext.Current.CancellationToken);
+            var thinking = entry!.Options!.Thinking!;
+            thinking.Default.Should().Be("max");
+            thinking.Levels!.Select(level => level.Key).Should().Equal("max");
+        }
+        finally
+        {
+            TryDelete(dir);
+        }
+    }
+
+    [Fact]
+    public async Task TryGet_FreeModel_FallsBackToNonFreeId()    {
         var dir = CreateTempDir();
         try
         {

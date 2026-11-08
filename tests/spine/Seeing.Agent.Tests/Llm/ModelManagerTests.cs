@@ -229,9 +229,114 @@ public class ModelManagerTests
         session.SelectedThinkingEffort.Should().Be("high");
     }
 
+    /// <summary>
+    /// 首次绑定模型时用模型默认档播种会话：这是默认档唯一一次介入，之后会话值即唯一真相。
+    /// </summary>
     [Fact]
-    public void SeedSessionModel_Native_WritesResolvedDefault()
+    public void ApplyModelToSession_FirstBind_SeedsThinkingDefault()
     {
+        var models = new Dictionary<string, ModelConfig>
+        {
+            ["openai/x"] = new ModelConfig
+            {
+                Id = "x",
+                Provider = "openai",
+                Options = new ModelOptions
+                {
+                    Thinking = new ThinkingOptions
+                    {
+                        Supported = true,
+                        Default = "disabled",
+                        Levels =
+                        [
+                            new ThinkingLevel { Key = "disabled" },
+                            new ThinkingLevel { Key = "high" }
+                        ]
+                    }
+                }
+            }
+        };
+
+        var manager = CreateManager(
+            new SeeingAgentOptions(),
+            agentName: "build",
+            agentModel: null,
+            runtime: AgentRuntime.Native,
+            models: models);
+
+        var session = SessionData.Create();
+        session.SelectedModel = string.Empty;
+
+        manager.ApplyModelToSession(session, "openai/x");
+
+        session.SelectedModel.Should().Be("openai/x");
+        session.SelectedThinkingEffort.Should().Be("disabled", "首次绑定应按模型默认档播种");
+    }
+
+    /// <summary>
+    /// 非首次绑定不再播种：否则用户在会话里选的「不指定」会被模型默认档重新灌回去。
+    /// </summary>
+    [Fact]
+    public void ApplyModelToSession_NotFirstBind_DoesNotReseedThinkingDefault()
+    {
+        var models = new Dictionary<string, ModelConfig>
+        {
+            ["openai/x"] = new ModelConfig
+            {
+                Id = "x",
+                Provider = "openai",
+                Options = new ModelOptions
+                {
+                    Thinking = new ThinkingOptions
+                    {
+                        Supported = true,
+                        Default = "disabled",
+                        Levels =
+                        [
+                            new ThinkingLevel { Key = "disabled" },
+                            new ThinkingLevel { Key = "high" }
+                        ]
+                    }
+                }
+            },
+            ["openai/y"] = new ModelConfig
+            {
+                Id = "y",
+                Provider = "openai",
+                Options = new ModelOptions
+                {
+                    Thinking = new ThinkingOptions
+                    {
+                        Supported = true,
+                        Default = "disabled",
+                        Levels =
+                        [
+                            new ThinkingLevel { Key = "disabled" },
+                            new ThinkingLevel { Key = "high" }
+                        ]
+                    }
+                }
+            }
+        };
+
+        var manager = CreateManager(
+            new SeeingAgentOptions(),
+            agentName: "build",
+            agentModel: null,
+            runtime: AgentRuntime.Native,
+            models: models);
+
+        var session = SessionData.Create();
+        session.SelectedModel = "openai/x";
+        session.SelectedThinkingEffort = string.Empty; // 用户明确选了「不指定」
+
+        manager.ApplyModelToSession(session, "openai/y");
+
+        session.SelectedThinkingEffort.Should().BeEmpty("换模型不是首次绑定，不得用默认档覆盖会话选择");
+    }
+
+    [Fact]
+    public void SeedSessionModel_Native_WritesResolvedDefault()    {
         var manager = CreateManager(
             new SeeingAgentOptions { DefaultModels = { ["chat"] = "openai/gpt-4o" } },
             agentName: "build",

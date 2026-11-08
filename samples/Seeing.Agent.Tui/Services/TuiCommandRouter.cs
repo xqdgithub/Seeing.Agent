@@ -238,7 +238,7 @@ public sealed class TuiCommandRouter
                         if (string.Equals(level, "clear", StringComparison.OrdinalIgnoreCase))
                         {
                             await ctx.Sessions.SetThinkingAsync(null, ct);
-                            return Local(new Text("思考档已清除（跟随模型默认）"));
+                            return Local(new Text("思考档已清除（不指定，使用模型默认档）"));
                         }
 
                         await ctx.Sessions.SetThinkingAsync(level, ct);
@@ -249,7 +249,8 @@ public sealed class TuiCommandRouter
                     if (!ThinkingEffortKeys.IsSupported(thinking) || thinking!.Levels is null)
                         return Local(new Text("当前模型未提供思考档，用法：/thinking <level>"));
 
-                    var options = new List<(string Display, string Value)> { ("（清除，跟随默认）", ClearOption) };
+                    // 「不指定」而非「跟随默认」：后者与模型配置里的「默认档」撞词，分不清在改哪一层。
+                    var options = new List<(string Display, string Value)> { ("（不指定，使用模型默认档）", ClearOption) };
                     options.AddRange(thinking.Levels!.Select(l =>
                         (Display: string.IsNullOrWhiteSpace(l.Label) ? l.Key : $"{l.Label} · {l.Key}", Value: l.Key)));
 
@@ -259,7 +260,7 @@ public sealed class TuiCommandRouter
 
                     var selectedLevel = string.Equals(chosen, ClearOption, StringComparison.Ordinal) ? null : chosen;
                     await ctx.Sessions.SetThinkingAsync(selectedLevel, ct);
-                    return Local(new Text(selectedLevel is null ? "思考档已清除（跟随模型默认）" : $"思考档：{selectedLevel}"));
+                    return Local(new Text(selectedLevel is null ? "思考档已清除（不指定，使用模型默认档）" : $"思考档：{selectedLevel}"));
                 }
 
             case "scenario":

@@ -83,6 +83,25 @@ internal static class ModelOverrideApplier
             result.Metadata[ModelMetadataKeys.IsFree] = isFree;
         }
 
+        // 思考覆盖是整块语义：null 不触碰；Supported=true 整块替换；Supported=false 表示
+        // 「本模型不声明思考能力」（此时请求侧清空 ThinkingEffort，出站走缺省）。
+        // 若要「关闭思考」，必须用 Supported=true + 档位表（含关闭档）+ Default=关闭档 表达。
+        if (patch.Thinking is { } thinking)
+        {
+            result.Options ??= new ModelOptions();
+            result.Options.Thinking = thinking.Supported
+                ? new ThinkingOptions
+                {
+                    Supported = true,
+                    Default = string.IsNullOrWhiteSpace(thinking.Default) ? null : thinking.Default,
+                    Interleaved = string.IsNullOrWhiteSpace(thinking.Interleaved) ? null : thinking.Interleaved,
+                    Levels = thinking.Levels is { Count: > 0 } levels
+                        ? levels.Select(CloneLevel).ToList()
+                        : null
+                }
+                : new ThinkingOptions { Supported = false };
+        }
+
         return result;
     }
 
@@ -115,8 +134,60 @@ internal static class ModelOverrideApplier
         if (desired.IsFree is { } isFree && isFree != ReadIsFree(baseline))
             patch.IsFree = isFree;
 
+        if (desired.Thinking is { } thinking && !ThinkingEquals(thinking, baseline?.Options?.Thinking))
+            patch.Thinking = thinking.Clone();
+
         return patch;
     }
+
+    /// <summary>
+    /// 判断思考覆盖与基线声明是否等价：等价时不写入补丁，避免把远端/目录值固化进用户覆盖。
+    /// </summary>
+    public static bool ThinkingEquals(ModelThinkingOverride desired, ThinkingOptions? baseline)
+    {
+        var baselineSupported = baseline?.Supported == true;
+        if (desired.Supported != baselineSupported)
+            return false;
+
+        // Supported=false 只表示「不声明思考能力」，与基线的档位/默认档无关。
+        if (!desired.Supported)
+            return true;
+
+        if (!string.Equals(Normalize(desired.Default), Normalize(baseline?.Default), StringComparison.Ordinal))
+            return false;
+
+        if (!string.Equals(Normalize(desired.Interleaved), Normalize(baseline?.Interleaved), StringComparison.Ordinal))
+            return false;
+
+        var desiredLevels = desired.Levels ?? [];
+        var baselineLevels = baseline?.Levels ?? [];
+        if (desiredLevels.Count != baselineLevels.Count)
+            return false;
+
+        for (var i = 0; i < desiredLevels.Count; i++)
+        {
+            if (!string.Equals(desiredLevels[i].Key, baselineLevels[i].Key, StringComparison.Ordinal)
+                || !string.Equals(
+                    Normalize(desiredLevels[i].Label),
+                    Normalize(baselineLevels[i].Label),
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string? Normalize(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static ThinkingLevel CloneLevel(ThinkingLevel level) => new()
+    {
+        Key = level.Key,
+        Label = level.Label,
+        BudgetTokens = level.BudgetTokens
+    };
 
     /// <summary>按 catalog key 拆分 Provider 与模型 ID（按首个 '/'）。</summary>
     public static (string? ProviderId, string ModelId) SplitKey(string key)
@@ -146,7 +217,7 @@ internal static class ModelOverrideApplier
         };
     }
 
-    /// <summary>深拷贝模型配置（Modalities/Limit/Metadata 均独立，避免污染原始对象）。</summary>
+    /// <summary>深拷贝模型配置（Options/Modalities/Limit/Metadata 均独立，避免污染原始对象）。</summary>
     public static ModelConfig Clone(ModelConfig config)
         => new()
         {
@@ -164,12 +235,38 @@ internal static class ModelOverrideApplier
                 Context = config.Limit?.Context ?? ModelLimitDefaults.Context,
                 Output = config.Limit?.Output ?? ModelLimitDefaults.Output
             },
-            Options = config.Options,
+            Options = CloneOptions(config.Options),
             Pricing = config.Pricing,
             Metadata = config.Metadata is null
                 ? null
                 : new Dictionary<string, object?>(config.Metadata)
         };
+
+    /// <summary>
+    /// 深拷贝模型选项。<b>必须深拷贝</b>：覆盖应用是原地写 <c>Options.Thinking</c> 的，
+    /// 浅拷贝会让覆盖穿透到 <c>_rawCache</c> 基线（此后 diff 永远看不到差异）。
+    /// </summary>
+    private static ModelOptions? CloneOptions(ModelOptions? options)
+    {
+        if (options is null)
+            return null;
+
+        var thinking = options.Thinking;
+        return new ModelOptions
+        {
+            Thinking = thinking is null
+                ? null
+                : new ThinkingOptions
+                {
+                    Supported = thinking.Supported,
+                    Default = thinking.Default,
+                    Type = thinking.Type,
+                    BudgetTokens = thinking.BudgetTokens,
+                    Interleaved = thinking.Interleaved,
+                    Levels = thinking.Levels?.Select(CloneLevel).ToList()
+                }
+        };
+    }
 
     private static bool SequenceEqual<T>(IReadOnlyList<T> left, IReadOnlyList<T>? right)
     {

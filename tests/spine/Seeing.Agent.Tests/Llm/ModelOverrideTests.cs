@@ -266,8 +266,218 @@ public sealed class ModelOverrideTests : IDisposable
     }
 
     [Fact]
-    public async Task Upsert_UnknownProvider_Throws()
+    public async Task Upsert_ThinkingOverride_ReplacesDeclaredLevels()
     {
+        var providers = BuildProviders();
+        var configManager = await CreateConfigManagerAsync(providers);
+        using var sut = new ModelConfigManager(
+            configManager,
+            CreateRegistry(providers),
+            NullLogger<ModelConfigManager>.Instance);
+
+        await WaitUntilAsync(
+            () => sut.GetCatalogModels().ContainsKey("siliconflow/Qwen/Qwen3-Thinking"),
+            TimeSpan.FromSeconds(5));
+
+        await sut.UpsertModelOverrideAsync(
+            "siliconflow",
+            "Qwen/Qwen3-Thinking",
+            new ModelOverride
+            {
+                Thinking = new ModelThinkingOverride
+                {
+                    Supported = true,
+                    Default = "max",
+                    Levels =
+                    [
+                        new ThinkingLevel { Key = "off", Label = "关" },
+                        new ThinkingLevel { Key = "max", Label = "最大" }
+                    ]
+                }
+            },
+            TestContext.Current.CancellationToken);
+
+        var thinking = sut.GetModel("siliconflow/Qwen/Qwen3-Thinking")!.Options!.Thinking!;
+        thinking.Supported.Should().BeTrue();
+        thinking.Default.Should().Be("max");
+        thinking.Levels!.Select(level => level.Key).Should().Equal("off", "max");
+
+        // 覆盖层只落思考字段，其余字段不出现在补丁里。
+        var patch = sut.GetModelOverride("siliconflow", "Qwen/Qwen3-Thinking");
+        patch!.Thinking!.Supported.Should().BeTrue();
+        patch.Name.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Upsert_ThinkingDefaultOff_StillKeepsLevels()
+    {
+        var providers = BuildProviders();
+        var configManager = await CreateConfigManagerAsync(providers);
+        using var sut = new ModelConfigManager(
+            configManager,
+            CreateRegistry(providers),
+            NullLogger<ModelConfigManager>.Instance);
+
+        await WaitUntilAsync(
+            () => sut.GetCatalogModels().ContainsKey("siliconflow/Qwen/Qwen3-Thinking"),
+            TimeSpan.FromSeconds(5));
+
+        var baseline = sut.GetModel("siliconflow/Qwen/Qwen3-Thinking")!.Options!.Thinking;
+        await sut.UpsertModelOverrideAsync(
+            "siliconflow",
+            "Qwen/Qwen3-Thinking",
+            new ModelOverride { Thinking = ModelThinkingOverride.CreateOff(baseline) },
+            TestContext.Current.CancellationToken);
+
+        var thinking = sut.GetModel("siliconflow/Qwen/Qwen3-Thinking")!.Options!.Thinking!;
+        // 关闭必须靠「档位 + 默认档指向关闭档」表达，而不是 Supported=false：
+        // 后者请求侧会清空 ThinkingEffort，OpenAI 兼容出站反而缺省开启。
+        thinking.Supported.Should().BeTrue();
+        ThinkingEffortKeys.IsOff(thinking.Default).Should().BeTrue("默认档必须指向关闭档");
+        thinking.Levels.Should().NotBeNullOrEmpty("档位表必须保留，会话里才能手动改回其它档");
+
+        // 出站证据：把模型默认档当作「会话播种值」显式传入（请求期不再回落默认档），
+        // 规范化后 ThinkingEffort 落在关闭档 key 上。
+        var request = new ChatRequest { ThinkingEffort = thinking.Default };
+        LlmService.ApplyThinkingCatalog(
+            sut.GetModel("siliconflow/Qwen/Qwen3-Thinking")!, request);
+        request.ThinkingEffort.Should().Be(ThinkingEffortKeys.DisabledKey);
+        request.ThinkingBudgetTokens.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Upsert_ThinkingNotSupported_ClearsLevels()
+    {
+        var providers = BuildProviders();
+        var configManager = await CreateConfigManagerAsync(providers);
+        using var sut = new ModelConfigManager(
+            configManager,
+            CreateRegistry(providers),
+            NullLogger<ModelConfigManager>.Instance);
+
+        await WaitUntilAsync(
+            () => sut.GetCatalogModels().ContainsKey("siliconflow/Qwen/Qwen3-Thinking"),
+            TimeSpan.FromSeconds(5));
+
+        // Supported=false = 「不声明思考能力」，与「关闭思考」不是一回事。
+        await sut.UpsertModelOverrideAsync(
+            "siliconflow",
+            "Qwen/Qwen3-Thinking",
+            new ModelOverride { Thinking = new ModelThinkingOverride { Supported = false } },
+            TestContext.Current.CancellationToken);
+
+        var thinking = sut.GetModel("siliconflow/Qwen/Qwen3-Thinking")!.Options!.Thinking!;
+        thinking.Supported.Should().BeFalse();
+        thinking.Levels.Should().BeNull();
+        thinking.Interleaved.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Upsert_ThinkingSameAsBaseline_NotPersisted()
+    {
+        var providers = BuildProviders();
+        var configManager = await CreateConfigManagerAsync(providers);
+        using var sut = new ModelConfigManager(
+            configManager,
+            CreateRegistry(providers),
+            NullLogger<ModelConfigManager>.Instance);
+
+        await WaitUntilAsync(
+            () => sut.GetCatalogModels().ContainsKey("siliconflow/Qwen/Qwen3-Thinking"),
+            TimeSpan.FromSeconds(5));
+
+        // 与基线逐字段一致 → 不应固化进覆盖（远端刷新后仍能跟随）。
+        await sut.UpsertModelOverrideAsync(
+            "siliconflow",
+            "Qwen/Qwen3-Thinking",
+            new ModelOverride
+            {
+                Thinking = new ModelThinkingOverride
+                {
+                    Supported = true,
+                    Interleaved = "reasoning_content",
+                    Levels =
+                    [
+                        new ThinkingLevel { Key = "disabled", Label = "关闭" },
+                        new ThinkingLevel { Key = "high", Label = "高" }
+                    ]
+                }
+            },
+            TestContext.Current.CancellationToken);
+
+        sut.GetModelOverride("siliconflow", "Qwen/Qwen3-Thinking").Should().BeNull(
+            "与基线完全一致的思考声明等价于无覆盖");
+    }
+
+    [Fact]
+    public async Task RemoveOverride_ThinkingRestoresBaseline()
+    {
+        var providers = BuildProviders();
+        var configManager = await CreateConfigManagerAsync(providers);
+        using var sut = new ModelConfigManager(
+            configManager,
+            CreateRegistry(providers),
+            NullLogger<ModelConfigManager>.Instance);
+
+        await WaitUntilAsync(
+            () => sut.GetCatalogModels().ContainsKey("siliconflow/Qwen/Qwen3-Thinking"),
+            TimeSpan.FromSeconds(5));
+
+        await sut.UpsertModelOverrideAsync(
+            "siliconflow",
+            "Qwen/Qwen3-Thinking",
+            new ModelOverride { Thinking = new ModelThinkingOverride { Supported = false } },
+            TestContext.Current.CancellationToken);
+        sut.GetModel("siliconflow/Qwen/Qwen3-Thinking")!.Options!.Thinking!.Supported.Should().BeFalse();
+
+        await sut.RemoveModelOverrideAsync(
+            "siliconflow",
+            "Qwen/Qwen3-Thinking",
+            TestContext.Current.CancellationToken);
+
+        var restored = sut.GetModel("siliconflow/Qwen/Qwen3-Thinking")!.Options!.Thinking!;
+        restored.Supported.Should().BeTrue();
+        restored.Levels!.Select(level => level.Key).Should().Equal("disabled", "high");
+    }
+
+    /// <summary>
+    /// 覆盖应用必须深拷贝 Options：否则原地写 <c>Options.Thinking</c> 会穿透到 <c>_rawCache</c> 基线，
+    /// 之后 diff 永远认为「与基线相同」，覆盖再也写不进去。
+    /// </summary>
+    [Fact]
+    public async Task Upsert_Thinking_DoesNotMutateBaseline()
+    {
+        var providers = BuildProviders();
+        var configManager = await CreateConfigManagerAsync(providers);
+        using var sut = new ModelConfigManager(
+            configManager,
+            CreateRegistry(providers),
+            NullLogger<ModelConfigManager>.Instance);
+
+        await WaitUntilAsync(
+            () => sut.GetCatalogModels().ContainsKey("siliconflow/Qwen/Qwen3-Thinking"),
+            TimeSpan.FromSeconds(5));
+
+        await sut.UpsertModelOverrideAsync(
+            "siliconflow",
+            "Qwen/Qwen3-Thinking",
+            new ModelOverride
+            {
+                Thinking = new ModelThinkingOverride
+                {
+                    Supported = true,
+                    Levels = [new ThinkingLevel { Key = "only", Label = "仅此一档" }]
+                }
+            },
+            TestContext.Current.CancellationToken);
+
+        var baseline = sut.GetModelBaseline("siliconflow", "Qwen/Qwen3-Thinking");
+        // 基线必须仍是原声明的两档：覆盖写穿会让这里变成 "only"。
+        baseline!.Options!.Thinking!.Levels!.Select(level => level.Key).Should().Equal("disabled", "high");
+    }
+
+    [Fact]
+    public async Task Upsert_UnknownProvider_Throws()    {
         var providers = BuildProviders();
         var configManager = await CreateConfigManagerAsync(providers);
         using var sut = new ModelConfigManager(
@@ -297,6 +507,27 @@ public sealed class ModelOverrideTests : IDisposable
                     Id = "Qwen/Qwen3-Embedding-8B",
                     Name = "Qwen/Qwen3-Embedding-8B",
                     Provider = "siliconflow"
+                },
+                // 已声明思考档位的模型：思考覆盖的 diff / 回退断言需要一条非空基线。
+                ["Qwen/Qwen3-Thinking"] = new()
+                {
+                    Id = "Qwen/Qwen3-Thinking",
+                    Name = "Qwen/Qwen3-Thinking",
+                    Provider = "siliconflow",
+                    Limit = new ModelLimits { Context = 32000, Output = 8192 },
+                    Options = new ModelOptions
+                    {
+                        Thinking = new ThinkingOptions
+                        {
+                            Supported = true,
+                            Interleaved = "reasoning_content",
+                            Levels =
+                            [
+                                new ThinkingLevel { Key = "disabled", Label = "关闭" },
+                                new ThinkingLevel { Key = "high", Label = "高" }
+                            ]
+                        }
+                    }
                 }
             }
         }

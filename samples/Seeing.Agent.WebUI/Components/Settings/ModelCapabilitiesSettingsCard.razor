@@ -166,10 +166,57 @@ else
                 <span>思考内容字段</span>
                 <Input @bind-Value="@_editInterleaved" Placeholder="如 reasoning_content" Style="width: 200px;" />
             </Space>
-            <Table TItem="LevelEditRow" DataSource="@_editLevels" HidePagination Size="@TableSize.Small"
+            @if (_editThinkingSupported)
+            {
+                @* 关闭档固定第一行（code 恒为 disabled）；「默认档 = 关闭档」即模型默认关闭思考。 *@
+                <Space Align="SpaceAlign.Center" Wrap Style="margin-bottom: 12px;">
+                    <span>关闭档</span>
+                    <Switch Checked="@_editCloseLevelEnabled" CheckedChildren="提供" UnCheckedChildren="不提供"
+                            OnChange="OnCloseLevelEnabledChanged" />
+                    <span>默认档</span>
+                    <Select TItemValue="string" TItem="string"
+                            @key="@($"cap-default-{_editEntry?.ModelId}-{_editLevels.Count}-{_editCloseLevelEnabled}")"
+                            Value="@_editThinkingDefault"
+                            ValueChanged="OnEditThinkingDefaultChanged"
+                            AllowClear="true"
+                            Placeholder="不指定（未选档时不传思考字段）"
+                            Style="width: 220px;">
+                        @foreach (var key in LevelKeys)
+                        {
+                            <SelectOption TItemValue="string" TItem="string" Value="@key" Label="@key" />
+                        }
+                    </Select>
+                    <span style="color: #888; font-size: 12px;">默认档指向 <code>disabled</code> 即「默认关闭思考」</span>
+                </Space>
+            }
+            else
+            {
+                <div style="color: #888; font-size: 12px; margin-bottom: 12px;">
+                    「支持思考 = 关」表示该模型<b>不声明</b>思考能力（请求不指定档位）；要「关闭思考」请开启并添加关闭档。
+                </div>
+            }
+            @* 快速选择：点一下即加入档位表；code 输入框仍可自由填写（AutoComplete 只做提示）。 *@
+            <div style="margin-bottom: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+                <span style="color: #888; font-size: 12px; margin-right: 2px;">常用档位</span>
+                @foreach (var known in ThinkingEffortKeys.WellKnownLevels)
+                {
+                    var existing = _editLevels.FirstOrDefault(row =>
+                        string.Equals(row.Key?.Trim(), known.Key, StringComparison.OrdinalIgnoreCase));
+                    <Tag Color="@(existing is null ? null : "blue")"
+                         Style="cursor: pointer; user-select: none; margin: 0;"
+                         OnClick="@(() => ApplyWellKnownLevel(known))">
+                        @($"{(existing is null ? "+" : "✓")} {known.Label} · {known.Key}")
+                    </Tag>
+                }
+            </div>
+            <Table TItem="LevelEditRow" DataSource="@_editOtherLevels" HidePagination Size="@TableSize.Small"
                    RowKey="l => l.RowId" Style="margin-bottom: 8px; max-width: 520px;">
-                <ActionColumn Title="档位标识">
-                    <Input @bind-Value="@context.Key" Style="width: 120px;" />
+                <ActionColumn Title="档位标识（可自由输入）">
+                    <AutoComplete TItem="string"
+                                  Value="@context.Key"
+                                  ValueChanged="@(value => OnLevelKeyChanged(context, value))"
+                                  Options="@ThinkingEffortKeys.WellKnownLevels.Select(l => l.Key)"
+                                  Width="140" />
                 </ActionColumn>
                 <ActionColumn Title="显示名称">
                     <Input @bind-Value="@context.Label" Style="width: 120px;" />
@@ -211,7 +258,12 @@ else
     private int? _editContext;
     private int? _editOutput;
     private bool _editThinkingSupported;
+    private string? _editThinkingDefault;
     private string? _editInterleaved;
+    /// <summary>是否提供关闭档（code 固定 disabled，固定第一行）。</summary>
+    private bool _editCloseLevelEnabled;
+    /// <summary>打开编辑时的原始思考声明是否存在（决定「支持思考=关」是否要落盘写空声明）。</summary>
+    private bool _editOriginalHadThinking;
     private List<LevelEditRow> _editLevels = [];
     private bool _editSaving;
     private string? _aliasProvider;
@@ -566,14 +618,51 @@ else
         _editOutput = row.Entry.Limit?.Output;
         var thinking = row.Entry.Options?.Thinking;
         _editThinkingSupported = thinking?.Supported == true;
+        _editOriginalHadThinking = thinking is not null;
         _editInterleaved = thinking?.Interleaved;
-        _editLevels = thinking?.Levels?
+        _editThinkingDefault = thinking?.Default;
+        var levels = thinking?.Levels ?? [];
+        _editCloseLevelEnabled = levels.Any(level => ThinkingEffortKeys.IsOff(level.Key));
+        _editLevels = levels
+            .Where(level => !ThinkingEffortKeys.IsOff(level.Key))
             .Select(l => new LevelEditRow
             {
                 RowId = Guid.NewGuid().ToString("N"),
                 Key = l.Key,
                 Label = l.Label
-            }).ToList() ?? [];
+            }).ToList();
+    }
+
+    /// <summary>表格行：排除关闭档（关闭档由独立开关表达，固定 code=disabled）。</summary>
+    private IReadOnlyList<LevelEditRow> _editOtherLevels =>
+        _editLevels.Where(row => !ThinkingEffortKeys.IsOff(row.Key)).ToList();
+
+    /// <summary>默认档候选：关闭档（若提供）+ 自填档位（去重保序）。</summary>
+    private IReadOnlyList<string> LevelKeys
+    {
+        get
+        {
+            var keys = new List<string>();
+            if (_editCloseLevelEnabled)
+                keys.Add(ThinkingEffortKeys.DisabledKey);
+
+            keys.AddRange(_editLevels
+                .Select(row => row.Key?.Trim() ?? "")
+                .Where(key => key.Length > 0 && !ThinkingEffortKeys.IsOff(key))
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+
+            return keys;
+        }
+    }
+
+    private void OnEditThinkingDefaultChanged(string? value) => _editThinkingDefault = value;
+
+    /// <summary>关闭档开关：关掉时把指向它的默认档一并清空，避免悬空默认值。</summary>
+    private void OnCloseLevelEnabledChanged(bool enabled)
+    {
+        _editCloseLevelEnabled = enabled;
+        if (!enabled && ThinkingEffortKeys.IsOff(_editThinkingDefault))
+            _editThinkingDefault = null;
     }
 
     private void AddLevel()
@@ -583,6 +672,36 @@ else
             RowId = Guid.NewGuid().ToString("N"),
             Key = "",
             Label = ""
+        });
+    }
+
+    /// <summary>表格内档位标识变更（含 AutoComplete 选中）：顺手补中文名，不覆盖已手填的名字。</summary>
+    private void OnLevelKeyChanged(LevelEditRow row, string? value)
+    {
+        row.Key = value ?? "";
+
+        if (string.IsNullOrWhiteSpace(row.Label)
+            && ThinkingEffortKeys.WellKnownLevels.FirstOrDefault(known =>
+                string.Equals(known.Key, row.Key.Trim(), StringComparison.OrdinalIgnoreCase)) is { } match)
+        {
+            row.Label = match.Label;
+        }
+    }
+
+    /// <summary>快速选择：加入已知档位（已存在则跳过）。真实可用性仍以服务端为准。</summary>
+    private void ApplyWellKnownLevel(ThinkingLevel known)
+    {
+        if (_editLevels.Any(row =>
+                string.Equals(row.Key?.Trim(), known.Key, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        _editLevels.Add(new LevelEditRow
+        {
+            RowId = Guid.NewGuid().ToString("N"),
+            Key = known.Key,
+            Label = known.Label ?? ""
         });
     }
 
@@ -604,23 +723,59 @@ else
         _editSaving = true;
         try
         {
-            var levels = _editLevels
-                .Where(l => !string.IsNullOrWhiteSpace(l.Key))
+            // 档位表在「支持思考」前提下才有效；关闭档由独立开关控制，固定 code=disabled 放首位。
+            var levels = new List<ThinkingLevel>();
+            if (_editThinkingSupported && _editCloseLevelEnabled)
+            {
+                var closeLabel = _editLevels
+                    .FirstOrDefault(l => ThinkingEffortKeys.IsOff(l.Key))?.Label;
+                levels.Add(new ThinkingLevel
+                {
+                    Key = ThinkingEffortKeys.DisabledKey,
+                    Label = string.IsNullOrWhiteSpace(closeLabel) ? ThinkingEffortKeys.DisabledLabel : closeLabel!.Trim()
+                });
+            }
+
+            var otherLevels = _editLevels
+                .Where(l => !string.IsNullOrWhiteSpace(l.Key) && !ThinkingEffortKeys.IsOff(l.Key))
                 .Select(l => new ThinkingLevel
                 {
                     Key = l.Key.Trim(),
                     Label = string.IsNullOrWhiteSpace(l.Label) ? null : l.Label.Trim()
                 })
-                .ToList();
+                .GroupBy(l => l.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First());
 
-            ThinkingOptions? thinking = null;
-            if (_editThinkingSupported || levels.Count > 0 || !string.IsNullOrWhiteSpace(_editInterleaved))
+            levels.AddRange(otherLevels);
+
+            // 默认档必须落在档位表内，否则视为未指定（避免写出一条永远命中不了的声明）。
+            var defaultKey = string.IsNullOrWhiteSpace(_editThinkingDefault) ? null : _editThinkingDefault.Trim();
+            if (defaultKey is not null
+                && !levels.Any(l => string.Equals(l.Key, defaultKey, StringComparison.OrdinalIgnoreCase)))
+            {
+                defaultKey = null;
+            }
+
+            // 「支持思考 = 关」= 该模型不声明思考能力（Supported=false）。
+            // 要「默认关闭思考」请保持 Supported=true、加关闭档并把默认档指向它——
+            // 后者才会真正出站 thinking:{type:"disabled"}。
+            // 例外：原本就没有思考声明且未做任何填写时保持 null，避免只改长度就顺手写出关闭。
+            ThinkingOptions? thinking;
+            if (!_editThinkingSupported && !_editOriginalHadThinking && levels.Count == 0
+                && string.IsNullOrWhiteSpace(_editInterleaved))
+            {
+                thinking = null;
+            }
+            else
             {
                 thinking = new ThinkingOptions
                 {
                     Supported = _editThinkingSupported,
-                    Interleaved = string.IsNullOrWhiteSpace(_editInterleaved) ? null : _editInterleaved.Trim(),
-                    Levels = levels.Count > 0 ? levels : null
+                    Default = _editThinkingSupported ? defaultKey : null,
+                    Interleaved = _editThinkingSupported && !string.IsNullOrWhiteSpace(_editInterleaved)
+                        ? _editInterleaved.Trim()
+                        : null,
+                    Levels = _editThinkingSupported && levels.Count > 0 ? levels : null
                 };
             }
 

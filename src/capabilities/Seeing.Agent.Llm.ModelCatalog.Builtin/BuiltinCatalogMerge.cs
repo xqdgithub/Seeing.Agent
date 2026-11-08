@@ -105,6 +105,12 @@ internal static class BuiltinCatalogMerge
         if (lower is null)
             return CloneThinking(higher);
 
+        // 上层声明「不提供思考」（Supported=false）= 整块生效，绝不回落 lower 的档位。
+        // 否则用户在本地条目里撤销思考声明后，嵌入目录的 supported=true + levels 会把它复活。
+        // 注意「关闭思考」不是这条路径——它由 Supported=true + 关闭档 + Default=关闭档 表达。
+        if (!higher.Supported)
+            return new ThinkingOptions { Supported = false };
+
         return new ThinkingOptions
         {
             Supported = higher.Supported,

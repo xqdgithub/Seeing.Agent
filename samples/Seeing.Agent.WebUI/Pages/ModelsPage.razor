@@ -1,4 +1,4 @@
-@using System.Text.Json
+﻿@using System.Text.Json
 @using AntDesign
 @using Seeing.Agent.Core.Configuration
 @using Seeing.Agent.Configuration
@@ -289,6 +289,9 @@
                             </Column>
                             <PropertyColumn Property="c => c.Context" Title="上下文" />
                             <PropertyColumn Property="c => c.Output" Title="输出" />
+                            <Column TData="ModelRow" Title="思考" Width="90">
+                                <span>@context.ThinkingDisplay</span>
+                            </Column>
                             <ActionColumn Title="操作" Width="360">
                                 <Space>
                                     <Button Size="@ButtonSize.Small" OnClick="@(() => ShowEditModel(context))">编辑</Button>
@@ -494,9 +497,91 @@
                     }
                 </Select>
             </FormItem>
-            <FormItem Label="免费模型">
-                <AntDesign.Switch @bind-Value="_editModelForm.IsFree" />
+            @* 思考强度：自定义档位时关闭档固定在首位（是否提供由开关控制），其后才是用户自填档位。
+               「默认关闭」不需要单独模式——把默认档指向关闭档就已经是这个语义。 *@
+            <FormItem Label="思考强度">
+                <RadioGroup TValue="ThinkingEditMode" Value="@_editThinkingMode"
+                            ValueChanged="OnEditThinkingModeChanged">
+                    <Radio Value="@ThinkingEditMode.Inherit">跟随声明</Radio>
+                    <Radio Value="@ThinkingEditMode.Custom">自定义档位</Radio>
+                </RadioGroup>
+                <div style="color: #888; font-size: 12px; margin-top: 4px;">@_thinkingDeclarationHint</div>
             </FormItem>
+            @if (_editThinkingMode == ThinkingEditMode.Custom)
+            {
+                <FormItem Label="关闭档">
+                    <Space Align="SpaceAlign.Center">
+                        <AntDesign.Switch Checked="@_editCloseLevelEnabled"
+                                          CheckedChildren="提供" UnCheckedChildren="不提供"
+                                          OnChange="OnCloseLevelEnabledChanged" />
+                        <span style="color: #888; font-size: 12px;">
+                            code 固定为 <code>@ThinkingEffortKeys.DisabledKey</code>；会话里选它才是真正关掉思考
+                        </span>
+                    </Space>
+                </FormItem>
+                <FormItem Label="其它档位">
+                    @* 快速选择：点一下即把该档位加入表格（已存在则跳过），省去手打 code。
+                       也允许完全自定义——表格里的 code 输入框仍是自由文本。 *@
+                    <div style="margin-bottom: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+                        <span style="color: #888; font-size: 12px; margin-right: 2px;">常用档位</span>
+                        @foreach (var known in ThinkingEffortKeys.WellKnownLevels)
+                        {
+                            var existing = _editThinkingLevels.FirstOrDefault(row =>
+                                string.Equals(row.Key?.Trim(), known.Key, StringComparison.OrdinalIgnoreCase));
+                            <Tag Color="@(existing is null ? null : "blue")"
+                                 Style="cursor: pointer; user-select: none; margin: 0;"
+                                 OnClick="@(() => ApplyWellKnownLevel(known))">
+                                @($"{(existing is null ? "+" : "✓")} {known.Label} · {known.Key}")
+                            </Tag>
+                        }
+                    </div>
+                    <Table TItem="ThinkingLevelEditRow" DataSource="@_editThinkingLevels" HidePagination
+                           Size="@TableSize.Small" RowKey="@(l => l.RowId)" Context="levelContext"
+                           Style="max-width: 560px;">
+                        <ActionColumn Title="code（可自由输入）" Width="200">
+                            <AutoComplete TItem="string"
+                                          Value="@levelContext.Key"
+                                          ValueChanged="@(value => OnLevelKeyChanged(levelContext, value))"
+                                          Options="@ThinkingEffortKeys.WellKnownLevels.Select(l => l.Key)"
+                                          Placeholder="如 high" />
+                        </ActionColumn>
+                        <ActionColumn Title="显示名称">
+                            <Input @bind-Value="@levelContext.Label" Placeholder="可选，默认同 code" />
+                        </ActionColumn>
+                        <ActionColumn Title="" Width="70">
+                            <Button Size="@ButtonSize.Small" Type="@ButtonType.Link" Danger
+                                    OnClick="() => RemoveThinkingLevel(levelContext)">删除</Button>
+                        </ActionColumn>
+                    </Table>
+                    <Button Size="@ButtonSize.Small" Icon="@IconType.Outline.Plus"
+                            OnClick="AddThinkingLevel" Style="margin-top: 8px;">
+                        添加档位
+                    </Button>
+                </FormItem>
+                <FormItem Label="默认档">
+                    <Select TItemValue="string" TItem="string"
+                            @key="@($"edit-thinking-default-{_editKey}-{_editCloseLevelEnabled}")"
+                            Value="@_editThinkingDefault"
+                            ValueChanged="OnEditThinkingDefaultChanged"
+                            AllowClear="true"
+                            Placeholder="不指定（未选档时不传思考字段）"
+                            Style="width: 100%;">
+                        @foreach (var key in ThinkingLevelKeys)
+                        {
+                            <SelectOption TItemValue="string" TItem="string" Value="@key" Label="@key" />
+                        }
+                    </Select>
+                    <div style="color: #888; font-size: 12px; margin-top: 4px;">
+                        选 <code>@ThinkingEffortKeys.DisabledKey</code> 即「模型默认关闭思考」，会话里仍可临时改回其它档。
+                    </div>
+                </FormItem>
+                <FormItem Label="思考回传字段">
+                    <Input @bind-Value="_editThinkingInterleaved" Placeholder="如 reasoning_content（留空不回传）" />
+                    <div style="color: #888; font-size: 12px; margin-top: 4px;">
+                        OpenAI 兼容协议专用：填 reasoning_content 才会在多轮把历史思考回传。
+                    </div>
+                </FormItem>
+            }
             @if (_editHasOverride)
             {
                 <Alert Type="@AlertType.Info" ShowIcon="true"
@@ -563,6 +648,20 @@
     private bool _editHasOverride;
     private IEnumerable<string> _editInputModalities = Array.Empty<string>();
     private IEnumerable<string> _editOutputModalities = Array.Empty<string>();
+    private ThinkingEditMode _editThinkingMode = ThinkingEditMode.Inherit;
+    private string? _editThinkingDefault;
+    private string? _editThinkingInterleaved;
+    private List<ThinkingLevelEditRow> _editThinkingLevels = [];
+    /// <summary>自定义/默认关闭模式下是否提供关闭档（关闭档恒为第一行，code 固定 disabled）。</summary>
+    private bool _editCloseLevelEnabled;
+    /// <summary>
+    /// 打开弹窗时生效声明的档位预算（key → budgetTokens）。
+    /// 弹窗不编辑预算，但保存时要按 key 继承回去，否则改一次档位表就把
+    /// Anthropic 固定预算模型的 budgetTokens 抹掉。
+    /// </summary>
+    private Dictionary<string, int?> _editThinkingBudgets = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>当前模型生效的思考声明摘要（只读提示，帮助判断「正在覆盖什么」）。</summary>
+    private string _thinkingDeclarationHint = "";
     private readonly EditModelForm _editModelForm = new();
 
     private bool CanEditCurrentProvider =>
@@ -820,7 +919,8 @@
                     CapabilityGapDisplay = CapabilityLabels.Describe(missing),
                     IsFree = IsFreeModel(m.Value),
                     IsEnabled = enabledIds.Contains(m.Value.Id),
-                    IsOverridden = ModelManager.GetModelOverride(m.Value.Provider, m.Value.Id) is not null
+                    IsOverridden = ModelManager.GetModelOverride(m.Value.Provider, m.Value.Id) is not null,
+                    ThinkingDisplay = DescribeThinkingColumn(m.Value.Options?.Thinking)
                 };
             })
             .ToList();
@@ -1132,16 +1232,248 @@
         }
 
         _editKey = row.Key;
-        _editHasOverride = ModelManager.GetModelOverride(row.Provider, row.Id) is not null;
+        var overridePatch = ModelManager.GetModelOverride(row.Provider, row.Id);
+        _editHasOverride = overridePatch is not null;
         _editModelForm.Name = config.Name ?? config.Id;
         _editModelForm.Context = config.Limit?.Context > 0 ? config.Limit.Context : ModelLimitDefaults.Context;
         _editModelForm.Output = config.Limit?.Output > 0 ? config.Limit.Output : ModelLimitDefaults.Output;
-        _editModelForm.IsFree = IsFreeModel(config);
         _editTypes = ModelManager.GetEffectiveTypes(config).ToArray();
         _editInputModalities = config.Modalities?.Input?.ToArray() ?? Array.Empty<string>();
         _editOutputModalities = config.Modalities?.Output?.ToArray() ?? Array.Empty<string>();
+
+        // 初始模式只按「覆盖层有没有 thinking」判定：无覆盖 → 跟随声明。
+        // 不能用生效值预填，否则一打开就写成 supported=true，等于把目录声明固化成用户覆盖。
+        var thinkingOverride = overridePatch?.Thinking;
+        var source = thinkingOverride ?? ToThinkingOverride(config.Options?.Thinking);
+        _editThinkingMode = thinkingOverride is null
+            ? ThinkingEditMode.Inherit
+            : ThinkingEditMode.Custom;
+        _editThinkingDefault = source?.Default;
+        _editThinkingInterleaved = source?.Interleaved;
+
+        // 关闭档是独立一行（固定 code=disabled）：从档位表里剥离出来，表格只放用户自填档位。
+        var allLevels = source?.Levels ?? [];
+        _editCloseLevelEnabled = allLevels.Any(level => ThinkingEffortKeys.IsOff(level.Key));
+        _editThinkingLevels = allLevels
+            .Where(level => !ThinkingEffortKeys.IsOff(level.Key))
+            .Select(level => new ThinkingLevelEditRow
+            {
+                RowId = Guid.NewGuid().ToString("N"),
+                Key = level.Key,
+                Label = level.Label
+            })
+            .ToList();
+        _editThinkingBudgets = allLevels
+            .Where(level => !string.IsNullOrWhiteSpace(level.Key))
+            .GroupBy(level => level.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().BudgetTokens, StringComparer.OrdinalIgnoreCase);
+        _thinkingDeclarationHint = DescribeThinking(config.Options?.Thinking, overridePatch?.Thinking);
         _editModelVisible = true;
     }
+
+    /// <summary>把生效声明投影成覆盖形态，供弹窗预填（不改语义，仅取字段）。</summary>
+    private static ModelThinkingOverride? ToThinkingOverride(ThinkingOptions? thinking)
+    {
+        if (thinking is null)
+            return null;
+
+        return new ModelThinkingOverride
+        {
+            Supported = thinking.Supported,
+            Default = thinking.Default,
+            Interleaved = thinking.Interleaved,
+            Levels = thinking.Levels?
+                .Select(level => new ThinkingLevel
+                {
+                    Key = level.Key,
+                    Label = level.Label,
+                    BudgetTokens = level.BudgetTokens
+                })
+                .ToList()
+        };
+    }
+
+    /// <summary>只读提示：当前生效的思考声明与覆盖来源。</summary>
+    private static string DescribeThinking(ThinkingOptions? effective, ModelThinkingOverride? patch)
+    {
+        var origin = patch is null ? "跟随声明" : "用户覆盖档位";
+        if (effective is null || !ThinkingEffortKeys.IsSupported(effective))
+            return $"当前生效：无思考档位（{origin}）";
+
+        var levels = string.Join("、", effective.Levels!.Select(level => level.Key));
+        var defaultText = string.IsNullOrWhiteSpace(effective.Default)
+            ? "不指定"
+            : ThinkingEffortKeys.IsOff(effective.Default) ? $"{effective.Default}（默认关闭）" : effective.Default;
+        return $"当前生效：{levels}（默认档 {defaultText}，{origin}）";
+    }
+
+    private void OnEditThinkingModeChanged(ThinkingEditMode mode)
+    {
+        _editThinkingMode = mode;
+
+        // 切到「自定义档位」且当前一个档位都没有时，自动补上关闭档，
+        // 否则用户面对一张空表，很容易保存出一条「声明了思考但没有档位」的无效配置。
+        if (mode == ThinkingEditMode.Custom && !_editCloseLevelEnabled && _editThinkingLevels.Count == 0)
+            _editCloseLevelEnabled = true;
+    }
+
+    private void OnEditThinkingDefaultChanged(string? value) => _editThinkingDefault = value;
+
+    /// <summary>开启/关闭「关闭档」行：关掉时把指向它的默认档一并清掉，避免留下悬空默认值。</summary>
+    private void OnCloseLevelEnabledChanged(bool enabled)
+    {
+        _editCloseLevelEnabled = enabled;
+        if (!enabled && ThinkingEffortKeys.IsOff(_editThinkingDefault))
+            _editThinkingDefault = null;
+    }
+
+    /// <summary>列表「思考」列：n 档 / 默认关闭 · n 档 / 不支持 / —。</summary>
+    private static string DescribeThinkingColumn(ThinkingOptions? thinking)
+    {
+        if (thinking is null)
+            return "—";
+
+        if (!thinking.Supported || thinking.Levels is not { Count: > 0 })
+            return "不支持";
+
+        return ThinkingEffortKeys.IsDefaultOff(thinking)
+            ? $"默认关闭 · {thinking.Levels.Count} 档"
+            : $"{thinking.Levels.Count} 档";
+    }
+
+    private void AddThinkingLevel()
+        => _editThinkingLevels.Add(new ThinkingLevelEditRow { RowId = Guid.NewGuid().ToString("N") });
+
+    private void RemoveThinkingLevel(ThinkingLevelEditRow row) => _editThinkingLevels.Remove(row);
+
+    /// <summary>表格内 code 变更（含 AutoComplete 选中）。</summary>
+    private void OnLevelKeyChanged(ThinkingLevelEditRow row, string? value)
+    {
+        row.Key = value ?? "";
+
+        // 用户只填了 code 时，顺手把显示名补成已知档位的中文名（不覆盖已手填的名字）。
+        if (string.IsNullOrWhiteSpace(row.Label)
+            && ThinkingEffortKeys.WellKnownLevels.FirstOrDefault(known =>
+                string.Equals(known.Key, row.Key.Trim(), StringComparison.OrdinalIgnoreCase)) is { } match)
+        {
+            row.Label = match.Label;
+        }
+    }
+
+    /// <summary>
+    /// 快速选择：把已知档位加入表格（已存在则跳过）。
+    /// <para>这里只做「填 code + 显示名」，不校验模型是否真的支持——真实可用档位以服务端为准，
+    /// 写错会被 400 拒绝，所以不在这里臆断。</para>
+    /// </summary>
+    private void ApplyWellKnownLevel(ThinkingLevel known)
+    {
+        if (_editThinkingLevels.Any(row =>
+                string.Equals(row.Key?.Trim(), known.Key, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        _editThinkingLevels.Add(new ThinkingLevelEditRow
+        {
+            RowId = Guid.NewGuid().ToString("N"),
+            Key = known.Key,
+            Label = known.Label
+        });
+    }
+
+    /// <summary>
+    /// 档位下拉候选：关闭档（若提供）+ 表格里非空 key（去重保序）。
+    /// 关闭档排在首位，与 UI 上「关闭档」行在上保持一致。
+    /// </summary>
+    private IReadOnlyList<string> ThinkingLevelKeys
+    {
+        get
+        {
+            var keys = new List<string>();
+            if (_editCloseLevelEnabled)
+            {
+                keys.Add(_editThinkingLevels
+                    .Select(row => row.Key?.Trim() ?? "")
+                    .FirstOrDefault(ThinkingEffortKeys.IsOff) ?? ThinkingEffortKeys.DisabledKey);
+            }
+
+            keys.AddRange(_editThinkingLevels
+                .Select(row => row.Key?.Trim() ?? "")
+                .Where(key => key.Length > 0 && !ThinkingEffortKeys.IsOff(key))
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+
+            return keys;
+        }
+    }
+
+    /// <summary>
+    /// 组装要写入覆盖层的思考补丁。
+    /// <para>跟随声明 → null；自定义 → <c>Supported=true</c> + 档位表（关闭档按开关决定是否包含）。
+    /// 「模型默认关闭思考」= 关闭档在表内且 <c>Default</c> 指向它，<b>不是</b> <c>Supported=false</c>。</para>
+    /// </summary>
+    private ModelThinkingOverride? BuildThinkingOverride()
+    {
+        if (_editThinkingMode == ThinkingEditMode.Inherit)
+            return null;
+
+        var levels = new List<ThinkingLevel>();
+        if (_editCloseLevelEnabled)
+        {
+            // 关闭档复用用户可能已改过的同一行（自定义模式下允许改 label），code 恒为 disabled。
+            var existingClose = _editThinkingLevels
+                .FirstOrDefault(row => ThinkingEffortKeys.IsOff(row.Key?.Trim()));
+            levels.Add(new ThinkingLevel
+            {
+                Key = ThinkingEffortKeys.DisabledKey,
+                Label = string.IsNullOrWhiteSpace(existingClose?.Label)
+                    ? ThinkingEffortKeys.DisabledLabel
+                    : existingClose!.Label!.Trim(),
+                BudgetTokens = ResolveBudget(ThinkingEffortKeys.DisabledKey)
+            });
+        }
+
+        foreach (var row in _editThinkingLevels)
+        {
+            var key = row.Key?.Trim() ?? "";
+            // 关闭档已单独生成；空 key 行丢弃。
+            if (key.Length == 0 || ThinkingEffortKeys.IsOff(key))
+                continue;
+
+            levels.Add(new ThinkingLevel
+            {
+                Key = key,
+                Label = string.IsNullOrWhiteSpace(row.Label) ? null : row.Label.Trim(),
+                BudgetTokens = ResolveBudget(key)
+            });
+        }
+
+        // 同 key 去重（关闭档已排除，剩下是用户自填项）。
+        var deduped = levels
+            .GroupBy(level => level.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+
+        var defaultKey = _editThinkingDefault?.Trim();
+        if (string.IsNullOrEmpty(defaultKey)
+            || !deduped.Any(level => string.Equals(level.Key, defaultKey, StringComparison.OrdinalIgnoreCase)))
+        {
+            defaultKey = null;
+        }
+
+        return new ModelThinkingOverride
+        {
+            Supported = true,
+            Default = defaultKey,
+            Interleaved = string.IsNullOrWhiteSpace(_editThinkingInterleaved) ? null : _editThinkingInterleaved.Trim(),
+            Levels = deduped.Count > 0 ? deduped : null
+        };
+    }
+
+    /// <summary>
+    /// 档位预算按 key 继承：弹窗不暴露 budgetTokens，但不能因为它不在表单里就把它丢掉。
+    /// </summary>
+    private int? ResolveBudget(string key)
+        => _editThinkingBudgets.TryGetValue(key, out var budget) ? budget : null;
 
     /// <summary>
     /// 保存编辑：写入用户级覆盖层（仅持久化与基线不同的字段），配置型与扩展 Provider 统一路径。
@@ -1156,6 +1488,15 @@
             return;
         }
 
+        // 声明支持思考但表里一个档位都没有 = 无效声明（UI 上不会出现选择器），挡住不让保存。
+        if (_editThinkingMode != ThinkingEditMode.Inherit
+            && !_editCloseLevelEnabled
+            && _editThinkingLevels.All(row => string.IsNullOrWhiteSpace(row.Key)))
+        {
+            MessageService.Warning("请至少添加一个档位（或开启关闭档），否则思考声明不会生效");
+            return;
+        }
+
         _savingEditModel = true;
         try
         {
@@ -1167,7 +1508,9 @@
                 OutputLimit = _editModelForm.Output > 0 ? _editModelForm.Output : null,
                 InputModalities = _editInputModalities?.ToList(),
                 OutputModalities = _editOutputModalities?.ToList(),
-                IsFree = _editModelForm.IsFree
+                // 免费标记不在编辑弹窗里：它由模型目录/Provider 声明，用户覆盖不该把它当成可编辑项。
+                // 这里必须保持 null（= 不参与覆盖），否则会把声明值固化成 false。
+                Thinking = BuildThinkingOverride()
             };
 
             await ModelManager.UpsertModelOverrideAsync(providerId, modelId, desired);
@@ -1484,12 +1827,37 @@
         public string RoutableDisplay { get; set; } = "";
         /// <summary>模型声明了但 Provider 未开启的能力；非空即告警，不阻止保存。</summary>
         public string CapabilityGapDisplay { get; set; } = "";
+        /// <summary>思考档位摘要（n 档 / 关闭 / —）。</summary>
+        public string ThinkingDisplay { get; set; } = "—";
     }
 
     private enum AddModelMode
     {
         FromList,
         Manual
+    }
+
+    /// <summary>
+    /// 编辑弹窗的思考强度编辑模式。
+    /// <para>只有两种：不写覆盖（跟随声明）或整块替换档位表。「默认关闭思考」不是独立模式——
+    /// 把档位表里的关闭档设为默认档就已经是这个语义。</para>
+    /// <para><c>Supported=false</c> 也不在此列：它表示「不声明思考能力」，请求侧会清空
+    /// <c>ThinkingEffort</c>，OpenAI 兼容出站反而缺省开启，关不掉。</para>
+    /// </summary>
+    private enum ThinkingEditMode
+    {
+        /// <summary>不写覆盖，跟随远端/能力目录声明。</summary>
+        Inherit,
+        /// <summary>写档位表（可含关闭档），默认档由用户选择。</summary>
+        Custom
+    }
+
+    /// <summary>编辑弹窗内的档位行（RowId 与档位 key 解耦，改 key 不会让行错位）。</summary>
+    private sealed class ThinkingLevelEditRow
+    {
+        public string RowId { get; set; } = "";
+        public string Key { get; set; } = "";
+        public string? Label { get; set; }
     }
 
     private sealed class AddProviderForm { }
@@ -1507,7 +1875,6 @@
         public string Name { get; set; } = "";
         public int Context { get; set; } = ModelLimitDefaults.Context;
         public int Output { get; set; } = ModelLimitDefaults.Output;
-        public bool IsFree { get; set; }
     }
 
     public void Dispose()

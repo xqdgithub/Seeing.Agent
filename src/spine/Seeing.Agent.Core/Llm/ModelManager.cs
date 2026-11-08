@@ -68,6 +68,9 @@ public sealed class ModelManager : IModelManager
 
     /// <summary>
     /// 将模型引用规范化后写入会话；若实际发生变更则清空不兼容的思考档位并返回 true。
+    /// <para>会话<b>首次</b>绑定模型时会把模型的「默认档」播种进会话：默认档是初值，
+    /// 只在会话还没有自己的选择时生效一次，之后会话里的值才是唯一真相。
+    /// 换到另一个模型不重新播种——否则用户在会话里选的「不指定」会被悄悄顶掉。</para>
     /// </summary>
     public bool ApplyModelToSession(SessionData session, string? modelRef)
     {
@@ -79,9 +82,36 @@ public sealed class ModelManager : IModelManager
         if (string.Equals(session.SelectedModel ?? string.Empty, normalized, StringComparison.Ordinal))
             return false;
 
+        // 「首次绑定」= 之前根本没有模型；这是默认档唯一一次的介入时机。
+        var isFirstBind = string.IsNullOrEmpty(session.SelectedModel);
+
         session.SelectedModel = normalized;
         ClearIncompatibleThinkingEffort(session, normalized);
+        if (isFirstBind)
+            SeedThinkingEffortFromModelDefault(session, normalized);
         return true;
+    }
+
+    /// <summary>
+    /// 会话尚未指定思考档时，用模型声明的默认档播种（一次性初值）。
+    /// <para>播种后会话字段即成为唯一真相：后续请求不再回落到模型默认档，
+    /// 因此「不指定」与「未选过」的区别落在<b>绑定时刻</b>，不需要额外的三态字段。</para>
+    /// </summary>
+    private void SeedThinkingEffortFromModelDefault(SessionData session, string modelRef)
+    {
+        if (!string.IsNullOrWhiteSpace(session.SelectedThinkingEffort) || string.IsNullOrEmpty(modelRef))
+            return;
+
+        var thinking = GetModel(modelRef)?.Options?.Thinking;
+        if (!ThinkingEffortKeys.IsSupported(thinking) || string.IsNullOrWhiteSpace(thinking!.Default))
+            return;
+
+        // 默认档必须真的在档位表里，否则播进去也是个永远命中不了的值。
+        var defaultKey = thinking.Default!.Trim();
+        if (!thinking.Levels!.Any(l => string.Equals(l.Key, defaultKey, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        session.SelectedThinkingEffort = defaultKey;
     }
 
     /// <summary>

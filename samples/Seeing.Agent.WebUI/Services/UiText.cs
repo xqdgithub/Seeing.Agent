@@ -49,6 +49,13 @@ public static class UiText
     /// <summary>未选择任何值时统一占位符。</summary>
     public const string None = "—";
 
+    /// <summary>
+    /// 会话级「思考强度未指定」的文案。
+    /// <para>含义是「本会话不挑档，交给模型声明的默认档」——写成「默认」会与模型配置里的
+    /// 「默认档」撞词，用户分不清是在改会话还是在改模型。</para>
+    /// </summary>
+    public const string ThinkingEffortUnspecified = "不指定";
+
     /// <summary>省略号（中文全角），禁止用 <c>...</c> 或 <c>…</c> 混排。</summary>
     public const string Ellipsis = "……";
 
