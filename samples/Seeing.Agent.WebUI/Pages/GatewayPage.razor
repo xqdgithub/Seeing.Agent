@@ -19,6 +19,17 @@
     <Extra>
         <Space>
             <ConfigLevelSelector @bind-Value="_saveLevel" SectionName="Gateway" />
+            @* 运行状态与启停：与「保存配置」解耦。
+               配置里的 Enabled/AutoStart 决定「宿主启动与工作区切换时是否要跑」，
+               这里的按钮只影响当前进程，不改磁盘配置——否则想重启一次就得改配置再改回来。 *@
+            @if (GatewayServer.IsRunning)
+            {
+                <Button Danger Icon="@IconType.Outline.Poweroff" Loading="@_toggling" OnClick="StopServerAsync">停止</Button>
+            }
+            else
+            {
+                <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.PlayCircle" Loading="@_toggling" OnClick="StartServerAsync">启动</Button>
+            }
             <Button Icon="@IconType.Outline.Reload" Loading="@_refreshing" OnClick="RefreshAsync">刷新</Button>
             <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save" OnClick="SaveAsync">保存配置</Button>
         </Space>
@@ -114,6 +125,7 @@
     private bool _loading;
     private bool _healthy;
     private bool _refreshing;
+    private bool _toggling;
     private string? _healthMessage;
 
     /// <summary>通联目录刷新信号：自增即让子组件重读目录。</summary>
@@ -181,6 +193,8 @@
     {
         await ConfigService.SaveLevelSectionsAsync(_saveLevel, new Dictionary<string, object?> { ["Gateway"] = _gateway });
 
+        // 保存只负责落盘 + 让「配置里的运行意图」生效：Enabled 由关到开 → 拉起；由开到关 → 停止。
+        // 单纯重启（配置没变）不要走这里——用标题栏的「启动 / 停止」按钮，免得改配置又被改回来。
         if (_gateway.Enabled && !_originalGateway.Enabled)
         {
             try
@@ -219,6 +233,50 @@
 
         MessageService.Success("Gateway 配置已保存");
         await CheckHealth();
+    }
+
+    /// <summary>
+    /// 手动启动（只影响当前进程，不改磁盘配置）。
+    /// <para>这是「我就是现在要它跑」的正当入口——没有它，用户只能去改 Enabled 再保存，
+    /// 配置被顺手改掉，下次工作区切换的自动行为也跟着变。</para>
+    /// </summary>
+    private async Task StartServerAsync()
+    {
+        _toggling = true;
+        try
+        {
+            await GatewayServer.StartAsync();
+            MessageService.Success("Gateway 服务已启动");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"启动 Gateway 服务失败：{ex.Message}");
+        }
+        finally
+        {
+            _toggling = false;
+            await CheckHealth();
+        }
+    }
+
+    /// <summary>手动停止（只影响当前进程，不改磁盘配置）。</summary>
+    private async Task StopServerAsync()
+    {
+        _toggling = true;
+        try
+        {
+            await GatewayServer.StopAsync();
+            MessageService.Info("Gateway 服务已停止");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"停止 Gateway 服务失败：{ex.Message}");
+        }
+        finally
+        {
+            _toggling = false;
+            await CheckHealth();
+        }
     }
 
     private async Task CheckHealth()

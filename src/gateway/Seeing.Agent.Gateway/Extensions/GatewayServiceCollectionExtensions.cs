@@ -43,6 +43,7 @@ public static class GatewayServiceCollectionExtensions
         services.AddSingleton<IValidateOptions<GatewayOptions>, GatewayOptionsValidator>();
 
         AddGatewayRuntime(services, registry);
+        services.AddSingleton<GatewayAutoStartPolicy>();
         services.AddSingleton<IGatewayServer, GatewayServer>();
         services.AddHostedService<GatewayHostedService>();
         services.AddSingleton<ISeeingModule>(sp =>
@@ -82,6 +83,7 @@ public static class GatewayServiceCollectionExtensions
 
         services.Configure(configure);
         AddGatewayRuntime(services, registry);
+        services.AddSingleton<GatewayAutoStartPolicy>();
         services.AddSingleton<IGatewayServer, GatewayServer>();
         services.AddHostedService<GatewayHostedService>();
         services.AddSingleton<ISeeingModule>(sp =>

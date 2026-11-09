@@ -211,8 +211,25 @@ WebUI 出站绑定改为读写 `ChannelRoute`（工具栏、会话窗、会话�
 
 ### 8.3 已知边界
 
-- **参与者的 `OnAppliedAsync` 失败不判切换失败**：渠道起不来只记 Error 日志，界面仍会导航到新工作区。
+- **参与者启动失败不判切换失败**：渠道起不来只记 Error 日志，界面仍会导航到新工作区。
 - **ChannelHost 有自己的 `WorkspaceProvider`**：子进程按 `--config` 路径反推工作区根（`ChannelHostWorkspace.InferFromConfigPath`），因此工作区切换只能靠重启子进程生效，不能靠父进程改根传递。
 - **注册表在首次选定工作区之前无法重扫**：`GatewayChannelRegistry.Reload` 需要可用根，未决议时 `WorkspaceReadyInitializer` 会把它延后到首次选定。
+
+### 8.4 「切换后是否要运行」的判定（2026-11-09 修正）
+
+**缺陷**：`GatewayWorkspaceParticipant.OnAppliedAsync` 只看 `WasRunning`（切换前是否在运行）。最常见的首次路径因此完全失效：未选工作区启动 WebUI → `Gateway` 是 `ProjectOnly` 节、读不到 → Gateway 从未运行 → 在首页选定目录后，即使新工作区写着 `Enabled=true, AutoStart=true` 也不启动，只能去 `/gateway` 手动关一次再开一次。
+
+**修正**：判定收成单一出口 `GatewayAutoStartPolicy`（`Hosting/GatewayAutoStartPolicy.cs`），宿主启动与工作区切换共用：
+
+| 属性 | 含义 |
+|---|---|
+| `IsModuleEnabled` | 模块结算是否启用 `gateway`（能力集禁用则端口不得监听；无模块目录时视为启用） |
+| `IsEnabled` | `IsModuleEnabled && Options.Enabled` |
+| `IsAutoStartRequested` | `IsEnabled && Options.AutoStart` |
+
+切换后的决定：**切换前在运行 → 只要新工作区仍 `IsEnabled` 就继续运行**（保住「用户手动开的、`AutoStart=false`」这种状态）；**切换前没运行 → 只有 `IsAutoStartRequested` 才拉起**。此刻配置已随工作区重载完毕（切换流程在参与者回填前跑过 WorkspaceChange + ConfigChange 两轮），读到的就是新工作区的值。
+
+**同时补手动入口**：`/gateway` 标题栏新增「启动 / 停止」，只影响当前进程、不改磁盘配置。此前没有这个入口，用户要重启一次只能改 `Enabled` 再保存，配置被顺手改掉，下次切换的自动行为也跟着变。
+
 
 

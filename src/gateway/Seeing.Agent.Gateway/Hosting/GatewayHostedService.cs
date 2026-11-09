@@ -1,7 +1,5 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Gateway.Configuration;
 
 namespace Seeing.Agent.Gateway.Hosting;
@@ -13,49 +11,39 @@ namespace Seeing.Agent.Gateway.Hosting;
 /// <b>必须同时受模块结算门控：</b>本服务由 <c>AddHostedService</c> 无条件注册（宿主级基础设施），
 /// 若只看 <see cref="GatewayOptions.Enabled"/>/<c>AutoStart</c>，那么能力集把 <c>gateway</c> 模块禁用时
 /// （例如 <c>BuiltInCapabilitySets.SecureDisabled</c> 含 <c>gateway</c>/<c>comms</c>）端口仍会监听，
-/// 使「能力集 = 声明式安全边界」失效。
+/// 使「能力集 = 声明式安全边界」失效。该门控与工作区切换共用一个判定出口
+/// （<see cref="GatewayAutoStartPolicy"/>）。
 /// </para>
 /// </summary>
 public sealed class GatewayHostedService : IHostedService
 {
-    /// <summary>Gateway 模块 id（与 <c>GatewayModule.Id</c> 一致）。</summary>
-    private const string GatewayModuleId = "gateway";
-
     private readonly IGatewayServer _gatewayServer;
-    private readonly GatewayOptions _options;
-    private readonly IModuleCatalog? _modules;
+    private readonly GatewayAutoStartPolicy _policy;
     private readonly ILogger<GatewayHostedService> _logger;
 
     public GatewayHostedService(
         IGatewayServer gatewayServer,
-        IOptions<GatewayOptions> options,
-        ILogger<GatewayHostedService> logger,
-        IModuleCatalog? modules = null)
+        GatewayAutoStartPolicy policy,
+        ILogger<GatewayHostedService> logger)
     {
         _gatewayServer = gatewayServer;
-        _options = options.Value;
+        _policy = policy;
         _logger = logger;
-        _modules = modules;
     }
 
     /// <inheritdoc />
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         // 模块门控优先：能力集禁用 gateway 时不得监听端口（即便 Options.Enabled=true）。
-        if (_modules is not null && !_modules.IsEnabled(GatewayModuleId))
+        if (!_policy.IsModuleEnabled)
         {
-            _logger.LogInformation(
-                "Gateway 未启动：模块 {ModuleId} 未在本进程结算中启用（Boot/能力集已禁用）",
-                GatewayModuleId);
+            _logger.LogInformation("Gateway 未启动：模块 gateway 未在本进程结算中启用（Boot/能力集已禁用）");
             return;
         }
 
-        if (!_options.Enabled || !_options.AutoStart)
+        if (!_policy.IsAutoStartRequested)
         {
-            _logger.LogDebug(
-                "Gateway 自动启动已跳过（Enabled={Enabled}, AutoStart={AutoStart}）",
-                _options.Enabled,
-                _options.AutoStart);
+            _logger.LogDebug("Gateway 自动启动已跳过（Enabled/AutoStart 不满足或模块未启用）");
             return;
         }
 
