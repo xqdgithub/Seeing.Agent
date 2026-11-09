@@ -24,7 +24,7 @@
 | IBackgroundTaskManager | 后台任务管理 | 合规（Manager） | **保留** |
 | IBackgroundTaskProgress | 后台任务进度 | 合规（Progress） | **保留** |
 | ICommand | 命令契约（Commands/ICommand.cs:203） | 无后缀 | **保留**（进 Abstractions Commands/） |
-| ICommandDiscoveryInitializer | 命令发现初始化（CommandSystemOptions.cs:36） | Initializer 不在 §5.1 | **审查中**（建议保留；命名规范补充 Initializer=初始化器后缀） |
+| ICommandDiscoveryInitializer | 命令发现初始化（原 CommandSystemOptions.cs:36） | Initializer 不在 §5.1 | **已删除**（2026-11-09：零消费者；随 `AddCommandSystem`/`CommandSystemOptions` 一并移除，消除与 Hosting `InitializeCommands` 的同名重载误绑隐患） |
 | ICommandRegistry | 命令注册表 | 合规（Registry） | **保留**（进 Abstractions Commands/） |
 | ICommandService | 命令服务 | 合规（Service） | **保留** |
 | IComponentLoader | 组件加载器 | 合规（Loader） | **保留**（§6.5 Type 开放化：枚举 → string） |
@@ -203,7 +203,7 @@
 | 删除 | 5 | IAgent、IAgentConfigManager、IAgentExecutionRouter、IAgentManager、ITodoManager |
 | 重新设计 | 1 | IExtension（§7.1 拆分） |
 | 改名 | 1 | ISessionTitleEnsuring → ISessionTitleService（建议） |
-| 审查中 | 7 | IAgentGenerator / IAgentLoopScheduler / ICommandDiscoveryInitializer / IExecutionPipeline（主库 4，待命名规范补充）+ IEvaluateMemoryAsync（Memory，低优先）；另 ISessionEventBus/ITaskEventProjector/IMetadataStore/IToolPermissionPolicy/ISkill(实为 SkillInfo) 经核对**有消费方或纯数据，直接保留** |
+| 审查中 | 6 | IAgentGenerator / IAgentLoopScheduler / IExecutionPipeline（主库 3，待命名规范补充）+ IEvaluateMemoryAsync（Memory，低优先）；另 ISessionEventBus/ITaskEventProjector/IMetadataStore/IToolPermissionPolicy/ISkill(实为 SkillInfo) 经核对**有消费方或纯数据，直接保留**。ICommandDiscoveryInitializer 已于 2026-11-09 删除 |
 | 合计 | 135 | |
 
 **Phase 2 实施时按此表处置；「审查中」项待命名规范修订（§5.1 补充 Generator/Scheduler/Initializer/Pipeline 后缀）后定案。**

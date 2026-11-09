@@ -4,6 +4,7 @@ using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Gateway.Channels;
+using Seeing.Agent.Hosting;
 using Seeing.Agent.TokenBudget.Extensions;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Agent.WebUI.State;

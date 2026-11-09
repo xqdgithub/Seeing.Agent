@@ -229,77 +229,17 @@ namespace Seeing.Agent.Core.Extensions
         }
 
         /// <summary>
-        /// 注册命令系统
-        /// </summary>
-        public static IServiceCollection AddCommandSystem(
-            this IServiceCollection services,
-            Action<CommandSystemOptions>? configure = null)
-        {
-            // 配置选项
-            var options = new CommandSystemOptions();
-            configure?.Invoke(options);
-
-            // 注册命令注册表
-            services.AddSingleton<ICommandRegistry, CommandRegistry>();
-
-            // 注册命令发现器（具体类 + Abstractions 端口）
-            services.AddSingleton<CommandDiscovery>();
-            services.AddSingleton<ICommandDiscovery>(sp => sp.GetRequiredService<CommandDiscovery>());
-
-            // 如果配置了自动发现，从指定程序集发现命令
-            if (options.DiscoveryAssemblies != null && options.DiscoveryAssemblies.Count > 0)
-            {
-                services.AddSingleton<ICommandDiscoveryInitializer>(sp =>
-                {
-                    var registry = sp.GetRequiredService<ICommandRegistry>();
-                    var discovery = sp.GetRequiredService<CommandDiscovery>();
-                    var logger = sp.GetService<ILogger<ICommandDiscoveryInitializer>>();
-
-                    return new CommandDiscoveryInitializer(
-                        registry,
-                        discovery,
-                        options.DiscoveryAssemblies,
-                        sp,
-                        logger);
-                });
-            }
-
-            return services;
-        }
-
-        /// <summary>
-        /// 注册命令类型（手动方式）
+        /// 注册命令类型（手动方式）。
+        /// <para>
+        /// 登记的 <see cref="ICommand"/> 由宿主 <c>InitializeCommands</c> 经
+        /// <c>GetServices&lt;ICommand&gt;()</c> 统一扫描并注册进命令注册表，是有效的扩展入口。
+        /// </para>
         /// </summary>
         public static IServiceCollection AddCommand<TCommand>(
             this IServiceCollection services)
             where TCommand : class, ICommand
         {
             services.AddSingleton<TCommand>();
-            return services;
-        }
-
-        /// <summary>
-        /// 初始化命令系统（在服务提供者构建后调用）
-        /// </summary>
-        public static IServiceProvider InitializeCommands(
-            this IServiceProvider services,
-            IEnumerable<ICommand>? additionalCommands = null)
-        {
-            var registry = services.GetRequiredService<ICommandRegistry>();
-
-            // 注册手动添加的命令
-            if (additionalCommands != null)
-            {
-                registry.RegisterAll(additionalCommands);
-            }
-
-            // 执行自动发现初始化
-            var initializer = services.GetService<ICommandDiscoveryInitializer>();
-            if (initializer != null)
-            {
-                initializer.Initialize();
-            }
-
             return services;
         }
 
