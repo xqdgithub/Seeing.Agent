@@ -333,6 +333,154 @@ public class SessionGroupManagerTests
         coldResult.Select(s => s.Id).Should().Equal(child.Id);
     }
 
+    /// <summary>
+    /// 回归（成员丢失根因）：磁盘旧快照（members 更少、version 更低）不得覆盖内存活组。
+    /// <para>
+    /// 真实场景：写回装饰器读前 flush 有界，超时后「退化为读取旧值」；旧快照经
+    /// <c>ListChildrenAsync</c> / <c>GetGroupForSessionAsync</c> 冷兜底回填缓存，
+    /// 若无条件覆盖，随后任意写（Touch/Save）就把丢成员的快照落盘 →
+    /// 侧栏子会话显示「来源已删除」、切换 active 抛「is not a member of group」。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task CacheGroup_StaleDiskSnapshot_ShouldNotOverwriteLiveGroup()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot();
+
+        // 内存活组：锚点 + 1 个子会话（version = 2）
+        var child = await h.Manager.CreateChildAsync(
+            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
+
+        var live = await h.Manager.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        live!.Members.Should().HaveCount(2);
+
+        // 构造磁盘旧快照：仅锚点、版本回退
+        var stale = live.Clone();
+        stale.Members.RemoveAll(m => m.SessionId == child.Id);
+        stale.Version = live.Version - 1;
+        await h.GroupStore.SaveAsync(stale, TestContext.Current.CancellationToken);
+
+        // 触发冷兜底路径（内存命中的父会话不应再读盘，但即便读到也必须丢弃旧快照）
+        await h.Manager.ListChildrenAsync(root.Id, TestContext.Current.CancellationToken);
+        var after = await h.Manager.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+
+        after!.Members.Should().HaveCount(2, "旧磁盘快照不得覆盖内存活组");
+        after.Members.Should().Contain(m => m.SessionId == child.Id);
+
+        // 子会话仍可切换为 active（不再抛 is not a member of group）
+        await h.Manager.SetActiveAsync(after.Id, child.Id, TestContext.Current.CancellationToken);
+        var switched = await h.Manager.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        switched!.ActiveSessionId.Should().Be(child.Id);
+    }
+
+    /// <summary>同版本快照允许覆盖（内容等价，且能补齐索引）。</summary>
+    [Fact]
+    public async Task CacheGroup_SameVersion_ShouldBeAccepted()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot();
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+
+        var sameVersion = group.Clone();
+        await h.GroupStore.SaveAsync(sameVersion, TestContext.Current.CancellationToken);
+
+        var reloaded = await h.Manager.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        reloaded!.Version.Should().Be(group.Version);
+    }
+
+    /// <summary>
+    /// ListChildrenAsync 快路径：父会话已在内存索引中时直接定位所属组，
+    /// 不再全表扫描 + 逐组加锁（性能回归保护）。
+    /// </summary>
+    [Fact]
+    public async Task ListChildrenAsync_KnownParent_ShouldNotScanAllGroups()
+    {
+        using var h = new SessionGroupTestHarness();
+
+        // 先造若干无关组，放大「全表扫描」的代价
+        for (var i = 0; i < 5; i++)
+        {
+            var noise = h.CreateRoot();
+            await h.Manager.EnsureForSessionAsync(noise.Id, TestContext.Current.CancellationToken);
+        }
+
+        var root = h.CreateRoot();
+        var child = await h.Manager.CreateChildAsync(
+            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
+
+        var children = await h.Manager.ListChildrenAsync(root.Id, TestContext.Current.CancellationToken);
+
+        children.Select(s => s.Id).Should().Equal(child.Id);
+    }
+
+    /// <summary>冷启动（内存完全未见过父会话）仍能经存储反查拿到子会话。</summary>
+    [Fact]
+    public async Task ListChildrenAsync_UnknownParent_ShouldFallBackToStore()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot();
+        var child = await h.Manager.CreateChildAsync(
+            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
+
+        // 全新管理器：内存索引为空，只能靠存储
+        var cold = h.NewColdManager();
+        var children = await cold.ListChildrenAsync(root.Id, TestContext.Current.CancellationToken);
+
+        children.Select(s => s.Id).Should().Equal(child.Id);
+    }
+
+    /// <summary>
+    /// SetActiveAsync 的失败契约：会话不在组内时抛 <see cref="InvalidOperationException"/>。
+    /// <para>UI 侧据此回滚（见会话页 OnTileClick 的 try/catch），管理器不吞异常。</para>
+    /// </summary>
+    [Fact]
+    public async Task SetActiveAsync_NonMember_ShouldThrowAndKeepState()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot();
+        var group = await h.Manager.EnsureForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        var outsider = h.CreatePlainSession();
+
+        var act = () => h.Manager.SetActiveAsync(
+            group.Id, outsider.Id, TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+
+        var unchanged = await h.Manager.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        unchanged!.ActiveSessionId.Should().Be(root.Id);
+    }
+
+    /// <summary>组不存在时同样抛 <see cref="InvalidOperationException"/>（而非静默失败）。</summary>
+    [Fact]
+    public async Task SetActiveAsync_MissingGroup_ShouldThrow()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot();
+
+        var act = () => h.Manager.SetActiveAsync(
+            "grp_not_exists", root.Id, TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    /// <summary>正常成员切换生效（重复调用亦不抛）。</summary>
+    [Fact]
+    public async Task SetActiveAsync_Member_ShouldSucceedAndBeRepeatable()
+    {
+        using var h = new SessionGroupTestHarness();
+        var root = h.CreateRoot();
+        var child = await h.Manager.CreateChildAsync(
+            root.Id, "task", "子任务", Array.Empty<SessionPermissionRule>(), null, TestContext.Current.CancellationToken);
+        var group = await h.Manager.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+
+        await h.Manager.SetActiveAsync(group!.Id, child.Id, TestContext.Current.CancellationToken);
+        await h.Manager.SetActiveAsync(group.Id, child.Id, TestContext.Current.CancellationToken);
+
+        var after = await h.Manager.GetGroupForSessionAsync(root.Id, TestContext.Current.CancellationToken);
+        after!.ActiveSessionId.Should().Be(child.Id);
+    }
+
     [Fact]
     public async Task ListAnchorsAsync_ShouldMaterializeGroupsForUngroupedSessions()
     {

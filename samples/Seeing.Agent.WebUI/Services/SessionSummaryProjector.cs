@@ -29,6 +29,10 @@ public static class SessionSummaryProjector
     /// <param name="relation">在组内的关系角色。</param>
     /// <param name="isAnchor">是否为锚点（无来源）。</param>
     /// <param name="successorTitle">交接后继标题（交接前任的来源行取它）。</param>
+    /// <param name="sourceLinkKnown">
+    /// 是否确实存在来源链接（父/后继会话 ID 非空）。默认 <c>true</c>。
+    /// 组关系缺失导致父 ID 解析不出来时应传 <c>false</c>，此时来源行才显示「来源已删除」。
+    /// </param>
     public static SessionSummarySnapshot Build(
         SessionData? session,
         bool isExecuting,
@@ -36,7 +40,8 @@ public static class SessionSummaryProjector
         string? parentTitle,
         SessionRelation relation,
         bool isAnchor,
-        string? successorTitle)
+        string? successorTitle,
+        bool sourceLinkKnown = true)
     {
         var stateKind = SessionSummaryView.Classify(isExecuting, status);
 
@@ -85,7 +90,7 @@ public static class SessionSummaryProjector
             stateKind,
             BuildPreview(lastAssistant, firstRunningToolName, runningTasks),
             BuildActionLine(isExecuting, stateKind, firstRunningToolName, runningTasks),
-            BuildSourceLine(parentTitle, relation, isAnchor, successorTitle),
+            BuildSourceLine(parentTitle, relation, isAnchor, successorTitle, sourceLinkKnown),
             BuildStatusBarClass(isExecuting, status));
     }
 
@@ -146,11 +151,17 @@ public static class SessionSummaryProjector
     }
 
     /// <summary>来源行：锚点无来源；交接前任取后继标题；其余取父会话标题。</summary>
+    /// <param name="parentTitle">父会话标题（可为空：内存未命中）。</param>
+    /// <param name="relation">关系角色。</param>
+    /// <param name="isAnchor">是否锚点。</param>
+    /// <param name="successorTitle">交接后继标题。</param>
+    /// <param name="sourceLinkKnown">是否确实存在来源链接（见 <see cref="Build"/> 参数说明）。</param>
     private static string BuildSourceLine(
         string? parentTitle,
         SessionRelation relation,
         bool isAnchor,
-        string? successorTitle)
+        string? successorTitle,
+        bool sourceLinkKnown)
     {
         if (isAnchor)
             return string.Empty;
@@ -163,7 +174,7 @@ public static class SessionSummaryProjector
         };
 
         var otherTitle = source == RelationshipSource.HandoffTo ? successorTitle : parentTitle;
-        return SessionSummaryView.SourceLine(source, otherTitle);
+        return SessionSummaryView.SourceLine(source, otherTitle, sourceLinkKnown);
     }
 
     /// <summary>左侧状态条 CSS 类（颜色随代理状态）。</summary>

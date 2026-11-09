@@ -65,12 +65,17 @@ public sealed class SessionLoadState
         return true;
     }
 
-    /// <summary>装载失败：退出加载态，但不记录为已装载（下次参数变更会重试）。</summary>
+    /// <summary>
+    /// 装载失败：退出加载态，但不记录为已装载（下次参数变更会重试）。
+    /// <para>
+    /// <b>幂等收敛：</b>无论传入的会话是否仍是当前目标，都必须退出加载态。
+    /// 快速连点/组事件回推可能让 <see cref="Begin"/> 交错，此时迟到失败若被忽略，
+    /// <see cref="IsLoading"/> 会永久为 true，而 <see cref="ShowSkeleton"/> 恒等于它，
+    /// 表现为骨架常驻、页面再也刷不出来。
+    /// </para>
+    /// </summary>
     public void Fail(string? sessionId)
     {
-        if (!string.Equals(sessionId, _targetSessionId, StringComparison.Ordinal))
-            return;
-
         _targetSessionId = null;
     }
 }

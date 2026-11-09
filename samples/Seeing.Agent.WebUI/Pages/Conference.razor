@@ -165,11 +165,16 @@
     }
 
     .conference-side-area {
+        /* 与 .session-side-area 同一套约束：定宽 + 允许内部省略 + 横向裁掉，
+           否则卡片内 nowrap 文本会把侧栏顶宽，页面出现横向滚动条。 */
+        flex: 0 0 320px;
         width: 320px;
-        min-width: 280px;
+        min-width: 0;
+        max-width: 320px;
         display: flex;
         flex-direction: column;
         gap: 8px;
+        overflow-x: hidden;
         overflow-y: auto;
         border-left: 1px solid var(--color-border);
         padding-left: 8px;
@@ -180,6 +185,7 @@
            避免固定 200px 时预览正文（flex:1）撑开造成卡片中间大片空白。 */
         flex: 0 0 auto;
         min-height: 0;
+        min-width: 0;
     }
 </style>
 
@@ -370,14 +376,40 @@
 
     private async Task OnTileClick(string sessionId)
     {
+        if (string.IsNullOrEmpty(sessionId)
+            || string.Equals(sessionId, _activeSessionId, StringComparison.Ordinal))
+            return;
+
+        var previousActive = _activeSessionId;
+
         _activeSessionId = sessionId;
         RebuildSidebar();
         if (_currentGroup is not null)
             _relationModel = BuildRelationModel(_currentGroup);
-        var groupId = _registry?.GroupId;
-        if (!string.IsNullOrEmpty(groupId))
-            await GroupManager.SetActiveAsync(groupId, sessionId);
         await InvokeAsync(StateHasChanged);
+
+        var groupId = _registry?.GroupId;
+        if (string.IsNullOrEmpty(groupId))
+            return;
+
+        // 组关系损坏时切换必然失败：回滚乐观更新，避免大屏与侧栏状态分叉
+        try
+        {
+            await GroupManager.SetActiveAsync(groupId, sessionId);
+            return;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException)
+        {
+            // InvalidOperationException：组不存在 / 会话不在组内（数据不一致）
+            // IOException：落盘失败。两者都不应让异常冒泡打断渲染。
+        }
+
+        _activeSessionId = previousActive;
+        RebuildSidebar();
+        if (_currentGroup is not null)
+            _relationModel = BuildRelationModel(_currentGroup);
+        await InvokeAsync(StateHasChanged);
+        MessageService.Warning("该会话已不属于当前会话组，无法切换。请刷新页面重试。");
     }
 
     private void GoToSession()

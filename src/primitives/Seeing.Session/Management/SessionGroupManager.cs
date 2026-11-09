@@ -19,6 +19,8 @@ namespace Seeing.Session.Management
         private readonly SessionForker _forker;
 
         private readonly ConcurrentDictionary<string, SessionGroup> _cache = new();
+        /// <summary>组缓存复合迁移（版本比较 + 成员索引回填）的串行门。</summary>
+        private readonly object _cacheGate = new();
         private readonly ConcurrentDictionary<string, string> _sessionToGroup = new();
         // 会话 → 父会话的内存索引（关系权威仍是 SessionGroup；此处仅为高频只读路径提供同步快照）
         private readonly ConcurrentDictionary<string, string> _sessionParents = new();
@@ -395,12 +397,24 @@ namespace Seeing.Session.Management
         /// <inheritdoc/>
         public async Task<IReadOnlyList<SessionData>> ListChildrenAsync(string parentId, CancellationToken ct = default)
         {
-            var childIds = new List<string>();
-            foreach (var groupId in _cache.Keys.ToList())
-                childIds.AddRange(await SelectChildIdsLockedAsync(groupId, parentId, ct).ConfigureAwait(false));
+            if (string.IsNullOrEmpty(parentId))
+                return Array.Empty<SessionData>();
 
-            if (childIds.Count == 0)
+            var childIds = new List<string>();
+
+            // 快路径：内存索引直接定位所属组，只对「这一个组」加锁。
+            // _sessionToGroup 由 CacheGroup/AddMember 在写路径维护，是权威映射的同步镜像；
+            // 原来「遍历全部组并逐个加锁试探父会话」会让每次调用付出 O(组数) 次锁获取，
+            // 而绝大多数调用既不是冷启动也不跨组。
+            if (_sessionToGroup.TryGetValue(parentId, out var knownGroupId))
             {
+                childIds.AddRange(await SelectChildIdsLockedAsync(knownGroupId, parentId, ct).ConfigureAwait(false));
+            }
+            else
+            {
+                // 慢路径：内存完全没见过该父会话（冷启动 / 刚切工作区）才反查存储一次。
+                // 内存活组已是权威，再拿磁盘快照回填会引入「旧快照覆盖活组」的风险
+                // （写回装饰器读前 flush 有界、超时后会退化为读旧值）。
                 var found = await _store.FindBySessionAsync(parentId).ConfigureAwait(false);
                 if (found != null)
                 {
@@ -1195,13 +1209,36 @@ namespace Seeing.Session.Management
             }
         }
 
+        /// <summary>
+        /// 把组放入内存缓存（含成员反向索引）。
+        /// <para>
+        /// <b>版本保护：</b>磁盘快照可能落后于内存活组——写回装饰器的读前 flush 是有界且允许超时的，
+        /// 超时后 <see cref="WriteBehindSessionGroupStore"/> 会「退化为读取旧值」并把旧快照交回。
+        /// 若此处无条件覆盖，含子会话的正确活组会被 members 更少的旧快照顶替，随后任意写操作
+        /// （如 <see cref="SetActiveAsync"/> 的 Touch/Save）把旧快照落盘，组成员关系永久丢失
+        /// （表现为侧栏子会话「来源已删除」、切换 active 抛「is not a member of group」）。
+        /// 因此仅接受不早于内存快照的版本；同版本允许覆盖（内容等价，且可补齐索引）。
+        /// </para>
+        /// </summary>
         private void CacheGroup(SessionGroup group)
         {
-            _cache[group.Id] = group;
-            foreach (var member in group.Members)
+            lock (_cacheGate)
             {
-                _sessionToGroup[member.SessionId] = group.Id;
-                IndexParent(member);
+                if (_cache.TryGetValue(group.Id, out var existing)
+                    && group.Version < existing.Version)
+                {
+                    _logger.LogInformation(
+                        "丢弃过期组快照，保留内存活组: GroupId={GroupId}, StaleVersion={Stale} < {Current}, StaleMembers={StaleMembers}, CurrentMembers={CurrentMembers}",
+                        group.Id, group.Version, existing.Version, group.Members.Count, existing.Members.Count);
+                    return;
+                }
+
+                _cache[group.Id] = group;
+                foreach (var member in group.Members)
+                {
+                    _sessionToGroup[member.SessionId] = group.Id;
+                    IndexParent(member);
+                }
             }
         }
 

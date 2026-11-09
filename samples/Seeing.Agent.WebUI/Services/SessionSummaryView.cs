@@ -68,14 +68,30 @@ public static class SessionSummaryView
             : $"{delta.Minutes:00}:{delta.Seconds:00}";
     }
 
-    /// <summary>来源行：无来源 → 空；来源缺失 → "来源已删除"；否则按方向渲染。</summary>
-    public static string SourceLine(RelationshipSource src, string? otherTitle)
+    /// <summary>
+    /// 来源行：无来源 → 空；来源链接缺失 → "来源已删除"；
+    /// 有链接但标题尚未解析 → "来源：…"（不得误判为已删除）；否则按方向渲染。
+    /// </summary>
+    /// <param name="src">来源方向。</param>
+    /// <param name="otherTitle">来源/后继会话标题（可为空）。</param>
+    /// <param name="linkKnown">
+    /// 是否确实存在来源链接（父/后继会话 ID 非空）。
+    /// <para>
+    /// 仅当这一位为 <c>false</c> 才是「来源已删除」。组关系缺失时父 ID 会解析为 null，
+    /// 此时确实是关系已丢失；而标题只是内存缓存未命中，不应据此断言会话被删。
+    /// </para>
+    /// </param>
+    public static string SourceLine(RelationshipSource src, string? otherTitle, bool linkKnown = true)
     {
         if (src == RelationshipSource.None)
             return string.Empty;
 
-        if (string.IsNullOrWhiteSpace(otherTitle))
+        if (!linkKnown)
             return "来源已删除";
+
+        if (string.IsNullOrWhiteSpace(otherTitle))
+            // 链接存在但标题未解析（会话尚未加载进内存）：保持中性文案，避免误报「已删除」
+            return "来源：…";
 
         return src == RelationshipSource.HandoffTo
             ? $"已交接 → {otherTitle}"

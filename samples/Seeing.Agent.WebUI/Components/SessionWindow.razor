@@ -866,6 +866,7 @@
         _currentGroup = group;
         _isAnchor = _groupMember?.IsAnchor ?? false;
         _parentSessionId = _groupMember?.ParentSessionId;
+        ResetParentTitleCache();
 
         _renderedTitle = sessionData.Title;
         RebuildSummarySnapshot();
@@ -879,17 +880,94 @@
 
     /// <summary>
     /// 重算 Summary 卡片投影。仅在状态变化时调用，避免每次渲染都扫全表消息。
+    /// <para>
+    /// 父标题解析：内存缓存未命中时用 <see cref="SessionDirectory.GetAsync"/> 兜底一次（缓存 → 存储），
+    /// 避免把「标题还没加载」误判成「来源已删除」。解析结果按父会话 ID 缓存，
+    /// 同一父会话只付一次存储往返。
+    /// </para>
     /// </summary>
     private void RebuildSummarySnapshot()
     {
+        var parentId = _parentSessionId;
+
+        string? parentTitle = null;
+        if (!string.IsNullOrEmpty(parentId))
+        {
+            parentTitle = SessionManager.Get(parentId)?.Title;
+
+            // 内存未命中但本窗口已解析过：用缓存的兜底标题（null = 已确认取不到）
+            if (string.IsNullOrWhiteSpace(parentTitle)
+                && string.Equals(parentId, _parentTitleResolvedFor, StringComparison.Ordinal))
+                parentTitle = _parentTitleFallback;
+        }
+
         _summarySnapshot = Services.SessionSummaryProjector.Build(
             SessionState.CurrentSession,
             SessionState.IsExecuting,
             SessionState.ExecutionStatus,
-            SessionManager.Get(_parentSessionId ?? string.Empty)?.Title,
+            parentTitle,
             _relation,
             _isAnchor,
-            GetSuccessorTitle());
+            GetSuccessorTitle(),
+            sourceLinkKnown: !string.IsNullOrEmpty(parentId));
+
+        // 未解析过才发起一次（解析结束后无论成败都会写入 _parentTitleResolvedFor）
+        if (!string.IsNullOrEmpty(parentId)
+            && string.IsNullOrWhiteSpace(parentTitle)
+            && !string.Equals(parentId, _parentTitleResolvedFor, StringComparison.Ordinal))
+            _ = ResolveParentTitleAsync(parentId);
+    }
+
+    /// <summary>
+    /// 已尝试解析兜底标题的父会话 ID。
+    /// <para>写入时机 = 解析<b>结束</b>时（成功或失败都写），因此「已登记 ⇒ 不再重试」。
+    /// 不在入口登记，避免异常路径下祖先状态与实际结果不一致。</para>
+    /// </summary>
+    private string? _parentTitleResolvedFor;
+
+    /// <summary>兜底标题缓存（已确认取不到时为 null）。</summary>
+    private string? _parentTitleFallback;
+
+    /// <summary>切换会话时清空父标题兜底缓存，避免上一个会话的标题串台。</summary>
+    private void ResetParentTitleCache()
+    {
+        _parentTitleResolvedFor = null;
+        _parentTitleFallback = null;
+    }
+
+    /// <summary>
+    /// 父标题兜底解析：内存未命中时读一次存储，结束后回填结果并重建投影。
+    /// <para>仅当解析结果仍属于当前会话的父会话时才写入，避免切换会话后串台。</para>
+    /// </summary>
+    private async Task ResolveParentTitleAsync(string parentId)
+    {
+        string? title = null;
+        try
+        {
+            var parent = await SessionDirectory.GetAsync(parentId);
+            title = parent?.Title;
+        }
+        catch (Exception ex)
+        {
+            // 标题解析为展示增强：失败不应阻断卡片渲染
+            Logger.LogDebug(ex, "[SessionWindow] 父会话标题解析失败: ParentSessionId={ParentId}", parentId);
+        }
+
+        // 解析期间可能已切到别的会话：过期结果不得污染当前卡片
+        if (!string.Equals(parentId, _parentSessionId, StringComparison.Ordinal))
+            return;
+
+        _parentTitleResolvedFor = parentId;
+        _parentTitleFallback = title;
+
+        if (string.IsNullOrWhiteSpace(title))
+            return;
+
+        await InvokeAsync(() =>
+        {
+            RebuildSummarySnapshot();
+            StateHasChanged();
+        });
     }
 
     /// <summary>
@@ -922,6 +1000,7 @@
 
         SessionState.SetSession(sessionData);
         _parentSessionId = await GroupManager.GetParentAsync(sessionId);
+        ResetParentTitleCache();
         // 组权威：取当前会话在组内的成员关系（Child=只读子会话）；组缺失时以会话 Kind 兜底
         var group = await GroupManager.GetGroupForSessionAsync(sessionId);
         var member = group?.Members.FirstOrDefault(m =>

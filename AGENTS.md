@@ -40,6 +40,7 @@
 - [语音转写工具 Release Notes](docs/architecture/35-speech-transcription-tool-release-notes.md)
 - [全系统设计审查与整改 Release Notes](docs/architecture/37-system-design-audit-release-notes.md)
 - [心跳重构 Release Notes](docs/architecture/36-heartbeat-rework-release-notes.md)
+- [会话组快照污染与子会话切换 Release Notes](docs/architecture/38-session-group-snapshot-pollution-release-notes.md)
 
 设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
 
@@ -125,6 +126,7 @@ Seeing.Agent/
 | MCP | `src/capabilities/Seeing.Agent.Mcp/` | 能力模块，非 Core |
 | DI 注册入口 | Core `AddSeeingCore` + 各包 `AddSeeingModule*` | `InitializeSeeingAsync` 在 Host.Start 前 |
 | 会话管理 | `src/primitives/Seeing.Session/` | 独立包 |
+| 会话组（关系权威）/ 活跃切换 | 管理器 `src/primitives/Seeing.Session/Management/SessionGroupManager.cs`；接口 `Core/ISessionGroupManager.cs`；写回装饰器 `Persistence/WriteBehindSessionGroupStore.cs` | `CacheGroup` 有**版本保护**（旧磁盘快照不得覆盖内存活组，否则成员丢失 → 子会话显示「来源已删除」、切 active 抛「is not a member of group」）；冷兜底只在内存未见过该父会话时启用；**`SetActiveAsync` 在数据不一致时抛异常是正确契约**（不为 UI 便利扩 `TrySetActiveAsync`），UI 的 `OnTileClick` 自行捕获后回滚并提示；见 `docs/architecture/38` |
 | ACP | `src/capabilities/Seeing.Agent.Acp/` | 能力模块 |
 | 通联 / 出站投递 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Channels/`；能力包 `src/capabilities/Seeing.Agent.Comms/`；适配器 `src/gateway/Seeing.Gateway.QQ` 与 `.WeCom`；工具 `src/capabilities/Seeing.Agent.Tools.ChannelMessaging/` | 目录登记即准入；`ChannelRoute` 出站；调度 Inject 在 Scheduler、出站在 Comms；见 `docs/architecture/17` |
 | 通联目录管理（对话/用户/屏蔽） | 数据 `{项目}/.seeing/comms/directory.json`（工作区未选定时回退 `~/.seeing/comms/directory.json`；`Comms.DirectoryFilePath` 可覆盖）；契约 `IChannelDirectory.AdmitInbound`（准入+登记，返回 `InboundAdmission`）+ 改名/删除/屏蔽/解封；实现 `JsonChannelDirectoryStore`（读前按时间戳增量同步、写前合并磁盘）、`ChannelDirectoryService`；工作区切换 `Directories/CommsWorkspaceParticipant.cs`（枚举 `ICommsWorkspaceScopedState`）；UI `samples/Seeing.Agent.WebUI/Components/Gateway/ChannelDirectoryManager.razor`（挂在 `/gateway` 页） | **目录默认项目级**：随工作区走，避免多项目串场；**入站唯一入口是 `AdmitInbound`**，调用方必须消费 `Accepted`；**唯一的拦截理由是屏蔽**——入站未登记就放行并登记，出站未登记也放行（目录是记录本不是白名单）；退订与频控是用户/运维语义的限制，与「是否登记」无关；**「删除」是弱删除**，「屏蔽」持久拦住双向；`Kind`/`ExternalId` 是平台身份不可编辑；**切换工作区时 store 与服务层各自对齐路径**（store 读写路径都会 `AlignPathLocked`，参与者只做显式重置，保证第一帧不是旧数据）；定时任务从会话绑定自动预填出站对话时会校验目录、不在则标红提示（只提示不阻断）；见 `docs/architecture/17` |

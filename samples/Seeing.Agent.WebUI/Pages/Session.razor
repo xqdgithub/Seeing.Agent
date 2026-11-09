@@ -654,6 +654,8 @@
             || string.Equals(sessionId, _activeSessionId, StringComparison.Ordinal))
             return;
 
+        var previousActive = _activeSessionId;
+
         // 乐观更新：先切本地 active 并立即渲染，再走组管理器的异步切换。
         // SetActiveAsync 涉及组锁与落盘，若等它返回才渲染，用户点击后会盯着旧内容几百毫秒。
         // 本地更新后 SessionWindow 立刻收到新 SessionId，装载状态机随即进入「加载中」并显示骨架。
@@ -664,8 +666,28 @@
         await InvokeAsync(StateHasChanged);
 
         var groupId = _registry?.GroupId;
-        if (!string.IsNullOrEmpty(groupId))
+        if (string.IsNullOrEmpty(groupId))
+            return;
+
+        // 组关系可能已损坏（如磁盘旧快照覆盖活组导致成员丢失）。此时切换必然失败，
+        // 必须回滚乐观更新，否则主区与侧栏状态分叉、骨架常驻。
+        try
+        {
             await GroupManager.SetActiveAsync(groupId, sessionId);
+            return;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException)
+        {
+            // InvalidOperationException：组不存在 / 会话不在组内（数据不一致）
+            // IOException：落盘失败。两者都不应让异常冒泡打断渲染。
+        }
+
+        _activeSessionId = previousActive;
+        RebuildSidebar();
+        if (_currentGroup is not null)
+            _relationModel = BuildRelationModel(_currentGroup);
+        await InvokeAsync(StateHasChanged);
+        MessageService.Warning("该会话已不属于当前会话组，无法切换。请刷新页面重试。");
     }
 
     protected override void OnAfterRender(bool firstRender)

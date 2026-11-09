@@ -136,4 +136,42 @@ public class SessionLoadStateTests
         s.ShowSkeleton.Should().BeFalse();
         s.LoadedSessionId.Should().Be("s1", "失败不能把目标当作已装载");
     }
+
+    /// <summary>
+    /// 回归（骨架常驻）：迟到的失败同样必须退出加载态。
+    /// <para>
+    /// 切换会话时组事件回推会让 <see cref="SessionLoadState.Begin"/> 交错，
+    /// 若 <c>Fail</c> 因「不是当前目标」提前返回，<c>IsLoading</c> 永久为 true，
+    /// 而 <c>ShowSkeleton == IsLoading</c>，表现为骨架永远挂着、页面再也刷不出来。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void FailStaleSession_ShouldStillExitLoading()
+    {
+        var s = new SessionLoadState();
+        s.Begin("s1");
+        s.Complete("s1");
+
+        s.Begin("s2");
+        s.Begin("s3");   // 交错：目标被改成 s3
+        s.Fail("s2");    // s2 的迟到失败
+
+        s.IsLoading.Should().BeFalse("迟到的失败也必须退出加载态，否则骨架常驻");
+        s.ShowSkeleton.Should().BeFalse();
+        s.LoadedSessionId.Should().Be("s1");
+    }
+
+    /// <summary>重复 Fail 不应产生异常或副作用。</summary>
+    [Fact]
+    public void FailTwice_ShouldBeIdempotent()
+    {
+        var s = new SessionLoadState();
+        s.Begin("s1");
+
+        s.Fail("s1");
+        s.Fail("s1");
+
+        s.IsLoading.Should().BeFalse();
+        s.LoadedSessionId.Should().BeNull();
+    }
 }

@@ -86,4 +86,44 @@ public class SessionSummaryProjectorTests
     public void Build_WithParent_ShouldProduceSourceLine()
         => Build(Session(), parentTitle: "父会话", relation: SessionRelation.Child, isAnchor: false)
             .SourceLine.Should().Contain("父会话");
+
+    /// <summary>
+    /// 回归：父标题尚未加载（内存未命中）时不得断言「来源已删除」——
+    /// 曾因组关系丢失 → ParentSessionId 为 null → 误报「来源已删除」。
+    /// </summary>
+    [Fact]
+    public void Build_SourceLinkKnownButTitleMissing_ShouldNotClaimDeleted()
+    {
+        var snapshot = SessionSummaryProjector.Build(
+            Session(), isExecuting: false, status: ExecutionStatus.Completed,
+            parentTitle: null, relation: SessionRelation.Child, isAnchor: false,
+            successorTitle: null, sourceLinkKnown: true);
+
+        snapshot.SourceLine.Should().NotContain("已删除");
+        snapshot.SourceLine.Should().StartWith("来源");
+    }
+
+    /// <summary>回归：来源链接本身缺失（父 ID 为 null）才是「来源已删除」。</summary>
+    [Fact]
+    public void Build_SourceLinkMissing_ShouldReportDeleted()
+    {
+        var snapshot = SessionSummaryProjector.Build(
+            Session(), isExecuting: false, status: ExecutionStatus.Completed,
+            parentTitle: null, relation: SessionRelation.Child, isAnchor: false,
+            successorTitle: null, sourceLinkKnown: false);
+
+        snapshot.SourceLine.Should().Be("来源已删除");
+    }
+
+    /// <summary>非锚点但无来源关系（None）时不渲染来源行，也不应报已删除。</summary>
+    [Fact]
+    public void Build_NonAnchorWithoutRelation_ShouldHaveEmptySourceLine()
+    {
+        var snapshot = SessionSummaryProjector.Build(
+            Session(), isExecuting: false, status: ExecutionStatus.Completed,
+            parentTitle: null, relation: SessionRelation.None, isAnchor: false,
+            successorTitle: null, sourceLinkKnown: false);
+
+        snapshot.SourceLine.Should().BeEmpty();
+    }
 }

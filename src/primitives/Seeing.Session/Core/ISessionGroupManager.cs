@@ -77,6 +77,10 @@ namespace Seeing.Session.Core
         Task RemoveMemberAsync(string groupId, string sessionId, CancellationToken ct = default);
 
         /// <summary>设置组内活跃会话。</summary>
+        /// <remarks>
+        /// 组不存在或会话不在组内时抛 <see cref="InvalidOperationException"/>（数据不一致属于契约违背，
+        /// 不应被静默吞掉）。UI 需要在切换失败时回滚并提示，请自行捕获后处理，见会话页 <c>OnTileClick</c>。
+        /// </remarks>
         Task SetActiveAsync(string groupId, string sessionId, CancellationToken ct = default);
 
         /// <summary>移除会话及其 Child 子树（不取消执行）；必要时提升锚点或删除空组。</summary>

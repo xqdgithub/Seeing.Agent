@@ -42,14 +42,27 @@
 }
 
 .session-side-area {
-    width: var(--session-side-width, 320px);
-    min-width: 280px;
+    /*
+     * 定宽侧栏的尺寸只由 flex-basis 决定：
+     *   flex: 0 0 <宽度>  —— 不参与伸缩（原来是 width + min-width:280px，等价于给内容设了下限，
+     *                        反而没有防护作用）；
+     *   min-width: 0     —— flex 子项默认 min-width:auto，会被内部 min-content 顶宽；
+     *                        显式归零后，超长文本才会走 ellipsis 而不是撑破侧栏。
+     *
+     * 右侧 padding 是给「待审批角标」留位：AntDesign 角标是
+     * position:absolute; right:0; transform:translate(50%,-50%)，**故意**向右溢出半个宽度。
+     * 不给它留位，它就会被 overflow 裁掉或顶出滚动条。
+     */
+    flex: 0 0 var(--session-side-width, 320px);
+    min-width: 0;
+    max-width: 100%;
     display: flex;
     flex-direction: column;
     gap: 8px;
+    overflow-x: hidden;
     overflow-y: auto;
     border-left: 1px solid var(--color-border);
-    padding-left: 8px;
+    padding: 0 12px 0 8px;
     position: relative;
 }
 
@@ -146,10 +159,10 @@
 
 .session-side-area .session-window--summary {
     /* 覆盖全局 .session-window { flex: 1 }（grow=1/basis=0%）：高度自适应内容。
-       不再固定 200px——否则卡内预览正文（.conference-tile-body flex:1）会撑开剩余高度，
-       内容少时在卡片中间留下大片空白。 */
+       不再固定 200px——否则卡内预览正文会撑开剩余高度，内容少时在卡片中间留下大片空白。 */
     flex: 0 0 auto;
     min-height: 0;
+    min-width: 0;
 }
 
 /* 侧栏分区（主线历史 / 派生 / 子会话）：分区内卡片纵向堆叠；
@@ -162,6 +175,13 @@
     --section-accent: var(--color-text-tertiary);
     padding-left: 8px;
     border-left: 2px solid color-mix(in srgb, var(--section-accent) 55%, transparent);
+    /*
+     * 分区是侧栏（flex 列）的子项，默认 min-width:auto 会被卡片内 nowrap 文本的
+     * min-content 顶宽 —— 分区宽过侧栏后，横向滚动条出现在侧栏/页面上。
+     * 加上 min-width:0 + 宽度上限，内部长文本才会真正走 ellipsis 收敛。
+     */
+    min-width: 0;
+    max-width: 100%;
 }
 
 .session-side-section--MainLineHistory,
@@ -212,7 +232,39 @@
 .session-side-entry {
     position: relative;
     display: flex;
+    /*
+     * 不设 overflow: hidden。
+     *
+     * AntDesign 的待审批角标是 position:absolute; right:0; transform:translate(50%,-50%)，
+     * **故意**向右溢出父容器半个宽度（视觉上半圆贴边）。任何 overflow 裁剪都会把它切掉。
+     * 横向溢出由「内容自身收敛」解决（标题 flex:1 + ellipsis，徽标 flex-shrink:0），
+     * 而不是靠在祖先层裁剪掩盖。
+     */
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* 侧栏卡片：撑满条目但不越过它，防止 Badge 包装层（width:100%）叠加后溢出 */
+.session-side-entry .session-window--summary,
+.session-side-entry .session-window--summary .conference-tile {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+/*
+ * 侧栏条目里的 AntDesign Badge 包装层（待审批角标）。
+ * Badge 在 Count>0 时渲染一个 relative 的 inline-block wrapper，模板给的
+ * Style="width:100%" 只声明宽度、不含 min-width:0 —— 长内容仍会把 wrapper 的
+ * min-content 撑破条目，进而让侧栏出现横向滚动条。
+ * 收敛为块级「填满但不越界」的容器；角标本身的溢出不受影响（它不是被裁剪，是定位露出）。
+ */
+.session-side-entry .ant-badge,
+.conference-side-section .ant-badge {
+    display: block;
+    width: 100%;
+    max-width: 100%;
     min-width: 0;
 }
 
@@ -321,9 +373,18 @@
     min-width: 0;
     padding-bottom: var(--space-2);
     border-bottom: 1px solid var(--color-border);
+    /* header 自身不得溢出卡片（卡片 overflow:hidden 只能挡视觉，挡不住宽度撑开） */
+    max-width: 100%;
 }
 
+/*
+ * 标题是 header 里唯一可收缩的项：右侧徽标区已 flex-shrink:0。
+ * 缺 flex:1 / min-width:0 时它按 max-content 参与 space-between 分配 ——
+ * 长标题把整行撑宽，进而撑宽卡片与侧栏 → 侧栏出现横向滚动条。
+ * 这里显式允许收缩并吃掉剩余空间，超出部分走 ellipsis。
+ */
 .conference-tile-title {
+    flex: 1 1 auto;
     min-width: 0;
     font-size: var(--font-size-sm);
     font-weight: 600;
@@ -380,6 +441,19 @@
     align-items: center;
     gap: var(--space-1);
     flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* 卡片头部徽标同样禁止收缩/换行：否则窄侧栏里「执行中」会被逐字压成竖排 */
+.conference-tile-header-right .ant-badge,
+.conference-tile-compact-header .ant-badge {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.conference-tile-header-right .ant-badge-status-text,
+.conference-tile-compact-header .ant-badge-status-text {
+    white-space: nowrap;
 }
 
 /* 执行中：当前动作行 + 已运行时长 */
@@ -417,6 +491,13 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2);
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* 紧凑卡标题同基础卡：唯一可收缩项，必须允许收缩 + 省略，否则撑宽卡片 */
+.conference-tile-compact-header .conference-tile-title {
+    flex: 1 1 auto;
     min-width: 0;
 }
 
@@ -593,6 +674,33 @@
     align-items: center;
     gap: var(--space-2);
     min-width: 0;
+    /* 允许收缩 + 宽度上限：否则左侧一堆 nowrap 子项（标题/徽标/工作目录）按 max-content
+       排布，整条工具栏被顶宽 → 页面出现横向滚动条。 */
+    flex: 1 1 auto;
+    max-width: 100%;
+    /* 徽标/标题各占自身固有宽度，空间不足时由标题承担收缩（标题已 nowrap+ellipsis），
+       避免 flex 把徽标压到 min-content 后中文逐字换行（表现为竖排「主线／执行中／子代理」）。 */
+    flex-wrap: nowrap;
+    overflow: hidden;
+}
+
+/*
+ * 工具栏内徽标的收窄保护。
+ *
+ * AntDesign 的 .ant-badge 只有 display:inline-block、无 flex-shrink 声明，
+ * 作为 flex item 时默认参与收缩；而 .ant-badge-status-text 也没有 white-space 约束，
+ * 中文每个字都是断行机会 —— 一旦左侧横向空间不足，徽标被压到一两个字的宽度，
+ * 文本就逐字竖排（视觉上像「竖着的三个字」）。这里显式禁止收缩与换行。
+ */
+.session-toolbar-left .ant-badge,
+.session-toolbar-right .ant-badge {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.session-toolbar-left .ant-badge-status-text,
+.session-toolbar-right .ant-badge-status-text {
+    white-space: nowrap;
 }
 
 .session-toolbar-title {
