@@ -5,7 +5,10 @@ public enum UiPayloadKind
 {
     Page,
     SettingsCard,
-    Slot
+    Slot,
+
+    /// <summary>会话工作台（可停靠的持久视图，见 <c>WorkbenchContribution</c>）。</summary>
+    Workbench
 }
 
 /// <summary>扩展点可见性作用域。</summary>

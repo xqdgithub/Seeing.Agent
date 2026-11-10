@@ -318,6 +318,9 @@ namespace Seeing.Agent.Core.Extensions
                 sp.GetService<IUiPointCatalog>(),
                 sp.GetService<ILogger<UiContributionCollector>>()));
 
+            // 能力层可用的「可见贡献」查询端口：把 UiVisibility 包成契约，避免能力包重写判定
+            services.AddSeeingUiContributionQuery();
+
             // Shell 配置节（ShellOptions 在 Abstractions；工具能力包由宿主 AddSeeingModule 登记）
             services.GetOrCreateConfigSectionRegistry().Register(
                 new ConfigSectionMeta("Shell", "seeing.json", ConfigScope.Both, typeof(ShellOptions)));

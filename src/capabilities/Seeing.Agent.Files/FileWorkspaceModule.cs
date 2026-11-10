@@ -2,13 +2,18 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Seeing.Agent.Abstractions.Files;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Ui;
+using Seeing.Agent.Abstractions.Ui.Workbench;
 using Seeing.Agent.Files.Hosting;
 using Seeing.Agent.Files.Watching;
+using System.Text.Json;
 
 namespace Seeing.Agent.Files;
 
-/// <summary>文件工作区能力模块（无工具；提供 IFileWorkspaceFactory）。</summary>
-public sealed class FileWorkspaceModule : ISeeingModule
+/// <summary>
+/// 文件工作区能力模块（无工具；提供 <see cref="IFileWorkspaceFactory"/> 与「文件」工作台声明）。
+/// </summary>
+public sealed class FileWorkspaceModule : ISeeingModule, IUiContributor
 {
     /// <inheritdoc />
     public string Id => "files.workspace";
@@ -29,6 +34,65 @@ public sealed class FileWorkspaceModule : ISeeingModule
         services.TryAddSingleton<IFileWorkspaceFactory, FileWorkspaceFactory>();
         services.AddModuleHostedService<FileWatcherHostedService>();
     }
+
+    /// <summary>
+    /// 声明「文件」工作台与「Markdown 预览」工作台。
+    /// <para>
+    /// <b>视图键而不是组件类型</b>：能力包不能引用 <c>samples/Seeing.Agent.WebUI.Files</c>
+    /// 的 Razor 组件；宿主在 <c>WebUiWorkbenchViews</c> 里把这两个键映射到组件。
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<UiContribution> DescribeUi() =>
+    [
+        new WorkbenchContribution
+        {
+            Point = WorkbenchPoints.DockId,
+            Id = "files",
+            Title = "文件",
+            ViewKey = WorkbenchPoints.ViewKeyFor("files"),
+            Icon = "folder",
+            Requires = [Id],
+            Order = 10,
+            DefaultDock = WorkbenchDock.Right,
+            // 35%：两个工作台各占一侧时合计 70%，对话区仍留 30%（50% 会让两侧吃满）
+            Sizing = new WorkbenchSizing(DefaultPercent: 35, MinPx: 380),
+            OpenPayloadSchema = JsonSerializer.SerializeToElement(new
+            {
+                type = "object",
+                properties = new
+                {
+                    path = new { type = "string", description = "要打开的文件：绝对路径，或相对当前工作目录的路径" },
+                    line = new { type = "integer", description = "跳转行号（从 1 开始，可选）" },
+                    column = new { type = "integer", description = "跳转列号（从 1 开始，可选）" }
+                },
+                required = new[] { "path" }
+            }),
+            ProvidedTools = ["open_file", "editor_command", "editor_query", "editor_list_commands"],
+            ContributesContext = true
+        },
+        new WorkbenchContribution
+        {
+            Point = WorkbenchPoints.DockId,
+            Id = "markdown",
+            Title = "Markdown 预览",
+            ViewKey = WorkbenchPoints.ViewKeyFor("markdown"),
+            Icon = "file",
+            Requires = [Id],
+            Order = 20,
+            DefaultDock = WorkbenchDock.Right,
+            Sizing = new WorkbenchSizing(DefaultPercent: 35, MinPx: 360),
+            OpenPayloadSchema = JsonSerializer.SerializeToElement(new
+            {
+                type = "object",
+                properties = new
+                {
+                    path = new { type = "string", description = "要预览的 Markdown 文件路径（相对工作目录或绝对路径）" }
+                },
+                required = new[] { "path" }
+            }),
+            ContributesContext = true
+        }
+    ];
 
     /// <inheritdoc />
     public Task ActivateAsync(IServiceProvider services, CancellationToken cancellationToken = default) => Task.CompletedTask;

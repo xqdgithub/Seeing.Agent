@@ -115,6 +115,7 @@ public static class BuiltInCapabilitySets
         "comms",
         "channel-messaging",
         "llm.systemone.tools",
+        "workbench",
         "workspace.git-exclude",
         ..s_providerModules,
     ];

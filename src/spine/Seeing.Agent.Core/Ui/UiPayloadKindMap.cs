@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Ui;
+using Seeing.Agent.Abstractions.Ui.Workbench;
 
 namespace Seeing.Agent.Core.Ui;
 
@@ -9,7 +10,8 @@ public static class UiPayloadKindMap
     {
         [typeof(PageContribution)] = UiPayloadKind.Page,
         [typeof(SettingsCardContribution)] = UiPayloadKind.SettingsCard,
-        [typeof(SlotContribution)] = UiPayloadKind.Slot
+        [typeof(SlotContribution)] = UiPayloadKind.Slot,
+        [typeof(WorkbenchContribution)] = UiPayloadKind.Workbench
     };
 
     public static bool TryGet(Type contributionType, out UiPayloadKind kind)
