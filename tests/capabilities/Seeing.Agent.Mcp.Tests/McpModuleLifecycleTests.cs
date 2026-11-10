@@ -105,7 +105,8 @@ public class McpModuleLifecycleTests
         page.Route.Should().Be("/mcp");
         page.Title.Should().Be("MCP");
         page.ViewKey.Should().Be("page.mcp");
-        page.Requires.Should().Equal("mcp",
+        // 注意 Equal 的 params 重载：直接写 Equal("mcp", "原因") 会被解析成「期望两个元素」
+        page.Requires.Should().Equal(["mcp"],
             "模块贡献必须带自身归属，否则模块停用后页面仍可见而工具已卸载");
         page.Nav.Should().NotBeNull("MCP 页是侧栏入口");
     }
