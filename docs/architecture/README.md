@@ -2,7 +2,7 @@
 
 > **权威规格：** [模块化架构设计](../superpowers/specs/2026-09-08-modular-architecture-design.md)  
 > **本文档集：** 日常开发落地规范；与规格冲突时以规格为准，并应提 PR 同步两边。  
-> **更新日期：** 2026-10-24（上下文源管道 + 技能单一真相源，见 21）  
+> **更新日期：** 2026-11-10（UI 扩展统一信封，见 40）  
 > **深化说明：** [architecture-docs-deepen-design](../superpowers/specs/2026-09-08-architecture-docs-deepen-design.md)
 
 ## 新人 5 分钟
@@ -53,6 +53,8 @@
 | [35 语音转写工具 Release Notes](35-speech-transcription-tool-release-notes.md) | `transcribe_audio`（独立 `speech.tools` 能力包）、未配模型直接报错、音频读进 MemoryStream、不可信内容声明、`filesystem.read` 权限复用、已知边界 |
 | [36 心跳重构 Release Notes](36-heartbeat-rework-release-notes.md) | 执行画像 + `JobsFile.Heartbeat` 槽位、`IHeartbeatService`、保留 id、投递布局、interval 锚点、破坏性清单 |
 | [37 全系统设计审查与整改 Release Notes](37-system-design-audit-release-notes.md) | 路径边界 5→1（含 ACP 符号链接漏洞）、终态组装/能力判定去重、六处「停用无效」、死代码清理、Host Shape 收敛、`Seeing.Files` 新原语、`ExecutionOptions` Configure 陷阱 |
+| [38 会话组快照污染与子会话切换 Release Notes](38-session-group-snapshot-pollution-release-notes.md) | 缓存写回版本保护、冷兜底条件、`SetActiveAsync` 抛异常契约、UI 回滚 |
+| [40 UI 扩展统一架构 Release Notes](40-ui-extension-unified-architecture-release-notes.md) | 6 套机制 → 统一信封、三层分工（契约/Core/宿主）、`UiPoint`/`ViewKey`/`Requires` 归属、声明早于激活、破坏性清单与迁移指引、壳层保留区 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 
@@ -137,8 +139,14 @@ rg ": ITool\b|\[Tool\(" src/spine
 # 能力包内裸 IHostedService 注册（应为零：长驻执行循环须实现 IModuleHostedService）
 rg "AddHostedService<" src/capabilities -g "*.cs"
 
+# UI 扩展信封：旧贡献类型不得回潮（命中应仅为历史注释）
+rg "NavContribution|RouteContribution|MessageRendererContribution|IUiContribution\b|IUiContributionCatalog|ModulePageRouteBinder|ModuleRouteResolver|UiContributionVisibility" src samples -g "*.cs" -g "*.razor"
+
+# UI 契约层不得引 ASP.NET Core（视图解析只在宿主）
+rg "Microsoft\.AspNetCore" src/abstractions/Seeing.Agent.Abstractions/Ui src/spine/Seeing.Agent.Core/Ui
+
 # 新项目勿落在 src 根平铺
 # （src 下应仅有 primitives|abstractions|spine|hosting|capabilities|gateway）
 ```
 
-期望：`Core.csproj` 命中仅 `src/hosting/*`；其余命令无命中（或仅文档注释）。权限契约扫描如有命中，须为历史注释说明而非类型引用。`rg ": ITool\b|\[Tool\(" src/spine` 预期：`[Tool(` 空、`: ITool\b` 仅装饰器/反射基础设施；`rg "AddHostedService<" src/capabilities` 预期：无命中（注册型资源随 Module 生命周期收编，长驻循环改用 `AddModuleHostedService<T>`）。
+期望：`Core.csproj` 命中仅 `src/hosting/*`；其余命令无命中（或仅文档注释）。权限契约扫描如有命中，须为历史注释说明而非类型引用。`rg ": ITool\b|\[Tool\(" src/spine` 预期：`[Tool(` 空、`: ITool\b` 仅装饰器/反射基础设施；`rg "AddHostedService<" src/capabilities` 预期：无命中（注册型资源随 Module 生命周期收编，长驻循环改用 `AddModuleHostedService<T>`）。UI 信封扫描预期：6 处历史注释（`PageContribution` / `UiVisibility` / `SkillsModule` / `SchedulerModule` / `ModuleRouter` / `PromptInput`），类型引用为零；`Microsoft.AspNetCore` 在 `Ui/` 下零命中。

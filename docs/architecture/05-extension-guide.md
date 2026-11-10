@@ -5,11 +5,12 @@
 1. 建目录 `src/capabilities/Seeing.Agent.Tools.Xxx/`（程序集名仍为 `Seeing.Agent.Tools.Xxx`）。  
 2. **只**引用 Abstractions + Tools.Support（及 IO 接口）；可引用**原语层**（如 `Seeing.Session`，先例 `Seeing.Agent.TokenBudget` / `Seeing.Agent.Acp`）；**禁止**引用 Core。  
 3. 实现工具：注入 `IFileSystem` / `ISubprocess` / `IExecutionWorld`，实现 `ITool`。  
-4. 实现 `XxxModule : ISeeingModule`（+ 可选 `IUiContribution`）：  
+4. 实现 `XxxModule : ISeeingModule`（+ 可选 `IUiContributor`，见 §5）：  
    - `Id = "xxx"`；声明 `ProvidedTools`  
    - `ConfigureServices`：`AddSingleton<XxxTool>()` + Options 节登记；**不要** `AddSingleton<ITool, XxxTool>`  
-   - `ActivateAsync(sp, ct)`：`await tm.RegisterToolAsync(sp.GetRequiredService<XxxTool>(), ct)` + UI Register  
-   - `DeactivateAsync`：`UnregisterToolAsync` + UI Unregister  
+   - `ActivateAsync(sp, ct)`：`await tm.RegisterToolAsync(sp.GetRequiredService<XxxTool>(), ct)`  
+   - `DeactivateAsync`：`UnregisterToolAsync`  
+   - 需要 UI 时另实现 `IUiContributor.DescribeUi()`（纯数据；**不要**在 Activate/Deactivate 里注册/注销贡献），见 §5  
 5. Sample `Program.cs`：`AddSeeingModule<XxxModule>(registry)`（在 `AddSeeingCore` **之前**）。  
 6. 若需进命名启动集（`Boot=full` 等）：改 `BuiltInCapabilitySets`（boot SSOT）。内置工作模式 `full` 的模块是 `["*"]`，会自动包含已启动模块，不必把新 id 再写进场景。  
 7. 测试放 `tests/capabilities/Seeing.Agent.Tools.Xxx.Tests/`；补不变量（未启用则 schema 无该工具）。  
@@ -111,16 +112,117 @@
 
 ## 5. WebUI 扩展
 
-| 扩展点 | 类型 |
-|--------|------|
-| 侧栏 | `NavContribution`（`Group`/`Order`/`ComponentType`） |
-| 路由（可无侧栏） | `RouteContribution` |
-| 设置页签 | `SettingsCardContribution` |
-| 会话插槽 | `SlotContribution` |
-| 消息渲染 | `MessageRendererContribution` |
+机制全貌见 [`40 UI 扩展统一架构`](40-ui-extension-unified-architecture-release-notes.md)；规范条款见 [`04 §11 E1–E7`](04-development-standards.md)。
 
-Activate：`IUiContributionRegistry.Register`；Deactivate：`Unregister(moduleId)`。  
-**禁止**给模块页加 `@page`；壳页也不要加（仅 `_Host.cshtml`）。
+三层分工：**契约**（`Abstractions/Ui/`，零实现）→ **脊柱**（`Core/Ui/`，注册表 / 可见性 / 路由匹配）→ **宿主**（`WebUI/Shell/`，扩展点声明 + 视图表）。
+
+| 想扩展什么 | 载荷 | 挂在哪个点 |
+|---|---|---|
+| 侧栏入口 / 页面 | `PageContribution`（`Nav != null`） | `shell.page` |
+| 只有 URL 可达的页面（详情页 / 创建页） | `PageContribution`（`Nav = null`） | `shell.page` |
+| 设置页页签 | `SettingsCardContribution` | `shell.settings.card` |
+| 会话窗口插槽 | `SlotContribution` | `session.prompt` / `session.toolbar.actions` / `session.input.toolbar` / `session.file.panel` |
+
+**禁止**：给模块页加 `@page`（`Pages/_Host.cshtml` 是唯一保留者）；在 `Activate/Deactivate` 里注册/注销贡献；在契约层放 `Type` / `RenderFragment`。
+
+### 5.1 新增页面
+
+1. **写组件**（`samples/Seeing.Agent.WebUI/Pages/` 或 `Components/`），**不加 `@page`**。路由参数用 `[Parameter]`，且**参数名逐字等于**模板占位名：
+
+   ```razor
+   @* Route = "/xxx/{ItemId}" ⇒ 参数名必须是 ItemId *@
+   [Parameter] public string ItemId { get; set; } = "";
+   ```
+
+2. **模块声明**（能力包侧，只引用 Abstractions）：
+
+   ```csharp
+   public sealed class XxxModule : ISeeingModule, IUiContributor
+   {
+       public IReadOnlyList<UiContribution> DescribeUi() =>
+       [
+           new PageContribution
+           {
+               Point = "shell.page",
+               Id = "page.xxx",
+               Route = "/xxx",
+               Title = "某某",
+               ViewKey = "page.xxx",
+               Requires = [Id],        // 归属自身模块
+               Order = 70,
+               Nav = new NavPlacement
+               {
+                   Icon = "star",                  // 中性 token，宿主经 WebUiIconMap 翻译
+                   Group = NavGroups.Workspace,    // 控制中心 / 工作区 / 设置
+                   GroupIcon = NavGroups.WorkspaceIcon,
+                   GroupOrder = 20,
+               },
+           },
+       ];
+   }
+   ```
+
+   详情页 / 创建页**不写 `Nav`**（`null` = 纯路由）。不写 `Nav` 还有一个效果：`SidebarProjectionService` 的前缀规则不会再让它出现在侧栏。
+
+3. **宿主登记视图**（`samples/Seeing.Agent.WebUI/Shell/WebUiViews.cs`）：
+
+   ```csharp
+   resolver.Register("page.xxx", typeof(XxxPage));
+   ```
+
+   漏这一步会在启动日志里出现 `ValidatorRejected`，页面直链会落到「未启用」占位。
+
+4. **跑守门测试**：`PageChannelMigrationTests.MigratedRouteSet_ShouldCoverAllLegacyRoutes` 的期望表要同步加路由；`EveryPageViewKey_ShouldBeResolvable` 会自动覆盖新 `ViewKey`。
+
+**想挂壳层页面**（不属于任何模块、切 Boot 后仍须可达）：不要做成模块贡献，改在 `Shell/WebUiHostContributor.cs` 加一条 `Requires = []` 的 `PageContribution`，并在 `WebUiViews` 登记。
+
+### 5.2 新增设置卡
+
+1. 写卡片组件（`Components/Settings/`），不要加 `@page`、不要自带路由。
+2. 声明：
+
+   ```csharp
+   new SettingsCardContribution
+   {
+       Point = "shell.settings.card",
+       Id = "settings.xxx",
+       Title = "某某",
+       ViewKey = "settings.xxx",
+       Requires = ["xxx"],     // 指向拥有该卡片的模块
+       Order = 50,             // 决定页签顺序（注册表全局按 OwnerId → 扩展点 → Order → Id 排序）
+   }
+   ```
+
+   `Requires` **不要留空**：进程级设置卡会在模块停用后仍显示，点进去全是失效控件。
+
+3. 在 `WebUiViews.RegisterBuiltIns` 登记 `"settings.xxx"`。
+4. 页签 key 由 `Settings.razor` 用 `{OwnerId}.{Id}` 拼，无需自己处理唯一性。
+
+> 由**宿主代模块声明**的卡片（如 `settings.scheduler` / `settings.memory`）写在 `WebUiHostContributor.Card(...)` 里，`OwnerId` 仍是 `host.webui`，归属写进 `Requires`。适用条件：组件住在 WebUI、但业务归属是某个能力模块。
+
+### 5.3 新增插槽
+
+插槽 = 宿主预先声明的「会话窗口上的一个位置」。**新增一个插槽点需要改宿主**（`Shell/WebUiPoints.cs` 加 `UiPoint`，`All` 里登记，并在挂载组件处放 `<SlotHost SlotName="..."/>` + 槽名到点 id 的映射）。若已有合适的点，模块侧只需：
+
+```csharp
+new SlotContribution
+{
+    Point = "session.prompt",
+    Id = "slot.xxx",
+    ViewKey = "slot.xxx",
+    Requires = [Id],
+    DisplayName = "某某",
+}
+```
+
+要点：
+- 点的 `Scope` 是 `Session` 时，可见性 = 模块启用 **AND** 会话工作模式门集（`UiScenarioGate`）。`null` 门集不收敛，空集全隐藏。
+- `SlotHost` 已把每条贡献包在 `ErrorBoundary` 里；自己写挂载点时也要包（渲染期未捕获异常会终止整个 circuit）。
+- 四点映射（旧槽名 → 扩展点 id）见 `SlotHost.razor` 的 `s_slotPoints` 表；未登记的槽名渲染空容器，不抛。
+
+### 5.4 别做成贡献的东西
+
+侧栏「聊天」「审批中心」、侧栏底部工具条、首页 dashboard 卡片、斜杠命令、通知横幅、Token 预算状态栏、会议页侧栏分区——理由逐条记在 [`40 §5.1`](40-ui-extension-unified-architecture-release-notes.md)。想加这类入口时先读那张表，别把信封撑成万能基类。
 
 ## 6. 执行器扩展（ACP 等）
 

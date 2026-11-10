@@ -58,6 +58,21 @@
 | `Seeing.Provider.SiliconFlow`（`plugs/providers/`） | `provider.siliconflow` | SiliconFlow 网关 Provider；`DependsOn: llm.openai` |
 | `Seeing.Provider.TypeSafeApi`（`plugs/providers/`） | `provider.typesafe-api` | TypeSafe 端点 Provider（id `typesafe-api`）；`DependsOn: llm.typesafe`；配置 `~/.seeing/providers/typesafe-api.json` |
 
+**UI 扩展（`IUiContributor`）**：下列 8 个模块实现 `IUiContributor.DescribeUi()`，是侧栏/页面的声明者；其余模块无 UI 贡献。声明在结算后由 `UiContributionCollector` 统一收集（不随 Activate/Deactivate 增删），可见性由 `UiVisibility` 判定。详见 [`40`](40-ui-extension-unified-architecture-release-notes.md)。
+
+| 模块 id | 声明的路由（`Route`） | 侧栏 |
+|---------|---------------------|------|
+| `basic` | `/tools` | ✅ 工作区 |
+| `skills` | `/skills`、`/skills/create`、`/skills/{SkillName}` | 仅 `/skills` |
+| `mcp` | `/mcp` | ✅ 工作区 |
+| `scheduler` | `/cron-jobs`、`/cron-jobs/{JobId}`、`/heartbeat` | 仅 `/cron-jobs`、`/heartbeat` |
+| `memory` | `/memory`、`/memory/graph`、`/memory/detail/{*FilePath}` | 仅 `/memory` |
+| `acp` | `/acp` | ✅ 工作区 |
+| `reflection` | `/reflection` | ✅ 工作区 |
+| `gateway` | `/gateway`、`/gateway-clients` | 两条均 ✅ 设置 |
+
+> **代模块声明**：`settings.scheduler` / `settings.memory` 两张设置卡与 `session.file.panel` 插槽由宿主 `WebUiHostContributor` / `FilePanelUiContribution` 声明，但 `Requires` 分别指向 `scheduler` / `memory` / `files.workspace`——归属仍是模块，因此模块停用后它们会消失。壳层自己的 13 条页面是 `Requires = []`（进程级）。
+
 `subagent` 为 Hosting 级能力（Task 工具）；内置场景字符串里可出现该 id。
 
 **Provider 插件 vs 协议模块：** `llm.openai` / `llm.anthropic` 只登记 `ILlmClientFactory`；`provider.*` 在 Activate 时注册 `ILlmProvider` 到 `IProviderRegistry`。
@@ -135,11 +150,21 @@ Sample **自己** `ProjectReference` 能力包；Shape 包不代引用。
 
 ## 8. WebUI 贡献
 
-- `IUiContribution` / `IUiContributionRegistry`：Nav / SettingsCard / Slot / MessageRenderer / **RouteContribution**  
-- `NavContribution.Group`：控制中心 / 工作区 / 设置  
-- `ModuleRouter`：路由表**只**来自 registry；未启用 → `NotEnabledFragment`  
-- 壳页无 `@page`（仅 `_Host.cshtml` 保留宿主页）  
-- 页面可见性 **只读** `IModuleCatalog` + Scenario
+> 完整机制见 [`40 UI 扩展统一架构 Release Notes`](40-ui-extension-unified-architecture-release-notes.md)，新增扩展的步骤见 [`05 §5`](05-extension-guide.md)。
+
+| 层 | 位置 | 职责 |
+|----|------|------|
+| 契约 | `src/abstractions/Seeing.Agent.Abstractions/Ui/` | `UiPoint` / `UiContribution` 家族 / 端口（零实现） |
+| 脊柱 | `src/spine/Seeing.Agent.Core/Ui/` | 注册表、收集器、`UiVisibility`、`UiScenarioGate`、`UiRouteTemplate` |
+| 宿主 | `samples/Seeing.Agent.WebUI/Shell/` | 扩展点声明（`WebUiPoints`）、视图表（`WebUiViews`）、壳层贡献（`WebUiHostContributor`）、校验器 |
+
+- 模块实现 `IUiContributor`（`DescribeUi()` 纯数据），宿主实现 `IUiHostContributor`（`OwnerId` 必须以 `host.` 开头）
+- 三类载荷：`PageContribution`（`Nav == null` 即纯路由）/ `SettingsCardContribution` / `SlotContribution`
+- **归属在 `Requires`**：模块贡献必须写 `[自身 id]`（空则被拒收）；壳层写 `[]`（进程级）
+- **`ViewKey` 而非 `Type`**：能力包不持有宿主组件类型，视图表只在宿主 `WebUiViews` 维护
+- `ModuleRouter`：路由**只**来自注册表；未启用 → `NotEnabledFragment`（带正确标题）
+- 壳页无 `@page`（仅 `Pages/_Host.cshtml` 保留宿主页）
+- 可见性 **只读** `IModuleCatalog` + Scenario，且只有 `UiVisibility` 一份实现
 
 ## 9. 测试布局
 

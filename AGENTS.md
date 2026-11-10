@@ -41,6 +41,7 @@
 - [全系统设计审查与整改 Release Notes](docs/architecture/37-system-design-audit-release-notes.md)
 - [心跳重构 Release Notes](docs/architecture/36-heartbeat-rework-release-notes.md)
 - [会话组快照污染与子会话切换 Release Notes](docs/architecture/38-session-group-snapshot-pollution-release-notes.md)
+- [UI 扩展统一架构 Release Notes](docs/architecture/40-ui-extension-unified-architecture-release-notes.md)
 
 设计规格：`docs/superpowers/specs/2026-09-08-modular-architecture-design.md`。
 
@@ -121,6 +122,8 @@ Seeing.Agent/
 | 文件写入原语 | `src/primitives/Seeing.Files/`（`AtomicFileWrite`） | 唯一「原子替换」实现：进程级按路径锁 + GUID 临时名 + 移动重试 + 复制兜底。**禁止自建 `temp + Move`**；读-改-写周期须自行 `GetLock` 包住。见 `docs/architecture/37` |
 | 路径边界判定 | `src/abstractions/Seeing.Agent.Abstractions/Paths/PathBoundary.cs` | 唯一实现（含符号链接 realpath）。任何「是否在根内」判定都必须调它，禁止内联前缀比较。测试 `PathBoundaryTests` |
 | 会话文件浏览器 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Files/`；能力包 `src/capabilities/Seeing.Agent.Files/`；组件库 `samples/Seeing.Agent.WebUI.Files/`；宿主桥接 `samples/Seeing.Agent.WebUI/Services/AgentFileChangeBridge.cs` | 文件能力只描述磁盘事实，不订阅会话事件；agent 桥接在宿主层；见 `docs/architecture/16` |
+| UI 扩展信封 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Ui/`；脊柱 `src/spine/Seeing.Agent.Core/Ui/`；宿主 `samples/Seeing.Agent.WebUI/Shell/` | 统一信封 `UiContribution`（`Page` / `SettingsCard` / `Slot`）+ 扩展点 `UiPoint` + `ViewKey`；模块实现 `IUiContributor`、宿主实现 `IUiHostContributor`（`OwnerId` 必须 `host.` 前缀）；**`Requires` = 归属模块，空 = 进程级**；声明在结算后收集（模块停用不撤销声明），可见性**只**由 `UiVisibility` 判定；见 `docs/architecture/40` |
+| 侧栏投影与视图表 | `samples/Seeing.Agent.WebUI/Services/SidebarProjectionService.cs`、`samples/Seeing.Agent.WebUI/Shell/WebUiViews.cs`、`samples/Seeing.Agent.WebUI/Services/WebUiIconMap.cs` | 侧栏三条规则（参数化路由剔除 / 更短前缀隐藏子路径 / `GroupOrder` 分组，`0` 排最后）；`ViewKey → 组件类型` 唯一登记处（31 条），漏登记被 `WebUiUiContributionValidator` 收集期拒收；`NavPlacement.Icon` 是中性 token，经 `WebUiIconMap` 翻译 |
 | Hook | `HookManager` 在 `src/spine/Seeing.Agent.Core/Core/Hooks/`；`HookPoints.*` 常量在 `src/primitives/Seeing.Session/Hooks/HookPoints.cs`（原语层） | 用 `HookPoints.*`，禁止魔法字符串 |
 | 权限（授权/审批） | 引擎/Manager/Store 在 `src/spine/Seeing.Agent.Core/Core/Permission/`；契约在 `src/abstractions/Seeing.Agent.Abstractions/Permissions/`；宿主通道 `Hosting.Web`/`Gateway` | `IPermissionAuthorizer` 决策链；在途真相源 `IPermissionRequestManager`；呈现判定 `IPermissionPresentationStore.CanSurface` + 宿主呈现端 `IPermissionPresenter`；见 `docs/architecture/08` |
 | MCP | `src/capabilities/Seeing.Agent.Mcp/` | 能力模块，非 Core |

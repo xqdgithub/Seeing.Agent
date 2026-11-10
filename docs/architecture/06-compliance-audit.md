@@ -1,6 +1,6 @@
 # 06 合规审查
 
-**审查日期：** 2026-09-08（残留清理后复扫）；2026-09-17（权限授权子系统复扫，见下文专节）；2026-09-18（会话工具包复扫，见下文专节）；2026-09-25（全项目架构审查复扫，见下文专节）；2026-10-11（会话入站运行时复扫，见下文专节）  
+**审查日期：** 2026-09-08（残留清理后复扫）；2026-09-17（权限授权子系统复扫，见下文专节）；2026-09-18（会话工具包复扫，见下文专节）；2026-09-25（全项目架构审查复扫，见下文专节）；2026-10-11（会话入站运行时复扫，见下文专节）；2026-11-10（UI 扩展信封复核，见「Abstractions 纯函数豁免清单」节末）  
 **对照：** `docs/superpowers/specs/2026-09-08-modular-architecture-design.md` + 本目录 01–05  
 **先前签字：** `.superpowers/sdd/reviews/compliance-remediation-final-r3.md` → Ready to merge: Yes  
 **深化说明：** `docs/superpowers/specs/2026-09-08-architecture-docs-deepen-design.md`
@@ -21,7 +21,8 @@
 | Hosting.Gateway ↛ Agent.Gateway | ✅ | hosting 下无 Agent.Gateway.csproj |
 | HostedService 复活 | ✅ | `IModuleHostedService` + Acp/Memory/Scheduler 实现 |
 | 连接自管 | ✅ | Acp/Memory Owner；Memory 消费者经 `RequireOpen` 每次取连接 |
-| Blazor 全贡献路由 | ✅ | 壳页无 `@page`；ModuleRouter |
+| Blazor 全贡献路由 | ✅ | 壳页无 `@page`（仅 `Pages/_Host.cshtml`）；`ModuleRouter` 消费 `UiRouteTemplate` + `WebUiViewResolver`；3 处模块页 `@page` 已于 2026-11-10 删除（见 40） |
+| UI 契约零实现 / 零 ASP.NET | ✅ | `Abstractions/Ui/` 无方法体、无 `Microsoft.AspNetCore.*`；`Core/Ui/` 同样无 ASP.NET 类型（`CoreUiLayerInvariantTests`） |
 | Embed Host Shape | ✅ | `src/hosting/...Embed`（库契约；仓库内无 sample） |
 | Core 命名空间 `Seeing.Agent.Core.*` | ✅ | spine 内已迁 |
 | 磁盘分类目录 | ✅ | `src/` 顶层仅六类；`tests/` 含镜像 + apps/plugs |
@@ -203,6 +204,10 @@ rg "AddSingleton<\s*ITool" src/capabilities/Seeing.Agent.Tools.Session -g "*Modu
 >
 > **未列入但同为静态逻辑**：`LlmRetryPolicy`（`Abstractions/Llm/LlmRetryPolicy.cs`，退避计算与可重试判定）。它早于本次重构存在，且含策略而非纯映射；是否归入豁免需单独评估，暂标为**已知遗留**。（同文件的 `LlmRetrySettings` 是 `Core/Llm/RetryLlmClientDecorator.cs` 的内部类型，不在 Abstractions，无需豁免。）
 
+**`Abstractions/Ui/` 不在豁免清单内（2026-11-10 复核）**：该命名空间零实现——`IUiContributor.DescribeUi()` 与 `IUiHostContributor.DescribeUi()` 都是**抽象成员**（没有方法体、不是默认接口方法），其余全部是 record / enum / 属性声明。它与「单成员接口的 DIM 等于 marker」是两回事，也不属于「默认接口方法豁免」：`EnvelopeContractTests.IUiContributor_DescribeUi_ShouldBeAbstractNotDefault` 用 `MethodInfo.IsAbstract == true` 守门，并注明理由——若写成 DIM，Moq 的 Castle proxy 会直接实现它返回 `default`（不走默认实现）→ NRE。
+
+同一命名空间还受两条机器扫描约束：① 不得出现 `Microsoft.AspNetCore.*`（`IUiViewKeyCatalog` 只承诺字符串键，视图解析在宿主）；② 不得出现 `Type` 类型的贡献字段（`EnvelopeContractTests.UiContribution_HasNoComponentType` 反射断言）。理由见 [`40 §4.6`](40-ui-extension-unified-architecture-release-notes.md)。
+
 ### JSON 选项单一出口（2026-11-06）
 
 `Seeing.Serialization.SeeingJson`（物理位置 `src/primitives/Seeing.Session/Serialization/SeeingJson.cs`）是全项目唯一的 `JsonSerializerOptions` 构造点。
@@ -244,6 +249,21 @@ rg ": ITool\b|\[Tool\(" src/spine
 # 能力包内裸 IHostedService 注册（应为零：注册型资源随 Module Activate/Deactivate 收编）
 rg "AddHostedService<" src/capabilities -g "*.cs"
 → 无命中；AcpHookRegistrationHostedService 已退役，Hook 注册移入 AcpModule.ActivateAsync/DeactivateAsync
+
+# UI 扩展信封：旧贡献类型 / 旧通道不得回潮（2026-11-10）
+rg "NavContribution|RouteContribution|MessageRendererContribution|IUiContribution\b|IUiContributionCatalog|LegacySettingsCardContribution|LegacySlotContribution|ModulePageRouteBinder|ModuleRouteResolver|UiContributionVisibility" src samples -g "*.cs" -g "*.razor"
+→ 6 处，全部是历史说明注释（PageContribution 的「合并旧 NavContribution + RouteContribution」、
+  UiVisibility 的「与旧 UiContributionVisibility 一致」、SkillsModule / SchedulerModule 的
+  「迁移前由 ModulePageRouteBinder 补全」、ModuleRouter 的注释、PromptInput.razor 的插槽注释）。
+  类型引用为零。
+
+# UI 契约零 ASP.NET（Abstractions/Ui 与 Core/Ui）
+rg "Microsoft\.AspNetCore" src/abstractions/Seeing.Agent.Abstractions/Ui src/spine/Seeing.Agent.Core/Ui
+→ 无命中（另有 CoreUiLayerInvariantTests 做反射复核：成员签名同样不得出现）
+
+# 模块页不得有 @page（仅 _Host.cshtml 保留）
+rg "^@page" samples/Seeing.Agent.WebUI/Pages
+→ 仅 Pages/_Host.cshtml
 ```
 
 ---

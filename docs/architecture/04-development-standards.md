@@ -59,7 +59,7 @@ Core 程序集内命名空间须为 `Seeing.Agent.Core.*`（契约仍可在 Abst
 - [ ] `DeactivateAsync`：**对称** `UnregisterTool*` + UI Unregister + 关连接 / Stop Hosted  
 - [ ] 长驻循环：`IModuleHostedService` + 启用门闩；可再 Activate 复活  
 - [ ] 连接：Owner 空壳；Activate Open / Deactivate Close  
-- [ ] 需要 UI：`IUiContribution`；路由用 `RouteContribution`（勿 `@page`）  
+- [ ] 需要 UI：实现 `IUiContributor`（`DescribeUi()` 纯数据）；路由用 `PageContribution`（勿 `@page`）  
 
 ### 配置
 
@@ -168,7 +168,7 @@ Core 程序集内命名空间须为 `Seeing.Agent.Core.*`（契约仍可在 Abst
 
 | 意图 | 错误改法 | 规范改法 |
 |------|----------|----------|
-| WebUI 要加 Memory 页 | 页面 `@page` + 直接注入服务 | 模块 `RouteContribution` + Activate Register |
+| WebUI 要加 Memory 页 | 页面 `@page` + 直接注入服务 | 模块实现 `IUiContributor` 声明 `PageContribution`（`ViewKey` 在宿主视图表登记） |
 | Gateway.Server 要起通道 | Hosting.Gateway 引用 Agent.Gateway | sample 组合两个 Add* |
 | 工具默认始终可用 | `AddSingleton<ITool, T>` | Activate `RegisterTool` |
 | 关模块立刻断在途 | 强杀且无选项 | 默认推迟；显式 `ForceCancelInFlight` |
@@ -242,3 +242,95 @@ rg -n -g '*.razor' '决议|Activate|bootEnabled|Host Shape|Tools\.Disabled|Modul
 # 3) 非法省略号与半角冒号
 rg -n -g '*.razor' '(\.\.\.|…)|>：[^/]' samples/Seeing.Agent.WebUI
 ```
+
+## 11. UI 扩展规范（E1–E7）
+
+适用于 `samples/Seeing.Agent.WebUI` 的宿主侧与所有想挂 UI 的能力模块。机制说明见 [`40`](40-ui-extension-unified-architecture-release-notes.md)。
+
+### E1 只经信封声明，不自注册
+
+模块实现 `IUiContributor`，`DescribeUi()` **纯数据、无副作用**（不读磁盘、不解析 DI、不构造组件）：
+
+```csharp
+public sealed class XxxModule : ISeeingModule, IUiContributor
+{
+    public IReadOnlyList<UiContribution> DescribeUi() =>
+    [
+        new PageContribution
+        {
+            Point = "shell.page",
+            Id = "page.xxx",
+            Route = "/xxx",
+            Title = "某某",
+            ViewKey = "page.xxx",
+            Requires = [Id],          // 必须写归属
+            Order = 70,
+            Nav = new NavPlacement { Icon = "star", Group = NavGroups.Workspace,
+                                     GroupIcon = NavGroups.WorkspaceIcon, GroupOrder = 20 },
+        },
+    ];
+}
+```
+
+**禁止**：在 `ActivateAsync` 里 `registry.Register(this)`；在 `DeactivateAsync` 里 `Unregister`。声明由 `UiContributionCollector` 在结算后统一扫描 `IUiContributor` 收集一次，模块启停只影响**可见性**，不影响声明是否在表内。
+
+### E2 `ViewKey` 命名约定
+
+| 载荷 | 约定 | 例 |
+|------|------|-----|
+| `PageContribution` | 与 `Id` 同名 | `Id = "page.xxx"` → `ViewKey = "page.xxx"` |
+| `SettingsCardContribution` | 与 `Id` 同名 | `Id = "settings.xxx"` → `ViewKey = "settings.xxx"` |
+| `SlotContribution` | 若同一点只有一条内置贡献，抽进 `WebUiViewKeys` 常量 | `WebUiViewKeys.SessionFilePanel` |
+
+多条贡献复用同一视图（如 `/xxx` 与 `/xxx/{Id}`）时，`ViewKey` 指向前者，`Id` 各自唯一。
+
+**新增页面必须同时**在 `samples/Seeing.Agent.WebUI/Shell/WebUiViews.cs` 登记 `ViewKey → 组件类型`；漏登记会被 `WebUiUiContributionValidator` 在收集期拒收（进 `Diagnostics`），表现为页面静默消失。
+
+### E3 `Requires` 语义
+
+| 写法 | 语义 | 允许方 |
+|------|------|--------|
+| `[Id]` / `["模块id"]` | 归属该模块：模块未启用 → 不可见 | 模块 |
+| `[]` | 进程级：不受任何模块启停影响 | **仅宿主**（`OwnerId` 以 `host.` 开头的贡献） |
+
+- 模块贡献写 `[]` 会被 `UiContributionRegistry` 拒收（`InvalidDeclaration`）——否则模块停用后页面仍在而工具已卸载。
+- 多项 `Requires` 是 **AND**：全部启用才可见；会话作用域下还要求全部落进工作模式门集。
+- `Requires` 不是依赖声明。不要用它表达「需要 `llm.openai` 才能渲染」，那是 `DependsOn` 的事。
+
+### E4 `host.*` 命名空间
+
+- 宿主贡献者实现 `IUiHostContributor`，`OwnerId` 必须以 `host.` 开头（当前唯一实现：`host.webui`）。不以 `host.` 开头会被 `Collector` 拒绝并 `LogError`。
+- 模块 id **不得**是 `host.xxx` 形状：注册表按 `ownerId` 整批替换，模块若占 `host.memory` 会静默顶掉宿主贡献（`CrossOwnerDuplicate` 拒收）。
+- 宿主可以**代模块声明**（如设置卡、文件面板插槽），此时 `OwnerId` 仍用 `host.webui`，归属写在 `Requires` 里。
+
+### E5 声明期校验
+
+以下情况都会被拒收并记入 `Diagnostics`，不会进 UI：未声明的扩展点（`UnsupportedPoint`）、载荷种类不符（`PayloadMismatch`）、同批 id 重复（`DuplicateId`）、同批路由重复（`DuplicateRoute`）、超 `MaxItems`（`ExceededMaxItems`）、宿主校验器拒绝（`ValidatorRejected`，如视图未登记）、元素为 `null`（`InvalidDeclaration`）、跨 owner 同 `(point, id)`（`CrossOwnerDuplicate`）。
+
+**`WebUiHost` 启动时会打一次 `LogError` 列出全部诊断**——先看这条日志，不要靠点页面猜。
+
+### E6 消费点必须传可见性
+
+`UiRouteTemplate.Resolve` 的第三个参数 `isVisible` 在生产调用方**必须传**：
+
+```csharp
+UiRouteTemplate.Resolve(path, Registry.All,
+    e => e.Contribution is PageContribution p && UiVisibility.IsVisible(p, point, context));
+```
+
+不传会让停用模块的高分页抢赢启用模块的页（迁移前停用模块的路由根本不在表内，不可能参与竞争）。`isVisible = null` 只允许用于「取已知页面标题」这类诊断路径。
+
+### E7 守门测试要求
+
+新增或改动 UI 扩展时，PR 至少要覆盖：
+
+| 测试 | 位置 |
+|------|------|
+| 声明形状与归属（`Requires == [自身 id]`、`Nav` 是否应为 null） | 各能力包的 `*ModuleLifecycleTests` |
+| 路由集合完整（新增/删除路由时同步更新期望表） | `WebUI.Tests/Shell/PageChannelMigrationTests` |
+| 视图表与声明无漂移（每条 `ViewKey` 可解析） | 同上 `EveryPageViewKey_ShouldBeResolvable` |
+| 卡片 / 插槽的可见性与 key 唯一性 | `WebUI.Tests/Shell/SettingsAndSlotMigrationTests` |
+| `Core/Ui/` 未引入 ASP.NET Core 类型 | `Invariants.Tests/Ui/CoreUiLayerInvariantTests` |
+| 旧类型名不再出现 | `SettingsAndSlotMigrationTests.SourceMustNotReferenceLegacyContributionTypes` |
+
+**禁止**用固定时长等待验证 UI 装配（见根 `AGENTS.md`「测试禁止等待型断言」）：注册表是同步收集的，测试直接构造 `UiContributionRegistry` + 显式 `AddRange` 即可断言，不需要起宿主。
