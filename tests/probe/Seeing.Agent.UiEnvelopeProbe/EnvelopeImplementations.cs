@@ -183,6 +183,27 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
         if (string.IsNullOrWhiteSpace(ownerId)) throw new ArgumentException(null, nameof(ownerId));
         if (_points is null) return;   // 无界面宿主：整体 no-op
 
+        var isHostOwner = ownerId.StartsWith("host.", StringComparison.Ordinal);
+
+        // 模块不得占用 host.* 命名空间：否则一个叫 "host.memory" 的模块会静默顶掉宿主贡献
+        // （_byOwner.Remove 不区分来源）。反向情形（宿主占用模块 id）由 Collector 的
+        // 「OwnerId 必须以 host. 开头」校验拦截。
+        var namespaceConflict = !isHostOwner
+            && _byOwner.Keys.Any(k => string.Equals(k, "host." + ownerId, StringComparison.Ordinal));
+
+        if (namespaceConflict)
+        {
+            lock (_gate)
+            {
+                Diag(UiDiagnosticKind.CrossOwnerDuplicate, ownerId, "", "",
+                    $"'{ownerId}' 与宿主贡献命名空间 'host.{ownerId}' 冲突，已拒收");
+                _diagnosticsSnapshot = _diagnostics.ToArray();
+            }
+
+            RaiseChanged();
+            return;
+        }
+
         lock (_gate)
         {
             // 幂等：整批替换该创建方（连带清理其旧诊断）。
