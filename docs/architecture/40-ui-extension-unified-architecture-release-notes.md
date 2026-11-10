@@ -408,6 +408,8 @@ UiVisibility.IsVisible(card, point,
 | 可见性规则顺序 | 规格 §4.1 把「`Catalog is null` → 不可见」列为第 1 条 | 代码先判 `Requires.Count == 0` 直接可见，再判 catalog。顺序差异对结果有影响：catalog 缺失时壳层贡献仍可见（否则用户失去 `/settings`） |
 | 路由模板测试数 | 19 | 30 |
 | 侧栏投影测试数 | 22 | 26 |
+| 文件面板贡献的登记位置 | 「改成 `IUiContributor`，OwnerId 由 Collector 传 `files.workspace`」 | Collector 的模块段只遍历 `ISeeingModule` 实例，而 `FileWorkspaceModule` 在能力包里、不能持有 WebUI 组件（`SessionFilePanel`）。改在 `WebUiHost`（Build 之后）显式 `AddRange("files.workspace", …)`。归属语义与模块停用行为一致——面板消失靠可见性（`Requires = ["files.workspace"]`）而非撤销声明 |
+| 插槽可见性对空白项的处理 | 未明确 | 旧 `SessionShellVisibility.AreRequirementsEnabled` 对 `Requires` 中的空白项**跳过**（视为无要求）；新通道用 `UiVisibility.Evaluate`，空白项判**不可见**（fail-closed）。这是安全方向的行为变化，且当前无任何贡献声明空白项 |
 | 测试总数 | 118（验证脚手架） | 迁入正式项目后：`Seeing.Agent.Tests/Ui` 104 + 不变量 1 + `PageChannelMigrationTests` 11 + `SettingsAndSlotMigrationTests` 10 + `SidebarProjectionServiceTests` 26，另有改写 5 + 6 + 3 + 10（`McpModuleLifecycleTests` / `ModuleRouteResolverCatchAllTests` / `JobDetailEditNavigationTests` / `SidebarContractTests`）。脚手架 118 项仍在 `tests/probe/`，未进 `.slnx` |
 
 ## 七、后续（不在本期）
