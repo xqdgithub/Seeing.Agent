@@ -67,6 +67,10 @@
 
 #### Task A1: 重命名冲突的两个旧类型
 
+> **执行后回填（2026-11-10）**：计划原映射表漏了 2 个文件。实际受影响文件除下表所列，还包括
+> `src/abstractions/Seeing.Agent.Abstractions/Ui/IUiContributionRegistry.cs`（`SettingsCards`/`Slots` 属性类型）
+> 与 `IUiContribution.cs`（`<see cref>`）。不改必编译失败（CS0246）。
+
 **Files:**
 - Modify: `src/abstractions/Seeing.Agent.Abstractions/Ui/UiContributionTypes.cs`
 - Modify: `samples/Seeing.Agent.WebUI/Services/UiContributionRegistry.cs:14,18,22,28,31,35,40,46,88,92,100,108,110,123,130`
@@ -189,7 +193,12 @@ git commit -m "refactor(ui): rename two conflicting legacy contribution records"
 
 `NavContribution` 与 `LegacySlotContribution` 各删一个参数。同步删测试里的 `Scenarios` 断言（`UiContributionContractsTests.cs:27-33`、`:53,61`）。
 
-> 注意：`NavContribution` 的位置参数 `Scenarios` 在 `ComponentType` 之前，删参数会改变位置参数顺序。**保留参数顺序**：改为在 `NavContribution` 里删掉该参数并把后续参数前移，同步修正 `CoreShellUiContribution` 里用命名参数传值的位置（那里全用命名参数，安全）。
+> **执行后回填（2026-11-10）**：原计划写「保留参数顺序，把后续参数前移」——这在位置参数 record 上不可行，删中间参数必然重排。
+> 实际做法：直接删参数。已核实全部 22 个 `NavContribution` 构造点**从 `ComponentType` 起一律用命名参数**，
+> 因此位置重排零影响。`LegacySlotContribution` 的 `Scenarios` 在末位，删除更无影响。
+>
+> 连带影响：`SessionShellVisibility.IsVisible` 的白名单分支变成死逻辑（唯一调用点恒传 `null`）。
+> 保留该方法不动——批次 C/D 会整体替换可见性实现。
 
 - [ ] **Step 3: 删 `SessionShellVisibility.FilterNavForProcess`**
 
@@ -319,11 +328,14 @@ git commit -m "chore(ui): remove dead contribution code and stray @page directiv
 
 **注意文件拆分**：验证项目把 9 个类型放一个文件，正式版按类型拆成 8 个文件（便于 review 与后续演进）。
 
-**`IUiContributionRegistry.cs` 文件名冲突**：旧文件已存在（内容将随批次 D 删除）。新接口**追加到同一文件的独立区域**，或改用 `IUiContributionRegistryV2.cs` 暂时并存 → **推荐后者**（`IUiContributionCatalog.cs`），批次 D 删旧接口时把新接口改回 `IUiContributionRegistry.cs`。
+**`IUiContributionRegistry` 命名冲突（已在执行中纠偏）**：原计划判断「只是文件名被占用，接口名可保持 `IUiContributionRegistry`」——**这是错的**。旧 `IUiContributionRegistry.cs:6` 已定义同名接口，同命名空间下两个同名类型必然 CS0101，C# 的「文件名可与类型名不同」帮不上忙。
 
-> 决策：新接口文件名为 `IUiContributionCatalog.cs`，接口名仍叫 `IUiContributionRegistry`（C# 允许文件名与类型名不同）。批次 D 时：
-> 1. `git rm .../IUiContributionRegistry.cs`（旧，仅含 `Register/Unregister/NavItems/...`）
-> 2. `git mv .../IUiContributionCatalog.cs .../IUiContributionRegistry.cs`
+> **实际落地方案**：文件名与接口名**都**用 `IUiContributionCatalog`（`src/abstractions/.../Ui/IUiContributionCatalog.cs`），XML 注释里写明来由。批次 D 收尾时：
+> 1. `git rm .../IUiContributionRegistry.cs`（旧接口，仅含 `Register/Unregister/NavItems/...`）
+> 2. `git mv .../IUiContributionCatalog.cs .../IUiContributionRegistry.cs`（改文件名）
+> 3. **并把文件内的类型名 `IUiContributionCatalog` 全部改回 `IUiContributionRegistry`**（含 `UiContributionRegistry` 实现的接口列表、`UiContributionCollector` 的字段与构造参数）
+>
+> 佐证：并行的批次 B2 独立选择了相同命名，两边接线自动对齐（`UiContributionRegistry : IUiContributionCatalog`）。
 
 - [ ] **Step 2: 写契约测试**
 
@@ -899,12 +911,22 @@ git commit -m "refactor(webui): switch page channel to UI envelope"
 
 改成 `FileWorkspaceModule` 的 `IUiContributor` 实现（或独立的小类），`Requires = ["files.workspace"]`，`Point = "session.file.panel"`。
 
-- [ ] **Step 4: 删旧类型与旧接口**
+- [ ] **Step 4: 删旧类型与旧接口，并把接口名改回**
 
 ```bash
 git rm src/abstractions/Seeing.Agent.Abstractions/Ui/IUiContribution.cs
+git rm src/abstractions/Seeing.Agent.Abstractions/Ui/IUiContributionRegistry.cs
 git mv src/abstractions/Seeing.Agent.Abstractions/Ui/IUiContributionCatalog.cs src/abstractions/Seeing.Agent.Abstractions/Ui/IUiContributionRegistry.cs
 ```
+
+> `IUiContributionCatalog.cs` 内部同时含 `UiContributionEntry` / `UiDiagnosticKind` / `UiContributionDiagnostic` /
+> 新接口。`git mv` 后需**把接口名改回 `IUiContributionRegistry`**（文件名与类型名一致），并同步改名所有引用：
+> `src/spine/Seeing.Agent.Core/Ui/UiContributionRegistry.cs`（实现的接口）、`UiContributionCollector.cs`（字段与构造参数）、
+> `UiContributionRegistrationExtensions.cs`。
+>
+> 建议做法：先 `git rm` 旧文件，再用 IDE/`rg` 全仓替换 `IUiContributionCatalog` → `IUiContributionRegistry`，
+> 最后修正文件名。**注意**：`UiContributionRegistry`（实现类）与 `IUiContributionRegistry`（接口）只差前缀 `I`，
+> 批量替换时用词边界 `\bIUiContributionCatalog\b` 避免误伤。
 
 从 `UiContributionTypes.cs` 删 `LegacySettingsCardContribution`、`LegacySlotContribution`、`NavContribution`、`RouteContribution`，保留 `NavGroups`。
 
