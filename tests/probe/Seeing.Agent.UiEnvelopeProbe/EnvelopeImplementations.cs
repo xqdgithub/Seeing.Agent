@@ -185,6 +185,9 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
 
         lock (_gate)
         {
+            // 幂等：整批替换该创建方（连带清理其旧诊断）。
+            // 调用方（Collector）在声明失败时不会调用本方法，而是直接 ReportInvalidDeclaration，
+            // 因此这里只需处理「有声明」的路径。
             _byOwner.Remove(ownerId);
             _diagnostics.RemoveAll(d => string.Equals(d.OwnerId, ownerId, StringComparison.Ordinal));
 
