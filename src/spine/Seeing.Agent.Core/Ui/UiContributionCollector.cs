@@ -20,12 +20,12 @@ namespace Seeing.Agent.Core.Ui;
 /// </summary>
 public sealed class UiContributionCollector
 {
-    private readonly IUiContributionCatalog _registry;
+    private readonly IUiContributionRegistry _registry;
     private readonly IUiPointCatalog? _points;
     private readonly ILogger _logger;
 
     public UiContributionCollector(
-        IUiContributionCatalog registry,
+        IUiContributionRegistry registry,
         IUiPointCatalog? points = null,
         ILogger? logger = null)
     {
@@ -114,7 +114,7 @@ public sealed class UiContributionCollector
     /// 前者是声明本身抛错，后者是声明内容不合规）。
     /// </para>
     /// <para>
-    /// 失败时<b>只记诊断</b>、不调用 <see cref="IUiContributionCatalog.AddRange"/>：
+    /// 失败时<b>只记诊断</b>、不调用 <see cref="IUiContributionRegistry.AddRange"/>：
     /// <c>AddRange</c> 会清理该 owner 的旧诊断（幂等语义），会把刚写的诊断抹掉。
     /// </para>
     /// </summary>

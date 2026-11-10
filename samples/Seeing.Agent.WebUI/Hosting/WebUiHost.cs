@@ -115,12 +115,6 @@ public static class WebUiHost
         builder.Services.AddSingleton<IUiContributionValidator, WebUiUiContributionValidator>();
         builder.Services.AddSingleton<IUiHostContributor, WebUiHostContributor>();
 
-        // 过渡期旧通道（设置卡 + 会话插槽）：批次 D 删除。
-        // 页面路由/侧栏已切到 Core 的 UiContributionRegistry，本注册只服务 Settings.razor / SlotHost.razor。
-        builder.Services.AddSingleton<LegacyUiContributionRegistry>();
-        builder.Services.AddSingleton<IUiContributionRegistry>(sp =>
-            sp.GetRequiredService<LegacyUiContributionRegistry>());
-
         builder.Services.AddSingleton<AppState>();
         builder.Services.AddScoped<SessionState>();
         builder.Services.AddScoped<UploadedFileService>();
@@ -273,11 +267,11 @@ public static class WebUiHost
                 "未收集到任何宿主 UI 贡献：侧栏与设置页将为空白，请检查 IUiHostContributor 注册");
         }
 
-        // 过渡期旧通道：设置卡与文件面板插槽（批次 D 随设置/插槽改造一起删除）。
-        // 必须在这里登记而不是等工作区选定：设置页与插槽都属于壳层，工作区未选定时也应就位。
-        var legacyUi = app.Services.GetRequiredService<LegacyUiContributionRegistry>();
-        legacyUi.Register(new CoreShellUiContribution());
-        legacyUi.Register(new FilePanelUiContribution());
+        // 文件面板插槽：归属模块是能力包 files.workspace，但视图键指向 WebUI 的 SessionFilePanel，
+        // 而能力包不能引用宿主组件类型，因此由宿主以该模块的 owner id 代为声明。
+        // 停用模块后面板消失由可见性（Requires = ["files.workspace"]）保证，不靠撤销声明。
+        var uiRegistry = app.Services.GetRequiredService<IUiContributionRegistry>();
+        uiRegistry.AddRange(FilePanelUiContribution.OwnerModuleId, new FilePanelUiContribution().DescribeUi());
 
         using (var scope = app.Services.CreateScope())
         {
@@ -288,13 +282,12 @@ public static class WebUiHost
 
             // 模块声明在结算后收集（含未启用模块）。诊断非空说明有贡献被拒收——
             // 表现为「某个页面/卡片莫名消失」，必须在启动日志里一次说清。
-            var contributions = app.Services.GetRequiredService<IUiContributionCatalog>();
-            if (contributions.Diagnostics.Count > 0)
+            if (uiRegistry.Diagnostics.Count > 0)
             {
                 app.Logger.LogError(
                     "UI 贡献收集存在 {Count} 条诊断：{Details}",
-                    contributions.Diagnostics.Count,
-                    string.Join("; ", contributions.Diagnostics.Select(
+                    uiRegistry.Diagnostics.Count,
+                    string.Join("; ", uiRegistry.Diagnostics.Select(
                         d => $"{d.Kind}:{d.OwnerId}/{d.ContributionId}")));
             }
 

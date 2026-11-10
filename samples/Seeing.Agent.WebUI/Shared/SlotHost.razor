@@ -1,28 +1,43 @@
 @using Microsoft.AspNetCore.Components
 @using Microsoft.Extensions.Options
+@using AntDesign
 @using Seeing.Agent.Abstractions.Modules
 @using Seeing.Agent.Abstractions.Ui
 @using Seeing.Agent.Core.Configuration
 @using Seeing.Agent.Configuration
-@using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.Core.Ui
+@using Seeing.Agent.WebUI.Shell
 @inject IUiContributionRegistry Registry
+@inject IUiPointCatalog Points
 @inject IModuleCatalog? Catalog
+@inject WebUiViewResolver Views
 @inject Seeing.Agent.Core.Scenarios.IScenarioCatalog? ScenarioCatalog
 @inject IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
 @implements IDisposable
 
-@* SlotHost：命名插槽由 IUiContribution 登记；可见性 = IModuleCatalog + 会话 Scenario *@
+@*
+    SlotHost：命名插槽（SlotContribution）。
+    可见性 = 模块启用集（Requires）+ 会话工作模式收窄（扩展点 Scope = Session）。
+    作用域为 Session 的点必须传 UiScenarioGate 算出的 gate，否则收窄失效。
+*@
 <div class="slot-host" data-slot="@SlotName">
     @foreach (var slot in _visible)
     {
-        @if (slot.ComponentType is not null && slot.ComponentType != typeof(object))
-        {
-            <DynamicComponent Type="@slot.ComponentType" />
-        }
+        @* 渲染期未捕获异常会终止整个 circuit：插槽由模块声明，必须隔离 *@
+        <ErrorBoundary @key="slot.Key">
+            <ChildContent>
+                <DynamicComponent Type="@slot.ComponentType" />
+            </ChildContent>
+            <ErrorContent Context="ex">
+                <Alert Type="@AlertType.Error" ShowIcon="true"
+                       Message="@($"插槽组件渲染失败：{ex.Message}")" />
+            </ErrorContent>
+        </ErrorBoundary>
     }
 </div>
 
 @code {
+    /// <summary>旧插槽名（组件调用点的稳定契约）。</summary>
     [Parameter] public required string SlotName { get; set; }
 
     /// <summary>会话级 Scenario（null = 跟随进程级）。可由父组件显式传入或 CascadingValue。</summary>
@@ -31,14 +46,24 @@
     [CascadingParameter(Name = "SessionScenario")]
     private string? CascadedSessionScenario { get; set; }
 
-    private IReadOnlyList<LegacySlotContribution> _visible = [];
-    private LegacyUiContributionRegistry? _typedRegistry;
+    /// <summary>
+    /// 旧插槽名 → 扩展点 id（规格 §6.2 的 4 条映射）。
+    /// 未登记的槽名渲染空容器（不抛），与迁移前对未知槽名的行为一致。
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> s_slotPoints =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["session_prompt"] = WebUiPoints.SessionPrompt.Id,
+            ["session_toolbar_actions"] = WebUiPoints.SessionToolbarActions.Id,
+            ["message_toolbar"] = WebUiPoints.SessionInputToolbar.Id,
+            ["session_file_panel"] = WebUiPoints.SessionFilePanel.Id,
+        };
+
+    private IReadOnlyList<SlotView> _visible = [];
 
     protected override void OnInitialized()
     {
-        _typedRegistry = Registry as LegacyUiContributionRegistry;
-        if (_typedRegistry is not null)
-            _typedRegistry.Changed += OnRegistryChanged;
+        Registry.Changed += OnRegistryChanged;
         Refresh();
     }
 
@@ -53,20 +78,34 @@
 
     private void Refresh()
     {
-        var sessionScenario = SessionScenario ?? CascadedSessionScenario;
-        var processScenario = SeeingAgentOptions.CurrentValue.Scenario;
-        _visible = SessionShellVisibility.FilterSlotsForSession(
-            Registry.Slots,
-            SlotName,
-            Catalog,
-            sessionScenario,
-            processScenario,
-            ScenarioCatalog);
+        if (!s_slotPoints.TryGetValue(SlotName, out var pointId)
+            || Points.Find(pointId) is not { } point)
+        {
+            _visible = [];
+            return;
+        }
+
+        // 会话门：会话级 Scenario 优先，否则进程级；null = 不收敛（未指定 / 未知 / 通配）
+        var effective = UiScenarioGate.ResolveEffective(
+            SessionScenario ?? CascadedSessionScenario,
+            SeeingAgentOptions.CurrentValue.Scenario);
+        var gate = UiScenarioGate.Resolve(effective, ScenarioCatalog);
+
+        var context = new UiVisibilityContext(Catalog, gate);
+
+        _visible = Registry.Get<SlotContribution>(pointId)
+            .Where(slot => UiVisibility.IsVisible(slot, point, context))
+            .Select(slot => new { Slot = slot, ComponentType = Views.Resolve(slot.ViewKey) })
+            .Where(x => x.ComponentType is not null)
+            .Select(x => new SlotView($"{pointId}:{x.Slot.Id}", x.ComponentType!))
+            .ToList();
     }
+
+    /// <summary>一条可渲染插槽：<paramref name="Key"/> 用于 <c>@key</c>（扩展点 + 贡献 id）。</summary>
+    private sealed record SlotView(string Key, Type ComponentType);
 
     public void Dispose()
     {
-        if (_typedRegistry is not null)
-            _typedRegistry.Changed -= OnRegistryChanged;
+        Registry.Changed -= OnRegistryChanged;
     }
 }

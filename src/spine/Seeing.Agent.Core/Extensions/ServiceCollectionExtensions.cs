@@ -311,10 +311,10 @@ namespace Seeing.Agent.Core.Extensions
                 sp.GetService<IUiPointCatalog>(),
                 sp.GetServices<IUiContributionValidator>(),
                 sp.GetService<ILogger<UiContributionRegistry>>()));
-            services.TryAddSingleton<IUiContributionCatalog>(sp =>
+            services.TryAddSingleton<IUiContributionRegistry>(sp =>
                 sp.GetRequiredService<UiContributionRegistry>());
             services.TryAddSingleton(sp => new UiContributionCollector(
-                sp.GetRequiredService<IUiContributionCatalog>(),
+                sp.GetRequiredService<IUiContributionRegistry>(),
                 sp.GetService<IUiPointCatalog>(),
                 sp.GetService<ILogger<UiContributionCollector>>()));
 

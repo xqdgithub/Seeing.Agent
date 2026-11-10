@@ -12,6 +12,7 @@
 @using Seeing.Agent.WebUI.Components.Settings
 @using Seeing.Agent.WebUI.Components
 @using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.WebUI.Shell
 @inject SeeingConfigService ConfigService
 @inject AgentManager AgentManager
 @inject IWorkspaceProvider WorkspaceProvider
@@ -19,6 +20,7 @@
 @inject IMessageService MessageService
 @inject IUiContributionRegistry Registry
 @inject IModuleCatalog Catalog
+@inject WebUiViewResolver Views
 @inject IScenarioCatalog ScenarioCatalog
 @inject ICapabilitySetCatalog CapabilitySetCatalog
 @implements IDisposable
@@ -139,8 +141,17 @@
 
             @foreach (var card in _visibleCards)
             {
-                <TabPane @key="card.Route" Key="@card.Route" Tab="@card.Title">
-                    <DynamicComponent Type="@card.ComponentType" />
+                <TabPane @key="card.Key" Key="@card.Key" Tab="@card.Title">
+                    @* 渲染期未捕获异常会终止整个 circuit：卡片由模块声明，必须隔离 *@
+                    <ErrorBoundary>
+                        <ChildContent>
+                            <DynamicComponent Type="@card.ComponentType" />
+                        </ChildContent>
+                        <ErrorContent Context="ex">
+                            <Alert Type="@AlertType.Error" ShowIcon="true"
+                                   Message="@($"该设置卡片渲染失败：{ex.Message}")" />
+                        </ErrorContent>
+                    </ErrorBoundary>
                 </TabPane>
             }
 
@@ -177,15 +188,14 @@
     private List<ScenarioOption> _scenarioOptions = [];
     private List<string> _bootOptions = [];
     private bool _modulesEnabledWarning;
-    private IReadOnlyList<LegacySettingsCardContribution> _visibleCards = Array.Empty<LegacySettingsCardContribution>();
+    private IReadOnlyList<SettingsCardView> _visibleCards = [];
 
     // 工作区配置
     private bool _restrictToWorkspace;
 
     protected override async Task OnInitializedAsync()
     {
-        if (Registry is LegacyUiContributionRegistry legacy)
-            legacy.Changed += OnRegistryChanged;
+        Registry.Changed += OnRegistryChanged;
         RefreshCards();
 
         _workspacePath = WorkspaceProvider.GetProjectRoot();
@@ -212,15 +222,30 @@
 
     public void Dispose()
     {
-        if (Registry is LegacyUiContributionRegistry legacy)
-            legacy.Changed -= OnRegistryChanged;
+        Registry.Changed -= OnRegistryChanged;
     }
 
     private void RefreshCards()
     {
-        // 过渡期：设置卡仍走旧通道，但「模块是否启用」的判定已统一到 Core 的唯一实现。
-        _visibleCards = Registry.SettingsCards
-            .Where(card => UiVisibility.AreRequirementsEnabled(card.Requires, Catalog))
+        // 设置卡是 Process 作用域：只按模块启用集过滤，不随会话工作模式收窄。
+        // Tab key 用 '{OwnerId}.{Id}' 拼：注册表保证 (扩展点, Id) 全局唯一，因此 key 天然全进程唯一
+        // （旧实现用 card.Route 当 key，新契约没有 Route）。
+        var point = WebUiPoints.ShellSettingsCard;
+        var context = UiVisibilityContext.Process(Catalog);
+
+        _visibleCards = Registry.All
+            .Where(e => string.Equals(e.Contribution.Point, point.Id, StringComparison.OrdinalIgnoreCase))
+            .Select(e => (Entry: e, Card: e.Contribution as SettingsCardContribution))
+            .Where(x => x.Card is not null && UiVisibility.IsVisible(x.Card, point, context))
+            .Select(x => new
+            {
+                Key = $"{x.Entry.OwnerId}.{x.Card!.Id}",
+                x.Card,
+                ComponentType = Views.Resolve(x.Card.ViewKey),
+            })
+            // 视图未装配：与「模块未启用」区分不了就别渲染空页签（启动期已由校验器拦成诊断）
+            .Where(x => x.ComponentType is not null)
+            .Select(x => new SettingsCardView(x.Key, x.Card!.Title, x.ComponentType!))
             .ToList();
     }
 
@@ -365,4 +390,10 @@
     }
 
     private sealed record ScenarioOption(string Value, string Label);
+
+    /// <summary>
+    /// 一张可渲染的设置卡：<paramref name="Key"/> 为 <c>{OwnerId}.{Id}</c>（全进程唯一），
+    /// 组件类型已由宿主视图表解析完成。
+    /// </summary>
+    private sealed record SettingsCardView(string Key, string Title, Type ComponentType);
 }

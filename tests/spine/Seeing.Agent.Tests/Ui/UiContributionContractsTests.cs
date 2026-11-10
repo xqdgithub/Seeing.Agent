@@ -4,114 +4,125 @@ using Xunit;
 
 namespace Seeing.Agent.Tests.Ui;
 
+/// <summary>
+/// UI 信封契约的成员形状守卫。
+/// <para>
+/// 旧形状（<c>IUiContribution</c> / <c>NavContribution</c> / <c>RouteContribution</c> /
+/// <c>LegacySettingsCardContribution</c> / <c>LegacySlotContribution</c>）已随批次 D 删除，
+/// 这里钉住替代它们的「扩展点 + 载荷 + 注册表」三件套的成员集合，
+/// 避免有人为了兼容又把带 <c>ComponentType</c> 或 <c>ModuleId</c> 的字段加回契约层。
+/// </para>
+/// </summary>
 public class UiContributionContractsTests
 {
     [Fact]
-    public void NavContribution_ShouldConstructWithRequiredFields()
+    public void UiPoint_ShouldCarryScopeAndPayloadKind()
     {
-        var contribution = new NavContribution(
-            "/memory",
-            "Memory",
-            "database",
-            ["memory"]);
+        var point = new UiPoint
+        {
+            Id = "session.prompt",
+            DisplayName = "输入区上方",
+            PayloadKind = UiPayloadKind.Slot,
+            Scope = UiVisibilityScope.Session,
+        };
 
-        contribution.Route.Should().Be("/memory");
-        contribution.Title.Should().Be("Memory");
-        contribution.Icon.Should().Be("database");
-        contribution.Requires.Should().Equal("memory");
+        point.PayloadKind.Should().Be(UiPayloadKind.Slot);
+        point.Scope.Should().Be(UiVisibilityScope.Session);
+        point.MaxItems.Should().Be(int.MaxValue, "未声明上限时视为不限");
     }
 
     [Fact]
-    public void LegacySettingsCardContribution_ShouldCarryComponentType()
+    public void UiPoint_ScopeDefaultsToProcess()
     {
-        var contribution = new LegacySettingsCardContribution(
-            "/settings/memory",
-            "Memory",
-            typeof(FakeSettingsComponent),
-            ["memory"]);
+        var point = new UiPoint
+        {
+            Id = "shell.page", DisplayName = "页面", PayloadKind = UiPayloadKind.Page,
+        };
 
-        contribution.Route.Should().Be("/settings/memory");
-        contribution.Title.Should().Be("Memory");
-        contribution.ComponentType.Should().Be(typeof(FakeSettingsComponent));
-        contribution.Requires.Should().Equal("memory");
+        point.Scope.Should().Be(UiVisibilityScope.Process,
+            "侧栏/设置卡/页面不随会话工作模式收窄，默认必须是进程级");
     }
 
     [Fact]
-    public void LegacySlotContribution_ShouldConstructWithRequiredFields()
+    public void SettingsCardContribution_ShouldCarryTitleAndViewKey()
     {
-        var contribution = new LegacySlotContribution(
-            "session_prompt",
-            typeof(FakeSlotComponent),
-            ["memory"]);
+        var card = new SettingsCardContribution
+        {
+            Point = "shell.settings.card",
+            Id = "settings.memory",
+            Title = "记忆",
+            ViewKey = "settings.memory",
+            Requires = ["memory"],
+        };
 
-        contribution.Name.Should().Be("session_prompt");
-        contribution.ComponentType.Should().Be(typeof(FakeSlotComponent));
-        contribution.Requires.Should().Equal("memory");
+        card.Title.Should().Be("记忆");
+        card.ViewKey.Should().Be("settings.memory");
+        card.Requires.Should().Equal("memory");
+        card.Order.Should().Be(0);
     }
 
     [Fact]
-    public void RouteContribution_ShouldConstructWithOptionalRequires()
+    public void SlotContribution_ShouldCarryViewKeyAndOptionalDisplayName()
     {
-        var withRequires = new RouteContribution("/session/{SessionId}", "会话", typeof(object), ["shell"]);
-        withRequires.Route.Should().Be("/session/{SessionId}");
-        withRequires.Title.Should().Be("会话");
-        withRequires.ComponentType.Should().Be(typeof(object));
-        withRequires.Requires.Should().Equal("shell");
+        var slot = new SlotContribution
+        {
+            Point = "session.file.panel",
+            Id = "slot.file.panel",
+            ViewKey = "slot.file.panel",
+            Requires = ["files.workspace"],
+        };
 
-        var shell = new RouteContribution("/", "首页", typeof(object));
-        shell.Requires.Should().BeNull();
+        slot.ViewKey.Should().Be("slot.file.panel");
+        slot.DisplayName.Should().BeNull();
+        slot.Requires.Should().Equal("files.workspace");
     }
 
     [Fact]
-    public void IUiContribution_ShouldExposeModuleIdAndContribute()
-    {
-        typeof(IUiContribution).GetProperty(nameof(IUiContribution.ModuleId))
-            .Should().NotBeNull()
-            .And.Subject!.PropertyType.Should().Be(typeof(string));
-
-        var method = typeof(IUiContribution).GetMethod(nameof(IUiContribution.Contribute));
-        method.Should().NotBeNull();
-        method!.ReturnType.Should().Be(typeof(IReadOnlyList<object>));
-        method.GetParameters().Should().BeEmpty();
-    }
-
-    [Fact]
-    public void IUiContributionRegistry_ShouldExposeCollectionsAndRegister()
+    public void IUiContributionRegistry_ShouldExposeAddRangeRemoveAndQueries()
     {
         var registry = typeof(IUiContributionRegistry);
 
-        registry.GetMethod(nameof(IUiContributionRegistry.Register))
-            .Should().NotBeNull()
-            .And.Subject!.GetParameters().Should().ContainSingle()
-            .Which.ParameterType.Should().Be(typeof(IUiContribution));
+        var addRange = registry.GetMethod(nameof(IUiContributionRegistry.AddRange));
+        addRange.Should().NotBeNull();
+        addRange!.GetParameters().Select(p => p.ParameterType).Should().Equal(
+            typeof(string), typeof(IReadOnlyList<UiContribution>));
 
-        var unregister = registry.GetMethod(nameof(IUiContributionRegistry.Unregister));
-        unregister.Should().NotBeNull();
-        unregister!.GetParameters().Should().ContainSingle()
+        registry.GetMethod(nameof(IUiContributionRegistry.RemoveByOwner))!
+            .GetParameters().Should().ContainSingle()
             .Which.ParameterType.Should().Be(typeof(string));
 
-        registry.GetProperty(nameof(IUiContributionRegistry.NavItems))!
-            .PropertyType.Should().Be(typeof(IReadOnlyList<NavContribution>));
+        registry.GetMethod(nameof(IUiContributionRegistry.ReportInvalidDeclaration))!
+            .GetParameters().Select(p => p.ParameterType).Should().Equal(
+                typeof(string), typeof(string));
 
-        registry.GetProperty(nameof(IUiContributionRegistry.SettingsCards))!
-            .PropertyType.Should().Be(typeof(IReadOnlyList<LegacySettingsCardContribution>));
+        registry.GetProperty(nameof(IUiContributionRegistry.All))!
+            .PropertyType.Should().Be(typeof(IReadOnlyList<UiContributionEntry>));
 
-        registry.GetProperty(nameof(IUiContributionRegistry.Slots))!
-            .PropertyType.Should().Be(typeof(IReadOnlyList<LegacySlotContribution>));
+        registry.GetProperty(nameof(IUiContributionRegistry.Pages))!
+            .PropertyType.Should().Be(typeof(IReadOnlyList<PageContribution>));
 
-        registry.GetProperty(nameof(IUiContributionRegistry.Routes))!
-            .PropertyType.Should().Be(typeof(IReadOnlyDictionary<string, NavContribution>));
+        registry.GetProperty(nameof(IUiContributionRegistry.Diagnostics))!
+            .PropertyType.Should().Be(typeof(IReadOnlyList<UiContributionDiagnostic>));
+
+        registry.GetEvent(nameof(IUiContributionRegistry.Changed)).Should().NotBeNull();
     }
 
     [Fact]
-    public void NavContribution_ComponentTypeShouldDefaultToNull()
+    public void IUiContributionRegistry_ShouldNotResurrectLegacyMembers()
     {
-        var contribution = new NavContribution("/memory", "Memory", "database", ["memory"]);
+        var registry = typeof(IUiContributionRegistry);
 
-        contribution.ComponentType.Should().BeNull();
+        foreach (var legacy in new[] { "Register", "Unregister", "NavItems", "SettingsCards", "Slots", "Routes" })
+            registry.GetMember(legacy).Should().BeEmpty(
+                $"'{legacy}' 属于已删除的旧通道；新契约只有 AddRange/RemoveByOwner/All/Get<T>/Pages/Diagnostics");
     }
 
-    private sealed class FakeSettingsComponent;
-
-    private sealed class FakeSlotComponent;
+    [Fact]
+    public void NavGroups_ShouldKeepThreeLegacyGroups()
+    {
+        // 分组名是能力包与壳层的共同词汇（写进 NavPlacement.Group），不能改名
+        NavGroups.Control.Should().Be("控制中心");
+        NavGroups.Workspace.Should().Be("工作区");
+        NavGroups.Settings.Should().Be("设置");
+    }
 }

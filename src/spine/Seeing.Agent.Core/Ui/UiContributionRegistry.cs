@@ -5,7 +5,7 @@ using Seeing.Agent.Abstractions.Ui;
 namespace Seeing.Agent.Core.Ui;
 
 /// <summary>注册表实现。</summary>
-public sealed class UiContributionRegistry : IUiContributionCatalog
+public sealed class UiContributionRegistry : IUiContributionRegistry
 {
     private readonly object _gate = new();
     private readonly IUiPointCatalog? _points;
