@@ -52,6 +52,12 @@ public sealed class UiPointCatalog : IUiPointCatalog
 }
 
 /// <summary>可见性判定输入。</summary>
+/// <param name="Catalog">模块目录；null 时 fail-closed。</param>
+/// <param name="ScenarioModuleGate">
+/// 会话工作模式的模块集。<b>null = 不收敛</b>（未指定工作模式或声明了通配）；
+/// <b>空集 = 全部隐藏</b>（工作模式声明了「一个模块都不启用」）。
+/// <para>两者必须区分：旧实现里空集走 <c>Contains</c> 全 false → 隐藏，属 fail-closed。</para>
+/// </param>
 public sealed record UiVisibilityContext(
     IModuleCatalog? Catalog,
     IReadOnlySet<string>? ScenarioModuleGate = null)
@@ -92,8 +98,10 @@ public static class UiVisibility
                 return new UiVisibilityDecision(false, UiVisibilityReason.ModuleDisabled, id);
         }
 
+        // 会话门收窄：只对 Session 作用域生效。
+        // null = 不收敛；空集 = 全部隐藏（与旧实现 SessionShellVisibility.cs:84-95 的 Contains 全 false 等价）
         if (point.Scope == UiVisibilityScope.Session
-            && context.ScenarioModuleGate is { Count: > 0 } gate
+            && context.ScenarioModuleGate is { } gate
             && !IsInGate(contribution, gate))
         {
             return new UiVisibilityDecision(
@@ -103,7 +111,14 @@ public static class UiVisibility
         return new UiVisibilityDecision(true, UiVisibilityReason.Visible);
     }
 
-    /// <summary>空 Requires（进程级贡献）不受会话门收窄。</summary>
+    /// <summary>
+    /// 归属是否落在会话门集内。
+    /// <para>
+    /// <b>AND 语义</b>：<c>Requires</c> 的每一项都必须在门集内（与旧实现
+    /// <c>SessionShellVisibility.cs:84-95</c> 的 <c>foreach { if (!contains) return false; }</c> 一致）。
+    /// </para>
+    /// <para>空 <c>Requires</c>（进程级贡献）不受门集收窄——壳层与宿主贡献必须始终可用。</para>
+    /// </summary>
     private static bool IsInGate(UiContribution contribution, IReadOnlySet<string> gate)
     {
         if (contribution.Requires.Count == 0)
@@ -111,11 +126,14 @@ public static class UiVisibility
 
         foreach (var raw in contribution.Requires)
         {
-            if (!string.IsNullOrWhiteSpace(raw) && gate.Contains(raw.Trim()))
-                return true;
+            if (string.IsNullOrWhiteSpace(raw))
+                continue;
+
+            if (!gate.Contains(raw.Trim()))
+                return false;
         }
 
-        return false;
+        return true;
     }
 }
 
@@ -251,9 +269,37 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
             return false;
         }
 
+        // 模块声明的贡献必须带归属：空 Requires 会让页面在模块停用后依然存活，
+        // 但工具/Hook/命令已卸载 —— 表现为「半残但看起来正常」的页面（反模式）。
+        // 宿主贡献（host.*）豁免：它们本来就是进程级。
+        var isHostOwner = ownerId.StartsWith("host.", StringComparison.Ordinal);
+        if (!isHostOwner && contribution.Requires.Count == 0)
+        {
+            Diag(UiDiagnosticKind.InvalidDeclaration, ownerId, contribution.Point, contribution.Id,
+                "模块贡献的 Requires 为空（会变成进程级、模块停用后仍可见）；" +
+                $"请显式写 Requires = [{ownerId}]");
+            return false;
+        }
+
         if (accepted.Any(c => string.Equals(c.Id, contribution.Id, StringComparison.Ordinal)))
         {
             Diag(UiDiagnosticKind.DuplicateId, ownerId, contribution.Point, contribution.Id, "同批 id 重复");
+            return false;
+        }
+
+        // 跨 owner：同一 (扩展点, id) 全局唯一。否则 Settings.razor 的 @key 会重复 → 渲染崩。
+        // 注意用 _byOwner 实时查（_all 是上一次 Rebuild 的快照，在本次 AddRange 内尚未更新）。
+        var crossOwner = _byOwner
+            .Where(p => !string.Equals(p.Key, ownerId, StringComparison.Ordinal))
+            .SelectMany(p => p.Value)
+            .FirstOrDefault(c =>
+                string.Equals(c.Point, contribution.Point, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(c.Id, contribution.Id, StringComparison.Ordinal));
+
+        if (crossOwner is not null)
+        {
+            Diag(UiDiagnosticKind.CrossOwnerDuplicate, ownerId, contribution.Point, contribution.Id,
+                $"同一 (扩展点, id) 已被其他创建方声明");
             return false;
         }
 

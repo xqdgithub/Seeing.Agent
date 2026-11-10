@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Seeing.Agent.UiEnvelopeProbe;
 using Xunit;
 
@@ -21,7 +21,7 @@ public class RegistrySemanticsTests
     private static UiPointCatalog Points() => new([PagePoint, CardPoint, SlotPoint]);
 
     private static PageContributionProbe Page(string id, string route, params string[] requires) => new()
-    { Point = PagePoint.Id, Id = id, Route = route, Title = id, ViewKey = id, Requires = requires };
+    { Point = PagePoint.Id, Id = id, Route = route, Title = id, ViewKey = id, Requires = requires.Length > 0 ? requires : ["m"] };
 
     // ── 无界面宿主：整段 no-op ──
 
@@ -30,7 +30,7 @@ public class RegistrySemanticsTests
     {
         var registry = new UiContributionRegistry(points: null);
 
-        registry.AddRange("mcp", [Page("p", "/mcp")]);
+        registry.AddRange("mcp", [Page("p", "/mcp", "mcp")]);
 
         registry.IsEnabled.Should().BeFalse();
         registry.All.Should().BeEmpty();
@@ -72,8 +72,8 @@ public class RegistrySemanticsTests
     public void All_OrderedByOwnerThenPointThenOrderThenId()
     {
         var registry = new UiContributionRegistry(Points());
-        registry.AddRange("zeta", [Page("p2", "/z")]);
-        registry.AddRange("alpha", [Page("p1", "/a")]);
+        registry.AddRange("zeta", [Page("p2", "/z", "zeta")]);
+        registry.AddRange("alpha", [Page("p1", "/a", "alpha")]);
 
         registry.All.Select(e => e.OwnerId).Should().Equal("alpha", "zeta");
     }
@@ -85,8 +85,8 @@ public class RegistrySemanticsTests
     {
         var registry = new UiContributionRegistry(Points());
 
-        registry.AddRange("mcp", [Page("p", "/mcp")]);
-        registry.AddRange("mcp", [Page("p", "/mcp")]);
+        registry.AddRange("mcp", [Page("p", "/mcp", "mcp")]);
+        registry.AddRange("mcp", [Page("p", "/mcp", "mcp")]);
 
         registry.All.Should().ContainSingle();
     }
@@ -95,10 +95,10 @@ public class RegistrySemanticsTests
     public void AddRange_PointChanged_ShouldNotLeaveStale()
     {
         var registry = new UiContributionRegistry(Points());
-        registry.AddRange("m", [Page("x", "/x")]);
+        registry.AddRange("m", [Page("x", "/x", "m")]);
 
         registry.AddRange("m", [new SlotContributionProbe
-        { Point = SlotPoint.Id, Id = "x", ViewKey = "s" }]);
+        { Point = SlotPoint.Id, Id = "x", ViewKey = "s", Requires = ["m"] }]);
 
         registry.All.Should().ContainSingle();
         registry.All[0].Contribution.Point.Should().Be(SlotPoint.Id);
@@ -108,7 +108,7 @@ public class RegistrySemanticsTests
     public void RemoveByOwner_ShouldBeIdempotent()
     {
         var registry = new UiContributionRegistry(Points());
-        registry.AddRange("m", [Page("p", "/p")]);
+        registry.AddRange("m", [Page("p", "/p", "m")]);
 
         registry.RemoveByOwner("m");
         registry.RemoveByOwner("m");
@@ -143,7 +143,7 @@ public class RegistrySemanticsTests
     public void DuplicateIdInSameBatch_ShouldRejectSecond()
     {
         var registry = new UiContributionRegistry(Points());
-        registry.AddRange("m", [Page("dup", "/a"), Page("dup", "/b")]);
+        registry.AddRange("m", [Page("dup", "/a", "m"), Page("dup", "/b", "m")]);
 
         registry.All.Should().ContainSingle();
         registry.Diagnostics.Should().ContainSingle().Which.Kind.Should().Be(UiDiagnosticKind.DuplicateId);
@@ -153,7 +153,7 @@ public class RegistrySemanticsTests
     public void DuplicateRouteInSameBatch_ShouldRejectSecond()
     {
         var registry = new UiContributionRegistry(Points());
-        registry.AddRange("m", [Page("a", "/same"), Page("b", "/same")]);
+        registry.AddRange("m", [Page("a", "/same", "m"), Page("b", "/same", "m")]);
 
         registry.All.Should().ContainSingle();
         registry.Diagnostics.Should().ContainSingle().Which.Kind.Should().Be(UiDiagnosticKind.DuplicateRoute);
@@ -166,8 +166,8 @@ public class RegistrySemanticsTests
         var registry = new UiContributionRegistry(new UiPointCatalog([single]));
 
         registry.AddRange("m", [
-            new PageContributionProbe { Point = single.Id, Id = "a", Route = "/a", Title = "A", ViewKey = "a" },
-            new PageContributionProbe { Point = single.Id, Id = "b", Route = "/b", Title = "B", ViewKey = "b" }
+            new PageContributionProbe { Point = single.Id, Id = "a", Route = "/a", Title = "A", ViewKey = "a", Requires = ["m"] },
+            new PageContributionProbe { Point = single.Id, Id = "b", Route = "/b", Title = "B", ViewKey = "b", Requires = ["m"] }
         ]);
 
         registry.All.Should().ContainSingle();
@@ -179,7 +179,7 @@ public class RegistrySemanticsTests
     {
         var registry = new UiContributionRegistry(Points());
 
-        var act = () => registry.AddRange("m", [null!, Page("ok", "/ok")]);
+        var act = () => registry.AddRange("m", [null!, Page("ok", "/ok", "m")]);
 
         act.Should().NotThrow();
         registry.All.Should().ContainSingle();
@@ -204,7 +204,7 @@ public class RegistrySemanticsTests
     {
         var registry = new UiContributionRegistry(Points(), [new RejectingValidator()]);
 
-        registry.AddRange("m", [Page("p", "/p")]);
+        registry.AddRange("m", [Page("p", "/p", "m")]);
 
         registry.All.Should().BeEmpty();
         registry.Diagnostics.Should().ContainSingle().Which.Kind.Should().Be(UiDiagnosticKind.ValidatorRejected);
@@ -215,7 +215,7 @@ public class RegistrySemanticsTests
     {
         var registry = new UiContributionRegistry(Points(), [new ThrowingValidator()]);
 
-        var act = () => registry.AddRange("m", [Page("p", "/p")]);
+        var act = () => registry.AddRange("m", [Page("p", "/p", "m")]);
 
         act.Should().NotThrow();
         registry.Diagnostics.Should().ContainSingle().Which.Kind.Should().Be(UiDiagnosticKind.ValidatorRejected);
@@ -229,7 +229,7 @@ public class RegistrySemanticsTests
         var registry = new UiContributionRegistry(Points());
         registry.Changed += (_, _) => throw new InvalidOperationException("boom");
 
-        var act = () => registry.AddRange("m", [Page("p", "/p")]);
+        var act = () => registry.AddRange("m", [Page("p", "/p", "m")]);
 
         act.Should().NotThrow();
         registry.All.Should().ContainSingle();
@@ -242,7 +242,7 @@ public class RegistrySemanticsTests
         var fired = 0;
         registry.Changed += (_, _) => fired++;
 
-        registry.AddRange("m", [Page("p", "/p")]);
+        registry.AddRange("m", [Page("p", "/p", "m")]);
         registry.RemoveByOwner("m");
 
         fired.Should().Be(2);
@@ -259,3 +259,4 @@ public class RegistrySemanticsTests
             => throw new InvalidOperationException("validator boom");
     }
 }
+

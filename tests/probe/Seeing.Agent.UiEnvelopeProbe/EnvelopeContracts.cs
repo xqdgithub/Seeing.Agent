@@ -109,7 +109,10 @@ public enum UiDiagnosticKind
     DuplicateRoute,
     ExceededMaxItems,
     ValidatorRejected,
-    InvalidDeclaration
+    InvalidDeclaration,
+
+    /// <summary>跨创建方重复（同一 (扩展点, id) 已被他人声明）。</summary>
+    CrossOwnerDuplicate
 }
 
 /// <summary>诊断项。</summary>
