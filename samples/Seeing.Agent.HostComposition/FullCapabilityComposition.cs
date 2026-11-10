@@ -32,6 +32,7 @@ using Seeing.Agent.Tools.Speech;
 using Seeing.Agent.Tools.SystemOne.Extensions;
 using Seeing.Agent.Tools.ToolDiscovery;
 using Seeing.Agent.Tools.Web;
+using Seeing.Agent.Workbench;
 using Seeing.Agent.Workspace;
 using Seeing.IO.Local;
 using Seeing.Provider.DeepSeek;
@@ -108,6 +109,7 @@ public static class FullCapabilityComposition
         services.AddSeeingModule<SpeechToolsModule>(registry);
         services.AddSeeingModule<ChannelMessagingModule>(registry);
         services.AddSeeingModule<WorkspaceGitExcludeModule>(registry);
+        services.AddSeeingModule<WorkbenchModule>(registry);
 
         // ── 能力 ──
         services.AddSeeingModule<SkillsModule>(registry);

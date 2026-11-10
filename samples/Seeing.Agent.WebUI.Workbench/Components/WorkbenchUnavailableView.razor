@@ -1,0 +1,19 @@
+@* 工作台渲染失败时的占位：给出原因 + 关闭入口，绝不留空白区域。 *@
+<div class="workbench-unavailable" role="alert">
+    <div class="workbench-unavailable-title">@Title 无法显示</div>
+    <div class="workbench-unavailable-reason">@Reason</div>
+    <div class="workbench-unavailable-actions">
+        <button type="button" class="workbench-unavailable-close" @onclick="OnClose">关闭该工作台</button>
+    </div>
+</div>
+
+@code {
+    /// <summary>工作台标题。</summary>
+    [Parameter] public string Title { get; set; } = "工作台";
+
+    /// <summary>失败原因（组件异常消息）。</summary>
+    [Parameter] public string? Reason { get; set; }
+
+    /// <summary>关闭回调。</summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+}

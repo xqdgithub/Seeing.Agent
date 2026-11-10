@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Ui;
+using Seeing.Agent.Abstractions.Ui.Workbench;
 
 namespace Seeing.Agent.WebUI.Shell;
 
@@ -57,12 +58,19 @@ public static class WebUiPoints
         Scope = UiVisibilityScope.Session,
     };
 
-    /// <summary>会话右侧面板（<c>session_file_panel</c>）。</summary>
-    public static readonly UiPoint SessionFilePanel = new()
+    /// <summary>
+    /// 会话工作台停靠位（<c>workbench.dock</c>）。
+    /// <para>
+    /// <b>会话级</b>：工作台随会话工作模式收窄（与插槽同语义）。
+    /// 它取代了迁移前的 <c>session.file.panel</c> 插槽 —— 插槽只能「挂一个固定组件」，
+    /// 工作台则是「可并存、可切换、可持久化、可被 agent 驱动的视图」。
+    /// </para>
+    /// </summary>
+    public static readonly UiPoint WorkbenchDock = new()
     {
-        Id = "session.file.panel",
-        DisplayName = "会话右侧面板",
-        PayloadKind = UiPayloadKind.Slot,
+        Id = WorkbenchPoints.DockId,
+        DisplayName = "会话工作台",
+        PayloadKind = UiPayloadKind.Workbench,
         Scope = UiVisibilityScope.Session,
     };
 
@@ -74,6 +82,6 @@ public static class WebUiPoints
         SessionPrompt,
         SessionToolbarActions,
         SessionInputToolbar,
-        SessionFilePanel,
+        WorkbenchDock,
     ];
 }

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <RootNamespace>Seeing.Agent.WebUI.Workbench</RootNamespace>
+    <Description>会话工作台停靠 UI：双 dock 布局、标签条、选择器与状态持久化（被动消费信封贡献）</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AntDesign" Version="1.6.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\abstractions\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Seeing.Agent.WebUI.Workbench.Tests" />
+  </ItemGroup>
+
+</Project>

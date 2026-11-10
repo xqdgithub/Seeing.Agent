@@ -1,0 +1,137 @@
+@using AntDesign
+@using Seeing.Agent.Abstractions.Ui.Workbench
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.WebUI.Workbench
+@using Seeing.Agent.WebUI.Workbench.Components
+@implements IDisposable
+@inject WorkbenchDockState DockState
+@inject WorkbenchProjection Projection
+
+@*
+    工作台选择器：列出当前可见的工作台，点击即打开/切到前台。
+    与 agent 的 open_workbench 走同一条状态路径（WorkbenchDockState），两边永远一致；
+    可见集与停靠宿主同源（WorkbenchProjection），不会出现「能点但打不开」。
+*@
+@if (_workbenches.Count > 0)
+{
+    <Dropdown Placement="Placement.BottomRight">
+        <Overlay>
+            <div class="workbench-picker">
+                <div class="workbench-picker-title">工作台</div>
+                @foreach (var workbench in _workbenches)
+                {
+                    var isOpen = _openedIds.Contains(workbench.Id);
+                    <button type="button"
+                            class="workbench-picker-item @(isOpen ? "workbench-picker-item--open" : "")"
+                            @onclick="() => OnPick(workbench)">
+                        <span class="workbench-picker-icon">@IconFor(workbench.Id)</span>
+                        <span class="workbench-picker-label">@workbench.Title</span>
+                        @if (isOpen)
+                        {
+                            <span class="workbench-picker-state">已打开</span>
+                        }
+                    </button>
+                }
+            </div>
+        </Overlay>
+        <ChildContent>
+            @* 不加 Tooltip：下拉展开后即可看到全部可选工作台，悬浮提示只会遮挡下方的列表与操作 *@
+            <button type="button" class="session-workbench-trigger @(_openedIds.Count > 0 ? "active" : "")">
+                <Icon Type="@IconType.Outline.AppstoreAdd" />
+                <span class="session-workbench-trigger-label">工作台</span>
+            </button>
+        </ChildContent>
+    </Dropdown>
+}
+
+@code {
+    /// <summary>会话 id。</summary>
+    [Parameter, EditorRequired] public string SessionId { get; set; } = string.Empty;
+
+    /// <summary>会话级工作模式（null = 跟随进程级）。</summary>
+    [Parameter] public string? SessionScenario { get; set; }
+
+    [CascadingParameter(Name = "SessionScenario")]
+    private string? CascadedSessionScenario { get; set; }
+
+    private IReadOnlyList<WorkbenchContribution> _workbenches = [];
+    private HashSet<string> _openedIds = new(StringComparer.Ordinal);
+
+    private string? EffectiveScenario => SessionScenario ?? CascadedSessionScenario;
+
+    protected override void OnInitialized()
+    {
+        DockState.Changed += OnDockChanged;
+        Projection.Changed += OnProjectionChanged;
+        Refresh();
+    }
+
+    protected override void OnParametersSet() => Refresh();
+
+    private void OnDockChanged(string sessionId)
+    {
+        if (!string.Equals(sessionId, SessionId, StringComparison.Ordinal))
+            return;
+
+        _ = InvokeAsync(() =>
+        {
+            RefreshOpened();
+            StateHasChanged();
+        });
+    }
+
+    private void OnProjectionChanged() => _ = InvokeAsync(() =>
+    {
+        Refresh();
+        StateHasChanged();
+    });
+
+    private void Refresh()
+    {
+        _workbenches = Projection.GetVisible(EffectiveScenario);
+        RefreshOpened();
+    }
+
+    private void RefreshOpened()
+    {
+        if (string.IsNullOrEmpty(SessionId))
+        {
+            _openedIds = new HashSet<string>(StringComparer.Ordinal);
+            return;
+        }
+
+        var layout = DockState.GetLayout(SessionId);
+        _openedIds = new HashSet<string>(
+            layout.Left.Concat(layout.Right).Select(instance => instance.Key.WorkbenchId),
+            StringComparer.Ordinal);
+    }
+
+    /// <summary>点击：已打开则把它的 dock 激活（不重复开）；未打开则按默认 dock 打开。</summary>
+    private void OnPick(WorkbenchContribution workbench)
+    {
+        if (string.IsNullOrEmpty(SessionId))
+            return;
+
+        var layout = DockState.GetLayout(SessionId);
+        var existing = layout.Left.Concat(layout.Right)
+            .FirstOrDefault(instance => string.Equals(instance.Key.WorkbenchId, workbench.Id, StringComparison.Ordinal));
+
+        if (existing is not null)
+            DockState.Activate(SessionId, existing.Key);
+        else
+            DockState.Open(SessionId, workbench.DefaultDock, workbench);
+    }
+
+    private static string IconFor(string workbenchId) => workbenchId switch
+    {
+        "files" => "📁",
+        "markdown" => "📝",
+        _ => "▦"
+    };
+
+    public void Dispose()
+    {
+        DockState.Changed -= OnDockChanged;
+        Projection.Changed -= OnProjectionChanged;
+    }
+}

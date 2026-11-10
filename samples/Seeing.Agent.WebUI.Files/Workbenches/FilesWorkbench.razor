@@ -1,0 +1,72 @@
+@using Seeing.Agent.Abstractions.Ui.Workbench
+@using Seeing.Agent.WebUI.Files.Components
+@using Seeing.Agent.WebUI.Files.Services
+@using Seeing.Agent.WebUI.Workbench
+@inject FilePanelState PanelState
+@implements IDisposable
+
+@*
+    文件工作台视图：把既有 FilePanelHost 包成可停靠工作台。
+    工作台平台负责开合 / 停靠侧 / 宽度 / 标签；本视图只负责文件浏览与编辑。
+*@
+<CascadingValue Name="SessionId" Value="@Context.SessionId">
+    <FilePanelHost @ref="_host" OnRequestClose="@OnCloseSelf" />
+</CascadingValue>
+
+@code {
+    /// <summary>工作台视图上下文（平台注入）。</summary>
+    [Parameter, EditorRequired] public WorkbenchViewContext Context { get; set; } = default!;
+
+    private FilePanelHost? _host;
+    private bool _openPayloadHandled;
+
+    protected override void OnInitialized() => PanelState.Changed += OnPanelStateChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // 打开载荷：{ path?, line?, column? }（由 open_workbench / open_file 带来）
+        if (!_openPayloadHandled)
+        {
+            _openPayloadHandled = true;
+            if (ReadString(Context.OpenPayload, "path") is { Length: > 0 } path && _host is not null)
+                await _host.OpenPathAsync(path, ReadInt(Context.OpenPayload, "line"), ReadInt(Context.OpenPayload, "column"));
+        }
+
+        // 待处理请求可能在挂载后才到达（agent 先请求、工作台后打开）
+        await ConsumePendingOpenAsync();
+    }
+
+    private async Task ConsumePendingOpenAsync()
+    {
+        if (_host is null || PanelState.PendingOpen is not { } pending)
+            return;
+
+        PanelState.ConsumePendingOpen();
+        await _host.OpenOrActivateAsync(pending.Id, refreshIfActive: true, pending.Line, pending.Column);
+    }
+
+    private void OnPanelStateChanged() => _ = InvokeAsync(async () =>
+    {
+        await ConsumePendingOpenAsync();
+        StateHasChanged();
+    });
+
+    private void OnCloseSelf() => Context.Close();
+
+    private static string? ReadString(System.Text.Json.JsonElement? payload, string name)
+        => payload is { ValueKind: System.Text.Json.JsonValueKind.Object } element
+           && element.TryGetProperty(name, out var value)
+           && value.ValueKind == System.Text.Json.JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static int? ReadInt(System.Text.Json.JsonElement? payload, string name)
+        => payload is { ValueKind: System.Text.Json.JsonValueKind.Object } element
+           && element.TryGetProperty(name, out var value)
+           && value.ValueKind == System.Text.Json.JsonValueKind.Number
+           && value.TryGetInt32(out var number)
+            ? number
+            : null;
+
+    public void Dispose() => PanelState.Changed -= OnPanelStateChanged;
+}

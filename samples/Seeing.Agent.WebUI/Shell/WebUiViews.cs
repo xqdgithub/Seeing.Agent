@@ -1,8 +1,10 @@
 using Seeing.Agent.WebUI.Components;
 using Seeing.Agent.WebUI.Components.Scheduler;
 using Seeing.Agent.WebUI.Components.Settings;
-using Seeing.Agent.WebUI.Pages;using SessionPage = global::Seeing.Agent.WebUI.Pages.Session;
+using Seeing.Agent.WebUI.Pages;
+using SessionPage = global::Seeing.Agent.WebUI.Pages.Session;
 using IndexPage = global::Seeing.Agent.WebUI.Pages.Index;
+using Seeing.Agent.WebUI.Workbench;
 
 namespace Seeing.Agent.WebUI.Shell;
 
@@ -63,7 +65,7 @@ public static class WebUiViews
         resolver.Register("settings.scheduler", typeof(SchedulerSettingsCard));
         resolver.Register("settings.memory", typeof(MemorySettingsCard));
 
-        // ── 插槽（文件面板，宿主代 files.workspace 声明）──
-        resolver.Register(WebUiViewKeys.SessionFilePanel, typeof(SessionFilePanel));
+        // ── 插槽（由模块自己声明；壳层不再代声明文件面板）──
+        // 文件面板已改由「工作台」承载：ViewKey 登记在 WebUiWorkbenchViews。
     }
 }

@@ -1,0 +1,349 @@
+@using Seeing.Agent.Abstractions.Interactions
+@using Seeing.Agent.Abstractions.Ui
+@using Seeing.Agent.Abstractions.Ui.Workbench
+@using Seeing.Agent.WebUI.Workbench
+@implements IDisposable
+@inject WorkbenchDockState DockState
+@inject WorkbenchHostBridge Bridge
+@inject WorkbenchLayoutPersistence Persistence
+@inject WorkbenchRequestHandlerRegistry RequestRegistry
+@inject IServiceProvider Services
+@inject ILogger<WorkbenchSurface> Logger
+
+@*
+    会话级工作台表面：左右两个 dock + 「打开工作台」选择器。
+    职责（每个会话每 circuit 一份）：
+      ① 声明变化时清理不再可用的实例；
+      ② 恢复 localStorage 布局（刷新后成员与宽度回来）；
+      ③ 登记 workbench.registry.* 宿主请求（agent 经 open_workbench 驱动）；
+      ④ 布局变化时把稳定快照推给服务端（上下文源消费）。
+    单侧渲染由 WorkbenchDockHost 负责。
+*@
+
+<WorkbenchDockHost SessionId="@SessionId"
+                   Dock="WorkbenchDock.Left"
+                   Workbenches="Workbenches"
+                   CircuitId="@CircuitId" />
+
+<WorkbenchDockHost SessionId="@SessionId"
+                   Dock="WorkbenchDock.Right"
+                   Workbenches="Workbenches"
+                   CircuitId="@CircuitId" />
+
+@code {
+    /// <summary>会话 id。</summary>
+    [Parameter, EditorRequired] public string SessionId { get; set; } = string.Empty;
+
+    /// <summary>当前可见的工作台声明（父组件按信封可见性判定后传入）。</summary>
+    [Parameter] public IReadOnlyList<WorkbenchContribution> Workbenches { get; set; } = [];
+
+    /// <summary>电路 id（空串 = prerender，不做任何登记与持久化）。</summary>
+    [Parameter] public string CircuitId { get; set; } = string.Empty;
+
+    private string _boundSessionId = string.Empty;
+    private bool _restoreStarted;
+
+    protected override void OnInitialized()
+    {
+        DockState.Changed += OnDockChanged;
+        RegisterRegistryHandler();
+    }
+
+    protected override void OnParametersSet()
+    {
+        var sessionChanged = !string.Equals(_boundSessionId, SessionId, StringComparison.Ordinal);
+        if (sessionChanged)
+        {
+            // 切会话：先把旧会话的登记撤掉，否则 A 会话的注册表请求会打到 B 会话的组件
+            UnregisterRegistryHandler(_boundSessionId);
+            _boundSessionId = SessionId;
+            _restoreStarted = false;
+            RegisterRegistryHandler();
+
+            if (!string.IsNullOrEmpty(_boundSessionId))
+            {
+                // 旧会话已不在本 circuit 展示：清掉它的服务端快照（避免上下文源叙述已关闭的工作台）
+                Bridge.Clear(_boundSessionId);
+            }
+        }
+
+        if (string.IsNullOrEmpty(SessionId))
+            return;
+
+        // 声明变化 → 清理不再可用的实例（模块停用 / 工作台声明被撤回）
+        var known = new HashSet<string>(Workbenches.Select(w => w.Id), StringComparer.Ordinal);
+        DockState.Prune(SessionId, known.Contains);
+    }
+
+    private void RegisterRegistryHandler()
+    {
+        if (string.IsNullOrEmpty(SessionId) || string.IsNullOrEmpty(CircuitId))
+            return;
+
+        RequestRegistry.Register(
+            SessionId,
+            CircuitId,
+            WorkbenchRequestKinds.RegistryPrefix,
+            new WorkbenchRequestHandler(HandleRegistryRequestAsync));
+    }
+
+    private void UnregisterRegistryHandler(string? sessionId)
+    {
+        if (string.IsNullOrEmpty(sessionId) || string.IsNullOrEmpty(CircuitId))
+            return;
+
+        RequestRegistry.Unregister(sessionId, CircuitId, WorkbenchRequestKinds.RegistryPrefix);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_restoreStarted || string.IsNullOrEmpty(SessionId) || string.IsNullOrEmpty(CircuitId))
+            return;
+
+        _restoreStarted = true;
+
+        // 恢复：localStorage 只存 UI 形态；视图键与标题按当前声明重新填充
+        var snapshot = await Persistence.LoadAsync(SessionId);
+        if (snapshot is not null)
+        {
+            var known = Workbenches.ToDictionary(w => w.Id, StringComparer.Ordinal);
+
+            WorkbenchInstance? Build(WorkbenchLayoutItem item, WorkbenchDock dock)
+            {
+                if (!known.TryGetValue(item.WorkbenchId, out var contribution))
+                    return null;   // 来源已停用：静默丢弃
+
+                return new WorkbenchInstance(
+                    new WorkbenchInstanceKey(dock, item.WorkbenchId),
+                    contribution.Title,
+                    contribution.ViewKey,
+                    null,
+                    item.ViewState);
+            }
+
+            var left = snapshot.Left.Select(item => Build(item, WorkbenchDock.Left)).OfType<WorkbenchInstance>().ToArray();
+            var right = snapshot.Right.Select(item => Build(item, WorkbenchDock.Right)).OfType<WorkbenchInstance>().ToArray();
+
+            if (left.Length > 0 || right.Length > 0)
+            {
+                DockState.Restore(SessionId, new WorkbenchSessionLayout(
+                    left,
+                    right,
+                    snapshot.ActiveLeft,
+                    snapshot.ActiveRight,
+                    snapshot.LeftWidthPercent,
+                    snapshot.RightWidthPercent)
+                {
+                    ChatHidden = snapshot.ChatHidden
+                });
+            }
+        }
+
+        // 恢复后立即上报一次（服务端快照与本地一致）
+        Bridge.Flush(SessionId, Workbenches);
+    }
+
+    private void OnDockChanged(string sessionId)
+    {
+        if (!string.Equals(sessionId, SessionId, StringComparison.Ordinal))
+            return;
+
+        // 持久化在 UI 同步上下文之外做（JS 调用不应阻塞渲染线程）
+        _ = PersistAsync(sessionId);
+    }
+
+    private async Task PersistAsync(string sessionId)
+    {
+        try
+        {
+            var layout = DockState.GetLayout(sessionId);
+            if (layout.Left.Count == 0 && layout.Right.Count == 0)
+            {
+                await Persistence.RemoveAsync(sessionId);
+                Bridge.Clear(sessionId);
+                return;
+            }
+
+            await Persistence.SaveAsync(sessionId, WorkbenchLayoutSnapshot.From(sessionId, layout));
+            Bridge.Flush(sessionId, Workbenches);
+        }
+        catch (Exception ex)
+        {
+            // 持久化是增强信息：失败不得影响界面
+            Logger.LogDebug(ex, "工作台布局持久化失败（忽略）：{SessionId}", sessionId);
+        }
+    }
+
+    /// <summary>
+    /// 处理 <c>workbench.registry.*</c>：open / list / close。
+    /// <para>处理器在后台线程被调用（Dispatcher），因此编组回 Blazor 同步上下文执行。</para>
+    /// </summary>
+    private Task<HostResponse> HandleRegistryRequestAsync(HostRequest request, CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource<HostResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        _ = InvokeAsync(() =>
+        {
+            try
+            {
+                tcs.TrySetResult(ComputeRegistryResponse(request));
+            }
+            catch (Exception ex)
+            {
+                tcs.TrySetResult(new HostResponse
+                {
+                    RequestId = request.RequestId,
+                    SessionId = request.SessionId,
+                    Status = HostResponseStatus.Failed,
+                    Reason = ex.Message
+                });
+            }
+        });
+
+        return tcs.Task;
+    }
+
+    private HostResponse ComputeRegistryResponse(HostRequest request)
+    {
+        if (string.Equals(request.SessionId, SessionId, StringComparison.Ordinal) is false)
+        {
+            return new HostResponse
+            {
+                RequestId = request.RequestId,
+                SessionId = request.SessionId,
+                Status = HostResponseStatus.Unavailable
+            };
+        }
+
+        return request.Kind switch
+        {
+            WorkbenchRequestKinds.RegistryOpen => Open(request),
+            WorkbenchRequestKinds.RegistryClose => Close(request),
+            WorkbenchRequestKinds.RegistryList => List(request),
+            _ => new HostResponse
+            {
+                RequestId = request.RequestId,
+                SessionId = request.SessionId,
+                Status = HostResponseStatus.Failed,
+                Reason = $"未知的注册表动作：{request.Kind}"
+            }
+        };
+    }
+
+    private HostResponse Open(HostRequest request)
+    {
+        if (request.Payload is not { ValueKind: System.Text.Json.JsonValueKind.Object } payload
+            || !payload.TryGetProperty("workbenchId", out var idElement)
+            || idElement.ValueKind != System.Text.Json.JsonValueKind.String
+            || idElement.GetString() is not { Length: > 0 } workbenchId)
+        {
+            return Failed(request, "缺少 workbenchId");
+        }
+
+        var contribution = Workbenches.FirstOrDefault(w =>
+            string.Equals(w.Id, workbenchId, StringComparison.Ordinal));
+
+        if (contribution is null)
+        {
+            // 声明不在可见集里：可能是模块停用或工作模式收窄（工具侧已给出更精确的原因）
+            return Failed(request, $"工作台 '{workbenchId}' 当前不可用");
+        }
+
+        var dock = contribution.DefaultDock;
+        if (payload.TryGetProperty("dock", out var dockElement)
+            && dockElement.ValueKind == System.Text.Json.JsonValueKind.String
+            && Enum.TryParse<WorkbenchDock>(dockElement.GetString(), ignoreCase: true, out var explicitDock))
+        {
+            dock = explicitDock;
+        }
+
+        System.Text.Json.JsonElement? openPayload = null;
+        if (payload.TryGetProperty("openPayload", out var openElement)
+            && openElement.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            openPayload = openElement;
+        }
+
+        var key = DockState.Open(SessionId, dock, contribution, openPayload);
+
+        return new HostResponse
+        {
+            RequestId = request.RequestId,
+            SessionId = request.SessionId,
+            Status = HostResponseStatus.Completed,
+            Payload = System.Text.Json.JsonSerializer.SerializeToElement(new
+            {
+                workbenchId,
+                dock = dock.ToString(),
+                instanceKey = key?.ToString()
+            })
+        };
+    }
+
+    private HostResponse Close(HostRequest request)
+    {
+        if (request.Payload is not { ValueKind: System.Text.Json.JsonValueKind.Object } payload
+            || !payload.TryGetProperty("workbenchId", out var idElement)
+            || idElement.ValueKind != System.Text.Json.JsonValueKind.String
+            || idElement.GetString() is not { Length: > 0 } workbenchId)
+        {
+            return Failed(request, "缺少 workbenchId");
+        }
+
+        var layout = DockState.GetLayout(SessionId);
+        var target = layout.Left.Concat(layout.Right)
+            .FirstOrDefault(instance => string.Equals(instance.Key.WorkbenchId, workbenchId, StringComparison.Ordinal));
+
+        if (target is null)
+            return Failed(request, $"工作台 '{workbenchId}' 未打开");
+
+        DockState.Close(SessionId, target.Key);
+
+        return new HostResponse
+        {
+            RequestId = request.RequestId,
+            SessionId = request.SessionId,
+            Status = HostResponseStatus.Completed
+        };
+    }
+
+    private HostResponse List(HostRequest request)
+    {
+        var layout = DockState.GetLayout(SessionId);
+
+        return new HostResponse
+        {
+            RequestId = request.RequestId,
+            SessionId = request.SessionId,
+            Status = HostResponseStatus.Completed,
+            Payload = System.Text.Json.JsonSerializer.SerializeToElement(new
+            {
+                open = layout.Left.Concat(layout.Right).Select(instance => new
+                {
+                    id = instance.Key.WorkbenchId,
+                    dock = instance.Key.Dock.ToString(),
+                    title = instance.Title,
+                    active = instance.IsActive
+                }).ToList()
+            })
+        };
+    }
+
+    private static HostResponse Failed(HostRequest request, string reason) => new()
+    {
+        RequestId = request.RequestId,
+        SessionId = request.SessionId,
+        Status = HostResponseStatus.Failed,
+        Reason = reason
+    };
+
+    public void Dispose()
+    {
+        DockState.Changed -= OnDockChanged;
+
+        UnregisterRegistryHandler(SessionId);
+
+        if (!string.IsNullOrEmpty(CircuitId))
+            RequestRegistry.UnregisterAll(SessionId, CircuitId);
+    }
+}

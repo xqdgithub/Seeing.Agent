@@ -46,6 +46,7 @@
 @inject Microsoft.Extensions.Options.IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
 @inject Seeing.Agent.Core.Scenarios.IScenarioCatalog ScenarioCatalog
 @inject ILogger<SessionWindow> Logger
+@inject Seeing.Agent.WebUI.Workbench.WorkbenchDockState WorkbenchState
 @implements IDisposable
 
 <div Class="@($"session-window session-window--{ModeCss}{(IsCompactSummary ? " session-window--compact" : "")}")">
@@ -62,9 +63,11 @@
                         Mode="ViewMode"
                         LeftActions="ToolbarLeftActions"
                         RightActions="ToolbarRightActions" />
-        <!-- 主内容区域（消息列 + Todo 面板）；输入与消息同列，避免 Todo 出现时输入相对对话偏移 -->
-        <div Class="session-content-wrapper">
-            <div Class="session-main-column">
+        <!-- 主内容区域（消息列 + 工作台 dock）；输入与消息同列，避免 Todo 出现时输入相对对话偏移 -->
+        <div Class="@($"session-content-wrapper{(_chatHidden ? " session-content-wrapper--chat-hidden" : "")}")">
+            @if (!_chatHidden)
+            {
+                <div Class="session-main-column">
                 <!-- 消息列表区域 -->
                 <div Class="session-window-content">
                     @if (ShowEmptyState)
@@ -223,10 +226,11 @@
                                      OnCancelCallback="@OnCancelExecution" />
                     </div>
                 }
-            </div>
+                </div>
+            }
 
-            @* 文件面板插槽（模块启用时由 SlotHost 渲染） *@
-            <SlotHost SlotName="session_file_panel" />
+            @* 会话工作台（左右 dock）：文件、Markdown 预览等可停靠视图；空 dock 不渲染 DOM *@
+            <WorkbenchDockSlot SessionId="@SessionId" SessionScenario="@SessionState.CurrentSession?.Scenario" />
         </div>
 
         <!-- 错误提示 -->
@@ -396,6 +400,9 @@
     /// <summary>组件是否已销毁：渲染回调必须据此短路，避免在已销毁组件上排队渲染。</summary>
     private bool _disposed;
 
+    /// <summary>聊天主列是否隐藏（由工作台全屏开关驱动；仅影响 Full 模式的布局）。</summary>
+    private bool _chatHidden;
+
     /// <summary>
     /// 渲染合并器：仅用于「消息内容刷新」路径（事件流 delta、聚合器回调）。
     /// <para>用户交互路径（<see cref="SyncContextState"/>）保持即时渲染，避免 AntDesign Select
@@ -477,6 +484,7 @@
         }
 
         WireContextCallbacks();
+        SubscribeToWorkbenchState();
     }
 
     /// <summary>
@@ -501,10 +509,44 @@
     }
 
     /// <summary>
+    /// 订阅工作台停靠状态：聊天区显隐由「工作台全屏」开关驱动，
+    /// 而那个开关在 dock 的标签条里（子组件），因此本窗口必须自己订阅才能重排主列。
+    /// </summary>
+    private void SubscribeToWorkbenchState()
+    {
+        WorkbenchState.Changed += OnWorkbenchStateChanged;
+        RefreshChatHidden();
+    }
+
+    private void OnWorkbenchStateChanged(string sessionId)
+    {
+        if (!string.Equals(sessionId, SessionState.SessionId, StringComparison.Ordinal)
+            && !string.Equals(sessionId, SessionId, StringComparison.Ordinal))
+            return;
+
+        _ = InvokeAsync(() =>
+        {
+            RefreshChatHidden();
+            StateHasChanged();
+        });
+    }
+
+    /// <summary>读取聊天区显隐（无工作台时强制显示，避免恢复成白屏）。</summary>
+    private void RefreshChatHidden()
+    {
+        var effectiveId = !string.IsNullOrEmpty(SessionState.SessionId) ? SessionState.SessionId : SessionId;
+        _chatHidden = !string.IsNullOrEmpty(effectiveId)
+                      && WorkbenchState.IsChatHidden(effectiveId)
+                      && WorkbenchState.HasAny(effectiveId);
+    }
+
+    /// <summary>
     /// 参数变更：ViewMode 变化时切换 Full/Summary 侧副作用；SessionId 变化时重载会话。
     /// </summary>
     protected override async Task OnParametersSetAsync()
     {
+        RefreshChatHidden();
+
         if (_lastViewMode != ViewMode)
         {
             _lastViewMode = ViewMode;
@@ -2306,6 +2348,7 @@
         _budgetSubscription?.Dispose();
         _sessionEventSubscription?.Dispose();
         _seeingAgentOptionsSubscription?.Dispose();
+        WorkbenchState.Changed -= OnWorkbenchStateChanged;
 
         // 退订事件回调并摘除 handler 订阅（aggregator 的父会话订阅由 Rebind 自行切换；
         // circuit 关闭时 SeeingCircuitHandler 统一 DetachAllForCircuit，此处不调用）

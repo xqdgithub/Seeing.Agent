@@ -1,0 +1,67 @@
+@using Seeing.Agent.Abstractions.Ui.Workbench
+@using Seeing.Agent.Hosting.Web.Circuits
+@using Seeing.Agent.WebUI.Workbench
+@using Seeing.Agent.WebUI.Workbench.Components
+@using Seeing.Agent.WebUI.Services
+@implements IDisposable
+@inject WorkbenchDockState DockState
+@inject WorkbenchProjection Projection
+@inject CircuitContext CircuitContext
+
+@*
+    会话页的工作台挂载点：把可见集交给 WorkbenchSurface 渲染左右 dock。
+    可见集来自 WorkbenchProjection（与工具栏选择器同源），不在这里重算。
+*@
+@if (!string.IsNullOrEmpty(SessionId))
+{
+    <WorkbenchSurface SessionId="@SessionId"
+                      Workbenches="_visible"
+                      CircuitId="@_circuitId" />
+}
+
+@code {
+    /// <summary>会话 id。</summary>
+    [Parameter, EditorRequired] public string SessionId { get; set; } = string.Empty;
+
+    /// <summary>会话级工作模式（null = 跟随进程级）。</summary>
+    [Parameter] public string? SessionScenario { get; set; }
+
+    [CascadingParameter(Name = "SessionScenario")]
+    private string? CascadedSessionScenario { get; set; }
+
+    private IReadOnlyList<WorkbenchContribution> _visible = [];
+    private string _circuitId = string.Empty;
+
+    private string? EffectiveScenario => SessionScenario ?? CascadedSessionScenario;
+
+    protected override void OnInitialized()
+    {
+        _circuitId = CircuitContext.Id ?? string.Empty;
+        Projection.Changed += OnProjectionChanged;
+        DockState.Changed += OnDockChanged;
+        Refresh();
+    }
+
+    protected override void OnParametersSet() => Refresh();
+
+    private void OnProjectionChanged() => _ = InvokeAsync(() =>
+    {
+        Refresh();
+        StateHasChanged();
+    });
+
+    /// <summary>本地打开/关闭也要重渲染（可见集不变，但布局变了）。</summary>
+    private void OnDockChanged(string sessionId)
+    {
+        if (string.Equals(sessionId, SessionId, StringComparison.Ordinal))
+            _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void Refresh() => _visible = Projection.GetVisible(EffectiveScenario);
+
+    public void Dispose()
+    {
+        Projection.Changed -= OnProjectionChanged;
+        DockState.Changed -= OnDockChanged;
+    }
+}

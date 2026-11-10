@@ -1,0 +1,63 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+@* 分隔线：拖动改变 dock 宽度（百分比）。松手后把稳定值回传给 .NET（由 WorkbenchDockState 持有）。 *@
+<div class="workbench-resize @(Invert ? "workbench-resize--invert" : "")"
+     @ref="_element"
+     role="separator"
+     aria-orientation="vertical"></div>
+
+@code {
+    /// <summary>当前宽度百分比（组件间同步用；拖动中的即时反馈由 JS 处理）。</summary>
+    [Parameter] public double Value { get; set; } = WorkbenchSizing.Default.DefaultPercent;
+
+    /// <summary>最小百分比。</summary>
+    [Parameter] public double Min { get; set; } = WorkbenchDockState.MinWidthPercent;
+
+    /// <summary>最大百分比。</summary>
+    [Parameter] public double Max { get; set; } = WorkbenchDockState.MaxWidthPercent;
+
+    /// <summary>true = 向左拖动才增大（右侧 dock 用）。</summary>
+    [Parameter] public bool Invert { get; set; }
+
+    /// <summary>拖动结束回调（稳定值）。</summary>
+    [Parameter] public EventCallback<double> OnChanged { get; set; }
+
+    private ElementReference _element;
+    private DotNetObjectReference<WorkbenchResizeHandle>? _self;
+    private int _initialized;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            _self = DotNetObjectReference.Create(this);
+
+        if (Interlocked.Exchange(ref _initialized, 1) == 1)
+            return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("seeingWorkbench.initResize", _element, _self, Value, Min, Max, Invert);
+        }
+        catch (JSDisconnectedException)
+        {
+            // circuit 已断开：无需恢复
+        }
+        catch (InvalidOperationException)
+        {
+            // prerender 阶段无 JS 运行时；首帧渲染后会重试
+            Interlocked.Exchange(ref _initialized, 0);
+        }
+    }
+
+    /// <summary>JS 回调：拖动结束时上报稳定宽度百分比。</summary>
+    [JSInvokable]
+    public Task OnResizeEndAsync(double percent)
+        => OnChanged.InvokeAsync(Math.Clamp(percent, Min, Max));
+
+    public void Dispose()
+    {
+        _self?.Dispose();
+        _self = null;
+    }
+}

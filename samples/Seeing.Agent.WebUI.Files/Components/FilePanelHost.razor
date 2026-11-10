@@ -16,7 +16,7 @@
         {
             <div class="file-panel-header">
                 <span class="file-panel-title">文件</span>
-                <button type="button" class="file-panel-close" title="关闭文件面板" @onclick="ClosePanel">×</button>
+                <button type="button" class="file-panel-close" title="关闭" @onclick="ClosePanel">×</button>
             </div>
             <div class="file-panel-error" role="alert">
                 <div class="file-panel-error-text">@_error</div>
@@ -30,15 +30,6 @@
     }
     else
     {
-        <div class="file-panel-header">
-            <span class="file-panel-title">文件</span>
-            <span class="file-panel-header-actions">
-                <button type="button" class="file-panel-side" title="切换文件面板左/右位置" @onclick="ToggleSide">
-                    <span aria-hidden="true">⇄</span>
-                </button>
-                <button type="button" class="file-panel-close" title="关闭文件面板" @onclick="ClosePanel">×</button>
-            </span>
-        </div>
         @if (_error is not null)
         {
             <div class="file-panel-error file-panel-error--banner" role="alert">
@@ -74,6 +65,9 @@
 
 @code {
     [CascadingParameter(Name = "SessionId")] private string? SessionId { get; set; }
+
+    /// <summary>请求关闭整个工作台（由工作台视图提供，转发到平台的 Close）。</summary>
+    [Parameter] public EventCallback OnRequestClose { get; set; }
 
     private IFileWorkspace? _workspace;
     private FileTabsState _tabs = null!;
@@ -199,15 +193,17 @@
 
     private void ShowTree() => PanelState.SetTreeVisible(true);
 
-    private void ToggleSide() => PanelState.ToggleSide();
+    /// <summary>
+    /// 关闭请求：目录树隐藏且无标签时由本组件自行收起；
+    /// 面板级关闭（关掉整个工作台）由工作台平台的标签条负责。
+    /// </summary>
+    private void ClosePanel() => OnRequestClose.InvokeAsync();
 
-    private void ClosePanel() => PanelState.Close();
-
-    /// <summary>无打开文件且目录树不可见时关闭面板。</summary>
+    /// <summary>无打开文件且目录树不可见时请求关闭工作台。</summary>
     private void ClosePanelIfEmpty()
     {
         if (_tabs.OpenFiles.Count == 0 && !PanelState.TreeVisible)
-            PanelState.Close();
+            _ = OnRequestClose.InvokeAsync();
     }
 
     private async Task SaveActiveAsync()
@@ -339,6 +335,19 @@
         var id = _workspace.GetResourceId(path);
         await OpenOrActivateAsync(id, refreshIfActive: false);
         return string.Equals(_tabs.ActiveKey, id.ToString(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 宿主桥接入口：按路径打开（工作台打开载荷用）。
+    /// <para>路径经工作区解析为资源标识，与文件树走同一套根规则。</para>
+    /// </summary>
+    public async Task OpenPathAsync(string path, int? line = null, int? column = null)
+    {
+        if (_workspace is null || string.IsNullOrWhiteSpace(path))
+            return;
+
+        var id = _workspace.GetResourceId(path);
+        await OpenOrActivateAsync(id, refreshIfActive: false, line, column);
     }
 
     private async Task RefreshAsync(FileResourceId id)

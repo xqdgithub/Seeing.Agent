@@ -1,0 +1,87 @@
+@using Seeing.Agent.Abstractions.Ui.Workbench
+
+@* 标签条：每个实例一个可关闭的标签，激活项高亮。实例只有一个时仍显示（提供关闭入口）。 *@
+<div class="workbench-tabs" role="tablist">
+    @foreach (var instance in Instances)
+    {
+        var keyText = instance.Key.ToString();
+        var isActive = string.Equals(keyText, ActiveKey, StringComparison.Ordinal);
+        var icon = IconFor(instance.Key.WorkbenchId);
+
+        <div class="workbench-tab @(isActive ? "workbench-tab--active" : "")"
+             role="tab"
+             aria-selected="@(isActive ? "true" : "false")"
+             title="@instance.Title"
+             @onclick="() => OnActivate.InvokeAsync(instance)">
+            @if (!string.IsNullOrEmpty(icon))
+            {
+                <span class="workbench-tab-icon">@icon</span>
+            }
+            <span class="workbench-tab-title">@instance.Title</span>
+            <button type="button"
+                    class="workbench-tab-close"
+                    title="关闭"
+                    aria-label="@($"关闭 {instance.Title}")"
+                    @onclick:stopPropagation="true"
+                    @onclick="() => OnClose.InvokeAsync(instance)">
+                ×
+            </button>
+        </div>
+    }
+
+    @* 停靠区操作：换边 + 全屏。放在标签条右端，与标签同层，不额外占行高 *@
+    <div class="workbench-tabs-actions">
+        <button type="button"
+                class="workbench-tab-action"
+                title="@MoveTitle"
+                aria-label="@MoveTitle"
+                @onclick="() => OnMoveToOtherDock.InvokeAsync()">
+            @(Dock == WorkbenchDock.Left ? "⇥" : "⇤")
+        </button>
+        <button type="button"
+                class="workbench-tab-action @(ChatHidden ? "workbench-tab-action--on" : "")"
+                title="@(ChatHidden ? "显示对话区" : "隐藏对话区，工作台全宽")"
+                aria-label="@(ChatHidden ? "显示对话区" : "隐藏对话区")"
+                @onclick="() => OnToggleChat.InvokeAsync()">
+            @(ChatHidden ? "⤡" : "⤢")
+        </button>
+    </div>
+</div>
+
+@code {
+    /// <summary>dock 内的实例（按打开顺序）。</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<WorkbenchInstance> Instances { get; set; } = [];
+
+    /// <summary>激活实例键文本；null = 无激活。</summary>
+    [Parameter] public string? ActiveKey { get; set; }
+
+    /// <summary>本 dock 所在侧（决定「换边」按钮的方向与提示）。</summary>
+    [Parameter] public WorkbenchDock Dock { get; set; } = WorkbenchDock.Right;
+
+    /// <summary>聊天区当前是否隐藏（用于「全屏」按钮的开关态）。</summary>
+    [Parameter] public bool ChatHidden { get; set; }
+
+    /// <summary>点击标签。</summary>
+    [Parameter] public EventCallback<WorkbenchInstance> OnActivate { get; set; }
+
+    /// <summary>点击关闭。</summary>
+    [Parameter] public EventCallback<WorkbenchInstance> OnClose { get; set; }
+
+    /// <summary>把当前激活工作台换到另一侧 dock。</summary>
+    [Parameter] public EventCallback OnMoveToOtherDock { get; set; }
+
+    /// <summary>切换聊天区显隐。</summary>
+    [Parameter] public EventCallback OnToggleChat { get; set; }
+
+    private string MoveTitle => Dock == WorkbenchDock.Left
+        ? "移到右侧"
+        : "移到左侧";
+
+    /// <summary>图标 token → 字符（工作台作者只需给中性 token；空 token 不渲染图标）。</summary>
+    private static string IconFor(string workbenchId) => workbenchId switch
+    {
+        "files" => "📁",
+        "markdown" => "📝",
+        _ => ""
+    };
+}

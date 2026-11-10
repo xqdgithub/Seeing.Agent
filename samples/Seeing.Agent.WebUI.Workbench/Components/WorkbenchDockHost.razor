@@ -1,0 +1,283 @@
+@using Seeing.Agent.Abstractions.Interactions
+@using Seeing.Agent.Abstractions.Ui.Workbench
+@using Seeing.Agent.WebUI.Workbench
+@implements IDisposable
+@inject WorkbenchDockState DockState
+@inject WorkbenchViewRegistry Views
+@inject WorkbenchRequestHandlerRegistry RequestRegistry
+@inject IServiceProvider Services
+@inject ILogger<WorkbenchDockHost> Logger
+
+@*
+    单侧 dock：标签条 + 内容区 + 分隔线。空 dock 渲染零 DOM。
+    本组件只做渲染与实例级动作派发；会话级协调（恢复 / registry 请求 / 快照）在 WorkbenchSurface。
+*@
+@if (_instances is { Count: > 0 })
+{
+    <div class="@DockCssClass" style="@DockStyle">
+        @if (!IsLeft)
+        {
+            @* 右侧 dock：分隔线在左缘。向右拖（delta > 0）应当收窄，因此 invert *@
+            <WorkbenchResizeHandle Value="@_widthPercent"
+                                   Min="@WorkbenchDockState.MinWidthPercent"
+                                   Max="@MaxWidthPercent"
+                                   Invert="@(!IsLeft)"
+                                   OnChanged="OnWidthChanged" />
+        }
+
+        <div class="workbench-panel">
+            <WorkbenchTabStrip Instances="_instances"
+                               ActiveKey="@_activeKeyText"
+                               Dock="Dock"
+                               ChatHidden="@DockState.IsChatHidden(SessionId)"
+                               OnActivate="OnActivate"
+                               OnClose="OnClose"
+                               OnMoveToOtherDock="OnMoveActiveToOtherDock"
+                               OnToggleChat="OnToggleChat" />
+
+            <div class="workbench-body">
+                @foreach (var instance in _instances)
+                {
+                    @if (!IsActive(instance))
+                    {
+                        continue;
+                    }
+
+                    @* 只渲染激活项：非激活项保留状态但不付渲染成本 *@
+                    <ErrorBoundary @key="@instance.Key.ToString()">
+                        <ChildContent>
+                            <DynamicComponent Type="@Views.Resolve(instance.ViewKey)"
+                                              Parameters="_viewParameters" />
+                        </ChildContent>
+                        <ErrorContent Context="ex">
+                            <WorkbenchUnavailableView Title="@instance.Title"
+                                                      Reason="@ex.Message"
+                                                      OnClose="() => OnClose(instance)" />
+                        </ErrorContent>
+                    </ErrorBoundary>
+                }
+            </div>
+        </div>
+
+        @if (IsLeft)
+        {
+            @* 左侧 dock：分隔线在右缘。向右拖（delta > 0）应当变宽，不反转 *@
+            <WorkbenchResizeHandle Value="@_widthPercent"
+                                   Min="@WorkbenchDockState.MinWidthPercent"
+                                   Max="@MaxWidthPercent"
+                                   Invert="@(!IsLeft)"
+                                   OnChanged="OnWidthChanged" />
+        }
+    </div>
+}
+
+@code {
+    /// <summary>会话 id。</summary>
+    [Parameter, EditorRequired] public string SessionId { get; set; } = string.Empty;
+
+    /// <summary>停靠位。</summary>
+    [Parameter] public WorkbenchDock Dock { get; set; } = WorkbenchDock.Right;
+
+    /// <summary>当前可见的工作台声明（由会话级组件按信封判定后传入）。</summary>
+    [Parameter] public IReadOnlyList<WorkbenchContribution> Workbenches { get; set; } = [];
+
+    /// <summary>电路 id（宿主请求作用域登记用；空串表示 prerender，不登记）。</summary>
+    [Parameter] public string CircuitId { get; set; } = string.Empty;
+
+    private IReadOnlyList<WorkbenchInstance> _instances = [];
+    private string? _activeKeyText;
+    private double _widthPercent = WorkbenchSizing.Default.DefaultPercent;
+    private Dictionary<string, object> _viewParameters = new(StringComparer.Ordinal);
+
+    private bool IsLeft => Dock == WorkbenchDock.Left;
+
+    /// <summary>
+    /// 本 dock 的拖动上限：不超过「总预算 − 对侧当前宽度」。
+    /// <para>
+    /// 两个 dock 各自 75% 上限、但合计不能超过 75%，否则主列会被压成 0 宽
+    /// （表现为「聊天区凭空消失」）。
+    /// </para>
+    /// </summary>
+    private double MaxWidthPercent
+    {
+        get
+        {
+            var layout = DockState.GetLayout(SessionId);
+            var other = layout.WidthFor(IsLeft ? WorkbenchDock.Right : WorkbenchDock.Left);
+            var budget = WorkbenchDockState.MaxCombinedPercent - other;
+            return Math.Max(WorkbenchDockState.MinWidthPercent, Math.Min(WorkbenchDockState.MaxWidthPercent, budget));
+        }
+    }
+
+    private string DockCssClass => IsLeft
+        ? "workbench-dock workbench-dock--left"
+        : "workbench-dock workbench-dock--right";
+
+    private string DockStyle =>
+        $"--workbench-width:{_widthPercent.ToString(System.Globalization.CultureInfo.InvariantCulture)}%;" +
+        (IsLeft ? "order:-2" : "order:1");
+
+    protected override void OnInitialized() => DockState.Changed += OnDockChanged;
+
+    protected override void OnParametersSet() => Refresh();
+
+    private void OnDockChanged(string sessionId)
+    {
+        if (!string.Equals(sessionId, SessionId, StringComparison.Ordinal))
+            return;
+
+        _ = InvokeAsync(() =>
+        {
+            Refresh();
+            StateHasChanged();
+        });
+    }
+
+    private void Refresh()
+    {
+        if (string.IsNullOrEmpty(SessionId))
+        {
+            _instances = [];
+            return;
+        }
+
+        var layout = DockState.GetLayout(SessionId);
+        _instances = layout.For(Dock);
+        _activeKeyText = layout.ActiveKeyFor(Dock);
+        _widthPercent = layout.WidthFor(Dock);
+        _viewParameters = BuildViewParameters();
+    }
+
+    private Dictionary<string, object> BuildViewParameters()
+    {
+        var active = _instances.FirstOrDefault(IsActive);
+        if (active is null)
+            return new Dictionary<string, object>(StringComparer.Ordinal);
+
+        var descriptor = Workbenches.FirstOrDefault(w =>
+            string.Equals(w.Id, active.Key.WorkbenchId, StringComparison.Ordinal));
+        if (descriptor is null)
+            return new Dictionary<string, object>(StringComparer.Ordinal);
+
+        var context = new WorkbenchViewContext
+        {
+            SessionId = SessionId,
+            Key = active.Key,
+            Descriptor = descriptor,
+            OpenPayload = active.OpenPayload,
+            ViewState = active.ViewState,
+            Report = report => DockState.ApplyViewReport(SessionId, active.Key, report),
+            Close = () => DockState.Close(SessionId, active.Key),
+            CallHostAsync = (action, payload, ct) => CallHostAsync(active, action, payload, ct),
+            RegisterAction = (action, handler) => RegisterAction(active, action, handler),
+            UnregisterAction = action => UnregisterAction(active, action)
+        };
+
+        return new Dictionary<string, object>(StringComparer.Ordinal) { ["Context"] = context };
+    }
+
+    private bool IsActive(WorkbenchInstance instance)
+        => string.Equals(instance.Key.ToString(), _activeKeyText, StringComparison.Ordinal);
+
+    private Task OnActivate(WorkbenchInstance instance)
+    {
+        DockState.Activate(SessionId, instance.Key);
+        return Task.CompletedTask;
+    }
+
+    private Task OnClose(WorkbenchInstance instance)
+    {
+        DockState.Close(SessionId, instance.Key);
+        return Task.CompletedTask;
+    }
+
+    private Task OnWidthChanged(double percent)
+    {
+        DockState.SetWidth(SessionId, Dock, percent);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>把当前激活工作台换到另一侧 dock。</summary>
+    private Task OnMoveActiveToOtherDock()
+    {
+        var active = _instances.FirstOrDefault(IsActive) ?? _instances.FirstOrDefault();
+        if (active is null)
+            return Task.CompletedTask;
+
+        DockState.MoveToOtherDock(SessionId, active.Key);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>切换聊天区显隐（工作台独占全宽）。</summary>
+    private Task OnToggleChat()
+    {
+        DockState.SetChatHidden(SessionId, !DockState.IsChatHidden(SessionId));
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 工作台向自己发请求（少见但合法：如「重新加载」按钮走同一条通道）。
+    /// </summary>
+    private async Task<HostResponse> CallHostAsync(
+        WorkbenchInstance instance,
+        string action,
+        System.Text.Json.JsonElement? payload,
+        CancellationToken ct)
+    {
+        if (Services.GetService(typeof(IHostRequestManager)) is not IHostRequestManager manager)
+        {
+            return new HostResponse
+            {
+                SessionId = SessionId,
+                Status = HostResponseStatus.Unavailable,
+                Reason = "宿主请求通道未接入"
+            };
+        }
+
+        var request = new HostRequest
+        {
+            SessionId = SessionId,
+            Kind = WorkbenchRequestKinds.For(instance.Key.WorkbenchId, action),
+            Payload = payload
+        };
+
+        try
+        {
+            var ticket = await manager.BeginAsync(request, ct).ConfigureAwait(false);
+            return await manager.WaitAsync(ticket, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return new HostResponse { SessionId = SessionId, Status = HostResponseStatus.Cancelled };
+        }
+    }
+
+    private void RegisterAction(
+        WorkbenchInstance instance,
+        string action,
+        Func<HostRequest, CancellationToken, Task<HostResponse>> handler)
+    {
+        if (string.IsNullOrEmpty(CircuitId))
+            return;
+
+        RequestRegistry.Register(
+            SessionId,
+            CircuitId,
+            WorkbenchRequestKinds.For(instance.Key.WorkbenchId, action),
+            new WorkbenchRequestHandler(handler, instance.Key.Dock.ToString()));
+    }
+
+    /// <summary>撤销某个动作的登记；动作名单独成 scope，因此可直接按 kind 注销。</summary>
+    private void UnregisterAction(WorkbenchInstance instance, string action)
+    {
+        if (string.IsNullOrEmpty(CircuitId))
+            return;
+
+        RequestRegistry.Unregister(
+            SessionId,
+            CircuitId,
+            WorkbenchRequestKinds.For(instance.Key.WorkbenchId, action));
+    }
+
+    public void Dispose() => DockState.Changed -= OnDockChanged;
+}

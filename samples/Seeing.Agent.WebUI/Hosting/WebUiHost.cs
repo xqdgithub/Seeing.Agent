@@ -18,7 +18,7 @@ using Seeing.Agent.WebUI.Rendering.Providers;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Agent.WebUI.Shell;
 using Seeing.Agent.WebUI.State;
-using Seeing.Session.Core;
+using Seeing.Agent.WebUI.Workbench;using Seeing.Session.Core;
 using System.Net;
 
 namespace Seeing.Agent.WebUI.Hosting;
@@ -114,6 +114,16 @@ public static class WebUiHost
         builder.Services.AddSingleton<IUiViewKeyCatalog>(sp => sp.GetRequiredService<WebUiViewResolver>());
         builder.Services.AddSingleton<IUiContributionValidator, WebUiUiContributionValidator>();
         builder.Services.AddSingleton<IUiHostContributor, WebUiHostContributor>();
+
+        // ── 会话工作台（停靠平台）──
+        // 工作台状态是 circuit 维度（Scoped）；注册表与请求路由是进程级（Singleton）。
+        // 工作台快照存储与 IWorkbenchClient 由能力包 Seeing.Agent.Workbench 注册（模块启用时才有）。
+        builder.Services.AddSingleton<WorkbenchViewRegistry>();
+        builder.Services.AddSingleton<WorkbenchRequestHandlerRegistry>();
+        builder.Services.AddScoped<WorkbenchProjection>();
+        builder.Services.AddScoped<WorkbenchDockState>();
+        builder.Services.AddScoped<WorkbenchHostBridge>();
+        builder.Services.AddScoped<WorkbenchLayoutPersistence>();
 
         builder.Services.AddSingleton<AppState>();
         builder.Services.AddScoped<SessionState>();
@@ -256,6 +266,11 @@ public static class WebUiHost
         // 结果是侧栏/设置页静默变空
         WebUiViews.RegisterBuiltIns(app.Services.GetRequiredService<WebUiViewResolver>());
 
+        // 工作台视图：先做工作台契约校验（组件必须声明 WorkbenchViewContext），再进通用视图表
+        WebUiWorkbenchViews.RegisterBuiltIns(
+            app.Services.GetRequiredService<WorkbenchViewRegistry>(),
+            app.Services.GetRequiredService<WebUiViewResolver>());
+
         // 宿主壳层 UI 声明：Build 之后、InitializeSeeingAsync 之前收集。
         // 壳层贡献是进程级的（Requires = []），与工作区是否选定无关——否则用户在工作区首页
         // 就看不到侧栏与设置入口，无法自救。
@@ -267,12 +282,6 @@ public static class WebUiHost
                 "未收集到任何宿主 UI 贡献：侧栏与设置页将为空白，请检查 IUiHostContributor 注册");
         }
 
-        // 文件面板插槽：归属模块是能力包 files.workspace，但视图键指向 WebUI 的 SessionFilePanel，
-        // 而能力包不能引用宿主组件类型，因此由宿主以该模块的 owner id 代为声明。
-        // 停用模块后面板消失由可见性（Requires = ["files.workspace"]）保证，不靠撤销声明。
-        var uiRegistry = app.Services.GetRequiredService<IUiContributionRegistry>();
-        uiRegistry.AddRange(FilePanelUiContribution.OwnerModuleId, new FilePanelUiContribution().DescribeUi());
-
         using (var scope = app.Services.CreateScope())
         {
             var sp = scope.ServiceProvider;
@@ -282,6 +291,7 @@ public static class WebUiHost
 
             // 模块声明在结算后收集（含未启用模块）。诊断非空说明有贡献被拒收——
             // 表现为「某个页面/卡片莫名消失」，必须在启动日志里一次说清。
+            var uiRegistry = app.Services.GetRequiredService<IUiContributionRegistry>();
             if (uiRegistry.Diagnostics.Count > 0)
             {
                 app.Logger.LogError(
