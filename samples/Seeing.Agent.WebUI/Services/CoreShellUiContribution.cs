@@ -47,24 +47,24 @@ public sealed class CoreShellUiContribution : IUiContribution
         new NavContribution("/settings", "系统设置", "tool", [],
             ComponentType: typeof(Settings),
             Group: NavGroups.Settings, GroupIcon: NavGroups.SettingsIcon, Order: 90),
-        new SettingsCardContribution(
+        new LegacySettingsCardContribution(
             "/settings/boot",
             "启动能力",
             typeof(BootCapabilitySettingsCard),
             []),
-        new SettingsCardContribution(
+        new LegacySettingsCardContribution(
             "/settings/scenarios",
             "工作模式",
             typeof(ScenariosSettingsCard),
             []),
-        new SettingsCardContribution(
+        new LegacySettingsCardContribution(
             "/settings/scheduler",
             "调度器",
             typeof(SchedulerSettingsCard),
             ["scheduler"]),
         // 记忆设置不能作为 NavContribution 挂在 /memory 下：FilterSidebarNav 会隐藏带更短
         // 前缀的子路由（/memory 存在时 /memory/settings 永不显示）。设置类内容统一走设置卡片。
-        new SettingsCardContribution(
+        new LegacySettingsCardContribution(
             "/settings/memory",
             "记忆",
             typeof(MemorySettingsCard),

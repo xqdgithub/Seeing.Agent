@@ -47,10 +47,10 @@ public static class SessionShellVisibility
 
     /// <summary>
     /// 会话壳插槽过滤：模块须进程启用，且须落在会话有效场景模块集内；
-    /// 另受贡献 <see cref="SlotContribution.Scenarios"/> 白名单约束。
+    /// 另受贡献 <see cref="LegacySlotContribution.Scenarios"/> 白名单约束。
     /// </summary>
-    public static IReadOnlyList<SlotContribution> FilterSlotsForSession(
-        IEnumerable<SlotContribution> slots,
+    public static IReadOnlyList<LegacySlotContribution> FilterSlotsForSession(
+        IEnumerable<LegacySlotContribution> slots,
         string slotName,
         IModuleCatalog? catalog,
         string? sessionScenario,

@@ -32,9 +32,9 @@ public class UiContributionContractsTests
     }
 
     [Fact]
-    public void SettingsCardContribution_ShouldCarryComponentType()
+    public void LegacySettingsCardContribution_ShouldCarryComponentType()
     {
-        var contribution = new SettingsCardContribution(
+        var contribution = new LegacySettingsCardContribution(
             "/settings/memory",
             "Memory",
             typeof(FakeSettingsComponent),
@@ -47,9 +47,9 @@ public class UiContributionContractsTests
     }
 
     [Fact]
-    public void SlotContribution_ShouldConstructWithOptionalScenarios()
+    public void LegacySlotContribution_ShouldConstructWithOptionalScenarios()
     {
-        var contribution = new SlotContribution(
+        var contribution = new LegacySlotContribution(
             "session_prompt",
             typeof(FakeSlotComponent),
             ["memory"],
@@ -115,10 +115,10 @@ public class UiContributionContractsTests
             .PropertyType.Should().Be(typeof(IReadOnlyList<NavContribution>));
 
         registry.GetProperty(nameof(IUiContributionRegistry.SettingsCards))!
-            .PropertyType.Should().Be(typeof(IReadOnlyList<SettingsCardContribution>));
+            .PropertyType.Should().Be(typeof(IReadOnlyList<LegacySettingsCardContribution>));
 
         registry.GetProperty(nameof(IUiContributionRegistry.Slots))!
-            .PropertyType.Should().Be(typeof(IReadOnlyList<SlotContribution>));
+            .PropertyType.Should().Be(typeof(IReadOnlyList<LegacySlotContribution>));
 
         registry.GetProperty(nameof(IUiContributionRegistry.MessageRenderers))!
             .PropertyType.Should().Be(typeof(IReadOnlyList<MessageRendererContribution>));

@@ -39,7 +39,7 @@
     [CascadingParameter(Name = "SessionScenario")]
     private string? CascadedSessionScenario { get; set; }
 
-    private IReadOnlyList<SlotContribution> _visible = [];
+    private IReadOnlyList<LegacySlotContribution> _visible = [];
     private UiContributionRegistry? _typedRegistry;
 
     protected override void OnInitialized()

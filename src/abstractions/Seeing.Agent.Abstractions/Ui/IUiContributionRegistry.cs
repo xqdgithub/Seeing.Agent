@@ -15,10 +15,10 @@ public interface IUiContributionRegistry
     IReadOnlyList<NavContribution> NavItems { get; }
 
     /// <summary>全部设置页卡片。</summary>
-    IReadOnlyList<SettingsCardContribution> SettingsCards { get; }
+    IReadOnlyList<LegacySettingsCardContribution> SettingsCards { get; }
 
     /// <summary>全部插槽贡献。</summary>
-    IReadOnlyList<SlotContribution> Slots { get; }
+    IReadOnlyList<LegacySlotContribution> Slots { get; }
 
     /// <summary>全部消息渲染器贡献。</summary>
     IReadOnlyList<MessageRendererContribution> MessageRenderers { get; }

@@ -36,26 +36,28 @@ public static class NavGroups
 }
 
 /// <summary>
-/// 设置页卡片贡献。
+/// 设置页卡片贡献（旧形状，待迁移）。
 /// </summary>
 /// <param name="Route">卡片路由或锚点。</param>
 /// <param name="Title">卡片标题。</param>
 /// <param name="ComponentType">Blazor 组件类型（WebUI 侧再转为 RenderFragment）。</param>
 /// <param name="Requires">依赖的模块 id 列表。</param>
-public record SettingsCardContribution(
+[Obsolete("待迁移到 Ui.SettingsCardContribution（信封形状）。见 docs/architecture/40。")]
+public record LegacySettingsCardContribution(
     string Route,
     string Title,
     Type ComponentType,
     IReadOnlyList<string> Requires);
 
 /// <summary>
-/// 命名插槽贡献。
+/// 命名插槽贡献（旧形状，待迁移）。
 /// </summary>
 /// <param name="Name">插槽名称（如 session_prompt、message_toolbar）。</param>
 /// <param name="ComponentType">Blazor 组件类型（WebUI 侧再转为 RenderFragment）。</param>
 /// <param name="Requires">依赖的模块 id 列表。</param>
-/// <param name="Scenarios">可选场景白名单；省略表示模块启用即显示。</param>
-public record SlotContribution(
+/// <param name="Scenarios">可选场景白名单（全仓零使用，随迁移删除）。</param>
+[Obsolete("待迁移到 Ui.SlotContribution（信封形状）。见 docs/architecture/40。")]
+public record LegacySlotContribution(
     string Name,
     Type ComponentType,
     IReadOnlyList<string> Requires,

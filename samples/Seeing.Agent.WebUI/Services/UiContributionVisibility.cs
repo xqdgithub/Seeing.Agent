@@ -58,8 +58,8 @@ public static class UiContributionVisibility
         => FilterSidebarNav(navItems, catalog);
 
     /// <summary>设置卡片可见性：仅 Requires ∩ 进程级启用模块（bootEnabled）。</summary>
-    public static IReadOnlyList<SettingsCardContribution> FilterSettingsCards(
-        IEnumerable<SettingsCardContribution> cards,
+    public static IReadOnlyList<LegacySettingsCardContribution> FilterSettingsCards(
+        IEnumerable<LegacySettingsCardContribution> cards,
         IModuleCatalog? catalog)
     {
         ArgumentNullException.ThrowIfNull(cards);

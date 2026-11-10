@@ -12,6 +12,6 @@ public sealed class FilePanelUiContribution : IUiContribution
     /// <inheritdoc />
     public IReadOnlyList<object> Contribute() =>
     [
-        new SlotContribution("session_file_panel", typeof(SessionFilePanel), Requires: ["files.workspace"]),
+        new LegacySlotContribution("session_file_panel", typeof(SessionFilePanel), Requires: ["files.workspace"]),
     ];
 }

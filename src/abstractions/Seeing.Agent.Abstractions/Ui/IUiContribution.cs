@@ -11,7 +11,7 @@ public interface IUiContribution
     /// <summary>
     /// 返回本模块的 UI 贡献列表。
     /// 元素类型为 <see cref="NavContribution"/>、<see cref="RouteContribution"/>、
-    /// <see cref="SettingsCardContribution"/>、<see cref="SlotContribution"/>
+    /// <see cref="LegacySettingsCardContribution"/>、<see cref="LegacySlotContribution"/>
     /// 或 <see cref="MessageRendererContribution"/>。
     /// </summary>
     IReadOnlyList<object> Contribute();

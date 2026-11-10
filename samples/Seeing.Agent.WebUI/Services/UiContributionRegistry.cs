@@ -12,8 +12,8 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
         new(StringComparer.OrdinalIgnoreCase);
 
     private List<NavContribution> _navItems = [];
-    private List<SettingsCardContribution> _settingsCards = [];
-    private List<SlotContribution> _slots = [];
+    private List<LegacySettingsCardContribution> _settingsCards = [];
+    private List<LegacySlotContribution> _slots = [];
     private List<MessageRendererContribution> _messageRenderers = [];
     private Dictionary<string, NavContribution> _routes =
         new(StringComparer.OrdinalIgnoreCase);
@@ -25,13 +25,13 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<SettingsCardContribution> SettingsCards
+    public IReadOnlyList<LegacySettingsCardContribution> SettingsCards
     {
         get { lock (_gate) return _settingsCards; }
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<SlotContribution> Slots
+    public IReadOnlyList<LegacySlotContribution> Slots
     {
         get { lock (_gate) return _slots; }
     }
@@ -86,8 +86,8 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
     private void RebuildUnlocked()
     {
         var nav = new List<NavContribution>();
-        var settings = new List<SettingsCardContribution>();
-        var slots = new List<SlotContribution>();
+        var settings = new List<LegacySettingsCardContribution>();
+        var slots = new List<LegacySlotContribution>();
         var renderers = new List<MessageRendererContribution>();
         var routes = new Dictionary<string, NavContribution>(StringComparer.OrdinalIgnoreCase);
 
@@ -114,10 +114,10 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
                                 ComponentType: routeItem.ComponentType);
                         }
                         break;
-                    case SettingsCardContribution settingsItem:
+                    case LegacySettingsCardContribution settingsItem:
                         settings.Add(settingsItem);
                         break;
-                    case SlotContribution slotItem:
+                    case LegacySlotContribution slotItem:
                         slots.Add(slotItem);
                         break;
                     case MessageRendererContribution rendererItem:
