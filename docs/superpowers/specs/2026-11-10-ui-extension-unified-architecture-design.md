@@ -1,39 +1,48 @@
 # UI 扩展统一架构设计（UI Extension Envelope）
 
-**日期:** 2026-11-10（v3：契约已落地验证）
-**状态:** 契约已编译并通过 48 项测试；待评审后进入实施
-**验证代码:** `tests/probe/Seeing.Agent.UiEnvelopeProbe/`（+ `.Tests`，48 测试全绿）
-**取代:** v1、v2（均作废，错误清单见 §0）
+**日期:** 2026-11-10（v4：经两轮共 8 维审查，契约已落地验证）
+**状态:** 契约与核心实现已验证（118 项测试全绿）；待评审后进入实施
+**验证代码:** `tests/probe/Seeing.Agent.UiEnvelopeProbe/`（+ `.Tests`，118 测试全绿）
+**取代:** v1、v2、v3（错误清单见 §0）
 **分支:** `refactor/ui-extension-envelope`
 
 ---
 
-## 0. v1/v2 的错误清单（本版已全部修正）
+## 0. 历史版本错误清单
 
 ### v1 的 5 个错误
 
 | # | 错误 | 更正 |
 |---|------|------|
-| E1 | 称「三套可见性实现」 | **大部分已收敛**：`SessionShellVisibility.cs:112-113` 与 `ModuleRouteResolver.cs:205-206` 均已转调 `UiContributionVisibility.AreRequirementsEnabled`。真正分叉只剩 `IsVisible` 一处，且只有 `SlotHost.razor:66` 一个调用点。 |
-| E2 | 称「`Type` 让运行时插件在契约层被否决」 | **不成立**。`System.Type` 不产生程序集引用；运行时插件自带组件。`ViewKey` 的真实价值只有三条（§2.3）。 |
-| E3 | 讨论 `ModuleId` 如何「贴」进 record | **伪问题**。归属应由注册表条目持有，record 上不应有这个字段。 |
-| E4 | §7「工作台归位」按既有基线设计迁移 | **基线不存在**（`rg workbench` 在 src/samples 零命中，旧计划 0/89）。工作台另立规格。 |
-| E5 | 「P0 保留旧类型标 `[Obsolete]`」 | **不可编译**：`SettingsCardContribution`/`SlotContribution` 与旧类型同名同命名空间 → CS0101。 |
+| E1 | 称「三套可见性实现」 | **大部分已收敛**：`SessionShellVisibility.cs:112-113` 与 `ModuleRouteResolver.cs:205-206` 均已转调 `UiContributionVisibility.AreRequirementsEnabled`。真正分叉只剩 `IsVisible` 一处 |
+| E2 | 称「`Type` 让运行时插件在契约层被否决」 | **不成立**。`System.Type` 不产生程序集引用；运行时插件自带组件。`ViewKey` 的真实价值只有三条（§2.3） |
+| E3 | 讨论 `ModuleId` 如何「贴」进 record | **伪问题**。归属由注册表条目持有 |
+| E4 | §7「工作台归位」按既有基线迁移 | **基线不存在**（`rg workbench` 零命中，旧计划 0/89）。工作台另立规格 |
+| E5 | 「P0 保留旧类型标 `[Obsolete]`」 | **不可编译**：`SettingsCardContribution`/`SlotContribution` 同名同命名空间 → CS0101 |
 
 ### v2 的 4 个错误
 
 | # | 错误 | 更正 |
 |---|------|------|
-| E6 | `webui.shell` 做成真 `ISeeingModule` | **会锁死用户**。`FullCapabilityCompositionTests.cs:36,58` 钉死 `Enabled == BuiltInCapabilitySets.Full`；`WebUI.csproj:25` 已引用 HostComposition（反向引用成环）。一旦用户在设置页选 Boot 能力集，`webui.shell` 不在启用集 → `/settings` 消失 → **无法自救**。改为 `IUiHostContributor`（§3.5）。 |
-| E7 | `Conditions` 单值 AND 取代 `Scenarios` | **语义倒退**。`SessionShellVisibility.cs:95-108` 是白名单 OR；单值 AND 会把 `["work","research"]` 变成永假。**且 `Scenarios` 全仓零使用**（只有 2 处类型声明），应直接删除而非迁移。 |
-| E8 | `Requires` 空 = 隐含归属模块 | **前提错误**。实测 10 处模块贡献的 `Requires` **全部等于自身模块 id**（见 §1.4），`Requires` 本来就是归属声明，不需要「隐含」推导。 |
-| E9 | 声明期收集的动机是「保住建议工作模式的提示」 | **该提示今天就不存在**。`BuiltInScenarios.All` 只有 `full`（`Modules = ["*"]`），`NotEnabledFragment.razor:39-47` 用 `"*"` 比对模块 id 恒不匹配。真实收益是「未启用时仍能拿到 `FeatureTitle`/`ModuleId`」，这一条足够。 |
+| E6 | `webui.shell` 做成真 `ISeeingModule` | **会锁死用户**。`FullCapabilityCompositionTests.cs:36,58` 钉死 `Enabled == Full`；`WebUI.csproj:25` 已引用 HostComposition（反向引用成环）。用户改 Boot 能力集后 `/settings` 消失，无法自救。改为 `IUiHostContributor` |
+| E7 | `Conditions` 单值 AND 取代 `Scenarios` | **语义倒退**（白名单是 OR）。**且 `Scenarios` 全仓零使用**，应直接删除 |
+| E8 | `Requires` 空 = 隐含归属模块 | **前提错误**。实测 10 处模块贡献的 `Requires` 全部等于自身模块 id（§1.5） |
+| E9 | 声明期收集的动机是「保住建议工作模式的提示」 | **该提示今天就不存在**（`BuiltInScenarios.All` 只有 `full`，`Modules = ["*"]`，`NotEnabledFragment.razor:39-47` 恒不匹配）。真实收益是「未启用时仍能拿到 `FeatureTitle`/`ModuleId`」 |
 
-### v2 另有 9 处硬编译错误（契约层）
+### v3 的 8 个错误（两轮审查发现）
 
-`IsVisible` 两个矛盾签名、`RecordInvalidDeclaration` 不在接口上、`_log`/`_ui` 非字段、`candidates`/`HasShorterPrefix` 未定义、`UiPayloadKindMap` 无签名、`Entry.IsActive` 类型不存在、`UiRouteMatch` 缺归属、`FindPageByRoute` 语义未定、`NavView.GroupOrder` 缺失。
+| # | 错误 | 更正 |
+|---|------|------|
+| E10 | **规格 §4.3 声称 `UiScenarioGate` 已实现并测试，实际零代码** | 已补实现 + 7 项测试 |
+| E11 | 多元素 `Requires` 的会话门从 **AND 变 OR** | 旧 `SessionShellVisibility.cs:84-95` 是 `foreach { if (!contains) return false; }`。已改回 AND |
+| E12 | 空门集从「全部隐藏」变「不收敛」（fail-open） | 触发路径：用户清空工作模式模块列表。已区分：`null` = 不收敛，空集 = 全隐藏 |
+| E13 | catalog 缺失时壳层也隐藏（旧实现空 `Requires` 先返回 true） | 旧 `UiContributionVisibility.cs:85-87`。壳层若隐藏，用户失去 `/settings` 无法自救。已改为空 `Requires` 优先放行 |
+| E14 | 三处 `DynamicComponent` 无 `ErrorBoundary` | `ModuleRouter.razor:30`、`Settings.razor:142`、`SlotHost.razor:21`。Blazor Server 渲染期未捕获异常会终止 circuit |
+| E15 | 模块贡献空 `Requires` 未拦截 | 会变成进程级 → 模块停用后页面仍在但工具已卸载（「半残但看起来正常」）。已拒收 |
+| E16 | 跨 owner `(point, id)` 重复未检测 | `Settings.razor:141` 的 `@key` 重复会崩渲染。已加 `CrossOwnerDuplicate` |
+| E17 | 停用模块的页会抢赢启用模块的页 | 旧实现停用模块路由不在表内。已给 `Resolve` 加可见性谓词 |
 
-**本版全部由「先写代码再写文档」的方式消除**：契约与实现已编译，48 项测试覆盖语义。
+**v2 另有 9 处硬编译错误**（`IsVisible` 双签名、`RecordInvalidDeclaration` 不在接口、`_log`/`_ui` 非字段、`candidates`/`HasShorterPrefix` 未定义、`UiPayloadKindMap` 无签名、`Entry.IsActive` 不存在、`UiRouteMatch` 缺归属、`FindPageByRoute` 语义未定、`NavView.GroupOrder` 缺失）——全部由「先写代码再写文档」消除。
 
 ---
 
@@ -560,10 +569,38 @@ private void RefreshNav()
 
 ## 8. 明确不在本期范围
 
+### 8.1 宿主保留区清单（业务审查 A 的结论）
+
+下列 UI 入口**装不进** Page/SettingsCard/Slot 三类载荷，硬塞会把信封撑成万能基类。逐项写明「为什么不做」，避免每个新模块作者重复询问。
+
+| # | 入口 | 位置 | 为什么不做 | 后续 |
+|---|---|---|---|---|
+| 1 | 侧栏「聊天」 | `AppSidebar.razor:61` | 无静态 Route（路径按 `AppState.CurrentSessionId` 动态算，`:414-418`）；选中键是固定的 `chat` 而非路由。`PageContribution.Route` 语义不符 | 保持宿主硬编码；`SidebarProjector.SelectedKeys` 已把 `""/home/session → chat` 特例纳入并测试 |
+| 2 | 侧栏「审批中心」 | `AppSidebar.razor:73-82` | 需要「实时计数徽标 + 打开抽屉」，三类载荷都表达不了（`Badge Count=@PermissionView.TotalCount` 在 `IconTemplate` 里，点击走 `UiOverlayService`） | 保持宿主硬编码 |
+| 3 | 侧栏底部工具条 | `AppSidebar.razor:117-146` | 工作区切换 / 关闭 / 折叠，纯宿主 chrome | 保持 |
+| 4 | 首页 dashboard 三栏 | `Index.razor:427-458`（6 能力格）、`:193-350`（调度器）、`:383-401`（MCP） | 卡片需要「数据 + 排版占位 + 点击行为」，`SlotContribution` 只有 ViewKey | 保持硬编码；**但可见性应统一**（见 §8.2） |
+| 5 | 斜杠命令面板 | `ICommandRegistry.cs:7-38` | 平行的第二套「可发现入口」，其可见性走「激活期增删」而非 `Requires`；`CommandMetadata` 已自带 `Category`/`SortOrder`/`IsHidden`。语义与贡献的「声明期收集」相反 | 独立域，不合并 |
+| 6 | 通知 / 重试横幅 | `SessionWindow.razor:120-140`（三套手写样式） | 无真实模块需求；现在设计会是「为死字段做设计」 | 有真实需求时再加 `session.banner` 点 |
+| 7 | Token 预算状态栏 | `PromptInput.razor:192-199`；TUI 同概念 `TuiChatEngine.cs:1853` | 跨宿主「状态段」抽象，本期不做 Tui 接入 | 宿主保留区 |
+| 8 | `SessionWindow` 的 `ToolbarLeftActions` / `ToolbarRightActions` / `Header` | `SessionWindow.razor:344-346` | 是「页面 → 窗口」的注入（无 `Requires`、无门控），与「模块 → 窗口」的 slot 不同。`Header` 全仓零使用（死参数） | `*Actions` 保留（页面是宿主）；`Header` 随 Step 0 删除 |
+| 9 | 会议页侧栏分区 | `Conference.razor:57-89` | 按 `SessionRelation` 的固定数据分区（`SessionSidebarView.Build` 固定 3 类），不是「多贡献聚合位」 | 保持 |
+
+### 8.2 顺带修正的既有缺陷
+
+首页可见性策略已分裂，迁移时一并统一（不属于本架构范围，但同批处理成本最低）：
+
+| 项 | 现状 | 应改为 |
+|---|---|---|
+| `_skillCount` | `ModuleCatalog.IsEnabled("skills")` 判定（`Index.razor:585-587`） | 保持 |
+| MCP 面板 | `IsEnabled("mcp")` 判定（`:590`） | 保持 |
+| `_schedulerStatus` | **无条件执行**（`:602` `await SchedulerStatus.GetStatusAsync()`） | 加 `IsEnabled("scheduler")` 判定 |
+
+### 8.3 其余不在本期范围
+
 | 项 | 理由 |
 |---|---|
 | 工作台 | 零代码基线，另立规格 |
-| 会话内容渲染 4 套机制统一 | 是投影管线不是布局贡献；三套注册表冲突语义各异。只删死掉的 `MessageRendererContribution` |
+| 会话内容渲染 4 套机制统一（`IContentBlockRenderer` / `IMessageComponent` / `IToolCallSlotProvider` / `TimelineItemKind`） | 是投影管线不是布局贡献；三套注册表冲突语义各异（同名替换 / 同 BlockType 替换 / 不去重按序全渲染）。只删死掉的 `MessageRendererContribution` |
 | 运行时程序集加载 | 需 ALC 统一、依赖解析、静态资源端点、CSS 隔离、键命名空间五件事，`IUiViewKeyCatalog` 一件都没解决 |
 | 懒激活 | 规模不匹配；声明期收集已为其铺路 |
 | Tui 接入 | 单屏聊天无「页面」概念；需先改 `TuiRenderer` 的段拼装 |
@@ -590,10 +627,25 @@ private void RefreshNav()
 | 项 | 结果 |
 |---|---|
 | 契约编译 | ✅ 0 错误 |
-| 实现编译（registry / visibility / routeTemplate / pointCatalog / payloadKindMap） | ✅ 0 错误 |
-| 测试 | ✅ **48 通过 / 0 失败**（180ms） |
-| 覆盖 | 可见性 11 / 路由 19 / 注册表 18 |
+| 实现编译（registry / visibility / routeTemplate / pointCatalog / payloadKindMap / scenarioGate / sidebarProjector / collector） | ✅ 0 错误 |
+| 测试 | ✅ **118 通过 / 0 失败** |
+| 覆盖分布 | 可见性 13 / 路由 19 / 注册表 19 / 场景门 7 / 侧栏投影 22 / 收集链 13 / 语义回归 9 / 等价性 13 / 决策守门 3 |
 
-**验证方式说明**：契约放在独立项目 `tests/probe/Seeing.Agent.UiEnvelopeProbe`，用 `*Probe` 后缀规避与旧类型同名，**与现有主线并行存在**。这样既不干扰当前 30 处旧构造点，又能证明设计可实现。实施 Step 1 时把验证代码去后缀直接迁入正式位置。
+**验证方式**：契约放在独立项目 `tests/probe/Seeing.Agent.UiEnvelopeProbe`，用 `*Probe` 后缀规避与旧类型同名，**与现有主线并行存在**。实施 Step 1 时把验证代码去后缀直接迁入正式位置。
 
-**这个方式本身消除的问题**：v2 的 9 处硬编译错误、3 处语义回归、`webui.shell` 自锁死问题——全部在写代码时暴露，而非靠评审发现。
+### 10.1 这个方式实际消除了什么
+
+| 问题类型 | v2 靠评审发现 | v3/v4 靠编译/测试发现 |
+|---|---|---|
+| 硬编译错误 | 9 处（靠 Agent 逐个读代码） | **0 处存活**（编译即报） |
+| 语义回退（AND→OR、空集 fail-open、壳层黑屏） | 未发现 | **3 处**（测试断言直接暴露） |
+| 声称已实现但不存在（`UiScenarioGate`） | 未发现 | **1 处**（`rg` 零命中） |
+| 声明失败时诊断被自己抹掉 | 未发现 | **1 处**（`CollectorTests` 断言暴露） |
+
+### 10.2 三个已定案的迁移决策
+
+| 决策 | 选择 | 守门 |
+|---|---|---|
+| **D10** 宿主补全模块路由 | **模块自己声明全部 15 条**（含 5 条曾被 enrich 补全的详情路由） | `DecisionGuardTests.MigratedRouteSet_ShouldCoverAllLegacyRoutes` + `TheFiveEnrichOnlyRoutes_MustBeDeclaredByModules` |
+| **D11** `host.*` 命名空间保护 | **强制校验**：模块不得占用 `host.{id}`；`Collector` 校验宿主 OwnerId 必须以 `host.` 开头 | `CollectorTests.HostWithInvalidPrefix_ShouldBeRejectedWithDiagnostic` + `DecisionGuardTests.ModuleCannotTakeHostNamespace` |
+| **D12** 侧栏 `GroupOrder` 与选中键 | **`GroupOrder=0` 视为「排在所有已声明之后」**；`UpdateSelectedKey` 完整迁移 | `SidebarProjectorTests.GroupWithUnspecifiedOrder_ShouldSortLast` + `SelectedKeys_*` 7 项 |
