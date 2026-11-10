@@ -14,7 +14,6 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
     private List<NavContribution> _navItems = [];
     private List<LegacySettingsCardContribution> _settingsCards = [];
     private List<LegacySlotContribution> _slots = [];
-    private List<MessageRendererContribution> _messageRenderers = [];
     private Dictionary<string, NavContribution> _routes =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -34,12 +33,6 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
     public IReadOnlyList<LegacySlotContribution> Slots
     {
         get { lock (_gate) return _slots; }
-    }
-
-    /// <inheritdoc />
-    public IReadOnlyList<MessageRendererContribution> MessageRenderers
-    {
-        get { lock (_gate) return _messageRenderers; }
     }
 
     /// <inheritdoc />
@@ -88,7 +81,6 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
         var nav = new List<NavContribution>();
         var settings = new List<LegacySettingsCardContribution>();
         var slots = new List<LegacySlotContribution>();
-        var renderers = new List<MessageRendererContribution>();
         var routes = new Dictionary<string, NavContribution>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var contribution in _byModuleId.Values.OrderBy(c => c.ModuleId, StringComparer.OrdinalIgnoreCase))
@@ -120,9 +112,6 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
                     case LegacySlotContribution slotItem:
                         slots.Add(slotItem);
                         break;
-                    case MessageRendererContribution rendererItem:
-                        renderers.Add(rendererItem);
-                        break;
                 }
             }
         }
@@ -130,7 +119,6 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
         _navItems = nav;
         _settingsCards = settings;
         _slots = slots;
-        _messageRenderers = renderers;
         _routes = routes;
     }
 }

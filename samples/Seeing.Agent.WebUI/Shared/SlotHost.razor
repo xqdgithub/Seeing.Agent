@@ -5,14 +5,13 @@
 @using Seeing.Agent.Core.Configuration
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.WebUI.Services
-@using Seeing.Agent.WebUI.State
 @inject IUiContributionRegistry Registry
 @inject IModuleCatalog? Catalog
 @inject Seeing.Agent.Core.Scenarios.IScenarioCatalog? ScenarioCatalog
 @inject IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
 @implements IDisposable
 
-@* SlotHost：命名插槽由 IUiContribution 登记；可见性 = IModuleCatalog + 会话 Scenario；保留 SlotRegistry 回退 *@
+@* SlotHost：命名插槽由 IUiContribution 登记；可见性 = IModuleCatalog + 会话 Scenario *@
 <div class="slot-host" data-slot="@SlotName">
     @foreach (var slot in _visible)
     {
@@ -20,13 +19,6 @@
         {
             <DynamicComponent Type="@slot.ComponentType" />
         }
-    }
-    @{
-        var legacy = SlotRegistry.GetSlot(SlotName);
-    }
-    @if (legacy != null)
-    {
-        @legacy
     }
 </div>
 

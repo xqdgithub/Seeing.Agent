@@ -23,8 +23,6 @@ public interface IGatewayChannelPlugin
 
     IReadOnlyList<ConfigFieldSchema>? GetConfigSchema() => null;
 
-    Type? ConfigFormComponentType => null;
-
     void ConfigureServices(IServiceCollection services, IConfiguration configuration);
 
     /// <summary>初始化通道插件</summary>

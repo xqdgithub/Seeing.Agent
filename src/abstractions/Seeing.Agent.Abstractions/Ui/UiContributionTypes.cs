@@ -7,7 +7,6 @@ namespace Seeing.Agent.Abstractions.Ui;
 /// <param name="Title">显示标题。</param>
 /// <param name="Icon">图标标识。</param>
 /// <param name="Requires">依赖的模块 id 列表。</param>
-/// <param name="Scenarios">可选场景白名单；省略表示模块启用即显示。</param>
 /// <param name="ComponentType">可选 Blazor 页面/组件类型（WebUI 侧渲染；能力包可不填）。</param>
 /// <param name="Group">侧栏分组标题（如「控制中心」）；null/空则扁平展示在顶层。</param>
 /// <param name="GroupIcon">分组图标（AntDesign Outline 名，如 control / folder / setting）。</param>
@@ -17,7 +16,6 @@ public record NavContribution(
     string Title,
     string Icon,
     IReadOnlyList<string> Requires,
-    IReadOnlyList<string>? Scenarios = null,
     Type? ComponentType = null,
     string? Group = null,
     string? GroupIcon = null,
@@ -55,22 +53,11 @@ public record LegacySettingsCardContribution(
 /// <param name="Name">插槽名称（如 session_prompt、message_toolbar）。</param>
 /// <param name="ComponentType">Blazor 组件类型（WebUI 侧再转为 RenderFragment）。</param>
 /// <param name="Requires">依赖的模块 id 列表。</param>
-/// <param name="Scenarios">可选场景白名单（全仓零使用，随迁移删除）。</param>
 [Obsolete("待迁移到 Ui.SlotContribution（信封形状）。见 docs/architecture/40。")]
 public record LegacySlotContribution(
     string Name,
     Type ComponentType,
-    IReadOnlyList<string> Requires,
-    IReadOnlyList<string>? Scenarios = null);
-
-/// <summary>
-/// 消息类型渲染器贡献。
-/// </summary>
-/// <param name="MessageType">消息类型标识。</param>
-/// <param name="ComponentType">Blazor 组件类型（WebUI 侧再转为渲染器）。</param>
-public record MessageRendererContribution(
-    string MessageType,
-    Type ComponentType);
+    IReadOnlyList<string> Requires);
 
 /// <summary>
 /// 纯路由贡献（不进入侧栏 Nav；供 ModuleRouter 渲染，如壳页 /session）。

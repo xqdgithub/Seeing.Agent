@@ -29,25 +29,8 @@ public static class SessionShellVisibility
     }
 
     /// <summary>
-    /// 进程级导航过滤：只看 <see cref="IModuleCatalog.IsEnabled"/>（Requires ⊆ bootEnabled）。
-    /// 不按贡献 Scenarios 白名单硬藏；会话级 Scenario 变更不得影响此结果。
-    /// </summary>
-    public static IReadOnlyList<NavContribution> FilterNavForProcess(
-        IEnumerable<NavContribution> items,
-        IModuleCatalog? catalog,
-        string? processScenario = null)
-    {
-        ArgumentNullException.ThrowIfNull(items);
-        // processScenario 保留参数以兼容旧调用；侧栏/进程 chrome 不再消费 Scenario 名。
-        _ = processScenario;
-        return items
-            .Where(n => AreRequirementsEnabled(n.Requires, catalog))
-            .ToArray();
-    }
-
-    /// <summary>
-    /// 会话壳插槽过滤：模块须进程启用，且须落在会话有效场景模块集内；
-    /// 另受贡献 <see cref="LegacySlotContribution.Scenarios"/> 白名单约束。
+    /// 会话壳插槽过滤：模块须进程启用，且须落在会话有效场景模块集内。
+    /// （插槽贡献的 Scenarios 白名单已随 A2 清理删除，故此处不再传场景白名单。）
     /// </summary>
     public static IReadOnlyList<LegacySlotContribution> FilterSlotsForSession(
         IEnumerable<LegacySlotContribution> slots,
@@ -65,7 +48,7 @@ public static class SessionShellVisibility
 
         return slots
             .Where(s => string.Equals(s.Name, slotName, StringComparison.OrdinalIgnoreCase))
-            .Where(s => IsVisible(s.Requires, s.Scenarios, catalog, effective, sessionModules))
+            .Where(s => IsVisible(s.Requires, scenarios: null, catalog, effective, sessionModules))
             .ToArray();
     }
 

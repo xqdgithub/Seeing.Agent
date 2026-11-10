@@ -160,8 +160,7 @@ public sealed class GatewayChannelRegistry
             assemblyPath,
             plugin.OptionsSectionName,
             plugin.OptionsType,
-            fields,
-            plugin.ConfigFormComponentType);
+            fields);
 
         discovered[plugin.ChannelId] = info;
     }

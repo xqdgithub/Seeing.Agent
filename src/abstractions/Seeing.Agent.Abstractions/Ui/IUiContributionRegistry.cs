@@ -20,9 +20,6 @@ public interface IUiContributionRegistry
     /// <summary>全部插槽贡献。</summary>
     IReadOnlyList<LegacySlotContribution> Slots { get; }
 
-    /// <summary>全部消息渲染器贡献。</summary>
-    IReadOnlyList<MessageRendererContribution> MessageRenderers { get; }
-
     /// <summary>路由表（路由 → 导航贡献）。</summary>
     IReadOnlyDictionary<string, NavContribution> Routes { get; }
 }

@@ -84,7 +84,6 @@ public sealed class GatewayClientConfigService
                 Mode = snapshot.Mode,
                 Options = snapshot.Options,
                 Fields = typeInfo.Fields,
-                ConfigFormComponentType = typeInfo.ConfigFormComponentType,
                 AssemblyPath = typeInfo.AssemblyPath,
                 ConfigFilePath = _channelHostConfigStore.GetRuntimeConfigPath(typeInfo.ChannelId)
             });
@@ -441,7 +440,6 @@ public sealed class GatewayClientViewModel
     public string? Mode { get; set; }
     public Dictionary<string, object?> Options { get; set; } = new();
     public IReadOnlyList<ConfigFieldSchema> Fields { get; set; } = Array.Empty<ConfigFieldSchema>();
-    public Type? ConfigFormComponentType { get; set; }
     public string Status { get; set; } = GatewayClientStatuses.Stopped;
     public string? LastError { get; set; }
     public int? ProcessId { get; set; }

@@ -13,22 +13,12 @@ public class UiContributionContractsTests
             "/memory",
             "Memory",
             "database",
-            ["memory"],
-            ["work", "research"]);
+            ["memory"]);
 
         contribution.Route.Should().Be("/memory");
         contribution.Title.Should().Be("Memory");
         contribution.Icon.Should().Be("database");
         contribution.Requires.Should().Equal("memory");
-        contribution.Scenarios.Should().Equal("work", "research");
-    }
-
-    [Fact]
-    public void NavContribution_ScenariosShouldDefaultToNull()
-    {
-        var contribution = new NavContribution("/cron-jobs", "Cron Jobs", "clock", ["scheduler"]);
-
-        contribution.Scenarios.Should().BeNull();
     }
 
     [Fact]
@@ -47,27 +37,16 @@ public class UiContributionContractsTests
     }
 
     [Fact]
-    public void LegacySlotContribution_ShouldConstructWithOptionalScenarios()
+    public void LegacySlotContribution_ShouldConstructWithRequiredFields()
     {
         var contribution = new LegacySlotContribution(
             "session_prompt",
             typeof(FakeSlotComponent),
-            ["memory"],
-            ["work"]);
+            ["memory"]);
 
         contribution.Name.Should().Be("session_prompt");
         contribution.ComponentType.Should().Be(typeof(FakeSlotComponent));
         contribution.Requires.Should().Equal("memory");
-        contribution.Scenarios.Should().Equal("work");
-    }
-
-    [Fact]
-    public void MessageRendererContribution_ShouldCarryMessageTypeAndComponentType()
-    {
-        var contribution = new MessageRendererContribution("task", typeof(FakeMessageRenderer));
-
-        contribution.MessageType.Should().Be("task");
-        contribution.ComponentType.Should().Be(typeof(FakeMessageRenderer));
     }
 
     [Fact]
@@ -120,9 +99,6 @@ public class UiContributionContractsTests
         registry.GetProperty(nameof(IUiContributionRegistry.Slots))!
             .PropertyType.Should().Be(typeof(IReadOnlyList<LegacySlotContribution>));
 
-        registry.GetProperty(nameof(IUiContributionRegistry.MessageRenderers))!
-            .PropertyType.Should().Be(typeof(IReadOnlyList<MessageRendererContribution>));
-
         registry.GetProperty(nameof(IUiContributionRegistry.Routes))!
             .PropertyType.Should().Be(typeof(IReadOnlyDictionary<string, NavContribution>));
     }
@@ -138,6 +114,4 @@ public class UiContributionContractsTests
     private sealed class FakeSettingsComponent;
 
     private sealed class FakeSlotComponent;
-
-    private sealed class FakeMessageRenderer;
 }

@@ -14,5 +14,4 @@ public sealed record GatewayChannelTypeInfo(
     string AssemblyPath,
     string OptionsSectionName,
     Type OptionsType,
-    IReadOnlyList<ConfigFieldSchema> Fields,
-    Type? ConfigFormComponentType);
+    IReadOnlyList<ConfigFieldSchema> Fields);
