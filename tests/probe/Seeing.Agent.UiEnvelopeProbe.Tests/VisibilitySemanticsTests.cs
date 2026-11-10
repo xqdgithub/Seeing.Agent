@@ -66,14 +66,23 @@ public class VisibilitySemanticsTests
         => UiVisibility.IsVisible(Page(), ProcessPoint,
             UiVisibilityContext.Process(new FakeCatalog())).Should().BeTrue();
 
-    // ── 现状：catalog 为 null 时 fail-closed ──
+    // ── 现状：catalog 为 null 时，有 Requires 的贡献 fail-closed；空 Requires（壳层）仍可见 ──
 
     [Fact]
-    public void NullCatalog_FailClosed()
+    public void NullCatalog_ModuleContribution_FailClosed()
     {
-        var decision = UiVisibility.Evaluate(Page(), ProcessPoint, UiVisibilityContext.Process(null));
+        var decision = UiVisibility.Evaluate(Page("skills"), ProcessPoint, UiVisibilityContext.Process(null));
         decision.Visible.Should().BeFalse();
         decision.Reason.Should().Be(UiVisibilityReason.CatalogUnavailable);
+    }
+
+    [Fact]
+    public void NullCatalog_ShellPage_StillVisible()
+    {
+        // 对照旧 UiContributionVisibility.cs:85-87：空 Requires 先返回 true，再看 catalog。
+        // 壳层若也隐藏，用户会失去 /settings 而无法自救。
+        UiVisibility.IsVisible(Page(), ProcessPoint, UiVisibilityContext.Process(null))
+            .Should().BeTrue();
     }
 
     // ── 现状：ModuleCatalog.IsEnabled 对空白 id 抛；这里必须拦成不可见 ──

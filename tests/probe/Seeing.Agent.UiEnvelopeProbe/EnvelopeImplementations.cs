@@ -85,6 +85,14 @@ public static class UiVisibility
     public static UiVisibilityDecision Evaluate(
         UiContribution contribution, UiPoint point, UiVisibilityContext context)
     {
+        if (contribution.Requires.Count == 0)
+        {
+            // 进程级贡献（壳层 / 宿主）不受模块目录影响。
+            // 与现状 UiContributionVisibility.cs:85-87 一致：空 Requires 先返回 true，再看 catalog。
+            // 这一点是必需的：catalog 缺失时若壳层也隐藏，用户会失去 /settings 而无法自救。
+            return new UiVisibilityDecision(true, UiVisibilityReason.Visible);
+        }
+
         if (context.Catalog is null)
             return new UiVisibilityDecision(false, UiVisibilityReason.CatalogUnavailable);
 
@@ -455,7 +463,23 @@ public static class UiRouteTemplate
         return true;
     }
 
-    public static UiRouteMatch? Resolve(string path, IEnumerable<UiContributionEntry> entries)
+    /// <summary>
+    /// 在候选页面中取最优匹配。
+    /// <para>
+    /// 同分 tiebreak：路由模板序数序 → 归属模块序数序（与集合枚举顺序无关）。
+    /// </para>
+    /// <para>
+    /// <b>必须传可见性谓词</b>：若对全集直接匹配，停用模块的高分页会抢赢启用模块的页
+    /// （旧实现里停用模块的路由根本不在表内，不可能参与竞争）。
+    /// </para>
+    /// </summary>
+    /// <param name="path">实际路径。</param>
+    /// <param name="entries">候选页面条目。</param>
+    /// <param name="isVisible">可见性谓词；null 表示不过滤（仅供诊断/测试，生产调用方必须传）。</param>
+    public static UiRouteMatch? Resolve(
+        string path,
+        IEnumerable<UiContributionEntry> entries,
+        Func<UiContributionEntry, bool>? isVisible = null)
     {
         var normalized = NormalizePath(path);
 
@@ -468,6 +492,9 @@ public static class UiRouteTemplate
         foreach (var entry in entries)
         {
             if (entry.Contribution is not PageContributionProbe page || string.IsNullOrWhiteSpace(page.Route))
+                continue;
+
+            if (isVisible is not null && !isVisible(entry))
                 continue;
 
             if (!TryMatch(page.Route, normalized, out var parameters, out var score))
