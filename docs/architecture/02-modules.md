@@ -26,7 +26,8 @@
 | 包 | 模块 id | 典型工具 / 能力 |
 |----|---------|-----------------|
 | `Seeing.Agent.Tools.FileSystem` | `filesystem` | read/write/edit/glob/grep/delete… |
-| `Seeing.Agent.Files` | `files.workspace` | 文件工作区（读写/变更订阅，供 UI/宿主复用；无工具） |
+| `Seeing.Agent.Files` | `files.workspace` | 文件工作区（读写/变更订阅，供 UI/宿主复用；无工具）+ 「文件」「Markdown 预览」两个工作台声明 |
+| `Seeing.Agent.Workbench` | `workbench` | 工作台平台：`open_workbench` / `list_workbenches` 工具、UI 快照存储、`IWorkbenchClient`、工作台上下文源 |
 | `Seeing.Agent.Tools.Shell` | `shell` | bash |
 | `Seeing.Agent.Tools.Web` | `web` | fetch/search |
 | `Seeing.Agent.Tools.Git` | `git` | git_* |
@@ -71,7 +72,7 @@
 | `reflection` | `/reflection` | ✅ 工作区 |
 | `gateway` | `/gateway`、`/gateway-clients` | 两条均 ✅ 设置 |
 
-> **代模块声明**：`settings.scheduler` / `settings.memory` 两张设置卡与 `session.file.panel` 插槽由宿主 `WebUiHostContributor` / `FilePanelUiContribution` 声明，但 `Requires` 分别指向 `scheduler` / `memory` / `files.workspace`——归属仍是模块，因此模块停用后它们会消失。壳层自己的 13 条页面是 `Requires = []`（进程级）。
+> **代模块声明**：`settings.scheduler` / `settings.memory` 两张设置卡由宿主 `WebUiHostContributor` 声明，但 `Requires` 指向 `scheduler` / `memory`——归属仍是模块，因此模块停用后它们会消失。壳层自己的 13 条页面是 `Requires = []`（进程级）。会话侧栏的工作台（`files` / `markdown`）由 `FileWorkspaceModule.DescribeUi()` 自己声明，`Requires = ["files.workspace"]`，组件类型登记在宿主 `WebUiWorkbenchViews`（能力包不持有 Blazor 类型）。见 [`41`](41-workbench-plugin-platform-release-notes.md)。
 
 `subagent` 为 Hosting 级能力（Task 工具）；内置场景字符串里可出现该 id。
 

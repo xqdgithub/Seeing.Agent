@@ -280,7 +280,8 @@ public sealed class XxxModule : ISeeingModule, IUiContributor
 |------|------|-----|
 | `PageContribution` | 与 `Id` 同名 | `Id = "page.xxx"` → `ViewKey = "page.xxx"` |
 | `SettingsCardContribution` | 与 `Id` 同名 | `Id = "settings.xxx"` → `ViewKey = "settings.xxx"` |
-| `SlotContribution` | 若同一点只有一条内置贡献，抽进 `WebUiViewKeys` 常量 | `WebUiViewKeys.SessionFilePanel` |
+| `SlotContribution` | 若同一点只有一条内置贡献，抽成常量（见 `WebUiViewKeys` 的历史形状） |
+| `WorkbenchContribution` | `WorkbenchPoints.ViewKeyFor(id)`，即 `workbench.<id>` | `Id = "markdown"` → `ViewKey = "workbench.markdown"` |
 
 多条贡献复用同一视图（如 `/xxx` 与 `/xxx/{Id}`）时，`ViewKey` 指向前者，`Id` 各自唯一。
 

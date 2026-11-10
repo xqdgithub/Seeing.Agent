@@ -121,7 +121,8 @@
 | 侧栏入口 / 页面 | `PageContribution`（`Nav != null`） | `shell.page` |
 | 只有 URL 可达的页面（详情页 / 创建页） | `PageContribution`（`Nav = null`） | `shell.page` |
 | 设置页页签 | `SettingsCardContribution` | `shell.settings.card` |
-| 会话窗口插槽 | `SlotContribution` | `session.prompt` / `session.toolbar.actions` / `session.input.toolbar` / `session.file.panel` |
+| 会话窗口插槽 | `SlotContribution` | `session.prompt` / `session.toolbar.actions` / `session.input.toolbar` |
+| 会话侧栏工作台（可停靠可切换的视图） | `WorkbenchContribution` | `workbench.dock` |
 
 **禁止**：给模块页加 `@page`（`Pages/_Host.cshtml` 是唯一保留者）；在 `Activate/Deactivate` 里注册/注销贡献；在契约层放 `Type` / `RenderFragment`。
 
@@ -219,8 +220,60 @@ new SlotContribution
 - 点的 `Scope` 是 `Session` 时，可见性 = 模块启用 **AND** 会话工作模式门集（`UiScenarioGate`）。`null` 门集不收敛，空集全隐藏。
 - `SlotHost` 已把每条贡献包在 `ErrorBoundary` 里；自己写挂载点时也要包（渲染期未捕获异常会终止整个 circuit）。
 - 四点映射（旧槽名 → 扩展点 id）见 `SlotHost.razor` 的 `s_slotPoints` 表；未登记的槽名渲染空容器，不抛。
+- 会话侧栏那块位置**已从插槽改为工作台**（`workbench.dock`）：需要「可并存 / 可切换 / 可持久化」的视图请按 §5.4 做工作台，不要往插槽里塞。
 
-### 5.4 别做成贡献的东西
+### 5.4 新增工作台
+
+工作台 = 会话页侧栏一块**可停靠、可切换、可持久化、可被 agent 驱动**的视图。它与插槽的区别：插槽是「挂一个固定组件」，工作台是「平台管理的一组视图实例」。
+
+**三步，全部在信封之内**（详见 [`41`](41-workbench-plugin-platform-release-notes.md)）：
+
+**① 写视图组件**（放你的 Razor 类库，必须声明上下文参数）：
+
+```razor
+@code {
+    [Parameter, EditorRequired] public WorkbenchViewContext Context { get; set; } = default!;
+}
+```
+
+`Context` 提供：`SessionId` / `Key`（dock + id）/ `Descriptor` / `OpenPayload` / `ViewState`，以及
+`Report(...)`（上报可恢复状态与上下文摘要）、`Close()`、`CallHostAsync(action, payload, ct)`、
+`RegisterAction(action, handler)`（声明本工作台自己的宿主请求动作）。
+
+**② 在提供它的模块里声明**（模块 `DescribeUi()`，与工具在 Activate 挂载同一条纪律）：
+
+```csharp
+new WorkbenchContribution
+{
+    Point = WorkbenchPoints.DockId,
+    Id = "markdown",
+    Title = "Markdown 预览",
+    ViewKey = WorkbenchPoints.ViewKeyFor("markdown"),   // 约定 workbench.<id>
+    Requires = [Id],
+    Order = 20,
+    DefaultDock = WorkbenchDock.Right,
+    Sizing = new WorkbenchSizing(DefaultPercent: 50, MinPx: 360),
+    OpenPayloadSchema = /* required: ["path"] */,
+    ContributesContext = true,      // 是否把「在看什么」喂给模型；默认 false
+}
+```
+
+**③ 在宿主登记视图**（`Shell/WebUiWorkbenchViews.cs` 加一行）：
+
+```csharp
+Register(registry, views, "markdown", typeof(MarkdownWorkbench));
+```
+
+登记时会硬校验组件确实声明了 `WorkbenchViewContext` 参数，并同步到通用视图表（信封校验需要能解析）。
+
+要点：
+
+- **不要**自己建注册表 / 插件接口 / 描述符类型：`Requires` 就是归属，`UiVisibility` 就是启用判定，`UiContributionRegistry` 就是目录。
+- **agent 驱动免费获得**：`list_workbenches` 会自动列出你（因为可见性同源）；`open_workbench` 按你的 `OpenPayloadSchema` 做浅校验。插件自有动作用 `Context.RegisterAction("seek", ...)`，外部经 `IWorkbenchClient.SendAsync(...)`。
+- **落盘走自己的工具**：工作台不得直接写磁盘（用 `IWorkspacePathGate`），也不得持有 `ISessionRuntime`。
+- `ContributesContext = true` 的摘要会进提示词，渲染时标注为不可信内容 —— 开启前确认摘要里没有不该出现的敏感数据。
+
+### 5.5 别做成贡献的东西
 
 侧栏「聊天」「审批中心」、侧栏底部工具条、首页 dashboard 卡片、斜杠命令、通知横幅、Token 预算状态栏、会议页侧栏分区——理由逐条记在 [`40 §5.1`](40-ui-extension-unified-architecture-release-notes.md)。想加这类入口时先读那张表，别把信封撑成万能基类。
 

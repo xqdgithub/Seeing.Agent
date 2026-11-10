@@ -55,6 +55,7 @@
 | [37 全系统设计审查与整改 Release Notes](37-system-design-audit-release-notes.md) | 路径边界 5→1（含 ACP 符号链接漏洞）、终态组装/能力判定去重、六处「停用无效」、死代码清理、Host Shape 收敛、`Seeing.Files` 新原语、`ExecutionOptions` Configure 陷阱 |
 | [38 会话组快照污染与子会话切换 Release Notes](38-session-group-snapshot-pollution-release-notes.md) | 缓存写回版本保护、冷兜底条件、`SetActiveAsync` 抛异常契约、UI 回滚 |
 | [40 UI 扩展统一架构 Release Notes](40-ui-extension-unified-architecture-release-notes.md) | 6 套机制 → 统一信封、三层分工（契约/Core/宿主）、`UiPoint`/`ViewKey`/`Requires` 归属、声明早于激活、破坏性清单与迁移指引、壳层保留区 |
+| [41 会话工作台插件平台 Release Notes](41-workbench-plugin-platform-release-notes.md) | 信封上只加一种载荷（`WorkbenchContribution`）+ 一个扩展点（`workbench.dock`）：双 dock、多实例、localStorage 持久化、`open_workbench`/`list_workbenches`、kind 前缀路由、上下文源回流；**删除**旧设计的四件套（插件接口/注册表/描述符/加载端口） |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 
