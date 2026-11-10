@@ -1,5 +1,4 @@
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Extensions;
@@ -37,12 +36,8 @@ public sealed class WorkspaceReadyInitializer
         if (workspace.IsResolved)
             _services.ReloadGatewayChannelRegistry(workspace.GetProjectRoot());
 
-        // 壳层贡献与模块导航绑定
-        if (_services.GetService<IUiContributionRegistry>() is { } uiRegistry)
-        {
-            uiRegistry.Register(new CoreShellUiContribution());
-            uiRegistry.Register(new FilePanelUiContribution());
-        }
+        // UI 贡献不再需要在这里补登记：宿主壳层在 Build 后立即收集（与工作区无关），
+        // 模块声明在结算后统一收集（见 WebUiHost / InitializeSeeingAsync）。
 
         _services.InitializeCommands();
         _services.InitializeAcpCommands();

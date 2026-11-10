@@ -23,7 +23,7 @@ namespace Seeing.Agent.Reflection;
 /// 以及让只读 agent 需要写文件权限。
 /// </para>
 /// </summary>
-public sealed class ReflectionModule : ISeeingModule, IUiContribution
+public sealed class ReflectionModule : ISeeingModule, IUiContributor
 {
     /// <summary>模块 id。</summary>
     public const string ModuleId = "reflection";
@@ -32,7 +32,6 @@ public sealed class ReflectionModule : ISeeingModule, IUiContribution
     private readonly ILogger<ReflectionModule>? _logger;
     private readonly IAgentStore? _agentStore;
     private readonly IOptionsMonitor<ReflectionOptions>? _options;
-    private readonly IUiContributionRegistry? _ui;
 
     /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
     public ReflectionModule()
@@ -44,21 +43,16 @@ public sealed class ReflectionModule : ISeeingModule, IUiContribution
         ReflectionModuleActivity activity,
         ILogger<ReflectionModule>? logger = null,
         IAgentStore? agentStore = null,
-        IOptionsMonitor<ReflectionOptions>? options = null,
-        IUiContributionRegistry? uiRegistry = null)
+        IOptionsMonitor<ReflectionOptions>? options = null)
     {
         _activity = activity ?? throw new ArgumentNullException(nameof(activity));
         _logger = logger;
         _agentStore = agentStore;
         _options = options;
-        _ui = uiRegistry;
     }
 
     /// <inheritdoc />
     public string Id => ModuleId;
-
-    /// <inheritdoc />
-    string IUiContribution.ModuleId => ModuleId;
 
     /// <inheritdoc />
     /// <remarks>本模块不提供工具——复盘 agent 只读，写入在宿主侧执行器内完成。</remarks>
@@ -74,11 +68,30 @@ public sealed class ReflectionModule : ISeeingModule, IUiContribution
     /// <remarks>
     /// 只读导航项：复盘产物是磁盘上的 JSON，用户需要一个入口才能看到建议，
     /// 否则 <c>SuggestOnly</c> 模式下功能感知上等于不存在。
+    /// <para>
+    /// 声明是纯数据：模块启停不再需要对称 Register/Unregister——可见性由
+    /// <c>Requires</c> 交给 <c>UiVisibility</c> 判定，声明永远留在注册表里。
+    /// </para>
     /// </remarks>
-    public IReadOnlyList<object> Contribute() =>
+    public IReadOnlyList<UiContribution> DescribeUi() =>
     [
-        new NavContribution("/reflection", "复盘记录", "bulb", [ModuleId],
-            Group: NavGroups.Workspace, GroupIcon: NavGroups.WorkspaceIcon, Order: 60),
+        new PageContribution
+        {
+            Point = "shell.page",
+            Id = "page.reflection",
+            Route = "/reflection",
+            Title = "复盘记录",
+            ViewKey = "page.reflection",
+            Requires = [ModuleId],
+            Order = 60,
+            Nav = new NavPlacement
+            {
+                Icon = "bulb",
+                Group = NavGroups.Workspace,
+                GroupIcon = NavGroups.WorkspaceIcon,
+                GroupOrder = 20,
+            },
+        },
     ];
 
     /// <inheritdoc />
@@ -98,7 +111,6 @@ public sealed class ReflectionModule : ISeeingModule, IUiContribution
 
         cancellationToken.ThrowIfCancellationRequested();
         _activity.IsActive = true;
-        _ui?.Register(this);
 
         // Agent 注册：与内置 agent 一致，注册后不在 Deactivate 注销，避免影响进行中的会话。
         var options = _options?.CurrentValue;
@@ -132,10 +144,6 @@ public sealed class ReflectionModule : ISeeingModule, IUiContribution
             return Task.CompletedTask;
 
         _activity.IsActive = false;
-
-        // UI 贡献必须与 Activate 的 Register 对称注销，否则 Deactivate → Activate 之后
-        // 侧栏「复盘记录」入口永久消失（其余模块 Memory/Scheduler/Acp/Skills/Mcp/Basic 均已对称）。
-        _ui?.Unregister(Id);
 
         // 允许注入 Worker 以便取消在途复盘；缺失时（独立装配）只能等它自然结束。
         services.GetService<Background.ReflectionWorker>()?.CancelInFlight();

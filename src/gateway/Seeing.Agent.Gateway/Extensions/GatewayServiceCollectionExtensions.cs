@@ -46,8 +46,7 @@ public static class GatewayServiceCollectionExtensions
         services.AddSingleton<GatewayAutoStartPolicy>();
         services.AddSingleton<IGatewayServer, GatewayServer>();
         services.AddHostedService<GatewayHostedService>();
-        services.AddSingleton<ISeeingModule>(sp =>
-            new GatewayModule(sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>()));
+        services.AddSingleton<ISeeingModule, GatewayModule>();
         services.AddGatewayPermissionChannel();
         AddGatewayWorkspaceParticipant(services);
         return services;
@@ -86,8 +85,7 @@ public static class GatewayServiceCollectionExtensions
         services.AddSingleton<GatewayAutoStartPolicy>();
         services.AddSingleton<IGatewayServer, GatewayServer>();
         services.AddHostedService<GatewayHostedService>();
-        services.AddSingleton<ISeeingModule>(sp =>
-            new GatewayModule(sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>()));
+        services.AddSingleton<ISeeingModule, GatewayModule>();
         services.AddGatewayPermissionChannel();
         AddGatewayWorkspaceParticipant(services);
         return services;

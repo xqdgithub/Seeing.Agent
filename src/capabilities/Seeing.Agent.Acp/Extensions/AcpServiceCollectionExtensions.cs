@@ -62,8 +62,7 @@ public static class AcpServiceCollectionExtensions
             sp.GetRequiredService<AcpConnectionOwner>().Manager);
         services.AddSingleton<ISeeingModule>(sp => new AcpModule(
             sp.GetRequiredService<AcpModuleActivity>(),
-            sp.GetRequiredService<AcpConnectionOwner>(),
-            sp.GetService<Seeing.Agent.Abstractions.Ui.IUiContributionRegistry>()));
+            sp.GetRequiredService<AcpConnectionOwner>()));
         services.AddSingleton<AcpLifecycleService>();
         services.AddSingleton<AcpSessionStore>();
         services.AddSingleton<AcpTaskStore>();

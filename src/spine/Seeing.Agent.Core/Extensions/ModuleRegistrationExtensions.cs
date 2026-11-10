@@ -73,13 +73,6 @@ public static class ModuleRegistrationExtensions
                     return (TModule)agentStoreCtor.Invoke([store])!;
             }
 
-            var uiCtor = typeof(TModule).GetConstructor([typeof(IUiContributionRegistry)]);
-            if (uiCtor is not null)
-            {
-                var ui = sp.GetService<IUiContributionRegistry>();
-                return (TModule)uiCtor.Invoke([ui])!;
-            }
-
             return new TModule();
         });
         services.Add(tracked);

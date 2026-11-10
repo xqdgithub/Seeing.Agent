@@ -23,29 +23,14 @@ namespace Seeing.Agent.Mcp;
 /// <summary>
 /// MCP 模块 — 提供 McpClientManager、传输工厂与配置持久化。
 /// </summary>
-public sealed class McpModule : ISeeingModule, IUiContribution
+public sealed class McpModule : ISeeingModule, IUiContributor
 {
     private static readonly IReadOnlyList<string> s_providedSeams = ["mcp"];
 
-    private readonly IUiContributionRegistry? _ui;
     private readonly List<string> _registeredCommandNames = new();
-
-    /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
-    public McpModule()
-    {
-    }
-
-    /// <summary>DI 解析用。</summary>
-    public McpModule(IUiContributionRegistry? uiRegistry)
-    {
-        _ui = uiRegistry;
-    }
 
     /// <inheritdoc />
     public string Id => "mcp";
-
-    /// <inheritdoc />
-    public string ModuleId => Id;
 
     /// <inheritdoc />
     public IReadOnlyList<string> ProvidedTools { get; } = Array.Empty<string>();
@@ -121,17 +106,30 @@ public sealed class McpModule : ISeeingModule, IUiContribution
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<object> Contribute() =>
+    public IReadOnlyList<UiContribution> DescribeUi() =>
     [
-        new NavContribution("/mcp", "MCP", "api", ["mcp"],
-            Group: NavGroups.Workspace, GroupIcon: NavGroups.WorkspaceIcon, Order: 30),
+        new PageContribution
+        {
+            Point = "shell.page",
+            Id = "page.mcp",
+            Route = "/mcp",
+            Title = "MCP",
+            ViewKey = "page.mcp",
+            Requires = [Id],
+            Order = 30,
+            Nav = new NavPlacement
+            {
+                Icon = "api",
+                Group = NavGroups.Workspace,
+                GroupIcon = NavGroups.WorkspaceIcon,
+                GroupOrder = 20,
+            },
+        },
     ];
 
     /// <inheritdoc />
     public async Task ActivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
-        _ui?.Register(this);
-
         // 初始化连接（配置加载复用 McpLoader 的静态入口）
         var manager = services.GetService<IMcpManager>();
         if (manager is not null)
@@ -152,8 +150,6 @@ public sealed class McpModule : ISeeingModule, IUiContribution
     public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         UnregisterCommands(services);
-
-        _ui?.Unregister(Id);
 
         services.GetService<IDynamicToolContributorRegistry>()?.Unregister(Id);
 

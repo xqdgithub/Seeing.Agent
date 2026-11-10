@@ -13,14 +13,13 @@ namespace Seeing.Agent.Memory;
 /// <summary>
 /// Memory 能力模块 — id=<c>memory</c>；Sqlite 连接由 Activate/Deactivate 经 <see cref="SqliteConnectionOwner"/> 自管。
 /// </summary>
-public sealed class MemoryModule : ISeeingModule, IUiContribution
+public sealed class MemoryModule : ISeeingModule, IUiContributor
 {
     private static readonly IReadOnlyList<string> s_providedTools =
         ["memory_search", "memory_write", "memory_read"];
 
     private readonly MemoryModuleActivity? _activity;
     private readonly SqliteConnectionOwner? _connectionOwner;
-    private readonly IUiContributionRegistry? _ui;
 
     /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
     public MemoryModule()
@@ -30,19 +29,14 @@ public sealed class MemoryModule : ISeeingModule, IUiContribution
     /// <summary>DI 解析用。</summary>
     public MemoryModule(
         MemoryModuleActivity activity,
-        SqliteConnectionOwner connectionOwner,
-        IUiContributionRegistry? uiRegistry = null)
+        SqliteConnectionOwner connectionOwner)
     {
         _activity = activity ?? throw new ArgumentNullException(nameof(activity));
         _connectionOwner = connectionOwner ?? throw new ArgumentNullException(nameof(connectionOwner));
-        _ui = uiRegistry;
     }
 
     /// <inheritdoc />
     public string Id => "memory";
-
-    /// <inheritdoc />
-    public string ModuleId => Id;
 
     /// <inheritdoc />
     public IReadOnlyList<string> ProvidedTools => s_providedTools;
@@ -60,12 +54,53 @@ public sealed class MemoryModule : ISeeingModule, IUiContribution
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<object> Contribute() =>
+    /// <remarks>
+    /// 三条路由：列表页进侧栏；知识图谱与记忆详情是已知子路径（<c>Nav = null</c>）——
+    /// 它们挂在 <c>/memory</c> 下会被侧栏的「更短前缀隐藏子路径」规则滤掉，
+    /// 因此本来就不该是 Nav，但必须仍然可直链。
+    /// <para>
+    /// 记忆设置不在这里：它是设置页卡片（<c>settings.memory</c>），由宿主代模块声明。
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<UiContribution> DescribeUi() =>
     [
-        // 记忆设置走 WebUI 侧的 SettingsCardContribution（见 CoreShellUiContribution）：
-        // NavContribution 挂在 /memory 下会被 FilterSidebarNav 的前缀规则隐藏，永远不显示。
-        new NavContribution("/memory", "记忆", "database", ["memory"],
-            Group: NavGroups.Workspace, GroupIcon: NavGroups.WorkspaceIcon, Order: 50),
+        new PageContribution
+        {
+            Point = "shell.page",
+            Id = "page.memory",
+            Route = "/memory",
+            Title = "记忆",
+            ViewKey = "page.memory",
+            Requires = [Id],
+            Order = 50,
+            Nav = new NavPlacement
+            {
+                Icon = "database",
+                Group = NavGroups.Workspace,
+                GroupIcon = NavGroups.WorkspaceIcon,
+                GroupOrder = 20,
+            },
+        },
+        new PageContribution
+        {
+            Point = "shell.page",
+            Id = "page.memory.graph",
+            Route = "/memory/graph",
+            Title = "知识图谱",
+            ViewKey = "page.memory.graph",
+            Requires = [Id],
+            Order = 53,
+        },
+        new PageContribution
+        {
+            Point = "shell.page",
+            Id = "page.memory.detail",
+            Route = "/memory/detail/{*FilePath}",
+            Title = "记忆详情",
+            ViewKey = "page.memory.detail",
+            Requires = [Id],
+            Order = 55,
+        },
     ];
 
     /// <inheritdoc />
@@ -80,7 +115,6 @@ public sealed class MemoryModule : ISeeingModule, IUiContribution
         cancellationToken.ThrowIfCancellationRequested();
         _connectionOwner.Open();
         _activity.MarkActive();
-        _ui?.Register(this);
 
         // Hook 与本模块生命周期绑定：Activate 登记、Deactivate 撤销，单一真相源为模块启停。
         RegisterHooks(services);
@@ -108,8 +142,6 @@ public sealed class MemoryModule : ISeeingModule, IUiContribution
             foreach (var id in ProvidedTools)
                 await tm.UnregisterToolAsync(id, cancellationToken).ConfigureAwait(false);
         }
-
-        _ui?.Unregister(Id);
 
         if (_activity is null || _connectionOwner is null)
             return;

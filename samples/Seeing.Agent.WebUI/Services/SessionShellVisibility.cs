@@ -1,20 +1,23 @@
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Core.Scenarios;
+using Seeing.Agent.Core.Ui;
 
 namespace Seeing.Agent.WebUI.Services;
 
 /// <summary>
 /// 会话壳可见性：场景解析、默认 Agent、插槽过滤（会话级 Scenario）；
 /// 侧栏导航过滤走进程级（与会话壳分离）。
+/// <para>
+/// <b>本类已降级为薄封装</b>：模块启用判定委托 <see cref="UiVisibility.AreRequirementsEnabled"/>，
+/// 场景→模块集解析委托 <see cref="UiScenarioGate"/>。判定只在 Core 有一份实现。
+/// </para>
 /// </summary>
 public static class SessionShellVisibility
 {
     /// <summary>有效场景名：会话级优先，否则进程级。</summary>
     public static string? ResolveEffectiveScenario(string? sessionScenario, string? processScenario) =>
-        string.IsNullOrWhiteSpace(sessionScenario)
-            ? (string.IsNullOrWhiteSpace(processScenario) ? null : processScenario.Trim())
-            : sessionScenario.Trim();
+        UiScenarioGate.ResolveEffective(sessionScenario, processScenario);
 
     /// <summary>取场景预设的 defaultAgent；未知场景返回 null。</summary>
     public static string? ResolveDefaultAgent(
@@ -44,7 +47,7 @@ public static class SessionShellVisibility
         ArgumentException.ThrowIfNullOrWhiteSpace(slotName);
 
         var effective = ResolveEffectiveScenario(sessionScenario, processScenario);
-        var sessionModules = ResolveScenarioModuleSet(effective, scenarioCatalog);
+        var sessionModules = UiScenarioGate.Resolve(effective, scenarioCatalog);
 
         return slots
             .Where(s => string.Equals(s.Name, slotName, StringComparison.OrdinalIgnoreCase))
@@ -62,7 +65,7 @@ public static class SessionShellVisibility
     {
         ArgumentNullException.ThrowIfNull(requires);
 
-        if (!AreRequirementsEnabled(requires, catalog))
+        if (!UiVisibility.AreRequirementsEnabled(requires, catalog))
             return false;
 
         if (sessionModuleGate is not null && requires.Count > 0)
@@ -89,24 +92,5 @@ public static class SessionShellVisibility
         }
 
         return false;
-    }
-
-    /// <summary>判定 <c>Requires</c> 是否全部启用 —— 委托唯一实现（<c>catalog is null</c> 时为 fail-closed）。</summary>
-    private static bool AreRequirementsEnabled(IReadOnlyList<string> requires, IModuleCatalog? catalog)
-        => UiContributionVisibility.AreRequirementsEnabled(requires, catalog);
-
-    private static IReadOnlySet<string>? ResolveScenarioModuleSet(
-        string? effectiveScenario,
-        IScenarioCatalog? scenarioCatalog)
-    {
-        if (string.IsNullOrWhiteSpace(effectiveScenario))
-            return null;
-
-        var name = effectiveScenario.Trim();
-        var def = scenarioCatalog?.Get(name) ?? BuiltInScenarios.TryGet(name);
-        if (def is null || BuiltInScenarios.IncludesAllModules(def.Modules))
-            return null;
-
-        return new HashSet<string>(def.Modules, StringComparer.OrdinalIgnoreCase);
     }
 }

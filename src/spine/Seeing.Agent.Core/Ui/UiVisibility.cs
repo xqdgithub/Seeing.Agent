@@ -34,6 +34,40 @@ public static class UiVisibility
     public static bool IsVisible(UiContribution contribution, UiPoint point, UiVisibilityContext context)
         => Evaluate(contribution, point, context).Visible;
 
+    /// <summary>
+    /// 仅按 <c>Requires</c> 判定模块启用集（不含会话门、不含扩展点作用域）。
+    /// <para>
+    /// 取代已删除的 <c>UiContributionVisibility.AreRequirementsEnabled</c>，语义逐条保持：
+    /// 空 <c>Requires</c> → <c>true</c>（进程级贡献不受模块启停影响）；<paramref name="catalog"/>
+    /// 为 null → <c>false</c>（fail-closed：结算/DI 接线异常时隐藏是安全方向）；空白项跳过；
+    /// 任一模块未启用 → <c>false</c>。
+    /// </para>
+    /// <para>
+    /// 与 <see cref="Evaluate"/> 的差别：这里对空白项**跳过**而非判不可见——调用方是仍在旧
+    /// <c>LegacySlotContribution</c> 路径上的会话插槽，行为必须与迁移前逐条一致。
+    /// </para>
+    /// </summary>
+    public static bool AreRequirementsEnabled(IReadOnlyList<string> requires, IModuleCatalog? catalog)
+    {
+        ArgumentNullException.ThrowIfNull(requires);
+
+        if (requires.Count == 0)
+            return true;
+        if (catalog is null)
+            return false;
+
+        foreach (var raw in requires)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                continue;
+
+            if (!catalog.IsEnabled(raw))
+                return false;
+        }
+
+        return true;
+    }
+
     public static UiVisibilityDecision Evaluate(
         UiContribution contribution, UiPoint point, UiVisibilityContext context)
     {

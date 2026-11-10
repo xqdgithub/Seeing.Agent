@@ -5,6 +5,7 @@ using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Extensions;
 using Seeing.Agent.Core.Modules;
+using Seeing.Agent.Core.Ui;
 using Seeing.Agent.Gateway.Channels;
 using Seeing.Agent.HostComposition;
 using Seeing.Agent.Hosting;
@@ -15,6 +16,7 @@ using Seeing.Agent.WebUI.Endpoints;
 using Seeing.Agent.WebUI.Rendering;
 using Seeing.Agent.WebUI.Rendering.Providers;
 using Seeing.Agent.WebUI.Services;
+using Seeing.Agent.WebUI.Shell;
 using Seeing.Agent.WebUI.State;
 using Seeing.Session.Core;
 using System.Net;
@@ -104,8 +106,20 @@ public static class WebUiHost
             options.CleanupInterval = TimeSpan.FromMinutes(5);
         });
         BootOverrideSource.ApplyToServices(builder.Services, args);
-        builder.Services.AddSingleton<UiContributionRegistry>();
-        builder.Services.AddSingleton<IUiContributionRegistry>(sp => sp.GetRequiredService<UiContributionRegistry>());
+
+        // ── UI 扩展信封（必须在 Build() 之前）──
+        // 扩展点目录为空时所有贡献都会被判「未声明的扩展点」而拒收 → 侧栏与设置页全空。
+        builder.Services.AddSeeingUiPoints([.. WebUiPoints.All]);
+        builder.Services.AddSingleton<WebUiViewResolver>();
+        builder.Services.AddSingleton<IUiViewKeyCatalog>(sp => sp.GetRequiredService<WebUiViewResolver>());
+        builder.Services.AddSingleton<IUiContributionValidator, WebUiUiContributionValidator>();
+        builder.Services.AddSingleton<IUiHostContributor, WebUiHostContributor>();
+
+        // 过渡期旧通道（设置卡 + 会话插槽）：批次 D 删除。
+        // 页面路由/侧栏已切到 Core 的 UiContributionRegistry，本注册只服务 Settings.razor / SlotHost.razor。
+        builder.Services.AddSingleton<LegacyUiContributionRegistry>();
+        builder.Services.AddSingleton<IUiContributionRegistry>(sp =>
+            sp.GetRequiredService<LegacyUiContributionRegistry>());
 
         builder.Services.AddSingleton<AppState>();
         builder.Services.AddScoped<SessionState>();
@@ -243,6 +257,28 @@ public static class WebUiHost
 
         // 初始化 Seeing.Agent 组件（Skills/MCP/Plugins）
         // 工作区自动根据配置解析：环境变量 > 项目自定义路径 > 全局默认 > 启动目录
+
+        // 视图表：必须在校验器工作之前完成登记——校验器会把未登记的视图键判为「视图未装配」并拒收，
+        // 结果是侧栏/设置页静默变空
+        WebUiViews.RegisterBuiltIns(app.Services.GetRequiredService<WebUiViewResolver>());
+
+        // 宿主壳层 UI 声明：Build 之后、InitializeSeeingAsync 之前收集。
+        // 壳层贡献是进程级的（Requires = []），与工作区是否选定无关——否则用户在工作区首页
+        // 就看不到侧栏与设置入口，无法自救。
+        var collector = app.Services.GetRequiredService<UiContributionCollector>();
+        var hostCount = collector.CollectHostContributions(app.Services.GetServices<IUiHostContributor>());
+        if (hostCount == 0)
+        {
+            app.Logger.LogError(
+                "未收集到任何宿主 UI 贡献：侧栏与设置页将为空白，请检查 IUiHostContributor 注册");
+        }
+
+        // 过渡期旧通道：设置卡与文件面板插槽（批次 D 随设置/插槽改造一起删除）。
+        // 必须在这里登记而不是等工作区选定：设置页与插槽都属于壳层，工作区未选定时也应就位。
+        var legacyUi = app.Services.GetRequiredService<LegacyUiContributionRegistry>();
+        legacyUi.Register(new CoreShellUiContribution());
+        legacyUi.Register(new FilePanelUiContribution());
+
         using (var scope = app.Services.CreateScope())
         {
             var sp = scope.ServiceProvider;
@@ -250,12 +286,16 @@ public static class WebUiHost
             // 初始化核心组件（自动解析工作区）
             await sp.InitializeSeeingAsync();
 
-            // 壳层 *Page + 模块 Nav 绑定 ComponentType，供 ModuleRouter 渲染
-            if (sp.GetService<IUiContributionRegistry>() is { } uiRegistry)
+            // 模块声明在结算后收集（含未启用模块）。诊断非空说明有贡献被拒收——
+            // 表现为「某个页面/卡片莫名消失」，必须在启动日志里一次说清。
+            var contributions = app.Services.GetRequiredService<IUiContributionCatalog>();
+            if (contributions.Diagnostics.Count > 0)
             {
-                uiRegistry.Register(new CoreShellUiContribution());
-                uiRegistry.Register(new Seeing.Agent.WebUI.Services.FilePanelUiContribution());
-                ModulePageRouteBinder.BindExistingPages(uiRegistry);
+                app.Logger.LogError(
+                    "UI 贡献收集存在 {Count} 条诊断：{Details}",
+                    contributions.Diagnostics.Count,
+                    string.Join("; ", contributions.Diagnostics.Select(
+                        d => $"{d.Kind}:{d.OwnerId}/{d.ContributionId}")));
             }
 
             // 命令发现 / TokenBudget 钩子 / Gateway 渠道注册。

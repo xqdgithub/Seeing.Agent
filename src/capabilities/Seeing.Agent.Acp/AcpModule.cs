@@ -23,13 +23,12 @@ namespace Seeing.Agent.Acp;
 /// ACP 能力模块 — id=<c>acp</c>；连接管理器由 Activate/Deactivate 经 <see cref="AcpConnectionOwner"/> 自管，
 /// 并收编透传 Agent、命令与配置重载 Handler 的注册/撤销。
 /// </summary>
-public sealed class AcpModule : ISeeingModule, IUiContribution
+public sealed class AcpModule : ISeeingModule, IUiContributor
 {
     private static readonly IReadOnlyList<string> s_providedTools = ["acp", "acp_status"];
 
     private readonly AcpModuleActivity? _activity;
     private readonly AcpConnectionOwner? _connectionOwner;
-    private readonly IUiContributionRegistry? _ui;
     private readonly List<string> _registeredCommandNames = new();
 
     /// <summary>本模块登记过的 ACP 动态技能命令名（撤销的输入集合，含已禁用项）。</summary>
@@ -55,19 +54,14 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
     /// <summary>DI 解析用：持有活动门控与连接所有者。</summary>
     public AcpModule(
         AcpModuleActivity activity,
-        AcpConnectionOwner connectionOwner,
-        IUiContributionRegistry? uiRegistry = null)
+        AcpConnectionOwner connectionOwner)
     {
         _activity = activity ?? throw new ArgumentNullException(nameof(activity));
         _connectionOwner = connectionOwner ?? throw new ArgumentNullException(nameof(connectionOwner));
-        _ui = uiRegistry;
     }
 
     /// <inheritdoc />
     public string Id => "acp";
-
-    /// <inheritdoc />
-    public string ModuleId => Id;
 
     /// <inheritdoc />
     public IReadOnlyList<string> ProvidedTools => s_providedTools;
@@ -85,10 +79,25 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<object> Contribute() =>
+    public IReadOnlyList<UiContribution> DescribeUi() =>
     [
-        new NavContribution("/acp", "ACP", "robot", ["acp"],
-            Group: NavGroups.Workspace, GroupIcon: NavGroups.WorkspaceIcon, Order: 40),
+        new PageContribution
+        {
+            Point = "shell.page",
+            Id = "page.acp",
+            Route = "/acp",
+            Title = "ACP",
+            ViewKey = "page.acp",
+            Requires = [Id],
+            Order = 40,
+            Nav = new NavPlacement
+            {
+                Icon = "robot",
+                Group = NavGroups.Workspace,
+                GroupIcon = NavGroups.WorkspaceIcon,
+                GroupOrder = 20,
+            },
+        },
     ];
 
     /// <inheritdoc />
@@ -103,7 +112,6 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
         cancellationToken.ThrowIfCancellationRequested();
         _connectionOwner.EnsureCreated();
         _activity.MarkActive();
-        _ui?.Register(this);
 
         await RegisterAgentsAsync(services, cancellationToken).ConfigureAwait(false);
         AttachReloadHandler(services);
@@ -140,8 +148,6 @@ public sealed class AcpModule : ISeeingModule, IUiContribution
             foreach (var id in ProvidedTools)
                 await tm.UnregisterToolAsync(id, cancellationToken).ConfigureAwait(false);
         }
-
-        _ui?.Unregister(Id);
 
         if (_activity is null || _connectionOwner is null)
             return;

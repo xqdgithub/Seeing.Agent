@@ -32,11 +32,11 @@
     private string? CascadedSessionScenario { get; set; }
 
     private IReadOnlyList<LegacySlotContribution> _visible = [];
-    private UiContributionRegistry? _typedRegistry;
+    private LegacyUiContributionRegistry? _typedRegistry;
 
     protected override void OnInitialized()
     {
-        _typedRegistry = Registry as UiContributionRegistry;
+        _typedRegistry = Registry as LegacyUiContributionRegistry;
         if (_typedRegistry is not null)
             _typedRegistry.Changed += OnRegistryChanged;
         Refresh();

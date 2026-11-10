@@ -2,6 +2,7 @@
 @using Seeing.Agent.Abstractions.Modules
 @using Seeing.Agent.Abstractions.Ui
 @using Seeing.Agent.Core.Configuration
+@using Seeing.Agent.Core.Ui
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Core.Models
 @using Seeing.Agent.Core.Scenarios
@@ -16,7 +17,7 @@
 @inject IWorkspaceProvider WorkspaceProvider
 @inject WorkspaceSwitchService WorkspaceSwitchService
 @inject IMessageService MessageService
-@inject UiContributionRegistry Registry
+@inject IUiContributionRegistry Registry
 @inject IModuleCatalog Catalog
 @inject IScenarioCatalog ScenarioCatalog
 @inject ICapabilitySetCatalog CapabilitySetCatalog
@@ -183,7 +184,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        Registry.Changed += OnRegistryChanged;
+        if (Registry is LegacyUiContributionRegistry legacy)
+            legacy.Changed += OnRegistryChanged;
         RefreshCards();
 
         _workspacePath = WorkspaceProvider.GetProjectRoot();
@@ -210,12 +212,16 @@
 
     public void Dispose()
     {
-        Registry.Changed -= OnRegistryChanged;
+        if (Registry is LegacyUiContributionRegistry legacy)
+            legacy.Changed -= OnRegistryChanged;
     }
 
     private void RefreshCards()
     {
-        _visibleCards = UiContributionVisibility.FilterSettingsCards(Registry.SettingsCards, Catalog);
+        // 过渡期：设置卡仍走旧通道，但「模块是否启用」的判定已统一到 Core 的唯一实现。
+        _visibleCards = Registry.SettingsCards
+            .Where(card => UiVisibility.AreRequirementsEnabled(card.Requires, Catalog))
+            .ToList();
     }
 
     private void OnRegistryChanged(object? sender, EventArgs e) =>

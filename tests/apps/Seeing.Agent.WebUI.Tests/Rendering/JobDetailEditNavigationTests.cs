@@ -1,5 +1,6 @@
 using FluentAssertions;
-using Seeing.Agent.WebUI.Services;
+using Seeing.Agent.Abstractions.Ui;
+using Seeing.Agent.Core.Ui;
 using System.Text.RegularExpressions;
 
 namespace Seeing.Agent.WebUI.Tests.Rendering;
@@ -8,7 +9,7 @@ namespace Seeing.Agent.WebUI.Tests.Rendering;
 /// 任务详情页「编辑」入口的守门。
 /// <para>
 /// 原 bug：详情页的「编辑」按钮跳转 <c>/cron-jobs/{JobId}/edit</c>，
-/// 而这条路由从未登记（<see cref="ModulePageRouteBinder.KnownModuleRoutes"/> 只有
+/// 而这条路由从未登记（迁移前的 <c>ModulePageRouteBinder.KnownModuleRoutes</c> 只有
 /// <c>/cron-jobs</c> 与 <c>/cron-jobs/{JobId}</c>）。
 /// <c>ModuleRouter</c> 解析不到就落到 <c>Fallback</c> 分支，
 /// 渲染 <c>NotEnabledFragment</c>，于是显示「当前场景未启用『页面』」——
@@ -29,11 +30,13 @@ public class JobDetailEditNavigationTests
         // 钉住事实：详情路由不接受多一层 /edit 段，所以任何指向它的跳转都会掉进 Fallback。
         // 这条断言的作用是：如果将来真加了 /cron-jobs/{JobId}/edit 路由，这里会失败，
         // 提示作者重新审视详情页是否还需要就地编辑弹窗。
-        ModuleRouteResolver.TryMatchTemplate("/cron-jobs/{JobId}", "/cron-jobs/job_abc/edit", out _, out _)
+        UiRouteTemplate.TryMatch("/cron-jobs/{JobId}", "/cron-jobs/job_abc/edit", out _, out _)
             .Should().BeFalse("详情路由只有一段 JobId，多出的 /edit 段匹配不上");
 
-        ModulePageRouteBinder.TryMatchKnown("/cron-jobs/job_abc/edit", out _, out _)
-            .Should().BeFalse("已知模块路由表里也没有编辑子路由");
+        // 路由表里也不存在编辑子路由（迁移后路由由 Scheduler 模块自己声明）
+        var declared = new SchedulerModuleRouteProbe().Routes;
+        declared.Should().NotContain("/cron-jobs/{JobId}/edit");
+        declared.Should().NotContain(route => route.EndsWith("/edit", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -67,6 +70,20 @@ public class JobDetailEditNavigationTests
         ReadWebUiSource(DetailPagePath)
             .Should().Contain("ScheduledJobCloner.Clone",
                 "详情页应使用共享的拷贝 helper");
+    }
+
+    /// <summary>
+    /// 路由声明的可测投影：直接读 Scheduler 模块的 <c>DescribeUi()</c>，
+    /// 避免把「路由表」这件事重新造一份写在测试里。
+    /// </summary>
+    private sealed class SchedulerModuleRouteProbe
+    {
+        public IReadOnlyList<string> Routes { get; } =
+            new Seeing.Agent.Scheduler.SchedulerModule()
+                .DescribeUi()
+                .OfType<PageContribution>()
+                .Select(p => p.Route)
+                .ToArray();
     }
 
     /// <summary>

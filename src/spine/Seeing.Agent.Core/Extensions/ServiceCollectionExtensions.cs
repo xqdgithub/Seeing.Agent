@@ -39,6 +39,7 @@ using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Core.Llm.Hooks;
 using Seeing.Agent.Core.Models;
 using Seeing.Agent.Core.Modules;
+using Seeing.Agent.Core.Ui;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Prompts;
 using Seeing.Agent.Core.Questions;
@@ -203,13 +204,6 @@ namespace Seeing.Agent.Core.Extensions
                         return (TModule)agentStoreCtor.Invoke([store])!;
                 }
 
-                var uiCtor = typeof(TModule).GetConstructor([typeof(IUiContributionRegistry)]);
-                if (uiCtor is not null)
-                {
-                    var ui = sp.GetService<IUiContributionRegistry>();
-                    return (TModule)uiCtor.Invoke([ui])!;
-                }
-
                 return new TModule();
             });
             return services;
@@ -310,6 +304,19 @@ namespace Seeing.Agent.Core.Extensions
 
             // 动态工具贡献注册表：模块 Activate 登记 / Deactivate 撤销，结算时并入 settledToolIds
             services.TryAddSingleton<IDynamicToolContributorRegistry, DynamicToolContributorRegistry>();
+
+            // UI 扩展注册表：宿主声明扩展点（AddSeeingUiPoints）后生效；未声明时整体 no-op。
+            // 注册的是「事实」（含未启用模块的声明），可见性由调用方用 UiVisibility 显式判定。
+            services.TryAddSingleton(sp => new UiContributionRegistry(
+                sp.GetService<IUiPointCatalog>(),
+                sp.GetServices<IUiContributionValidator>(),
+                sp.GetService<ILogger<UiContributionRegistry>>()));
+            services.TryAddSingleton<IUiContributionCatalog>(sp =>
+                sp.GetRequiredService<UiContributionRegistry>());
+            services.TryAddSingleton(sp => new UiContributionCollector(
+                sp.GetRequiredService<IUiContributionCatalog>(),
+                sp.GetService<IUiPointCatalog>(),
+                sp.GetService<ILogger<UiContributionCollector>>()));
 
             // Shell 配置节（ShellOptions 在 Abstractions；工具能力包由宿主 AddSeeingModule 登记）
             services.GetOrCreateConfigSectionRegistry().Register(
@@ -945,6 +952,10 @@ namespace Seeing.Agent.Core.Extensions
                 logger?.LogWarning(
                     "SettlementEngine/ModuleLifecycleManager 未注册，回退为激活全部 {Count} 个 ISeeingModule",
                     modules.Count);
+
+                // 声明早于激活：fallback 路径同样先收集 UI 声明（否则无结算引擎的宿主侧栏/设置页全空）
+                CollectModuleUiContributions(services, modules, logger);
+
                 foreach (var module in modules)
                     await module.ActivateAsync(services, cancellationToken).ConfigureAwait(false);
                 return;
@@ -970,7 +981,30 @@ namespace Seeing.Agent.Core.Extensions
                 result.Enabled.Count,
                 result.Warnings.Count);
 
+            // 声明先于激活：结算完成后先收集全部模块（含未启用）的 UI 声明，再 Activate。
+            // 正常路径由 ModuleLifecycleManager.ActivateAsync 覆盖（三个激活入口共用），此处仅兜底。
+
             await lifecycle.ActivateAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// 收集模块 UI 声明（声明早于激活：未启用模块的声明也在表内，直链才能给出正确的「未启用」提示）。
+        /// <para>
+        /// <b>必须在 <c>ActivateAsync</c> 之前调用</b>。无 <see cref="IUiPointCatalog"/>（无界面宿主）
+        /// 时整体 no-op；<see cref="IUiContributor.DescribeUi"/> 抛异常只记诊断，不影响启动。
+        /// </para>
+        /// </summary>
+        private static void CollectModuleUiContributions(
+            IServiceProvider services,
+            IReadOnlyList<ISeeingModule> modules,
+            ILogger? logger)
+        {
+            var collector = services.GetService<UiContributionCollector>();
+            if (collector is not { IsEnabled: true })
+                return;
+
+            var count = collector.CollectModuleContributions(modules);
+            logger?.LogDebug("已收集 {Count} 个模块的 UI 声明（共 {Total} 个模块）", count, modules.Count);
         }
 
         /// <summary>

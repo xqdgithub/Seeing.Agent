@@ -6,30 +6,14 @@ using Seeing.Agent.Abstractions.Ui;
 namespace Seeing.Agent.Tools.Basic;
 
 /// <summary>
-/// 基础工具模块 — 提供 current_time；并贡献 /tools 聚合页导航。
+/// 基础工具模块 — 提供 current_time；并贡献 /tools 聚合页。
 /// </summary>
-public sealed class BasicModule : ISeeingModule, IUiContribution
+public sealed class BasicModule : ISeeingModule, IUiContributor
 {
     private static readonly IReadOnlyList<string> s_providedTools = ["current_time"];
 
-    private readonly IUiContributionRegistry? _ui;
-
-    /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
-    public BasicModule()
-    {
-    }
-
-    /// <summary>DI 解析用。</summary>
-    public BasicModule(IUiContributionRegistry? uiRegistry)
-    {
-        _ui = uiRegistry;
-    }
-
     /// <inheritdoc />
     public string Id => "basic";
-
-    /// <inheritdoc />
-    public string ModuleId => Id;
 
     /// <inheritdoc />
     public IReadOnlyList<string> ProvidedTools => s_providedTools;
@@ -47,17 +31,35 @@ public sealed class BasicModule : ISeeingModule, IUiContribution
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<object> Contribute() =>
+    /// <remarks>
+    /// UI 声明是<b>纯数据、无副作用</b>：结算完成后统一收集（含未启用模块），
+    /// 因此不再需要 Activate 期登记 / Deactivate 期对称注销。
+    /// </remarks>
+    public IReadOnlyList<UiContribution> DescribeUi() =>
     [
-        new NavContribution("/tools", "工具", "tool", ["basic"],
-            Group: NavGroups.Workspace, GroupIcon: NavGroups.WorkspaceIcon, Order: 20),
+        new PageContribution
+        {
+            Point = "shell.page",
+            Id = "page.tools",
+            Route = "/tools",
+            Title = "工具",
+            ViewKey = "page.tools",
+            Requires = [Id],
+            Order = 20,
+            Nav = new NavPlacement
+            {
+                Icon = "tool",
+                Group = NavGroups.Workspace,
+                GroupIcon = NavGroups.WorkspaceIcon,
+                GroupOrder = 20,
+            },
+        },
     ];
 
     /// <inheritdoc />
     public async Task ActivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _ui?.Register(this);
 
         var tm = services.GetService<IToolManager>();
         var tool = services.GetService<CurrentTimeTool>();
@@ -74,7 +76,5 @@ public sealed class BasicModule : ISeeingModule, IUiContribution
             foreach (var id in ProvidedTools)
                 await tm.UnregisterToolAsync(id, cancellationToken).ConfigureAwait(false);
         }
-
-        _ui?.Unregister(Id);
     }
 }

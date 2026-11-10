@@ -25,13 +25,11 @@ namespace Seeing.Agent.Skills;
 /// <summary>
 /// 技能模块 — 提供技能目录、只读门面、在线解析器与 skill 工具，并拥有技能根 watcher 的生命周期。
 /// </summary>
-public sealed class SkillsModule : ISeeingModule, IUiContribution
+public sealed class SkillsModule : ISeeingModule, IUiContributor
 {
     private static readonly IReadOnlyList<string> s_providedTools = ["skill"];
 
     private static readonly IReadOnlyList<string> s_providedSeams = ["skills"];
-
-    private readonly IUiContributionRegistry? _ui;
 
     /// <summary>技能根监听器（模块独占：加载器不得持有或释放）。</summary>
     private SkillRootWatcher? _watcher;
@@ -42,22 +40,8 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
     /// <summary>动态技能命令同步器（目录事件驱动，模块独占其生命周期）。</summary>
     private DynamicSkillCommandSync? _commandSync;
 
-    /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
-    public SkillsModule()
-    {
-    }
-
-    /// <summary>DI 解析用。</summary>
-    public SkillsModule(IUiContributionRegistry? uiRegistry)
-    {
-        _ui = uiRegistry;
-    }
-
     /// <inheritdoc />
     public string Id => "skills";
-
-    /// <inheritdoc />
-    public string ModuleId => Id;
 
     /// <inheritdoc />
     public IReadOnlyList<string> ProvidedTools => s_providedTools;
@@ -120,17 +104,55 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<object> Contribute() =>
+    /// <remarks>
+    /// 三条路由：列表页进侧栏；创建页与详情页是已知子路径（<c>Nav = null</c>），
+    /// 迁移前由 <c>ModulePageRouteBinder</c> 的 enrich 补全，现由模块自己声明。
+    /// </remarks>
+    public IReadOnlyList<UiContribution> DescribeUi() =>
     [
-        new NavContribution("/skills", "技能", "star", ["skills"],
-            Group: NavGroups.Workspace, GroupIcon: NavGroups.WorkspaceIcon, Order: 10),
+        new PageContribution
+        {
+            Point = "shell.page",
+            Id = "page.skills",
+            Route = "/skills",
+            Title = "技能",
+            ViewKey = "page.skills",
+            Requires = [Id],
+            Order = 10,
+            Nav = new NavPlacement
+            {
+                Icon = "star",
+                Group = NavGroups.Workspace,
+                GroupIcon = NavGroups.WorkspaceIcon,
+                GroupOrder = 20,
+            },
+        },
+        new PageContribution
+        {
+            Point = "shell.page",
+            Id = "page.skills.create",
+            Route = "/skills/create",
+            Title = "创建技能",
+            ViewKey = "page.skills.create",
+            Requires = [Id],
+            Order = 11,
+        },
+        new PageContribution
+        {
+            Point = "shell.page",
+            Id = "page.skills.detail",
+            Route = "/skills/{SkillName}",
+            Title = "技能详情",
+            ViewKey = "page.skills.detail",
+            Requires = [Id],
+            Order = 12,
+        },
     ];
 
     /// <inheritdoc />
     public async Task ActivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _ui?.Register(this);
 
         StartWatcher(services);
         StartCommandSync(services);
@@ -178,8 +200,6 @@ public sealed class SkillsModule : ISeeingModule, IUiContribution
             registry.Unregister("skill");
             registry.Unregister("skills");
         }
-
-        _ui?.Unregister(Id);
     }
 
     /// <summary>

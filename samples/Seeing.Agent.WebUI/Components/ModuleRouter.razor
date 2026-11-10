@@ -1,10 +1,17 @@
 @namespace Seeing.Agent.WebUI.Components
+@using AntDesign
 @using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
 @using Seeing.Agent.Abstractions.Modules
+@using Seeing.Agent.Abstractions.Ui
+@using Seeing.Agent.Core.Ui
 @using Seeing.Agent.WebUI.Pages
 @using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.WebUI.Shell
 @using Seeing.Agent.WebUI.Shared
-@inject UiContributionRegistry Registry
+@inject IUiContributionCatalog Registry
+@inject IUiPointCatalog Points
+@inject WebUiViewResolver Views
 @inject NavigationManager Navigation
 @inject IModuleCatalog Catalog
 @inject Seeing.Agent.Configuration.IWorkspaceProvider Workspace
@@ -27,9 +34,19 @@
 else if (_resolution.Kind == ModuleRouteKind.Found && _resolution.ComponentType is not null)
 {
     <LayoutView Layout="@typeof(MainLayout)">
-        <DynamicComponent @key="_locationKey"
-                          Type="@_resolution.ComponentType"
-                          Parameters="@ToParameterDictionary(_resolution.Parameters)" />
+        @* 渲染期未捕获异常会终止整个 circuit：页面组件由模块声明，必须隔离 *@
+        <ErrorBoundary @key="_locationKey">
+            <ChildContent>
+                <DynamicComponent @key="_locationKey"
+                                  Type="@_resolution.ComponentType"
+                                  Parameters="@ToParameterDictionary(_resolution.Parameters)" />
+            </ChildContent>
+            <ErrorContent Context="ex">
+                <Alert Type="@AlertType.Error" ShowIcon="true"
+                       Message="@($"页面渲染失败：{_resolution.FeatureTitle ?? "未知页面"}")"
+                       Description="@ex.Message" />
+            </ErrorContent>
+        </ErrorBoundary>
     </LayoutView>
 }
 else if (_resolution.Kind == ModuleRouteKind.NotEnabled)
@@ -79,7 +96,7 @@ else
     private void ResolveCurrent()
     {
         var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
-        var normalized = ModuleRouteResolver.NormalizePath(relative);
+        var normalized = UiRouteTemplate.NormalizePath(relative);
 
         // 工作区页始终整页渲染（不走 MainLayout 的固定高度 + overflow:hidden 内容区）
         _isWorkspacesRoute = string.Equals(
@@ -93,7 +110,52 @@ else
             return;
 
         _locationKey = normalized;
-        _resolution = ModuleRouteResolver.Resolve(_locationKey, Registry, Catalog);
+
+        if (Points.Find(WebUiPoints.ShellPage.Id) is not { } point)
+        {
+            // 扩展点未声明（宿主接线缺陷）：所有页面都无从判定，按未知路径兜底
+            _resolution = new(ModuleRouteKind.Fallback);
+            return;
+        }
+
+        // 可见性谓词必须传：若对全集直接匹配，停用模块的高分页会抢赢启用模块的页
+        var context = UiVisibilityContext.Process(Catalog);
+        var match = UiRouteTemplate.Resolve(
+            normalized,
+            Registry.All,
+            e => e.Contribution is PageContribution page
+                 && UiVisibility.IsVisible(page, point, context));
+
+        if (match is null)
+        {
+            // 可见集里没有：再看「声明全集」。命中说明这是已知页面但模块未启用 / 视图未装配，
+            // 必须带上正确的标题回「未启用」提示（迁移前靠 ModulePageRouteBinder.TryMatchKnown 兜底）。
+            var known = UiRouteTemplate.Resolve(normalized, Registry.All);
+            if (known is not null)
+            {
+                _resolution = new(ModuleRouteKind.NotEnabled,
+                    FeatureTitle: known.Page.Title,
+                    ModuleId: known.Page.Requires.FirstOrDefault());
+                return;
+            }
+
+            _resolution = new(ModuleRouteKind.Fallback);
+            return;
+        }
+
+        var page0 = match.Page;
+
+        if (Views.Resolve(page0.ViewKey) is not Type component)
+        {
+            // 视图未装配：与「模块未启用」区分文案（同一个 NotEnabled 分支，标题带出页面名）
+            _resolution = new(ModuleRouteKind.NotEnabled,
+                FeatureTitle: page0.Title,
+                ModuleId: page0.Requires.FirstOrDefault());
+            return;
+        }
+
+        _resolution = new(ModuleRouteKind.Found, component, match.Parameters,
+            page0.Title, page0.Requires.FirstOrDefault());
     }
 
     private static IDictionary<string, object>? ToParameterDictionary(

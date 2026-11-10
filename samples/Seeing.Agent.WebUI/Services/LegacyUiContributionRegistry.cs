@@ -3,9 +3,19 @@ using Seeing.Agent.Abstractions.Ui;
 namespace Seeing.Agent.WebUI.Services;
 
 /// <summary>
-/// UI 贡献注册表 — 合并各模块 <see cref="IUiContribution"/>，供侧栏/设置/路由消费。
+/// <b>过渡期</b>旧贡献注册表：只服务「设置页卡片」与「会话插槽」两条尚未迁移的通道。
+/// <para>
+/// 页面路由与侧栏已在批次 C 切到 <see cref="Seeing.Agent.Core.Ui.UiContributionRegistry"/>
+/// （契约 <see cref="IUiContributionCatalog"/>）：本类的 <c>NavItems</c> / <c>Routes</c> 已无消费方，
+/// 仅为满足旧接口而保留。
+/// </para>
+/// <para>
+/// <b>批次 D 会删除本类与旧接口</b>（设置卡与插槽届时改用 <c>SettingsCardContribution</c> /
+/// <c>SlotContribution</c> 信封 + <c>UiVisibility</c> + 视图表）。在那之前它仍是 4 张设置卡与
+/// 文件面板插槽的唯一数据源，删掉会让设置页只剩两个静态页签、会话右侧面板消失。
+/// </para>
 /// </summary>
-public sealed class UiContributionRegistry : IUiContributionRegistry
+public sealed class LegacyUiContributionRegistry : IUiContributionRegistry
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, IUiContribution> _byModuleId =
@@ -41,7 +51,7 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
         get { lock (_gate) return _routes; }
     }
 
-    /// <summary>路由表或贡献集合变更时触发（供 ModuleRouter / 侧栏刷新）。</summary>
+    /// <summary>贡献集合变更时触发（供 Settings / SlotHost 刷新）。</summary>
     public event EventHandler? Changed;
 
     /// <inheritdoc />
@@ -97,7 +107,6 @@ public sealed class UiContributionRegistry : IUiContributionRegistry
                     case RouteContribution routeItem:
                         if (!string.IsNullOrWhiteSpace(routeItem.Route))
                         {
-                            // Routes 值类型仍为 NavContribution，供 ModuleRouteResolver 消费；不进侧栏。
                             routes[routeItem.Route] = new NavContribution(
                                 routeItem.Route,
                                 routeItem.Title,

@@ -17,7 +17,7 @@ namespace Seeing.Agent.Scheduler;
 /// <summary>
 /// Scheduler 能力模块 — id=<c>scheduler</c>。
 /// </summary>
-public sealed class SchedulerModule : ISeeingModule, IUiContribution
+public sealed class SchedulerModule : ISeeingModule, IUiContributor
 {
     private static readonly IReadOnlyList<string> s_providedTools =
     [
@@ -34,7 +34,6 @@ public sealed class SchedulerModule : ISeeingModule, IUiContribution
 
     private readonly SchedulerModuleActivity? _activity;
     private readonly IScheduleManager? _manager;
-    private readonly IUiContributionRegistry? _ui;
     private readonly List<string> _registeredSkillNames = new();
     private readonly List<string> _registeredCommandNames = new();
 
@@ -46,19 +45,14 @@ public sealed class SchedulerModule : ISeeingModule, IUiContribution
     /// <summary>DI 解析用。</summary>
     public SchedulerModule(
         SchedulerModuleActivity activity,
-        IScheduleManager manager,
-        IUiContributionRegistry? uiRegistry = null)
+        IScheduleManager manager)
     {
         _activity = activity ?? throw new ArgumentNullException(nameof(activity));
         _manager = manager ?? throw new ArgumentNullException(nameof(manager));
-        _ui = uiRegistry;
     }
 
     /// <inheritdoc />
     public string Id => "scheduler";
-
-    /// <inheritdoc />
-    public string ModuleId => Id;
 
     /// <inheritdoc />
     public IReadOnlyList<string> ProvidedTools => s_providedTools;
@@ -76,12 +70,56 @@ public sealed class SchedulerModule : ISeeingModule, IUiContribution
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<object> Contribute() =>
+    /// <remarks>
+    /// 三条路由：列表页与心跳进「控制中心」；任务详情是已知子路径（<c>Nav = null</c>），
+    /// 迁移前由 <c>ModulePageRouteBinder</c> 补全，现由模块自己声明。
+    /// </remarks>
+    public IReadOnlyList<UiContribution> DescribeUi() =>
     [
-        new NavContribution("/cron-jobs", "定时任务", "clock-circle", ["scheduler"],
-            Group: NavGroups.Control, GroupIcon: NavGroups.ControlIcon, Order: 20),
-        new NavContribution("/heartbeat", "心跳", "heart", ["scheduler"],
-            Group: NavGroups.Control, GroupIcon: NavGroups.ControlIcon, Order: 30),
+        new PageContribution
+        {
+            Point = "shell.page",
+            Id = "page.cron",
+            Route = "/cron-jobs",
+            Title = "定时任务",
+            ViewKey = "page.cron",
+            Requires = [Id],
+            Order = 20,
+            Nav = new NavPlacement
+            {
+                Icon = "clock-circle",
+                Group = NavGroups.Control,
+                GroupIcon = NavGroups.ControlIcon,
+                GroupOrder = 10,
+            },
+        },
+        new PageContribution
+        {
+            Point = "shell.page",
+            Id = "page.heartbeat",
+            Route = "/heartbeat",
+            Title = "心跳",
+            ViewKey = "page.heartbeat",
+            Requires = [Id],
+            Order = 30,
+            Nav = new NavPlacement
+            {
+                Icon = "heart",
+                Group = NavGroups.Control,
+                GroupIcon = NavGroups.ControlIcon,
+                GroupOrder = 10,
+            },
+        },
+        new PageContribution
+        {
+            Point = "shell.page",
+            Id = "page.cron.detail",
+            Route = "/cron-jobs/{JobId}",
+            Title = "任务详情",
+            ViewKey = "page.cron.detail",
+            Requires = [Id],
+            Order = 21,
+        },
     ];
 
     /// <inheritdoc />
@@ -95,7 +133,6 @@ public sealed class SchedulerModule : ISeeingModule, IUiContribution
 
         cancellationToken.ThrowIfCancellationRequested();
         _activity.MarkActive();
-        _ui?.Register(this);
 
         await RegisterEmbeddedSkillsAsync(services, cancellationToken).ConfigureAwait(false);
         RegisterCommands(services, cancellationToken);
@@ -181,8 +218,6 @@ public sealed class SchedulerModule : ISeeingModule, IUiContribution
             foreach (var id in ProvidedTools)
                 await tm.UnregisterToolAsync(id, cancellationToken).ConfigureAwait(false);
         }
-
-        _ui?.Unregister(Id);
 
         if (_activity is null)
             return;

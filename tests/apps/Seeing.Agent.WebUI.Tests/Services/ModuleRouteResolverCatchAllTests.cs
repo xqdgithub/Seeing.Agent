@@ -1,10 +1,12 @@
 using FluentAssertions;
-using Seeing.Agent.WebUI.Services;
+using Seeing.Agent.Abstractions.Ui;
+using Seeing.Agent.Core.Ui;
+using Xunit;
 
 namespace Seeing.Agent.WebUI.Tests.Services;
 
 /// <summary>
-/// 模块路由模板匹配。
+/// 模块路由模板匹配（现由 Core 的 <see cref="UiRouteTemplate"/> 承担）。
 /// <para>
 /// 重点守 <c>{*name}</c> 通配段对**多级路径**的捕获：记忆详情路由
 /// <c>/memory/detail/{*FilePath}</c> 的 FilePath 形如
@@ -15,7 +17,7 @@ namespace Seeing.Agent.WebUI.Tests.Services;
 public class ModuleRouteResolverCatchAllTests
 {
     private static bool Match(string template, string path, out IReadOnlyDictionary<string, object?> parameters)
-        => ModuleRouteResolver.TryMatchTemplate(template, path, out parameters, out _);
+        => UiRouteTemplate.TryMatch(template, path, out parameters, out _);
 
     [Fact]
     public void CatchAll_Should_Capture_Multi_Segment_Path()
@@ -69,5 +71,29 @@ public class ModuleRouteResolverCatchAllTests
         Match("/memory/graph", "/memory/graph", out _).Should().BeTrue();
         Match("/memory/detail/{*FilePath}", "/memory/graph", out _).Should().BeFalse(
             "字面量前缀不匹配时不得由通配段顶替");
+    }
+
+    /// <summary>
+    /// <see cref="UiRouteTemplate.Resolve"/> 必须在多条候选中挑出字面量更多的那条，
+    /// 否则 <c>/memory/graph</c> 会被 catch-all 详情路由抢走。
+    /// </summary>
+    [Fact]
+    public void Resolve_ShouldPreferLiteralRoute_OverCatchAll()
+    {
+        UiContributionEntry[] entries =
+        [
+            new("memory", new PageContribution
+            {
+                Point = "shell.page", Id = "page.memory.detail",
+                Route = "/memory/detail/{*FilePath}", Title = "详情", ViewKey = "page.memory.detail",
+            }),
+            new("memory", new PageContribution
+            {
+                Point = "shell.page", Id = "page.memory.graph",
+                Route = "/memory/graph", Title = "知识图谱", ViewKey = "page.memory.graph",
+            }),
+        ];
+
+        UiRouteTemplate.Resolve("/memory/graph", entries)!.Page.Id.Should().Be("page.memory.graph");
     }
 }

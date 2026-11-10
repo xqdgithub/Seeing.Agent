@@ -5,15 +5,18 @@
 @using Seeing.Agent.Abstractions.Modules
 @using Seeing.Agent.Abstractions.Ui
 @using Seeing.Agent.Core.Configuration
+@using Seeing.Agent.Core.Ui
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.WebUI.Services
+@using Seeing.Agent.WebUI.Shell
 @using Seeing.Agent.WebUI.State
 @implements IDisposable
 @inject AppState AppState
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @inject IMessageService MessageService
-@inject UiContributionRegistry Registry
+@inject IUiContributionCatalog Registry
+@inject IUiPointCatalog Points
 @inject IModuleCatalog Catalog
 @inject IOptionsMonitor<SeeingAgentOptions> AgentOptions
 @inject PermissionInboxView PermissionView
@@ -167,12 +170,15 @@
         NavGroups.Control,
     ];
 
-    private IReadOnlyList<NavContribution> _visibleNav = Array.Empty<NavContribution>();
-    private IReadOnlyList<NavContribution> _ungroupedNav = Array.Empty<NavContribution>();
+    private IReadOnlyList<NavView> _visibleNav = Array.Empty<NavView>();
+    private IReadOnlyList<NavView> _ungroupedNav = Array.Empty<NavView>();
     private IReadOnlyList<NavGroupView> _groupedNav = Array.Empty<NavGroupView>();
     private bool _shutdownRequested;
     private bool _permissionCenterOpen;
     private IDisposable? _optionsSubscription;
+
+    /// <summary>最近一次侧栏投影（<see cref="_visibleNav"/> 等的来源）。</summary>
+    private SidebarProjection _projection = new([], [], []);
 
     /// <summary>
     /// 桌面端折叠态。唯一来源是 <see cref="AppState"/>（Singleton），组件不持副本。
@@ -294,81 +300,36 @@
 
     private void RefreshNav()
     {
-        // 侧栏只跟 bootEnabled（Requires + IsEnabled），不跟进程 Scenario 名
-        _visibleNav = UiContributionVisibility.FilterSidebarNav(Registry.NavItems, Catalog);
-
-        _ungroupedNav = _visibleNav
-            .Where(n => string.IsNullOrWhiteSpace(n.Group))
-            .OrderBy(n => n.Order)
-            .ThenBy(n => n.Title, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        // 固定分组顺序：控制中心 → 工作区 → 设置 → 其它命名分组
-        var preferred = new[] { NavGroups.Control, NavGroups.Workspace, NavGroups.Settings };
-        var byGroup = _visibleNav
-            .Where(n => !string.IsNullOrWhiteSpace(n.Group))
-            .GroupBy(n => n.Group!.Trim(), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
-
-        var groups = new List<NavGroupView>();
-        foreach (var name in preferred)
+        if (Points.Find(WebUiPoints.ShellPage.Id) is not { } point)
         {
-            if (!byGroup.Remove(name, out var items))
-                continue;
-            groups.Add(ToGroupView(name, items));
+            _visibleNav = Array.Empty<NavView>();
+            _ungroupedNav = Array.Empty<NavView>();
+            _groupedNav = Array.Empty<NavGroupView>();
+            return;
         }
 
-        foreach (var kv in byGroup.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
-            groups.Add(ToGroupView(kv.Key, kv.Value));
+        // 侧栏只跟 bootEnabled（Requires ∪ IsEnabled），不跟进程 Scenario 名
+        var context = UiVisibilityContext.Process(Catalog);
 
-        _groupedNav = groups;
-    }
+        _projection = SidebarProjectionService.Project(
+            Registry.All.Where(e => e.Contribution is PageContribution page
+                                    && UiVisibility.IsVisible(page, point, context)),
+            WebUiIconMap.Resolve);
 
-    private static NavGroupView ToGroupView(string title, List<NavContribution> items)
-    {
-        var icon = items
-            .Select(i => i.GroupIcon)
-            .FirstOrDefault(i => !string.IsNullOrWhiteSpace(i));
-        var ordered = items
-            .OrderBy(i => i.Order)
-            .ThenBy(i => i.Title, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        return new NavGroupView(title, icon, ordered);
-    }
-
-    private sealed record NavGroupView(
-        string Title,
-        string? Icon,
-        IReadOnlyList<NavContribution> Items)
-    {
-        public string Key => Title;
+        _visibleNav = _projection.Visible;
+        _ungroupedNav = _projection.Ungrouped;
+        _groupedNav = _projection.Groups;
     }
 
     private void UpdateSelectedKey()
     {
-        var path = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).TrimEnd('/');
-        var segment = path.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
-
-        if (segment is "" or "home" or "session")
-        {
-            _selectedKeys = ["chat"];
-            return;
-        }
-
-        var match = _visibleNav.FirstOrDefault(n =>
-        {
-            var route = n.Route.Trim('/');
-            return path.Equals(route, StringComparison.OrdinalIgnoreCase)
-                   || path.StartsWith(route + "/", StringComparison.OrdinalIgnoreCase);
-        });
-
-        _selectedKeys = match is null ? [segment] : [NavKey(match)];
+        var path = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        _selectedKeys = [.. SidebarProjectionService.SelectedKeys(path, _visibleNav)];
     }
 
-    private static string NavKey(NavContribution item) =>
-        item.Route.Trim('/').Replace('/', '-');
+    private static string NavKey(NavView item) => item.Key;
 
-    private string ResolveNavPath(NavContribution item) =>
+    private string ResolveNavPath(NavView item) =>
         string.IsNullOrWhiteSpace(item.Route) ? "/" : item.Route;
 
     private async Task RequestShutdown()

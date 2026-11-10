@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Core.Ui;
 
 namespace Seeing.Agent.Core.Modules;
 
@@ -65,9 +66,16 @@ public sealed class ModuleLifecycleManager
     /// <summary>
     /// 激活目录中启用且尚未激活的模块（按 DependsOn 拓扑序）。
     /// Activate 失败时标记 unhealthy 并抛出。
+    /// <para>
+    /// <b>声明先于激活</b>：进入激活循环前先收集<b>全部</b>模块（含未启用）的 UI 声明。
+    /// 放在这里而不是调用方，是因为激活有三个入口（启动、配置热重载、工作区切换后的重新结算），
+    /// 任何一处漏收集都会表现为「某个模块的页面/侧栏项永久消失」。
+    /// </para>
     /// </summary>
     public async Task ActivateAsync(CancellationToken cancellationToken = default)
     {
+        CollectUiContributions();
+
         var enabled = _catalog.Enabled
             .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -162,6 +170,31 @@ public sealed class ModuleLifecycleManager
             lock (_gate)
                 _activated.Remove(id);
         }
+    }
+
+    /// <summary>
+    /// 收集全部模块的 UI 声明（声明早于激活：未启用模块的声明也在表内）。
+    /// <para>
+    /// 无 <see cref="UiContributionCollector"/>（无界面宿主 / 未声明扩展点）时整体 no-op；
+    /// 单模块声明抛异常只记诊断，不影响模块激活。
+    /// </para>
+    /// </summary>
+    private void CollectUiContributions()
+    {
+        UiContributionCollector? collector;
+        try
+        {
+            collector = _services.GetService<UiContributionCollector>();
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+
+        if (collector is not { IsEnabled: true })
+            return;
+
+        collector.CollectModuleContributions(_modulesById.Values);
     }
 
     private async Task StartModuleHostedServicesAsync(string moduleId, CancellationToken cancellationToken)

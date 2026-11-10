@@ -9,8 +9,8 @@ using Xunit;
 namespace Seeing.Agent.Mcp.Tests;
 
 /// <summary>
-/// McpModule 生命周期对称（Activate 初始化连接 + 登记动态工具贡献；
-/// Deactivate 关闭 + 卸载工具 + 撤销贡献）与 McpLoader 模块归属。
+/// McpModule 生命周期（Activate 初始化连接 + 登记动态工具贡献；Deactivate 关闭 + 卸载工具 + 撤销贡献）
+/// 与 McpLoader 模块归属，以及 UI 声明（<see cref="IUiContributor"/>）的形状。
 /// </summary>
 public class McpModuleLifecycleTests
 {
@@ -34,8 +34,7 @@ public class McpModuleLifecycleTests
             new McpToolInfo { Name = "echo", ServerName = "demo" }
         });
 
-        var ui = new Mock<IUiContributionRegistry>();
-        var module = new McpModule(ui.Object);
+        var module = new McpModule();
 
         await using var sp = BuildProvider(manager.Object, registry.Object);
 
@@ -45,7 +44,6 @@ public class McpModuleLifecycleTests
             m => m.InitializeAsync(It.IsAny<IReadOnlyDictionary<string, McpServerConfig>>(), It.IsAny<CancellationToken>()),
             Times.Once);
         registry.Verify(r => r.Register(It.IsAny<IDynamicToolContributor>()), Times.Once);
-        ui.Verify(u => u.Register(module), Times.Once);
 
         captured.Should().NotBeNull();
         captured!.ModuleId.Should().Be("mcp");
@@ -58,8 +56,7 @@ public class McpModuleLifecycleTests
         var registry = new Mock<IDynamicToolContributorRegistry>();
         var manager = new Mock<IMcpManager>();
         manager.Setup(m => m.GetTools()).Returns(Array.Empty<McpToolInfo>());
-        var ui = new Mock<IUiContributionRegistry>();
-        var module = new McpModule(ui.Object);
+        var module = new McpModule();
 
         await using var sp = BuildProvider(manager.Object, registry.Object);
 
@@ -68,7 +65,6 @@ public class McpModuleLifecycleTests
         manager.Verify(m => m.ShutdownAsync(It.IsAny<CancellationToken>()), Times.Once);
         manager.Verify(m => m.UnregisterAllToolsAsync(It.IsAny<CancellationToken>()), Times.Once);
         registry.Verify(r => r.Unregister("mcp"), Times.Once);
-        ui.Verify(u => u.Unregister("mcp"), Times.Once);
     }
 
     [Fact]
@@ -91,6 +87,27 @@ public class McpModuleLifecycleTests
         manager.Verify(m => m.ShutdownAsync(It.IsAny<CancellationToken>()), Times.Once);
         registry.Verify(r => r.Register(It.IsAny<IDynamicToolContributor>()), Times.Exactly(2));
         registry.Verify(r => r.Unregister("mcp"), Times.Once);
+    }
+
+    /// <summary>
+    /// UI 声明必须是一条页面贡献：归属自身的 <c>Requires</c>（否则会被注册表以
+    /// 「模块贡献 Requires 为空」拒收），且不带 Nav 之外的额外载荷。
+    /// </summary>
+    [Fact]
+    public void DescribeUi_ShouldReturnSinglePageContributionWithOwnership()
+    {
+        var module = new McpModule();
+
+        var contributions = module.DescribeUi();
+
+        var page = contributions.Should().ContainSingle().Subject.Should().BeOfType<PageContribution>().Subject;
+        page.Point.Should().Be("shell.page");
+        page.Route.Should().Be("/mcp");
+        page.Title.Should().Be("MCP");
+        page.ViewKey.Should().Be("page.mcp");
+        page.Requires.Should().Equal("mcp",
+            "模块贡献必须带自身归属，否则模块停用后页面仍可见而工具已卸载");
+        page.Nav.Should().NotBeNull("MCP 页是侧栏入口");
     }
 
     private static ServiceProvider BuildProvider(IMcpManager manager, IDynamicToolContributorRegistry registry)

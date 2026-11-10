@@ -5,28 +5,12 @@ using Seeing.Agent.Abstractions.Ui;
 namespace Seeing.Agent.Gateway;
 
 /// <summary>
-/// Gateway 能力模块 — id=<c>gateway</c>；Web Host 登记 Gateway 管理页导航。
+/// Gateway 能力模块 — id=<c>gateway</c>；Web Host 登记 Gateway 管理页与客户端页。
 /// </summary>
-public sealed class GatewayModule : ISeeingModule, IUiContribution
+public sealed class GatewayModule : ISeeingModule, IUiContributor
 {
-    private readonly IUiContributionRegistry? _ui;
-
-    /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
-    public GatewayModule()
-    {
-    }
-
-    /// <summary>DI 解析用。</summary>
-    public GatewayModule(IUiContributionRegistry? uiRegistry)
-    {
-        _ui = uiRegistry;
-    }
-
     /// <inheritdoc />
     public string Id => "gateway";
-
-    /// <inheritdoc />
-    public string ModuleId => Id;
 
     /// <inheritdoc />
     public IReadOnlyList<string> ProvidedTools { get; } = Array.Empty<string>();
@@ -44,26 +28,53 @@ public sealed class GatewayModule : ISeeingModule, IUiContribution
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<object> Contribute() =>
+    /// <remarks>两条页面都归在侧栏「设置」分组（Gateway 是运维入口，不是工作区能力）。</remarks>
+    public IReadOnlyList<UiContribution> DescribeUi() =>
     [
-        new NavContribution("/gateway", "Gateway", "global", ["gateway"],
-            Group: NavGroups.Settings, GroupIcon: NavGroups.SettingsIcon, Order: 40),
-        new NavContribution("/gateway-clients", "Gateway 客户端", "api", ["gateway"],
-            Group: NavGroups.Settings, GroupIcon: NavGroups.SettingsIcon, Order: 50),
+        new PageContribution
+        {
+            Point = "shell.page",
+            Id = "page.gateway",
+            Route = "/gateway",
+            Title = "Gateway",
+            ViewKey = "page.gateway",
+            Requires = [Id],
+            Order = 40,
+            Nav = new NavPlacement
+            {
+                Icon = "global",
+                Group = NavGroups.Settings,
+                GroupIcon = NavGroups.SettingsIcon,
+                GroupOrder = 30,
+            },
+        },
+        new PageContribution
+        {
+            Point = "shell.page",
+            Id = "page.gateway.clients",
+            Route = "/gateway-clients",
+            Title = "Gateway 客户端",
+            ViewKey = "page.gateway.clients",
+            Requires = [Id],
+            Order = 50,
+            Nav = new NavPlacement
+            {
+                Icon = "api",
+                Group = NavGroups.Settings,
+                GroupIcon = NavGroups.SettingsIcon,
+                GroupOrder = 30,
+            },
+        },
     ];
 
     /// <inheritdoc />
     public Task ActivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _ui?.Register(this);
         return Task.CompletedTask;
     }
 
     /// <inheritdoc />
     public Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
-    {
-        _ui?.Unregister(Id);
-        return Task.CompletedTask;
-    }
+        => Task.CompletedTask;
 }

@@ -2,7 +2,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Modules;
-using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Acp.Extensions;
 using Seeing.Agent.Agents.BuiltIn;
 using Seeing.Agent.Comms.Extensions;
@@ -129,8 +128,7 @@ public static class FullCapabilityComposition
         else
         {
             services.AddSeeingComms(registry);
-            services.AddSingleton<ISeeingModule>(sp =>
-                new GatewayModule(sp.GetService<IUiContributionRegistry>()));
+            services.AddSingleton<ISeeingModule, GatewayModule>();
         }
 
         return services;
