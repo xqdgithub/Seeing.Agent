@@ -4,31 +4,26 @@ using Seeing.Agent.WebUI.Files.Services;
 
 namespace Seeing.Agent.WebUI.Files.Tests;
 
+/// <summary>
+/// 文件工作台的「内部」状态。
+/// <para>
+/// 开合 / 停靠侧 / 宽度已移交工作台平台（<c>WorkbenchDockState</c>，测试见
+/// <c>Seeing.Agent.WebUI.Workbench.Tests</c>），因此这里的用例只剩三件事：
+/// 目录树可见性、agent 打开的待处理请求、按会话隔离的标签集合。
+/// </para>
+/// </summary>
 public class FilePanelStateTests
 {
     private static FileResourceId Id(string rel) => new("root", rel);
 
     [Fact]
-    public void Toggle_SameSession_ShouldClose()
-    {
-        var s = new FilePanelState();
-        s.Toggle("s1");
-        s.IsOpen.Should().BeTrue();
-
-        s.Toggle("s1");
-        s.IsOpen.Should().BeFalse();
-    }
-
-    [Fact]
-    public void RequestOpen_FromClosed_ShouldOpenAndHideTree()
+    public void RequestOpen_ShouldHideTreeAndRecordPending()
     {
         var s = new FilePanelState();
 
         s.RequestOpen("s1", new FileOpenRequest(Id("a.txt")));
 
-        s.IsOpen.Should().BeTrue();
-        s.SessionId.Should().Be("s1");
-        s.TreeVisible.Should().BeFalse();
+        s.TreeVisible.Should().BeFalse("agent 驱动打开时默认收起目录树，把宽度留给内容");
         s.PendingOpen.Should().Be(new FileOpenRequest(Id("a.txt")));
     }
 
@@ -43,15 +38,26 @@ public class FilePanelStateTests
     }
 
     [Fact]
-    public void RequestOpen_WhenAlreadyOpen_ShouldPreserveTreeVisibility()
+    public void RequestOpen_WithHideTreeFalse_ShouldPreserveTreeVisibility()
     {
         var s = new FilePanelState();
-        s.Open("s1");
         s.SetTreeVisible(true);
+
+        s.RequestOpen("s1", new FileOpenRequest(Id("a.txt")), hideTree: false);
+
+        s.TreeVisible.Should().BeTrue("宿主侧打开（用户点击）不应改变用户的目录树偏好");
+    }
+
+    [Fact]
+    public void RequestOpen_ShouldRaiseChanged()
+    {
+        var s = new FilePanelState();
+        var count = 0;
+        s.Changed += () => count++;
 
         s.RequestOpen("s1", new FileOpenRequest(Id("a.txt")));
 
-        s.TreeVisible.Should().BeTrue();
+        count.Should().Be(1);
     }
 
     [Fact]
@@ -62,18 +68,6 @@ public class FilePanelStateTests
 
         s.ConsumePendingOpen().Should().Be(new FileOpenRequest(Id("a.txt")));
         s.ConsumePendingOpen().Should().BeNull();
-    }
-
-    [Fact]
-    public void Close_ShouldClearPendingOpen()
-    {
-        var s = new FilePanelState();
-        s.RequestOpen("s1", new FileOpenRequest(Id("a.txt")));
-
-        s.Close();
-
-        s.IsOpen.Should().BeFalse();
-        s.PendingOpen.Should().BeNull();
     }
 
     [Fact]
@@ -108,6 +102,6 @@ public class FilePanelStateTests
         s.SetTreeVisible(false);
         s.SetTreeVisible(false);
 
-        count.Should().Be(1);
+        count.Should().Be(1, "相同值不触发事件，否则每次渲染都会连锁重绘");
     }
 }

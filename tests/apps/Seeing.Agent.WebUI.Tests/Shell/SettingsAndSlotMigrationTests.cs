@@ -80,14 +80,14 @@ public class SettingsAndSlotMigrationTests
     }
 
     [Fact]
-    public void AllFourSlotPoints_ShouldExistAndBeSessionScoped()
+    public void SlotHost_ShouldOnlyMapRemainingSlots()
     {
+        // 文件面板已从插槽迁到工作台；剩余 3 个插槽仍是通用挂载位
         (string SlotName, string PointId)[] expected =
         [
             ("session_prompt", "session.prompt"),
             ("session_toolbar_actions", "session.toolbar.actions"),
             ("message_toolbar", "session.input.toolbar"),
-            ("session_file_panel", "session.file.panel"),
         ];
 
         foreach (var (slotName, pointId) in expected)
@@ -101,41 +101,81 @@ public class SettingsAndSlotMigrationTests
     }
 
     [Fact]
-    public void FilePanelSlot_ShouldBeOwnedByFilesWorkspaceModule()
+    public void WorkbenchDockPoint_ShouldBeSessionScopedWithWorkbenchPayload()
     {
-        var registry = BuildRegistry();
+        var point = WebUiPoints.All.Should()
+            .ContainSingle(p => p.Id == Seeing.Agent.Abstractions.Ui.Workbench.WorkbenchPoints.DockId)
+            .Subject;
 
-        var entry = registry.All.Should()
-            .ContainSingle(e => e.Contribution.Point == FilePanelUiContribution.PointId).Subject;
-
-        entry.OwnerId.Should().Be(FilePanelUiContribution.OwnerModuleId,
-            "文件面板的归属是能力模块 files.workspace，不是宿主");
-        entry.Contribution.Requires.Should().Equal("files.workspace");
-
-        var slot = (SlotContribution)entry.Contribution;
-        ResolveViews().CanResolve(slot.ViewKey).Should().BeTrue(
-            "文件面板视图键必须在宿主视图表登记（SessionFilePanel）");
+        point.PayloadKind.Should().Be(UiPayloadKind.Workbench);
+        point.Scope.Should().Be(UiVisibilityScope.Session,
+            "工作台与插槽同语义：随会话工作模式收窄");
     }
 
     [Fact]
-    public void FilePanelSlot_ShouldFollowModuleEnablementAndSessionGate()
+    public void WorkbenchContributions_ShouldBeOwnedByTheirProvidingModule()
     {
-        var point = WebUiPoints.SessionFilePanel;
-        var slot = (SlotContribution)BuildRegistry().All
-            .Single(e => e.Contribution.Point == point.Id).Contribution;
+        // 文件工作台与 Markdown 预览都由 files.workspace 声明（同一个模块，两块视图）
+        var module = new Seeing.Agent.Files.FileWorkspaceModule();
+        var contributions = module.DescribeUi().OfType<Seeing.Agent.Abstractions.Ui.Workbench.WorkbenchContribution>().ToList();
+
+        contributions.Should().HaveCount(2);
+        contributions.Select(c => c.Id).Should().BeEquivalentTo("files", "markdown");
+
+        foreach (var contribution in contributions)
+        {
+            contribution.Point.Should().Be(Seeing.Agent.Abstractions.Ui.Workbench.WorkbenchPoints.DockId);
+            contribution.Requires.Should().Equal(["files.workspace"], "归属必须是提供它的模块");
+            contribution.ViewKey.Should().StartWith(Seeing.Agent.Abstractions.Ui.Workbench.WorkbenchPoints.ViewKeyPrefix);
+            contribution.OpenPayloadSchema.Should().NotBeNull("工作台必须给 agent 一个「该传什么」的提示");
+        }
+    }
+
+    [Fact]
+    public void WorkbenchViews_ShouldBeRegisteredAndDeclareViewContext()
+    {
+        var views = new Seeing.Agent.WebUI.Workbench.WorkbenchViewRegistry();
+        var resolver = new WebUiViewResolver();
+        WebUiWorkbenchViews.RegisterBuiltIns(views, resolver);
+
+        var registry = new UiContributionRegistry(
+            new UiPointCatalog(WebUiPoints.All),
+            [new WebUiUiContributionValidator(resolver)]);
+
+        var module = new Seeing.Agent.Files.FileWorkspaceModule();
+        registry.AddRange(module.Id, module.DescribeUi());
+
+        registry.Diagnostics.Should().BeEmpty(
+            "工作台视图键必须能在宿主视图表解析，否则启动期就被拒收");
+
+        foreach (var contribution in registry.Get<Seeing.Agent.Abstractions.Ui.Workbench.WorkbenchContribution>(
+                     Seeing.Agent.Abstractions.Ui.Workbench.WorkbenchPoints.DockId))
+        {
+            views.Resolve(contribution.ViewKey).Should().NotBeNull(
+                $"工作台 '{contribution.Id}' 的视图键 '{contribution.ViewKey}' 必须在工作台视图表登记");
+        }
+    }
+
+    [Fact]
+    public void WorkbenchContribution_ShouldFollowModuleEnablementAndSessionGate()
+    {
+        var point = WebUiPoints.WorkbenchDock;
+        var contribution = new Seeing.Agent.Files.FileWorkspaceModule().DescribeUi()
+            .OfType<Seeing.Agent.Abstractions.Ui.Workbench.WorkbenchContribution>()
+            .First(c => c.Id == "files");
 
         // 模块启用 + 不收窄 → 可见
-        UiVisibility.IsVisible(slot, point, new UiVisibilityContext(new Catalog("files.workspace"), null))
+        UiVisibility.IsVisible(contribution, point, new UiVisibilityContext(new Catalog("files.workspace"), null))
             .Should().BeTrue();
 
-        // 模块停用 → 隐藏（面板消失，不靠撤销声明）
-        var disabled = UiVisibility.Evaluate(slot, point, new UiVisibilityContext(new Catalog("memory"), null));
+        // 模块停用 → 隐藏
+        var disabled = UiVisibility.Evaluate(contribution, point, new UiVisibilityContext(new Catalog("memory"), null));
         disabled.Visible.Should().BeFalse();
         disabled.Reason.Should().Be(UiVisibilityReason.ModuleDisabled);
 
         // 会话工作模式收窄掉了文件模块 → 隐藏
         var narrowed = UiVisibility.Evaluate(
-            slot, point,
+            contribution, point,
             new UiVisibilityContext(
                 new Catalog("files.workspace", "memory"),
                 new HashSet<string>(["memory"], StringComparer.OrdinalIgnoreCase)));
@@ -198,6 +238,7 @@ public class SettingsAndSlotMigrationTests
     {
         var views = new WebUiViewResolver();
         WebUiViews.RegisterBuiltIns(views);
+        WebUiWorkbenchViews.RegisterBuiltIns(new Seeing.Agent.WebUI.Workbench.WorkbenchViewRegistry(), views);
         return views;
     }
 
@@ -210,8 +251,9 @@ public class SettingsAndSlotMigrationTests
         var host = new WebUiHostContributor();
         registry.AddRange(host.OwnerId, host.DescribeUi());
 
-        // 文件面板：归属能力模块，声明在宿主侧（组件类型不可下沉到能力包）
-        registry.AddRange(FilePanelUiContribution.OwnerModuleId, new FilePanelUiContribution().DescribeUi());
+        // 工作台与页面都由模块自己声明（能力包只给 ViewKey，组件类型登记在宿主）
+        var files = new Seeing.Agent.Files.FileWorkspaceModule();
+        registry.AddRange(files.Id, files.DescribeUi());
 
         return registry;
     }
