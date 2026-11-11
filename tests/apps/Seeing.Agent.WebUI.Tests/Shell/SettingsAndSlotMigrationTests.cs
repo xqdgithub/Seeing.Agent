@@ -132,6 +132,24 @@ public class SettingsAndSlotMigrationTests
     }
 
     [Fact]
+    public void WorkbenchContributions_ShouldDeclareHalfWidth()
+    {
+        // 默认宽度必须与迁移前的文件面板一致（50%）：单开一个工作台时就该占半个屏。
+        // 两侧同时开的挤压由 WorkbenchDockState.MaxCombinedPercent 负责，不靠调小默认值避让。
+        var contributions = new Seeing.Agent.Files.FileWorkspaceModule().DescribeUi()
+            .OfType<Seeing.Agent.Abstractions.Ui.Workbench.WorkbenchContribution>()
+            .ToArray();
+
+        contributions.Should().NotBeEmpty();
+
+        foreach (var contribution in contributions)
+        {
+            (contribution.Sizing ?? Seeing.Agent.Abstractions.Ui.Workbench.WorkbenchSizing.Default)
+                .DefaultPercent.Should().Be(50, $"工作台 '{contribution.Id}' 的默认宽度应为半个内容区");
+        }
+    }
+
+    [Fact]
     public void WorkbenchViews_ShouldBeRegisteredAndDeclareViewContext()
     {
         var views = new Seeing.Agent.WebUI.Workbench.WorkbenchViewRegistry();

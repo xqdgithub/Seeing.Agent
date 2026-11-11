@@ -472,15 +472,22 @@ public sealed class WorkbenchDockState
                 // 显式传入（换边搬状态）优先；否则沿用该 dock 内既有实例的状态
                 viewState ?? (index >= 0 ? list[index].ViewState : null));
 
+            var isFirstInDock = list.Count == 0;
+
             if (index >= 0)
                 list[index] = next;
             else
                 list.Add(next);
 
-            if (key.Dock == WorkbenchDock.Left)
-                LeftWidth = Clamp(width);
-            else
-                RightWidth = Clamp(width);
+            // 宽度只在「该 dock 的第一个实例」时采用声明值：
+            // 之后再加标签、或重开同一个工作台，都不应把用户拖好的宽度重置回默认
+            if (isFirstInDock)
+            {
+                if (key.Dock == WorkbenchDock.Left)
+                    LeftWidth = Clamp(width);
+                else
+                    RightWidth = Clamp(width);
+            }
 
             RebalanceWidths(changedDock: key.Dock);
         }

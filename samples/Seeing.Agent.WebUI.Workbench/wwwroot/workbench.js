@@ -1,10 +1,12 @@
-// 工作台 dock 前端交互：分隔线拖拽（百分比宽度，实时写 CSS 变量，松手回传 .NET）。
+// 工作台 dock 前端交互：分隔线拖拽（百分比宽度）。
+// 宽度是 Blazor 的单一职责（dock 的内联 --workbench-width 由 DockStyle 生成）；
+// 这里只在**拖动期间**临时改 CSS 变量做即时反馈，松手后把稳定值交回 .NET。
+// 绝不做「初始化写入」—— 那会用首帧的参数默认值覆盖 Blazor 刚算好的宽度。
 (function () {
     'use strict';
 
     window.seeingWorkbench = window.seeingWorkbench || {};
 
-    // 最近一次拖拽的最终宽度（按 dock 元素缓存，避免多实例互相覆盖）
     window.seeingWorkbench.initResize = function (el, dotnetRef, value, min, max, invert) {
         if (!el || el.__seeingWorkbenchResizeBound) return;
         el.__seeingWorkbenchResizeBound = true;
@@ -36,8 +38,6 @@
             return isNaN(v) ? value : v;
         }
 
-        apply(clamp(value));
-
         el.addEventListener('pointerdown', function (e) {
             e.preventDefault();
             var startX = e.clientX;
@@ -58,6 +58,7 @@
                 try { el.releasePointerCapture(ev.pointerId); } catch (_) { /* noop */ }
                 document.body.classList.remove('workbench-resizing');
                 if (dotnetRef) {
+                    // 交回 .NET：由 WorkbenchDockState 持有宽度，下一次渲染由 DockStyle 统一给出
                     dotnetRef.invokeMethodAsync('OnResizeEndAsync', current());
                 }
             }

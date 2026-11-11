@@ -56,7 +56,10 @@ public readonly record struct WorkbenchInstanceKey(
 }
 
 /// <summary>尺寸偏好：百分比相对会话内容区宽度，<see cref="MinPx"/> 为硬下限。</summary>
-/// <param name="DefaultPercent">无持久化宽度时的初值（35%：两侧各开一个时仍留 30% 给对话区）。</param>
+/// <param name="DefaultPercent">
+/// 无持久化宽度时的初值。50% 与迁移前的文件面板一致 —— 只开一个工作台时它就该占半个屏。
+/// 两侧同时开时由 <c>WorkbenchDockState.MaxCombinedPercent</c> 的预算等比压缩，不靠调小默认值来避让。
+/// </param>
 /// <param name="MinPercent">可拖到的最小百分比。</param>
 /// <param name="MaxPercent">可拖到的最大百分比。</param>
 /// <param name="MinPx">即使百分比算出来更小，也不低于该像素宽。</param>
@@ -67,7 +70,7 @@ public sealed record WorkbenchSizing(
     double MinPx = 320)
 {
     /// <summary>默认宽度百分比的编译期常量（供其他默认实参引用）。</summary>
-    public const double DefaultPercentValue = 35;
+    public const double DefaultPercentValue = 50;
 
     /// <summary>默认尺寸（未声明 <see cref="WorkbenchContribution.Sizing"/> 时的唯一缺省值）。</summary>
     public static WorkbenchSizing Default { get; } = new();

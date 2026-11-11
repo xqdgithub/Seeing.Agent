@@ -15,7 +15,7 @@ namespace Seeing.Agent.WebUI.Workbench.Tests;
 public class WorkbenchLayoutActionsTests
 {
     private static WorkbenchContribution Wb(
-        string id, WorkbenchDock dock = WorkbenchDock.Right, double width = 45) => new()
+        string id, WorkbenchDock dock = WorkbenchDock.Right, double width = WorkbenchSizing.DefaultPercentValue) => new()
     {
         Point = WorkbenchPoints.DockId,
         Id = id,
@@ -184,6 +184,54 @@ public class WorkbenchLayoutActionsTests
     }
 
     // ── 宽度预算 ──
+
+    [Fact]
+    public void DefaultSizing_ShouldBeHalfOfContentWidth()
+    {
+        // 迁移前的文件面板就是 50%：单开一个工作台时它应当占半个屏，
+        // 而不是被「两个 dock 的总预算」提前牺牲掉
+        WorkbenchSizing.Default.DefaultPercent.Should().Be(50);
+        WorkbenchSizing.DefaultPercentValue.Should().Be(50);
+    }
+
+    [Fact]
+    public void OpenSecondWorkbenchInSameDock_ShouldNotResetWidth()
+    {
+        var state = new WorkbenchDockState();
+        state.Open("s1", WorkbenchDock.Right, Wb("files", WorkbenchDock.Right, width: 50));
+        state.SetWidth("s1", WorkbenchDock.Right, 65);
+
+        // 同侧再开一个工作台（新标签）：宽度是用户拖出来的，不该被声明值覆盖
+        state.Open("s1", WorkbenchDock.Right, Wb("markdown", WorkbenchDock.Right, width: 50));
+
+        state.GetLayout("s1").RightWidthPercent.Should().Be(65,
+            "加标签不应把用户拖好的宽度重置回默认值");
+    }
+
+    [Fact]
+    public void OpenBothDocks_ShouldKeepNewlyOpenedSideWide()
+    {
+        var state = new WorkbenchDockState();
+        state.Open("s1", WorkbenchDock.Right, Wb("files"));
+        state.Open("s1", WorkbenchDock.Left, Wb("markdown", WorkbenchDock.Left));
+
+        var layout = state.GetLayout("s1");
+
+        // 新开的是左侧：它保持 50%，右侧被让到预算内
+        layout.LeftWidthPercent.Should().Be(50, "刚打开的一侧应当按声明宽度呈现");
+        (layout.LeftWidthPercent + layout.RightWidthPercent)
+            .Should().BeLessThanOrEqualTo(WorkbenchDockState.MaxCombinedPercent + 0.01);
+    }
+
+    [Fact]
+    public void SingleDock_ShouldNotBeConstrainedByCombinedBudget()
+    {
+        var state = new WorkbenchDockState();
+        state.Open("s1", WorkbenchDock.Right, Wb("files"));
+
+        state.GetLayout("s1").RightWidthPercent.Should().Be(50,
+            "只有一侧时没有预算冲突，应保持声明的 50%");
+    }
 
     [Fact]
     public void Open_BothDocksAtHalf_ShouldLeaveRoomForChat()

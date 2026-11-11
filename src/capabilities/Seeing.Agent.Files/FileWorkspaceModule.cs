@@ -54,8 +54,8 @@ public sealed class FileWorkspaceModule : ISeeingModule, IUiContributor
             Requires = [Id],
             Order = 10,
             DefaultDock = WorkbenchDock.Right,
-            // 35%：两个工作台各占一侧时合计 70%，对话区仍留 30%（50% 会让两侧吃满）
-            Sizing = new WorkbenchSizing(DefaultPercent: 35, MinPx: 380),
+            // 50%：与迁移前的文件面板一致（单开时占半个屏）
+            Sizing = new WorkbenchSizing(DefaultPercent: 50, MinPx: 380),
             OpenPayloadSchema = JsonSerializer.SerializeToElement(new
             {
                 type = "object",
@@ -80,7 +80,7 @@ public sealed class FileWorkspaceModule : ISeeingModule, IUiContributor
             Requires = [Id],
             Order = 20,
             DefaultDock = WorkbenchDock.Right,
-            Sizing = new WorkbenchSizing(DefaultPercent: 35, MinPx: 360),
+            Sizing = new WorkbenchSizing(DefaultPercent: 50, MinPx: 360),
             OpenPayloadSchema = JsonSerializer.SerializeToElement(new
             {
                 type = "object",

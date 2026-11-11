@@ -19,8 +19,14 @@ public sealed class WorkbenchLayoutPersistence
     /// <summary>localStorage 键前缀。</summary>
     public const string KeyPrefix = "seeing.workbench.";
 
-    /// <summary>快照 schema 版本；变化时旧数据整体丢弃（不做迁移）。</summary>
-    public const int SchemaVersion = 1;
+    /// <summary>
+    /// 快照 schema 版本；变化时旧数据整体丢弃（不做迁移）。
+    /// <para>
+    /// v2：v1 快照记录的宽度是 35% 的默认值（一次错误的默认值调整），
+    /// 属于「框架写的」而不是用户拖出来的偏好，因此整体作废重来。
+    /// </para>
+    /// </summary>
+    public const int SchemaVersion = 2;
 
     private readonly IJSRuntime _js;
     private readonly ILogger<WorkbenchLayoutPersistence>? _logger;
