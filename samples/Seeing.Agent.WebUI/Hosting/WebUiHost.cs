@@ -130,6 +130,8 @@ public static class WebUiHost
         builder.Services.AddScoped<UploadedFileService>();
         builder.Services.AddScoped<SpeechTranscriptionService>();
         builder.Services.AddScoped<MessageTimelineStore>();
+        // 会话资源 URL 生成（引用式图片 → 浏览器可加载 URL）；工具与用户附件共用
+        builder.Services.AddScoped<SessionAssetUrlBuilder>();
 
         // 会话事件流路由（Singleton）：按会话统一订阅 + 按 circuit 关联 Scoped 消费者。
         // CircuitContext（Scoped）：载入 circuit.Id，供页面经 Router.GetOrCreateConsumer 关联消费者。
@@ -336,6 +338,7 @@ public static class WebUiHost
         app.MapBlazorHub();
         app.MapUploadEndpoints();
         app.MapTranscriptionEndpoints();
+        app.MapSessionAssetEndpoints();
 
         // 记忆详情路由的路径以 .md 结尾（/memory/detail/daily/xxx.md）。
         // MapFallbackToPage 对「看起来像文件」的请求不生效：ASP.NET Core 的 fallback 会跳过

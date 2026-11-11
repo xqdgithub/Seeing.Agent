@@ -47,6 +47,7 @@
 @inject Seeing.Agent.Core.Scenarios.IScenarioCatalog ScenarioCatalog
 @inject ILogger<SessionWindow> Logger
 @inject Seeing.Agent.WebUI.Workbench.WorkbenchDockState WorkbenchState
+@inject Services.SessionAssetUrlBuilder AssetUrls
 @implements IDisposable
 
 <div Class="@($"session-window session-window--{ModeCss}{(IsCompactSummary ? " session-window--compact" : "")}")">
@@ -437,6 +438,9 @@
     protected override async Task OnInitializedAsync()
     {
         _globalSessionState = GlobalSessionState;
+
+        // 引用式图片：时间线需要把 LocalPath 转成浏览器可加载 URL
+        Timeline.AssetUrls = AssetUrls;
 
         // 渲染合并器：事件流高频 delta 合并为窗口内一次渲染（33ms ≈ 30fps）
         _renderCoalescer = new Services.RenderCoalescer(

@@ -229,6 +229,50 @@ public class OpenAiResponsesClient : IChatCompletionClient, IDisposable
 
     #region 请求构建
 
+    /// <summary>
+    /// 构造 <c>function_call_output.output</c>：无图片时返回字符串（与旧行为逐字节相同），
+    /// 有图片时返回对象数组（Responses API 官方支持「函数返回图片」）。
+    /// </summary>
+    private static object BuildFunctionCallOutput(ChatMessage msg)
+    {
+        if (msg.Parts is not { Count: > 0 })
+            return msg.Content;
+
+        var items = new List<object>();
+        if (!string.IsNullOrEmpty(msg.Content))
+            items.Add(new { type = "input_text", text = msg.Content });
+
+        foreach (var part in msg.Parts)
+        {
+            if (!string.Equals(part.Type, ChatContentPart.KindImage, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var url = !string.IsNullOrEmpty(part.Url)
+                ? part.Url
+                : !string.IsNullOrEmpty(part.DataBase64) && !string.IsNullOrEmpty(part.MimeType)
+                    ? $"data:{part.MimeType};base64,{part.DataBase64}"
+                    : null;
+
+            if (string.IsNullOrEmpty(url))
+                continue;
+
+            items.Add(new
+            {
+                type = "input_image",
+                image_url = url,
+                detail = part.ImageDetail?.ToLowerInvariant() switch
+                {
+                    "low" => "low",
+                    "high" => "high",
+                    _ => "auto"
+                }
+            });
+        }
+
+        // 没有可用图片项：退回字符串，保持旧行为
+        return items.Count <= 1 && !string.IsNullOrEmpty(msg.Content) ? msg.Content : items;
+    }
+
     private ResponsesRequest BuildRequest(ChatRequest request, bool stream)
     {
         var input = new List<ResponsesInputItem>();
@@ -248,7 +292,7 @@ public class OpenAiResponsesClient : IChatCompletionClient, IDisposable
                 {
                     Type = "function_call_output",
                     CallId = msg.ToolCallId ?? "",
-                    Output = msg.Content
+                    Output = BuildFunctionCallOutput(msg)
                 });
                 continue;
             }

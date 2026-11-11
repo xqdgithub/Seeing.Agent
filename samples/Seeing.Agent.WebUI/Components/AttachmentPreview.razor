@@ -8,13 +8,14 @@
         var currentAttachment = attachment; // 捕获 foreach 变量
         <div Class="@GetAttachmentClass(currentAttachment)"
              Title="@(currentAttachment.PromptPath ?? currentAttachment.FileName)">
-            <!-- 图片预览 -->
-            @if (currentAttachment.IsImage && !string.IsNullOrEmpty(currentAttachment.Base64Content))
+            <!-- 图片预览：引用式（LocalPath）走资源端点，避免 base64 进 render batch -->
+            @if (currentAttachment.IsImage && !string.IsNullOrEmpty(GetPreviewUrl(currentAttachment)))
             {
                 <div Class="attachment-image-preview">
-                    <img Src="@currentAttachment.Base64Content"
+                    <img Src="@GetPreviewUrl(currentAttachment)"
                          Alt="@currentAttachment.FileName"
-                         Class="attachment-image" />
+                         Class="attachment-image"
+                         loading="lazy" />
                 </div>
             }
             else
@@ -91,6 +92,33 @@
     /// </summary>
     [Parameter]
     public EventCallback<AttachmentViewModel> OnRemove { get; set; }
+
+    /// <summary>
+    /// 会话资源 URL 生成器：把引用式附件的本地路径转成浏览器可加载 URL。
+    /// <para>为空时退回 base64（旧路径），保证未接线场景不崩。</para>
+    /// </summary>
+    [Inject]
+    private Services.SessionAssetUrlBuilder? AssetUrls { get; set; }
+
+    /// <summary>
+    /// 会话 id（资源 URL 需要）。未提供时退回 base64。
+    /// </summary>
+    [Parameter]
+    public string? SessionId { get; set; }
+
+    /// <summary>图片预览 URL：优先资源端点（引用式），否则回退 base64。</summary>
+    private string? GetPreviewUrl(AttachmentViewModel attachment)
+    {
+        if (AssetUrls is not null
+            && !string.IsNullOrEmpty(SessionId)
+            && !string.IsNullOrEmpty(attachment.LocalPath)
+            && AssetUrls.ForSessionPath(SessionId, attachment.LocalPath) is { Length: > 0 } url)
+        {
+            return url;
+        }
+
+        return attachment.Base64Content;
+    }
 
     /// <summary>
     /// 获取附件项 CSS 类

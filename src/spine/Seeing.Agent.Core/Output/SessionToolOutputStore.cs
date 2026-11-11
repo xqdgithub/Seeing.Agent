@@ -57,6 +57,69 @@ public sealed class SessionToolOutputStore : IToolOutputStore
     }
 
     /// <inheritdoc />
+    public async Task<string> SaveBytesAsync(
+        string sessionId,
+        string callId,
+        ReadOnlyMemory<byte> content,
+        string extension,
+        string? suffix = null,
+        CancellationToken cancellationToken = default)
+    {
+        var refDir = GetRefDirectory(sessionId);
+        Directory.CreateDirectory(refDir);
+
+        var fileName = SanitizeName(callId) + SanitizeExtension(extension, suffix);
+        var filePath = Path.Combine(refDir, fileName);
+
+        using var timeoutCts = new CancellationTokenSource(SaveTimeout);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+        try
+        {
+            await File.WriteAllBytesAsync(filePath, content, linkedCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            _logger?.LogWarning("[SessionToolOutputStore] 二进制落盘超时，放弃写入: {FilePath}", filePath);
+            throw new TimeoutException($"工具产出落盘超时: {filePath}");
+        }
+
+        _logger?.LogDebug("工具产出已落盘: {FilePath} ({Bytes} 字节)", filePath, content.Length);
+        return filePath;
+    }
+
+    /// <summary>拼接安全扩展名（含前导点）：只保留 ASCII 字母数字，长度 ≤ 16；不合法回退 <c>.bin</c>。</summary>
+    private static string SanitizeExtension(string? extension, string? suffix)
+    {
+        var builder = new System.Text.StringBuilder(24);
+
+        if (!string.IsNullOrWhiteSpace(suffix))
+        {
+            foreach (var ch in suffix)
+            {
+                if (builder.Length >= 8) break;
+                if (char.IsAsciiLetterOrDigit(ch) || ch == '-') builder.Append(ch);
+            }
+        }
+
+        var ext = extension?.Trim();
+        if (!string.IsNullOrEmpty(ext) && ext[0] != '.')
+            ext = "." + ext;
+
+        var sanitizedExt = new System.Text.StringBuilder();
+        if (!string.IsNullOrEmpty(ext))
+        {
+            foreach (var ch in ext)
+            {
+                if (sanitizedExt.Length >= 16) break;
+                if (ch == '.' || char.IsAsciiLetterOrDigit(ch)) sanitizedExt.Append(ch);
+            }
+        }
+
+        var tail = sanitizedExt.Length <= 1 ? ".bin" : sanitizedExt.ToString();
+        return builder.Length == 0 ? tail : builder + tail;
+    }
+
+    /// <inheritdoc />
     public void DeleteSessionRefDirectory(string sessionId)
     {
         try

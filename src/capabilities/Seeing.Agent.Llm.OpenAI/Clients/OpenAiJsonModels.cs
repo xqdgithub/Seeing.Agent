@@ -307,10 +307,16 @@ internal class ResponsesInputItem
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Arguments { get; set; }
 
-    /// <summary>function_call_output 的结果内容</summary>
+    /// <summary>
+    /// function_call_output 的结果内容。
+    /// <para>
+    /// 可能是字符串，也可能是内容对象数组（如 <c>[{type:"input_image", image_url:"..."}]</c>）。
+    /// Responses API 官方支持后者用于「函数返回图片/文件」。
+    /// </para>
+    /// </summary>
     [JsonPropertyName("output")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? Output { get; set; }
+    public object? Output { get; set; }
 }
 
 internal class ResponsesTool

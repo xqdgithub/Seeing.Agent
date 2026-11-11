@@ -513,6 +513,15 @@ namespace Seeing.Agent.Core.Extensions
                     sp.GetRequiredService<ISessionStore>(),
                     sp.GetService<ILogger<Seeing.Agent.Core.Output.SessionToolOutputStore>>()));
 
+            // 图片/文件内容段物化器（LocalPath → base64）：Session→Chat 转换时唯一读盘点。
+            // 容量取配置值（热重载：每次 CreateInstance 读 CurrentValue）。
+            services.AddSingleton<Seeing.Agent.Core.Llm.IImagePartResolver>(sp =>
+                new Seeing.Agent.Core.Llm.ImagePartResolver(
+                    sp,
+                    sp.GetService<ILogger<Seeing.Agent.Core.Llm.ImagePartResolver>>(),
+                    sp.GetRequiredService<IOptionsMonitor<SeeingAgentOptions>>()
+                        .CurrentValue.ImageParts.CacheCapacity));
+
             // 压缩组件（主库唯一注册点，TokenBudget 扩展不重复注册）
             services.AddSingleton<ISummarizer, LlmSummarizer>();
             services.AddSingleton<CompressionService>();

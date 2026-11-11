@@ -969,6 +969,17 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
 
         foreach (var att in attachments)
         {
+            if (string.IsNullOrEmpty(att.Base64Data) && !string.IsNullOrEmpty(att.LocalPath))
+            {
+                // 引用式附件：只带路径，出站前由框架物化（会话不存 base64）
+                if (att.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                    parts.Add(SessionContentPart.CreateImageFromPath(att.LocalPath, att.MimeType, att.FileName));
+                else
+                    parts.Add(SessionContentPart.CreateFileFromPath(att.LocalPath, att.MimeType, att.FileName));
+
+                continue;
+            }
+
             if (att.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
                 parts.Add(SessionContentPart.CreateImageFromBase64(att.Base64Data, att.MimeType));
             else

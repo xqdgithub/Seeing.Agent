@@ -117,6 +117,22 @@ namespace Seeing.Agent.Core.Configuration
 
         /// <summary>工具子系统全局配置（暴露策略等；被会话/Agent/场景逐级覆盖）</summary>
         public ToolOptions Tools { get; set; } = new();
+
+        /// <summary>内容段物化配置（工具/用户产出的图片在出站前读盘为 base64）</summary>
+        public ImagePartsOptions ImageParts { get; set; } = new();
+    }
+
+    /// <summary>
+    /// 内容段物化选项。
+    /// <para>
+    /// 图片以 <c>LocalPath</c> 存于会话，出站前由 <c>ImagePartResolver</c> 物化为 base64。
+    /// 本类只控制缓存，**不**设置任何尺寸/数量限制（多模态模型能力差异大，硬声明会绑死能力）。
+    /// </para>
+    /// </summary>
+    public sealed class ImagePartsOptions
+    {
+        /// <summary>物化结果缓存容量（项，默认 32）。按「路径 + 修改时间 + 长度」失效。</summary>
+        public int CacheCapacity { get; set; } = 32;
     }
 
     /// <summary>

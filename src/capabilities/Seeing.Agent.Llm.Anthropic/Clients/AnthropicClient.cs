@@ -495,7 +495,8 @@ public class AnthropicClient : IChatCompletionClient, IDisposable
 
     private object BuildContent(ChatMessage msg)
     {
-        // 工具调用结果 - Anthropic 要求作为 user 消息的一部分
+        // 工具调用结果 - Anthropic 要求作为 user 消息的一部分。
+        // tool_result.content 原生接受 block 数组，因此工具产出的图片可直接内嵌，无需拆成额外 user 消息。
         if (!string.IsNullOrEmpty(msg.ToolCallId))
         {
             return new[]
@@ -504,7 +505,7 @@ public class AnthropicClient : IChatCompletionClient, IDisposable
                 {
                     type = "tool_result",
                     tool_use_id = msg.ToolCallId,
-                    content = msg.Content
+                    content = BuildToolResultContent(msg)
                 }
             };
         }
@@ -600,6 +601,42 @@ public class AnthropicClient : IChatCompletionClient, IDisposable
         }
 
         return blocks.Count > 0 ? blocks : new[] { new { type = "text", text = msg.Content } };
+    }
+
+    /// <summary>
+    /// 构造 <c>tool_result.content</c>：无图片时保持纯字符串（与旧行为逐字节相同），
+    /// 有图片时返回 block 数组（<c>[text, image...]</c>）。
+    /// </summary>
+    private static object BuildToolResultContent(ChatMessage msg)
+    {
+        if (msg.Parts is not { Count: > 0 })
+            return msg.Content;
+
+        var blocks = new List<object>();
+        if (!string.IsNullOrEmpty(msg.Content))
+            blocks.Add(new { type = "text", text = msg.Content });
+
+        foreach (var part in msg.Parts)
+        {
+            if (!string.Equals(part.Type, ChatContentPart.KindImage, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (!string.IsNullOrEmpty(part.Url))
+            {
+                blocks.Add(new { type = "image", source = new { type = "url", url = part.Url } });
+            }
+            else if (!string.IsNullOrEmpty(part.DataBase64) && !string.IsNullOrEmpty(part.MimeType))
+            {
+                blocks.Add(new
+                {
+                    type = "image",
+                    source = new { type = "base64", media_type = part.MimeType, data = part.DataBase64 }
+                });
+            }
+        }
+
+        // 没有可用图片块：退回字符串，避免多包一层无意义数组
+        return blocks.Count <= 1 && !string.IsNullOrEmpty(msg.Content) ? msg.Content : blocks;
     }
 
     /// <summary>历史 assistant 回传 thinking 块（含 signature）；对齐 OpenCode Anthropic 路径。</summary>

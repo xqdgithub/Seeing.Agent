@@ -105,7 +105,13 @@ public class ContentPartViewModel
     /// <summary>
     /// 从 SessionContentPart 创建视图模型
     /// </summary>
-    public static ContentPartViewModel FromSessionPart(Seeing.Session.Core.SessionContentPart part)
+    /// <param name="part">会话内容段。</param>
+    /// <param name="assetUrl">
+    /// 可选：把本地路径转成资源 URL（引用式图片）。为空或返回 null 时回退 base64。
+    /// </param>
+    public static ContentPartViewModel FromSessionPart(
+        Seeing.Session.Core.SessionContentPart part,
+        Func<string, string?>? assetUrl = null)
     {
         return new ContentPartViewModel
         {
@@ -114,7 +120,12 @@ public class ContentPartViewModel
             Url = part.Url,
             DataBase64 = part.DataBase64,
             MimeType = part.MimeType,
-            FileName = part.FileName
+            FileName = part.FileName,
+            FileSize = null,
+            // 引用式图片：优先给缩略图 URL（浏览器加载，不进 render batch）
+            ThumbnailUrl = string.IsNullOrEmpty(part.LocalPath)
+                ? null
+                : assetUrl?.Invoke(part.LocalPath)
         };
     }
 

@@ -24,6 +24,15 @@ public sealed class MessageTimelineStore
 {
     private readonly List<TimelineItem> _items = new();
 
+    /// <summary>
+    /// 会话资源 URL 生成器（引用式图片）。
+    /// <para>
+    /// 由宿主在创建实例时赋值（本类无构造注入，是纯状态投影）。
+    /// 为 null 时渲染回退 base64 —— 旧数据与无宿主服务场景的行为。
+    /// </para>
+    /// </summary>
+    public SessionAssetUrlBuilder? AssetUrls { get; set; }
+
     /// <summary>排队中（已入站、尚未被消费）的 user 消息投影；不进主时间线，输入框上方独立展示。</summary>
     private readonly List<MessageViewModel> _pending = new();
 
@@ -122,7 +131,7 @@ public sealed class MessageTimelineStore
             if (IsSchemaSnapshotCarrier(msg))
                 continue;
 
-            var vm = MessageViewModelFactory.FromSessionMessage(msg, sessionId, isComplete: true);
+            var vm = MessageViewModelFactory.FromSessionMessage(msg, sessionId, isComplete: true, assetUrls: AssetUrls);
             vm.IsCompacted = lastSummaryIndex >= 0 && i < lastSummaryIndex;
 
             // 排队中的入站 user 消息不进主时间线，单独投影为待消费列表
@@ -266,7 +275,7 @@ public sealed class MessageTimelineStore
         var effectiveComplete = isComplete
             ?? (TryFindMessage(msg.Id, out var current) && current.IsComplete);
 
-        var incoming = MessageViewModelFactory.FromSessionMessage(msg, sessionId, effectiveComplete);
+        var incoming = MessageViewModelFactory.FromSessionMessage(msg, sessionId, effectiveComplete, AssetUrls);
         var item = ResolveAssistantTurnForSync(incoming, createIfMissing: true);
         if (item?.Turn == null)
             return;
@@ -491,7 +500,7 @@ public sealed class MessageTimelineStore
                 var pendingIndex = _pending.FindIndex(p => string.Equals(p.Id, id, StringComparison.Ordinal));
                 if (pendingIndex >= 0)
                 {
-                    var pendingVm = MessageViewModelFactory.FromSessionMessage(msg, sessionId, isComplete: true);
+                    var pendingVm = MessageViewModelFactory.FromSessionMessage(msg, sessionId, isComplete: true, assetUrls: AssetUrls);
                     if (pendingVm.IsPendingInbox)
                         continue; // 仍排队：保持原位（顺序由 session 顺序保证）
 
@@ -521,7 +530,7 @@ public sealed class MessageTimelineStore
                 continue;
             }
 
-            var vm = MessageViewModelFactory.FromSessionMessage(msg, sessionId, isComplete: true);
+            var vm = MessageViewModelFactory.FromSessionMessage(msg, sessionId, isComplete: true, assetUrls: AssetUrls);
             vm.IsCompacted = isCompacted;
 
             // 排队中的入站 user 消息不进主时间线，单独投影为待消费列表

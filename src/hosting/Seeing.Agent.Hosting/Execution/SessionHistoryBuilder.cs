@@ -1,6 +1,7 @@
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Core.Llm;
 using Seeing.Session.Core;
 using System.Text.Json;
 
@@ -30,7 +31,11 @@ internal static class SessionHistoryBuilder
     /// 从会话重建 LLM 聊天历史。
     /// </summary>
     /// <param name="session">会话数据（读取活跃消息）。</param>
-    public static List<ChatMessage> BuildHistory(SessionData session)
+    /// <param name="imageParts">
+    /// 内容段物化器（把 <c>LocalPath</c> 读成 base64）。null 表示不物化——仅测试/无图路径使用。
+    /// <para><b>可选参数</b>：本方法被十余处测试经门面直接调用，加必填参数会全部编译失败。</para>
+    /// </param>
+    public static List<ChatMessage> BuildHistory(SessionData session, IImagePartResolver? imageParts = null)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -59,15 +64,9 @@ internal static class SessionHistoryBuilder
 
             if (msg.Parts != null && msg.Parts.Count > 0)
             {
-                chatMessage.Parts = msg.Parts.Select(p => new ChatContentPart
-                {
-                    Type = p.Type,
-                    Text = p.Text,
-                    Url = p.Url,
-                    DataBase64 = p.DataBase64,
-                    MimeType = p.MimeType,
-                    FileName = p.FileName
-                }).ToList();
+                chatMessage.Parts = msg.Parts
+                    .Select(p => ToChatPart(session.Id, p, imageParts))
+                    .ToList();
             }
 
             if (msg.ToolCalls != null && msg.ToolCalls.Count > 0)
@@ -104,13 +103,46 @@ internal static class SessionHistoryBuilder
                             tc.Name,
                             tc.Status,
                             tc.Title,
-                            tc.ToolDefinition)
+                            tc.ToolDefinition),
+                        // 工具产出的图片经物化后挂在 tool 消息的 Parts 上；
+                        // 出站形状（内嵌 / 拆消息 / 聚合）由各 client 决定。
+                        Parts = tc.Parts is { Count: > 0 }
+                            ? tc.Parts.Select(p => ToChatPart(session.Id, p, imageParts)).ToList()
+                            : null
                     });
                 }
             }
         }
 
         return history;
+    }
+
+    /// <summary>
+    /// 会话内容段 → LLM 内容段。
+    /// <para>
+    /// 有 <c>LocalPath</c> 且接入物化器时读盘成 base64；否则按内联字段直传。
+    /// 同时补齐历史遗漏的 <c>FileId</c> / <c>ImageDetail</c>（既有 bug）。
+    /// </para>
+    /// </summary>
+    private static ChatContentPart ToChatPart(
+        string sessionId,
+        SessionContentPart part,
+        IImagePartResolver? imageParts)
+    {
+        if (imageParts is not null && !string.IsNullOrEmpty(part.LocalPath))
+            return imageParts.Resolve(sessionId, part);
+
+        return new ChatContentPart
+        {
+            Type = part.Type,
+            Text = part.Text,
+            Url = part.Url,
+            DataBase64 = part.DataBase64,
+            MimeType = part.MimeType,
+            FileName = part.FileName,
+            FileId = part.FileId,
+            ImageDetail = part.ImageDetail
+        };
     }
 
     /// <summary>

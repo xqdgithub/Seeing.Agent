@@ -334,6 +334,12 @@ public record ToolCallEvent : IMessageEvent
     public string? ToolDefinition { get; init; }
 
     /// <summary>
+    /// 工具产出的内容块（透传 <see cref="ToolResult.Parts"/>，框架不解析）。
+    /// <para>持久化只保留引用（<c>LocalPath</c>）；出站形状由各 LLM client 决定。</para>
+    /// </summary>
+    public IReadOnlyList<ToolOutputPart>? Parts { get; init; }
+
+    /// <summary>
     /// 回传给模型的内容：成功为 <see cref="Output"/>；失败为带防误判 notice 的
     /// <c>tool_result</c> XML 信封（详见 <see cref="ToolResultFormatting"/>）。
     /// </summary>

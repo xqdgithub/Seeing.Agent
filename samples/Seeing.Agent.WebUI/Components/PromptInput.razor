@@ -28,6 +28,7 @@
     @if (Attachments.Count > 0)
     {
         <AttachmentPreview Attachments="@Attachments"
+                           SessionId="@SessionState?.CurrentSession?.Id"
                            MaxAttachments="@MaxAttachments"
                            MaxFileSize="@MaxFileSize"
                            OnRemove="@OnAttachmentRemoved" />

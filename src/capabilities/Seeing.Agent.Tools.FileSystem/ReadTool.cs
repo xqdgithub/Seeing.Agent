@@ -41,7 +41,7 @@ namespace Seeing.Agent.Tools.FileSystem
             "读取文件或目录内容，返回带行号的文本；查看文件原文用此工具。\n\n" +
             "- 内容：文件返回带行号的文本；目录返回条目列表。\n" +
             "- 分页：offset 从 1 开始，limit 默认 2000 行；超长单行按 2000 字符截断，输出上限 50KB。\n" +
-            "- 特殊文件：图片与 PDF 作为附件返回；其他二进制文件会报错无法读取。\n" +
+            "- 特殊文件：图片与 PDF 作为内容段交给模型（可直接看到）；其他二进制文件会报错无法读取。\n" +
             "- 不用于：把文件呈现给用户（用 `open_file`）；修改文件用 `edit`。";
 
         public override ToolCategory Category => ToolCategory.FileSystem;
@@ -319,13 +319,17 @@ namespace Seeing.Agent.Tools.FileSystem
                         ["mime"] = mime,
                         ["size"] = size
                     },
-                    Attachments = new List<FileAttachment>
+                    // 图片/PDF 交给模型：路径由框架在出站前物化为 base64（会话只存引用）。
+                    Parts = new List<ToolOutputPart>
                     {
-                        new FileAttachment
+                        new()
                         {
-                            Name = Path.GetFileName(filePath) ?? "file",
-                            Path = filePath,
-                            MimeType = mime
+                            Kind = FileSystemHelper.IsImage(filePath)
+                                ? ToolOutputPartKind.Image
+                                : ToolOutputPartKind.File,
+                            LocalPath = filePath,
+                            MimeType = mime,
+                            Name = Path.GetFileName(filePath)
                         }
                     }
                 };

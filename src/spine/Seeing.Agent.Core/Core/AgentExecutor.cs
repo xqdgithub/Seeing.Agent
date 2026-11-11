@@ -48,6 +48,9 @@ public class AgentExecutor : IAgentExecutor
     /// <summary>单个工具调用的执行体（可见集校验 → 权限 → 执行 → 终态事件）。</summary>
     private readonly ToolCallInvoker _toolInvoker;
 
+    /// <summary>内容段物化器（把工具产出的 LocalPath 读成可发送载荷）。null = 不物化。</summary>
+    private readonly IImagePartResolver? _imageParts;
+
     /// <summary>
     /// 构造 Agent 执行器，注入 LLM、工具、权限、钩子、注册表等核心依赖（后四项为可选）。
     /// </summary>
@@ -62,7 +65,8 @@ public class AgentExecutor : IAgentExecutor
         ILogger<AgentExecutor> logger,
         Seeing.Session.Core.ISessionManager? sessionManager = null,
         ITodoStore? todoStore = null,
-        ILlmTurnRetryPolicy? turnRetryPolicy = null)
+        ILlmTurnRetryPolicy? turnRetryPolicy = null,
+        IImagePartResolver? imageParts = null)
     {
         _llm = llm;
         _tools = tools;
@@ -75,6 +79,7 @@ public class AgentExecutor : IAgentExecutor
         _sessionManager = sessionManager;
         _todoStore = todoStore;
         _turnRetryPolicy = turnRetryPolicy;
+        _imageParts = imageParts;
         _toolInvoker = new ToolCallInvoker(tools, permissions, logger, sessionManager);
     }
 
@@ -732,7 +737,7 @@ public class AgentExecutor : IAgentExecutor
             TaskScheduler.Default);
 
         // 排空转发：把每个工具终态事件写入 outbound，并同步追加 tool 历史。
-        var forward = ForwardToolEventsAsync(channel.Reader, writer, history);
+        var forward = ForwardToolEventsAsync(channel.Reader, writer, history, context.SessionId, _imageParts);
 
         // 取消必须可观测：不依赖工具是否配合取消。
         // 取消信号与「排空完成」竞争；取消后仍给予 ToolDrainTimeout 让响应取消的工具送出终态，
@@ -776,7 +781,9 @@ public class AgentExecutor : IAgentExecutor
     private static async Task<(bool EndTurn, string? Reason)> ForwardToolEventsAsync(
         ChannelReader<IMessageEvent> reader,
         ChannelWriter<IMessageEvent> outbound,
-        List<ChatMessage> history)
+        List<ChatMessage> history,
+        string sessionId,
+        IImagePartResolver? imageParts)
     {
         var endTurn = false;
         string? reason = null;
@@ -797,11 +804,37 @@ public class AgentExecutor : IAgentExecutor
                 {
                     Role = ChatRole.Tool,
                     ToolCallId = tcEvent.ToolCallId,
-                    Content = tcEvent.ModelContent
+                    Content = tcEvent.ModelContent,
+                    // 本轮工具刚产出的图片不经会话重建，必须在此物化；出站形状由 client 决定。
+                    Parts = ResolveParts(sessionId, tcEvent.Parts, imageParts)
                 });
             }
         }
         return (endTurn, reason);
+    }
+
+    /// <summary>
+    /// 工具产出内容块 → LLM 内容段。未接入物化器或无 Parts 时返回 null（保持旧行为）。
+    /// <para>只保留非文本块：tool 消息的文本已由 <c>ModelContent</c> 承载，重复会浪费 token。</para>
+    /// </summary>
+    private static List<ChatContentPart>? ResolveParts(
+        string sessionId,
+        IReadOnlyList<ToolOutputPart>? parts,
+        IImagePartResolver? imageParts)
+    {
+        if (imageParts is null || parts is not { Count: > 0 })
+            return null;
+
+        var resolved = new List<ChatContentPart>(parts.Count);
+        foreach (var part in parts)
+        {
+            if (string.Equals(part.Kind, ToolOutputPartKind.Text, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            resolved.Add(imageParts.Resolve(sessionId, part));
+        }
+
+        return resolved.Count > 0 ? resolved : null;
     }
 
     private async Task RunToolCallWithEventsAsync(

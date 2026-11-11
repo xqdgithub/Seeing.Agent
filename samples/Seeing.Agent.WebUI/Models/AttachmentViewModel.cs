@@ -53,6 +53,12 @@ public class AttachmentViewModel
     public string Base64Content { get; set; } = "";
 
     /// <summary>
+    /// 本地文件绝对路径（引用式附件，与 <see cref="Base64Content"/> 二选一）。
+    /// <para>提交时作为 <c>ChatAttachment.LocalPath</c> 传给运行时，出站前由框架物化。</para>
+    /// </summary>
+    public string? LocalPath { get; set; }
+
+    /// <summary>
     /// 是否为图片
     /// </summary>
     public bool IsImage => FileType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);

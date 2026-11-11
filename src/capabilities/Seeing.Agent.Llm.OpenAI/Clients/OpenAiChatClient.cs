@@ -276,7 +276,7 @@ public class OpenAiChatClient : IChatCompletionClient, IDisposable
         return body;
     }
 
-    private List<ChatCompletionMessage> BuildMessages(ChatRequest request)
+    internal List<ChatCompletionMessage> BuildMessages(ChatRequest request)
     {
         var messages = new List<ChatCompletionMessage>();
         var echoReasoning = request.EchoReasoningContent;
@@ -290,23 +290,94 @@ public class OpenAiChatClient : IChatCompletionClient, IDisposable
             });
         }
 
+        // Chat Completions 的 role:"tool" 只允许 text content（官方：only type `text` is supported），
+        // 且 assistant(tool_calls) 之后的 tool 消息必须**连续**（tool, tool, user ✅ / tool, user, tool ❌ 400）。
+        // 所以工具产出图片不能在 tool 消息里带出，也不能逐条插入 user：
+        // 先缓冲，等连续 tool 段结束（遇到非 tool 消息或列表结束）再聚合成**一条** user 消息。
+        var pendingToolImages = new List<ChatCompletionContentPart>();
+
+        void FlushPendingToolImages()
+        {
+            if (pendingToolImages.Count == 0)
+                return;
+
+            messages.Add(new ChatCompletionMessage
+            {
+                Role = "user",
+                Content = pendingToolImages.ToList()
+            });
+            pendingToolImages.Clear();
+        }
+
         foreach (var msg in request.Messages)
         {
-            messages.Add(msg.Role switch
+            if (!string.Equals(msg.Role, ChatRole.Tool, StringComparison.OrdinalIgnoreCase))
+                FlushPendingToolImages();
+
+            if (string.Equals(msg.Role, ChatRole.Tool, StringComparison.OrdinalIgnoreCase))
             {
-                ChatRole.User => BuildUserMessage(msg),
-                ChatRole.Assistant => BuildAssistantMessage(msg, echoReasoning),
-                ChatRole.Tool => new ChatCompletionMessage
+                messages.Add(new ChatCompletionMessage
                 {
                     Role = "tool",
                     Content = msg.Content,
                     ToolCallId = msg.ToolCallId
-                },
+                });
+
+                CollectToolImages(msg, pendingToolImages);
+                continue;
+            }
+
+            messages.Add(msg.Role switch
+            {
+                ChatRole.User => BuildUserMessage(msg),
+                ChatRole.Assistant => BuildAssistantMessage(msg, echoReasoning),
                 _ => BuildUserMessage(msg)
             });
         }
 
+        FlushPendingToolImages();
+
         return messages;
+    }
+
+    /// <summary>
+    /// 把 tool 消息里非文本内容段转成 <c>image_url</c> 片段，暂存待聚合。
+    /// <para>文本不在此收集：tool 消息的文本已由 <c>Content</c> 承载，重复会浪费 token。</para>
+    /// </summary>
+    private static void CollectToolImages(ChatMessage msg, List<ChatCompletionContentPart> target)
+    {
+        if (msg.Parts is not { Count: > 0 })
+            return;
+
+        foreach (var part in msg.Parts)
+        {
+            if (!string.Equals(part.Type, ChatContentPart.KindImage, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var url = !string.IsNullOrEmpty(part.Url)
+                ? part.Url
+                : !string.IsNullOrEmpty(part.DataBase64) && !string.IsNullOrEmpty(part.MimeType)
+                    ? $"data:{part.MimeType};base64,{part.DataBase64}"
+                    : null;
+
+            if (string.IsNullOrEmpty(url))
+                continue;
+
+            target.Add(new ChatCompletionContentPart
+            {
+                Type = "image_url",
+                ImageUrl = new ChatCompletionImageUrl
+                {
+                    Url = url,
+                    Detail = part.ImageDetail?.ToLowerInvariant() switch
+                    {
+                        "low" => "low",
+                        "high" => "high",
+                        _ => "auto"
+                    }
+                }
+            });
+        }
     }
 
     private ChatCompletionMessage BuildUserMessage(ChatMessage msg)

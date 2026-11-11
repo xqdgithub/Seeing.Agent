@@ -66,7 +66,17 @@ public class ToolResult
     public Dictionary<string, object> Metadata { get; set; } = new();
 
     /// <summary>文件附件</summary>
+    [Obsolete("改用 Parts（ToolOutputPart）：框架会把 Parts 物化后交给模型，Attachments 无人消费。")]
     public List<FileAttachment>? Attachments { get; set; }
+
+    /// <summary>
+    /// 产出的内容块（文本 / 图片 / 文件）。
+    /// <para>
+    /// 框架在 <c>Session → Chat</c> 转换处把 <see cref="ToolOutputPart.LocalPath"/> 物化为可发送载荷，
+    /// 会话只持久化引用（不存 base64）。出站形状（内嵌 / 拆消息）由各 LLM client 决定。
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<ToolOutputPart>? Parts { get; set; }
 
     /// <summary>
     /// 工具声明"本执行内已加载"的工具 id。

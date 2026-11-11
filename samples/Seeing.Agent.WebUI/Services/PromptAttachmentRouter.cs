@@ -28,8 +28,20 @@ public static class PromptAttachmentRouter
                 continue;
             }
 
+            // 引用式附件：有 LocalPath 时不需要内联 base64（会话不存 base64，出站前由框架读盘）
             if (string.IsNullOrWhiteSpace(attachment.Base64Content))
+            {
+                if (string.IsNullOrWhiteSpace(attachment.LocalPath))
+                    continue;
+
+                images.Add(new ChatAttachment
+                {
+                    FileName = attachment.FileName,
+                    MimeType = attachment.FileType,
+                    LocalPath = attachment.LocalPath
+                });
                 continue;
+            }
 
             images.Add(new ChatAttachment
             {

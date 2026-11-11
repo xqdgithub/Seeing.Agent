@@ -78,6 +78,15 @@ public class ToolCallViewModel
     public TodoListViewModel? TodoList { get; set; }
 
     /// <summary>
+    /// 工具产出的内容段（图片等）。
+    /// <para>
+    /// 工具卡片此前完全不读 <c>SessionToolCall.Parts</c>，导致工具截图没有任何渲染入口。
+    /// 图片走 <c>ThumbnailUrl</c>（浏览器加载），不把 base64 塞进 render batch。
+    /// </para>
+    /// </summary>
+    public List<ContentPartViewModel> Parts { get; set; } = new();
+
+    /// <summary>
     /// 是否为 Todo 工具
     /// </summary>
     public bool IsTodoTool => Name?.ToLowerInvariant() == "todowrite";
@@ -136,8 +145,12 @@ public class ToolCallViewModel
     /// </summary>
     /// <param name="tc">会话工具调用数据</param>
     /// <param name="sessionId">会话 ID（用于 todowrite 工具解析 Todo 列表）</param>
+    /// <param name="assetUrl">可选：把本地路径转成资源 URL（工具截图走引用式）。</param>
     /// <returns>工具调用视图模型</returns>
-    public static ToolCallViewModel FromSessionToolCall(SessionToolCall tc, string sessionId)
+    public static ToolCallViewModel FromSessionToolCall(
+        SessionToolCall tc,
+        string sessionId,
+        Func<string, string?>? assetUrl = null)
     {
         var vm = new ToolCallViewModel
         {
@@ -156,6 +169,14 @@ public class ToolCallViewModel
             TaskBackground = tc.TaskBackground,
             TaskSteps = tc.TaskSteps?.ToList() ?? new List<SessionTaskStep>()
         };
+
+        // 工具产出的内容段（图片等）：此前完全不读，导致工具截图无渲染入口
+        if (tc.Parts is { Count: > 0 })
+        {
+            vm.Parts = tc.Parts
+                .Select(p => ContentPartViewModel.FromSessionPart(p, assetUrl))
+                .ToList();
+        }
 
         // 旧会话兼容：曾把 duration 塞进 Metadata["durationMs"]
         if (!vm.DurationMs.HasValue)

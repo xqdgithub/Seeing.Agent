@@ -156,6 +156,12 @@ internal class ChatEventTracker
                     existing.DurationMs = duration.TotalMilliseconds;
                 if (toolCall.ToolDefinition != null)
                     existing.ToolDefinition = toolCall.ToolDefinition;
+                if (toolCall.Parts is { Count: > 0 })
+                {
+                    existing.Parts = toolCall.Parts
+                        .Select(ToSessionPart)
+                        .ToImmutableList();
+                }
 
                 // task 工具：Task* 权威来源为 TaskTool 结果 Metadata；Running 态无 Metadata 时从 Arguments 回填展示字段。
                 var previousTaskId = existing.TaskId;
@@ -323,6 +329,26 @@ internal class ChatEventTracker
 
         return JsonSerializer.Serialize(arguments, SeeingJson.Readable);
     }
+
+    /// <summary>
+    /// 工具产出内容块 → 会话内容段（只保留引用/内联字段，不读盘）。
+    /// <para>图片在会话里只存 <c>LocalPath</c>；出站前由 <c>IImagePartResolver</c> 物化。</para>
+    /// </summary>
+    private static SessionContentPart ToSessionPart(ToolOutputPart part) => new()
+    {
+        Type = part.Kind switch
+        {
+            ToolOutputPartKind.Image => ContentPartType.Image,
+            ToolOutputPartKind.File => ContentPartType.File,
+            _ => ContentPartType.Text
+        },
+        Text = part.Text,
+        Url = part.Url,
+        DataBase64 = part.DataBase64,
+        MimeType = part.MimeType,
+        FileName = part.Name,
+        LocalPath = part.LocalPath
+    };
 
     /// <summary>
     /// 将 task 工具调用的 Task* 字段映射到 <see cref="SessionToolCall"/>。

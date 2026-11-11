@@ -105,7 +105,13 @@ public sealed class UploadedFileService
         }
     }
 
-    /// <summary>图片 → 读回字节、删除临时文件、生成 Base64 附件。</summary>
+    /// <summary>
+    /// 图片 → 生成**引用式**附件（保留文件，返回本地路径）。
+    /// <para>
+    /// 旧实现会先删除文件再传 base64：会话文件因此膨胀（整文件重写），且图片无法在 UI 侧
+    /// 走浏览器缓存。现在保留文件，出站前由框架读盘物化。
+    /// </para>
+    /// </summary>
     public async Task<AttachmentViewModel> CreateImageAttachmentAsync(
         string sessionId,
         UploadedFileItem item,
@@ -115,27 +121,21 @@ public sealed class UploadedFileService
         try
         {
             var absolute = ResolveUploadPath(workspace.RootPath, sessionId, item.SessionRelativePath);
-            var bytes = await workspace.ReadBytesAsync(absolute, ct).ConfigureAwait(false);
+            var entry = await workspace.StatAsync(absolute, ct).ConfigureAwait(false);
+            var size = entry.Size ?? 0;
 
-            try
-            {
-                await workspace.DeleteAsync(absolute, ct).ConfigureAwait(false);
-            }
-            catch
-            {
-                // 临时图片删除失败不影响附件生成；.seeing 已忽略。
-            }
+            if (size > PastedFileLayout.MaxImageBytes)
+                throw new InvalidOperationException($"图片超过上限：{size}");
 
-            if (bytes.LongLength > PastedFileLayout.MaxImageBytes)
-                throw new InvalidOperationException($"图片超过上限：{bytes.LongLength}");
+            var mime = string.IsNullOrWhiteSpace(item.MimeType) ? "image/png" : item.MimeType;
 
             return new AttachmentViewModel
             {
                 Kind = AttachmentDeliveryKind.BinaryAttachment,
                 FileName = item.FileName,
-                FileSize = bytes.LongLength,
-                FileType = item.MimeType,
-                Base64Content = $"data:{item.MimeType};base64,{Convert.ToBase64String(bytes)}",
+                FileSize = size,
+                FileType = mime,
+                LocalPath = absolute,
                 SessionRelativePath = item.SessionRelativePath,
                 Status = AttachmentUploadStatus.Completed
             };

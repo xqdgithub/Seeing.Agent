@@ -9,8 +9,25 @@ namespace Seeing.Agent.WebUI.Services;
 
 public static class MessageViewModelFactory
 {
-    public static MessageViewModel FromSessionMessage(SessionMessage msg, string sessionId, bool isComplete = true)
+    /// <summary>
+    /// 从会话消息构造视图模型。
+    /// </summary>
+    /// <param name="msg">会话消息。</param>
+    /// <param name="sessionId">会话 id。</param>
+    /// <param name="isComplete">该消息是否已完成（影响 reasoning 折叠）。</param>
+    /// <param name="assetUrls">
+    /// 可选：会话资源 URL 生成器（引用式图片）。为空时回退 base64（旧数据/无宿主服务场景）。
+    /// </param>
+    public static MessageViewModel FromSessionMessage(
+        SessionMessage msg,
+        string sessionId,
+        bool isComplete = true,
+        SessionAssetUrlBuilder? assetUrls = null)
     {
+        Func<string, string?>? assetUrl = assetUrls is null
+            ? null
+            : path => assetUrls.ForSessionPath(sessionId, path);
+
         var viewModel = new MessageViewModel
         {
             // Id 由上层写者保证非空（ChatEventTracker / SessionMessage 工厂）；
@@ -30,13 +47,15 @@ public static class MessageViewModelFactory
 
         if (msg.Parts != null && msg.Parts.Count > 0)
         {
-            viewModel.Parts = msg.Parts.Select(p => ContentPartViewModel.FromSessionPart(p)).ToList();
+            viewModel.Parts = msg.Parts
+                .Select(p => ContentPartViewModel.FromSessionPart(p, assetUrl))
+                .ToList();
         }
 
         if (msg.ToolCalls != null && msg.ToolCalls.Count > 0)
         {
             viewModel.ToolCalls = msg.ToolCalls
-                .Select(tc => ToolCallViewModel.FromSessionToolCall(tc, sessionId))
+                .Select(tc => ToolCallViewModel.FromSessionToolCall(tc, sessionId, assetUrl))
                 .ToList();
         }
 

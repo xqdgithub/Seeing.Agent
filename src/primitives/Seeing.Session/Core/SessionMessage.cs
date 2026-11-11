@@ -62,6 +62,16 @@ namespace Seeing.Session.Core
         [JsonPropertyName("image_detail")]
         public string? ImageDetail { get; set; }
 
+        /// <summary>
+        /// 本地文件绝对路径（会话 ref 目录内）。
+        /// <para>
+        /// <b>只在会话层存在</b>：框架在 <c>Session → Chat</c> 转换时读盘物化为 <see cref="DataBase64"/>，
+        /// LLM 契约（<c>ChatContentPart</c>）不含此字段。会话文件因此不因图片膨胀。
+        /// </para>
+        /// </summary>
+        [JsonPropertyName("local_path")]
+        public string? LocalPath { get; set; }
+
         /// <summary>创建文本段</summary>
         public static SessionContentPart CreateText(string text) =>
             new() { Type = ContentPartType.Text, Text = text };
@@ -73,6 +83,16 @@ namespace Seeing.Session.Core
         /// <summary>创建图片段（Base64）</summary>
         public static SessionContentPart CreateImageFromBase64(string base64, string mimeType, string? imageDetail = null) =>
             new() { Type = ContentPartType.Image, DataBase64 = base64, MimeType = mimeType, ImageDetail = imageDetail };
+
+        /// <summary>
+        /// 创建图片段（本地路径引用）。出站前由框架物化为 base64，会话只持久化路径。
+        /// </summary>
+        public static SessionContentPart CreateImageFromPath(string localPath, string mimeType, string? fileName = null) =>
+            new() { Type = ContentPartType.Image, LocalPath = localPath, MimeType = mimeType, FileName = fileName };
+
+        /// <summary>创建文件段（本地路径引用）。</summary>
+        public static SessionContentPart CreateFileFromPath(string localPath, string mimeType, string? fileName = null) =>
+            new() { Type = ContentPartType.File, LocalPath = localPath, MimeType = mimeType, FileName = fileName };
 
         /// <summary>创建文件段（Base64）</summary>
         public static SessionContentPart CreateFileFromBase64(string base64, string mimeType, string? fileName = null) =>
@@ -161,6 +181,16 @@ namespace Seeing.Session.Core
         [JsonPropertyName("tool_definition")]
         public string? ToolDefinition { get; set; }
 
+        /// <summary>
+        /// 工具产出的内容块（图片等）。
+        /// <para>
+        /// 用 <see cref="SessionContentPart"/> 是因为本类型在原语层、不能引用 Abstractions；
+        /// 图片只存 <see cref="SessionContentPart.LocalPath"/>，出站前由框架物化，会话文件不因图片膨胀。
+        /// </para>
+        /// </summary>
+        [JsonPropertyName("parts")]
+        public ImmutableList<SessionContentPart>? Parts { get; set; }
+
         /// <summary>深拷贝工具调用（含 Task 卡片字段）</summary>
         public SessionToolCall Clone()
         {
@@ -189,6 +219,18 @@ namespace Seeing.Session.Core
                     Status = s.Status,
                     Preview = s.Preview,
                     Timestamp = s.Timestamp
+                }).ToImmutableList(),
+                Parts = Parts?.Select(p => new SessionContentPart
+                {
+                    Type = p.Type,
+                    Text = p.Text,
+                    Url = p.Url,
+                    DataBase64 = p.DataBase64,
+                    MimeType = p.MimeType,
+                    FileName = p.FileName,
+                    FileId = p.FileId,
+                    ImageDetail = p.ImageDetail,
+                    LocalPath = p.LocalPath
                 }).ToImmutableList()
             };
         }
@@ -358,7 +400,8 @@ namespace Seeing.Session.Core
                     MimeType = p.MimeType,
                     FileName = p.FileName,
                     FileId = p.FileId,
-                    ImageDetail = p.ImageDetail
+                    ImageDetail = p.ImageDetail,
+                    LocalPath = p.LocalPath
                 }).ToImmutableList(),
                 ReasoningContent = ReasoningContent,
                 ReasoningSignature = ReasoningSignature,

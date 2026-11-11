@@ -114,6 +114,28 @@ else
                     </div>
                 }
 
+                @if (ToolCall.Parts.Any(p => p.IsImage))
+                {
+                    <div class="tool-call-section">
+                        <div class="tool-call-section-header">
+                            <span class="tool-call-section-title">图片</span>
+                        </div>
+                        <div class="tool-call-images">
+                            @foreach (var image in ToolCall.Parts.Where(p => p.IsImage))
+                            {
+                                var url = image.GetDisplayUrl();
+                                if (string.IsNullOrEmpty(url))
+                                {
+                                    continue;
+                                }
+                                <a href="@url" target="_blank" rel="noopener">
+                                    <img class="tool-call-image" src="@url" alt="@(image.FileName ?? "工具产出")" loading="lazy" />
+                                </a>
+                            }
+                        </div>
+                    </div>
+                }
+
                 @if (!string.IsNullOrEmpty(ToolCall.Error))
                 {
                     <div class="tool-call-section">

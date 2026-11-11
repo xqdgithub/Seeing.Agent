@@ -8,6 +8,7 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Models;
+using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Skills;
@@ -316,7 +317,10 @@ internal sealed class ExecutionRunner : IExecutionRunner
                 context.SkillSnapshot = executionScope.SkillSnapshot;
 
                 // Build history（含装配刚插入的增量叙述消息）
-                var messages = BuildHistoryFromSession(session);
+                // 物化器：把会话里的 LocalPath 读成可发送载荷（工具截图/用户附件）。
+                var messages = SessionHistoryBuilder.BuildHistory(
+                    session,
+                    _serviceProvider.GetService(typeof(IImagePartResolver)) as IImagePartResolver);
 
                 // 服务端负责将事件投影到 Session 并落盘；UI 只订阅展示
                 var eventTracker = new ChatEventTracker();

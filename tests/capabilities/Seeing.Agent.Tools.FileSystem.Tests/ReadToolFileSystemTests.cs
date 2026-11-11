@@ -111,7 +111,7 @@ public class ReadToolFileSystemTests
         result.Metadata.Should().ContainKey("type").WhoseValue.Should().Be("binary");
         result.Metadata.Should().ContainKey("mime").WhoseValue.Should().Be("image/png");
         result.Metadata.Should().ContainKey("size").WhoseValue.Should().Be(pngBytes.Length);
-        result.Attachments.Should().ContainSingle(a => a.Path == virtualPath);
+        result.Parts.Should().ContainSingle(p => p.LocalPath == virtualPath && p.Kind == ToolOutputPartKind.Image);
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public class ReadToolFileSystemTests
 
         result.Success.Should().BeTrue();
         result.Metadata.Should().ContainKey("size").WhoseValue.Should().Be((long)pngBytes.Length);
-        result.Attachments.Should().ContainSingle(a => a.Path == virtualPath);
+        result.Parts.Should().ContainSingle(p => p.LocalPath == virtualPath && p.Kind == ToolOutputPartKind.Image);
     }
 
     [Fact]

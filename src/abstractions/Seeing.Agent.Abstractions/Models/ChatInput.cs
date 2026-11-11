@@ -45,6 +45,15 @@ public record ChatAttachment
     public string Base64Data { get; init; } = "";
 
     /// <summary>
+    /// 本地文件绝对路径（引用式附件）。
+    /// <para>
+    /// 与 <see cref="Base64Data"/> 二选一：有路径时不传内联字节，框架在出站前读盘物化。
+    /// 会话因此只存路径，不因附件膨胀（会话文件是整文件重写）。
+    /// </para>
+    /// </summary>
+    public string? LocalPath { get; init; }
+
+    /// <summary>
     /// 创建图片附件。传入 data URL 时会自动剥掉前缀，保证「纯 base64」不变量。
     /// </summary>
     public static ChatAttachment Image(string fileName, string base64Data, string mimeType = "image/png")
