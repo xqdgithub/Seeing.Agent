@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Seeing.Agent.Abstractions.Context;
@@ -77,7 +77,7 @@ public class WorkbenchContextSourceTests
         var (source, store) = Build();
         store.Update("s1",
         [
-            Snapshot("markdown", dock: WorkbenchDock.Right),
+            Snapshot("video", dock: WorkbenchDock.Right),
             Snapshot("files", dock: WorkbenchDock.Left),
             Snapshot("alpha", dock: WorkbenchDock.Right)
         ]);
@@ -88,7 +88,7 @@ public class WorkbenchContextSourceTests
             .Select(item => item.GetProperty("id").GetString())
             .ToArray();
 
-        ids.Should().Equal(["files", "alpha", "markdown"], "左 dock 在前，同 dock 按 id 序数序");
+        ids.Should().Equal(["files", "alpha", "video"], "左 dock 在前，同 dock 按 id 序数序");
     }
 
     [Fact]
@@ -125,20 +125,20 @@ public class WorkbenchContextSourceTests
         store.Update("s1", [Snapshot("files")]);
         var before = await source.ReadAsync(TestContext.Current.CancellationToken);
 
-        store.Update("s1", [Snapshot("files"), Snapshot("markdown")]);
+        store.Update("s1", [Snapshot("files"), Snapshot("video")]);
         var after = await source.ReadAsync(TestContext.Current.CancellationToken);
 
-        source.Render(before, after).Should().Contain("打开了").And.Contain("markdown");
+        source.Render(before, after).Should().Contain("打开了").And.Contain("video");
     }
 
     [Fact]
     public async Task Render_Closed_ShouldNarrate()
     {
         var (source, store) = Build();
-        store.Update("s1", [Snapshot("files", title: "文件"), Snapshot("markdown")]);
+        store.Update("s1", [Snapshot("files", title: "文件"), Snapshot("video")]);
         var before = await source.ReadAsync(TestContext.Current.CancellationToken);
 
-        store.Update("s1", [Snapshot("markdown")]);
+        store.Update("s1", [Snapshot("video")]);
         var after = await source.ReadAsync(TestContext.Current.CancellationToken);
 
         source.Render(before, after).Should().Contain("关闭了").And.Contain("文件");
@@ -162,14 +162,14 @@ public class WorkbenchContextSourceTests
     public async Task Render_ActiveToggle_ShouldNarrate()
     {
         var (source, store) = Build();
-        store.Update("s1", [Snapshot("files", active: true), Snapshot("markdown", active: false)]);
+        store.Update("s1", [Snapshot("files", active: true), Snapshot("video", active: false)]);
         var before = await source.ReadAsync(TestContext.Current.CancellationToken);
 
-        store.Update("s1", [Snapshot("files", active: false), Snapshot("markdown", active: true)]);
+        store.Update("s1", [Snapshot("files", active: false), Snapshot("video", active: true)]);
         var after = await source.ReadAsync(TestContext.Current.CancellationToken);
 
         var text = source.Render(before, after);
-        text.Should().Contain("切到").And.Contain("markdown");
+        text.Should().Contain("切到").And.Contain("video");
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Seeing.Agent.Abstractions.Ui.Workbench;
 
 namespace Seeing.Agent.Workbench.Tests;
@@ -19,12 +19,12 @@ public class WorkbenchSessionStateStoreTests
     {
         var store = new WorkbenchSessionStateStore();
 
-        store.Update("s1", [Snapshot("files"), Snapshot("markdown", active: false)]);
+        store.Update("s1", [Snapshot("files"), Snapshot("video", active: false)]);
 
         var snapshot = store.GetSnapshot("s1");
         snapshot.Should().HaveCount(2);
         snapshot[0].Key.WorkbenchId.Should().Be("files");
-        snapshot[1].Key.WorkbenchId.Should().Be("markdown");
+        snapshot[1].Key.WorkbenchId.Should().Be("video");
     }
 
     [Fact]
@@ -98,10 +98,10 @@ public class WorkbenchSessionStateStoreTests
         var store = new WorkbenchSessionStateStore();
 
         store.Update("s1", [Snapshot("files")]);
-        store.Update("s2", [Snapshot("markdown")]);
+        store.Update("s2", [Snapshot("video")]);
 
         store.GetSnapshot("s1").Single().Key.WorkbenchId.Should().Be("files");
-        store.GetSnapshot("s2").Single().Key.WorkbenchId.Should().Be("markdown");
+        store.GetSnapshot("s2").Single().Key.WorkbenchId.Should().Be("video");
     }
 
     [Fact]

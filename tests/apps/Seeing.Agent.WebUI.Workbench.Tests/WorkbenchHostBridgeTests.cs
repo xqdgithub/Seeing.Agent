@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.Time.Testing;
 using Seeing.Agent.Abstractions.Ui.Workbench;
 using Seeing.Agent.WebUI.Workbench;
@@ -160,14 +160,14 @@ public class WorkbenchHostBridgeTests
     public void Snapshot_ShouldBeOrderedByDockThenId()
     {
         var (state, store, bridge, _) = Build();
-        state.Open("s1", WorkbenchDock.Right, Wb("markdown"));
+        state.Open("s1", WorkbenchDock.Right, Wb("video"));
         state.Open("s1", WorkbenchDock.Left, Wb("files"));
 
-        bridge.Flush("s1", [Wb("files"), Wb("markdown")]);
+        bridge.Flush("s1", [Wb("files"), Wb("video")]);
 
         store.GetSnapshot("s1")
             .Select(s => $"{s.Key.Dock}:{s.Key.WorkbenchId}")
-            .Should().Equal(["Left:files", "Right:markdown"]);
+            .Should().Equal(["Left:files", "Right:video"]);
     }
 
     [Fact]

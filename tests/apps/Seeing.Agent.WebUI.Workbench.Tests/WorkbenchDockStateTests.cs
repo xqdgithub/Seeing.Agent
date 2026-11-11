@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Seeing.Agent.Abstractions.Ui.Workbench;
 using Seeing.Agent.WebUI.Workbench;
 using System.Text.Json;
@@ -155,10 +155,10 @@ public class WorkbenchDockStateTests
         var state = new WorkbenchDockState();
 
         state.Open("s1", WorkbenchDock.Right, Wb("files"));
-        state.Open("s2", WorkbenchDock.Right, Wb("markdown"));
+        state.Open("s2", WorkbenchDock.Right, Wb("video"));
 
         state.GetLayout("s1").Right.Single().Key.WorkbenchId.Should().Be("files");
-        state.GetLayout("s2").Right.Single().Key.WorkbenchId.Should().Be("markdown");
+        state.GetLayout("s2").Right.Single().Key.WorkbenchId.Should().Be("video");
     }
 
     [Fact]
@@ -236,9 +236,9 @@ public class WorkbenchDockStateTests
 
         state.Restore("s1", new WorkbenchSessionLayout(
             [new WorkbenchInstance(new WorkbenchInstanceKey(WorkbenchDock.Left, "files"), "文件", "workbench.files", payload, null)],
-            [new WorkbenchInstance(new WorkbenchInstanceKey(WorkbenchDock.Right, "markdown"), "MD", "workbench.markdown", null, null)],
+            [new WorkbenchInstance(new WorkbenchInstanceKey(WorkbenchDock.Right, "video"), "MD", "workbench.video", null, null)],
             "Left:files#0",
-            "Right:markdown#0",
+            "Right:video#0",
             40,
             30));
 
@@ -259,7 +259,7 @@ public class WorkbenchDockStateTests
 
         state.Restore("s1", new WorkbenchSessionLayout(
             [new WorkbenchInstance(new WorkbenchInstanceKey(WorkbenchDock.Left, "files"), "文件", "workbench.files", null, null)],
-            [new WorkbenchInstance(new WorkbenchInstanceKey(WorkbenchDock.Right, "markdown"), "MD", "workbench.markdown", null, null)],
+            [new WorkbenchInstance(new WorkbenchInstanceKey(WorkbenchDock.Right, "video"), "MD", "workbench.video", null, null)],
             null,
             null,
             62,

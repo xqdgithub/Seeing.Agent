@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Seeing.Agent.Abstractions.Ui.Workbench;
 using Seeing.Agent.WebUI.Workbench;
 using System.Text.Json;
@@ -202,7 +202,7 @@ public class WorkbenchLayoutActionsTests
         state.SetWidth("s1", WorkbenchDock.Right, 65);
 
         // 同侧再开一个工作台（新标签）：宽度是用户拖出来的，不该被声明值覆盖
-        state.Open("s1", WorkbenchDock.Right, Wb("markdown", WorkbenchDock.Right, width: 50));
+        state.Open("s1", WorkbenchDock.Right, Wb("video", WorkbenchDock.Right, width: 50));
 
         state.GetLayout("s1").RightWidthPercent.Should().Be(65,
             "加标签不应把用户拖好的宽度重置回默认值");
@@ -213,7 +213,7 @@ public class WorkbenchLayoutActionsTests
     {
         var state = new WorkbenchDockState();
         state.Open("s1", WorkbenchDock.Right, Wb("files"));
-        state.Open("s1", WorkbenchDock.Left, Wb("markdown", WorkbenchDock.Left));
+        state.Open("s1", WorkbenchDock.Left, Wb("video", WorkbenchDock.Left));
 
         var layout = state.GetLayout("s1");
 
@@ -238,7 +238,7 @@ public class WorkbenchLayoutActionsTests
     {
         var state = new WorkbenchDockState();
         state.Open("s1", WorkbenchDock.Left, Wb("files", WorkbenchDock.Left));
-        state.Open("s1", WorkbenchDock.Right, Wb("markdown"));
+        state.Open("s1", WorkbenchDock.Right, Wb("video"));
 
         var layout = state.GetLayout("s1");
         (layout.LeftWidthPercent + layout.RightWidthPercent)
@@ -251,7 +251,7 @@ public class WorkbenchLayoutActionsTests
     {
         var state = new WorkbenchDockState();
         state.Open("s1", WorkbenchDock.Left, Wb("files", WorkbenchDock.Left, width: 30));
-        state.Open("s1", WorkbenchDock.Right, Wb("markdown", WorkbenchDock.Right, width: 30));
+        state.Open("s1", WorkbenchDock.Right, Wb("video", WorkbenchDock.Right, width: 30));
 
         // 想把右侧拖到 70%：左侧已在下限 20%，因此右侧最大只能到 75-20=55%
         state.SetWidth("s1", WorkbenchDock.Right, 70);
@@ -271,7 +271,7 @@ public class WorkbenchLayoutActionsTests
     {
         var state = new WorkbenchDockState();
         state.Open("s1", WorkbenchDock.Left, Wb("files", WorkbenchDock.Left, width: 20));
-        state.Open("s1", WorkbenchDock.Right, Wb("markdown", WorkbenchDock.Right, width: 20));
+        state.Open("s1", WorkbenchDock.Right, Wb("video", WorkbenchDock.Right, width: 20));
 
         // 一侧已经在下限，另一侧不能一路拖到 75
         state.SetWidth("s1", WorkbenchDock.Right, 75);
