@@ -977,6 +977,123 @@ ExtraArgs 顺序对调      → 签名变化（正确，顺序影响行为）   
 | `Signature_ShouldDistinguishExtraArgsOrdering` | 参数顺序进签名 |
 | `Signature_NullOptions_ShouldThrow` | 空参数防御 |
 
+## 十九、切换工作台标签后页面重载 / 接管失效（修复）
 
+两个症状一起报上来，追下去是**三条独立缺陷**叠加，其中两条同源。
 
+### 症状
 
+1. 「打开两个工作台，切到其他再切回来，浏览器会整个刷新，它不保持状态吗？」
+2. 「agent 已经不操控了，刷新一下页面就变成 agent 在操作遮罩，点击接管也不生效，一直显示 agent 操作状态。」
+
+### 缺陷一：dock 只渲染激活项 → 切 tab 即销毁组件
+
+`WorkbenchDockHost` 的注释写着「只渲染激活项：非激活项保留状态但不付渲染成本」——
+**注释是错的**。`@if (!IsActive(instance)) continue;` 的结果是组件被真正销毁，
+`BrowserWorkbench.DisposeAsync` 随之执行：`detach` → WebSocket 关闭、`states.delete()`、
+canvas 尺寸清空。切回来是全新挂载，谈不上「保持」。
+
+修复：改为 keep-alive。所有已打开实例都持续渲染，非激活项用 `display:none` 隐藏
+（`.workbench-view`）。代价是每个工作台保留 DOM 与 JS 状态，这是必要的 ——
+工作台的真实状态在服务端与 JS 模块里，组件只是视图，销毁视图不该影响它观看的东西。
+
+顺带把视图参数改成**按实例缓存**（`Dictionary<key, Dictionary<string,object>>`）：
+每帧新建参数字典会让 `DynamicComponent` 反复重渲染，并重复调用 `RegisterAction`。
+
+### 缺陷二：`OpenPayload` 从不消费 → 每次挂载重放导航
+
+`WorkbenchInstance.OpenPayload` 的契约注释写着「一次性指令」，但**没有任何地方兑现**：
+`Upsert` 只存不清。于是组件每次挂载都执行 `ReadOpenUrl() → NavigateAsync(url)`，
+服务端真的重新加载整页 —— 滚动位置、表单、视频进度全丢。
+
+修复：
+
+- `WorkbenchDockState.TakeOpenPayload(sessionId, key)`：**取走**语义，读完即清；
+  同步清掉实例投影上的 `OpenPayload`（否则 `WorkbenchViewContext.OpenPayload` 仍是旧值）。
+- `WorkbenchViewContext.TakeOpenPayload`（`required Func<JsonElement?>`）：视图侧唯一入口，
+  `OpenPayload` 属性保留但注明「不要直接读它做打开动作」。
+- 浏览器工作台在导航前再做一次 `IsAlreadyAt(url)` 比对：载荷里本就是 agent 刚导航到的地址，
+  页面已经在那儿了，再导航一次纯属重载。`ViewState` 的恢复路径同样比对。
+
+为什么消费状态必须记在**实例**上：组件会被销毁重建（缺陷一），任何存在组件字段里的
+「已消费」标记都会随之消失 —— 那正是缺陷的成因。
+
+### 缺陷三：纯 UI 动作点亮「智能体正在操作」→ 遮罩卡死且接管被撤销
+
+`ResizeAsync` 走 `RunAsync`，而 `RunAsync` 会 `_busy = 1` + `RaiseBusyChanged()`。
+链条是确定的：
+
+`刷新页面 → WS 重连 → 前端 onopen 立即 sendResize() → 服务端 busy=1 推送 → 遮罩盖上`
+
+同样走错通道的还有地址栏导航、工具栏刷新、前进、后退。
+再叠加前端规则 `if (busy && !wasBusy) _takenOver = false;` ——
+接管后本地 `_busy=false`，下一条 resize 状态推送就把接管态抹掉，遮罩盖回来。
+用户看到的就是「接管点了不生效，一直显示 agent 在操作」。
+
+修复：
+
+- 新增人工路径 `NavigateAsUserAsync` / `BackAsUserAsync` / `ForwardAsUserAsync` /
+  `ReloadAsUserAsync`（统一走 `RunHumanAsync`），`ResizeAsync` 也改走 `RunHumanAsync`。
+  agent 工具路径（`NavigateAsync` 等）保持不变，仍点亮忙碌态。
+- 端点 `BrowserStreamEndpoints` 里来自 WS 的人工输入切到 `*AsUserAsync`。
+  只有人工输入走这个端点（agent 走工具），所以这里全用人工通道。
+- 前端接管态改为**粘住**：`busy: false→true` 不再无条件撤销接管，
+  新增 `_takeoverJustConfirmed` 吃掉「接管刚确认后那条由中断收尾产生」的状态边。
+  中断是异步的，被取消的工具还持着页锁、`busy` 仍为 1，那条迟到的边不是「新一轮」。
+
+### 守门测试
+
+| 测试 | 钉住什么 |
+|------|---------|
+| `WorkbenchOpenPayloadTests`（9 项） | 首次返回载荷、二次为 null、实例投影同步清空、未知会话/dock 返回 null、重新打开可替换已消费载荷、换边跟随、恢复后为 null |
+| `BrowserHumanActionBusySemanticsTests`（10 项） | 人工方法与 agent 方法成对存在；人工方法必须含 `RunHumanAsync` 且不含 `=> RunAsync`；`ResizeAsync` 必须走人工通道；agent 通道不得为了修遮罩改成人工通道 |
+
+两个守门都做过**变异验证**：把 `ResizeAsync` 改回 `RunAsync`、把
+`NavigateAsUserAsync` 改成 `RunAsync`，对应用例立刻失败，改回后通过。
+否则它们只是「写了但抓不到」的空守门。
+
+全量：185（Browser）+ 90（Workbench）+ 451（WebUI）+ 解决方案 0 错误。
+
+## 二十、文件工作台 Markdown 表格与其它面板不一致（修复）
+
+### 症状
+
+「文件工作台中的 md 渲染和会话的 md 渲染样式不同，主要是表格没有框线和横向滚动条，导致很难看。」
+
+### 根因：同一管线，样式按容器类名各写一份
+
+三个面板共用一个 Markdown 管线（`Seeing.Markdown.MarkdownPipelineFactory`），表格样式却按**容器类名**分别书写：
+
+| 容器 | 表格框线 | 横向滚动 |
+|------|---------|---------|
+| `.message-content`（会话） | ✅ message-item.css | ✅ `.md-table-scroll` |
+| `.markdown-body`（记忆详情） | ✅ memory-page.css（第二份拷贝） | ✅ 继承 |
+| `.file-markdown`（文件工作台） | ❌ **完全没有** | ❌ **完全没有** |
+
+漏掉的那一份不会有任何报错：编译通过、其它测试全绿，只有真人在那个面板里看表格才发现。
+
+### 修复：锚在管线自己产出的标记上
+
+`MarkdownTableExtension` 为**每一个**表格包了 `div.md-table-scroll`，类名由
+`ContainerClass` 常量单一提供。这才是跨面板唯一可靠的锚点 —— 它与容器无关，
+新增面板（未来还会有）自动获得一致样式。
+
+- `message-item.css`：框线 / 内边距 / 表头底色 / `width:100%` 全部移到 `.md-table-scroll`
+  系列；删掉 `.message-content th, td` 与 `.message-content th` 两份重复定义。
+  `.message-content table` 只保留会话特有的字号与 `margin`（思考区 12px 的覆盖仍依赖它）。
+- `memory-page.css`：删掉整段复制的框线规则，只保留字号诉求。
+- `files-panel.css`：新增本面板特有的排版（标题层级、列表缩进、引用块、行内代码 vs 代码块），
+  **不**重复表格样式。
+
+### 守门测试
+
+| 测试 | 钉住什么 |
+|------|---------|
+| `MarkdownTableConsistencyTests`（10 项） | 管线必须产出滚动容器；框线与横向滚动必须锚在它上面；`.message-content th,` 与 `.markdown-body th,` 不得再出现框线（禁止按面板复制）；文件工作台容器必须可滚动；`pre code` 必须去掉行内底色 |
+| `MarkdownTableScrollTests` | 锚点迁到 `.md-table-scroll table`（原锚 `.message-content table` 只覆盖会话页） |
+| `MessageContentClassContractTests` | 同上迁移；容器类名契约保持原样 |
+
+变异验证：把框线规则改回 `.message-content th, td` 后 `MarkdownTableConsistencyTests`
+立刻失败 2 项，改回后通过。
+
+全量：458（WebUI）+ 90（Workbench）+ 185（Browser）+ 解决方案 0 错误。

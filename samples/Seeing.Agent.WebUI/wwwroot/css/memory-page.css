@@ -123,24 +123,15 @@
 }
 
 /* ========== 记忆详情：Markdown 正文 ==========
-   .markdown-body 此前没有任何样式规则，渲染出的表格没有框线、单元格贴身。
-   这里只补框线与内边距；字号沿用正文，不做放大（记忆正文以阅读为主）。
-   横向滚动由通用 .md-table-scroll（message-item.css）承担，无需在此重复。 */
-.markdown-body table {
-    border-collapse: collapse;
-    margin: var(--space-3) 0;
-    font-size: var(--font-size-sm);
-}
+   表格框线、内边距、表头底色与横向滚动**全部**由通用规则承担
+   （message-item.css 的 .md-table-scroll / .md-table-scroll th,td）——那是
+   Markdown 管线自己产出的容器，与记忆页、会话页、文件工作台都无关。
 
-.markdown-body th,
-.markdown-body td {
-    border: 1px solid var(--color-border);
-    padding: 6px var(--space-3);
-    text-align: left;
-    vertical-align: top;
-}
-
-.markdown-body th {
-    background: var(--color-bg-tertiary);
-    font-weight: var(--font-weight-semibold);
+   这里曾经复制过一份完全相同的框线规则。复制是这种「同一管线、多个容器」场景下
+   最容易犯的错：新增一个面板（文件工作台的 .file-markdown）就漏了一份，
+   表现为同一份 Markdown 在不同面板里长得不一样。此处只保留本页特有的字号诉求。 */
+.markdown-body {
+    /* 记忆正文以阅读为主。显式给 14px 而不是 var(--font-size-base)：
+       后者是 16px，会把表格字号一起拉大，与「表格不该压过正文」的既有取舍冲突。 */
+    font-size: 14px;
 }

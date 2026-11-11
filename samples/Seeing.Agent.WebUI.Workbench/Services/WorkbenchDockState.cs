@@ -167,6 +167,39 @@ public sealed class WorkbenchDockState
     }
 
     /// <summary>
+    /// 取走（并清除）某实例的打开载荷。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么必须"取走"而不是只读</b>：<c>OpenPayload</c> 的契约是<b>一次性指令</b>
+    /// （见 <see cref="WorkbenchInstance"/> 的注释），但早期实现只存不清 —— 于是工作台组件
+    /// 每次挂载都会重放它。浏览器工作台的重放动作是"导航到 url"，表现为
+    /// <b>切到别的标签再切回来、或刷新页面后，页面整页重新加载、滚动位置与表单全丢</b>
+    /// （用户实测报障："切换回来浏览器会整个刷新，它不会保持状态吗"）。
+    /// </para>
+    /// <para>
+    /// <b>为什么要落在这里而不是组件里</b>：组件在切 tab 时会被销毁重建
+    /// （dock 只渲染激活项），任何存在组件字段里的"已消费"标记都会随之消失 ——
+    /// 那正是缺陷的成因。消费必须记在<b>实例</b>上，它比组件活得久。
+    /// </para>
+    /// </remarks>
+    /// <returns>载荷（已同时从实例上清除）；没有载荷或实例不存在时为 <see langword="null"/>。</returns>
+    public JsonElement? TakeOpenPayload(string sessionId, WorkbenchInstanceKey key)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return null;
+
+        JsonElement? taken = null;
+        lock (_gate)
+        {
+            if (_bySession.TryGetValue(sessionId, out var bucket))
+                taken = bucket.TakeOpenPayload(key);
+        }
+
+        return taken;
+    }
+
+    /// <summary>
     /// 清掉不再可用的实例（模块停用 / 视图消失 / 工作台声明被撤回）。
     /// </summary>
     /// <param name="sessionId">会话 id。</param>
@@ -664,6 +697,26 @@ public sealed class WorkbenchDockState
 
             list[index] = current with { ViewState = viewState };
             return true;
+        }
+
+        /// <summary>取走（并清除）某实例的打开载荷；实例不存在或无载荷返回 <see langword="null"/>。</summary>
+        /// <remarks>
+        /// 清除是契约的一部分（"一次性指令"）：不清的话组件每次重建都会重放导航，
+        /// 表现为切换标签 / 刷新后页面整页重载。
+        /// </remarks>
+        public System.Text.Json.JsonElement? TakeOpenPayload(WorkbenchInstanceKey key)
+        {
+            var list = key.Dock == WorkbenchDock.Left ? _left : _right;
+            var index = list.FindIndex(instance => instance.Key.Equals(key));
+            if (index < 0)
+                return null;
+
+            var payload = list[index].OpenPayload;
+            if (payload is null)
+                return null;
+
+            list[index] = list[index] with { OpenPayload = null };
+            return payload;
         }
 
         private static bool SameState(

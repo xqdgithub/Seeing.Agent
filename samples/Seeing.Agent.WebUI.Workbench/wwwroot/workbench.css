@@ -148,6 +148,25 @@
     min-height: 0;
 }
 
+/* ===== 工作台视图容器（keep-alive） =====
+   非激活视图用 display:none 隐藏而不是不渲染：
+   不渲染会销毁组件、丢掉内部状态（浏览器工作台的 WS 连接与 canvas 画面）。
+   容器自身占满 body，内部组件按原有 flex 规则铺满。 */
+.workbench-view {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.workbench-view > * {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+}
+
 /* ===== 分隔线 ===== */
 
 .workbench-resize {

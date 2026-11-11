@@ -335,13 +335,45 @@
    表格会继承 body 的 16px + 1.75 行高，在同一屏里比思考区（12px）、
    工具卡片（11–12px）都更大更"重"，长参数列一换行一行就占到 90px 以上。
    取 14px 与单元格内的 `内联代码`（--font-size-sm）同号，视觉上不再压过正文。 */
+/* 会话气泡内的表格：只管**会话特有**的字号与间距。
+   宽度 / 折叠 / 框线 / 表头底色一律由下方 .md-table-scroll 系列承担
+   （Markdown 管线产出的容器，会话 / 记忆 / 文件工作台共用）。 */
 .message-content table {
-    width: 100%;
     margin: var(--space-3) 0;
-    border-collapse: collapse;
-    max-width: 100%;
     font-size: var(--font-size-sm);
     line-height: var(--line-height-normal);
+}
+
+/* ===== Markdown 表格：框线 / 内边距 / 表头底色（全局唯一实现） =====
+   ⚠ 锚点是 .md-table-scroll —— Markdown 管线（Seeing.Markdown.MarkdownTableExtension）
+   为**每一个**表格包的那层容器，类名由 ContainerClass 常量单一提供。
+
+   为什么必须挂在这里、而不是挂各个容器类（.message-content / .markdown-body / .file-markdown）：
+   同一段表格样式曾被复制到 .message-content（message-item.css）和 .markdown-body
+   （memory-page.css）两处，而文件工作台的 .file-markdown 一份都没拿到 ——
+   同一个渲染管线的产出，在不同面板里长得完全不一样：文件预览里的表格没有框线、
+   单元格贴身、列一多就被裁掉。用户实测报障：「文件工作台中的 md 渲染和会话的 md 渲染
+   样式不同，主要是表格没有框线和横向滚动条」。
+
+   挂在管线自己的标记上，新增容器（未来还有别的面板要显示 Markdown）自动获得一致样式，
+   不需要记得"再补一份 CSS"。 */
+.md-table-scroll table {
+    width: 100%;
+    border-collapse: collapse;
+    max-width: 100%;
+}
+
+.md-table-scroll th,
+.md-table-scroll td {
+    padding: 6px var(--space-3);
+    border: 1px solid var(--color-border);
+    text-align: left;
+    vertical-align: top;
+}
+
+.md-table-scroll th {
+    background: var(--color-bg-tertiary);
+    font-weight: var(--font-weight-semibold);
 }
 
 /* 表格横向滚动容器（由 ScrollableTableExtension 在 <table> 外包裹）。
@@ -376,19 +408,6 @@
 
 .md-table-scroll::-webkit-scrollbar-thumb:hover {
     background: var(--color-text-tertiary);
-}
-
-.message-content th,
-.message-content td {
-    padding: 6px var(--space-3);
-    border: 1px solid var(--color-border);
-    text-align: left;
-    vertical-align: top;
-}
-
-.message-content th {
-    background: var(--color-bg-tertiary);
-    font-weight: var(--font-weight-semibold);
 }
 
 /* 思考区容器自带 12px 内联字号（比正文更次级），表格必须跟着容器走，

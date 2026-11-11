@@ -154,6 +154,16 @@
     /// <summary>是否已由用户接管（接管后不再显示遮罩，输入放行）。</summary>
     private bool _takenOver;
 
+    /// <summary>
+    /// 接管刚确认：吃掉下一次 <c>busy: false → true</c> 的状态边。
+    /// </summary>
+    /// <remarks>
+    /// 中断是异步的（<c>InterruptAsync</c> 只取消令牌），被取消的工具可能还要一会儿才退出，
+    /// 期间它还持着页锁、<c>busy</c> 仍为 1。若把那条迟到的边当成「agent 开始新一轮」，
+    /// 用户刚点的接管会被立刻撤销 —— 症状是「点了接管但遮罩还在，反复点也一样」。
+    /// </remarks>
+    private bool _takeoverJustConfirmed;
+
     /// <summary>是否正在显示「确认接管」卡片。</summary>
     private bool _confirmTakeover;
 
@@ -179,11 +189,25 @@
                 await _module.InvokeVoidAsync("bindInput", _hostId);
                 _attached = true;
 
-                // 打开载荷带 url：首次挂载后立即导航过去
-                if (ReadOpenUrl() is { Length: > 0 } openUrl)
-                    await NavigateAsync(openUrl);
-                else if (ReadSavedUrl() is { Length: > 0 } savedUrl)
+                // ⚠ 不要直接读 Context.OpenPayload：切 tab 会销毁本组件，
+                // 而实例上的载荷是持久的，重读会导致每次切回来都重新导航一次
+                // （页面整页刷新、滚动与表单全丢 —— 用户实测报障）。
+                // TakeOpenPayload 是"取走"语义：同一个实例只有第一次拿得到。
+                if (Context.TakeOpenPayload() is { ValueKind: JsonValueKind.Object } payload
+                    && ReadString(payload, "url") is { Length: > 0 } openUrl)
+                {
+                    // 载荷里带的是 agent 刚导航到的地址，页面**已经**在该地址上了。
+                    // 再导航一次等于让 agent 打开的那一页重新加载：登录态、滚动位置、
+                    // 正在播放的视频全部归零。只有当服务端页面确实不在这个地址
+                    // （例如浏览器被回收后重建）时才需要补一次导航。
+                    if (!IsAlreadyAt(openUrl))
+                        await NavigateAsync(openUrl);
+                }
+                else if (ReadSavedUrl() is { Length: > 0 } savedUrl && !IsAlreadyAt(savedUrl))
+                {
+                    // 刷新恢复：ViewState 里是上次上报的地址。同样先比对，避免无谓重载。
                     await NavigateAsync(savedUrl);
+                }
             }
             catch (JSDisconnectedException)
             {
@@ -209,22 +233,40 @@
 
         // ── 接管状态的进出规则 ──
         //
-        // agent 重新开始操作（busy 从 false 变 true）= 新一轮任务，接管失效：
-        // 否则「接管过一次」会永久豁免遮罩，之后 agent 再操作时用户能同时点，
-        // 又回到两个来源抢同一页面的问题。
+        // 规则：接管态**粘住**，只由「页面没了」或「agent 确实开始新一轮」解除。
         //
-        // 反过来 busy 变 false 时**保持**接管态：中断后 busy 会归零，
-        // 但控制权仍在用户手里，不该因为「agent 停了」就把遮罩逻辑复位成初始态。
+        // 早期实现是「busy 从 false 变 true 就撤销接管」，看起来合理，实际是
+        // 「接管点了不生效」的成因：面板 resize、地址栏导航、工具栏刷新
+        // 当时都走 agent 的忙碌通道，于是接管后下一帧状态推送就把 _takenOver 抹掉，
+        // 遮罩立刻盖回来。那些动作现在已改走人工通道（不再点亮 busy），
+        // 但仍有两条真实的 true 边可能紧跟接管到达：
+        //   ① 中断是异步的，被取消的工具还没退完时 busy 仍是 1；
+        //   ② 已经排队的下一个工具可能在中断生效前拿到锁。
+        // 两者都不是「新一轮」，不该夺走控制权 —— 用 _takeoverJustConfirmed 吃掉这一边。
         var wasBusy = _busy;
         _busy = busy;
         _running = running;
 
         if (busy && !wasBusy)
-            _takenOver = false;
+        {
+            if (_takeoverJustConfirmed)
+            {
+                // 接管刚确认，这一边是中断收尾的余波，不是新一轮
+                _takeoverJustConfirmed = false;
+            }
+            else
+            {
+                // agent 确实开始了新一轮（用户又给它发了任务）：控制权交回 agent
+                _takenOver = false;
+            }
+        }
 
         // 页面没了（浏览器关闭）：接管态一并复位
         if (!running)
+        {
             _takenOver = false;
+            _takeoverJustConfirmed = false;
+        }
 
         // 只在「用户没在编辑地址栏」时同步地址文本。
         // 无条件覆盖的症状：用户敲到一半时页面推一条状态（导航完成、busy 变化都会推），
@@ -242,6 +284,10 @@
         _confirmTakeover = false;
         _takenOver = true;
         _busy = false;
+
+        // 吃掉紧接着可能到达的那条 busy=true（中断收尾的余波）。
+        // 只吃一次：再下一次 true 就是 agent 真开始新一轮了。
+        _takeoverJustConfirmed = interrupted;
 
         _connectionKind = "connected";
         _connectionText = interrupted
@@ -420,12 +466,20 @@
         return Task.CompletedTask;
     }
 
-    private string? ReadOpenUrl()
-        => Context.OpenPayload is { ValueKind: JsonValueKind.Object } payload
-           && payload.TryGetProperty("url", out var value)
-           && value.ValueKind == JsonValueKind.String
+    private static string? ReadString(JsonElement element, string name)
+        => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+
+    /// <summary>服务端页面是否已经停在该地址（避免无谓的重新导航）。</summary>
+    /// <remarks>
+    /// 判据用 <c>_currentUrl</c>（服务端推送的真实地址），不是配置或载荷。
+    /// 地址相等时再导航一次只会让页面重新加载 —— 那正是"切回来整个刷新"的第二个来源。
+    /// </remarks>
+    private bool IsAlreadyAt(string url)
+        => !string.IsNullOrWhiteSpace(_currentUrl)
+           && !string.Equals(_currentUrl, "about:blank", StringComparison.Ordinal)
+           && string.Equals(_currentUrl, url, StringComparison.Ordinal);
 
     private string? ReadSavedUrl()
         => Context.ViewState is { } state && state.TryGetValue("url", out var saved)

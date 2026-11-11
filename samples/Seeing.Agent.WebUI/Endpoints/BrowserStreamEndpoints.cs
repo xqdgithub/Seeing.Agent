@@ -377,7 +377,9 @@ public static class BrowserStreamEndpoints
                 ? await host.GetPageAsync(sessionId, null, ct).ConfigureAwait(false)
                 : host.TryGetPage(sessionId)!;
 
-            await page.NavigateAsync(url.Trim(), BrowserWaitUntil.DomContentLoaded, ct).ConfigureAwait(false);
+            // 地址栏导航是**用户**的动作，走人工通道：不点亮「智能体正在操作」遮罩。
+            // 走 agent 通道时，用户输完网址就被自己的遮罩挡住，连刚打开的页面都点不动。
+            await page.NavigateAsUserAsync(url.Trim(), BrowserWaitUntil.DomContentLoaded, ct).ConfigureAwait(false);
 
             // 第一次导航后页面才存在：此刻补订阅，前端才会收到画面
             await ensureSubscribed().ConfigureAwait(false);
@@ -422,15 +424,17 @@ public static class BrowserStreamEndpoints
                 break;
 
             case "reload":
-                await current.ReloadAsync(ct).ConfigureAwait(false);
+                // 工具栏刷新是用户动作：走人工通道，不点亮遮罩
+                await current.ReloadAsUserAsync(ct).ConfigureAwait(false);
                 break;
 
             case "history":
                 var direction = root.TryGetProperty("direction", out var dirElement) ? dirElement.GetString() : null;
+                // 同上：前进/后退来自工作台工具栏，属人工动作
                 if (string.Equals(direction, "back", StringComparison.Ordinal))
-                    await current.BackAsync(BrowserWaitUntil.DomContentLoaded, ct).ConfigureAwait(false);
+                    await current.BackAsUserAsync(BrowserWaitUntil.DomContentLoaded, ct).ConfigureAwait(false);
                 else
-                    await current.ForwardAsync(BrowserWaitUntil.DomContentLoaded, ct).ConfigureAwait(false);
+                    await current.ForwardAsUserAsync(BrowserWaitUntil.DomContentLoaded, ct).ConfigureAwait(false);
                 break;
 
             case "resize":

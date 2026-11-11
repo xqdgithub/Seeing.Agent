@@ -35,21 +35,31 @@ public class MessageContentClassContractTests
             $"{relativePath} 渲染 Markdown，容器必须带独立的 message-content 类，否则表格框线等样式静默失效");
     }
 
-    /// <summary>正文表格的框线、内边距、表头底色都必须由 .message-content 作用域提供。</summary>
+    /// <summary>
+    /// 表格的框线、内边距、表头底色必须由**共享的滚动容器**提供。
+    /// </summary>
+    /// <remarks>
+    /// 这条规则原先断言 <c>.message-content th, td</c>。那个锚点是错的：
+    /// 它只覆盖会话页，而同一份 Markdown 管线还被记忆页与文件工作台共用 ——
+    /// 文件工作台因此完全没有表格框线（用户实测报障）。
+    /// 现在锚在 <c>.md-table-scroll</c>（管线为每个表格包的那层容器），一次覆盖所有面板。
+    /// 「.message-content 存在且被用上」由本类其余用例守（容器类名契约），不受影响。
+    /// </remarks>
     [Fact]
     public void MessageContentTable_ShouldDefineBordersAndCellPadding()
     {
         var css = ReadWebUiSource("wwwroot/css/message-item.css");
+        var cls = Seeing.Markdown.MarkdownTableExtension.ContainerClass;
 
-        css.Should().Contain(".message-content table");
-        css.Should().Contain(".message-content th,");
-        css.Should().Contain(".message-content td");
+        css.Should().Contain($".{cls} table");
+        css.Should().Contain($".{cls} th,");
+        css.Should().Contain($".{cls} td");
 
-        var cellBlock = ExtractRuleBlock(css, ".message-content th,");
+        var cellBlock = ExtractRuleBlock(css, $".{cls} th,");
         cellBlock.Should().Contain("border:", "单元格必须有框线");
         cellBlock.Should().Contain("padding:", "单元格必须有内边距，否则列内容黏连");
 
-        var tableBlock = ExtractRuleBlock(css, ".message-content table");
+        var tableBlock = ExtractRuleBlock(css, $".{cls} table");
         tableBlock.Should().Contain("border-collapse", "相邻单元格边框需合并，避免双线");
     }
 

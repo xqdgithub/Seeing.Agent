@@ -212,89 +212,124 @@ public sealed class BrowserPageHandle : IAsyncDisposable
         }
     }
 
-    /// <summary>导航到指定地址。</summary>
+    /// <summary>导航到指定地址（agent 工具路径：点亮「智能体正在操作」）。</summary>
     public Task<BrowserNavigationResult> NavigateAsync(
         string url,
         BrowserWaitUntil waitUntil,
         CancellationToken cancellationToken)
-        => RunAsync(async () =>
+        => RunAsync(() => NavigateCoreAsync(url, waitUntil), cancellationToken);
+
+    /// <summary>
+    /// 导航到指定地址（<b>人工</b>路径：工作台地址栏，不点亮「智能体正在操作」）。
+    /// </summary>
+    /// <remarks>
+    /// <b>为什么必须区分</b>：地址栏是用户的操作，而忙碌遮罩的语义是「agent 的工具正在操作页面」。
+    /// 走 <see cref="RunAsync"/> 会在用户自己输入网址后点亮遮罩，并且因为遮罩**拦截输入**，
+    /// 用户随即连自己刚打开的页面都点不动 —— 表现为「我输入网址后整块区域不能用了」。
+    /// 与人工鼠标输入（<see cref="RunHumanAsync{T}"/>）同一条纪律。
+    /// </remarks>
+    public Task<BrowserNavigationResult> NavigateAsUserAsync(
+        string url,
+        BrowserWaitUntil waitUntil,
+        CancellationToken cancellationToken)
+        => RunHumanAsync(() => NavigateCoreAsync(url, waitUntil), cancellationToken);
+
+    private async Task<BrowserNavigationResult> NavigateCoreAsync(string url, BrowserWaitUntil waitUntil)
+    {
+        var stopwatch = Stopwatch.StartNew();
+
+        var response = await _page.GoToAsync(url, new NavigationOptions
         {
-            var stopwatch = Stopwatch.StartNew();
+            WaitUntil = MapWaitUntil(waitUntil),
+            Timeout = (int)ResolveTimeout().TotalMilliseconds
+        }).ConfigureAwait(false);
 
-            var response = await _page.GoToAsync(url, new NavigationOptions
-            {
-                WaitUntil = MapWaitUntil(waitUntil),
-                Timeout = (int)ResolveTimeout().TotalMilliseconds
-            }).ConfigureAwait(false);
+        stopwatch.Stop();
+        RefEpoch++;
+        await RefreshIdentityAsync().ConfigureAwait(false);
 
-            stopwatch.Stop();
-            RefEpoch++;
-            await RefreshIdentityAsync().ConfigureAwait(false);
+        return new BrowserNavigationResult(
+            CurrentUrl,
+            CurrentTitle,
+            response?.Status is { } status ? (int)status : null,
+            stopwatch.ElapsedMilliseconds);
+    }
 
-            return new BrowserNavigationResult(
-                CurrentUrl,
-                CurrentTitle,
-                response?.Status is { } status ? (int)status : null,
-                stopwatch.ElapsedMilliseconds);
-        }, cancellationToken);
-
-    /// <summary>后退。</summary>
+    /// <summary>后退（agent 工具路径）。</summary>
     public Task<BrowserNavigationResult> BackAsync(BrowserWaitUntil waitUntil, CancellationToken cancellationToken)
-        => RunAsync(async () =>
+        => RunAsync(() => BackCoreAsync(waitUntil), cancellationToken);
+
+    /// <summary>后退（<b>人工</b>路径：工作台工具栏，不点亮「智能体正在操作」）。</summary>
+    public Task<BrowserNavigationResult> BackAsUserAsync(BrowserWaitUntil waitUntil, CancellationToken cancellationToken)
+        => RunHumanAsync(() => BackCoreAsync(waitUntil), cancellationToken);
+
+    private async Task<BrowserNavigationResult> BackCoreAsync(BrowserWaitUntil waitUntil)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var response = await _page.GoBackAsync(new NavigationOptions
         {
-            var stopwatch = Stopwatch.StartNew();
-            var response = await _page.GoBackAsync(new NavigationOptions
-            {
-                WaitUntil = MapWaitUntil(waitUntil),
-                Timeout = (int)ResolveTimeout().TotalMilliseconds
-            }).ConfigureAwait(false);
+            WaitUntil = MapWaitUntil(waitUntil),
+            Timeout = (int)ResolveTimeout().TotalMilliseconds
+        }).ConfigureAwait(false);
 
-            stopwatch.Stop();
-            RefEpoch++;
-            await RefreshIdentityAsync().ConfigureAwait(false);
+        stopwatch.Stop();
+        RefEpoch++;
+        await RefreshIdentityAsync().ConfigureAwait(false);
 
-            return new BrowserNavigationResult(
-                CurrentUrl,
-                CurrentTitle,
-                response?.Status is { } status ? (int)status : null,
-                stopwatch.ElapsedMilliseconds);
-        }, cancellationToken);
+        return new BrowserNavigationResult(
+            CurrentUrl,
+            CurrentTitle,
+            response?.Status is { } status ? (int)status : null,
+            stopwatch.ElapsedMilliseconds);
+    }
 
-    /// <summary>前进。</summary>
+    /// <summary>前进（agent 工具路径）。</summary>
     public Task<BrowserNavigationResult> ForwardAsync(BrowserWaitUntil waitUntil, CancellationToken cancellationToken)
-        => RunAsync(async () =>
+        => RunAsync(() => ForwardCoreAsync(waitUntil), cancellationToken);
+
+    /// <summary>前进（<b>人工</b>路径：工作台工具栏，不点亮「智能体正在操作」）。</summary>
+    public Task<BrowserNavigationResult> ForwardAsUserAsync(BrowserWaitUntil waitUntil, CancellationToken cancellationToken)
+        => RunHumanAsync(() => ForwardCoreAsync(waitUntil), cancellationToken);
+
+    private async Task<BrowserNavigationResult> ForwardCoreAsync(BrowserWaitUntil waitUntil)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var response = await _page.GoForwardAsync(new NavigationOptions
         {
-            var stopwatch = Stopwatch.StartNew();
-            var response = await _page.GoForwardAsync(new NavigationOptions
-            {
-                WaitUntil = MapWaitUntil(waitUntil),
-                Timeout = (int)ResolveTimeout().TotalMilliseconds
-            }).ConfigureAwait(false);
+            WaitUntil = MapWaitUntil(waitUntil),
+            Timeout = (int)ResolveTimeout().TotalMilliseconds
+        }).ConfigureAwait(false);
 
-            stopwatch.Stop();
-            RefEpoch++;
-            await RefreshIdentityAsync().ConfigureAwait(false);
+        stopwatch.Stop();
+        RefEpoch++;
+        await RefreshIdentityAsync().ConfigureAwait(false);
 
-            return new BrowserNavigationResult(
-                CurrentUrl,
-                CurrentTitle,
-                response?.Status is { } status ? (int)status : null,
-                stopwatch.ElapsedMilliseconds);
-        }, cancellationToken);
+        return new BrowserNavigationResult(
+            CurrentUrl,
+            CurrentTitle,
+            response?.Status is { } status ? (int)status : null,
+            stopwatch.ElapsedMilliseconds);
+    }
 
-    /// <summary>重新加载。</summary>
+    /// <summary>重新加载（agent 工具路径）。</summary>
     public Task ReloadAsync(CancellationToken cancellationToken)
-        => RunAsync(async () =>
-        {
-            await _page.ReloadAsync(new ReloadOptions
-            {
-                Timeout = (int)ResolveTimeout().TotalMilliseconds
-            }).ConfigureAwait(false);
+        => RunAsync(ReloadCoreAsync, cancellationToken);
 
-            RefEpoch++;
-            await RefreshIdentityAsync().ConfigureAwait(false);
-            return true;
-        }, cancellationToken);
+    /// <summary>重新加载（<b>人工</b>路径：工作台工具栏刷新按钮，不点亮「智能体正在操作」）。</summary>
+    public Task ReloadAsUserAsync(CancellationToken cancellationToken)
+        => RunHumanAsync(ReloadCoreAsync, cancellationToken);
+
+    private async Task<bool> ReloadCoreAsync()
+    {
+        await _page.ReloadAsync(new ReloadOptions
+        {
+            Timeout = (int)ResolveTimeout().TotalMilliseconds
+        }).ConfigureAwait(false);
+
+        RefEpoch++;
+        await RefreshIdentityAsync().ConfigureAwait(false);
+        return true;
+    }
 
     /// <summary>采集快照。</summary>
     public Task<BrowserSnapshot> SnapshotAsync(
@@ -726,9 +761,18 @@ public sealed class BrowserPageHandle : IAsyncDisposable
                 .ConfigureAwait(false);
         }, cancellationToken);
 
-    /// <summary>更新视口（面板尺寸变化时）。</summary>
+    /// <summary>
+    /// 更新视口（面板尺寸变化时）。
+    /// </summary>
+    /// <remarks>
+    /// <b>为什么走人工通道</b>：视口大小完全由用户在界面上拖拽面板决定，与 agent 无关。
+    /// 走 <see cref="RunAsync"/> 的后果是可见且确定的：页面每次刷新 → WS 重连 →
+    /// 前端 <c>onopen</c> 立即 <c>sendResize()</c> → 服务端点亮 <c>busy=1</c> → 遮罩盖上。
+    /// 用户看到的是「刷新一下，智能体又说它在操作」，而 agent 根本没在跑。
+    /// 更糟的是遮罩会拦截输入，接管按钮自己也被压在下面。
+    /// </remarks>
     public Task ResizeAsync(int width, int height, int pixelRatio, CancellationToken cancellationToken)
-        => RunAsync<bool>(async () =>
+        => RunHumanAsync<bool>(async () =>
         {
             var clampedWidth = Math.Clamp(width, 320, 4096);
             var clampedHeight = Math.Clamp(height, 240, 4096);

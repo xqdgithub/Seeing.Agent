@@ -49,11 +49,16 @@ public class MarkdownTableScrollTests
     /// 表格自身的 <c>width: 100%</c> 必须保留：窄表格要铺满气泡，
     /// 而不是因为外面多包了一层就缩成内容宽度（那会让所有表格都变窄）。
     /// </summary>
+    /// <remarks>
+    /// 断言锚点已从 <c>.message-content table</c> 迁到 <c>.md-table-scroll table</c> ——
+    /// 后者是 Markdown 管线自己产出的容器，所有面板共用；前者只覆盖会话页，
+    /// 文件工作台正因为漏了这一份才没有框线与横向滚动。
+    /// </remarks>
     [Fact]
     public void TableRule_ShouldStillFillWidth()
     {
         var css = ReadWebUiSource("wwwroot/css/message-item.css");
-        var rule = ExtractRuleBlock(css, ".message-content table {");
+        var rule = ExtractRuleBlock(css, $".{MarkdownTableExtension.ContainerClass} table {{");
 
         rule.Should().Contain("width: 100%",
             "宽表格由 min-content 撑开、窄表格仍要铺满；去掉 width:100% 会让所有表格缩水");
