@@ -26,8 +26,9 @@ public static class WebUiWorkbenchViews
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(views);
 
+        // markdown 已合并进 files（preview 载荷键 + 标签栏切换），历史 id 由
+        // LegacyWorkbenchAlias 在宿主侧别名为 files + preview=true。
         Register(registry, views, "files", typeof(FilesWorkbench));
-        Register(registry, views, "markdown", typeof(MarkdownWorkbench));
     }
 
     private static void Register(
