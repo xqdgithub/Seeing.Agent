@@ -137,9 +137,14 @@
 
             <FormItem Label="浏览器可执行文件路径（留空自动探测）">
                 <Input @bind-Value="@_model.ExecutablePath"
-                       Placeholder="留空 → 系统 Edge → 系统 Chrome → 用户级 Chrome/Chromium" />
+                       Placeholder="@ExecutablePlaceholder" />
                 <div class="browser-settings-hint" style="color:#888;font-size:12px;margin-top:4px;line-height:1.6;">
                     当前探测结果：<code>@_resolvedExecutable</code>
+                    <Button Type="@ButtonType.Link" Size="@ButtonSize.Small"
+                            OnClick="RefreshExecutableAndRender">重新探测</Button>
+                    <br />
+                    每次启动浏览器都会重新探测磁盘，因此<b>装好浏览器后无需重启服务</b>，
+                    下次调用即可命中；这里点「重新探测」只是刷新本页显示。
                 </div>
             </FormItem>
 
@@ -228,6 +233,21 @@
             ? $"{resolved.Path}（{resolved.Source}）"
             : resolved.Source;
     }
+
+    /// <summary>手动刷新探测结果（用户刚装完浏览器，不想重启服务只想看探测是否命中）。</summary>
+    private void RefreshExecutableAndRender()
+    {
+        RefreshExecutable();
+        StateHasChanged();
+    }
+
+    /// <summary>输入框占位文案：按平台给出真实候选顺序（写死 Windows 会误导 Linux 用户）。</summary>
+    private static string ExecutablePlaceholder
+        => OperatingSystem.IsWindows()
+            ? "留空 → 系统 Edge → 系统 Chrome → 用户级 Chrome/Edge/Chromium"
+            : OperatingSystem.IsMacOS()
+                ? "留空 → /Applications 下的 Chrome / Chromium / Edge"
+                : "留空 → /usr/bin、/opt、/snap/bin、PATH、Puppeteer 缓存中的 Chrome / Chromium";
 
     private async Task SaveAsync()
     {

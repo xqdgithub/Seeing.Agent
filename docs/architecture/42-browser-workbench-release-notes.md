@@ -442,11 +442,94 @@ agent 调 browser_open("https://github.com/login")
 | 项 | 说明 |
 |----|------|
 | `Headless` | 默认 true（无桌面环境也能跑）；需人工登录/观察时设 false |
-| `ExecutablePath` | null 时探测：系统 Edge → 系统 Chrome → 用户级 Chrome/Chromium |
+| `ExecutablePath` | null 时按平台探测，见 §九之二 |
 | `IdleSeconds` | 页面静默回收（只关页面与 context，不关进程）；0 = 不回收 |
 | `PersistLogin` | 默认 true：复用持久 profile 保留登录态，代价是 cookie 跨会话共享（见 §八之二） |
 | `ProfileDirectory` | null 时用 `{用户目录}/.seeing/browser-profile`；仅在 `PersistLogin=true` 时生效 |
 | 视口/超时 | 有钳制（宽 320–4096、高 240–4096、超时 1–300 秒）：配置写坏不得让页面变 1px |
+
+## 九之二、跨平台可执行文件探测（Linux / macOS）
+
+### 事故
+
+Ubuntu 服务器上装了 Chromium，工具却始终报「未找到 Edge / Chrome」，且**装完之后一直探测不到**。原因有两层：
+
+1. `Candidates()` 只列了 Windows 路径（`%ProgramFiles%\Microsoft\Edge\Application\msedge.exe` 等）。
+   `Environment.SpecialFolder.ProgramFiles` 在 Linux 上返回空串，于是候选集合为空 ——
+   不是「探测失败」，而是**一个候选都没有**，所以无论装什么都命中不了。
+2. 失败文案写死「请安装 Microsoft Edge 或 Google Chrome」——Ubuntu 上这两个包
+   都不在默认 apt 源里，文案没给出任何可执行动作。
+
+### 修复
+
+**① 候选清单按平台分支**（`BrowserEngine.Candidates(BrowserPlatform)`，平台做成显式参数以便在任意平台上钉住三种清单）：
+
+| 平台 | 顺序 |
+|------|------|
+| Windows | Edge（ProgramFiles(x86) → ProgramFiles）→ Chrome → 用户级 Chrome / Edge / Chromium（`%LOCALAPPDATA%`，本次补上用户级 Edge） |
+| macOS | `/Applications` 下的 Chrome → Chromium → Edge 应用包 |
+| Linux | `/usr/bin/google-chrome-stable` → `google-chrome` → `/opt/google/chrome/chrome` → `/usr/bin/chromium` → `/usr/bin/chromium-browser`（Debian 旧包名）→ `/snap/bin/chromium`（Ubuntu apt 装 chromium 常落 snap）→ Edge → **PATH 扫描** → **Puppeteer 下载缓存** |
+
+PATH 扫描与缓存扫描的理由：
+
+- PATH：手动解压、`~/.local/bin`、conda 环境不在任何标准目录，但一定在 PATH 上。只读环境变量 + `File.Exists`，不启动 `which` 子进程。
+- 缓存：用户可能已按 Puppeteer 文档跑过 `BrowserFetcher.DownloadAsync()`，浏览器在 `~/.cache/puppeteer`（新版 `chrome-linux64/chrome`）或 `~/.local-chromium`（旧版 `chrome-linux/chrome`）。目录按版本名降序，刚下载的优先。
+
+**② 「找不到可执行文件」不再吃失败冷却**
+
+`FailureCooldown = 10s` 原本对所有失败一视同仁。但这两种失败对重试的期待完全相反：
+
+| 失败形态 | 用户预期 | 处理 |
+|---------|---------|------|
+| 磁盘上找不到可执行文件（还没装） | 装完**立刻**可用 | 跳过冷却（`BrowserExecutableMissingException` 标记） |
+| 进程起不来（profile 锁、崩溃） | 频繁重试只会更慢 | 保留 10 秒冷却 |
+
+「服务先起来、运行中才装浏览器」是服务器部署的正常顺序，让用户为此等冷却、
+或误以为「装了也没用」，代价远大于一次 `File.Exists`（探测本身不起进程）。
+用异常类型而非匹配错误文案来区分 —— 文案会改。
+
+**③ root 运行时自动补 `--no-sandbox`**
+
+Chromium 以 root 运行且未加该参数时**硬拒绝启动**
+（`Running as root without --no-sandbox is not supported`）。
+反检测档原本刻意不加它（它会削弱指纹），于是在 Ubuntu 服务器（通常 root / sudo）上
+「反检测开着 = 浏览器完全起不来」，且只报「启动失败」。
+
+`BrowserEngine.MustDisableSandbox()` 在非 Windows 且用户名为 `root` 时返回 true，
+反检测档据此补上该参数。误判代价可控：非 root 的 `root` 用户多一个参数，
+指纹稍弱但能跑 —— 远好过反向的「完全起不来」。
+
+**④ 失败文案与设置页按平台给指引**
+
+`BrowserEngine.InstallHint()` 在 Linux 上直接给出 `sudo apt install chromium-browser`；
+设置页的 `ExecutablePath` 占位文案也按平台变化，并新增「重新探测」按钮
+（装好浏览器后无需重启服务，按钮只刷新页面显示）。
+
+**⑤ 探测每次读磁盘，不做进程级缓存**
+
+`ResolveExecutable` 每次调用都重新探测。缓存会让「启动时没装、运行中才装」永远命中不了，
+而探测成本是若干次 `File.Exists`，远低于一次失败的进程启动。
+
+## 九之三、启动失败的可读解释（Linux 服务器专项）
+
+Ubuntu 上「可执行文件找到了但起不来」有三个高频原因，原始异常全都是
+`ProcessException: Failed to launch browser!` 加一段夹着 stderr 的文本 —— 用户看不出该做什么。
+
+`BrowserEngine.TryExplainLaunchFailure(string, out string?)` 把这些模式翻成可执行指引：
+
+| stderr 特征 | 真实原因 | 给出的指引 |
+|-------------|---------|-----------|
+| `error while loading shared libraries: libnss3.so` | 精简镜像 / 最小化服务器缺 Chromium 运行时依赖 | 完整 `sudo apt install -y libnss3 libatk1.0-0 … libgbm1 libasound2`，并点名缺失的那个库 |
+| `Missing X server or $DISPLAY` | 无图形会话却开有头 | 改无头模式，或 `xvfb-run -a` 启动服务 |
+| `No usable sandbox` / `namespace sandbox` | Docker / 受限容器沙箱不可用 | 在「追加启动参数」里加 `--no-sandbox --disable-setuid-sandbox` |
+| 其他 | — | 返回 `false`，原样抛出（不吞信息、不给错指引） |
+
+配套的**前置拦截**：`MissingDisplay()` 在有头模式 + 无 `DISPLAY`/`WAYLAND_DISPLAY` 时直接抛出
+说明性错误，而不是等 Chromium 自己失败。刻意**不**静默回落无头 ——
+用户开有头就是为了反检测，悄悄换掉会变成「设置里明明关了无头，行为却没变」这种更难查的问题。
+
+`IsProfileLocked`（`The browser is already running`）有独立的重试路径，
+明确排除在上述解释之外：否则用户会去 `apt install` 一个根本不缺的包。
 
 ## 十、破坏性变更
 
