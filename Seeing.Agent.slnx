@@ -21,6 +21,7 @@
   <Folder Name="/src/primitives/">
     <Project Path="src/primitives/Seeing.ConfigSchema/Seeing.ConfigSchema.csproj" />
     <Project Path="src/primitives/Seeing.Files/Seeing.Files.csproj" />
+    <Project Path="src/primitives/Seeing.Markdown/Seeing.Markdown.csproj" />
     <Project Path="src/primitives/Seeing.Session/Seeing.Session.csproj" />
     <Project Path="src/primitives/Seeing.TokenEstimation/Seeing.TokenEstimation.csproj" />
   </Folder>
@@ -87,6 +88,7 @@
   </Folder>
   <Folder Name="/tests/primitives/">
     <Project Path="tests/primitives/Seeing.ConfigSchema.Tests/Seeing.ConfigSchema.Tests.csproj" />
+    <Project Path="tests/primitives/Seeing.Markdown.Tests/Seeing.Markdown.Tests.csproj" />
     <Project Path="tests/primitives/Seeing.Session.Tests/Seeing.Session.Tests.csproj" />
     <Project Path="tests/primitives/Seeing.TokenEstimation.Tests/Seeing.TokenEstimation.Tests.csproj" />
   </Folder>

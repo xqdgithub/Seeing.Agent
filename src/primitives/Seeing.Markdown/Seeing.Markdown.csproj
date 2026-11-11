@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Seeing.Markdown</RootNamespace>
+    <Description>Markdown 渲染原语：统一管线、表格横向滚动、frontmatter 剥离。仅依赖 Markdig，供宿主 UI 层复用。</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Markdig" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Seeing.Markdown.Tests" />
+  </ItemGroup>
+</Project>
