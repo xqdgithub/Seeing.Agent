@@ -115,12 +115,13 @@ public class SettingsAndSlotMigrationTests
     [Fact]
     public void WorkbenchContributions_ShouldBeOwnedByTheirProvidingModule()
     {
-        // 文件工作台与 Markdown 预览都由 files.workspace 声明（同一个模块，两块视图）
+        // 只有一个「文件」工作台：Markdown 预览已并入其中（preview 载荷键 + 标签栏切换），
+        // 历史 id markdown 由宿主 LegacyWorkbenchAlias 别名兼容，不再是独立声明。
         var module = new Seeing.Agent.Files.FileWorkspaceModule();
         var contributions = module.DescribeUi().OfType<Seeing.Agent.Abstractions.Ui.Workbench.WorkbenchContribution>().ToList();
 
-        contributions.Should().HaveCount(2);
-        contributions.Select(c => c.Id).Should().BeEquivalentTo("files", "markdown");
+        contributions.Should().HaveCount(1, "markdown 已合并进 files，声明表只应剩下一条");
+        contributions.Select(c => c.Id).Should().BeEquivalentTo("files");
 
         foreach (var contribution in contributions)
         {
@@ -129,6 +130,27 @@ public class SettingsAndSlotMigrationTests
             contribution.ViewKey.Should().StartWith(Seeing.Agent.Abstractions.Ui.Workbench.WorkbenchPoints.ViewKeyPrefix);
             contribution.OpenPayloadSchema.Should().NotBeNull("工作台必须给 agent 一个「该传什么」的提示");
         }
+    }
+
+    /// <summary>
+    /// files 工作台的打开载荷必须声明 <c>preview</c> 键，否则 agent 无从知道
+    /// 「可以要求以编辑态打开 Markdown」，只能盲传。
+    /// </summary>
+    [Fact]
+    public void FilesWorkbench_OpenPayloadSchema_ShouldDeclarePreviewKey()
+    {
+        var module = new Seeing.Agent.Files.FileWorkspaceModule();
+        var files = module.DescribeUi()
+            .OfType<Seeing.Agent.Abstractions.Ui.Workbench.WorkbenchContribution>()
+            .Single(c => c.Id == "files");
+
+        var schema = files.OpenPayloadSchema!.Value;
+        schema.TryGetProperty("properties", out var properties).Should().BeTrue();
+        properties.TryGetProperty("preview", out var preview).Should().BeTrue(
+            "preview 是「以预览态打开」的唯一入口；缺了它 agent 无法选编辑态");
+        preview.GetProperty("type").GetString().Should().Be("boolean");
+        schema.GetProperty("required").EnumerateArray().Select(e => e.GetString())
+            .Should().Contain("path").And.NotContain("preview", "preview 必须可选");
     }
 
     [Fact]

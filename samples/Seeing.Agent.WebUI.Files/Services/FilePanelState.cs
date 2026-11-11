@@ -6,7 +6,8 @@ namespace Seeing.Agent.WebUI.Files.Services;
 /// <param name="Id">目标资源标识。</param>
 /// <param name="Line">目标行（1-based）。</param>
 /// <param name="Column">目标列（1-based）。</param>
-public sealed record FileOpenRequest(FileResourceId Id, int? Line = null, int? Column = null);
+/// <param name="Preview">是否预览（null = 用标签默认值；仅 Markdown 有意义）。</param>
+public sealed record FileOpenRequest(FileResourceId Id, int? Line = null, int? Column = null, bool? Preview = null);
 
 /// <summary>
 /// 文件工作台的会话级 UI 状态（Scoped，circuit 维度）。
@@ -26,6 +27,18 @@ public sealed class FilePanelState
 
     /// <summary>待处理的打开请求（工作台尚未就绪时暂存，由工作台消费）。</summary>
     public FileOpenRequest? PendingOpen { get; private set; }
+
+    /// <summary>当前激活标签（由 FilePanelHost 在标签变化时同步；null = 无打开文件）。</summary>
+    public OpenFile? ActiveFile { get; private set; }
+
+    /// <summary>由宿主同步当前激活标签；变化时触发 <see cref="Changed"/>。</summary>
+    /// <param name="file">当前激活标签。</param>
+    public void SetActiveFile(OpenFile? file)
+    {
+        if (ReferenceEquals(ActiveFile, file)) return;
+        ActiveFile = file;
+        Changed?.Invoke();
+    }
 
     private readonly Dictionary<string, FileTabsState> _tabsBySession = new(StringComparer.Ordinal);
 

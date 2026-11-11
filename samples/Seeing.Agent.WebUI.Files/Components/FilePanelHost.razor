@@ -166,13 +166,15 @@
     {
         if (_workspace is null || PanelState.PendingOpen is not { } pending) return;
         PanelState.ConsumePendingOpen();
-        await OpenOrActivateAsync(pending.Id, refreshIfActive: true, pending.Line, pending.Column);
+        await OpenOrActivateAsync(pending.Id, refreshIfActive: true, pending.Line, pending.Column, pending.Preview);
     }
 
     private void OnTabsChanged() => _ = InvokeAsync(() =>
     {
         // 树与右侧激活标签联动：高亮对应文件并展开祖先目录
         SyncTreeSelection();
+        // 工作台视图据此上报「正在看哪个文件」，无需反查 FileTabsState
+        PanelState.SetActiveFile(_tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == _tabs.ActiveKey));
         // 无打开文件且目录树收起时，连同文件面板一起关闭；否则保持「无打开文件」状态
         ClosePanelIfEmpty();
         StateHasChanged();
@@ -249,7 +251,8 @@
     /// 打开/切换/刷新：已是当前标签则按需从磁盘刷新；已在其他标签则切换；否则新开标签。
     /// 若指定 line/column，则定位到该位置（1-based）。
     /// </summary>
-    public async Task OpenOrActivateAsync(FileResourceId id, bool refreshIfActive, int? line = null, int? column = null)
+    public async Task OpenOrActivateAsync(
+        FileResourceId id, bool refreshIfActive, int? line = null, int? column = null, bool? preview = null)
     {
         if (_workspace is null) return;
 
@@ -278,6 +281,10 @@
             var binary = await ReadBinaryIfNeededAsync(file);
             _tabs.Open(file, binary);
         }
+
+        // 显式 preview 覆盖标签默认值（agent 可要求以编辑态打开 .md）
+        if (preview is { } wantPreview)
+            _tabs.SetPreview(id, wantPreview);
 
         SetError(null);
         if (line is not null)
@@ -341,13 +348,17 @@
     /// 宿主桥接入口：按路径打开（工作台打开载荷用）。
     /// <para>路径经工作区解析为资源标识，与文件树走同一套根规则。</para>
     /// </summary>
-    public async Task OpenPathAsync(string path, int? line = null, int? column = null)
+    /// <param name="path">文件路径（绝对或相对工作目录）。</param>
+    /// <param name="line">跳转行号（1-based，可空）。</param>
+    /// <param name="column">跳转列号（1-based，可空）。</param>
+    /// <param name="preview">是否预览（null = 用标签默认值）。</param>
+    public async Task OpenPathAsync(string path, int? line = null, int? column = null, bool? preview = null)
     {
         if (_workspace is null || string.IsNullOrWhiteSpace(path))
             return;
 
         var id = _workspace.GetResourceId(path);
-        await OpenOrActivateAsync(id, refreshIfActive: false, line, column);
+        await OpenOrActivateAsync(id, refreshIfActive: false, line, column, preview);
     }
 
     private async Task RefreshAsync(FileResourceId id)
