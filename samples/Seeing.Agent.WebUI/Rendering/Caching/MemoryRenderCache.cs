@@ -1,5 +1,6 @@
 using Markdig;
 using Seeing.Agent.WebUI.Rendering.Abstractions;
+using Seeing.Agent.WebUI.Rendering.MarkdownExtensions;
 using System.Collections.Concurrent;
 
 namespace Seeing.Agent.WebUI.Rendering.Caching;
@@ -51,6 +52,9 @@ public class MemoryRenderCache : IRenderCache
             .UseFootnotes()
             .UseMathematics()
             .UseSmartyPants()
+            // 表格套横向滚动容器：多列表格超出气泡宽度时右侧列不再被外层 overflow-x:hidden 剪掉。
+            // 必须排在 UsePipeTables/UseGridTables 之后（替换它们注册的表格渲染器）。
+            .Use<ScrollableTableExtension>()
             .Build();
     }
 

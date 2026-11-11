@@ -344,6 +344,40 @@
     line-height: var(--line-height-normal);
 }
 
+/* 表格横向滚动容器（由 ScrollableTableExtension 在 <table> 外包裹）。
+   表格列一多、单元格里又有长内联代码时，min-content 宽度会超过气泡宽度：
+   <table> 自己的 overflow-x 不裁剪自身内容，救不了；外层 .message-list-container
+   又是 overflow-x: hidden（横向滚动归页面布局独占），右侧列因此被直接剪掉。
+   把滚动交给这层容器，表格列宽算法不变，放不下时才出现横向滚动条。
+   选择器不挂在 .message-content 下：思考区、子代理等容器同样渲染 Markdown，
+   而 .md-table-scroll 只由该渲染扩展产出，不存在误命中的可能。 */
+.md-table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    /* 垂直方向不参与滚动：表格高度由内容决定，避免出现双滚动条 */
+    overflow-y: hidden;
+    /* 滚到底后不要把横向滚动链递给别的容器（否则整页跟着左右抖） */
+    overscroll-behavior-x: contain;
+}
+
+/* 横向滚动条常驻可见：overlay 滚动条只在滚动时才浮现，用户不知道表格还能往右滑 */
+.md-table-scroll::-webkit-scrollbar {
+    height: 8px;
+}
+
+.md-table-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.md-table-scroll::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: var(--radius-full);
+}
+
+.md-table-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-tertiary);
+}
+
 .message-content th,
 .message-content td {
     padding: 6px var(--space-3);
