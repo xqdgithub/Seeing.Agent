@@ -26,6 +26,12 @@
         </div>
         <FileViewer Tabs="Tabs" />
     }
+    else if (f.Kind is FileContentKind.Markdown && f.PreviewMode)
+    {
+        @* 无 diff 的预览态：复用 FileViewer 的 Markdown 分支（共享管线，含表格滚动）。
+           diff 优先于预览 —— 上面的 PendingDiff 分支先于本分支渲染。 *@
+        <FileViewer Tabs="Tabs" />
+    }
     else
     {
         @if (_saveError is not null)

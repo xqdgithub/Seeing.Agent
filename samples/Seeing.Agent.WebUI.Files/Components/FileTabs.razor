@@ -1,3 +1,4 @@
+@using Seeing.Agent.Abstractions.Files
 @using Seeing.Agent.WebUI.Files.Services
 @implements IDisposable
 
@@ -16,6 +17,15 @@
             </div>
         }
     </div>
+    @if (CanTogglePreview)
+    {
+        <button type="button"
+                class="file-tab-preview"
+                title="@(Active!.PreviewMode ? "切换到编辑" : "切换到预览")"
+                @onclick="TogglePreviewClicked">
+            @(Active!.PreviewMode ? "编辑" : "预览")
+        </button>
+    }
     @if (HasActiveEditable)
     {
         <button type="button"
@@ -48,6 +58,17 @@
         Tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == Tabs.ActiveKey);
 
     private bool HasActiveEditable => Active is { IsReadOnly: false, IsDeleted: false };
+
+    /// <summary>仅 Markdown 可切换；图片/二进制/已删除文件无预览形态。</summary>
+    private bool CanTogglePreview =>
+        Active is { Kind: FileContentKind.Markdown, IsDeleted: false };
+
+    private void TogglePreviewClicked()
+    {
+        var f = Active;
+        if (f is null) return;
+        Tabs.TogglePreview(f.Id);
+    }
 
     private bool IsDirty => Active?.HasUnsavedChanges == true;
 
