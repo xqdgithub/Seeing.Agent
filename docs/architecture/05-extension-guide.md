@@ -246,13 +246,13 @@ new SlotContribution
 new WorkbenchContribution
 {
     Point = WorkbenchPoints.DockId,
-    Id = "markdown",
-    Title = "Markdown 预览",
-    ViewKey = WorkbenchPoints.ViewKeyFor("markdown"),   // 约定 workbench.<id>
+    Id = "files",
+    Title = "文件",
+    ViewKey = WorkbenchPoints.ViewKeyFor("files"),   // 约定 workbench.<id>
     Requires = [Id],
-    Order = 20,
+    Order = 10,
     DefaultDock = WorkbenchDock.Right,
-    Sizing = new WorkbenchSizing(DefaultPercent: 50, MinPx: 360),
+    Sizing = new WorkbenchSizing(DefaultPercent: 50, MinPx: 380),
     OpenPayloadSchema = /* required: ["path"] */,
     ContributesContext = true,      // 是否把「在看什么」喂给模型；默认 false
 }
@@ -261,7 +261,7 @@ new WorkbenchContribution
 **③ 在宿主登记视图**（`Shell/WebUiWorkbenchViews.cs` 加一行）：
 
 ```csharp
-Register(registry, views, "markdown", typeof(MarkdownWorkbench));
+Register(registry, views, "files", typeof(FilesWorkbench));
 ```
 
 登记时会硬校验组件确实声明了 `WorkbenchViewContext` 参数，并同步到通用视图表（信封校验需要能解析）。
@@ -276,6 +276,19 @@ Register(registry, views, "markdown", typeof(MarkdownWorkbench));
 ### 5.5 别做成贡献的东西
 
 侧栏「聊天」「审批中心」、侧栏底部工具条、首页 dashboard 卡片、斜杠命令、通知横幅、Token 预算状态栏、会议页侧栏分区——理由逐条记在 [`40 §5.1`](40-ui-extension-unified-architecture-release-notes.md)。想加这类入口时先读那张表，别把信封撑成万能基类。
+
+### 5.6 需要「实时画面 + 人工输入」的工作台（浏览器范式）
+
+浏览器工作台（[`42`](42-browser-workbench-release-notes.md)）示范了一类更重的工作台：**服务端有真实外部进程，画面要连续推送，用户还要反向操作**。这类工作台与普通工作台的差别只在传输层：
+
+| 关注点 | 做法 |
+|--------|------|
+| 画面传输 | **独立 WebSocket 端点**（`/api/browser/{sessionId}/stream`），不塞 Blazor circuit（帧是二进制、每秒数十帧，塞进去整页卡顿，SignalR 单消息也装不下 JPEG） |
+| 进程与工具 | 能力包持有引擎（进程级单例）+ 会话宿主（每会话一个隔离上下文）；工具与人工输入**共用同一把会话级互斥**，避免鼠标状态机错乱 |
+| 端点门控 | 端点必须查 `IModuleCatalog.IsEnabled("<模块 id>")` 并 404——否则模块停用只隐藏了工具与工作台，HTTP 面仍能拉起进程 |
+| 配置 | 涉及「启动哪个程序 / 能访问哪些地址」的配置节必须 `ConfigScope.UserOnly`（项目级配置随仓库分发，允许它覆盖等于 `git clone` 即任意执行） |
+| 配置接线 | 只写 `services.AddOptions<T>()` 是**不够**的：那不含 configure 委托，`CurrentValue` 永远是默认值。照 `SkillsModule` 补 `ConfigSectionOptionsMonitor<T>` 三件套 |
+| 二进制落盘 | 截图/导出走 `ISessionArtifactStore`（写进本会话资源目录），只把 `LocalPath` 放进 `ToolResult.Parts`，由框架出站前物化 |
 
 ## 6. 执行器扩展（ACP 等）
 

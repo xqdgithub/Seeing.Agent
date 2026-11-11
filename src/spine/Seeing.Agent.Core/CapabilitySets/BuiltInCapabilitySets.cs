@@ -105,6 +105,7 @@ public static class BuiltInCapabilitySets
         "question.tools",
         "web",
         "speech.tools",
+        "browser",
         "memory",
         "reflection",
         "scheduler",

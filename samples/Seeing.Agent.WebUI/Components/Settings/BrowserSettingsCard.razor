@@ -1,0 +1,313 @@
+﻿@using AntDesign
+@using Microsoft.Extensions.Options
+@using Seeing.Agent.Abstractions.Configuration
+@using Seeing.Agent.Tools.Browser
+@using Seeing.Agent.WebUI.Services
+@inject SeeingConfigService ConfigService
+@inject IOptionsMonitor<BrowserOptions> BrowserOptionsMonitor
+@inject IMessageService MessageService
+@implements IDisposable
+
+@*
+    浏览器配置卡片（设置页页签「浏览器」）。
+
+    为什么这些项要暴露给用户：
+      · Headless 是「能不能过反爬」的决定性开关，也是「会不会弹窗」的开关 ——
+        两种需求都存在，写死任何一侧都会让另一类用户无法工作。
+      · AntiDetection 涉及安全与兼容性的取舍（去掉沙箱、要求真 GPU），
+        用户需要知道代价并自行决定。
+      · ExecutablePath / AllowPrivateHosts 属于本机事实与安全边界，必须是用户级配置。
+
+    ⚠ 作用域：本卡保存到**用户级** seeing.json。Browser 节被注册为 UserOnly
+      （ExecutablePath 决定启动哪个可执行文件、AllowPrivateHosts 决定能否访问内网），
+      项目级配置文件随仓库分发、内容由第三方控制，允许它们覆盖等于 git clone 即远程代码执行/SSRF。
+*@
+
+@if (_model is not null)
+{
+    if (_pendingRestart)
+    {
+        <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 16px;"
+               Message="有配置已变更但尚未生效。浏览器进程只在下次启动时读取这些设置——请保存后重启 WebUI（或停用再启用浏览器模块）。" />
+    }
+
+    @* ── 显示与反检测 ── *@
+    <Card Title="运行模式" Style="margin-bottom: 16px;">
+        <Form Model="@_model" Layout="@FormLayout.Vertical">
+            <FormItem>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <Switch @bind-Value="@_model.Headless" />
+                    <span>无头模式（不弹窗）</span>
+                </div>
+                <div class="browser-settings-hint" style="color:#888;font-size:12px;margin-top:4px;line-height:1.6;">
+                    <strong>遇到「请验证你是真人」时应关闭。</strong>
+                    有头模式的渲染指纹与普通浏览器几乎一致（真实 GPU 合成、真实窗口焦点）；
+                    无头模式即使做了伪装，仍可能被识别。代价是会在桌面弹出一个浏览器窗口。
+                </div>
+            </FormItem>
+
+            <FormItem>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <Switch @bind-Value="@_model.AntiDetection" />
+                    <span>启用反自动化检测规避</span>
+                </div>
+                <div class="browser-settings-hint" style="color:#888;font-size:12px;margin-top:4px;line-height:1.6;">
+                    开启后：移除 <code>--no-sandbox</code> / <code>--disable-gpu</code> 等自动化标志、
+                    消除 <code>navigator.webdriver</code>、伪装 UA 去掉 Headless 标记、
+                    修补 <code>navigator.plugins</code> / <code>languages</code> / WebGL vendor。@*
+                    *@关闭后启动参数最保守（兼容无 GPU 的容器），但指纹明显是自动化。
+                </div>
+            </FormItem>
+        </Form>
+    </Card>
+
+    @* ── 登录态 ── *@
+    <Card Title="登录态" Style="margin-bottom: 16px;">
+        <Form Model="@_model" Layout="@FormLayout.Vertical">
+            <FormItem>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <Switch @bind-Value="@_model.PersistLogin" />
+                    <span>复用持久 profile（保留登录态）</span>
+                </div>
+                <div class="browser-settings-hint" style="color:#888;font-size:12px;margin-top:4px;line-height:1.6;">
+                    开启后所有会话共用同一个浏览器 profile：在任何一次会话里登录过的站点，
+                    之后都保持登录。@*
+                    *@<strong>代价是 cookie 跨会话共享</strong>——两个会话同时操作同一站点账号会互相顶掉登录态。
+                    <br />
+                    关闭则每次会话独立隔离，但浏览器重启后登录态丢失，需要重新登录。
+                </div>
+            </FormItem>
+
+            <FormItem Label="profile 目录（留空使用默认）">
+                <Input @bind-Value="@_model.ProfileDirectory"
+                       Placeholder="留空 → 用户目录/.seeing/browser-profile"
+                       Disabled="@(!_model.PersistLogin)" />
+                <div class="browser-settings-hint" style="color:#888;font-size:12px;margin-top:4px;line-height:1.6;">
+                    当前生效：<code>@EffectiveProfilePath</code>
+                    <br />
+                    同一目录不能被两个浏览器进程同时打开；多个实例请各配不同目录。
+                </div>
+            </FormItem>
+        </Form>
+    </Card>
+
+    @* ── 视口与超时 ── *@
+    <Card Title="视口与超时" Style="margin-bottom: 16px;">
+        <Form Model="@_model" Layout="@FormLayout.Vertical">
+            <FormItem Label="初始视口宽 / 高（像素）">
+                <Space>
+                    <AntDesign.InputNumber @bind-Value="@_model.ViewportWidth" Min="320" Max="4096" Style="width: 120px;" />
+                    <span>×</span>
+                    <AntDesign.InputNumber @bind-Value="@_model.ViewportHeight" Min="240" Max="4096" Style="width: 120px;" />
+                </Space>
+                <div class="browser-settings-hint" style="color:#888;font-size:12px;margin-top:4px;line-height:1.6;">
+                    只用于「还没人打开工作台」时的初始值；工作台连上后会自动按面板实际尺寸调整。
+                </div>
+            </FormItem>
+
+            <FormItem Label="空闲回收（秒，0 = 不回收）">
+                <AntDesign.InputNumber @bind-Value="@_model.IdleSeconds" Min="0" Max="86400" Style="width: 140px;" />
+                <div class="browser-settings-hint" style="color:#888;font-size:12px;margin-top:4px;line-height:1.6;">
+                    页面静默多久后回收（只关页面，不关浏览器进程，<strong>不影响登录态</strong>）。
+                    <br />
+                    实际回收时间 = 该值 + 最多 30 秒（后台每 30 秒扫描一次）。
+                </div>
+            </FormItem>
+
+            <FormItem Label="单次操作超时（秒）">
+                <AntDesign.InputNumber @bind-Value="@_model.DefaultTimeoutSeconds" Min="1" Max="300" Style="width: 140px;" />
+            </FormItem>
+        </Form>
+    </Card>
+
+    @* ── 安全边界 ── *@
+    <Card Title="安全边界" Style="margin-bottom: 16px;">
+        <Form Model="@_model" Layout="@FormLayout.Vertical">
+            <FormItem>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <Switch @bind-Value="@_model.AllowPrivateHosts" />
+                    <span>允许访问内网与回环地址</span>
+                </div>
+                <div class="browser-settings-hint" style="color:#888;font-size:12px;margin-top:4px;line-height:1.6;">
+                    默认关闭：阻止访问 <code>127.0.0.1</code>、<code>192.168.*</code>、
+                    云元数据地址 <code>169.254.169.254</code> 等。@*
+                    *@<strong>开启后智能体可访问本机与内网上的任何服务</strong>（包括管理后台），请确认你信任当前会话。
+                </div>
+            </FormItem>
+
+            <FormItem Label="浏览器可执行文件路径（留空自动探测）">
+                <Input @bind-Value="@_model.ExecutablePath"
+                       Placeholder="留空 → 系统 Edge → 系统 Chrome → 用户级 Chrome/Chromium" />
+                <div class="browser-settings-hint" style="color:#888;font-size:12px;margin-top:4px;line-height:1.6;">
+                    当前探测结果：<code>@_resolvedExecutable</code>
+                </div>
+            </FormItem>
+
+            <FormItem Label="追加启动参数（每行一个）">
+                <TextArea @bind-Value="@_model.ExtraArgsText" Rows="3"
+                          Placeholder="例如：--proxy-server=http://127.0.0.1:7890" />
+                <div class="browser-settings-hint" style="color:#888;font-size:12px;margin-top:4px;line-height:1.6;">
+                    追加在默认参数之后，可用于覆盖。需要代理访问外网时写在这里。
+                </div>
+            </FormItem>
+
+            <FormItem Label="自定义 User-Agent（留空自动处理）">
+                <Input @bind-Value="@_model.UserAgent"
+                       Placeholder="留空 → 反检测开启时去掉 UA 里的 Headless 标记" />
+            </FormItem>
+        </Form>
+    </Card>
+
+    <div style="text-align: right;">
+        <Space>
+            <Button OnClick="ResetToEffective" Disabled="@_saving">撤销修改</Button>
+            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save"
+                    OnClick="SaveAsync" Loading="@_saving">保存</Button>
+        </Space>
+    </div>
+}
+
+@code {
+    private BrowserSettingsModel? _model;
+    private bool _saving;
+    private bool _pendingRestart;
+
+    /// <summary>进入编辑时的进程级签名快照（保存后比对，判断是否真的需要重启）。</summary>
+    private string _signatureBeforeSave = string.Empty;
+    private string _resolvedExecutable = "(未检测)";
+    private string EffectiveProfilePath => BrowserEngine.ResolveProfileDirectory(BrowserOptionsMonitor.CurrentValue);
+
+    private IDisposable? _optionsSub;
+
+    protected override void OnInitialized()
+    {
+        _optionsSub = BrowserOptionsMonitor.OnChange((_, _) =>
+        {
+            // 外部改了配置（文件热重载）：刷新可执行文件探测结果与默认路径展示。
+            // 刻意不回填编辑中的表单：用户可能正在改，被外部热重载覆盖会丢输入。
+            _ = InvokeAsync(() =>
+            {
+                RefreshExecutable();
+                StateHasChanged();
+            });
+        });
+
+        ResetToEffective();
+        RefreshExecutable();
+    }
+
+    public void Dispose() => _optionsSub?.Dispose();
+
+    /// <summary>从当前生效配置回填编辑模型（丢弃未保存修改）。</summary>
+    private void ResetToEffective()
+    {
+        var o = BrowserOptionsMonitor.CurrentValue;
+        _model = new BrowserSettingsModel
+        {
+            Headless = o.Headless,
+            AntiDetection = o.AntiDetection,
+            PersistLogin = o.PersistLogin,
+            ProfileDirectory = o.ProfileDirectory ?? string.Empty,
+            ViewportWidth = o.ViewportWidth,
+            ViewportHeight = o.ViewportHeight,
+            IdleSeconds = o.IdleSeconds,
+            DefaultTimeoutSeconds = o.DefaultTimeoutSeconds,
+            AllowPrivateHosts = o.AllowPrivateHosts,
+            ExecutablePath = o.ExecutablePath ?? string.Empty,
+            UserAgent = o.UserAgent ?? string.Empty,
+            ExtraArgsText = o.ExtraArgs is { Length: > 0 } args ? string.Join('\n', args) : string.Empty
+        };
+        _pendingRestart = false;
+        _signatureBeforeSave = BrowserEngine.ComputeSignature(o);
+    }
+
+    private void RefreshExecutable()
+    {
+        var resolved = BrowserEngine.ResolveExecutable(BrowserOptionsMonitor.CurrentValue);
+        _resolvedExecutable = resolved.Found
+            ? $"{resolved.Path}（{resolved.Source}）"
+            : resolved.Source;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_model is null)
+            return;
+
+        _saving = true;
+        try
+        {
+            var options = new BrowserOptions
+            {
+                Headless = _model.Headless,
+                AntiDetection = _model.AntiDetection,
+                PersistLogin = _model.PersistLogin,
+                ProfileDirectory = Blank(_model.ProfileDirectory),
+                ViewportWidth = _model.ViewportWidth,
+                ViewportHeight = _model.ViewportHeight,
+                IdleSeconds = _model.IdleSeconds,
+                DefaultTimeoutSeconds = _model.DefaultTimeoutSeconds,
+                AllowPrivateHosts = _model.AllowPrivateHosts,
+                ExecutablePath = Blank(_model.ExecutablePath),
+                UserAgent = Blank(_model.UserAgent),
+                ExtraArgs = ParseArgs(_model.ExtraArgsText)
+            };
+
+            // Browser 节是 UserOnly：必须写用户级，写项目级会被 ValidateScope 拒绝。
+            await ConfigService.SaveSectionAsync(
+                BrowserOptions.SectionName, options, ConfigLevel.User);
+
+            // 判断「是否需要重启」：只比对**进程级签名**（Headless / AntiDetection /
+            // ExecutablePath / UserAgent / ExtraArgs / profile 选择）。
+            // 视口、超时、空闲回收在运行期实时读取，改了不需要重启 ——
+            // 无条件提示「请重启」会让用户白重启，也会让提示失去可信度。
+            var savedSignature = BrowserEngine.ComputeSignature(options);
+
+            MessageService.Success("浏览器设置已保存");
+            _pendingRestart = !string.Equals(savedSignature, _signatureBeforeSave, StringComparison.Ordinal);
+            RefreshExecutable();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"保存失败：{ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private static string? Blank(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string[]? ParseArgs(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var parts = text
+            .Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim())
+            .Where(s => s.Length > 0)
+            .ToArray();
+
+        return parts.Length == 0 ? null : parts;
+    }
+
+    /// <summary>编辑模型（只做 UI 绑定与格式转换，不承载业务规则）。</summary>
+    private sealed class BrowserSettingsModel
+    {
+        public bool Headless { get; set; } = true;
+        public bool AntiDetection { get; set; } = true;
+        public bool PersistLogin { get; set; } = true;
+        public string ProfileDirectory { get; set; } = string.Empty;
+        public int ViewportWidth { get; set; } = 1280;
+        public int ViewportHeight { get; set; } = 800;
+        public int IdleSeconds { get; set; } = 600;
+        public int DefaultTimeoutSeconds { get; set; } = 30;
+        public bool AllowPrivateHosts { get; set; }
+        public string ExecutablePath { get; set; } = string.Empty;
+        public string UserAgent { get; set; } = string.Empty;
+        public string ExtraArgsText { get; set; } = string.Empty;
+    }
+}

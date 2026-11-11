@@ -107,6 +107,23 @@ public sealed class SeeingConfigService : ISeeingConfigService
         await _configManager.SaveSectionAsync(sectionName, value, ConfigLevel.Project, ct);
     }
 
+    /// <summary>保存配置节到指定级别（作用域校验由 <c>ValidateScope</c> 负责）。</summary>
+    /// <remarks>
+    /// <b>为什么需要显式指定级别</b>：有些节被注册为 <c>UserOnly</c>
+    /// （如 <c>Browser</c>：它的 <c>ExecutablePath</c> 决定启动哪个可执行文件、
+    /// <c>AllowPrivateHosts</c> 决定能否访问内网）。这些节必须写用户级——
+    /// 项目级配置随仓库分发、内容由第三方控制，允许覆盖等于 <c>git clone</c> 后远程代码执行/SSRF。
+    /// 保存到错误级别会抛 <c>ConfigScopeException</c>，这是有意的硬边界。
+    /// </remarks>
+    public async Task SaveSectionAsync<T>(
+        string sectionName,
+        T value,
+        ConfigLevel level,
+        CancellationToken ct = default) where T : class
+    {
+        await _configManager.SaveSectionAsync(sectionName, value, level, ct);
+    }
+
     /// <summary>
     /// 批量保存配置节到指定级别。值为 null 的键会从 seeing.json 的 SeeingAgent 中移除
     /// （用于清空 <c>Scenario</c> / <c>Boot</c> / <c>CapabilitySets</c> 等可选脊柱字段）。

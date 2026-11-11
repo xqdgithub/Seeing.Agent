@@ -137,9 +137,9 @@ public class PageChannelMigrationTests
             .Where(e => string.Equals(e.OwnerId, HostOwnerId, StringComparison.Ordinal))
             .ToList();
 
-        hostEntries.Should().HaveCount(17, "壳层是 13 条页面 + 4 张设置卡");
+        hostEntries.Should().HaveCount(18, "壳层是 13 条页面 + 5 张设置卡");
 
-        // 设置卡「代模块声明」的两张必须带归属（scheduler / memory）；
+        // 设置卡「代模块声明」的三张必须带归属（scheduler / memory / browser）；
         // 其余壳层贡献是进程级（Requires 为空），否则用户在切换 Boot 能力集后会失去入口。
         hostEntries
             .Where(e => e.Contribution is not SettingsCardContribution)

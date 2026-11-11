@@ -513,6 +513,12 @@ namespace Seeing.Agent.Core.Extensions
                     sp.GetRequiredService<ISessionStore>(),
                     sp.GetService<ILogger<Seeing.Agent.Core.Output.SessionToolOutputStore>>()));
 
+            // 会话资源目录端口：工具产出二进制（截图/导出）落盘的契约实现。
+            // 能力包只依赖 Abstractions，不能直接拿 IToolOutputStore。
+            services.TryAddSingleton<Seeing.Agent.Abstractions.Sessions.ISessionArtifactStore>(sp =>
+                new Seeing.Agent.Core.Output.SessionArtifactStore(
+                    sp.GetRequiredService<Seeing.Agent.Core.Output.IToolOutputStore>()));
+
             // 图片/文件内容段物化器（LocalPath → base64）：Session→Chat 转换时唯一读盘点。
             // 容量取配置值（热重载：每次 CreateInstance 读 CurrentValue）。
             services.AddSingleton<Seeing.Agent.Core.Llm.IImagePartResolver>(sp =>

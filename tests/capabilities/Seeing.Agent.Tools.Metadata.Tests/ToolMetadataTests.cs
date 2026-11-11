@@ -62,6 +62,15 @@ public class ToolMetadataTests
         ["systemone_noul"] = ["systemone_ask"],
         ["systemone_choice"] = ["systemone_ask"],
         ["systemone_score"] = ["systemone_ask"],
+        // 浏览器：同族工具必须互相点名，否则模型会挑错工具（例如截图当快照用）
+        ["browser_open"] = ["browser_snapshot", "webfetch"],
+        ["browser_snapshot"] = ["browser_screenshot", "browser_eval"],
+        ["browser_screenshot"] = ["browser_snapshot"],
+        ["browser_click"] = ["browser_snapshot", "browser_type"],
+        ["browser_type"] = ["browser_click", "browser_press"],
+        ["browser_press"] = ["browser_type", "browser_click"],
+        ["browser_eval"] = ["browser_snapshot"],
+        ["browser_close"] = ["browser_open"],
     };
 
     private static IReadOnlyList<string> Routing(string id) =>
@@ -184,7 +193,7 @@ public class ToolMetadataTests
         // 2) id 集合仍按产品事实锁定（SystemOneTool 一个类型 → 4 个 id）。
         var ids = BuiltInToolCatalog.All().Select(t => t.Id).ToArray();
 
-        ids.Should().HaveCount(56);
+        ids.Should().HaveCount(68);
         ids.Should().OnlyHaveUniqueItems();
         ids.Should().BeEquivalentTo(new[]
         {
@@ -202,6 +211,10 @@ public class ToolMetadataTests
             "acp", "acp_status",
             "systemone_ask", "systemone_noul", "systemone_choice", "systemone_score",
             "current_time", "question", "transcribe_audio",
+            // 浏览器：一个动作一个工具（权限判定不含参数，拆开才有粒度）
+            "browser_open", "browser_snapshot", "browser_click", "browser_type", "browser_press",
+            "browser_scroll", "browser_wait_for", "browser_screenshot", "browser_eval",
+            "browser_back", "browser_forward", "browser_close",
         });
     }
 

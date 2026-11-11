@@ -5,6 +5,7 @@
     <Project Path="samples/Seeing.Agent.HostComposition/Seeing.Agent.HostComposition.csproj" />
     <Project Path="samples/Seeing.Agent.Tui/Seeing.Agent.Tui.csproj" />
     <Project Path="samples/Seeing.Agent.WebUI/Seeing.Agent.WebUI.csproj" />
+    <Project Path="samples/Seeing.Agent.WebUI.Browser/Seeing.Agent.WebUI.Browser.csproj" />
     <Project Path="samples/Seeing.Agent.WebUI.Files/Seeing.Agent.WebUI.Files.csproj" />
     <Project Path="samples/Seeing.Agent.WebUI.Workbench/Seeing.Agent.WebUI.Workbench.csproj" />
     <Project Path="samples/Seeing.Gateway.ChannelHost/Seeing.Gateway.ChannelHost.csproj" />
@@ -57,6 +58,7 @@
     <Project Path="src/capabilities/Seeing.Agent.Llm.TypeSafe/Seeing.Agent.Llm.TypeSafe.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.TokenBudget/Seeing.Agent.TokenBudget.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Basic/Seeing.Agent.Tools.Basic.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Tools.Browser/Seeing.Agent.Tools.Browser.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.ChannelMessaging/Seeing.Agent.Tools.ChannelMessaging.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.FileSystem/Seeing.Agent.Tools.FileSystem.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Git/Seeing.Agent.Tools.Git.csproj" />
@@ -114,6 +116,7 @@
     <Project Path="tests/capabilities/Seeing.Agent.Skills.Tests/Seeing.Agent.Skills.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Llm.TypeSafe.Tests/Seeing.Agent.Llm.TypeSafe.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Basic.Tests/Seeing.Agent.Tools.Basic.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Tools.Browser.Tests/Seeing.Agent.Tools.Browser.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.ChannelMessaging.Tests/Seeing.Agent.Tools.ChannelMessaging.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.FileSystem.Tests/Seeing.Agent.Tools.FileSystem.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Git.Tests/Seeing.Agent.Tools.Git.Tests.csproj" />

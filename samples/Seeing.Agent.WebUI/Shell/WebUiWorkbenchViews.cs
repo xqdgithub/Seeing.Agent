@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Ui.Workbench;
+using Seeing.Agent.WebUI.Browser.Components;
 using Seeing.Agent.WebUI.Files.Workbenches;
 using Seeing.Agent.WebUI.Workbench;
 
@@ -29,6 +30,10 @@ public static class WebUiWorkbenchViews
         // markdown 已合并进 files（preview 载荷键 + 标签栏切换），历史 id 由
         // LegacyWorkbenchAlias 在宿主侧别名为 files + preview=true。
         Register(registry, views, "files", typeof(FilesWorkbench));
+
+        // 浏览器工作台：能力包 Seeing.Agent.Tools.Browser 只声明 ViewKey="workbench.browser"，
+        // 组件类型只能在这里登记（能力包受依赖方向约束不能引用 Razor 组件库）。
+        Register(registry, views, "browser", typeof(BrowserWorkbench));
     }
 
     private static void Register(

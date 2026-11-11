@@ -1,0 +1,461 @@
+@using System.Text.Json
+@using Microsoft.Extensions.Logging
+@using Seeing.Agent.Abstractions.Ui.Workbench
+@using Seeing.Agent.WebUI.Workbench
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject ILogger<BrowserWorkbench> Logger
+
+@*
+    浏览器工作台视图：canvas 显示服务端无头浏览器的实时画面，鼠标/键盘转发回去。
+
+    为什么画面走 WebSocket 而不是 Blazor 事件流：帧是二进制且每秒数十帧，塞进 circuit
+    会让整页渲染卡顿；SignalR 单消息大小也不适合 JPEG。
+
+    本组件只做「渲染 + 转发」：真正的浏览器在能力包里，agent 用 browser_* 工具驱动；
+    人在画布上的点击/输入与 agent 的工具调用共用同一把会话级互斥（服务端保证）。
+*@
+
+<div class="browser-workbench" @ref="_root">
+    <div class="browser-workbench__toolbar">
+        <button type="button"
+                class="browser-workbench__icon-button"
+                title="后退"
+                aria-label="后退"
+                disabled="@(!_running)"
+                @onclick="GoBackAsync">◀</button>
+        <button type="button"
+                class="browser-workbench__icon-button"
+                title="前进"
+                aria-label="前进"
+                disabled="@(!_running)"
+                @onclick="GoForwardAsync">▶</button>
+        <button type="button"
+                class="browser-workbench__icon-button"
+                title="重新加载"
+                aria-label="重新加载"
+                disabled="@(!_running)"
+                @onclick="ReloadAsync">⟳</button>
+
+        <input class="browser-workbench__address"
+               type="text"
+               spellcheck="false"
+               placeholder="输入网址后回车（如 https://example.com）"
+               value="@_addressText"
+               @oninput="OnAddressInput"
+               @onfocus="OnAddressFocus"
+               @onblur="OnAddressBlur"
+               @onkeydown="OnAddressKeyDown" />
+    </div>
+
+    <div class="browser-workbench__stage" @ref="_stage">
+        <canvas class="browser-workbench__canvas" @ref="_canvas" tabindex="0"></canvas>
+
+        @if (!_running)
+        {
+            <div class="browser-workbench__overlay">
+                <div class="browser-workbench__overlay-title">浏览器尚未启动</div>
+                <div class="browser-workbench__overlay-hint">
+                    在上方地址栏输入网址并回车，或让智能体调用 <code>browser_open</code> 打开页面。
+                </div>
+            </div>
+        }
+        else if (_busy && !_takenOver)
+        {
+            @*
+                接管遮罩：智能体操作期间**完全拦截**输入。
+
+                为什么拦而不是只提示：人与 agent 同时操作同一页面会产生不可预测的结果
+                （agent 正按 ref 点击，用户同时滚动或点击 → 元素位移、ref 失效、
+                两个来源的鼠标按下/抬起互相打断）。所以这里明确划分所有权：
+                智能体操作时页面归它，用户想要操作必须先"接管"。
+
+                底色刻意极淡（0.06 黑）：用户要看得清 agent 在做什么，
+                只需要感知到"我现在不能点"。
+            *@
+            <div class="browser-workbench__takeover-mask"
+                 role="button"
+                 tabindex="0"
+                 aria-label="智能体正在操作，点击接管"
+                 @onclick="AskTakeoverAsync"
+                 @onkeydown="OnMaskKeyDownAsync">
+                <div class="browser-workbench__takeover-hint">
+                    <span class="browser-workbench__busy-dot"></span>
+                    智能体正在操作 · 点击接管
+                </div>
+            </div>
+        }
+        else if (_takenOver)
+        {
+            <div class="browser-workbench__takenover-hint" aria-live="polite">
+                已接管，智能体暂停
+            </div>
+        }
+
+        @if (_confirmTakeover)
+        {
+            @*
+                确认卡片用内联而不是 window.confirm：confirm 会阻塞 JS 线程
+                （画面流与输入全部冻结），且样式不可控、无法说明"当前这步可能已完成"。
+            *@
+            <div class="browser-workbench__confirm-backdrop">
+                <div class="browser-workbench__confirm-card">
+                    <div class="browser-workbench__confirm-title">智能体正在操作此页面</div>
+                    <div class="browser-workbench__confirm-body">
+                        接管后，当前这一轮任务会被<strong>立即中断</strong>。
+                        <br />
+                        正在执行的这一步可能已经生效（已发出的操作无法撤销）。
+                    </div>
+                    <div class="browser-workbench__confirm-actions">
+                        <button type="button"
+                                class="browser-workbench__confirm-cancel"
+                                @onclick="CancelTakeover">取消</button>
+                        <button type="button"
+                                class="browser-workbench__confirm-ok"
+                                @onclick="ConfirmTakeoverAsync">接管并停止智能体</button>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="browser-workbench__status">
+        <span class="browser-workbench__title" title="@_title">@StatusTitle</span>
+        @if (_busy)
+        {
+            <span class="browser-workbench__busy">智能体操作中</span>
+        }
+        <span class="browser-workbench__connection browser-workbench__connection--@_connectionKind">@_connectionText</span>
+    </div>
+</div>
+
+@code {
+    /// <summary>工作台视图上下文（平台注入）。</summary>
+    [Parameter, EditorRequired] public WorkbenchViewContext Context { get; set; } = default!;
+
+    private ElementReference _root;
+    private ElementReference _stage;
+    private ElementReference _canvas;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<BrowserWorkbench>? _selfRef;
+
+    private string _hostId = string.Empty;
+    private string _addressText = string.Empty;
+    private string _title = string.Empty;
+    private string _currentUrl = string.Empty;
+    private bool _running;
+    private bool _busy;
+    private bool _attached;
+    private bool _addressEditing;
+    private string _connectionKind = "reconnecting";
+    private string _connectionText = "正在连接……";
+    private string? _lastReportedUrl;
+
+    /// <summary>是否已由用户接管（接管后不再显示遮罩，输入放行）。</summary>
+    private bool _takenOver;
+
+    /// <summary>是否正在显示「确认接管」卡片。</summary>
+    private bool _confirmTakeover;
+
+    private string StatusTitle => string.IsNullOrWhiteSpace(_title)
+        ? (_running ? _currentUrl : "尚未打开页面")
+        : _title;
+
+    private string StreamUrl => $"/api/browser/{Uri.EscapeDataString(Context.SessionId)}/stream";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                _module = await JS.InvokeAsync<IJSObjectReference>(
+                    "import", "./_content/Seeing.Agent.WebUI.Browser/browser-workbench.js");
+
+                _selfRef = DotNetObjectReference.Create(this);
+                _hostId = Guid.NewGuid().ToString("N");
+
+                await _module.InvokeVoidAsync("attach", _hostId, _canvas, _stage, _selfRef, StreamUrl);
+                await _module.InvokeVoidAsync("bindInput", _hostId);
+                _attached = true;
+
+                // 打开载荷带 url：首次挂载后立即导航过去
+                if (ReadOpenUrl() is { Length: > 0 } openUrl)
+                    await NavigateAsync(openUrl);
+                else if (ReadSavedUrl() is { Length: > 0 } savedUrl)
+                    await NavigateAsync(savedUrl);
+            }
+            catch (JSDisconnectedException)
+            {
+                // circuit 已断开：无需处理
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "初始化浏览器工作台失败");
+                _connectionKind = "error";
+                _connectionText = "初始化失败";
+            }
+        }
+
+        await ReportContextAsync();
+    }
+
+    /// <summary>服务端推送的页面状态（地址/标题/是否运行/是否忙）。</summary>
+    [JSInvokable]
+    public Task OnBrowserState(string url, string title, bool busy, bool running)
+    {
+        _currentUrl = url;
+        _title = title;
+
+        // ── 接管状态的进出规则 ──
+        //
+        // agent 重新开始操作（busy 从 false 变 true）= 新一轮任务，接管失效：
+        // 否则「接管过一次」会永久豁免遮罩，之后 agent 再操作时用户能同时点，
+        // 又回到两个来源抢同一页面的问题。
+        //
+        // 反过来 busy 变 false 时**保持**接管态：中断后 busy 会归零，
+        // 但控制权仍在用户手里，不该因为「agent 停了」就把遮罩逻辑复位成初始态。
+        var wasBusy = _busy;
+        _busy = busy;
+        _running = running;
+
+        if (busy && !wasBusy)
+            _takenOver = false;
+
+        // 页面没了（浏览器关闭）：接管态一并复位
+        if (!running)
+            _takenOver = false;
+
+        // 只在「用户没在编辑地址栏」时同步地址文本。
+        // 无条件覆盖的症状：用户敲到一半时页面推一条状态（导航完成、busy 变化都会推），
+        // 输入框就被重置成当前 URL —— 看起来像「输入框吃字」。
+        if (!_addressEditing && !string.IsNullOrWhiteSpace(url) && url != "about:blank")
+            _addressText = url;
+
+        return InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>服务端确认接管结果（中断成功与否）。</summary>
+    [JSInvokable]
+    public Task OnTakeoverResult(bool interrupted, int actionCount)
+    {
+        _confirmTakeover = false;
+        _takenOver = true;
+        _busy = false;
+
+        _connectionKind = "connected";
+        _connectionText = interrupted
+            ? $"已接管（中断了智能体，记录 {actionCount} 条人工操作）"
+            : $"已接管（智能体当时未在执行）";
+
+        return InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>点击遮罩：先确认再接管。</summary>
+    private Task AskTakeoverAsync()
+    {
+        if (!_busy || _takenOver)
+            return Task.CompletedTask;
+
+        _confirmTakeover = true;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>遮罩上的键盘激活（回车/空格），保证可访问性。</summary>
+    private Task OnMaskKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key is "Enter" or " " or "Spacebar")
+            return AskTakeoverAsync();
+
+        return Task.CompletedTask;
+    }
+
+    private Task CancelTakeover()
+    {
+        _confirmTakeover = false;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>确认接管：发 takeover 给服务端（中断 agent + 告知）。</summary>
+    private async Task ConfirmTakeoverAsync()
+    {
+        _confirmTakeover = false;
+
+        if (_module is null || string.IsNullOrWhiteSpace(_hostId))
+        {
+            _connectionKind = "error";
+            _connectionText = "未连接，无法接管";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        try
+        {
+            var sent = await _module.InvokeAsync<bool>("takeover", _hostId);
+            if (!sent)
+            {
+                _connectionKind = "error";
+                _connectionText = "未连接，无法接管";
+                await InvokeAsync(StateHasChanged);
+            }
+            // 成功时不立刻置 _takenOver：等服务端回 takeover 确认，
+            // 避免「点了但中断失败」却已经放行输入的假象。
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    /// <summary>连接状态变化。</summary>
+    [JSInvokable]
+    public Task OnStatusChanged(string kind, string text)
+    {
+        _connectionKind = kind;
+        _connectionText = text;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 地址栏输入：用 <c>oninput</c> 实时同步，而不是 <c>onchange</c>。
+    /// </summary>
+    /// <remarks>
+    /// <c>onchange</c> 只在失焦时触发。用户「输入网址 + 按 Enter」时 <c>_addressText</c> 还是旧值，
+    /// 表现是「输入了新地址却打开了上一个页面」（实测缺陷）。<c>oninput</c> 每敲一个字就同步。
+    /// </remarks>
+    private Task OnAddressInput(ChangeEventArgs args)
+    {
+        _addressEditing = true;
+        _addressText = args.Value?.ToString() ?? string.Empty;
+        return Task.CompletedTask;
+    }
+
+    /// <summary>地址栏获得焦点：暂停用页面状态覆盖输入内容。</summary>
+    private Task OnAddressFocus()
+    {
+        _addressEditing = true;
+        return Task.CompletedTask;
+    }
+
+    private Task OnAddressBlur()
+    {
+        _addressEditing = false;
+
+        // 失焦时把地址栏恢复成「当前实际地址」：用户可能只是点了别处没提交
+        if (_running && !string.IsNullOrWhiteSpace(_currentUrl) && _currentUrl != "about:blank")
+            _addressText = _currentUrl;
+
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnAddressKeyDown(KeyboardEventArgs args)
+    {
+        if (!string.Equals(args.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        await NavigateAsync(_addressText);
+    }
+
+    private async Task NavigateAsync(string? url)
+    {
+        if (_module is null || string.IsNullOrWhiteSpace(url))
+            return;
+
+        try
+        {
+            var accepted = await _module.InvokeAsync<bool>("navigate", _hostId, url.Trim());
+            if (!accepted)
+            {
+                _connectionKind = "error";
+                _connectionText = "未连接，无法导航";
+                StateHasChanged();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    private Task GoBackAsync() => InvokeModuleAsync("goBack");
+
+    private Task GoForwardAsync() => InvokeModuleAsync("goForward");
+
+    private Task ReloadAsync() => InvokeModuleAsync("reload");
+
+    private async Task InvokeModuleAsync(string function)
+    {
+        if (_module is null)
+            return;
+
+        try
+        {
+            await _module.InvokeAsync<bool>(function, _hostId);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    /// <summary>把「用户正在浏览哪个网页」作为上下文摘要上报（仅变化时上报）。</summary>
+    private Task ReportContextAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_currentUrl) || _currentUrl == "about:blank")
+            return Task.CompletedTask;
+
+        if (string.Equals(_lastReportedUrl, _currentUrl, StringComparison.Ordinal))
+            return Task.CompletedTask;
+
+        _lastReportedUrl = _currentUrl;
+
+        var title = string.IsNullOrWhiteSpace(_title) ? _currentUrl : _title;
+        Context.Report(new WorkbenchViewReport
+        {
+            ViewState = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["url"] = _currentUrl,
+                ["title"] = _title
+            },
+            ContextSummary = $"正在浏览 {Truncate(title, 120)}"
+        });
+
+        return Task.CompletedTask;
+    }
+
+    private string? ReadOpenUrl()
+        => Context.OpenPayload is { ValueKind: JsonValueKind.Object } payload
+           && payload.TryGetProperty("url", out var value)
+           && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private string? ReadSavedUrl()
+        => Context.ViewState is { } state && state.TryGetValue("url", out var saved)
+            ? saved
+            : null;
+
+    private static string Truncate(string text, int max)
+        => text.Length <= max ? text : text[..max] + "……";
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null && _attached)
+                await _module.InvokeVoidAsync("detach", _hostId);
+
+            if (_module is not null)
+                await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // circuit 已断开：JS 侧资源随页面卸载
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "释放浏览器工作台资源失败（忽略）");
+        }
+        finally
+        {
+            _selfRef?.Dispose();
+        }
+    }
+}

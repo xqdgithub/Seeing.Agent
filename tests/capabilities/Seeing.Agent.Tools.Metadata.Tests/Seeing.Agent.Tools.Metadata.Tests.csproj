@@ -46,6 +46,7 @@
     <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Tools.ToolDiscovery\Seeing.Agent.Tools.ToolDiscovery.csproj" />
     <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Tools.Web\Seeing.Agent.Tools.Web.csproj" />
     <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Tools.Speech\Seeing.Agent.Tools.Speech.csproj" />
+    <ProjectReference Include="..\..\..\src\capabilities\Seeing.Agent.Tools.Browser\Seeing.Agent.Tools.Browser.csproj" />
   </ItemGroup>
 
 </Project>

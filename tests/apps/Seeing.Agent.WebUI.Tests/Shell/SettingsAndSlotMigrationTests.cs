@@ -33,7 +33,7 @@ public class SettingsAndSlotMigrationTests
     ];
 
     [Fact]
-    public void SettingsCards_ShouldBeFourWithUniqueOwnerScopedKeys()
+    public void SettingsCards_ShouldBeFiveWithUniqueOwnerScopedKeys()
     {
         var registry = BuildRegistry();
 
@@ -41,10 +41,10 @@ public class SettingsAndSlotMigrationTests
             .Where(e => e.Contribution is SettingsCardContribution)
             .ToList();
 
-        cards.Should().HaveCount(4, "设置页固定 4 张模块卡片（启动能力 / 工作模式 / 调度器 / 记忆）");
+        cards.Should().HaveCount(5, "设置页固定 5 张模块卡片（启动能力 / 工作模式 / 调度器 / 记忆 / 浏览器）");
 
         cards.Select(e => e.Contribution.Id).Should().Equal(
-            "settings.boot", "settings.scenarios", "settings.scheduler", "settings.memory");
+            "settings.boot", "settings.scenarios", "settings.scheduler", "settings.memory", "settings.browser");
 
         // Tab key = {OwnerId}.{Id}：不同创建方的同 id 不会撞 key
         var keys = cards.Select(e => $"{e.OwnerId}.{e.Contribution.Id}").ToList();

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <RootNamespace>Seeing.Agent.WebUI.Browser</RootNamespace>
+    <Description>浏览器工作台视图：画面画布 + 地址栏 + 输入转发（经 WebSocket 与宿主通信）</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\abstractions\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
+    <ProjectReference Include="..\Seeing.Agent.WebUI.Workbench\Seeing.Agent.WebUI.Workbench.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Seeing.Agent.WebUI.Tests" />
+  </ItemGroup>
+
+</Project>

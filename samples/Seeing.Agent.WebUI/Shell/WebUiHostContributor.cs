@@ -58,6 +58,7 @@ public sealed class WebUiHostContributor : IUiHostContributor
         Card("settings.scenarios", "工作模式", order: 20),
         Card("settings.scheduler", "调度器", order: 30, Requires: ["scheduler"]),
         Card("settings.memory", "记忆", order: 40, Requires: ["memory"]),
+        Card("settings.browser", "浏览器", order: 50, Requires: ["browser"]),
     ];
 
     private static PageContribution Page(string id, string route, string title, string viewKey) => new()

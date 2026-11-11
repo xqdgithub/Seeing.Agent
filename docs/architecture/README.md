@@ -56,6 +56,7 @@
 | [38 会话组快照污染与子会话切换 Release Notes](38-session-group-snapshot-pollution-release-notes.md) | 缓存写回版本保护、冷兜底条件、`SetActiveAsync` 抛异常契约、UI 回滚 |
 | [40 UI 扩展统一架构 Release Notes](40-ui-extension-unified-architecture-release-notes.md) | 6 套机制 → 统一信封、三层分工（契约/Core/宿主）、`UiPoint`/`ViewKey`/`Requires` 归属、声明早于激活、破坏性清单与迁移指引、壳层保留区 |
 | [41 会话工作台插件平台 Release Notes](41-workbench-plugin-platform-release-notes.md) | 信封上只加一种载荷（`WorkbenchContribution`）+ 一个扩展点（`workbench.dock`）：双 dock、多实例、localStorage 持久化、`open_workbench`/`list_workbenches`、kind 前缀路由、上下文源回流；**删除**旧设计的四件套（插件接口/注册表/描述符/加载端口） |
+| [42 浏览器工作台 Release Notes](42-browser-workbench-release-notes.md) | 服务端真浏览器（PuppeteerSharp + 系统 Edge）+ WebSocket 画面流 + 输入转发；12 个 `browser_*` 工具为何必须拆开（权限不含参数）；ref 优先定位；`ISessionArtifactStore` 截图落盘端口；实测修掉的六个缺陷 |
 | [源码目录分类设计](../superpowers/specs/2026-09-08-source-layout-design.md) | `src/`/`tests/` 分类落地说明 |
 | [Gateway 总览](../gateway/README.md) | Gateway 族路径与组合规则 |
 

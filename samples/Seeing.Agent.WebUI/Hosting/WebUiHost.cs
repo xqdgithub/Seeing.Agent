@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Acp.Extensions;
@@ -72,6 +73,26 @@ public static class WebUiHost
         // _framework/blazor.server.js 全部 404，破坏 13 处 JS 互操作（'isMobileBrowser is not a function'）。
         // 在 builder 上调用 UseStaticWebAssets() 让中间件从清单路由文件，适用于所有环境。
         builder.WebHost.UseStaticWebAssets();
+
+        // ── WebSocket 与 HTTP/2 的兼容（浏览器工作台的画面流依赖它）──
+        // HTTPS 下 Kestrel 默认协商 HTTP/2，浏览器会把 WebSocket 升级发成
+        // **HTTP/2 的 CONNECT（extended CONNECT）**，而不是 HTTP/1.1 的
+        // `GET + Upgrade: websocket`。ASP.NET Core 默认**不支持**这种形式：
+        // 请求到达中间件时 `Method == CONNECT`、`Upgrade` 头为空、
+        // `context.WebSockets.IsWebSocketRequest` 为 false，
+        // 端点因此返回 400，浏览器侧只看到 close code 1006 ——
+        // 表现为前端一直「正在重连」、画布永远黑屏（实测过）。
+        //
+        // Blazor 的 `/_blazor` 不受影响：SignalR 客户端会协商并回退到 HTTP/1.1。
+        //
+        // 这里强制本进程只用 HTTP/1.1。取舍：放弃 h2 的多路复用，但本应用是
+        // 单页 Blazor Server（本身靠一条 SignalR 长连接），h2 收益有限；
+        // 而 WebSocket 画面流是硬需求。若将来要 h2，需改用
+        // `Http2` 并在客户端走 WebTransport，或把 WS 放到独立端口。
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            options.ConfigureEndpointDefaults(listen => listen.Protocols = HttpProtocols.Http1);
+        });
 
         // Add services to the container.
         // Razor Pages + Blazor 组件编译在 WebUI 程序集内；当宿主是桌面外壳（入口程序集 ≠ WebUI）时，
@@ -335,10 +356,20 @@ public static class WebUiHost
         app.UseStaticFiles();
         app.UseRouting();
 
+        // `UseWebSockets()` 必须在 `UseRouting()` 之后（端点之前）：它把
+        // `IHttpWebSocketFeature` 挂到 HttpContext 上，端点靠该 feature 判定
+        // `IsWebSocketRequest`。
+        //
+        // 注意：这**不是**「HTTPS 下 WS 连不上」的根因。真正的根因是 Kestrel 在 HTTPS 下
+        // 默认协商 HTTP/2，浏览器把升级发成 HTTP/2 的 `CONNECT`（extended CONNECT），
+        // ASP.NET Core 默认不支持 —— 见本文件顶部 `ConfigureKestrel` 处的长注释。
+        app.UseWebSockets();
+
         app.MapBlazorHub();
         app.MapUploadEndpoints();
         app.MapTranscriptionEndpoints();
         app.MapSessionAssetEndpoints();
+        app.MapBrowserStreamEndpoints();
 
         // 记忆详情路由的路径以 .md 结尾（/memory/detail/daily/xxx.md）。
         // MapFallbackToPage 对「看起来像文件」的请求不生效：ASP.NET Core 的 fallback 会跳过

@@ -21,6 +21,7 @@ using Seeing.Agent.Scheduler.Extensions;
 using Seeing.Agent.Skills;
 using Seeing.Agent.TokenBudget.Extensions;
 using Seeing.Agent.Tools.Basic;
+using Seeing.Agent.Tools.Browser;
 using Seeing.Agent.Tools.ChannelMessaging;
 using Seeing.Agent.Tools.Editor;
 using Seeing.Agent.Tools.FileSystem;
@@ -107,6 +108,7 @@ public static class FullCapabilityComposition
         services.AddSeeingModule<QuestionToolsModule>(registry);
         services.AddSeeingModule<WebModule>(registry);
         services.AddSeeingModule<SpeechToolsModule>(registry);
+        services.AddSeeingModule<BrowserModule>(registry);
         services.AddSeeingModule<ChannelMessagingModule>(registry);
         services.AddSeeingModule<WorkspaceGitExcludeModule>(registry);
         services.AddSeeingModule<WorkbenchModule>(registry);
