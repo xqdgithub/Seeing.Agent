@@ -275,7 +275,77 @@ user([image_from_t1, image_from_t2])   ← 聚合一条，在最后
 
 ---
 
-## 7. 交付清单
+## 7. WebUI 渲染（图片必须看得见）
+
+改引用式后 base64 不再随消息下发，**UI 必须改从文件读**，否则用户会看到「消息里图片消失了」。这条不是增强，是改动的必要部分。
+
+### 7.1 两个渲染缺口
+
+| # | 缺口 | 现状 |
+|---|---|---|
+| 1 | **用户消息图片** | `PromptAttachmentRouter.Route:31` 遇空 `Base64Content` 直接 `continue` → 引用式附件被**静默丢弃**；`AttachmentPreview.razor` 与 `ContentPartViewModel.GetDisplayUrl()` 只认 base64 |
+| 2 | **工具消息图片** | `ToolCallViewModel.FromSessionToolCall`（`:140-181`）**完全不读 `tc.Parts`**，`ToolCallMessageComponent` 只渲染 `Result` 文本 → 工具截图无渲染入口 |
+
+### 7.2 取图端点
+
+```csharp
+// samples/Seeing.Agent.WebUI/Endpoints/SessionAssetEndpoints.cs
+public const string Route = "/api/sessions/{sessionId}/assets/{scope}/{**relativePath}";
+// scope: "ref"（工具产出） | "uploads"（用户附件）
+```
+
+实现与 `UploadEndpoints` / `TranscriptionEndpoints` 同构：
+
+| 校验 | 做法 |
+|---|---|
+| 会话存在 | `ISessionManager.Get(sessionId) is not null`，否则 404 |
+| 路径边界 | `scope=ref` → `PathBoundary.IsWithin(full, IToolOutputStore.GetRefDirectory(sessionId))`；`scope=uploads` → `PastedFileLayout.BuildSessionDirectory(root, sessionId)`。越界 404（**不** 403，不暴露路径存在性） |
+| MIME 白名单 | 仅 `.png/.jpg/.jpeg/.webp/.gif`，其它 404 |
+| 缓存头 | `Cache-Control: private, max-age=300` + `ETag = LastWriteTimeUtc ticks`，304 走浏览器缓存 |
+
+不做 HMAC 签名：与 `api/uploads` 保持同一鉴权基线（会话存在 + 路径边界），本机/局域网部署足够。
+
+### 7.3 URL 唯一生成点
+
+```csharp
+// samples/Seeing.Agent.WebUI/Services/SessionAssetUrlBuilder.cs
+public sealed class SessionAssetUrlBuilder
+{
+    /// <summary>把会话内的 LocalPath 转成可被浏览器加载的 URL；不在本会话目录内返回 null。</summary>
+    public string? ForSessionPath(string sessionId, string localPath);
+}
+```
+
+`LocalPath` 在 ref 目录 → `.../assets/ref/{name}`；在 uploads 目录 → `.../assets/uploads/{relPath}`；都不在（跨机/历史遗留）→ `null`。
+**禁止**在组件里各自拼 URL 字符串。
+
+### 7.4 渲染改动
+
+| # | 位置 | 改动 |
+|---|---|---|
+| 1 | `ContentPartViewModel.FromSessionPart` | 接受 `SessionAssetUrlBuilder` + `sessionId`，有 `LocalPath` 时设 `ThumbnailUrl`；`GetDisplayUrl()` 现有优先级（`ThumbnailUrl → Url → DataBase64`）无需改 |
+| 2 | `ToolCallViewModel` | 新增 `List<ContentPartViewModel> Parts`；`FromSessionToolCall` 投影 `tc.Parts` |
+| 3 | `ToolCallMessageComponent.razor` | 结果区下方渲染缩略图行（`<img loading="lazy">` + 固定高度 120px + `object-fit: cover`），点击在新标签打开原图 |
+| 4 | `PromptAttachmentRouter.Route` | 空 `Base64Content` 但有 `LocalPath` → 设 `ChatAttachment.LocalPath`，**不 continue** |
+| 5 | `AttachmentPreview.razor` | 走 `GetDisplayUrl()`（已优先 `ThumbnailUrl`） |
+
+### 7.5 为什么缩略图走 URL 而不是 base64
+
+| 原因 | 说明 |
+|---|---|
+| Blazor 消息大小 | `MaximumReceiveMessageSize` 默认 32KB；base64 进 render batch 会直接爆（`2026-10-23-paste-files-and-screenshots-design.md` 已有同类事故） |
+| 渲染性能 | 一轮 10 张 2MB 图 ≈ 27MB base64 字符串反复序列化，长会话会卡死 |
+| 浏览器能力 | `<img>` 原生并行加载 + HTTP 缓存 + `loading="lazy"`，Blazor 只传 URL 字符串 |
+
+**直接返回原图，前端 CSS 缩放**：不引入图像编码依赖（与「不压缩」决策一致）。大图当缩略图的带宽代价接受，列入已知边界。
+
+### 7.6 历史会话兼容
+
+存量消息 `Parts` 里的图片是 `DataBase64`（用户粘贴走老路），`GetDisplayUrl()` 已能处理 → **刷新后旧会话图片照常显示**。新数据才有 `LocalPath`。
+
+---
+
+## 8. 交付清单
 
 | # | 内容 | 位置 |
 |---|---|---|
@@ -290,10 +360,14 @@ user([image_from_t1, image_from_t2])   ← 聚合一条，在最后
 | 9 | `ReadTool.ReadBinaryFile` 改返回 `Parts` | `src/capabilities/Seeing.Agent.Tools.FileSystem/ReadTool.cs` |
 | 10 | 用户附件改引用式 + **`PromptAttachmentRouter` 空 base64 分支**（否则粘贴图片静默消失） + `AttachmentPreview` 预览 | `samples/.../UploadedFileService.cs`、`PromptAttachmentRouter.cs`、`AttachmentPreview.razor`、`src/abstractions/.../Models/ChatInput.cs`、`src/hosting/.../SessionRuntime.cs` |
 | 11 | **`SessionToolOutputStore` 增加二进制写入重载**（现有 `SaveAsync` 只写文本、固定 `.txt`） | `src/spine/Seeing.Agent.Core/Output/` |
-| 12 | WebUI 工具卡渲染缩略图 + **ref 目录取值端点**（受 `PathBoundary` 约束） | `samples/.../ToolCallMessageComponent.razor`、`samples/.../Endpoints/` |
-| 13 | 配置节 `SeeingAgentOptions.ImageParts.CacheCapacity` + 注册 | `src/spine/Seeing.Agent.Core/Configuration/`、`ConfigSectionRegistry` |
-| 14 | 三个 client 出站：`AnthropicClient`（原生）、`OpenAiResponsesClient`（原生）、`OpenAiChatClient`（聚合 user） | 各自 `Clients/` 目录 |
-| 15 | 测试 | 见 §8 |
+| 12 | **取图端点** `SessionAssetEndpoints`（会话校验 + `PathBoundary` + MIME 白名单 + ETag） | `samples/.../Endpoints/SessionAssetEndpoints.cs` |
+| 13 | **`SessionAssetUrlBuilder`**（LocalPath → URL 唯一生成点） | `samples/.../Services/SessionAssetUrlBuilder.cs` |
+| 14 | `ContentPartViewModel.FromSessionPart` 接 URL builder → `ThumbnailUrl` | `samples/.../Models/ContentPartViewModel.cs` |
+| 15 | **`ToolCallViewModel.Parts` + `FromSessionToolCall` 投影 `tc.Parts`**（当前完全没读） | `samples/.../Models/ToolCallViewModel.cs` |
+| 16 | `ToolCallMessageComponent` 渲染缩略图行 | `samples/.../Components/Messaging/ToolCallMessageComponent.razor` |
+| 17 | 三个 client 出站：`AnthropicClient`（原生）、`OpenAiResponsesClient`（原生）、`OpenAiChatClient`（聚合 user） | 各自 `Clients/` 目录 |
+| 18 | 配置节 `SeeingAgentOptions.ImageParts.CacheCapacity` + 注册 | `src/spine/Seeing.Agent.Core/Configuration/`、`ConfigSectionRegistry` |
+| 19 | 测试 | 见 §9 |
 
 ---
 
@@ -312,6 +386,10 @@ user([image_from_t1, image_from_t2])   ← 聚合一条，在最后
 | `PromptAttachmentRouterTests`（新） | 引用式附件（`Base64Content` 为空、有 `LocalPath`）不再被 `continue` 跳过 |
 | `SessionToolOutputStoreTests`（改） | 二进制写入重载；`.png` 文件名与内容正确 |
 | `ReadToolFileSystemTests`（改） | 读 PNG 返回 `Parts`，`Attachments` 不再使用 |
+| `SessionAssetEndpointsTests`（新） | 会话不存在 404；路径越界 404（不含 403）；非白名单扩展名 404；正常取图 200 + ETag；`If-None-Match` 命中返回 304 |
+| `SessionAssetUrlBuilderTests`（新） | ref 目录路径 → `assets/ref/...`；uploads 路径 → `assets/uploads/...`；两者之外返回 null（不抛） |
+| `ToolCallViewModelTests`（新） | `FromSessionToolCall` 投影 `tc.Parts`；无 Parts 时为空列表且不抛 |
+| `ContentPartViewModelTests`（新） | `LocalPath` 有值 → `ThumbnailUrl` 非空；`GetDisplayUrl()` 优先级 `ThumbnailUrl → Url → DataBase64` |
 
 守门断言：**任何 client 收到的 `ChatContentPart` 都不含 `LocalPath`**（该字段不存在于 `ChatContentPart`，编译期即保证）。
 
@@ -328,6 +406,8 @@ user([image_from_t1, image_from_t2])   ← 聚合一条，在最后
 | 同步读盘 + 序列化开销 | 20 张 2MB 图 → 每请求约 54MB base64 字符串，LRU 只省读盘、不省序列化与传输。超长图片会话的请求体仍会很大（按「不设限」决策接受） |
 | 不设图片限制的代价 | 超模型能力时只会得到厂商不透明 400。物化器记 WARN（含路径/大小/模型 id）便于定位，但不拦截、不改写 |
 | 会话 ref 目录随会话删除 | `SessionToolOutputStore.DeleteSessionRefDirectory` 已实现；删除会话即清图 |
+| 缩略图直接用原图 | 无服务端缩放（不引图像编码依赖）。2MB 图当缩略图会浪费带宽，靠 `<img loading="lazy">` + HTTP 缓存缓解 |
+| 取图端点无 HMAC 签名 | 与 `api/uploads` 同一鉴权基线（会话存在 + 路径边界）。能猜到会话 id 与文件名即可读图，本机/局域网部署可接受；公网暴露需另行加固 |
 | 存量会话 | 无 `Parts` 的旧消息行为完全不变 |
 | Gateway 远端图片 | 走 `ChatAttachment.Base64Data` 原路，不经 `LocalPath` |
 | `ToolResult.Attachments` | 标 Obsolete 保留一版，下期删除 |
