@@ -157,4 +157,119 @@ public class FileTabsStateTests
         s.Activate(new FileResourceId("root", "a.txt"));
         count.Should().Be(3);
     }
+
+    // ===== Markdown 预览态 =====
+
+    private static FileReadResult Markdown(string rel = "docs/a.md", string content = "# hi") =>
+        new(new FileResourceId("root", rel), null, content, FileContentKind.Markdown, "text/markdown",
+            "utf-8", true, content.Length, content.Split('\n').Length, false, false, FileReadMode.Display);
+
+    [Fact]
+    public void Open_MarkdownFile_ShouldDefaultToPreview()
+    {
+        var s = new FileTabsState();
+
+        s.Open(Markdown());
+
+        s.OpenFiles[0].PreviewMode.Should().BeTrue("文档场景读多写少，默认预览");
+    }
+
+    [Fact]
+    public void Open_TextFile_ShouldNotUsePreview()
+    {
+        var s = new FileTabsState();
+
+        s.Open(File("a.cs", "class A {}", editable: false));
+
+        s.OpenFiles[0].PreviewMode.Should().BeFalse("非 Markdown 没有预览形态");
+    }
+
+    [Fact]
+    public void TogglePreview_MarkdownFile_ShouldFlipAndRaiseOnce()
+    {
+        var s = new FileTabsState();
+        s.Open(Markdown());
+        var id = s.OpenFiles[0].Id;
+        var count = 0;
+        s.Changed += () => count++;
+
+        s.TogglePreview(id);
+        s.OpenFiles[0].PreviewMode.Should().BeFalse();
+
+        s.TogglePreview(id);
+        s.OpenFiles[0].PreviewMode.Should().BeTrue();
+
+        count.Should().Be(2, "每次切换触发一次 Changed");
+    }
+
+    [Fact]
+    public void TogglePreview_NonMarkdown_ShouldBeNoOp()
+    {
+        var s = new FileTabsState();
+        s.Open(File("a.cs", "class A {}", editable: false));
+        var id = s.OpenFiles[0].Id;
+        var count = 0;
+        s.Changed += () => count++;
+
+        s.TogglePreview(id);
+
+        s.OpenFiles[0].PreviewMode.Should().BeFalse();
+        count.Should().Be(0, "无可切换的形态时不得空触发重渲染");
+    }
+
+    [Fact]
+    public void TogglePreview_DeletedFile_ShouldBeNoOp()
+    {
+        var s = new FileTabsState();
+        s.Open(Markdown());
+        var id = s.OpenFiles[0].Id;
+        s.MarkDeleted(id);
+        var count = 0;
+        s.Changed += () => count++;
+
+        s.TogglePreview(id);
+
+        s.OpenFiles[0].PreviewMode.Should().BeTrue("已删除文件不能切到编辑态");
+        count.Should().Be(0);
+    }
+
+    [Fact]
+    public void TogglePreview_ShouldOnlyAffectTargetTab()
+    {
+        var s = new FileTabsState();
+        s.Open(Markdown("a.md"));
+        s.Open(Markdown("b.md"));
+        var first = s.OpenFiles[0].Id;
+
+        s.TogglePreview(first);
+
+        s.OpenFiles[0].PreviewMode.Should().BeFalse();
+        s.OpenFiles[1].PreviewMode.Should().BeTrue("预览状态跟着标签走，不是全局开关");
+    }
+
+    [Fact]
+    public void SetPreview_ExplicitFalse_ShouldOverrideDefault()
+    {
+        var s = new FileTabsState();
+        s.Open(Markdown());
+        var id = s.OpenFiles[0].Id;
+
+        s.SetPreview(id, preview: false);
+
+        s.OpenFiles[0].PreviewMode.Should().BeFalse("agent 可用 preview=false 显式要求编辑态");
+    }
+
+    [Fact]
+    public void SetPreview_SameValue_ShouldNotRaise()
+    {
+        var s = new FileTabsState();
+        s.Open(Markdown());
+        var id = s.OpenFiles[0].Id;
+        var count = 0;
+        s.Changed += () => count++;
+
+        s.SetPreview(id, preview: true);
+
+        count.Should().Be(0, "值未变化不触发重渲染");
+    }
 }

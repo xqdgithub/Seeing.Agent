@@ -50,6 +50,12 @@ public sealed class OpenFile
     public bool HasExternalConflict { get; set; }
     /// <summary>磁盘内容版本号：仅在磁盘内容被应用时自增（用于编辑器重建判定，用户编辑不变）。</summary>
     public int DiskVersion { get; set; }
+
+    /// <summary>
+    /// 是否处于预览态。仅对 <see cref="FileContentKind.Markdown"/> 有意义，新建标签时默认预览。
+    /// <para>per-file 而非全局：同一工作台里 README 看渲染、笔记改源码是正常需求。</para>
+    /// </summary>
+    public bool PreviewMode { get; set; }
 }
 
 /// <summary>多标签状态（纯 C#，UI 无关）。</summary>
@@ -106,6 +112,7 @@ public sealed class FileTabsState
                 BinaryContent = binaryContent,
                 OpenedRevision = file.Revision,
                 IsReadOnly = !file.IsEditable,
+                PreviewMode = file.Kind == FileContentKind.Markdown,
             };
             _open.Add(of);
             _byKey[key] = of;
@@ -113,6 +120,28 @@ public sealed class FileTabsState
         }
         Changed?.Invoke();
     }
+
+    /// <summary>
+    /// 切换预览/编辑态。非 Markdown 或已删除文件不做任何事（也不触发 Changed）。
+    /// </summary>
+    /// <param name="id">目标标签。</param>
+    public void TogglePreview(FileResourceId id) => SetPreview(id, !IsPreview(id));
+
+    /// <summary>显式设置预览态；无变化或不可切换时不触发 Changed。</summary>
+    /// <param name="id">目标标签。</param>
+    /// <param name="preview">true = 预览，false = 编辑。</param>
+    public void SetPreview(FileResourceId id, bool preview)
+    {
+        if (!_byKey.TryGetValue(Key(id), out var of)) return;
+        if (of.Kind != FileContentKind.Markdown || of.IsDeleted) return;
+        if (of.PreviewMode == preview) return;
+
+        of.PreviewMode = preview;
+        Changed?.Invoke();
+    }
+
+    private bool IsPreview(FileResourceId id)
+        => _byKey.TryGetValue(Key(id), out var of) && of.PreviewMode;
 
     /// <summary>关闭标签。</summary>
     public void Close(FileResourceId id)
