@@ -66,7 +66,9 @@ WebUI 声明 `workbench.dock`（`PayloadKind = Workbench`、`Scope = Session`）
 
 ### 3.3 归属与门控完全继承信封
 
-`FileWorkspaceModule` 同时实现 `IUiContributor`，一次声明两个工作台（`files` / `markdown`），`Requires = ["files.workspace"]`。因此：
+`FileWorkspaceModule` 同时实现 `IUiContributor`，声明「文件」工作台（`files`），`Requires = ["files.workspace"]`。
+
+> **2026-11-11 起**：Markdown 预览已合并进该工作台（`preview` 载荷键 + 标签栏切换），声明表只剩一条。历史 id `markdown` 由宿主 `LegacyWorkbenchAlias` 别名兼容（详见 §7.2）。因此：
 
 - 模块停用 → 工作台从目录消失（`UiVisibility.ModuleDisabled`）；
 - 会话工作模式收窄 → 隐藏（`UiVisibility.ScenarioMismatch`）；
@@ -128,7 +130,7 @@ public interface IUiContributionQuery
 | # | 门闸 | 失败文案 |
 |---|------|---------|
 | ① | 扩展点未声明 | 「当前宿主未声明工作台扩展点（无可用界面）」 |
-| ② | id 未知 | 「未知工作台 'x'。当前可用：`files`, `markdown`」 |
+| ② | id 未知 | 「未知工作台 'x'。当前可用：`files`」 |
 | ③ | 声明在表内但不可见 | 区分「依赖的模块未启用：files.workspace」与「被当前会话工作模式隐藏」 |
 | ④ | 载荷浅校验 | 「缺少 'path'」/「'path' 类型应为 string」 |
 | ⑤ | 无可呈现界面 | 「没有可呈现该会话的界面，请先在浏览器/桌面端打开该会话页面」 |
@@ -236,10 +238,10 @@ var result = await client.SendAsync(sessionId, "video", "seek",
 ## 十二、手工验收
 
 - `dotnet run --project samples/Seeing.Agent.WebUI` 启动无 UI 贡献诊断，`Activating module workbench` 出现在日志；
-- 首页 200；会话页工具栏出现「工作台」下拉，列出「文件」「Markdown 预览」；
+- 首页 200；会话页工具栏出现「工作台」下拉，列出「文件」（Markdown 预览已并入，不再是独立项）；
 - 左右 dock 可各开一个，宽度可拖，刷新后成员与宽度恢复；
-- 停用 `files.workspace` 模块 → 两个工作台从选择器消失，已开的实例被 `Prune` 清除；
-- agent 调 `list_workbenches` 能看到两个工作台与打开参数；`open_workbench` 传错误 payload 得到「缺少 'path'」。
+- 停用 `files.workspace` 模块 → 工作台从选择器消失，已开的实例被 `Prune` 清除；
+- agent 调 `list_workbenches` 能看到「文件」与打开参数；`open_workbench` 传错误 payload 得到「缺少 'path'」。
 
 ## 十三、后续演进
 
@@ -249,3 +251,70 @@ var result = await client.SendAsync(sessionId, "video", "seek",
 | 多实例（`Ordinal > 0`） | 键类型已预留；UI 需要标签条去重策略 |
 | 更多工作台 | 视频播放、网页操作、Terminal —— 只需实现一个带 `[Parameter] WorkbenchViewContext Context` 的组件 + 在模块 `DescribeUi()` 加一条声明 + 宿主 `WebUiWorkbenchViews` 加一行 |
 | `WorkbenchContribution.Icon` 与 `NavPlacement.Icon` 统一 | 让工作台图标也走 `WebUiIconMap` 翻译 |
+
+## 十四、后续变更：Markdown 预览并入文件工作台（2026-11-11）
+
+### 触发与调研
+
+问题：「monaco 文件管理是否自己就可以支持 md 渲染，这样就不用在单独开一个 md 工作台了」。
+
+用仓库实际打包的 Monaco（BlazorMonaco 3.5.0 → monaco-editor 0.55.1）在 Chromium 实测：
+
+| 检查项 | 结果 |
+|---|---|
+| monaco 顶层命名空间 | 无 markdown（只有 editor/languages/lsp/css/html/json/typescript 等） |
+| markdown 编辑器 126 个动作里匹配 preview/markdown | 只有 `editor.action.showDefinitionPreviewHover`（跳转定义悬浮，非文档预览） |
+| `monaco.editor.colorize(表格, 'markdown')` | 产出逐 token 的 `<span class="mtk6">` ，**不产出 `<table>`** |
+| `require(['vs/base/browser/markdownRenderer'])` | 加载失败（`Error: [object Event]`） |
+| webview | 仅 URI scheme 枚举，无 webview 宿主 |
+
+结论：**Monaco 不支持 Markdown 预览**，MD 工作台无法由它替代。VS Code 的 "Open Preview" 来自
+`markdown-language-features` 扩展（markdown-it + webview），不在编辑器核心里。
+
+### 真正的问题：管线漂移
+
+仓库有 **4 条独立 Markdown 管线**，其中两条是裸 `new MarkdownPipelineBuilder().Build()`：
+
+| 位置 | 表格 | frontmatter |
+|---|---|---|
+| `MemoryRenderCache`（会话消息） | ✅ | 保留 |
+| `MarkdownRenderer`（MD 工作台） | ✅ | 剥离 |
+| `FileViewer.razor`（只读 md 兜底） | ❌ 渲染成一堆竖线 | 保留 |
+| `MemoryDetailPage.razor`（记忆详情） | ❌ 同上 | 剥离（调用方做） |
+
+`FileViewer` 那条最易踩：文件工作台里可编辑的 `.md` 走 Monaco 正常，但**截断 / 非 UTF-8 / 超大文件**
+落进 `FileViewer`，那一刻表格就退化。
+
+### 改动
+
+1. **新增原语包 `src/primitives/Seeing.Markdown/`**（仅依赖 Markdig）：
+   - `MarkdownPipelineFactory.Pipeline`：唯一管线构造点
+   - `Render(content)`：会话消息用，frontmatter 原样保留（`---` 是分隔线）
+   - `RenderDocument(content)`：文档用，先剥 frontmatter（`---` 是元数据头，否则被当 setext 标题下划线）
+   - `MarkdownTableExtension`：表格包 `div.md-table-scroll`（由 WebUI 迁入并改名）
+   - `MarkdownFrontMatter.Strip`：由 WebUI.Files 迁入
+2. **`OpenFile.PreviewMode`（per-file）** + `FileTabsState.TogglePreview/SetPreview`：
+   `.md` 默认预览；按钮在标签栏；`FileEditor` 在 `PendingDiff` 与只读分支之后、Monaco 之前插预览分支，
+   复用 `FileViewer`。diff 优先级最高，不受预览开关影响。
+3. **宿主侧别名** `LegacyWorkbenchAlias`：`workbenchId=markdown` → `files` + `preview=true`
+   （显式 `preview=false` 不被覆盖）。放宿主而不是工具侧——工具的五道门闸是对声明表的通用查询，
+   别名是「宿主怎么解释 id」的语义。
+4. **`FilesWorkbenchReports.For`**：删除 MD 工作台会丢「用户正在看哪个文档」的上下文
+   （原 `MarkdownWorkbench` 调 `Context.Report`，`FilesWorkbench` 从不调）。补齐上报
+   `ViewState{path, preview}` + `ContextSummary`「正在预览/编辑 X」，并支持刷新恢复。
+5. **删除** `MarkdownWorkbench.razor`（151 行）、`MarkdownRenderer.cs`、视图登记、
+   `workbench.css` 的 `md-workbench-*` 规则、图标映射的 `markdown` 分支。
+
+### Markdig 版本对齐
+
+`Seeing.Markdown` 用 CPM 的 **1.4.0**，而 WebUI / WebUI.Files 原先写字面量 **1.3.2**，
+交叉引用触发 `NU1605`（包降级）。两处统一到 1.4.0（`Seeing.Agent.Tui` 早已在用 1.4.0）。
+
+### 验收
+
+- 全部 6 个受影响测试项目 **686 通过 / 0 失败**（含新建 `Seeing.Markdown.Tests` 17 个）。
+- 浏览器端到端：工作台下拉只剩「文件」；打开 `AGENTS.md` 默认预览、10 个表格全部带滚动容器且可横向滚动
+  （`scrollLeft` 0→19）；点「编辑」切到 Monaco、按钮变「预览」；再点切回渲染态。
+
+设计详见 `docs/superpowers/specs/2026-11-11-unified-markdown-pipeline-and-workbench-merge-design.md`，
+实施计划 `docs/superpowers/plans/2026-11-11-unified-markdown-pipeline-and-workbench-merge.md`。
