@@ -22,6 +22,12 @@ public static class WorkbenchRequestKinds
     /// <summary>保留的工作台 id：注册表自身。</summary>
     public const string ReservedRegistryId = "registry";
 
+    /// <summary>
+    /// 已合并的历史工作台 id：等价于 <c>files</c> + <c>openPayload.preview=true</c>。
+    /// <para>保留它是为了不打破模型既有的 <c>open_workbench(workbenchId=markdown)</c> 调用习惯。</para>
+    /// </summary>
+    public const string LegacyMarkdownId = "markdown";
+
     /// <summary>打开工作台。payload：<c>{ workbenchId, dock?, openPayload? }</c>。</summary>
     public const string RegistryOpen = "workbench.registry.open";
 

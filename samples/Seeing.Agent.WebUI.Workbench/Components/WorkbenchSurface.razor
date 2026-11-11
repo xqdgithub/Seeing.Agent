@@ -235,10 +235,20 @@
         if (request.Payload is not { ValueKind: System.Text.Json.JsonValueKind.Object } payload
             || !payload.TryGetProperty("workbenchId", out var idElement)
             || idElement.ValueKind != System.Text.Json.JsonValueKind.String
-            || idElement.GetString() is not { Length: > 0 } workbenchId)
+            || idElement.GetString() is not { Length: > 0 } rawWorkbenchId)
         {
             return Failed(request, "缺少 workbenchId");
         }
+
+        System.Text.Json.JsonElement? rawPayload = null;
+        if (payload.TryGetProperty("openPayload", out var openElement)
+            && openElement.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            rawPayload = openElement;
+        }
+
+        // 历史别名：markdown → files + preview=true（保留显式 preview=false）
+        var (workbenchId, openPayload) = LegacyWorkbenchAlias.Apply(rawWorkbenchId, rawPayload);
 
         var contribution = Workbenches.FirstOrDefault(w =>
             string.Equals(w.Id, workbenchId, StringComparison.Ordinal));
@@ -255,13 +265,6 @@
             && Enum.TryParse<WorkbenchDock>(dockElement.GetString(), ignoreCase: true, out var explicitDock))
         {
             dock = explicitDock;
-        }
-
-        System.Text.Json.JsonElement? openPayload = null;
-        if (payload.TryGetProperty("openPayload", out var openElement)
-            && openElement.ValueKind == System.Text.Json.JsonValueKind.Object)
-        {
-            openPayload = openElement;
         }
 
         var key = DockState.Open(SessionId, dock, contribution, openPayload);
