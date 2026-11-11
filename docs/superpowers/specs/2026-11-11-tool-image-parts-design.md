@@ -71,10 +71,12 @@
 
 物化（读盘 → base64）发生在**两处转换**，共用同一个物化器：
 
-| 转换 | 位置 | 输入 |
-|---|---|---|
-| 历史重建 | `SessionHistoryBuilder.BuildHistory`（`SessionContentPart → ChatContentPart` 已在做） | `SessionContentPart` |
-| 本轮活事件 | `AgentExecutor.ForwardToolEventsAsync`（构造 tool 消息） | `ToolCallEvent.Parts` |
+| 转换 | 位置 | 输入 | 现状 |
+|---|---|---|---|
+| 历史重建 | `SessionHistoryBuilder.BuildHistory`（`SessionContentPart → ChatContentPart` 映射在 `:62-70`） | `SessionContentPart` | 补 `LocalPath` 物化 + 顺手补掉既有漏映射的 `FileId`/`ImageDetail` |
+| 本轮活事件 | `AgentExecutor.ForwardToolEventsAsync`（`:796` 造 tool 消息） | `ToolCallEvent.Parts` | 补物化 |
+
+**注意 `BuildHistory` 的签名改动面**：生产调用只有 `ExecutionRunner:996` 一处，但**测试经门面 `BuildHistoryFromSession` 直接调用有 12 处**（5 个测试文件）。因此 resolver 必须是**可选参数**（默认 `null` = 不物化），否则 12 处测试全部编译失败。
 
 **为什么两处都要**：本轮工具刚产出的图片还没有经过会话重建，直接从事件进 `history`。只在历史处物化会漏掉本轮，只在事件处物化会漏掉历史。
 
@@ -89,18 +91,24 @@
 /// <summary>把会话/工具侧的本地产出物化为可直接出站的载荷。唯一实现：<see cref="ImagePartResolver"/>。</summary>
 public interface IImagePartResolver
 {
-    ChatContentPart Resolve(SessionContentPart part);
-    ChatContentPart Resolve(ToolOutputPart part);
+    /// <param name="sessionId">用于校验路径必须落在该会话的 ref 目录内。</param>
+    ChatContentPart Resolve(string sessionId, SessionContentPart part);
+
+    /// <param name="sessionId">用于校验路径必须落在该会话的 ref 目录内。</param>
+    ChatContentPart Resolve(string sessionId, ToolOutputPart part);
 }
 ```
+
+`sessionId` 是必需的：路径边界校验必须以该会话自己的 ref 目录（`IToolOutputStore.GetRefDirectory(sessionId)`）为根，否则无法判断「这是不是本会话的图」。
 
 实现 `ImagePartResolver`：
 
 | 项 | 决定 |
 |---|---|
 | 生命周期 | Singleton |
-| 依赖 | `IFileSystem`（不直接 `File.*`） |
-| 缓存 | 进程内 LRU，键 = `(规范化路径, LastWriteTimeUtc)`，容量可配（默认 32），配置节 `SeeingAgentOptions.ImageParts.CacheCapacity`，热重载有效 |
+| 依赖 | **`IServiceProvider` 取可空 `IFileSystem`**（`IFileSystem` 只在 `Seeing.IO.Local` 模块注册；构造器硬依赖会让无该模块的宿主与 `ValidateOnBuild` 测试解析失败）。取不到时退化为「全部返回文本占位」 |
+| 缓存 | 进程内 LRU，键 = `(规范化路径, LastWriteTimeUtc, Size)`，容量可配（默认 32），配置节 `SeeingAgentOptions.ImageParts.CacheCapacity`，热重载有效 |
+| 路径校验 | 物化前必须确认路径落在**本会话 ref 目录**内（`PathBoundary`）；越界返回文本占位并记 WARN。否则会话文件里被写入任意路径＝任意本地文件被 base64 送给模型 |
 | 注册 | `AddSeeingCore` 内 `services.AddSingleton<IImagePartResolver, ImagePartResolver>()` |
 | 同步性 | **同步**（LRU 命中为常数开销；miss 时几 MB 一次性读） |
 | 文件缺失/不可读 | 返回 `ChatContentPart.CreateText("[图片不可用：{path}]")`，**不抛** |
@@ -222,16 +230,48 @@ public sealed record ToolOutputPart
 
 ---
 
-## 6. 两个 provider 的出站形状
+## 6. 三个 provider 客户端的出站形状
 
-框架只保证 `ChatContentPart` 携带可用载荷，出站由 client 决定：
+框架只保证 `ChatContentPart` 携带可用载荷，出站由 client 决定。
 
-| client | 做法 | 位置 |
-|---|---|---|
-| `OpenAiChatClient` | `role:"tool"` 只允许文本 → 拆成 tool 消息（`ModelContent`）+ 紧随的 user 消息（`image_url`） | `BuildMessages` 的 `ChatRole.Tool` 分支 |
-| `AnthropicClient` | `tool_result.content` 原生接受 block 数组 → `[text, image]` 内嵌，不额外造消息 | `BuildContent` 的 `ToolCallId` 分支 |
+**存在三个 chat 客户端**（原设计只算了两个）：
 
-同语义、不同形状，各自最优。
+| client | 协议 | 图片出站方式 | 依据 |
+|---|---|---|---|
+| `AnthropicClient` | Messages API | ✅ **原生**：`tool_result.content` 为 block 数组，直接内嵌 `{type:"image",source:{...}}` | 官方支持 |
+| `OpenAiResponsesClient` | Responses API | ✅ **原生**：`function_call_output.output` 为数组，放 `{type:"input_image", image_url:"data:..."}` | 官方文档：「For functions that return images or files, you can pass an array of image or file objects instead of a string」 |
+| `OpenAiChatClient` | Chat Completions | ⚠️ **必须绕路**：`role:"tool"` 的 `content` **只允许 text** | 官方 API reference：「For tool messages, only type `text` is supported」；实测报错 `image URLs are only allowed for role: "user", not role: "tool"` |
+
+### 6.1 Chat Completions 的绕路规则（唯一特殊路径）
+
+官方要求 `assistant(tool_calls)` 之后的**所有 tool 消息必须连续**，任何其它 role 都不能插在中间。实测确认（同一会话同一模型）：
+
+| 形状 | 结果 |
+|---|---|
+| `tool, tool, user, user` | ✅ 200 |
+| `tool, user, tool, user` | ❌ 400 `invalid_request_error`，报 `messages.[N].role` |
+
+所以**唯一合法形态**：
+
+```
+assistant(tool_calls=[t1, t2, t3])
+tool(t1)                       ← 全部连续
+tool(t2)
+tool(t3)
+user([image_from_t1, image_from_t2])   ← 聚合一条，在最后
+```
+
+实现要点（`BuildMessages`）：
+1. 先按原顺序输出全部消息，tool 消息只带文本。
+2. tool 消息期间把图片**缓冲**到 `pendingImages`（不立即输出）。
+3. 遇到第一条非 tool 消息（或列表结束）时，把 `pendingImages` 作为**单条** user 消息 flush 出去。
+4. 一轮有 3 个带图工具 → 只产出 **1 条** user 消息，内含 3 个 image part。
+
+这条规则只存在于 `OpenAiChatClient` 内部，不影响框架契约、不影响 `SessionHistoryBuilder`、不影响缓存（图片顺序稳定）。
+
+### 6.2 为什么不在框架层统一成「tool + user」
+
+若框架层就给 Chat Completions 造 user 消息，Anthropic 与 Responses 会收到**多余的消息**，破坏它们原生的工具结果形状，且 OpenAI 系历史重建会与原生路径不一致。框架只负责提供载荷，形状归 client。
 
 ---
 
@@ -239,17 +279,21 @@ public sealed record ToolOutputPart
 
 | # | 内容 | 位置 |
 |---|---|---|
-| 1 | `SessionContentPart.LocalPath` + `CreateImageFromPath` + `Clone()` 补字段 | `src/primitives/Seeing.Session/Core/SessionMessage.cs` |
+| 1 | `SessionContentPart.LocalPath` + `CreateImageFromPath` + **`SessionMessage.Clone()` 补字段** | `src/primitives/Seeing.Session/Core/SessionMessage.cs` |
 | 2 | `ToolOutputPart` + `ToolResult.Parts` + `ToolCallEvent.Parts` + `Attachments` 标 Obsolete | `src/abstractions/Seeing.Agent.Abstractions/Tools/`、`Events/` |
-| 3 | `ToolCallInvoker` 透传 | `src/spine/Seeing.Agent.Core/Core/ToolCallInvoker.cs` |
-| 4 | `SessionToolCall.Parts` + `ChatEventTracker` 映射 + `Clone()` | `src/primitives/.../SessionMessage.cs`、`src/hosting/.../Execution/ChatEventTracker.cs` |
-| 5 | `IImagePartResolver` + `ImagePartResolver`（LRU）+ DI 注册 | `src/spine/Seeing.Agent.Core/Llm/` |
-| 6 | `SessionHistoryBuilder.BuildHistory(session, resolver)` | `src/hosting/.../Execution/SessionHistoryBuilder.cs` |
-| 7 | `AgentExecutor.ForwardToolEventsAsync` 接物化器（签名加参数，保持 static） | `src/spine/Seeing.Agent.Core/Core/AgentExecutor.cs` |
-| 8 | `ReadTool.ReadBinaryFile` 改返回 `Parts` | `src/capabilities/Seeing.Agent.Tools.FileSystem/ReadTool.cs` |
-| 9 | 用户附件改引用式 | `samples/Seeing.Agent.WebUI/Services/UploadedFileService.cs`、`src/abstractions/.../Models/ChatInput.cs`、`src/hosting/.../SessionRuntime.cs` |
-| 10 | WebUI 工具卡渲染缩略图 | `samples/Seeing.Agent.WebUI/Components/Messaging/ToolCallMessageComponent.razor` |
-| 11 | 测试 | 见 §8 |
+| 3 | `ToolCallInvoker` 透传——**全部 5 处**：`BuildTerminalEvent` 调用点 ×2（`:96` Rejected、`:117` Cancelled）+ Success/Failed/Cancelled 构造 ×3（`:155/179/198`） | `src/spine/Seeing.Agent.Core/Core/ToolCallInvoker.cs` |
+| 4 | `AgentExecutor.BuildTerminalEvent`（`:916`）同样需要透传（异常兜底路径） | `src/spine/Seeing.Agent.Core/Core/AgentExecutor.cs` |
+| 5 | `SessionToolCall.Parts` + **`SessionToolCall.Clone()` 补字段** + `ChatEventTracker` 映射 | `src/primitives/.../SessionMessage.cs`、`src/hosting/.../Execution/ChatEventTracker.cs` |
+| 6 | `IImagePartResolver` + `ImagePartResolver`（LRU）+ DI | `src/spine/Seeing.Agent.Core/Llm/` |
+| 7 | **`SessionHistoryBuilder` 现有映射补 `FileId`/`ImageDetail`**（既有 bug）+ 接 resolver，可选参数（默认 null 不物化） | `src/hosting/.../Execution/SessionHistoryBuilder.cs` |
+| 8 | `AgentExecutor.ForwardToolEventsAsync` 接物化器（加参数，保持 static） | `src/spine/Seeing.Agent.Core/Core/AgentExecutor.cs` |
+| 9 | `ReadTool.ReadBinaryFile` 改返回 `Parts` | `src/capabilities/Seeing.Agent.Tools.FileSystem/ReadTool.cs` |
+| 10 | 用户附件改引用式 + **`PromptAttachmentRouter` 空 base64 分支**（否则粘贴图片静默消失） + `AttachmentPreview` 预览 | `samples/.../UploadedFileService.cs`、`PromptAttachmentRouter.cs`、`AttachmentPreview.razor`、`src/abstractions/.../Models/ChatInput.cs`、`src/hosting/.../SessionRuntime.cs` |
+| 11 | **`SessionToolOutputStore` 增加二进制写入重载**（现有 `SaveAsync` 只写文本、固定 `.txt`） | `src/spine/Seeing.Agent.Core/Output/` |
+| 12 | WebUI 工具卡渲染缩略图 + **ref 目录取值端点**（受 `PathBoundary` 约束） | `samples/.../ToolCallMessageComponent.razor`、`samples/.../Endpoints/` |
+| 13 | 配置节 `SeeingAgentOptions.ImageParts.CacheCapacity` + 注册 | `src/spine/Seeing.Agent.Core/Configuration/`、`ConfigSectionRegistry` |
+| 14 | 三个 client 出站：`AnthropicClient`（原生）、`OpenAiResponsesClient`（原生）、`OpenAiChatClient`（聚合 user） | 各自 `Clients/` 目录 |
+| 15 | 测试 | 见 §8 |
 
 ---
 
@@ -258,11 +302,15 @@ public sealed record ToolOutputPart
 | 套件 | 钉住什么 |
 |---|---|
 | `ToolOutputPartTests` | 契约往返；`Kind` 常量唯一 |
-| `ImagePartResolverTests` | LRU 命中（同一路径第二次不读盘）；文件修改后失效；文件缺失降级为文本段；非图片 MIME 走 file 段 |
-| `SessionHistoryBuilderTests`（改） | `SessionContentPart{LocalPath}` → `ChatContentPart{DataBase64}`；缺失图降级不抛 |
+| `ImagePartResolverTests` | LRU 命中（同一路径第二次不读盘）；文件修改后失效（改内容 + 改时间戳）；文件缺失降级为文本段；非图片 MIME 走 file 段；**越界路径（不在本会话 ref 目录）拒绝并降级** |
+| `SessionHistoryBuilderTests`（改） | `SessionContentPart{LocalPath}` → `ChatContentPart{DataBase64}`；缺失图降级不抛；`FileId`/`ImageDetail` 不再丢 |
 | `AgentExecutor` 相关（改） | 本轮工具图片直接进 `history`，不经过会话重建 |
-| `ToolCallPersistenceTests`（新） | `ToolCallEvent.Parts` → `SessionToolCall.Parts` 落盘往返；`Clone()` 不丢字段 |
-| `OpenAiChatClient` / `AnthropicClient`（改） | 各自出站形状：OpenAI 拆 tool+user；Anthropic 内嵌 `tool_result` |
+| `ToolCallPersistenceTests`（新） | `ToolCallEvent.Parts` → `SessionToolCall.Parts` 落盘往返；`SessionToolCall.Clone()` 与 `SessionMessage.Clone()` 都不丢 `Parts`/`LocalPath` |
+| `OpenAiChatClientTests`（新） | **聚合形状**：一轮 2 个带图工具 → `tool, tool, user([img, img])`（绝不出现 `tool, user, tool`）；无图时输出与旧版逐字节相同 |
+| `OpenAiResponsesClientTests`（新） | `function_call_output.output` 为数组，含 `input_image` |
+| `AnthropicClientTests`（改） | `tool_result.content` 为 block 数组，含 image block |
+| `PromptAttachmentRouterTests`（新） | 引用式附件（`Base64Content` 为空、有 `LocalPath`）不再被 `continue` 跳过 |
+| `SessionToolOutputStoreTests`（改） | 二进制写入重载；`.png` 文件名与内容正确 |
 | `ReadToolFileSystemTests`（改） | 读 PNG 返回 `Parts`，`Attachments` 不再使用 |
 
 守门断言：**任何 client 收到的 `ChatContentPart` 都不含 `LocalPath`**（该字段不存在于 `ChatContentPart`，编译期即保证）。
@@ -276,6 +324,9 @@ public sealed record ToolOutputPart
 | 无图片大小限制 | 模型不支持时由 `LlmRouter` 的 `Modalities` 层拒绝；不额外拦截 |
 | 物化为同步读盘 | LRU 命中即常数；miss 时几 MB 同步阻塞。会话图片极多时可能可见 |
 | 缓存容量默认 32 | 超过即按 LRU 淘汰；每轮历史含 30+ 图的长会话会持续 miss。可通过配置调大 |
+| `ArchiveAsync` 会删 ref 目录 | `FileSessionStore.ArchiveAsync`（`:738`）归档时删除 ref，归档→恢复后图片全部丢失。本期接受此降级（恢复后图片变文本占位），下期改为随归档一起搬迁 |
+| 同步读盘 + 序列化开销 | 20 张 2MB 图 → 每请求约 54MB base64 字符串，LRU 只省读盘、不省序列化与传输。超长图片会话的请求体仍会很大（按「不设限」决策接受） |
+| 不设图片限制的代价 | 超模型能力时只会得到厂商不透明 400。物化器记 WARN（含路径/大小/模型 id）便于定位，但不拦截、不改写 |
 | 会话 ref 目录随会话删除 | `SessionToolOutputStore.DeleteSessionRefDirectory` 已实现；删除会话即清图 |
 | 存量会话 | 无 `Parts` 的旧消息行为完全不变 |
 | Gateway 远端图片 | 走 `ChatAttachment.Base64Data` 原路，不经 `LocalPath` |
