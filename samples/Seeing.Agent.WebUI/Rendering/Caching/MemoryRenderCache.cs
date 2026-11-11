@@ -1,6 +1,5 @@
-using Markdig;
 using Seeing.Agent.WebUI.Rendering.Abstractions;
-using Seeing.Agent.WebUI.Rendering.MarkdownExtensions;
+using Seeing.Markdown;
 using System.Collections.Concurrent;
 
 namespace Seeing.Agent.WebUI.Rendering.Caching;
@@ -21,7 +20,6 @@ namespace Seeing.Agent.WebUI.Rendering.Caching;
 public class MemoryRenderCache : IRenderCache
 {
     private readonly ConcurrentDictionary<string, CacheEntry> _cache = new();
-    private readonly MarkdownPipeline _markdownPipeline;
     private readonly ILogger<MemoryRenderCache> _logger;
 
     // 统计信息
@@ -32,30 +30,10 @@ public class MemoryRenderCache : IRenderCache
     private const int MaxCacheSize = 5000;
     private long _evictedCount;
 
+    /// <summary>创建缓存实例。渲染管线由 <see cref="MarkdownPipelineFactory"/> 提供（全局唯一）。</summary>
     public MemoryRenderCache(ILogger<MemoryRenderCache> logger)
     {
         _logger = logger;
-
-        // 配置 Markdown 管道（支持完整 Markdown 语法，禁用原始 HTML 透传）
-        _markdownPipeline = new MarkdownPipelineBuilder()
-            .DisableHtml()       // 禁止原始 HTML 透传，防止非 Markdown 内容被直接渲染
-            .UseAutoLinks()
-            .UseTaskLists()
-            .UsePipeTables()
-            .UseGridTables()
-            .UseListExtras()
-            .UseEmphasisExtras()
-            .UseAutoIdentifiers()
-            .UseCitations()
-            .UseCustomContainers()
-            .UseFooters()
-            .UseFootnotes()
-            .UseMathematics()
-            .UseSmartyPants()
-            // 表格套横向滚动容器：多列表格超出气泡宽度时右侧列不再被外层 overflow-x:hidden 剪掉。
-            // 必须排在 UsePipeTables/UseGridTables 之后（替换它们注册的表格渲染器）。
-            .Use<ScrollableTableExtension>()
-            .Build();
     }
 
     /// <summary>
@@ -81,7 +59,7 @@ public class MemoryRenderCache : IRenderCache
                 TrimIfNeeded();
                 return new CacheEntry(
                     content,
-                    Markdown.ToHtml(content, _markdownPipeline),
+                    MarkdownPipelineFactory.Render(content),
                     now,
                     null
                 );
@@ -100,7 +78,7 @@ public class MemoryRenderCache : IRenderCache
                 Interlocked.Increment(ref _missCount);
                 return new CacheEntry(
                     content,
-                    Markdown.ToHtml(content, _markdownPipeline),
+                    MarkdownPipelineFactory.Render(content),
                     existing.CreatedAt, // 保留创建时间
                     now                  // 更新时间
                 );

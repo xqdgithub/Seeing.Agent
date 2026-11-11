@@ -201,22 +201,16 @@
     {
         if (string.IsNullOrEmpty(content)) return "<p>（空内容）</p>";
 
-        // 先剥离 YAML frontmatter：记忆文件都带一段元数据头，
-        // 直接交给 Markdig 时，闭合的 "---" 会被当成 setext 标题下划线，
-        // 把整段元数据渲染成一个巨大的标题（用户看到的是 id/type/tags 满屏）。
-        var body = Seeing.Agent.Memory.Core.YamlParser.ExtractMarkdownBody(content);
-        if (string.IsNullOrWhiteSpace(body))
-            body = content;   // 没有 frontmatter（或剥离后为空）时按原文渲染
-
         try
         {
-            var pipeline = new Markdig.MarkdownPipelineBuilder().Build();
-            return Markdig.Markdown.ToHtml(body, pipeline);
+            // 记忆文件必带 YAML frontmatter，由 RenderDocument 内部剥离——
+            // 否则闭合的 "---" 会被当成 setext 标题下划线，把整段元数据渲染成一个巨大标题。
+            return Seeing.Markdown.MarkdownPipelineFactory.RenderDocument(content);
         }
         catch
         {
             // 降级为纯文本显示（HTML 转义）
-            return "<pre>" + System.Net.WebUtility.HtmlEncode(body) + "</pre>";
+            return "<pre>" + System.Net.WebUtility.HtmlEncode(content) + "</pre>";
         }
     }
 

@@ -1,6 +1,6 @@
 @using Seeing.Agent.Abstractions.Files
 @using Seeing.Agent.WebUI.Files.Services
-@using Markdig
+@using Seeing.Markdown
 
 <div class="file-viewer">
     @{ var f = Tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == Tabs.ActiveKey); }
@@ -63,7 +63,6 @@
     /// <summary>标签状态。</summary>
     [Parameter, EditorRequired] public FileTabsState Tabs { get; set; } = default!;
 
-    private static readonly MarkdownPipeline s_pipeline = new MarkdownPipelineBuilder().Build();
-
-    private static string RenderMarkdown(string content) => Markdown.ToHtml(content ?? "", s_pipeline);
+    /// <summary>渲染 Markdown：走共享管线（含表格扩展），并剥离 YAML frontmatter。</summary>
+    private static string RenderMarkdown(string content) => MarkdownPipelineFactory.RenderDocument(content);
 }
