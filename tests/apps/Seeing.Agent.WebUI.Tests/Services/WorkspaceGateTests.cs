@@ -28,6 +28,29 @@ public class WorkspaceGateTests
     public void Resolved_ShouldNeverForceHome() =>
         WorkspaceGate.ShouldForceWorkspaceHome(true, "").Should().BeFalse();
 
+    [Theory]
+    [InlineData(null, "/workspaces")]
+    [InlineData("", "/workspaces")]
+    [InlineData("/", "/workspaces")]
+    [InlineData("workspaces", "/workspaces")]
+    [InlineData("workspaces?x=1", "/workspaces")]
+    [InlineData("session/abc", "/workspaces?from=%2Fsession%2Fabc")]
+    [InlineData("settings?tab=1", "/workspaces?from=%2Fsettings%3Ftab%3D1")]
+    public void BuildManagePath_ShouldCarryReturnOnlyForBusinessRoutes(string? current, string expected) =>
+        WorkspaceGate.BuildManagePath(current).Should().Be(expected);
+
+    [Theory]
+    [InlineData(null, "/")]
+    [InlineData("", "/")]
+    [InlineData("/session/abc", "/session/abc")]
+    [InlineData("%2Fsettings%3Ftab%3D1", "/settings?tab=1")]
+    [InlineData("/workspaces", "/")]
+    [InlineData("//evil.example", "/")]
+    [InlineData("https://evil.example", "/")]
+    [InlineData("session/abc", "/")]
+    public void ResolveReturnPath_ShouldAcceptOnlySafeAppRelativePaths(string? from, string expected) =>
+        WorkspaceGate.ResolveReturnPath(from).Should().Be(expected);
+
     [Fact]
     public void ModuleRouter_ShouldNot_NavigateTo_WhileUnresolved()
     {

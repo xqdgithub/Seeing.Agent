@@ -117,6 +117,10 @@
         }
     }
 
-    /// <summary>打开工作区管理页（查看全部、换目录、移除记录）。</summary>
-    private void GoToWorkspacePage() => Navigation.NavigateTo("/workspaces");
+    /// <summary>打开工作区管理页（查看全部、换目录、移除记录）；带回跳到当前页。</summary>
+    private void GoToWorkspacePage()
+    {
+        var from = Navigation.ToBaseRelativePath(Navigation.Uri);
+        Navigation.NavigateTo(WorkspaceGate.BuildManagePath(from));
+    }
 }

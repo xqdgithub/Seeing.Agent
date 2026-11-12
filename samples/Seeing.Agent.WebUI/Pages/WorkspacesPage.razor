@@ -26,7 +26,7 @@
         <div class="ws-page-actions">
             @if (Workspace.IsResolved)
             {
-                <Button Type="@ButtonType.Default" OnClick="@(() => Navigation.NavigateTo("/"))">
+                <Button Type="@ButtonType.Default" OnClick="ReturnToConsole">
                     返回控制台
                 </Button>
             }
@@ -138,8 +138,15 @@
     private DirectoryPicker? _picker;
     private string? _error;
     private bool _busy;
+    private string _returnPath = "/";
 
-    protected override void OnInitialized() => Reload();
+    protected override void OnInitialized()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var from = System.Web.HttpUtility.ParseQueryString(uri.Query)[WorkspaceGate.ReturnQueryKey];
+        _returnPath = WorkspaceGate.ResolveReturnPath(from);
+        Reload();
+    }
 
     private void Reload()
     {
@@ -155,6 +162,9 @@
                 Directory.Exists(p)))
             .ToList();
     }
+
+    /// <summary>未换工作区时回到进入本页前的路由；换区成功走 <see cref="EnterAsync"/> 的整页重载首页。</summary>
+    private void ReturnToConsole() => Navigation.NavigateTo(_returnPath);
 
     private void OpenPicker() => _picker?.Show();
 
