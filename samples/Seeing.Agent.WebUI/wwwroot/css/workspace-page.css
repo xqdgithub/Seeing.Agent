@@ -1168,6 +1168,11 @@
     margin-bottom: 8px;
 }
 
+.dir-picker-path-input {
+    flex: 1;
+    min-width: 0;
+}
+
 .dir-picker-list {
     max-height: 320px;
     overflow-y: auto;

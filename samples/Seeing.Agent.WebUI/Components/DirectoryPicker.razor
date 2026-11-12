@@ -1,8 +1,9 @@
 @using AntDesign
+@using Microsoft.AspNetCore.Components.Web
 @using Seeing.Agent.WebUI.Services
 @inject IDirectoryBrowser Browser
 
-@* 浏览器与桌面共用的目录选择对话框：列出服务端目录，点击进入，不手填路径。 *@
+@* 浏览器与桌面共用的目录选择对话框：列出服务端目录，点击进入；路径栏支持粘贴/回车跳转。 *@
 <Modal @bind-Visible="_visible"
        Title="@Title"
        Centered="true"
@@ -24,7 +25,14 @@
                         Icon="@IconType.Outline.ArrowUp"
                         OnClick="@(() => Navigate(_listing!.ParentPath!))" />
             }
-            <Text Code>@(_showingRoots ? "磁盘根" : _listing?.Path)</Text>
+            <div class="dir-picker-path-input" @onpaste="OnPathPaste">
+                <Input Value="@_pathInput"
+                       ValueChanged="EventCallback.Factory.Create<string>(this, OnPathValueChanged)"
+                       OnPressEnter="EventCallback.Factory.Create(this, CommitPath)"
+                       Placeholder="粘贴或输入路径后回车"
+                       Size="@InputSize.Small"
+                       AllowClear="true" />
+            </div>
         </div>
 
         @if (_showingRoots)
@@ -71,6 +79,8 @@
     private bool _visible;
     private bool _showingRoots;
     private string _newFolderName = "";
+    private string _pathInput = "";
+    private bool _commitOnNextChange;
     private DirectoryListing? _listing;
     private IReadOnlyList<DirectoryEntryView> _roots = Array.Empty<DirectoryEntryView>();
 
@@ -88,9 +98,11 @@
     {
         _visible = true;
         _newFolderName = "";
+        _commitOnNextChange = false;
         _roots = Browser.GetRoots();
         _showingRoots = false;
         _listing = Browser.List(InitialPath ?? "");
+        SyncPathInput();
         StateHasChanged();
     }
 
@@ -106,12 +118,69 @@
         _showingRoots = false;
         _listing = Browser.List(path);
         _newFolderName = "";
+        SyncPathInput();
     }
 
     private void GoRoots()
     {
         _roots = Browser.GetRoots();
         _showingRoots = true;
+        SyncPathInput();
+    }
+
+    /// <summary>粘贴后等 ValueChanged 带上新文本再尝试跳转。</summary>
+    private void OnPathPaste(ClipboardEventArgs _)
+    {
+        _commitOnNextChange = true;
+    }
+
+    private void OnPathValueChanged(string value)
+    {
+        _pathInput = value ?? "";
+        if (!_commitOnNextChange)
+            return;
+
+        _commitOnNextChange = false;
+        CommitPath();
+    }
+
+    /// <summary>
+    /// 路径栏提交：目录存在则进入；否则清空输入并回到当前位置（列表不动）。
+    /// </summary>
+    private void CommitPath()
+    {
+        var candidate = _pathInput.Trim().Trim('"');
+        if (string.IsNullOrEmpty(candidate))
+        {
+            SyncPathInput();
+            return;
+        }
+
+        // 与当前位置相同：只规范化显示，避免无意义刷新
+        if (!_showingRoots
+            && _listing is { Error: null } listing
+            && string.Equals(candidate, listing.Path, StringComparison.OrdinalIgnoreCase))
+        {
+            _pathInput = listing.Path;
+            return;
+        }
+
+        var next = Browser.List(candidate);
+        if (next.Error is not null)
+        {
+            SyncPathInput();
+            return;
+        }
+
+        _showingRoots = false;
+        _listing = next;
+        _newFolderName = "";
+        _pathInput = next.Path;
+    }
+
+    private void SyncPathInput()
+    {
+        _pathInput = _showingRoots ? "" : (_listing?.Error is null ? _listing?.Path ?? "" : "");
     }
 
     private void CreateFolder()
@@ -123,6 +192,7 @@
         _listing = result;
         if (result.Error is null)
             _newFolderName = "";
+        SyncPathInput();
 
         StateHasChanged();
     }

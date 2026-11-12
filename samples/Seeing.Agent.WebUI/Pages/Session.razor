@@ -56,7 +56,7 @@
                         OnSelect="OnTileClick"
                         OnOpenDrawer="OpenRelationDrawer" />
     @* 双栏布局：主区为 active 会话（Full + SessionToolbar 头部），侧栏为非 active 会话（Summary 卡片）；
-       侧栏无窗口时隐藏，主窗全宽。头部仍用会话页 SessionToolbar（Agent/模型切换、页级导航插槽）。 *@
+       侧栏无窗口时隐藏，主窗全宽。头部用 SessionToolbar（Agent/模型切换、页级操作插槽）。 *@
     <div class="session-dual-grid">
         <div class="session-main-area">
             @if (string.IsNullOrEmpty(_activeSessionId))
@@ -64,19 +64,7 @@
                 @* 无可用会话：由 SessionWindow 无路由参数模式展示空态 *@
                 <SessionWindow SessionId=""
                                ViewMode="Services.SessionWindowMode.Full"
-                               GlobalSessionState="@GlobalSessionState">
-                    <ToolbarLeftActions Context="ctx">
-                        <Button Type="@ButtonType.Text"
-                                Size="@ButtonSize.Small"
-                                Icon="@IconType.Outline.Home"
-                                OnClick="@GoToHome">
-                            @if (!AppState.SidebarCollapsed && !AppState.IsMobile)
-                            {
-                                <span>首页</span>
-                            }
-                        </Button>
-                    </ToolbarLeftActions>
-                </SessionWindow>
+                               GlobalSessionState="@GlobalSessionState" />
             }
             else
             {
@@ -90,21 +78,6 @@
                                    GlobalSessionState="@GlobalSessionState"
                                    OnClick="@OnTileClick"
                                    OnExecutionStateChanged="@OnExecutionStateChanged">
-                        <ToolbarLeftActions Context="ctx">
-                            @{
-                                // 幂等同步 AppState.CurrentSessionId（供首页"继续会话"导航定位）
-                                SyncCurrentSessionId(ctx);
-                            }
-                            <Button Type="@ButtonType.Text"
-                                    Size="@ButtonSize.Small"
-                                    Icon="@IconType.Outline.Home"
-                                    OnClick="@GoToHome">
-                                @if (!AppState.SidebarCollapsed && !AppState.IsMobile)
-                                {
-                                    <span>首页</span>
-                                }
-                            </Button>
-                        </ToolbarLeftActions>
                         <ToolbarRightActions Context="ctx">
                             <Space>
                                 @if (ctx.CanBranch)
@@ -316,6 +289,7 @@
 
         _mainSessionId = mainId;
         _activeSessionId = mainId;
+        SyncCurrentSessionId(mainId);
         InitRegistry(mainId);
 
         await InvokeAsync(StateHasChanged);
@@ -334,6 +308,7 @@
 
         _mainSessionId = SessionId;
         _activeSessionId = SessionId;
+        SyncCurrentSessionId(SessionId);
 
         // 换路由重新校验主会话（缓存 → 存储兜底），重置错误态
         var main = SessionManager.Get(SessionId);
@@ -389,7 +364,10 @@
             _windows = _registry?.Windows ?? Array.Empty<SessionWindowRegistry.WindowNode>();
             var active = _registry?.ActiveSessionId;
             if (!string.IsNullOrEmpty(active))
+            {
                 _activeSessionId = active;
+                SyncCurrentSessionId(active);
+            }
             RebuildSidebar();
             StateHasChanged();
 
@@ -660,6 +638,7 @@
         // SetActiveAsync 涉及组锁与落盘，若等它返回才渲染，用户点击后会盯着旧内容几百毫秒。
         // 本地更新后 SessionWindow 立刻收到新 SessionId，装载状态机随即进入「加载中」并显示骨架。
         _activeSessionId = sessionId;
+        SyncCurrentSessionId(sessionId);
         RebuildSidebar();
         if (_currentGroup is not null)
             _relationModel = BuildRelationModel(_currentGroup);
@@ -683,6 +662,7 @@
         }
 
         _activeSessionId = previousActive;
+        SyncCurrentSessionId(previousActive);
         RebuildSidebar();
         if (_currentGroup is not null)
             _relationModel = BuildRelationModel(_currentGroup);
@@ -709,15 +689,14 @@
     }
 
     /// <summary>
-    /// 幂等同步 AppState.CurrentSessionId（供首页"继续会话"导航定位；无需事件订阅）
+    /// 幂等同步 AppState.CurrentSessionId（供侧栏「继续会话」导航定位）。
     /// </summary>
-    private void SyncCurrentSessionId(Services.SessionWindowContext ctx)
+    private void SyncCurrentSessionId(string? sessionId)
     {
-        var id = ctx.CurrentSession?.Id;
-        if (!string.IsNullOrEmpty(id)
-            && !string.Equals(AppState.CurrentSessionId, id, StringComparison.Ordinal))
+        if (!string.IsNullOrEmpty(sessionId)
+            && !string.Equals(AppState.CurrentSessionId, sessionId, StringComparison.Ordinal))
         {
-            AppState.CurrentSessionId = id;
+            AppState.CurrentSessionId = sessionId;
         }
     }
 

@@ -549,39 +549,6 @@
     vertical-align: bottom;
 }
 
-.session-workspace-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: var(--font-size-xs);
-    color: var(--color-text-secondary);
-    background: var(--color-bg-secondary);
-    padding: 2px 8px;
-    border: none;
-    border-radius: var(--radius-sm);
-    margin-left: var(--space-2);
-    max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    cursor: pointer;
-}
-
-.session-workspace-badge:hover {
-    background: var(--color-bg-tertiary, #e6f4ff);
-    color: var(--color-primary, #1677ff);
-}
-
-.session-workspace-badge.active {
-    background: rgba(22, 119, 255, 0.12);
-    color: var(--color-primary, #1677ff);
-}
-
-.session-workspace-badge .anticon {
-    font-size: 12px;
-    flex-shrink: 0;
-}
-
 .session-scenario-badge {
     display: inline-flex;
     align-items: center;
