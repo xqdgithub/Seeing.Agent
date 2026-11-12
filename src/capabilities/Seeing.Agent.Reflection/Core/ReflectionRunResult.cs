@@ -9,7 +9,7 @@ namespace Seeing.Agent.Reflection.Core;
 /// </summary>
 /// <param name="Executed">是否真正走完了「投递 + 收集」两个阶段（成功产出或无建议的空产出都算）。</param>
 /// <param name="SkipReason">未执行的原因，取自 <see cref="ReflectionSkipReasons"/>；已执行时为 <c>null</c>。</param>
-/// <param name="CreatedSkills">本次实际创建的技能名。执行器不重复记账（技能由子会话内的 skill_create 写入），当前恒为空。</param>
+/// <param name="CreatedSkills">本次实际创建的技能名（由 <see cref="ReflectionSuggestionsWriter"/> 在执行器内写入，仅 <c>ApplyCreate</c> 模式非空）。</param>
 /// <param name="SuggestionCount">本次解析到的建议条数；已执行但无建议时为 0。</param>
 public sealed record ReflectionRunResult(
     bool Executed,
@@ -21,6 +21,25 @@ public sealed record ReflectionRunResult(
     /// <param name="reason">原因常量，取自 <see cref="ReflectionSkipReasons"/>。</param>
     public static ReflectionRunResult Skipped(string reason)
         => new(false, reason, Array.Empty<string>(), 0);
+}
+
+/// <summary>
+/// 复盘运行结果（journal 的 <c>Outcome</c> 字段）的取值常量。
+/// <para>
+/// 收敛为常量而非自由字符串：UI 按这些值做文案映射，散落的字面量迟早漂移——
+/// 曾经这里写的是执行状态（<c>Completed</c>），页面因此永远显示英文并让统计恒为 0。
+/// </para>
+/// </summary>
+public static class ReflectionRunOutcomes
+{
+    /// <summary>产出了建议（未写盘）。</summary>
+    public const string Suggested = "suggested";
+
+    /// <summary>产出了建议并实际创建了技能（仅 <c>ApplyCreate</c> 模式）。</summary>
+    public const string Created = "created";
+
+    /// <summary>执行完成但没有产出（模型合法地表达了「本轮没有建议」）。</summary>
+    public const string Skipped = "skipped";
 }
 
 /// <summary>

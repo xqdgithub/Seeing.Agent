@@ -288,6 +288,93 @@ public sealed class ReflectionExecutorTests
             Times.Once);
     }
 
+    /// <summary>
+    /// journal 的 <c>Outcome</c> 必须是「复盘结果」而不是执行状态。
+    /// <para>
+    /// 曾经这里写的是 <c>outcome.Status.ToString()</c> → 落盘 <c>"Completed"</c>，
+    /// 而 UI 只映射 suggested/created/skipped/failed：记录页显示英文、统计恒为 0，
+    /// 用户看到的就是「功能没工作」。这条断言把语义钉在数据层。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Run_Should_Record_Semantic_Outcome_Not_Execution_Status()
+    {
+        var fixture = new Fixture();
+        fixture.SessionManager
+            .Setup(m => m.TryGetOrLoadAsync(SourceSessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fixture.Source());
+        fixture.SessionManager.Setup(m => m.Get(ChildSessionId)).Returns(fixture.Child(SuggestionJson()));
+        fixture.Runtime
+            .Setup(r => r.DeliverAndAwaitAsync(It.IsAny<InboxMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Outcome(ExecutionStatus.Completed));
+
+        await fixture.Build().RunAsync(Fixture.Request());
+
+        fixture.Journal.Verify(
+            j => j.AppendAsync(
+                It.Is<ReflectionRunRecord>(r => r.Outcome == ReflectionRunOutcomes.Suggested),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Run_Should_Record_Skipped_Outcome_When_Model_Says_Skip()
+    {
+        // 「模型合法地表示本轮没建议」是一个成功的结果，不是失败，也不是 Created。
+        var fixture = new Fixture();
+        fixture.SessionManager
+            .Setup(m => m.TryGetOrLoadAsync(SourceSessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fixture.Source());
+        fixture.SessionManager.Setup(m => m.Get(ChildSessionId)).Returns(fixture.Child("""{"action":"skip"}"""));
+        fixture.Runtime
+            .Setup(r => r.DeliverAndAwaitAsync(It.IsAny<InboxMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Outcome(ExecutionStatus.Completed));
+
+        await fixture.Build().RunAsync(Fixture.Request());
+
+        fixture.Journal.Verify(
+            j => j.AppendAsync(
+                It.Is<ReflectionRunRecord>(r => r.Outcome == ReflectionRunOutcomes.Skipped),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// ApplyCreate 模式下真的写入了技能时，Outcome 必须是 <c>created</c>：
+    /// 否则「建议有、技能也写了」和「只有建议」在记录页上无法区分。
+    /// </summary>
+    [Fact]
+    public async Task Run_Should_Record_Created_Outcome_When_Skills_Written()
+    {
+        var fixture = new Fixture();
+        fixture.Options.Mode = ReflectionMode.ApplyCreate;
+        fixture.Options.Model = null;
+        fixture.SessionManager
+            .Setup(m => m.TryGetOrLoadAsync(SourceSessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fixture.Source());
+        fixture.SessionManager.Setup(m => m.Get(ChildSessionId)).Returns(fixture.Child(SuggestionJson()));
+        fixture.Runtime
+            .Setup(r => r.DeliverAndAwaitAsync(It.IsAny<InboxMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Outcome(ExecutionStatus.Completed));
+        fixture.SkillCatalog.Setup(c => c.Find(It.IsAny<string>())).Returns((Seeing.Agent.Abstractions.Skills.SkillCatalogEntry?)null);
+        fixture.SkillWriter
+            .Setup(w => w.CreateAsync(
+                It.IsAny<Seeing.Agent.Abstractions.Skills.SkillDraft>(),
+                It.IsAny<Seeing.Agent.Abstractions.Configuration.ConfigLevel>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Seeing.Agent.Abstractions.Skills.SkillWriteResult(true, null, null));
+
+        await fixture.Build().RunAsync(Fixture.Request());
+
+        fixture.Journal.Verify(
+            j => j.AppendAsync(
+                It.Is<ReflectionRunRecord>(r => r.Outcome == ReflectionRunOutcomes.Created
+                                                && r.CreatedSkills.Count == 1),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
     [Fact]
     public async Task Run_Should_Treat_Empty_Parse_As_Executed_Without_Suggestions()
     {

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Reflection.Abstractions;
+using Seeing.Agent.Reflection.Core;
 
 namespace Seeing.Agent.Reflection.Background;
 
@@ -29,6 +30,8 @@ public sealed class ReflectionWorker : BackgroundService, IModuleHostedService
     private readonly IReflectionExecutor _executor;
     private readonly ReflectionIdleScanner _idleScanner;
     private readonly ReflectionModuleActivity _moduleActivity;
+    private readonly ReflectionWakeSignal _wake;
+    private readonly ReflectionRunningTracker _running;
     private readonly ILogger<ReflectionWorker> _logger;
     private readonly ModuleHostedRunGate _run = new();
 
@@ -50,13 +53,17 @@ public sealed class ReflectionWorker : BackgroundService, IModuleHostedService
         IReflectionExecutor executor,
         ReflectionIdleScanner idleScanner,
         ReflectionModuleActivity moduleActivity,
-        ILogger<ReflectionWorker> logger)
+        ILogger<ReflectionWorker> logger,
+        ReflectionWakeSignal? wake = null,
+        ReflectionRunningTracker? running = null)
     {
         _queue = queue ?? throw new ArgumentNullException(nameof(queue));
         _executor = executor ?? throw new ArgumentNullException(nameof(executor));
         _idleScanner = idleScanner ?? throw new ArgumentNullException(nameof(idleScanner));
         _moduleActivity = moduleActivity ?? throw new ArgumentNullException(nameof(moduleActivity));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _wake = wake ?? new ReflectionWakeSignal();
+        _running = running ?? new ReflectionRunningTracker();
     }
 
     /// <inheritdoc cref="IModuleHostedService.ModuleId" />
@@ -132,9 +139,6 @@ public sealed class ReflectionWorker : BackgroundService, IModuleHostedService
         {
             _logger.LogInformation("复盘后台工作者已启动");
 
-            // 时钟漂移容忍：PeriodicTimer 允许单次 tick 超时，不需要额外补 tick 逻辑。
-            using var ticker = new PeriodicTimer(s_tickInterval);
-
             while (!stoppingToken.IsCancellationRequested && _moduleActivity.IsActive)
             {
                 try
@@ -154,8 +158,9 @@ public sealed class ReflectionWorker : BackgroundService, IModuleHostedService
 
                 try
                 {
-                    if (!await ticker.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
-                        break;
+                    // 等待「下一次 tick」或「手动触发脉冲」，二者取先到者。
+                    // 手动触发若不唤醒，用户点完按钮要等最多 1 分钟才开始跑。
+                    await _wake.WaitAsync(s_tickInterval, stoppingToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -182,6 +187,8 @@ public sealed class ReflectionWorker : BackgroundService, IModuleHostedService
             // 在取出请求后再取一次停用令牌：模块可能刚被停用。
             var deactivation = Volatile.Read(ref _deactivationCts).Token;
 
+            // 登记「正在跑这一个」：它在出队瞬间就离开了队列，UI 只有靠这里才能看到它。
+            _running.Begin(request);
             try
             {
                 using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, deactivation);
@@ -211,6 +218,11 @@ public sealed class ReflectionWorker : BackgroundService, IModuleHostedService
                     "单次复盘执行失败：SessionId={SessionId}, Kind={Kind}",
                     request.SessionId,
                     request.Kind);
+            }
+            finally
+            {
+                // 必须无条件清：异常/取消路径漏清会让 UI 永久显示「正在复盘」。
+                _running.End(request);
             }
         }
     }

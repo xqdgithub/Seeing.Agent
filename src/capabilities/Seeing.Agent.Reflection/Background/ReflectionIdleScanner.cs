@@ -4,7 +4,7 @@ using Seeing.Agent.Reflection.Abstractions;
 using Seeing.Agent.Reflection.Configuration;
 using Seeing.Agent.Reflection.Core;
 using Seeing.Session.Core;
-using System.Collections.Concurrent;
+using Seeing.Session.Management;
 
 namespace Seeing.Agent.Reflection.Background;
 
@@ -31,15 +31,19 @@ public sealed class ReflectionIdleScanner
     private readonly ILogger<ReflectionIdleScanner>? _logger;
 
     /// <summary>
-    /// 已投递过空闲复盘的会话 → 投递时的活动时刻。
+    /// 已投递过空闲复盘的会话 → 该段空闲期对应的活动时刻。
     /// <para>
-    /// 存在的意义是<b>冷却</b>：空闲集合是一份快照，不清除的话同一个空闲会话
+    /// 存在的意义是<b>冷却</b>：空闲集合是一份快照，不去重的话同一个空闲会话
     /// 每次扫描都会被重新入队，直到把 <c>MaxRunsPerHour</c> 与 <c>DailyTokenBudget</c> 烧穿。
-    /// 用「活动时刻」而不是「上次复盘时刻」做键，是因为用户一旦回到会话，
+    /// 用「活动时刻」做键而不是「上次复盘时刻」：用户一旦回到会话，
     /// <see cref="ISessionActivityTracker.Touch"/> 会刷新时刻，据此天然允许下一次空闲复盘。
     /// </para>
+    /// <para>
+    /// <b>本类绝不调用 <see cref="ISessionActivityTracker.Clear"/></b>：那是全进程共享的事实，
+    /// 删掉会让其它消费方（记忆演化等）也失去这个会话。
+    /// </para>
     /// </summary>
-    private readonly ConcurrentDictionary<string, DateTimeOffset> _dispatched = new(StringComparer.Ordinal);
+    private readonly IdlePeriodClaimStore _dispatched = new();
 
     public ReflectionIdleScanner(
         IReflectionQueue queue,
@@ -92,8 +96,9 @@ public sealed class ReflectionIdleScanner
                 continue;
 
             // 冷却：同一段空闲期内只投递一次。
-            if (_dispatched.TryGetValue(sessionId, out var dispatchedAt) && dispatchedAt == lastActivity)
+            if (_dispatched.IsClaimed(sessionId, lastActivity))
                 continue;
+
             var result = _queue.TryEnqueue(new ReflectionRequest(
                     sessionId,
                     string.Empty,
@@ -102,7 +107,7 @@ public sealed class ReflectionIdleScanner
 
             if (result is ReflectionEnqueueResult.Enqueued or ReflectionEnqueueResult.Updated)
             {
-                _dispatched[sessionId] = lastActivity;
+                _dispatched.Claim(sessionId, lastActivity);
                 if (result == ReflectionEnqueueResult.Enqueued)
                     dispatched++;
             }
@@ -114,11 +119,8 @@ public sealed class ReflectionIdleScanner
         }
 
         // 清掉已不再空闲（用户回来了）或已消失的会话，避免字典随会话数无界增长。
-        foreach (var pair in _dispatched)
-        {
-            if (!_activityTracker.TryGetLastActivity(pair.Key, out var last) || last != pair.Value)
-                _dispatched.TryRemove(pair.Key, out _);
-        }
+        _dispatched.Prune(id =>
+            _activityTracker.TryGetLastActivity(id, out var last) ? last : null);
 
         if (dispatched > 0)
             _logger?.LogDebug("空闲触发已投递复盘：{Count} 个会话", dispatched);

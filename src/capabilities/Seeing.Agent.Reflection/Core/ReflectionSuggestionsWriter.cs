@@ -76,6 +76,40 @@ public sealed class ReflectionSuggestionsWriter
     }
 
     /// <summary>
+    /// 手动把一条建议落成技能（记录页的「生成 SKILL」）。
+    /// <para>
+    /// <b>不看 <see cref="ReflectionMode"/></b>：模式约束的是「复盘跑完后自动写盘」这个自主行为，
+    /// 而这里是用户对着具体建议显式点击——与「手动触发跳过 <c>Enabled</c>」是同一个理由。
+    /// 其余校验（名称合法性、正文长度、提示注入、查重）全部复用
+    /// <see cref="TryCreateAsync"/>，不另开一套口径。
+    /// </para>
+    /// </summary>
+    /// <param name="suggestion">要落盘的建议。</param>
+    /// <param name="sourceSessionId">源会话 ID（写入 frontmatter 供追溯）。</param>
+    /// <param name="level">目标层级：项目级 / 用户级。</param>
+    /// <param name="ct">取消令牌。</param>
+    /// <returns>写入结果；失败时带可展示原因。</returns>
+    public async Task<ReflectionSkillCreationResult> CreateFromSuggestionAsync(
+        ReflectionSuggestion suggestion,
+        string sourceSessionId,
+        ConfigLevel level,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(suggestion);
+
+        if (_writer is null)
+        {
+            return ReflectionSkillCreationResult.Failed(
+                "技能写入通道不可用：当前启动能力集不含 skills 模块。");
+        }
+
+        var (name, error) = await TryCreateAsync(suggestion, sourceSessionId, level, ct).ConfigureAwait(false);
+        return name is null
+            ? ReflectionSkillCreationResult.Failed(error ?? "建议无法落成技能。")
+            : ReflectionSkillCreationResult.Created(name);
+    }
+
+    /// <summary>
     /// 按当前模式处理建议清单。
     /// <para>
     /// <see cref="ReflectionMode.SuggestOnly"/> / <see cref="ReflectionMode.Off"/> 一律不写盘——
@@ -113,55 +147,67 @@ public sealed class ReflectionSuggestionsWriter
         {
             ct.ThrowIfCancellationRequested();
 
-            var outcome = await TryCreateAsync(suggestion, sourceSessionId, ct).ConfigureAwait(false);
-            if (outcome is not null)
-                created.Add(outcome);
+            // 自动路径固定写项目级：这些建议来自「本项目的会话」，落到本项目技能目录才可追溯。
+            var (name, _) = await TryCreateAsync(
+                suggestion, sourceSessionId, ConfigLevel.Project, ct).ConfigureAwait(false);
+            if (name is not null)
+                created.Add(name);
         }
 
         return created;
     }
 
     /// <summary>
-    /// 尝试创建一条技能；返回创建成功的名称，跳过时返回 <c>null</c>。
+    /// 尝试创建一条技能；返回创建成功的名称与失败原因（成功时原因为 <c>null</c>）。
     /// <para>单条失败不影响其余条目：复盘是批量建议，一条命名冲突不该让整批白跑。</para>
     /// </summary>
-    private async Task<string?> TryCreateAsync(
+    /// <param name="suggestion">建议内容。</param>
+    /// <param name="sourceSessionId">源会话 ID（frontmatter 追溯）。</param>
+    /// <param name="level">目标层级。</param>
+    /// <param name="ct">取消令牌。</param>
+    private async Task<(string? Name, string? Error)> TryCreateAsync(
         ReflectionSuggestion suggestion,
         string sourceSessionId,
+        ConfigLevel level,
         CancellationToken ct)
     {
+        // 写入通道在这里再判一次：两个公开入口都已判过，但本方法是唯一真正用 _writer 的地方，
+        // 少这一层就只能靠调用方纪律（编译器也会在下一行的调用点上报可空解引用）。
+        if (_writer is not { } writer)
+            return (null, "技能写入通道不可用：当前启动能力集不含 skills 模块。");
+
         var name = suggestion.Target?.Trim();
         var content = suggestion.SuggestedContent?.Trim();
 
         if (string.IsNullOrWhiteSpace(name))
         {
             _logger.LogDebug("跳过建议：target 为空");
-            return null;
+            return (null, "建议缺少技能名（target）。");
         }
 
         if (string.IsNullOrWhiteSpace(content))
         {
             // 只有 target 没有正文 = 模型只提了「要有个技能叫 X」，没有可落盘的内容。
             _logger.LogDebug("跳过建议：suggestedContent 为空（Skill={Skill}）", name);
-            return null;
+            return (null, "该建议只有技能名、没有正文，没有可写入的内容。");
         }
 
         if (name.Length > MaxNameLength)
         {
             _logger.LogDebug("跳过建议：名称超长（{Length}>{Max}，Skill={Skill}）", name.Length, MaxNameLength, name);
-            return null;
+            return (null, $"技能名超长（{name.Length} > {MaxNameLength}）。");
         }
 
         if (name.IndexOfAny(s_illegalNameChars) >= 0 || name.Any(char.IsControl))
         {
             _logger.LogDebug("跳过建议：名称含非法字符（Skill={Skill}）", name);
-            return null;
+            return (null, "技能名含非法字符（禁止 \\ / : * ? \" < > |）。");
         }
 
         if (content.Length > MaxContentLength)
         {
             _logger.LogDebug("跳过建议：正文超长（{Length}>{Max}，Skill={Skill}）", content.Length, MaxContentLength, name);
-            return null;
+            return (null, $"技能正文超长（{content.Length} > {MaxContentLength}）。");
         }
 
         var injection = s_injectionPatterns.FirstOrDefault(
@@ -173,14 +219,14 @@ public sealed class ReflectionSuggestionsWriter
                 "跳过建议：正文含疑似提示注入片段「{Pattern}」（Skill={Skill}）",
                 injection,
                 name);
-            return null;
+            return (null, $"技能正文含疑似提示注入片段「{injection}」，已拒绝写入。");
         }
 
         // 查重：同名技能一律不覆盖，避免把用户既有技能静默改掉。
         if (_catalog?.Find(name) is not null)
         {
             _logger.LogDebug("跳过建议：已存在同名技能，不覆盖（Skill={Skill}）", name);
-            return null;
+            return (null, $"已存在同名技能「{name}」，请到技能页编辑或换个名字。");
         }
 
         // 描述缺失时用名称兜底：SkillDraft 要求非空，但模型漏写 description 不该让整条建议作废。
@@ -196,28 +242,33 @@ public sealed class ReflectionSuggestionsWriter
 
         try
         {
-            var result = await _writer.CreateAsync(
+            var result = await writer.CreateAsync(
                 new SkillDraft(name, description, content, metadata),
-                ConfigLevel.Project,
+                level,
                 overwrite: false,
                 ct).ConfigureAwait(false);
 
             if (!result.Success)
             {
                 _logger.LogWarning(
-                    "复盘技能写入失败：Skill={Skill}, Reason={Reason}",
+                    "复盘技能写入失败：Skill={Skill}, Level={Level}, Reason={Reason}",
                     name,
+                    level,
                     result.Error ?? "未知原因");
-                return null;
+                return (null, result.Error ?? "技能写入失败。");
             }
 
-            _logger.LogInformation("复盘已写入技能：Skill={Skill}, SourceSessionId={SourceSessionId}", name, sourceSessionId);
-            return name;
+            _logger.LogInformation(
+                "复盘已写入技能：Skill={Skill}, Level={Level}, SourceSessionId={SourceSessionId}",
+                name,
+                level,
+                sourceSessionId);
+            return (name, null);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "复盘技能写入异常：Skill={Skill}", name);
-            return null;
+            return (null, ex.Message);
         }
     }
 

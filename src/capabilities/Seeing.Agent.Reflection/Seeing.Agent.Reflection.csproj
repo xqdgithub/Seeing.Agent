@@ -9,6 +9,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- transcript 组装（`BuildTranscript`）是 internal：它是「模型看到什么」的唯一真相源，
+         必须能被单测逐条钉住（两级截断 / 工具调用压平 / 多模态摘要），否则漏掉一项都不会报错。 -->
+    <InternalsVisibleTo Include="Seeing.Agent.Reflection.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Remove="bin\**" />
     <EmbeddedResource Remove="bin\**" />
     <None Remove="bin\**" />

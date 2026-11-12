@@ -55,4 +55,13 @@ public interface IReflectionQueue
 
     /// <summary>当前排队中的会话数。</summary>
     int PendingCount { get; }
+
+    /// <summary>
+    /// 当前排队请求的快照（供设置卡/记录页展示「在复盘中」）。
+    /// <para>
+    /// 只读快照，不与消费竞争：排空仍走 <see cref="TryDequeue"/> / <see cref="DequeueAsync"/>。
+    /// 直接暴露集合会让调用方误以为可以移除条目（那会破坏「字典有值 ⇔ 通道有槽」的不变量）。
+    /// </para>
+    /// </summary>
+    IReadOnlyList<ReflectionRequest> Snapshot();
 }

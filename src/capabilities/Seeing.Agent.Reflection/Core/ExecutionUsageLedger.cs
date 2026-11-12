@@ -25,27 +25,54 @@ public sealed class ExecutionUsageLedger : IExecutionUsageLedger
         o.Converters.Add(new JsonStringEnumConverter());
     });
 
-    private readonly string _filePath;
+    private readonly Func<string> _resolveFilePath;
     private readonly object _gate = new();
 
     private bool _loaded;
+    private string? _loadedPath;
     private string? _date;
     private long _input;
     private long _output;
 
     /// <summary>
-    /// 创建账本实例。
+    /// 创建账本实例（固定目录）。
     /// </summary>
-    /// <param name="baseDirectory">账本根目录（通常为 <c>~/.seeing/reflection</c>）。</param>
+    /// <param name="baseDirectory">账本根目录（通常为 <c>{工作区}/.seeing/reflection</c>）。</param>
     public ExecutionUsageLedger(string baseDirectory)
+        : this(ClosedOver(baseDirectory))
+    {
+    }
+
+    /// <summary>
+    /// 创建账本实例（目录随工作区切换）。
+    /// <para>
+    /// 切换目录时必须丢弃内存累计并重新读盘：预算按<b>项目</b>分别计，
+    /// 留着旧工作区的数字会让新工作区「一开机就没有额度」。
+    /// </para>
+    /// </summary>
+    /// <param name="root">产物目录持有者。</param>
+    public ExecutionUsageLedger(ReflectionStorageRoot root)
+        : this(() => (root ?? throw new ArgumentNullException(nameof(root))).Path)
+    {
+    }
+
+    private ExecutionUsageLedger(Func<string> resolveBaseDirectory)
+    {
+        _resolveFilePath = () => Path.Combine(resolveBaseDirectory(), "usage.json");
+    }
+
+    private static Func<string> ClosedOver(string baseDirectory)
     {
         if (string.IsNullOrWhiteSpace(baseDirectory))
         {
             throw new ArgumentException("账本根目录不能为空", nameof(baseDirectory));
         }
 
-        _filePath = Path.Combine(baseDirectory, "usage.json");
+        return () => Path.Combine(baseDirectory, "usage.json");
     }
+
+    /// <summary>账本文件路径（诊断用）。</summary>
+    private string FilePath => _resolveFilePath();
 
     /// <inheritdoc />
     public long UsedToday()
@@ -94,24 +121,34 @@ public sealed class ExecutionUsageLedger : IExecutionUsageLedger
 
     /// <summary>
     /// 首次使用时从磁盘加载；文件缺失或损坏一律视为全 0，不让账本故障影响复盘主流程。
+    /// <para>
+    /// 目录变化（工作区切换）时必须重新加载：预算按项目分别计，
+    /// 沿用旧工作区的累计会让新项目一开机就没有额度。
+    /// </para>
     /// </summary>
     private void EnsureLoaded()
     {
-        if (_loaded)
+        var path = FilePath;
+
+        if (_loaded && string.Equals(_loadedPath, path, StringComparison.Ordinal))
         {
             return;
         }
 
         _loaded = true;
+        _loadedPath = path;
+        _date = null;
+        _input = 0;
+        _output = 0;
 
-        if (!File.Exists(_filePath))
+        if (!File.Exists(path))
         {
             return;
         }
 
         try
         {
-            var json = File.ReadAllText(_filePath, Encoding.UTF8);
+            var json = File.ReadAllText(path, Encoding.UTF8);
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
@@ -157,7 +194,8 @@ public sealed class ExecutionUsageLedger : IExecutionUsageLedger
     {
         try
         {
-            var directory = Path.GetDirectoryName(_filePath);
+            var path = FilePath;
+            var directory = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
             {
                 Directory.CreateDirectory(directory);
@@ -165,7 +203,7 @@ public sealed class ExecutionUsageLedger : IExecutionUsageLedger
 
             var snapshot = new UsageFile(_date, _input, _output);
             var json = JsonSerializer.Serialize(snapshot, SerializerOptions);
-            File.WriteAllText(_filePath, json, Encoding.UTF8);
+            File.WriteAllText(path, json, Encoding.UTF8);
         }
         catch (IOException)
         {

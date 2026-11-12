@@ -1,0 +1,365 @@
+@using AntDesign
+@using Microsoft.Extensions.Options
+@using Seeing.Agent.Abstractions.Configuration
+@using Seeing.Agent.Reflection.Abstractions
+@using Seeing.Agent.Reflection.Configuration
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Session.Core
+@inject SeeingConfigService ConfigService
+@inject IOptionsMonitor<ReflectionOptions> OptionsMonitor
+@inject IReflectionManualTrigger ManualTrigger
+@inject IReflectionStatus? Status
+@inject ISessionManager? Sessions
+@inject IMessageService MessageService
+@implements IDisposable
+
+@*
+    复盘配置卡片（设置页页签「复盘」）。由 ReflectionModule 自己声明，模块停用即消失。
+
+    为什么需要这张卡：复盘默认关闭，而此前唯一的开关是手写配置文件——
+    「复盘记录」页的空态文案把用户指向系统设置，那里却没有这个开关。
+    功能因此在实际使用中等于不存在。
+
+    ⚠ 作用域：保存到**用户级** reflection.json。复盘是跨工作区的个人偏好
+      （不是项目约定），项目级配置随仓库分发会让 clone 到别人的开关覆盖自己的设置。
+*@
+
+@if (_model is not null)
+{
+    <style>
+        .reflection-hint {
+            color: #888;
+            font-size: 12px;
+            margin-top: 4px;
+            line-height: 1.6;
+        }
+    </style>
+
+    @if (_projectLevelExists)
+    {
+        <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 16px;"
+               Message="该项目目录下存在项目级 reflection.json：它会覆盖本卡的保存结果（本卡写用户级）。请在项目里删掉该文件，或直接编辑它。" />
+    }
+
+    @if (_status is not null)
+    {
+        <Alert Type="@(_status.IsModuleActive ? AlertType.Success : AlertType.Warning)"
+               ShowIcon="true" Style="margin-bottom: 16px;"
+               Message="@(_status.IsModuleActive
+                            ? $"模块已激活 · 今日已用 {_status.UsedTodayTokens:N0} Token · 排队 {_status.PendingCount} 个会话"
+                            : "模块未激活：当前启动能力集不含 reflection，开启下面的开关也不会生效。")" />
+    }
+
+    @if (!_model.Enabled && _model.Mode != ReflectionMode.Off)
+    {
+        <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
+               Message="自动复盘当前关闭。开启后会在会话收尾或空闲时后台调用模型做一次回顾，产生额外 Token 消耗。" />
+    }
+
+    <Form Model="@_model" Layout="@FormLayout.Vertical">
+        <Card Title="触发" Style="margin-bottom: 16px;">
+            <FormItem Label="启用自动复盘">
+                <Switch @bind-Value="@_model.Enabled" />
+                <div class="reflection-hint">
+                    关闭时轮次与空闲触发都不工作；「立即复盘」按钮仍可用（它是显式动作）。
+                </div>
+            </FormItem>
+
+            <FormItem Label="运行模式">
+                <Select TItem="ReflectionMode" TItemValue="ReflectionMode"
+                        @bind-Value="@_model.Mode" Style="width: 240px;">
+                    <SelectOption TItem="ReflectionMode" TItemValue="ReflectionMode"
+                                  Value="ReflectionMode.Off" Label="完全关闭" />
+                    <SelectOption TItem="ReflectionMode" TItemValue="ReflectionMode"
+                                  Value="ReflectionMode.SuggestOnly" Label="只产出建议（默认）" />
+                    <SelectOption TItem="ReflectionMode" TItemValue="ReflectionMode"
+                                  Value="ReflectionMode.ApplyCreate" Label="直接写入技能" />
+                </Select>
+                <div class="reflection-hint">
+                    「只产出建议」不写任何文件，结论留在「复盘记录」页；「直接写入技能」会把建议落成项目级技能。
+                    模式为「完全关闭」时连手动触发也会被拒绝。
+                </div>
+            </FormItem>
+
+            <FormItem Label="每 N 轮触发一次">
+                <AntDesign.InputNumber @bind-Value="@_model.TurnNudgeInterval" Min="1" Max="100" Style="width: 160px;" />
+                <div class="reflection-hint">
+                    同一会话累计完成 N 轮顶层执行后复盘一次。低于 5 轮几乎没有可总结的新信息。
+                </div>
+            </FormItem>
+
+            <FormItem Label="空闲多少分钟后触发">
+                <AntDesign.InputNumber @bind-Value="@_model.IdleMinutes" Min="1" Max="1440" Style="width: 160px;" />
+                <div class="reflection-hint">
+                    只对<b>仍在内存中</b>的顶层会话生效；进程重启后未再活动过的会话不会被空闲触发。
+                </div>
+            </FormItem>
+        </Card>
+
+        <Card Title="成本上限" Style="margin-bottom: 16px;">
+            <FormItem Label="每小时最多复盘次数">
+                <AntDesign.InputNumber @bind-Value="@_model.MaxRunsPerHour" Min="0" Max="120" Style="width: 160px;" />
+            </FormItem>
+            <FormItem Label="每日 Token 预算">
+                <AntDesign.InputNumber @bind-Value="@_model.DailyTokenBudget" Min="0" Max="10000000" Step="10000" Style="width: 200px;" />
+                <div class="reflection-hint">
+                    按 UTC 日切累加实际用量（今日已用见上方状态）。超出后当日静默停跑，次日恢复。
+                    手动触发同样受此预算约束。
+                </div>
+            </FormItem>
+            <FormItem Label="单次执行超时（分钟）">
+                <AntDesign.InputNumber @bind-Value="@_model.RunTimeoutMinutes" Min="1" Max="120" Style="width: 160px;" />
+            </FormItem>
+        </Card>
+
+        <Card Title="复盘子会话" Style="margin-bottom: 16px;">
+            <FormItem Label="复盘模型">
+                <ModelSelectDropdown Value="@_model.Model"
+                                     ValueChanged="@(v => _model.Model = string.IsNullOrWhiteSpace(v) ? null : v)"
+                                     FilterType="Seeing.Agent.Abstractions.Llm.ModelType.Text"
+                                     AllowClear="true"
+                                     Placeholder="留空则继承被复盘会话的模型"
+                                     Style="width: 100%;" />
+                <div class="reflection-hint">
+                    留空表示沿用源会话当前模型。实际使用哪个模型会写进每条复盘记录。
+                </div>
+            </FormItem>
+            <FormItem Label="最大步数">
+                <AntDesign.InputNumber @bind-Value="@_model.MaxSteps" Min="1" Max="50" Style="width: 160px;" />
+                <div class="reflection-hint">
+                    <b>改动需重启生效</b>：该值在模块激活时被烘进 `reflection` agent 的定义里，
+                    热重载不会重建该定义（重启后生效）。
+                </div>
+            </FormItem>
+            <FormItem Label="单条工具结果截断（字符）">
+                <AntDesign.InputNumber @bind-Value="@_model.MaxToolResultChars" Min="0" Max="100000" Step="500" Style="width: 200px;" />
+            </FormItem>
+            <FormItem Label="执行记录总长上限（字符）">
+                <AntDesign.InputNumber @bind-Value="@_model.MaxTranscriptChars" Min="1000" Max="500000" Step="1000" Style="width: 200px;" />
+                <div class="reflection-hint">超长时从尾部保留：复盘更关心任务如何收尾。</div>
+            </FormItem>
+        </Card>
+
+        <Card Title="立即复盘" Style="margin-bottom: 16px;">
+            <FormItem Label="选择会话">
+                <Space>
+                    <Select TItemValue="string" TItem="SessionOption"
+                            Value="@_manualSessionId"
+                            ValueChanged="@(v => _manualSessionId = v)"
+                            DataSource="@_sessionOptions"
+                            ValueName="@nameof(SessionOption.Id)"
+                            LabelName="@nameof(SessionOption.Label)"
+                            EnableSearch="true"
+                            Placeholder="选择一个会话"
+                            Style="width: 420px;">
+                    </Select>
+                    <Button Type="@ButtonType.Primary"
+                            Disabled="@(string.IsNullOrEmpty(_manualSessionId) || _triggering)"
+                            Loading="@_triggering"
+                            OnClick="TriggerAsync">立即复盘</Button>
+                    <Button OnClick="RefreshStateAsync" Disabled="@_triggering">刷新状态</Button>
+                </Space>
+                <div class="reflection-hint">
+                    只是把会话放进复盘队列，后台会在几秒内开始；结果到
+                    <a href="/reflection">复盘记录</a> 查看。
+                    <b>手动触发不受「启用自动复盘」开关限制</b>，但受模式 / 预算 / 频率上限约束。
+                    <br />
+                    这里只列出<b>本进程已加载</b>的顶层会话；找不到想复盘的会话时，先在会话页打开它（或发一条消息）再回到这里。
+                </div>
+            </FormItem>
+            @if (_status is not null)
+            {
+                <FormItem Label="产物目录">
+                    <Input Value="@_status.StorageDirectory" Disabled="true" />
+                    <div class="reflection-hint">复盘记录与用量账本都写在这里（随工作区走）。</div>
+                </FormItem>
+            }
+        </Card>
+    </Form>
+
+    <div style="text-align: right; margin-top: 16px;">
+        <Space>
+            <Button OnClick="ReloadFromConfig" Disabled="@_saving">撤销修改</Button>
+            <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Save"
+                    OnClick="SaveAsync" Loading="@_saving">保存</Button>
+        </Space>
+    </div>
+}
+
+@code {
+    private ReflectionOptions? _model;
+    private IReflectionStatus? _status;
+    private bool _saving;
+    private bool _triggering;
+    private bool _projectLevelExists;
+    private string? _manualSessionId;
+    private IReadOnlyList<SessionOption> _sessionOptions = [];
+    private IDisposable? _optionsSub;
+
+    protected override void OnInitialized()
+    {
+        _optionsSub = OptionsMonitor.OnChange((_, _) => _ = InvokeAsync(() =>
+        {
+            // 外部改了配置（文件热重载）：只刷新状态，不回填编辑中的表单——
+            // 用户可能正在改，被覆盖会丢输入。
+            RefreshStatus();
+            StateHasChanged();
+        }));
+
+        ReloadFromConfig();
+        RefreshSessions();
+        RefreshProjectOverride();
+    }
+
+    /// <summary>
+    /// 检查项目级同名配置文件是否存在。
+    /// <para>
+    /// 项目级按字段深度合并并**覆盖**用户级；本卡固定写用户级。若项目里有该文件，
+    /// 用户在卡上改的值会被它顶掉——不提示的话，这正是「配了没生效」最难自查的一类。
+    /// </para>
+    /// </summary>
+    private void RefreshProjectOverride()
+    {
+        try
+        {
+            var project = ConfigService.GetConfigPath(ConfigLevel.Project);
+            var directory = Path.GetDirectoryName(project);
+            _projectLevelExists = !string.IsNullOrEmpty(directory)
+                && File.Exists(Path.Combine(directory, ReflectionOptionsProvider.FileName));
+        }
+        catch
+        {
+            _projectLevelExists = false;
+        }
+    }
+
+    public void Dispose() => _optionsSub?.Dispose();
+
+    /// <summary>从当前生效配置回填编辑模型（丢弃未保存修改）。</summary>
+    private void ReloadFromConfig()
+    {
+        var o = OptionsMonitor.CurrentValue;
+        _model = new ReflectionOptions
+        {
+            Enabled = o.Enabled,
+            Mode = o.Mode,
+            TurnNudgeInterval = o.TurnNudgeInterval,
+            IdleMinutes = o.IdleMinutes,
+            MaxRunsPerHour = o.MaxRunsPerHour,
+            DailyTokenBudget = o.DailyTokenBudget,
+            RunTimeoutMinutes = o.RunTimeoutMinutes,
+            MaxSteps = o.MaxSteps,
+            Model = o.Model,
+            QueueCapacity = o.QueueCapacity,
+            MaxToolResultChars = o.MaxToolResultChars,
+            MaxTranscriptChars = o.MaxTranscriptChars
+        };
+        RefreshStatus();
+    }
+
+    private void RefreshStatus()
+    {
+        try
+        {
+            _status = Status;
+        }
+        catch
+        {
+            // 状态是展示用的旁路信息：解析失败不该让整张卡渲染失败。
+            _status = null;
+        }
+    }
+
+    private async Task RefreshStateAsync()
+    {
+        RefreshStatus();
+        RefreshSessions();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 手动复盘的会话候选：只取<b>内存中</b>的顶层、可自动分析会话。
+    /// 不列出磁盘上的全部会话——那需要整盘加载，而用户真正想复盘的是刚聊过的那个。
+    /// </summary>
+    private void RefreshSessions()
+    {
+        if (Sessions is null)
+        {
+            _sessionOptions = [];
+            return;
+        }
+
+        try
+        {
+            _sessionOptions = Sessions.List()
+                .Where(s => s.Kind == SessionKind.Root && s.Origin.IsAutomatableOrigin())
+                .OrderByDescending(s => s.UpdatedAt)
+                .Take(50)
+                .Select(s => new SessionOption(
+                    s.Id,
+                    string.IsNullOrWhiteSpace(s.Title) ? s.Id : s.Title!))
+                .ToList();
+
+            if (_manualSessionId is not null && _sessionOptions.All(o => o.Id != _manualSessionId))
+                _manualSessionId = null;
+        }
+        catch
+        {
+            _sessionOptions = [];
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_model is null)
+            return;
+
+        _saving = true;
+        try
+        {
+            // 复盘节登记为 ConfigScope.Both，但这是个人偏好：固定写用户级，
+            // 避免项目级配置随仓库分发后被别人的开关覆盖。
+            await ConfigService.SaveSectionAsync(
+                ReflectionOptionsProvider.SectionName, _model, ConfigLevel.User);
+            MessageService.Success("复盘设置已保存");
+            ReloadFromConfig();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"保存失败：{ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task TriggerAsync()
+    {
+        if (string.IsNullOrEmpty(_manualSessionId))
+            return;
+
+        _triggering = true;
+        try
+        {
+            var result = ManualTrigger.Trigger(_manualSessionId);
+            if (result.Accepted)
+                MessageService.Success(result.Message);
+            else
+                MessageService.Warning(result.Message);
+
+            RefreshStatus();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"触发失败：{ex.Message}");
+        }
+        finally
+        {
+            _triggering = false;
+        }
+    }
+
+    /// <summary>会话下拉选项（Select 的 ValueName / LabelName 目标）。</summary>
+    private sealed record SessionOption(string Id, string Label);
+}

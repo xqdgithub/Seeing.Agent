@@ -92,7 +92,17 @@ public sealed class ReflectionExecutor : IReflectionExecutor
         var options = _options.CurrentValue;
 
         // === 阶段 0：门禁（不产生任何 I/O） ===
-        if (!options.Enabled || options.Mode == ReflectionMode.Off)
+        // 模式 Off 是硬停：手动触发也不得绕过（用户明确表达了「不要复盘」）。
+        if (options.Mode == ReflectionMode.Off)
+        {
+            return ReflectionRunResult.Skipped(ReflectionSkipReasons.Disabled);
+        }
+
+        // Enabled 是「自动复盘」的总开关，只管自动来源。手动触发是用户的显式动作，
+        // 若也拦它，用户为了验证功能得先去改配置再回来点，功能感知上等于不存在。
+        // 预算与频率两道闸对两种来源一视同仁——那是成本语义，不是开关语义。
+        var isManual = request.Kind == ReflectionTriggerKind.Manual;
+        if (!options.Enabled && !isManual)
         {
             return ReflectionRunResult.Skipped(ReflectionSkipReasons.Disabled);
         }
@@ -118,6 +128,13 @@ public sealed class ReflectionExecutor : IReflectionExecutor
             source.GetActiveMessages(),
             options.MaxToolResultChars,
             options.MaxTranscriptChars);
+
+        // === 复盘身份（成功与失败路径共用同一个值） ===
+        // 为什么不能拿 ExecutionId 当文件名：空闲/手动触发那里是空串，消毒后是 "unknown"，
+        // 同一天的多条记录会写进同一个文件互相覆盖；而成功路径写的是「复盘子会话的执行 ID」、
+        // 失败路径写的是「源会话的执行 ID」，两者本就不同 → 成功记录与失败快照永远配不上对。
+        // RunId 是「这次复盘」的身份，与执行 ID 解耦。
+        var runId = NewRunId();
 
         // === 阶段 2：建内部会话 ===
         var title = string.IsNullOrWhiteSpace(source.Title)
@@ -175,7 +192,7 @@ public sealed class ReflectionExecutor : IReflectionExecutor
                     request.SessionId,
                     child.Id);
                 await RecordFailureAndCleanupAsync(
-                    request, child.Id, ReflectionSkipReasons.Timeout, null, "业务超时", modelId, source.Id, ct)
+                    request, child.Id, ReflectionSkipReasons.Timeout, null, "业务超时", modelId, source.Id, runId, ct)
                     .ConfigureAwait(false);
                 return ReflectionRunResult.Skipped(ReflectionSkipReasons.Timeout);
             }
@@ -187,7 +204,7 @@ public sealed class ReflectionExecutor : IReflectionExecutor
                     request.SessionId,
                     child.Id);
                 await RecordFailureAndCleanupAsync(
-                    request, child.Id, ReflectionSkipReasons.Failed, null, ex.Message, modelId, source.Id, ct)
+                    request, child.Id, ReflectionSkipReasons.Failed, null, ex.Message, modelId, source.Id, runId, ct)
                     .ConfigureAwait(false);
                 return ReflectionRunResult.Skipped(ReflectionSkipReasons.Failed);
             }
@@ -203,7 +220,7 @@ public sealed class ReflectionExecutor : IReflectionExecutor
             var partial = await ReadLastAssistantTextAsync(child.Id, ct).ConfigureAwait(false);
             await RecordFailureAndCleanupAsync(
                 request, child.Id, ReflectionSkipReasons.Failed, partial,
-                "子会话终态为 " + outcome.Status, modelId, source.Id, ct)
+                "子会话终态为 " + outcome.Status, modelId, source.Id, runId, ct)
                 .ConfigureAwait(false);
             return ReflectionRunResult.Skipped(ReflectionSkipReasons.Failed);
         }
@@ -217,7 +234,7 @@ public sealed class ReflectionExecutor : IReflectionExecutor
                 child.Id);
             await RecordFailureAndCleanupAsync(
                 request, child.Id, ReflectionSkipReasons.ParseFailed, null,
-                "子会话没有 assistant 文本", modelId, source.Id, ct)
+                "子会话没有 assistant 文本", modelId, source.Id, runId, ct)
                 .ConfigureAwait(false);
             return ReflectionRunResult.Skipped(ReflectionSkipReasons.ParseFailed);
         }
@@ -231,6 +248,15 @@ public sealed class ReflectionExecutor : IReflectionExecutor
             .ApplyAsync(suggestions, request.SessionId, ct)
             .ConfigureAwait(false);
 
+        // Outcome 是给「复盘记录」页读的语义值，不是执行状态。
+        // 原先写 outcome.Status.ToString() → 落盘 "Completed"，而 UiText 只映射
+        // suggested / created / skipped / failed：页面显示英文、统计恒为 0，看着像没工作。
+        var runOutcome = createdSkills.Count > 0
+            ? ReflectionRunOutcomes.Created
+            : suggestions.Count > 0
+                ? ReflectionRunOutcomes.Suggested
+                : ReflectionRunOutcomes.Skipped;
+
         var journalFailed = false;
         try
         {
@@ -240,12 +266,13 @@ public sealed class ReflectionExecutor : IReflectionExecutor
                     ExecutionId: outcome.ExecutionId ?? request.ExecutionId,
                     Kind: request.Kind,
                     At: request.At,
-                    Outcome: outcome.Status.ToString(),
+                    Outcome: runOutcome,
                     CreatedSkills: createdSkills,
                     Suggestions: suggestions,
                     InputTokens: usage?.InputTokens ?? 0,
                     OutputTokens: usage?.OutputTokens ?? 0,
-                    ModelId: modelId),
+                    ModelId: modelId,
+                    RunId: runId),
                 ct).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -308,6 +335,7 @@ public sealed class ReflectionExecutor : IReflectionExecutor
         string? detail,
         string? modelId,
         string sourceSessionId,
+        string runId,
         CancellationToken ct)
     {
         try
@@ -323,7 +351,8 @@ public sealed class ReflectionExecutor : IReflectionExecutor
                     // 截断到与正常路径同一上限：失败快照不该成为磁盘炸弹。
                     Transcript: Truncate(transcript, FailureTranscriptLimit),
                     Detail: detail,
-                    ModelId: modelId),
+                    ModelId: modelId,
+                    RunId: runId),
                 ct).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -358,6 +387,17 @@ public sealed class ReflectionExecutor : IReflectionExecutor
 
     /// <summary>失败快照里 transcript 的字符上限。</summary>
     private const int FailureTranscriptLimit = 20_000;
+
+    /// <summary>
+    /// 生成一次复盘的稳定标识。
+    /// <para>
+    /// 形如 <c>run_20261112112834_ab12cd34</c>：时间前缀让文件按名即可大致排序，
+    /// 随机后缀保证同秒并发不撞。之所以要自带前缀而不是纯 GUID：
+    /// 这些文件会被人工直接翻阅，纯哈希名无从判断先后。
+    /// </para>
+    /// </summary>
+    private static string NewRunId()
+        => $"run_{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid():N}"[..28];
 
     /// <summary>
     /// 读取子会话最后一条 assistant 文本；读不到会话或无文本时返回 <c>null</c>。
@@ -452,7 +492,12 @@ public sealed class ReflectionExecutor : IReflectionExecutor
             }
 
             builder.Append('[').Append(role).Append(']').Append(' ');
-            builder.AppendLine(message.Content);
+            builder.AppendLine(ExtractText(message));
+
+            // 多模态段：不内联二进制/base64，只留「有什么」。复盘关心的是「模型看过一张图」
+            // 这个事实，而不是像素；把 base64 写进 transcript 会瞬间吃满字数上限，
+            // 反而把真正需要复盘的对话文本挤掉。
+            AppendPartDigest(builder, message);
 
             if (message.ToolCalls is { Count: > 0 })
             {
@@ -503,6 +548,70 @@ public sealed class ReflectionExecutor : IReflectionExecutor
         }
 
         return text.Length <= limit ? text : text[..limit] + "…（已截断）";
+    }
+
+    /// <summary>
+    /// 取消息的可读文本。
+    /// <para>
+    /// 多模态消息（<see cref="SessionMessage.UserMessageWithParts"/>）把正文放在
+    /// <see cref="SessionMessage.Parts"/> 的 text 段里，<see cref="SessionMessage.Content"/> 为空。
+    /// 只读 <c>Content</c> 会让「用户贴图 + 打字说明」这类消息在复盘里变成一行空白——
+    /// 这正是「复盘看不到用户到底要什么」的成因。
+    /// </para>
+    /// </summary>
+    private static string ExtractText(SessionMessage message)
+    {
+        if (!string.IsNullOrWhiteSpace(message.Content))
+            return message.Content;
+
+        if (message.Parts is not { Count: > 0 })
+            return string.Empty;
+
+        var texts = message.Parts
+            .Where(p => string.Equals(p.Type, ContentPartType.Text, StringComparison.OrdinalIgnoreCase))
+            .Select(p => p.Text)
+            .Where(t => !string.IsNullOrWhiteSpace(t));
+
+        return string.Join("\n", texts!);
+    }
+
+    /// <summary>
+    /// 把消息的非文本内容段压成一行摘要（<c>[附件] 图片 screenshot.png</c>）。
+    /// <para>
+    /// 只留「类型 + 文件名」，不内联 URL / base64 / 本地路径：
+    /// 复盘是分析流程的，二进制内容对它无用，而 base64 会瞬间吃满 transcript 上限，
+    /// 把真正需要分析的对话挤出截断窗口。本地路径也不记——它是本机事实，
+    /// 写进提示词只会诱导模型去「读文件」。
+    /// </para>
+    /// </summary>
+    private static void AppendPartDigest(StringBuilder builder, SessionMessage message)
+    {
+        if (message.Parts is not { Count: > 0 })
+            return;
+
+        var parts = message.Parts
+            .Where(p => !string.Equals(p.Type, ContentPartType.Text, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (parts.Count == 0)
+            return;
+
+        builder.Append("  [附件]");
+        foreach (var part in parts)
+        {
+            builder.Append(' ');
+            builder.Append(part.Type switch
+            {
+                ContentPartType.Image => "图片",
+                ContentPartType.Audio => "音频",
+                _ => "文件"
+            });
+
+            if (!string.IsNullOrWhiteSpace(part.FileName))
+                builder.Append(':').Append(part.FileName);
+        }
+
+        builder.AppendLine();
     }
 
     /// <summary>会话标题缺失时用 ID 前 8 位兜底，保证标题可读且稳定。</summary>

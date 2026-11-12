@@ -29,7 +29,7 @@ UI 扩展从「6 套并行机制 + 贡献自带 `Type` 且住 samples」收敛�
 |----|------|------|
 | **契约** | `src/abstractions/Seeing.Agent.Abstractions/Ui/` | `UiPoint` / `UiPayloadKind` / `UiVisibilityScope` / `UiContribution` 家族 / `IUiContributionRegistry` / `IUiContributor` / `IUiHostContributor` / `IUiViewKeyCatalog` / `IUiContributionValidator` / `UiRouteMatch`。**零实现**：无方法体、无 `Microsoft.AspNetCore.*` |
 | **脊柱** | `src/spine/Seeing.Agent.Core/Ui/` | `UiContributionRegistry`（事实 + 校验 + 诊断）、`UiContributionCollector`（两段收集）、`UiVisibility`（唯一可见性实现）、`UiScenarioGate`、`UiRouteTemplate`、`UiPointCatalog`、`UiPayloadKindMap`、DI 扩展 |
-| **宿主** | `samples/Seeing.Agent.WebUI/Shell/` | `WebUiPoints`（声明 6 个扩展点）、`WebUiViews`（31 条 `ViewKey → Type`）、`WebUiViewResolver`、`WebUiHostContributor`（`host.webui`，13 页面 + 4 设置卡）、`WebUiUiContributionValidator`、`WebUiViewKeys` |
+| **宿主** | `samples/Seeing.Agent.WebUI/Shell/` | `WebUiPoints`（声明 6 个扩展点）、`WebUiViews`（32 条 `ViewKey → Type`）、`WebUiViewResolver`、`WebUiHostContributor`（`host.webui`，13 页面 + 5 设置卡）、`WebUiUiContributionValidator`、`WebUiViewKeys` |
 
 ### 1.3 关键收益
 
@@ -315,7 +315,7 @@ Route = "/cron-jobs/{JobId}"        →  Parameters["JobId"]
 
 **依据**：能力包只依赖 Abstractions + 原语，不可能持有 `samples/Seeing.Agent.WebUI` 的组件类型。若契约携带 `Type`，模块声明就必须写在宿主侧——这正是迁移前 `ModulePageRouteBinder` 存在的原因（15 条硬编码路由表 + 覆盖式 enrich 补齐详情路由）。
 
-**做法**：契约携带 `ViewKey` 字符串，宿主维护唯一视图表（31 条：11 壳层页面 + 15 模块页面 + 4 设置卡 + 1 插槽）。**命名约定**：`ViewKey` 与贡献 `Id` 同名（便于守门与人工核对）；仅当多条贡献共用同一组件时才重复出现（`page.session.detail` → `page.session`）。插槽只有一个内置贡献，因此抽了 `WebUiViewKeys` 常量，避免声明处与登记处两处字符串漂移。
+**做法**：契约携带 `ViewKey` 字符串，宿主维护唯一视图表（32 条：11 壳层页面 + 15 模块页面 + 6 设置卡 + 1 插槽）。**命名约定**：`ViewKey` 与贡献 `Id` 同名（便于守门与人工核对）；仅当多条贡献共用同一组件时才重复出现（`page.session.detail` → `page.session`）。插槽只有一个内置贡献，因此抽了 `WebUiViewKeys` 常量，避免声明处与登记处两处字符串漂移。
 
 ## 五、已知边界
 

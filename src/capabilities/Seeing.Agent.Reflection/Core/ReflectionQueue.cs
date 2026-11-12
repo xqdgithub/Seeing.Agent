@@ -49,6 +49,20 @@ public sealed class ReflectionQueue : IReflectionQueue
     public int PendingCount => _pending.Count;
 
     /// <inheritdoc />
+    /// <remarks>
+    /// 以「队列里那批 SessionId」为序取字典值：字典里可能有已出队但尚未被 TryDequeue 摘除的条目
+    /// （极窄窗口），按通道快照能保证展示的正是「还没开始跑的那些」。
+    /// </remarks>
+    public IReadOnlyList<ReflectionRequest> Snapshot()
+    {
+        // Channel 不支持无消费窥视，因此以字典为准；字典与通道的一致性由 TryEnqueue/TryDequeue 维护：
+        // 「字典有值 ⇔ 通道有槽」，所以字典的值就是排队集合的超集（仅在出队窗口内可能短暂多一项）。
+        return _pending.Values
+            .OrderBy(r => r.At)
+            .ToList();
+    }
+
+    /// <inheritdoc />
     public ReflectionEnqueueResult TryEnqueue(ReflectionRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);

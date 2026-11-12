@@ -136,7 +136,7 @@ samples/WebUI             ← composes modules + UI
 | What | Where | Notes |
 |------|-------|-------|
 | UI 扩展信封 | 契约 `src/abstractions/Seeing.Agent.Abstractions/Ui/`；脊柱 `src/spine/Seeing.Agent.Core/Ui/`；宿主 `samples/Seeing.Agent.WebUI/Shell/` | 统一信封 `UiContribution`（`Page` / `SettingsCard` / `Slot`）+ 扩展点 `UiPoint` + `ViewKey`；模块实现 `IUiContributor`、宿主实现 `IUiHostContributor`（`OwnerId` 必须 `host.` 前缀）；**`Requires` = 归属模块，空 = 进程级**；声明在结算后收集（模块停用不撤销声明），可见性**只**由 `UiVisibility` 判定；见 `docs/architecture/40` |
-| 侧栏投影与视图表 | `samples/Seeing.Agent.WebUI/Services/SidebarProjectionService.cs`、`samples/Seeing.Agent.WebUI/Shell/WebUiViews.cs`、`samples/Seeing.Agent.WebUI/Services/WebUiIconMap.cs` | 侧栏三条规则（参数化路由剔除 / 更短前缀隐藏子路径 / `GroupOrder` 分组，`0` 排最后）；`ViewKey → 组件类型` 唯一登记处（31 条），漏登记被 `WebUiUiContributionValidator` 收集期拒收；`NavPlacement.Icon` 是中性 token，经 `WebUiIconMap` 翻译 |
+| 侧栏投影与视图表 | `samples/Seeing.Agent.WebUI/Services/SidebarProjectionService.cs`、`samples/Seeing.Agent.WebUI/Shell/WebUiViews.cs`、`samples/Seeing.Agent.WebUI/Services/WebUiIconMap.cs` | 侧栏三条规则（参数化路由剔除 / 更短前缀隐藏子路径 / `GroupOrder` 分组，`0` 排最后）；`ViewKey → 组件类型` 唯一登记处（32 条），漏登记被 `WebUiUiContributionValidator` 收集期拒收；`NavPlacement.Icon` 是中性 token，经 `WebUiIconMap` 翻译 |
 
 ### DI Registration Pattern
 

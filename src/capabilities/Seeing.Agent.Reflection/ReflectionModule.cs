@@ -33,6 +33,15 @@ public sealed class ReflectionModule : ISeeingModule, IUiContributor
     private readonly IAgentStore? _agentStore;
     private readonly IOptionsMonitor<ReflectionOptions>? _options;
 
+    /// <summary>
+    /// 本模块注册的 agent 定义实例（用于 Deactivate 时按身份注销）。
+    /// <para>
+    /// 存实例而不是名字：用户可能在 MD 配置里覆盖同名定义，只有「仍是我注册的那个」
+    /// 才该被注销，否则会把用户的覆盖删掉。
+    /// </para>
+    /// </summary>
+    private AgentDefinition? _registeredAgent;
+
     /// <summary>无依赖实例仅用于 <see cref="ConfigureServices"/>。</summary>
     public ReflectionModule()
     {
@@ -64,15 +73,15 @@ public sealed class ReflectionModule : ISeeingModule, IUiContributor
     /// <inheritdoc />
     public IReadOnlyList<string> DependsOn { get; } = Array.Empty<string>();
 
-    /// <inheritdoc />
-    /// <remarks>
-    /// 只读导航项：复盘产物是磁盘上的 JSON，用户需要一个入口才能看到建议，
-    /// 否则 <c>SuggestOnly</c> 模式下功能感知上等于不存在。
+    /// <summary>
+    /// 复盘能力的 UI 声明：记录页 + 设置卡。
     /// <para>
-    /// 声明是纯数据：模块启停不再需要对称 Register/Unregister——可见性由
-    /// <c>Requires</c> 交给 <c>UiVisibility</c> 判定，声明永远留在注册表里。
+    /// 两条都以 <c>Requires = [reflection]</c> 归属自身模块，因此
+    /// <b>模块停用后 UI 自动消失</b>（由 <c>UiVisibility</c> 判定），无需在 Deactivate 里撤销声明。
+    /// 但「agent 定义」与「后台服务」不是声明，那两者必须对称处理——
+    /// 见 <see cref="ActivateAsync"/> 与 <see cref="DeactivateAsync"/>。
     /// </para>
-    /// </remarks>
+    /// </summary>
     public IReadOnlyList<UiContribution> DescribeUi() =>
     [
         new PageContribution
@@ -91,6 +100,19 @@ public sealed class ReflectionModule : ISeeingModule, IUiContributor
                 GroupIcon = NavGroups.WorkspaceIcon,
                 GroupOrder = 20,
             },
+        },
+
+        // 配置卡：模块自己声明（不走宿主代声明）。理由是这个能力的每一项配置都只在
+        // 「打开/关闭复盘」这个语境里可读，挂在宿主表里会让宿主变成能力配置的堆放点。
+        // Requires = 自身 → 模块停用后卡片随页面一起消失，不会留下一个点开就报错的空壳。
+        new SettingsCardContribution
+        {
+            Point = "shell.settings.card",
+            Id = "settings.reflection",
+            Title = "复盘",
+            ViewKey = "settings.reflection",
+            Requires = [ModuleId],
+            Order = 60,
         },
     ];
 
@@ -112,13 +134,17 @@ public sealed class ReflectionModule : ISeeingModule, IUiContributor
         cancellationToken.ThrowIfCancellationRequested();
         _activity.IsActive = true;
 
-        // Agent 注册：与内置 agent 一致，注册后不在 Deactivate 注销，避免影响进行中的会话。
+        // Agent 注册：Activate 注册、Deactivate 对称注销（见 DeactivateAsync）。
+        // 保留实例引用是为了「只注销自己注册的那个」——用户可能在 MD 配置里覆盖同名定义，
+        // 无条件 Unregister 会误删用户的覆盖（与 AgentsBuiltInModule 的守卫同形）。
         var options = _options?.CurrentValue;
         if (_agentStore is not null && options is not null)
         {
             try
             {
-                await _agentStore.RegisterAsync(ReflectionAgentDefinition.Create(options)).ConfigureAwait(false);
+                var definition = ReflectionAgentDefinition.Create(options);
+                await _agentStore.RegisterAsync(definition).ConfigureAwait(false);
+                _registeredAgent = definition;
             }
             catch (Exception ex)
             {
@@ -138,17 +164,38 @@ public sealed class ReflectionModule : ISeeingModule, IUiContributor
     }
 
     /// <inheritdoc />
-    public Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
+    public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         if (_activity is null)
-            return Task.CompletedTask;
+            return;
 
         _activity.IsActive = false;
 
         // 允许注入 Worker 以便取消在途复盘；缺失时（独立装配）只能等它自然结束。
         services.GetService<Background.ReflectionWorker>()?.CancelInFlight();
 
+        // Agent 对称注销：模块禁用后不应留下一个可被 AgentStore.Get("reflection") 取到的定义。
+        // 「注册后永不注销」看似能避免影响在途会话，但结算热重载默认就是在**在途结束后**才 Deactivate，
+        // 且在途轮次已在 BuildExecutionContextAsync 里解析过定义——注销不影响它。
+        // 守卫 ReferenceEquals：用户可能在 MD 里覆盖同名定义，那就不该由我们删掉。
+        if (_agentStore is not null && _registeredAgent is { } registered)
+        {
+            try
+            {
+                var current = await _agentStore.GetAsync(registered.Name).ConfigureAwait(false);
+                if (ReferenceEquals(current, registered))
+                    _agentStore.Unregister(registered.Name);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "复盘 Agent 注销失败（agent={AgentName}）", registered.Name);
+            }
+            finally
+            {
+                _registeredAgent = null;
+            }
+        }
+
         _logger?.LogInformation("复盘模块已停用（id={ModuleId}）", ModuleId);
-        return Task.CompletedTask;
     }
 }

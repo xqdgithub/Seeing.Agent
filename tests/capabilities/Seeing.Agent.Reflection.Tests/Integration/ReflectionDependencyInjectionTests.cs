@@ -6,10 +6,10 @@ using Moq;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Runtime;
+using Seeing.Agent.Reflection.Abstractions;
 using Seeing.Agent.Reflection.Configuration;
 using Seeing.Agent.Reflection.Extensions;
-using Seeing.Agent.Reflection.Integration;
-using Seeing.Session;
+using Seeing.Agent.Reflection.Integration;using Seeing.Session;
 using Seeing.Session.Core;
 using Xunit;
 
@@ -101,6 +101,54 @@ public sealed class ReflectionDependencyInjectionTests
         provider.GetRequiredService<ReflectionModuleActivity>().IsActive
             .Should().BeFalse("模块未激活前后台不得工作");
     }
+
+    /// <summary>
+    /// 设置卡依赖的两个端口必须能从真实容器解析。
+    /// <para>
+    /// 卡片是「用户唯一能开启复盘的地方」，它注入的 <c>IReflectionManualTrigger</c> /
+    /// <c>IReflectionStatus</c> 任一缺失，整张卡都会被 Blazor 的 ErrorBoundary 拦成
+    /// 一条红色错误条——看起来像「功能坏了」，实际是漏登记。这条测试钉住登记本身。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Settings_Card_Ports_Should_Resolve()
+    {
+        using var provider = BuildProvider();
+
+        provider.Invoking(p => p.GetRequiredService<IReflectionManualTrigger>())
+            .Should().NotThrow("手动复盘入口是设置卡的必需依赖");
+        provider.Invoking(p => p.GetRequiredService<IReflectionStatus>())
+            .Should().NotThrow("运行态快照是「是否真的生效」的唯一可见面");
+    }
+
+    /// <summary>状态端口的四个事实必须真的接到底层服务（不是常量桩）。</summary>
+    [Fact]
+    public void Status_Should_Reflect_Module_Activity_And_Queue()
+    {
+        using var provider = BuildProvider();
+
+        var status = provider.GetRequiredService<IReflectionStatus>();
+        var activity = provider.GetRequiredService<ReflectionModuleActivity>();
+        var queue = provider.GetRequiredService<IReflectionQueue>();
+
+        status.IsModuleActive.Should().Be(activity.IsActive);
+        status.PendingCount.Should().Be(queue.PendingCount);
+        status.StorageDirectory.Should().NotBeNullOrWhiteSpace("产物目录是用户唯一的排查线索");
+    }
+
+    /// <summary>
+    /// 供其它测试复用的最小容器（观察者 / 状态端口 / 队列，不含真实复盘执行）。
+    /// </summary>
+    /// <remarks>
+    /// 公开而不是各测试各搭一份：门禁相关的断言必须跑在**同一条** DI 接线之上，
+    /// 否则「这里能过、那里不能过」时无法判断是接线差异还是逻辑差异。
+    /// </remarks>
+    internal static ServiceProvider BuildProviderForGating(Action<ReflectionOptions>? configure = null)
+        => BuildProvider(configure);
+
+    /// <summary>一条「本轮真的执行过 build 并成功收尾」的终态事实（门禁全开时的形态）。</summary>
+    internal static ExecutionOutcome CompletedOutcomeForGating()
+        => CompletedOutcome(SessionOrigin.User, "build");
 
     private static ServiceProvider BuildProvider(Action<ReflectionOptions>? configure = null)
     {

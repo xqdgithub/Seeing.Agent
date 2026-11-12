@@ -6,6 +6,7 @@ using Seeing.Agent.Memory.Abstractions;
 using Seeing.Agent.Memory.Configuration;
 using Seeing.Agent.Memory.Integration.Hosting;
 using Seeing.Session.Core;
+using Seeing.Session.Management;
 using System.Threading.Channels;
 
 namespace Seeing.Agent.Memory.Background;
@@ -24,6 +25,17 @@ public sealed class MemoryEvolutionWorker : BackgroundService, IModuleHostedServ
     private readonly IModuleCatalog? _catalog;
     private readonly ILogger<MemoryEvolutionWorker> _logger;
     private readonly ModuleHostedRunGate _run = new();
+
+    /// <summary>
+    /// 本工作者自己的「这段空闲期已处理」登记。
+    /// <para>
+    /// <b>不得改用 <see cref="ISessionActivityTracker.Clear"/></b>：追踪器存的是全进程共享的
+    /// <b>事实</b>（最后活动时刻），记忆演化默认 15 分钟就处理完一轮、复盘默认等 30 分钟。
+    /// 若在这里清掉时间戳，复盘的 <c>GetIdleSessions(30min)</c> 永远拿不到该会话——
+    /// 空闲触发会<b>永久失效</b>，且没有任何报错（实测已发生）。
+    /// </para>
+    /// </summary>
+    private readonly IdlePeriodClaimStore _idleClaims = new();
     private readonly Channel<string> _sessionEndQueue = Channel.CreateUnbounded<string>(
         new UnboundedChannelOptions { SingleReader = true });
     private CancellationTokenSource? _deactivateCts;
@@ -142,11 +154,28 @@ public sealed class MemoryEvolutionWorker : BackgroundService, IModuleHostedServ
                     {
                         if (!_moduleActivity.IsActive)
                             break;
+
+                        // 二次确认仍然空闲，并取出本段空闲期的活动时刻（作为去重键）。
+                        if (!_activity.TryGetLastActivity(sessionId, out var lastActivity))
+                            continue;
+                        if (DateTimeOffset.UtcNow - lastActivity < idle)
+                            continue;
+
+                        // 同段空闲期只演化一次：用户回来后 Touch 会换时刻，天然允许下一次。
+                        if (_idleClaims.IsClaimed(sessionId, lastActivity))
+                            continue;
+
                         if (opts.Extraction.Enabled)
                             await _flush.FlushSessionInlineAsync(sessionId, stoppingToken);
                         await _evolution.EvolveSessionAsync(sessionId, stoppingToken);
-                        _activity.Clear(sessionId);
+
+                        // 只登记去重，绝不清除共享的活跃度事实（见 _idleClaims 的注释）。
+                        _idleClaims.Claim(sessionId, lastActivity);
                     }
+
+                    // 会话被删除或已重新活动：清掉失效登记，避免字典随会话数无界增长。
+                    _idleClaims.Prune(id =>
+                        _activity.TryGetLastActivity(id, out var last) ? last : null);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested || !_moduleActivity.IsActive)
@@ -190,7 +219,10 @@ public sealed class MemoryEvolutionWorker : BackgroundService, IModuleHostedServ
                     _logger.LogInformation("Evolved memory after session end: {SessionId}", sessionId);
                 }
 
-                _activity.Clear(sessionId);
+                // 同样只登记本工作者的去重状态，不清共享活跃度事实：
+                // 会话结束不等于会话消失，复盘仍可能要对它做一次空闲复盘。
+                if (_activity.TryGetLastActivity(sessionId, out var lastActivity))
+                    _idleClaims.Claim(sessionId, lastActivity);
             }
             catch (Exception ex)
             {

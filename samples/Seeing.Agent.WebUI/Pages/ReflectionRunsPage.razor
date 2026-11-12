@@ -1,11 +1,21 @@
 ﻿@using AntDesign
+@using Seeing.Agent.Abstractions.Configuration
+@using Seeing.Agent.Reflection.Abstractions
 @using Seeing.Agent.Reflection.Core
 @using Seeing.Agent.Reflection.Ui
+@using Seeing.Agent.WebUI.Services
+@using Seeing.Session.Core
 @inject ReflectionRunReader Reader
+@inject ReflectionRunOperations Operations
+@inject IReflectionStatus? Status
+@inject ISessionManager? Sessions
+@inject IMessageService MessageService
+@inject NavigationManager Navigation
+@implements IDisposable
 
 <PageTitle>复盘记录 · Seeing</PageTitle>
 
-<WorkspacePageShell Loading="@_loading" IsEmpty="@(_runs.Count == 0 && !_loading)">
+<WorkspacePageShell Loading="@_loading" IsEmpty="@(_runs.Count == 0 && !_loading && _active.Count == 0)">
     <Breadcrumb>
         <BreadcrumbItem>工作区</BreadcrumbItem>
         <BreadcrumbItem>复盘记录</BreadcrumbItem>
@@ -13,17 +23,53 @@
     <Extra>
         <Space>
             <Checkbox TItemValue="bool" Value="@_onlyFailures" ValueChanged="OnFilterChanged">仅失败</Checkbox>
-            <Button Icon="@IconType.Outline.Reload" OnClick="LoadAsync">刷新</Button>
+            <Button Icon="@IconType.Outline.Setting" OnClick="@(() => Navigation.NavigateTo("/settings"))">复盘设置</Button>
+            <Button Icon="@IconType.Outline.Reload" OnClick="ReloadAllAsync">刷新</Button>
         </Space>
     </Extra>
     <ChildContent>
+        @* ── 正在复盘 / 排队中 ── *@
+        @if (_active.Count > 0)
+        {
+            <Card Title="@($"正在进行（{_active.Count}）")" Style="margin-bottom: 16px;">
+                <div class="reflection-hint">
+                    复盘在后台隔离子会话中运行，完成后会出现在下方列表；排队中的请求每分钟处理一批。
+                </div>
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 110px;">状态</th>
+                            <th>会话</th>
+                            <th style="width: 90px;">触发</th>
+                            <th style="width: 130px;">等待</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _active)
+                        {
+                            <tr @key="@($"{item.Request.SessionId}:{item.Request.At:O}")">
+                                <td>
+                                    <Tag Color="@(item.Running ? "processing" : "default")">
+                                        @(item.Running ? "复盘中" : "排队中")
+                                    </Tag>
+                                </td>
+                                <td>@item.DisplayTitle</td>
+                                <td>@UiText.ReflectionTriggerText(item.Request.Kind)</td>
+                                <td>@FormatWaited(item.Request.At)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </Card>
+        }
+
         @if (_runs.Count == 0)
         {
             <Empty Description="@EmptyDescription" />
         }
         else
         {
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px;">
+            <div class="reflection-stats">
                 <Card Title="记录总数"><Statistic Value="@_runs.Count" /></Card>
                 <Card Title="失败数"><Statistic Value="@_runs.Count(x => x.IsFailure)" /></Card>
                 <Card Title="产出建议"><Statistic Value="@_runs.Sum(x => x.Suggestions.Count)" /></Card>
@@ -40,7 +86,7 @@
                         <th style="width: 70px;">技能</th>
                         <th style="width: 90px;">Token 用量</th>
                         <th>模型</th>
-                        <th style="width: 70px;">操作</th>
+                        <th style="width: 130px;">操作</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -55,10 +101,19 @@
                             <td>@run.TotalTokens</td>
                             <td>@(run.ModelId ?? "沿用源会话")</td>
                             <td>
-                                <Button Type="@ButtonType.Link" Size="@ButtonSize.Small"
-                                        OnClick="@(() => ToggleDetail(run))">
-                                    @(ReferenceEquals(_detail, run) ? "收起" : "查看")
-                                </Button>
+                                <Space Size="@("small")">
+                                    <Button Type="@ButtonType.Link" Size="@ButtonSize.Small"
+                                            OnClick="@(() => ToggleDetail(run))">
+                                        @(ReferenceEquals(_detail, run) ? "收起" : "查看")
+                                    </Button>
+                                    <Popconfirm Title="@("确定删除这条复盘记录？")"
+                                                OnConfirm="@(() => DeleteAsync(run))"
+                                                OkText="删除" CancelText="取消">
+                                        <Button Type="@ButtonType.Link" Size="@ButtonSize.Small" Danger="true">
+                                            删除
+                                        </Button>
+                                    </Popconfirm>
+                                </Space>
                             </td>
                         </tr>
                     }
@@ -70,7 +125,9 @@
                 <Divider />
                 <Card Title="@($"复盘详情 · {_detail.ExecutionId}")">
                     <Descriptions Bordered Column="2">
-                        <DescriptionsItem Title="源会话">@_detail.SessionId</DescriptionsItem>
+                        <DescriptionsItem Title="源会话">
+                            <a href="@($"/session/{_detail.SessionId}")">@SessionTitle(_detail.SessionId)</a>
+                        </DescriptionsItem>
                         <DescriptionsItem Title="触发方式">@UiText.ReflectionTriggerText(_detail.Kind)</DescriptionsItem>
                         <DescriptionsItem Title="结果">@UiText.ReflectionOutcomeText(_detail.Outcome)</DescriptionsItem>
                         <DescriptionsItem Title="模型">@(_detail.ModelId ?? "沿用源会话")</DescriptionsItem>
@@ -89,10 +146,24 @@
                     @if (_detail.Suggestions.Count > 0)
                     {
                         <Divider>建议清单</Divider>
-                        @foreach (var suggestion in _detail.Suggestions)
+                        <div class="reflection-hint">
+                            点「生成 SKILL」会把该条建议直接写入技能库。这是显式动作，
+                            <b>不受「运行模式」限制</b>；默认写项目级——结论来自本项目的会话。
+                        </div>
+                        @for (var i = 0; i < _detail.Suggestions.Count; i++)
                         {
+                            var index = i;
+                            var suggestion = _detail.Suggestions[i];
                             <Card Style="margin-bottom: 12px;">
-                                <div style="font-weight: 600;">@suggestion.Target</div>
+                                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                                    <div style="font-weight: 600;">@suggestion.Target</div>
+                                    <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small"
+                                            Loading="@(_creatingIndex == index)"
+                                            Disabled="@(_creatingIndex is not null)"
+                                            OnClick="@(() => CreateSkillAsync(index))">
+                                        生成 SKILL
+                                    </Button>
+                                </div>
                                 <div style="font-size: 12px; color: #666; margin: 4px 0;">
                                     @suggestion.Reason
                                 </div>
@@ -124,20 +195,81 @@
 @code {
     private const int MaxRuns = 200;
 
+    /// <summary>「在复盘中」的刷新间隔：复盘是分钟级任务，3 秒足够及时又不至于打爆 circuit。</summary>
+    private static readonly TimeSpan s_activePollInterval = TimeSpan.FromSeconds(3);
+
     private IReadOnlyList<ReflectionRunSummary> _runs = Array.Empty<ReflectionRunSummary>();
+    private IReadOnlyList<ActiveItem> _active = [];
     private ReflectionRunSummary? _detail;
     private bool _loading = true;
     private bool _onlyFailures;
+    private int? _creatingIndex;
+    private Timer? _activePoll;
 
     /// <summary>经过「仅失败」过滤后的展示集合。</summary>
     private IEnumerable<ReflectionRunSummary> Filtered =>
         _onlyFailures ? _runs.Where(x => x.IsFailure) : _runs;
 
     private string EmptyDescription =>
-        "还没有复盘记录。复盘功能默认关闭，需在系统设置中开启后，"
-        + "每轮对话结束时会自动复盘，并把结论记录在这里。";
+        "还没有复盘记录。复盘默认关闭：到「系统设置 → 复盘」开启（或在那里点「立即复盘」手动跑一次），"
+        + "之后每逢会话收尾或空闲时会自动复盘，结论记录在这里。";
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        RefreshActive();
+        await LoadAsync();
+
+        // 只轮询「在复盘中」：它是唯一会自己变化的部分。记录列表是终态产物，靠刷新按钮即可——
+        // 全页定时重载会让用户正在展开的详情被反复重置。
+        _activePoll = new Timer(_ => _ = InvokeAsync(() =>
+        {
+            RefreshActive();
+            StateHasChanged();
+        }), null, s_activePollInterval, s_activePollInterval);
+    }
+
+    public void Dispose() => _activePoll?.Dispose();
+
+    /// <summary>
+    /// 从运行态端口取「排队 + 执行中」。
+    /// <para>失败时清空而不是抛：状态是展示用事实，读不到时页面应照常显示历史记录。</para>
+    /// </summary>
+    private void RefreshActive()
+    {
+        try
+        {
+            if (Status is null)
+            {
+                _active = [];
+                return;
+            }
+
+            var items = new List<ActiveItem>(Status.Queued.Count + 1);
+
+            // 顺序刻意「执行中在前」：用户最想知道「现在在跑哪一个」。
+            if (Status.Running is { } running)
+                items.Add(new ActiveItem(running, true, SessionTitle(running.SessionId)));
+
+            foreach (var queued in Status.Queued)
+                items.Add(new ActiveItem(queued, false, SessionTitle(queued.SessionId)));
+
+            _active = items;
+        }
+        catch
+        {
+            _active = [];
+        }
+    }
+
+    /// <summary>
+    /// 会话标题：内存里查得到就用标题，查不到退回 ID。
+    /// <para>
+    /// 不冷加载会话（那会为一次展示付出整盘读）：用户真正关心的是「哪个会话」，
+    /// ID 已足够定位，且它本身就能点进会话页。
+    /// </para>
+    /// </summary>
+    private string SessionTitle(string sessionId)
+        => Sessions?.Get(sessionId)?.Title is { Length: > 0 } title ? title : sessionId;
 
     private async Task LoadAsync()
     {
@@ -152,6 +284,12 @@
         }
     }
 
+    private async Task ReloadAllAsync()
+    {
+        RefreshActive();
+        await LoadAsync();
+    }
+
     private void OnFilterChanged(bool onlyFailures)
     {
         _onlyFailures = onlyFailures;
@@ -162,7 +300,82 @@
     private void ToggleDetail(ReflectionRunSummary run)
         => _detail = ReferenceEquals(_detail, run) ? null : run;
 
+    private async Task DeleteAsync(ReflectionRunSummary run)
+    {
+        try
+        {
+            var result = await Operations.DeleteAsync(run.RunId);
+            if (!result.Success)
+            {
+                MessageService.Error($"删除失败：{result.Error}");
+                return;
+            }
+
+            if (ReferenceEquals(_detail, run))
+                _detail = null;
+
+            MessageService.Success($"已删除（{result.DeletedFiles} 个文件）");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"删除失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 生成 SKILL：固定写项目级（结论来自本项目会话）。
+    /// <para>
+    /// 级别不给选择器：跨项目复用应当走技能页的晋升，而不是在复盘页猜级别。
+    /// 见 <c>docs/architecture/25</c> §11。
+    /// </para>
+    /// </summary>
+    private async Task CreateSkillAsync(int suggestionIndex)
+    {
+        if (_detail is null || _creatingIndex is not null)
+            return;
+
+        _creatingIndex = suggestionIndex;
+        try
+        {
+            var result = await Operations.CreateSkillAsync(_detail.RunId,
+                suggestionIndex,
+                ConfigLevel.Project);
+
+            if (!result.Success)
+            {
+                MessageService.Warning(result.Error ?? "生成失败");
+                return;
+            }
+
+            MessageService.Success($"技能「{result.SkillName}」已写入项目级，可在「技能」页查看");
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"生成失败：{ex.Message}");
+        }
+        finally
+        {
+            _creatingIndex = null;
+        }
+    }
+
+    /// <summary>等待时长：只给出粗粒度可读值，不显示毫秒（复盘是分钟级任务）。</summary>
+    private static string FormatWaited(DateTimeOffset requestedAt)
+    {
+        var waited = DateTimeOffset.UtcNow - requestedAt;
+        if (waited < TimeSpan.Zero)
+            waited = TimeSpan.Zero;
+
+        return waited.TotalMinutes >= 1
+            ? $"{(int)waited.TotalMinutes} 分 {waited.Seconds} 秒"
+            : $"{waited.Seconds} 秒";
+    }
+
     /// <summary>结果对应的颜色：失败红、成功绿。</summary>
     private static string OutcomeColor(ReflectionRunSummary run)
         => run.IsFailure ? "red" : "green";
+
+    /// <summary>一行「在复盘中」的展示项。</summary>
+    private sealed record ActiveItem(ReflectionRequest Request, bool Running, string DisplayTitle);
 }

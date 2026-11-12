@@ -59,12 +59,14 @@ public static class WebUiViews
         resolver.Register("page.tools", typeof(ToolsPage));
         resolver.Register("page.reflection", typeof(ReflectionRunsPage));
 
-        // ── 设置页卡片（5 张，宿主代模块声明）──
+        // ── 设置页卡片（6 张：5 张宿主代模块声明 + 1 张模块自己声明）──
         resolver.Register("settings.boot", typeof(BootCapabilitySettingsCard));
         resolver.Register("settings.scenarios", typeof(ScenariosSettingsCard));
         resolver.Register("settings.scheduler", typeof(SchedulerSettingsCard));
         resolver.Register("settings.memory", typeof(MemorySettingsCard));
         resolver.Register("settings.browser", typeof(BrowserSettingsCard));
+        // 复盘卡片由 ReflectionModule 自己声明（Requires=[reflection]），宿主只登记视图类型。
+        resolver.Register("settings.reflection", typeof(ReflectionSettingsCard));
 
         // ── 插槽（由模块自己声明；壳层不再代声明文件面板）──
         // 文件面板已改由「工作台」承载：ViewKey 登记在 WebUiWorkbenchViews。

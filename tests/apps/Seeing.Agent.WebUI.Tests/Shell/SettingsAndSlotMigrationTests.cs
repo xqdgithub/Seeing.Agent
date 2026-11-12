@@ -33,7 +33,7 @@ public class SettingsAndSlotMigrationTests
     ];
 
     [Fact]
-    public void SettingsCards_ShouldBeFiveWithUniqueOwnerScopedKeys()
+    public void SettingsCards_ShouldBeSixWithUniqueOwnerScopedKeys()
     {
         var registry = BuildRegistry();
 
@@ -41,10 +41,11 @@ public class SettingsAndSlotMigrationTests
             .Where(e => e.Contribution is SettingsCardContribution)
             .ToList();
 
-        cards.Should().HaveCount(5, "设置页固定 5 张模块卡片（启动能力 / 工作模式 / 调度器 / 记忆 / 浏览器）");
+        cards.Should().HaveCount(6, "设置页固定 6 张模块卡片（启动能力 / 工作模式 / 调度器 / 记忆 / 浏览器 / 复盘）");
 
         cards.Select(e => e.Contribution.Id).Should().Equal(
-            "settings.boot", "settings.scenarios", "settings.scheduler", "settings.memory", "settings.browser");
+            "settings.boot", "settings.scenarios", "settings.scheduler", "settings.memory",
+            "settings.browser", "settings.reflection");
 
         // Tab key = {OwnerId}.{Id}：不同创建方的同 id 不会撞 key
         var keys = cards.Select(e => $"{e.OwnerId}.{e.Contribution.Id}").ToList();
@@ -77,6 +78,10 @@ public class SettingsAndSlotMigrationTests
         cards["settings.scenarios"].Should().BeEmpty();
         cards["settings.scheduler"].Should().Equal("scheduler");
         cards["settings.memory"].Should().Equal("memory");
+        cards["settings.browser"].Should().Equal("browser");
+        cards["settings.reflection"].Should().Equal(
+            new[] { "reflection" },
+            "复盘卡由模块自己声明：归属自身，模块停用后卡随页面一起消失（不留点开即报错的空壳）");
     }
 
     [Fact]
@@ -294,6 +299,11 @@ public class SettingsAndSlotMigrationTests
         // 工作台与页面都由模块自己声明（能力包只给 ViewKey，组件类型登记在宿主）
         var files = new Seeing.Agent.Files.FileWorkspaceModule();
         registry.AddRange(files.Id, files.DescribeUi());
+
+        // 复盘模块自己声明设置卡（宿主不再代声明），因此这里必须把它算进注册表，
+        // 否则「设置页 6 张卡」的断言会把「卡片被静默漏收」误判为通过。
+        var reflection = new Seeing.Agent.Reflection.ReflectionModule();
+        registry.AddRange(reflection.Id, reflection.DescribeUi());
 
         return registry;
     }
