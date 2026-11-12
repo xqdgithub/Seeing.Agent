@@ -10,15 +10,18 @@ namespace Seeing.Agent.Llm.Anthropic.Clients;
 
 /// <summary>
 /// Anthropic 客户端 - 使用 HTTP API 发送请求
-/// 只负责发送请求和接收响应，不负责模型定义
+/// 只负责发送请求和接收响应，不负责模型定义。
+/// <para>可选实现 <see cref="IModelCatalogClient"/>：当 <c>ProviderConfig.ListModels = true</c>
+/// 时由 <c>ConfiguredLlmProvider</c> 合并远端 <c>GET {baseURL}/models</c>。</para>
 /// </summary>
-public class AnthropicClient : IChatCompletionClient, IDisposable
+public class AnthropicClient : IChatCompletionClient, IModelCatalogClient, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
     private readonly ProviderConfig _config;
     private readonly ILlmCallInterceptorRegistry? _interceptorRegistry;
     private readonly bool _ownsHttpClient;
+    private readonly AnthropicModelsClient _modelsClient;
 
     /// <summary>Anthropic API 版本</summary>
     private const string ApiVersion = "2023-06-01";
@@ -59,9 +62,16 @@ public class AnthropicClient : IChatCompletionClient, IDisposable
             _ownsHttpClient = true;
         }
 
+        _modelsClient = new AnthropicModelsClient(_config, _httpClient, _logger);
+
         _logger.LogDebug("Anthropic 客户端已初始化: {ProviderId}, BaseUrl={BaseUrl}, OwnsHttpClient={OwnsHttpClient}",
             ProviderId, _httpClient.BaseAddress, _ownsHttpClient);
     }
+
+    /// <inheritdoc />
+    Task<IReadOnlyList<ModelConfig>> IModelCatalogClient.ListModelsAsync(
+        CancellationToken cancellationToken)
+        => _modelsClient.ListModelsAsync(cancellationToken);
 
     /// <summary>
     /// 配置自建 HttpClient 的 BaseAddress / 超时 / 请求头（不影响共享客户端）。
