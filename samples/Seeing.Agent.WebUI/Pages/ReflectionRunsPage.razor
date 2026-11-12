@@ -22,7 +22,6 @@
     </Breadcrumb>
     <Extra>
         <Space>
-            <Checkbox TItemValue="bool" Value="@_onlyFailures" ValueChanged="OnFilterChanged">仅失败</Checkbox>
             <Button Icon="@IconType.Outline.Setting" OnClick="@(() => Navigation.NavigateTo("/settings"))">复盘设置</Button>
             <Button Icon="@IconType.Outline.Reload" OnClick="ReloadAllAsync">刷新</Button>
         </Space>
@@ -31,7 +30,7 @@
         @* ── 正在复盘 / 排队中 ── *@
         @if (_active.Count > 0)
         {
-            <Card Title="@($"正在进行（{_active.Count}）")" Style="margin-bottom: 16px;">
+            <Card Title="@($"正在进行（{_active.Count}）")" Size="@CardSize.Small" Style="margin-bottom: 16px;">
                 <div class="reflection-hint">
                     复盘在后台隔离子会话中运行，完成后会出现在下方列表；排队中的请求每分钟处理一批。
                 </div>
@@ -69,53 +68,152 @@
         }
         else
         {
-            <div class="reflection-stats">
-                <Card Title="记录总数"><Statistic Value="@_runs.Count" /></Card>
-                <Card Title="失败数"><Statistic Value="@_runs.Count(x => x.IsFailure)" /></Card>
-                <Card Title="产出建议"><Statistic Value="@_runs.Sum(x => x.Suggestions.Count)" /></Card>
-                <Card Title="创建技能"><Statistic Value="@_runs.Sum(x => x.CreatedSkills.Count)" /></Card>
+            @* ── 统计：四个数字排成一行（用既有 page-stats 体系，不再各占一张 Card） ── *@
+            <div class="page-stats">
+                <div class="stat-item">
+                    <div class="stat-icon"><Icon Type="@IconType.Outline.FileText" /></div>
+                    <div class="stat-content">
+                        <div class="stat-value">@_runs.Count</div>
+                        <div class="stat-label">记录总数</div>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-icon"><Icon Type="@IconType.Outline.CloseCircle" /></div>
+                    <div class="stat-content">
+                        <div class="stat-value">@_runs.Count(x => x.IsFailure)</div>
+                        <div class="stat-label">失败数</div>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-icon"><Icon Type="@IconType.Outline.Bulb" /></div>
+                    <div class="stat-content">
+                        <div class="stat-value">@_runs.Sum(x => x.Suggestions.Count)</div>
+                        <div class="stat-label">产出建议</div>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-icon"><Icon Type="@IconType.Outline.Star" /></div>
+                    <div class="stat-content">
+                        <div class="stat-value">@_runs.Sum(x => x.CreatedSkills.Count)</div>
+                        <div class="stat-label">创建技能</div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── 筛选栏 ── *@
+            <div class="page-filters">
+                <div class="filter-search">
+                    <Input @bind-Value="_searchText" Placeholder="搜索会话标题 / ID / 执行 ID……"
+                           AllowClear="true"
+                           OnChange="@((string _) => OnFilterChanged())" />
+                </div>
+
+                <div class="filter-group">
+                    <span class="filter-label">触发</span>
+                    <Select TItemValue="ReflectionTriggerFilter" TItem="ReflectionTriggerFilter"
+                            Value="@_triggerFilter"
+                            ValueChanged="@(v => { _triggerFilter = v; OnFilterChanged(); })"
+                            Style="width: 120px;">
+                        <SelectOption TItemValue="ReflectionTriggerFilter" TItem="ReflectionTriggerFilter" Value="ReflectionTriggerFilter.All" Label="全部" />
+                        <SelectOption TItemValue="ReflectionTriggerFilter" TItem="ReflectionTriggerFilter" Value="ReflectionTriggerFilter.TurnNudge" Label="轮次" />
+                        <SelectOption TItemValue="ReflectionTriggerFilter" TItem="ReflectionTriggerFilter" Value="ReflectionTriggerFilter.Idle" Label="空闲" />
+                        <SelectOption TItemValue="ReflectionTriggerFilter" TItem="ReflectionTriggerFilter" Value="ReflectionTriggerFilter.Manual" Label="手动" />
+                    </Select>
+                </div>
+
+                <div class="filter-group">
+                    <span class="filter-label">结果</span>
+                    <Select TItemValue="ReflectionOutcomeFilter" TItem="ReflectionOutcomeFilter"
+                            Value="@_outcomeFilter"
+                            ValueChanged="@(v => { _outcomeFilter = v; OnFilterChanged(); })"
+                            Style="width: 140px;">
+                        <SelectOption TItemValue="ReflectionOutcomeFilter" TItem="ReflectionOutcomeFilter" Value="ReflectionOutcomeFilter.All" Label="全部" />
+                        <SelectOption TItemValue="ReflectionOutcomeFilter" TItem="ReflectionOutcomeFilter" Value="ReflectionOutcomeFilter.WithSuggestions" Label="有建议" />
+                        <SelectOption TItemValue="ReflectionOutcomeFilter" TItem="ReflectionOutcomeFilter" Value="ReflectionOutcomeFilter.CreatedSkills" Label="已建技能" />
+                        <SelectOption TItemValue="ReflectionOutcomeFilter" TItem="ReflectionOutcomeFilter" Value="ReflectionOutcomeFilter.FailuresOnly" Label="仅失败" />
+                    </Select>
+                </div>
+
+                <div class="filter-group">
+                    <span class="filter-label">时间</span>
+                    <Select TItemValue="ReflectionRangeFilter" TItem="ReflectionRangeFilter"
+                            Value="@_rangeFilter"
+                            ValueChanged="@(v => { _rangeFilter = v; OnFilterChanged(); })"
+                            Style="width: 130px;">
+                        <SelectOption TItemValue="ReflectionRangeFilter" TItem="ReflectionRangeFilter" Value="ReflectionRangeFilter.All" Label="全部" />
+                        <SelectOption TItemValue="ReflectionRangeFilter" TItem="ReflectionRangeFilter" Value="ReflectionRangeFilter.Today" Label="今天" />
+                        <SelectOption TItemValue="ReflectionRangeFilter" TItem="ReflectionRangeFilter" Value="ReflectionRangeFilter.Last7Days" Label="最近 7 天" />
+                        <SelectOption TItemValue="ReflectionRangeFilter" TItem="ReflectionRangeFilter" Value="ReflectionRangeFilter.Last30Days" Label="最近 30 天" />
+                    </Select>
+                </div>
+
+                @if (HasActiveFilters)
+                {
+                    <Button Type="@ButtonType.Link" Size="@ButtonSize.Small" OnClick="ResetFilters">清除筛选</Button>
+                }
+
+                <span class="filter-count">@Filtered.Count() / @_runs.Count 条</span>
             </div>
 
             <table class="items-table">
                 <thead>
-                        <tr>
-                        <th style="width: 110px;">时间</th>
+                    <tr>
+                        <th class="sortable" @onclick="@(() => SortBy(ReflectionSortKey.Time))">
+                            时间 @SortArrow(ReflectionSortKey.Time)
+                        </th>
                         <th style="width: 90px;">触发</th>
                         <th style="width: 150px;">结果</th>
-                        <th style="width: 70px;">建议</th>
-                        <th style="width: 70px;">技能</th>
-                        <th style="width: 90px;">Token 用量</th>
+                        <th class="sortable" style="width: 80px;" @onclick="@(() => SortBy(ReflectionSortKey.Suggestions))">
+                            建议 @SortArrow(ReflectionSortKey.Suggestions)
+                        </th>
+                        <th class="sortable" style="width: 80px;" @onclick="@(() => SortBy(ReflectionSortKey.Skills))">
+                            技能 @SortArrow(ReflectionSortKey.Skills)
+                        </th>
+                        <th class="sortable" style="width: 110px;" @onclick="@(() => SortBy(ReflectionSortKey.Tokens))">
+                            Token 用量 @SortArrow(ReflectionSortKey.Tokens)
+                        </th>
                         <th>模型</th>
                         <th style="width: 130px;">操作</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var run in Filtered)
+                    @if (Filtered.Count() == 0)
                     {
-                        <tr @key="run.FilePath">
-                            <td>@run.At.ToLocalTime().ToString("MM-dd HH:mm")</td>
-                            <td>@UiText.ReflectionTriggerText(run.Kind)</td>
-                            <td><Tag Color="@OutcomeColor(run)">@UiText.ReflectionOutcomeText(run.Outcome)</Tag></td>
-                            <td>@run.Suggestions.Count</td>
-                            <td>@run.CreatedSkills.Count</td>
-                            <td>@run.TotalTokens</td>
-                            <td>@(run.ModelId ?? "沿用源会话")</td>
-                            <td>
-                                <Space Size="@("small")">
-                                    <Button Type="@ButtonType.Link" Size="@ButtonSize.Small"
-                                            OnClick="@(() => ToggleDetail(run))">
-                                        @(ReferenceEquals(_detail, run) ? "收起" : "查看")
-                                    </Button>
-                                    <Popconfirm Title="@("确定删除这条复盘记录？")"
-                                                OnConfirm="@(() => DeleteAsync(run))"
-                                                OkText="删除" CancelText="取消">
-                                        <Button Type="@ButtonType.Link" Size="@ButtonSize.Small" Danger="true">
-                                            删除
-                                        </Button>
-                                    </Popconfirm>
-                                </Space>
+                        <tr>
+                            <td colspan="8" style="text-align: center; color: #999; padding: 32px;">
+                                没有匹配当前筛选条件的记录。
                             </td>
                         </tr>
+                    }
+                    else
+                    {
+                        @foreach (var run in Filtered)
+                        {
+                            <tr @key="run.FilePath">
+                                <td>@run.At.ToLocalTime().ToString("MM-dd HH:mm")</td>
+                                <td>@UiText.ReflectionTriggerText(run.Kind)</td>
+                                <td><Tag Color="@OutcomeColor(run)">@UiText.ReflectionOutcomeText(run.Outcome)</Tag></td>
+                                <td>@(run.Suggestions.Count > 0 ? run.Suggestions.Count.ToString() : "-")</td>
+                                <td>@(run.CreatedSkills.Count > 0 ? run.CreatedSkills.Count.ToString() : "-")</td>
+                                <td>@(run.TotalTokens > 0 ? run.TotalTokens.ToString() : "-")</td>
+                                <td>@(run.ModelId ?? "沿用源会话")</td>
+                                <td>
+                                    <Space Size="@("small")">
+                                        <Button Type="@ButtonType.Link" Size="@ButtonSize.Small"
+                                                OnClick="@(() => ToggleDetail(run))">
+                                            @(ReferenceEquals(_detail, run) ? "收起" : "查看")
+                                        </Button>
+                                        <Popconfirm Title="@("确定删除这条复盘记录？")"
+                                                    OnConfirm="@(() => DeleteAsync(run))"
+                                                    OkText="删除" CancelText="取消">
+                                            <Button Type="@ButtonType.Link" Size="@ButtonSize.Small" Danger="true">
+                                                删除
+                                            </Button>
+                                        </Popconfirm>
+                                    </Space>
+                                </td>
+                            </tr>
+                        }
                     }
                 </tbody>
             </table>
@@ -124,7 +222,7 @@
             {
                 <Divider />
                 <Card Title="@($"复盘详情 · {_detail.ExecutionId}")">
-                    <Descriptions Bordered Column="2">
+                    <Descriptions Bordered Column="2" Size="@DescriptionsSize.Small">
                         <DescriptionsItem Title="源会话">
                             <a href="@($"/session/{_detail.SessionId}")">@SessionTitle(_detail.SessionId)</a>
                         </DescriptionsItem>
@@ -134,7 +232,10 @@
                         <DescriptionsItem Title="Token 用量">
                             @($"{_detail.InputTokens} 输入 / {_detail.OutputTokens} 输出")
                         </DescriptionsItem>
-                        <DescriptionsItem Title="记录文件">@_detail.FilePath</DescriptionsItem>
+                        <DescriptionsItem Title="记录时间">
+                            @_detail.At.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                        </DescriptionsItem>
+                        <DescriptionsItem Title="记录文件" Span="2">@_detail.FilePath</DescriptionsItem>
                     </Descriptions>
 
                     @if (!string.IsNullOrWhiteSpace(_detail.Detail))
@@ -154,7 +255,7 @@
                         {
                             var index = i;
                             var suggestion = _detail.Suggestions[i];
-                            <Card Style="margin-bottom: 12px;">
+                            <Card Style="margin-bottom: 12px;" Size="@CardSize.Small">
                                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
                                     <div style="font-weight: 600;">@suggestion.Target</div>
                                     <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small"
@@ -202,13 +303,35 @@
     private IReadOnlyList<ActiveItem> _active = [];
     private ReflectionRunSummary? _detail;
     private bool _loading = true;
-    private bool _onlyFailures;
     private int? _creatingIndex;
     private Timer? _activePoll;
 
-    /// <summary>经过「仅失败」过滤后的展示集合。</summary>
-    private IEnumerable<ReflectionRunSummary> Filtered =>
-        _onlyFailures ? _runs.Where(x => x.IsFailure) : _runs;
+    // ── 筛选状态 ──
+    private string _searchText = string.Empty;
+    private ReflectionTriggerFilter _triggerFilter = ReflectionTriggerFilter.All;
+    private ReflectionOutcomeFilter _outcomeFilter = ReflectionOutcomeFilter.All;
+    private ReflectionRangeFilter _rangeFilter = ReflectionRangeFilter.All;
+
+    // ── 排序状态 ──
+    private ReflectionSortKey _sortKey = ReflectionSortKey.Time;
+    private bool _sortDescending = true;
+
+    private bool HasActiveFilters =>
+        !string.IsNullOrWhiteSpace(_searchText)
+        || _triggerFilter != ReflectionTriggerFilter.All
+        || _outcomeFilter != ReflectionOutcomeFilter.All
+        || _rangeFilter != ReflectionRangeFilter.All;
+
+    /// <summary>经过筛选与排序的展示集合（判定逻辑在 <see cref="ReflectionRunFilter"/>，便于单测）。</summary>
+    private IReadOnlyList<ReflectionRunSummary> Filtered => ReflectionRunFilter.Apply(
+        _runs,
+        _searchText,
+        _triggerFilter,
+        _outcomeFilter,
+        _rangeFilter,
+        _sortKey,
+        _sortDescending,
+        SessionTitle);
 
     private string EmptyDescription =>
         "还没有复盘记录。复盘默认关闭：到「系统设置 → 复盘」开启（或在那里点「立即复盘」手动跑一次），"
@@ -290,11 +413,37 @@
         await LoadAsync();
     }
 
-    private void OnFilterChanged(bool onlyFailures)
+    private void OnFilterChanged() => _detail = null;
+
+    private void ResetFilters()
     {
-        _onlyFailures = onlyFailures;
+        _searchText = string.Empty;
+        _triggerFilter = ReflectionTriggerFilter.All;
+        _outcomeFilter = ReflectionOutcomeFilter.All;
+        _rangeFilter = ReflectionRangeFilter.All;
         _detail = null;
     }
+
+    /// <summary>点同一列表头切换升降序；换列时默认降序（时间/数量都更关心「最大那批」）。</summary>
+    private void SortBy(ReflectionSortKey key)
+    {
+        if (_sortKey == key)
+            _sortDescending = !_sortDescending;
+        else
+        {
+            _sortKey = key;
+            _sortDescending = true;
+        }
+    }
+
+    /// <summary>排序指示箭头：只标当前排序列，避免每列表头都挂一个灰箭头造成噪声。</summary>
+    private RenderFragment SortArrow(ReflectionSortKey key) => builder =>
+    {
+        if (_sortKey != key)
+            return;
+
+        builder.AddContent(0, _sortDescending ? " ↓" : " ↑");
+    };
 
     /// <summary>再点一次同一行则收起：列表页空间有限，详情是可选的展开层。</summary>
     private void ToggleDetail(ReflectionRunSummary run)
@@ -327,7 +476,7 @@
     /// 生成 SKILL：固定写项目级（结论来自本项目会话）。
     /// <para>
     /// 级别不给选择器：跨项目复用应当走技能页的晋升，而不是在复盘页猜级别。
-    /// 见 <c>docs/architecture/25</c> §11。
+    /// 见 <c>docs/architecture/25</c> §11.4。
     /// </para>
     /// </summary>
     private async Task CreateSkillAsync(int suggestionIndex)
@@ -338,7 +487,8 @@
         _creatingIndex = suggestionIndex;
         try
         {
-            var result = await Operations.CreateSkillAsync(_detail.RunId,
+            var result = await Operations.CreateSkillAsync(
+                _detail.RunId,
                 suggestionIndex,
                 ConfigLevel.Project);
 

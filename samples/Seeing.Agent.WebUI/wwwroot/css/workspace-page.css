@@ -101,6 +101,15 @@
     white-space: nowrap;
 }
 
+/* 筛选结果计数：贴在筛选栏右端，用等宽数字避免数字位数变化时抖动 */
+.filter-count {
+    margin-left: auto;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-tertiary);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
 .filter-dropdown {
     min-width: 120px;
 }
@@ -628,6 +637,7 @@
 .page-stats {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: var(--space-6);
     padding: var(--space-3) var(--space-4);
     background: var(--color-bg-secondary);
@@ -708,6 +718,11 @@
     
     .page-filters {
         flex-wrap: wrap;
+    }
+
+    /* 窄屏下筛选栏会换行，计数不再靠右（否则会挂在最后一行右侧、与控件脱节） */
+    .filter-count {
+        margin-left: 0;
     }
     
     .filter-search {
