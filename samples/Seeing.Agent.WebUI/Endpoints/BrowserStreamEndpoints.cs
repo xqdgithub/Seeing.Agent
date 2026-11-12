@@ -116,24 +116,35 @@ public static class BrowserStreamEndpoints
         // 两个闭包同时改 subscription/subscribedPage 会重复订阅或泄漏。
         var ensureSubscribedGate = new SemaphoreSlim(1, 1);
 
-        // 忙碌状态由页面自己通知（它在持锁的那一层置位）；调用方前后各推一次是错的 ——
-        // 那时 busy 还没置位 / 已经复位，推出去永远是「不忙」，遮罩成了死代码。
-        BrowserPageHandle? busyHooked = null;
+        // 页面事件由页面自己通知（忙碌在持锁层置位；导航在 FrameNavigated）。
+        // 调用方前后各推一次是错的——时机永远对不上。
+        BrowserPageHandle? pageHooked = null;
 
         void OnBusyChanged(BrowserPageHandle changed) => hub.PublishState(sessionId, changed);
 
+        // 只推状态，不重启 screencast。
+        // 证据：BrowserEvidenceProbes.Screencast_ShouldKeepDeliveringFramesAfterNavigation_WithoutRestart
+        // 证明跨文档导航后只要页面还有变化，原 screencast 仍出新帧；强制 Restart 是多余补丁。
+        void OnNavigated(BrowserPageHandle changed) => hub.PublishState(sessionId, changed);
+
         void AttachBusy(BrowserPageHandle? target)
         {
-            if (ReferenceEquals(busyHooked, target))
+            if (ReferenceEquals(pageHooked, target))
                 return;
 
-            if (busyHooked is not null)
-                busyHooked.BusyChanged -= OnBusyChanged;
+            if (pageHooked is not null)
+            {
+                pageHooked.BusyChanged -= OnBusyChanged;
+                pageHooked.Navigated -= OnNavigated;
+            }
 
-            busyHooked = target;
+            pageHooked = target;
 
-            if (busyHooked is not null)
-                busyHooked.BusyChanged += OnBusyChanged;
+            if (pageHooked is not null)
+            {
+                pageHooked.BusyChanged += OnBusyChanged;
+                pageHooked.Navigated += OnNavigated;
+            }
         }
 
         // agent 用工具（browser_open）建页面时，端点自己不会知道 —— 那两条检查时机
@@ -200,6 +211,11 @@ public static class BrowserStreamEndpoints
             subscription = await hub.SubscribeAsync(sessionId, current, sink, ct).ConfigureAwait(false);
             subscribedPage = current;
             AttachBusy(current);
+
+            // 人回到这个会话、画面刚接上：此时还没有点击。
+            // 把标签放到前台，并松开上次切走时可能没抬起的鼠标。
+            // 不能拖到下一次 mousedown 里做 —— 那会把抬起事件从画布抢走，之后点什么都没反应。
+            await current.ShowToUserAsync(ct).ConfigureAwait(false);
         }
 
         try
@@ -243,10 +259,27 @@ public static class BrowserStreamEndpoints
         }
         finally
         {
-            // 先摘事件再撤订阅：否则页面在撤订阅期间触发 BusyChanged，
+            // 先摘事件再撤订阅：否则页面在撤订阅期间触发 BusyChanged/Navigated，
             // 我们会对一个正在关闭的 sink 推状态
-            if (busyHooked is not null)
-                busyHooked.BusyChanged -= OnBusyChanged;
+            if (pageHooked is not null)
+            {
+                pageHooked.BusyChanged -= OnBusyChanged;
+                pageHooked.Navigated -= OnNavigated;
+            }
+
+            // 人离开这个会话时，画布不会再送来 mouseup。不补抬起的话，
+            // 页面停在按下，回到这个会话后点击全部失效。
+            if (pageHooked is not null)
+            {
+                try
+                {
+                    await pageHooked.ReleasePointerAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogDebug(ex, "离开会话时松开鼠标失败（忽略）：{SessionId}", sessionId);
+                }
+            }
 
             sink.Detach();
 

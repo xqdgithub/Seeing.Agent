@@ -83,13 +83,12 @@ public sealed class BrowserEngine : IAsyncDisposable
     private DateTimeOffset? _failedAt;
     private string? _failureReason;
 
-    /// <summary>上次失败是否因为「磁盘上找不到浏览器可执行文件」（区别于「进程起不来」）。</summary>
+    /// <summary>上次失败是否应跳过冷却（可恢复：缺可执行文件 / profile 锁）。</summary>
     /// <remarks>
-    /// 这两类失败对重试的期待完全不同：找不到可执行文件是「用户还没装」，
-    /// 装完就应当立刻可用；而进程起不来（profile 锁、崩溃）重试只会更慢。
-    /// 用布尔标记区分，避免在失败路径上解析错误字符串。
+    /// 找不到可执行文件：装完就该立刻可用。profile 锁：残留进程一退就该立刻可启动。
+    /// 这两类进 10 秒冷却只会让用户连点空转（切会话再开时尤其明显）。
     /// </remarks>
-    private bool _failedWithoutExecutable;
+    private bool _skipFailureCooldown;
 
     /// <summary>创建引擎。</summary>
     /// <param name="options">配置（热重载：每次启动读当前值）。</param>
@@ -120,13 +119,11 @@ public sealed class BrowserEngine : IAsyncDisposable
 
             // 失败冷却：短期内不再重试，直接复用上次的原因。
             //
-            // 例外：上次失败是「找不到浏览器可执行文件」时，跳过冷却。
-            // 该场景的真实顺序往往是「服务先起来 → 用户才安装浏览器」，
-            // 让用户为了一次 10 秒冷却而反复调用工具、或误以为「装了也没用」，
-            // 代价远大于一次 File.Exists 探测（探测本身不起进程）。
+            // 例外（跳过冷却）：可恢复失败——「找不到可执行文件」（装完就该立刻可用）、
+            // 「profile 被残留进程占用」（锁马上会放，进冷却只会让切会话再开连点 10 秒全失败）。
             if (_failedAt is { } failedAt
                 && DateTimeOffset.UtcNow - failedAt < FailureCooldown
-                && !_failedWithoutExecutable)
+                && !_skipFailureCooldown)
             {
                 throw new BrowserUnavailableException(_failureReason ?? "浏览器启动失败");
             }
@@ -139,7 +136,7 @@ public sealed class BrowserEngine : IAsyncDisposable
                 _browser = await LaunchAsync(cancellationToken).ConfigureAwait(false);
                 _failedAt = null;
                 _failureReason = null;
-                _failedWithoutExecutable = false;
+                _skipFailureCooldown = false;
                 _logger.LogInformation(
                     "浏览器已启动（{Headless}，{Profile}）",
                     _options.CurrentValue.Headless ? "无头" : "有头",
@@ -148,14 +145,13 @@ public sealed class BrowserEngine : IAsyncDisposable
             }
             catch (BrowserUnavailableException ex)
             {
-                // 记录失败形态：找不到可执行文件 vs 进程起不来。
-                // 前者装完就该立刻可用（跳过冷却），后者重试只会更慢。
-                Remember(ex.Message, ex is BrowserExecutableMissingException);
+                Remember(ex.Message, skipCooldown: ShouldSkipFailureCooldown(ex));
                 throw;
             }
             catch (Exception ex)
             {
-                Remember($"启动浏览器失败：{ex.Message}");
+                var message = $"启动浏览器失败：{ex.Message}";
+                Remember(message, skipCooldown: IsProfileLockFailure(ex) || IsProfileLockFailure(message));
                 _logger.LogWarning(ex, "启动浏览器失败");
                 throw new BrowserUnavailableException(_failureReason!);
             }
@@ -516,9 +512,12 @@ public sealed class BrowserEngine : IAsyncDisposable
             _logger.LogWarning(
                 "profile 被残留浏览器进程占用，清理后重试：{Directory}", profileDirectory);
 
-            var killed = await KillLeftoverProcessAsync(profileDirectory).ConfigureAwait(false);
-            if (killed == 0)
-                throw;
+            // 先尽量清 PID 文件里的残留；杀不到（PID 已删、进程正在退）也不能立刻放弃——
+            // CloseAsync 返回后子进程还可能握着锁几秒。旧逻辑 if (killed==0) throw
+            // 会把「锁马上会放」做成永久性失败。
+            // 注意：健康的「切会话再开」应复用同一进程（见 BrowserEvidenceProbes），
+            // 不应走到这里；本分支只服务断连/关停后的二次 Launch。
+            await KillLeftoverProcessAsync(profileDirectory).ConfigureAwait(false);
 
             // 等 profile 锁释放：条件轮询而不是固定等待
             browser = await RetryLaunchAfterCleanupAsync(launchOptions, profileDirectory, ex, cancellationToken)
@@ -643,8 +642,19 @@ public sealed class BrowserEngine : IAsyncDisposable
 
     /// <summary>判定异常是否为「profile 已被另一浏览器进程占用」。</summary>
     internal static bool IsProfileLocked(Exception ex)
-        => ex is ProcessException
-           && ex.Message.Contains("already running", StringComparison.OrdinalIgnoreCase);
+        => ex is ProcessException && IsProfileLockFailure(ex.Message);
+
+    /// <summary>文案/异常是否在描述 profile 锁（可恢复，应跳过失败冷却）。</summary>
+    internal static bool IsProfileLockFailure(Exception ex)
+        => IsProfileLockFailure(ex.Message);
+
+    /// <summary>文案是否在描述 profile 锁。</summary>
+    internal static bool IsProfileLockFailure(string? message)
+        => !string.IsNullOrEmpty(message)
+           && message.Contains("already running", StringComparison.OrdinalIgnoreCase);
+
+    private static bool ShouldSkipFailureCooldown(BrowserUnavailableException ex)
+        => ex is BrowserExecutableMissingException || IsProfileLockFailure(ex);
 
     /// <summary>记录本引擎启动的浏览器进程 PID（落在 profile 目录内，随 profile 一起失效）。</summary>
     private const string PidFileName = ".seeing-engine.pid";
@@ -1232,11 +1242,11 @@ public sealed class BrowserEngine : IAsyncDisposable
         Interlocked.CompareExchange(ref _browser, null, sender as IBrowser);
     }
 
-    private void Remember(string reason, bool withoutExecutable = false)
+    private void Remember(string reason, bool skipCooldown = false)
     {
         _failedAt = DateTimeOffset.UtcNow;
         _failureReason = reason;
-        _failedWithoutExecutable = withoutExecutable;
+        _skipFailureCooldown = skipCooldown;
     }
 
     private async Task DisposeBrowserQuietlyAsync()
@@ -1246,6 +1256,7 @@ public sealed class BrowserEngine : IAsyncDisposable
 
         var browser = _browser;
         var profileDirectory = _launchedProfileDirectory;
+        var process = browser.Process;
         _browser = null;
         _launchedProfileDirectory = null;
         _launchedSignature = null;
@@ -1261,12 +1272,36 @@ public sealed class BrowserEngine : IAsyncDisposable
             _logger.LogDebug(ex, "关闭浏览器时出现异常（忽略）");
         }
 
-        // 干净关停后删掉 PID 记录：留着的后果是下次启动把它当成「残留进程」去查，
-        // 而那个 PID 可能已被系统复用给无关程序（虽有路径校验，但不必制造这种风险）。
-        if (profileDirectory is not null)
+        // PID 文件只在主进程确认退出后删：CloseAsync 返回时子进程还可能握着 profile 锁。
+        // 此时若删掉 PID，下次撞锁 KillLeftover 找不到目标 → 「被另一个会话占用」假象。
+        if (profileDirectory is null)
+            return;
+
+        var pidPath = Path.Combine(profileDirectory, PidFileName);
+        try
         {
-            try { File.Delete(Path.Combine(profileDirectory, PidFileName)); }
-            catch { /* 删不掉不影响功能 */ }
+            if (process is { HasExited: false })
+            {
+                try
+                {
+                    await process.WaitForExitAsync(
+                            new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogDebug(
+                        "关闭后浏览器进程 {Pid} 仍未退出，保留 PID 文件供下次清理",
+                        process.Id);
+                }
+            }
+
+            if (process is null || process.HasExited)
+                File.Delete(pidPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "处理浏览器 PID 记录失败（忽略）");
         }
     }
 
@@ -1285,7 +1320,7 @@ public sealed class BrowserEngine : IAsyncDisposable
             await DisposeBrowserQuietlyAsync().ConfigureAwait(false);
             _failedAt = null;
             _failureReason = null;
-            _failedWithoutExecutable = false;
+            _skipFailureCooldown = false;
         }
         finally
         {

@@ -49,6 +49,10 @@ public sealed class BrowserPageHandle : IAsyncDisposable
 
     private bool _disposed;
     private int _busy;
+    private bool _singlePagePolicyInstalled;
+
+    /// <summary>画布上尚未抬起的鼠标键。离开工作台时必须补一次抬起，否则页面会一直停在按下。</summary>
+    private MouseButton? _heldButton;
 
     /// <summary>
     /// 忙碌状态变化（进入 / 退出会话互斥时各触发一次）。
@@ -61,6 +65,22 @@ public sealed class BrowserPageHandle : IAsyncDisposable
     /// 只有持锁的那一层自己发事件，时机才对。
     /// </remarks>
     public event Action<BrowserPageHandle>? BusyChanged;
+
+    /// <summary>
+    /// 主框架导航完成（地址/标题已刷新）。工作台点击、地址栏回车、工具导航都会触发。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么必须有</b>：地址栏不能只依赖「我们主动调完 Navigate 后再 PushState」。
+    /// 人工在画布上点链接、输入后回车、页面自己跳转——这些都不会走到那条收尾路径；
+    /// 漏订的症状是真实页面已跳走，工作台地址栏仍停在旧 URL。有头、无头都一样。
+    /// </para>
+    /// <para>
+    /// 订阅方应推一次状态。不必因此重启 screencast：真浏览器探针证明跨文档导航后
+    /// 原采集会话在有画面变化时仍会出帧（见 <c>BrowserEvidenceProbes</c>）。
+    /// </para>
+    /// </remarks>
+    public event Action<BrowserPageHandle>? Navigated;
 
     /// <summary>
     /// 是否正有一次操作在执行（仅 agent 的工具调用；人工输入不点亮）。
@@ -139,6 +159,50 @@ public sealed class BrowserPageHandle : IAsyncDisposable
 
         _page.Dialog += OnDialog;
         _page.Console += OnConsole;
+        // 主框架导航：画布点击/页面自跳不会走我们的 Navigate 收尾，必须靠这个事件
+        // 刷新 CurrentUrl 并通知画面流（见 Navigated 注释）。有头、无头同一条路径。
+        _page.FrameNavigated += OnFrameNavigated;
+        // 新标签：脚本没拦住时，把弹出页折回这一页。有头、无头同一条路径。
+        _page.Popup += OnPopup;
+    }
+
+    /// <summary>
+    /// 安装「新窗口折回当前页」策略。必须在第一次真正导航之前调用。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>OnNewDocument</c> 只影响之后创建的文档。若先导航再注册，第一页的
+    /// <c>target="_blank"</c> 仍会开新标签，工作台和窗口从第一次点击就分开。
+    /// </para>
+    /// <para>当前文档再补执行一次，是为了覆盖「还没导航、人已经在 about:blank 上操作」。</para>
+    /// </remarks>
+    internal Task InstallSinglePagePolicyAsync(CancellationToken cancellationToken)
+    {
+        if (_singlePagePolicyInstalled)
+            return Task.CompletedTask;
+
+        return RunHumanAsync(async () =>
+        {
+            if (_singlePagePolicyInstalled)
+                return true;
+
+            await _page.EvaluateFunctionOnNewDocumentAsync(BrowserSingleTabPolicy.Script)
+                .ConfigureAwait(false);
+
+            try
+            {
+                // 即将被首次导航替换的文档；补跑失败不影响后续文档。
+                // 用 Expression 而不是 Function：脚本是 IIFE，不是待调用的函数声明。
+                await _page.EvaluateExpressionAsync(BrowserSingleTabPolicy.Script).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "在当前文档安装单页策略失败（后续导航仍会安装）");
+            }
+
+            _singlePagePolicyInstalled = true;
+            return true;
+        }, cancellationToken);
     }
 
     /// <summary>所属会话 id。</summary>
@@ -232,7 +296,11 @@ public sealed class BrowserPageHandle : IAsyncDisposable
         string url,
         BrowserWaitUntil waitUntil,
         CancellationToken cancellationToken)
-        => RunHumanAsync(() => NavigateCoreAsync(url, waitUntil), cancellationToken);
+        => RunHumanAsync(async () =>
+        {
+            await BringToFrontQuietlyAsync().ConfigureAwait(false);
+            return await NavigateCoreAsync(url, waitUntil).ConfigureAwait(false);
+        }, cancellationToken);
 
     private async Task<BrowserNavigationResult> NavigateCoreAsync(string url, BrowserWaitUntil waitUntil)
     {
@@ -245,7 +313,8 @@ public sealed class BrowserPageHandle : IAsyncDisposable
         }).ConfigureAwait(false);
 
         stopwatch.Stop();
-        RefEpoch++;
+        // RefEpoch / CurrentUrl 由 FrameNavigated → OnFrameNavigated 统一推进，
+        // 这里不再自增：否则同一次导航会 +2，refs 语义漂移。
         await RefreshIdentityAsync().ConfigureAwait(false);
 
         return new BrowserNavigationResult(
@@ -261,7 +330,11 @@ public sealed class BrowserPageHandle : IAsyncDisposable
 
     /// <summary>后退（<b>人工</b>路径：工作台工具栏，不点亮「智能体正在操作」）。</summary>
     public Task<BrowserNavigationResult> BackAsUserAsync(BrowserWaitUntil waitUntil, CancellationToken cancellationToken)
-        => RunHumanAsync(() => BackCoreAsync(waitUntil), cancellationToken);
+        => RunHumanAsync(async () =>
+        {
+            await BringToFrontQuietlyAsync().ConfigureAwait(false);
+            return await BackCoreAsync(waitUntil).ConfigureAwait(false);
+        }, cancellationToken);
 
     private async Task<BrowserNavigationResult> BackCoreAsync(BrowserWaitUntil waitUntil)
     {
@@ -273,7 +346,7 @@ public sealed class BrowserPageHandle : IAsyncDisposable
         }).ConfigureAwait(false);
 
         stopwatch.Stop();
-        RefEpoch++;
+        // RefEpoch 由 OnFrameNavigated 统一推进（见 NavigateCoreAsync）。
         await RefreshIdentityAsync().ConfigureAwait(false);
 
         return new BrowserNavigationResult(
@@ -289,7 +362,11 @@ public sealed class BrowserPageHandle : IAsyncDisposable
 
     /// <summary>前进（<b>人工</b>路径：工作台工具栏，不点亮「智能体正在操作」）。</summary>
     public Task<BrowserNavigationResult> ForwardAsUserAsync(BrowserWaitUntil waitUntil, CancellationToken cancellationToken)
-        => RunHumanAsync(() => ForwardCoreAsync(waitUntil), cancellationToken);
+        => RunHumanAsync(async () =>
+        {
+            await BringToFrontQuietlyAsync().ConfigureAwait(false);
+            return await ForwardCoreAsync(waitUntil).ConfigureAwait(false);
+        }, cancellationToken);
 
     private async Task<BrowserNavigationResult> ForwardCoreAsync(BrowserWaitUntil waitUntil)
     {
@@ -301,7 +378,7 @@ public sealed class BrowserPageHandle : IAsyncDisposable
         }).ConfigureAwait(false);
 
         stopwatch.Stop();
-        RefEpoch++;
+        // RefEpoch 由 OnFrameNavigated 统一推进（见 NavigateCoreAsync）。
         await RefreshIdentityAsync().ConfigureAwait(false);
 
         return new BrowserNavigationResult(
@@ -317,7 +394,11 @@ public sealed class BrowserPageHandle : IAsyncDisposable
 
     /// <summary>重新加载（<b>人工</b>路径：工作台工具栏刷新按钮，不点亮「智能体正在操作」）。</summary>
     public Task ReloadAsUserAsync(CancellationToken cancellationToken)
-        => RunHumanAsync(ReloadCoreAsync, cancellationToken);
+        => RunHumanAsync(async () =>
+        {
+            await BringToFrontQuietlyAsync().ConfigureAwait(false);
+            return await ReloadCoreAsync().ConfigureAwait(false);
+        }, cancellationToken);
 
     private async Task<bool> ReloadCoreAsync()
     {
@@ -326,7 +407,7 @@ public sealed class BrowserPageHandle : IAsyncDisposable
             Timeout = (int)ResolveTimeout().TotalMilliseconds
         }).ConfigureAwait(false);
 
-        RefEpoch++;
+        // RefEpoch 由 OnFrameNavigated 统一推进（见 NavigateCoreAsync）。
         await RefreshIdentityAsync().ConfigureAwait(false);
         return true;
     }
@@ -366,7 +447,6 @@ public sealed class BrowserPageHandle : IAsyncDisposable
         {
             if (target.HasCoordinates)
             {
-                var beforeCoordinates = _page.Url;
                 var navigatedCoordinates = WaitForNavigationAsync();
 
                 await _page.Mouse.ClickAsync(
@@ -375,7 +455,7 @@ public sealed class BrowserPageHandle : IAsyncDisposable
                     new ClickOptions { Button = button, Count = Math.Clamp(clickCount, 1, 3) })
                     .ConfigureAwait(false);
 
-                await SettleAfterClickAsync(navigatedCoordinates, beforeCoordinates).ConfigureAwait(false);
+                await SettleAfterClickAsync(navigatedCoordinates).ConfigureAwait(false);
 
                 return $"已点击坐标 {target}";
             }
@@ -396,7 +476,6 @@ public sealed class BrowserPageHandle : IAsyncDisposable
             // 坐标点击就会落到视口外的空白处 —— **静默丢失、不报错**，工具还照样回「已点击」。
             // 实测：元素在 y=1540、视口高 400 时坐标点击完全无效；
             // element.ClickAsync 会先 scrollIntoViewIfNeeded 再点，工作正常。
-            var beforeUrl = _page.Url;
             var navigated = WaitForNavigationAsync();
 
             await element.ClickAsync(new ClickOptions
@@ -405,7 +484,7 @@ public sealed class BrowserPageHandle : IAsyncDisposable
                 Count = Math.Clamp(clickCount, 1, 3)
             }).ConfigureAwait(false);
 
-            await SettleAfterClickAsync(navigated, beforeUrl).ConfigureAwait(false);
+            await SettleAfterClickAsync(navigated).ConfigureAwait(false);
 
             return $"已点击 {target}";
         }, cancellationToken);
@@ -416,8 +495,9 @@ public sealed class BrowserPageHandle : IAsyncDisposable
     /// <remarks>
     /// 点击不一定触发导航（纯前端交互），所以不能无条件 `WaitForNavigation` —— 那会白等到超时。
     /// 这里把导航等待与一个短超时竞速：谁先到用谁，最后统一刷新地址/标题。
+    /// RefEpoch 由 <see cref="OnFrameNavigated"/> 统一推进，这里不再按 URL 差分自增。
     /// </remarks>
-    private async Task SettleAfterClickAsync(Task<bool> navigated, string beforeUrl)
+    private async Task SettleAfterClickAsync(Task<bool> navigated)
     {
         var completed = await Task.WhenAny(navigated, Task.Delay(ClickNavigationWait)).ConfigureAwait(false);
         if (ReferenceEquals(completed, navigated))
@@ -432,10 +512,7 @@ public sealed class BrowserPageHandle : IAsyncDisposable
             }
         }
 
-        // 地址变了说明发生了导航：推进代次，让旧 ref 明确失效（模型必须重新快照）
-        if (!string.Equals(_page.Url, beforeUrl, StringComparison.Ordinal))
-            RefEpoch++;
-
+        // 身份兜底：FrameNavigated 回调是异步刷新的，点击返回前再读一次更稳。
         await RefreshIdentityAsync().ConfigureAwait(false);
     }
 
@@ -817,11 +894,27 @@ public sealed class BrowserPageHandle : IAsyncDisposable
         }, cancellationToken);
 
     /// <summary>在视口坐标按下鼠标（人工：不点亮「智能体正在操作」）。</summary>
+    /// <remarks>
+    /// 这里<b>不能</b>把页面切到前台。切标签会把操作系统焦点从工作台画布抢走，
+    /// 紧接着的鼠标抬起落到浏览器窗口上，画布收不到 up。页面就停在「按住」，
+    /// 之后每次点击都是又一次按下、没有对应的抬起 —— 表现为切回这个会话后怎么点都没反应。
+    /// 前台切换放在观看者接上画面的时候（人还没开始点）。
+    /// </remarks>
     public Task MouseDownAsync(double x, double y, string? button, CancellationToken cancellationToken)
         => RunHumanAsync<bool>(async () =>
         {
+            var parsed = ParseButton(button);
+
+            // 上一次按下没有抬起（切走会话、连接断开）：先松开，否则这次点击仍被吃掉。
+            if (_heldButton is { } held)
+            {
+                await ReleaseButtonQuietlyAsync(held).ConfigureAwait(false);
+                _heldButton = null;
+            }
+
             await _page.Mouse.MoveAsync((decimal)x, (decimal)y).ConfigureAwait(false);
-            await _page.Mouse.DownAsync(new ClickOptions { Button = ParseButton(button) }).ConfigureAwait(false);
+            await _page.Mouse.DownAsync(new ClickOptions { Button = parsed }).ConfigureAwait(false);
+            _heldButton = parsed;
             return true;
         }, cancellationToken);
 
@@ -831,6 +924,7 @@ public sealed class BrowserPageHandle : IAsyncDisposable
         {
             await _page.Mouse.MoveAsync((decimal)x, (decimal)y).ConfigureAwait(false);
             await _page.Mouse.UpAsync(new ClickOptions { Button = ParseButton(button) }).ConfigureAwait(false);
+            _heldButton = null;
 
             // 抬起后刷新地址：人工点击常触发导航，状态条要跟着变
             await Task.Delay(50, cancellationToken).ConfigureAwait(false);
@@ -1083,6 +1177,210 @@ public sealed class BrowserPageHandle : IAsyncDisposable
         _ => [WaitUntilNavigation.DOMContentLoaded]
     };
 
+    /// <summary>
+    /// 页面仍打开了新标签时，关掉它并让当前页打开同一地址。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 不进 <see cref="_gate"/>。点击路径可能正持锁等待「这次点击引发的导航」；
+    /// 折回要发出的就是那次导航，再去抢同一把锁会和点击互相死等。
+    /// </para>
+    /// <para>
+    /// 先等地址离开 <c>about:blank</c> 再关：弹出页创建时通常还是空白，立刻读 URL
+    /// 只能得到空白，当前页就无处可去。
+    /// </para>
+    /// </remarks>
+    private void OnPopup(object? sender, PopupEventArgs e)
+    {
+        if (_disposed || e.PopupPage is not { } popup || ReferenceEquals(popup, _page))
+            return;
+
+        _ = FoldPopupAsync(popup);
+    }
+
+    private async Task FoldPopupAsync(IPage popup)
+    {
+        try
+        {
+            var classification = await WaitForPopupUrlAsync(popup).ConfigureAwait(false);
+
+            try
+            {
+                if (!popup.IsClosed)
+                    await popup.CloseAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "关闭弹出页失败（忽略）");
+            }
+
+            if (_disposed || _page.IsClosed)
+                return;
+
+            if (classification.Kind == PopupUrlKind.Denied)
+            {
+                _logger.LogInformation(
+                    "弹出页被地址策略拒绝并已关闭（会话 {SessionId}）：{Reason}",
+                    SessionId, classification.Reason);
+                await BringToFrontQuietlyAsync().ConfigureAwait(false);
+                return;
+            }
+
+            if (classification.Kind != PopupUrlKind.Allowed || classification.Url is not { } url)
+            {
+                _logger.LogDebug("弹出页没有可打开的地址，已关闭（会话 {SessionId}）", SessionId);
+                await BringToFrontQuietlyAsync().ConfigureAwait(false);
+                return;
+            }
+
+            if (!string.Equals(url, _page.Url, StringComparison.OrdinalIgnoreCase))
+            {
+                await _page.GoToAsync(url, new NavigationOptions
+                {
+                    WaitUntil = [WaitUntilNavigation.DOMContentLoaded],
+                    Timeout = (int)ResolveTimeout().TotalMilliseconds
+                }).ConfigureAwait(false);
+
+                _logger.LogInformation(
+                    "弹出页已折回当前页（会话 {SessionId}）：{Url}", SessionId, url);
+            }
+
+            await BringToFrontQuietlyAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "把弹出页折回当前页失败（会话 {SessionId}）", SessionId);
+        }
+    }
+
+    private async Task<BrowserSingleTabPolicy.PopupUrlClassification> WaitForPopupUrlAsync(IPage popup)
+    {
+        var allowPrivate = _options.CurrentValue.AllowPrivateHosts;
+        var immediate = ClassifyPopup(popup, allowPrivate);
+        if (immediate.Kind != PopupUrlKind.Pending)
+            return immediate;
+
+        var tcs = new TaskCompletionSource<BrowserSingleTabPolicy.PopupUrlClassification>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void OnNavigated(object? sender, FrameNavigatedEventArgs e)
+        {
+            try
+            {
+                if (popup.IsClosed || !ReferenceEquals(e.Frame, popup.MainFrame))
+                    return;
+
+                var classified = ClassifyPopup(popup, allowPrivate);
+                if (classified.Kind != PopupUrlKind.Pending)
+                    tcs.TrySetResult(classified);
+            }
+            catch
+            {
+                // 页面已关：等超时收口
+            }
+        }
+
+        popup.FrameNavigated += OnNavigated;
+        try
+        {
+            // 超时是上限。地址一提交就返回，不是固定空等。
+            var completed = await Task.WhenAny(
+                tcs.Task,
+                Task.Delay(BrowserSingleTabPolicy.PopupUrlTimeout)).ConfigureAwait(false);
+
+            if (ReferenceEquals(completed, tcs.Task))
+                return await tcs.Task.ConfigureAwait(false);
+
+            return ClassifyPopup(popup, allowPrivate);
+        }
+        finally
+        {
+            popup.FrameNavigated -= OnNavigated;
+        }
+    }
+
+    private static BrowserSingleTabPolicy.PopupUrlClassification ClassifyPopup(IPage popup, bool allowPrivateHosts)
+    {
+        string? url;
+        try
+        {
+            url = popup.IsClosed ? null : popup.Url;
+        }
+        catch
+        {
+            return new BrowserSingleTabPolicy.PopupUrlClassification(PopupUrlKind.Pending, null, null);
+        }
+
+        return BrowserSingleTabPolicy.Classify(url, allowPrivateHosts);
+    }
+
+    /// <summary>把本会话页面切到有头窗口的前台标签。失败不影响操作本身。</summary>
+    /// <remarks>
+    /// 只在「人开始看这一页」时调用（画面流接上、地址栏/工具栏导航、弹出页折回），
+    /// 不放在鼠标按下里。按下时切前台会把抬起事件从画布抢走。
+    /// agent 的工具调用不切前台：后台会话一导航就把用户正在看的窗口抢走。
+    /// </remarks>
+    private async Task BringToFrontQuietlyAsync()
+    {
+        try
+        {
+            if (!_page.IsClosed)
+                await _page.BringToFrontAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "把页面置于前台失败（忽略）");
+        }
+    }
+
+    /// <summary>
+    /// 观看者接上这一页：先松开可能卡住的鼠标，再把标签切到前台。
+    /// </summary>
+    /// <remarks>
+    /// 切到别的会话再回来时，这一页在后台。若等到点击时才切前台，
+    /// 操作系统焦点会在按下和抬起之间跳走，页面就再也点不动。
+    /// 所以在人还没点之前做完。
+    /// </remarks>
+    public Task ShowToUserAsync(CancellationToken cancellationToken)
+        => RunHumanAsync(async () =>
+        {
+            await ReleaseButtonQuietlyAsync(_heldButton ?? MouseButton.Left).ConfigureAwait(false);
+            _heldButton = null;
+            await BringToFrontQuietlyAsync().ConfigureAwait(false);
+            return true;
+        }, cancellationToken);
+
+    /// <summary>观看者离开时补一次鼠标抬起。</summary>
+    public Task ReleasePointerAsync(CancellationToken cancellationToken)
+    {
+        if (_disposed)
+            return Task.CompletedTask;
+
+        return RunHumanAsync(async () =>
+        {
+            if (_heldButton is { } held)
+            {
+                await ReleaseButtonQuietlyAsync(held).ConfigureAwait(false);
+                _heldButton = null;
+            }
+
+            return true;
+        }, cancellationToken);
+    }
+
+    private async Task ReleaseButtonQuietlyAsync(MouseButton button)
+    {
+        try
+        {
+            if (!_page.IsClosed)
+                await _page.Mouse.UpAsync(new ClickOptions { Button = button }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "松开鼠标失败（忽略）");
+        }
+    }
+
     private void OnDialog(object? sender, DialogEventArgs e)
     {
         // 弹窗必须处理，否则页面冻结（agent 会看到「点了没反应」）
@@ -1115,6 +1413,50 @@ public sealed class BrowserPageHandle : IAsyncDisposable
             _logger.LogDebug("页面控制台错误：{Text}", e.Message.Text);
     }
 
+    /// <summary>主框架导航：推进代次、刷新身份、通知订阅方。</summary>
+    private void OnFrameNavigated(object? sender, FrameNavigatedEventArgs e)
+    {
+        if (_disposed)
+            return;
+
+        // iframe 导航不管：否则广告框一跳就会打爆 RefEpoch / 重启 screencast
+        if (!ReferenceEquals(e.Frame, _page.MainFrame))
+            return;
+
+        RefEpoch++;
+        LastActivityAt = DateTimeOffset.UtcNow;
+        _ = HandleMainFrameNavigatedAsync();
+    }
+
+    private async Task HandleMainFrameNavigatedAsync()
+    {
+        try
+        {
+            await RefreshIdentityAsync().ConfigureAwait(false);
+            RaiseNavigated();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "处理主框架导航失败（忽略）");
+        }
+    }
+
+    private void RaiseNavigated()
+    {
+        var handler = Navigated;
+        if (handler is null)
+            return;
+
+        try
+        {
+            handler(this);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "通知导航状态失败（忽略）");
+        }
+    }
+
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
@@ -1124,6 +1466,8 @@ public sealed class BrowserPageHandle : IAsyncDisposable
         _disposed = true;
         _page.Dialog -= OnDialog;
         _page.Console -= OnConsole;
+        _page.FrameNavigated -= OnFrameNavigated;
+        _page.Popup -= OnPopup;
 
         await _gate.WaitAsync().ConfigureAwait(false);
         try

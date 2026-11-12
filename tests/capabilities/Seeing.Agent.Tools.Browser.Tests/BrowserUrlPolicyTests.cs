@@ -142,3 +142,44 @@ public class BrowserUrlPolicyTests
         verdict.Reason.Should().Contain("绝对地址");
     }
 }
+
+/// <summary>弹出页地址分类：空白页要继续等，其余跟地址栏同一套准入。</summary>
+public class BrowserSingleTabPolicyTests
+{
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("about:blank")]
+    [InlineData("about:blank#blocked")]
+    public void Classify_Blank_ShouldStayPending(string? url)
+    {
+        BrowserSingleTabPolicy.Classify(url, allowPrivateHosts: false).Kind
+            .Should().Be(PopupUrlKind.Pending);
+    }
+
+    [Fact]
+    public void Classify_PublicHttp_ShouldAllow()
+    {
+        var result = BrowserSingleTabPolicy.Classify("https://example.com/a", allowPrivateHosts: false);
+
+        result.Kind.Should().Be(PopupUrlKind.Allowed);
+        result.Url.Should().Be("https://example.com/a");
+    }
+
+    [Fact]
+    public void Classify_Loopback_ShouldDenyUnlessConfigured()
+    {
+        BrowserSingleTabPolicy.Classify("http://127.0.0.1/", allowPrivateHosts: false).Kind
+            .Should().Be(PopupUrlKind.Denied);
+
+        BrowserSingleTabPolicy.Classify("http://127.0.0.1/", allowPrivateHosts: true).Kind
+            .Should().Be(PopupUrlKind.Allowed);
+    }
+
+    [Fact]
+    public void Classify_JavascriptUrl_ShouldDeny()
+    {
+        BrowserSingleTabPolicy.Classify("javascript:alert(1)", allowPrivateHosts: true).Kind
+            .Should().Be(PopupUrlKind.Denied);
+    }
+}

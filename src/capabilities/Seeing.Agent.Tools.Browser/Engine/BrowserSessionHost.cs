@@ -278,8 +278,10 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
 
         // 首次导航放在全局锁之外：一个 30 秒不响应的站点不该把「其它会话新建页面」一起堵住。
         // 页级互斥（BrowserPageHandle._gate）已保证同一页面不会被并发操作。
+        // 单页策略必须在这次导航之前装上，否则第一页的 target=_blank 仍会开新标签。
         try
         {
+            await handle.InstallSinglePagePolicyAsync(cancellationToken).ConfigureAwait(false);
             await handle.NavigateAsync(initialUrl ?? "about:blank", BrowserWaitUntil.DomContentLoaded, cancellationToken)
                 .ConfigureAwait(false);
         }
