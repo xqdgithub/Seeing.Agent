@@ -196,6 +196,34 @@ public sealed class SkillWriter : ISkillWriter
             return Failure($"删除技能失败：{ex.Message}");
         }
 
+        // 目录已删：顺手清掉各层级对该名的禁用项，避免 skill-state 残留脏名。
+        // 锁序与 SetEnabled 相同：写闸内改状态 → 释放 → 再刷新目录。清理失败不回滚删除
+        // （主操作已完成）；记警告即可，损坏状态文件本就不能覆盖写。
+        if (_directories is not null)
+        {
+            try
+            {
+                var clearError = await _gate.RunAsync(
+                    token => ClearAllLevelsAsync(name, token),
+                    ct).ConfigureAwait(false);
+                if (clearError is not null)
+                {
+                    _logger.LogWarning(
+                        "技能目录已删除，但清除禁用状态失败：{Name} 原因={Reason}",
+                        name,
+                        clearError);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "技能目录已删除，但清除禁用状态异常：{Name}", name);
+            }
+        }
+
         await _catalog.RefreshAsync(ct).ConfigureAwait(false);
         _logger.LogInformation("技能已删除：{Name} 目录={Directory}", name, directory);
         return new SkillWriteResult(true, null, null);

@@ -424,6 +424,31 @@ public sealed class SkillWriterTests : IDisposable
     }
 
     [Fact]
+    public async Task Delete_ShouldClearDisabledStateAtAllLevels()
+    {
+        var (catalog, writer) = CreateWriter();
+        var ct = TestContext.Current.CancellationToken;
+
+        WriteSkillFile(ProjectSkillsRoot, "doomed", "待删");
+        WriteSkillFile(UserSkillsRoot, "keeper", "保留");
+        WriteDisabledState(ProjectSeeingDirectory, "doomed", "keeper");
+        WriteDisabledState(UserSeeingDirectory, "doomed");
+        await catalog.RefreshAsync(ct);
+
+        catalog.Find("doomed").Should().NotBeNull();
+        catalog.IsEnabled("doomed").Should().BeFalse();
+
+        var result = await writer.DeleteAsync("doomed", ct);
+
+        result.Success.Should().BeTrue(result.Error ?? "删除应成功");
+        Directory.Exists(Path.Combine(ProjectSkillsRoot, "doomed")).Should().BeFalse();
+        catalog.Find("doomed").Should().BeNull();
+        catalog.Current.DisabledNames.Should().BeEquivalentTo("keeper");
+        ReadDisabledState(ProjectSeeingDirectory).Should().BeEquivalentTo("keeper");
+        ReadDisabledState(UserSeeingDirectory).Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Delete_UnderNonDefaultRoot_ShouldSucceed()
     {
         // B2：删除的「根内」判定必须用目录的根列表。旧实现只认 .seeing/skills，

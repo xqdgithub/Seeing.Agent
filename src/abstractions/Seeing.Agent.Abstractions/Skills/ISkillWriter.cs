@@ -66,7 +66,9 @@ public interface ISkillWriter
         SkillDraft draft,
         CancellationToken ct = default);
 
-    /// <summary>删除文件通道技能所在目录；注册通道技能拒绝删除。</summary>
+    /// <summary>
+    /// 删除文件通道技能所在目录，并清除各层级对该名的禁用项；注册通道技能拒绝删除。
+    /// </summary>
     /// <param name="name">技能名称。</param>
     /// <param name="ct">取消令牌。</param>
     Task<SkillWriteResult> DeleteAsync(string name, CancellationToken ct = default);

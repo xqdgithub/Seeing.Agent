@@ -19,6 +19,15 @@
         <Space>
             <span>启用</span>
             <Switch Checked="@_enabled" OnChange="ToggleEnabled" />
+            @if (CanDelete)
+            {
+                <Popconfirm Title="@($"确定删除技能「{SkillName}」？此操作不可恢复。")"
+                            OnConfirm="DeleteAsync"
+                            OkText="删除"
+                            CancelText="取消">
+                    <Button Danger="true" Loading="@_deleting">删除</Button>
+                </Popconfirm>
+            }
             <Button OnClick="@(() => NavigationManager.NavigateTo("/skills"))">返回列表</Button>
         </Space>
     </Extra>
@@ -73,12 +82,17 @@
     private List<string> _files = new();
     private bool _enabled = true;
     private bool _loading;
+    private bool _deleting;
 
     /// <summary>禁用写盘层级（"project" / "user"）；默认预选当前生效层级。</summary>
     private string _level = "project";
 
     private IDisposable? _subscription;
     private bool _disposed;
+
+    /// <summary>文件通道可删；注册通道（插件 / 内置）只读。</summary>
+    private bool CanDelete =>
+        _entry is { Source: SkillSource.ProjectFile or SkillSource.UserFile };
 
     protected override async Task OnInitializedAsync()
     {
@@ -129,6 +143,30 @@
 
         _enabled = enabled;
         MessageService.Success(enabled ? "已启用" : "已禁用");
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!CanDelete || _deleting)
+            return;
+
+        _deleting = true;
+        try
+        {
+            var result = await SkillWriter.DeleteAsync(SkillName);
+            if (!result.Success)
+            {
+                MessageService.Error(result.Error ?? "删除失败");
+                return;
+            }
+
+            MessageService.Success($"已删除技能「{SkillName}」");
+            NavigationManager.NavigateTo("/skills");
+        }
+        finally
+        {
+            _deleting = false;
+        }
     }
 
     private static string ResolveLevel(SkillCatalogSnapshot snapshot, string skillName, SkillCatalogEntry? entry)
