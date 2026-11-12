@@ -9,14 +9,17 @@ namespace Seeing.Agent.Llm.OpenAI.Clients;
 /// <summary>
 /// OpenAI Chat Completions API 客户端（原生 HTTP 实现，<see cref="IChatCompletionClient"/>）。
 /// 直接解析 SSE 流，正确提取 choices[0].delta.reasoning_content。
+/// <para>可选实现 <see cref="IModelCatalogClient"/>：当 <c>ProviderConfig.ListModels = true</c>
+/// 时由 <c>ConfiguredLlmProvider</c> 合并远端 <c>GET {baseURL}/models</c>。</para>
 /// </summary>
-public class OpenAiChatClient : IChatCompletionClient, IDisposable
+public class OpenAiChatClient : IChatCompletionClient, IModelCatalogClient, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
     private readonly ProviderConfig _config;
     private readonly ILlmCallInterceptorRegistry? _interceptorRegistry;
     private readonly bool _ownsHttpClient;
+    private readonly OpenAiModelsClient _modelsClient;
 
     public string ProviderId => _config.Id;
     public string ProviderType => ProviderTypes.OpenAi;
@@ -44,7 +47,13 @@ public class OpenAiChatClient : IChatCompletionClient, IDisposable
             ? ConfigureFactoryClient(httpClient, config, logger)
             : httpClient;
         _ownsHttpClient = ownsClient;
+        _modelsClient = new OpenAiModelsClient(_config, _httpClient, _logger);
     }
+
+    /// <inheritdoc />
+    Task<IReadOnlyList<ModelConfig>> IModelCatalogClient.ListModelsAsync(
+        CancellationToken cancellationToken)
+        => _modelsClient.ListModelsAsync(cancellationToken);
 
     /// <summary>
     /// 释放自建 HttpClient（共享客户端不释放）。

@@ -11,14 +11,17 @@ namespace Seeing.Agent.Llm.OpenAI.Clients;
 /// 发送到 POST /responses，解析 event: + data: 双行 SSE。
 /// <para>决议 7：<c>openai-responses</c> 是独立协议，不是 <c>openai</c> 的变体写法，
 /// 因此 <see cref="ProviderType"/> 报 <see cref="ProviderTypes.OpenAiResponses"/>。</para>
+/// <para>可选实现 <see cref="IModelCatalogClient"/>：当 <c>ProviderConfig.ListModels = true</c>
+/// 时由 <c>ConfiguredLlmProvider</c> 合并远端 <c>GET {baseURL}/models</c>。</para>
 /// </summary>
-public class OpenAiResponsesClient : IChatCompletionClient, IDisposable
+public class OpenAiResponsesClient : IChatCompletionClient, IModelCatalogClient, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
     private readonly ProviderConfig _config;
     private readonly ILlmCallInterceptorRegistry? _interceptorRegistry;
     private readonly bool _ownsHttpClient;
+    private readonly OpenAiModelsClient _modelsClient;
 
     public string ProviderId => _config.Id;
     public string ProviderType => ProviderTypes.OpenAiResponses;
@@ -44,7 +47,13 @@ public class OpenAiResponsesClient : IChatCompletionClient, IDisposable
             ? ConfigureFactoryClient(httpClient, config, logger)
             : httpClient;
         _ownsHttpClient = ownsClient;
+        _modelsClient = new OpenAiModelsClient(_config, _httpClient, _logger);
     }
+
+    /// <inheritdoc />
+    Task<IReadOnlyList<ModelConfig>> IModelCatalogClient.ListModelsAsync(
+        CancellationToken cancellationToken)
+        => _modelsClient.ListModelsAsync(cancellationToken);
 
     /// <summary>
     /// 释放自建 HttpClient（共享客户端不释放）。

@@ -23,16 +23,6 @@ internal static class OpenAiHttpHelper
     });
 
     /// <summary>
-    /// 创建并配置独立 HttpClient（用于没有 DI 工厂的模型目录客户端）。
-    /// </summary>
-    public static HttpClient CreateHttpClient(ProviderConfig config, ILogger logger)
-    {
-        var client = LlmHttpClientFactory.Create(config);
-        ConfigureHttpClient(client, config, logger);
-        return client;
-    }
-
-    /// <summary>
     /// 在已有 HttpClient 上应用 OpenAI 请求配置，不替换其 handler。
     /// 这保证 DI 工厂创建的代理 handler 能够被 OpenAI 客户端复用。
     /// </summary>
