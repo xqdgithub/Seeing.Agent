@@ -413,3 +413,4 @@ samples/*/plugins/*.dll
 
 # SDD worktree scratch (not committed)
 .superpowers/
+.worktrees/
