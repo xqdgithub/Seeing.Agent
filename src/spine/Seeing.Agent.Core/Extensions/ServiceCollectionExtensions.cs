@@ -291,6 +291,9 @@ namespace Seeing.Agent.Core.Extensions
         /// </summary>
         private static void RegisterCoreServices(IServiceCollection services)
         {
+            // 目录钩子的 StartAsync 必须早于会在启动时触发钩子的托管服务。Activate 期间仍然看不见它们。
+            services.AddHostedService<Seeing.Agent.Hooks.Directory.HookDirectoryService>();
+
             // 进程级模块目录 / 结算 / 生命周期
             // ProcessSettlementOptions 由 Host Shape 登记（HostDefaultBoot/Seams/Scenario）；无宿主则保持未注册。
             services.TryAddSingleton<ModuleCatalog>();

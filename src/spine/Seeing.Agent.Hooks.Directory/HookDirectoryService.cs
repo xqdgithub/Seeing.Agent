@@ -37,6 +37,7 @@ public sealed class HookDirectoryService : IHostedService
     private readonly List<LoadedHookAssembly> _retired = [];
     private readonly HashSet<string> _noted = new(PathKeys);
     private int _started;
+    private HookDirectoryWatcher? _watcher;
 
     public HookDirectoryService(
         IHookManager hooks,
@@ -70,19 +71,23 @@ public sealed class HookDirectoryService : IHostedService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         if (!_options.Value.Enabled)
-            return Task.CompletedTask;
+            return;
 
         if (Interlocked.Exchange(ref _started, 1) != 0)
-            return Task.CompletedTask;
+            return;
 
-        return SynchronizeAsync(cancellationToken);
+        await SynchronizeAsync(cancellationToken).ConfigureAwait(false);
+        _watcher = new HookDirectoryWatcher(HooksRoot(), SynchronizeAsync, TimeProvider.System, _logger);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
+        var watcher = Interlocked.Exchange(ref _watcher, null);
+        watcher?.Dispose();
+
         lock (_gate)
             RemoveOwned();
 
