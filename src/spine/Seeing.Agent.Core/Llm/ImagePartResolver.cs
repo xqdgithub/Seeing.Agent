@@ -2,7 +2,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Output;
 using Seeing.Agent.Paths;
 using Seeing.Session.Core;
@@ -16,7 +18,8 @@ namespace Seeing.Agent.Core.Llm;
 /// 被十余处测试直接调用；改异步签名波及面远大于收益。LRU 命中为常数开销。
 /// </para>
 /// <para>
-/// <b>安全边界</b>：路径必须落在**本会话**的 ref 目录内（<see cref="PathBoundary"/>）。
+/// <b>安全边界</b>：路径必须落在**本会话**的 ref 目录或上传目录内（<see cref="PathBoundary"/>）。
+/// 工具产出在 <c>{sessionId}.ref/</c>，用户粘贴在 <c>{sessionRoot}/.seeing/uploads/{sessionId}/</c>。
 /// 否则会话文件里被写入任意路径就等于任意本地文件被 base64 送给模型。
 /// </para>
 /// <para>
@@ -106,12 +109,11 @@ public sealed class ImagePartResolver : IImagePartResolver
         if (string.IsNullOrEmpty(localPath))
             return ChatContentPart.CreateText(name is { Length: > 0 } ? $"[{name}]" : "[空内容块]");
 
-        // 路径边界：必须是本会话 ref 目录内
-        var refDir = ResolveRefDirectory(sessionId);
-        if (refDir is null || !PathBoundary.IsWithin(localPath, refDir))
+        // 路径边界：本会话 ref 目录（工具产出）或 uploads 目录（用户粘贴）
+        if (!IsWithinSessionAssets(sessionId, localPath))
         {
             _logger.LogWarning(
-                "拒绝物化越界路径（不在会话 ref 目录内）: Session={SessionId}, Path={Path}",
+                "拒绝物化越界路径（不在会话 ref 或 uploads 目录内）: Session={SessionId}, Path={Path}",
                 sessionId, localPath);
             return ChatContentPart.CreateText($"[图片不可用：路径不在会话资源目录内]");
         }
@@ -209,6 +211,67 @@ public sealed class ImagePartResolver : IImagePartResolver
         }
 
         return base64;
+    }
+
+    /// <summary>路径是否落在本会话 ref 目录或上传目录内。</summary>
+    private bool IsWithinSessionAssets(string sessionId, string localPath)
+    {
+        var refDir = ResolveRefDirectory(sessionId);
+        if (refDir is not null && PathBoundary.IsWithin(localPath, refDir))
+            return true;
+
+        var uploads = ResolveUploadsDirectory(sessionId);
+        return uploads is not null && PathBoundary.IsWithin(localPath, uploads);
+    }
+
+    /// <summary>
+    /// 本会话上传目录。有效根与 <c>FileWorkspaceFactory</c> 一致：会话工作目录优先，否则项目根。
+    /// 解析不到时返回 null（调用方降级为文本，不抛）。
+    /// </summary>
+    private string? ResolveUploadsDirectory(string sessionId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return null;
+
+        string? root = null;
+        if (_services.GetService(typeof(ISessionWorkspaceResolver)) is ISessionWorkspaceResolver sessions)
+        {
+            try
+            {
+                root = sessions.ResolveWorkingDirectory(sessionId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "解析会话工作目录失败: {SessionId}", sessionId);
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(root)
+            && _services.GetService(typeof(IWorkspaceProvider)) is IWorkspaceProvider project)
+        {
+            try
+            {
+                root = project.GetProjectRoot();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "解析项目根失败，无法定位上传目录: {SessionId}", sessionId);
+                return null;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(root))
+            return null;
+
+        try
+        {
+            return SessionUploadPaths.BuildDirectory(root, sessionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "拼接上传目录失败: {SessionId}", sessionId);
+            return null;
+        }
     }
 
     /// <summary>解析该会话的 ref 目录；无法解析（未接入输出存储）返回 null。</summary>

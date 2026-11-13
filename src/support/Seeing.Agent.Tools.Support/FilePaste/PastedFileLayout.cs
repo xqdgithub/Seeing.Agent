@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Seeing.Agent.Paths;
 
 namespace Seeing.Agent.Tools.Support;
 
@@ -33,26 +34,11 @@ public static class PastedFileLayout
 
     /// <summary>会话 id 只保留 ASCII 字母数字、下划线和连字符；空值回落 default。</summary>
     public static string SafeSessionId(string? sessionId)
-    {
-        if (string.IsNullOrWhiteSpace(sessionId))
-            return "default";
-
-        var builder = new StringBuilder(sessionId.Length);
-        foreach (var ch in sessionId)
-        {
-            var safe = ch is >= 'a' and <= 'z'
-                or >= 'A' and <= 'Z'
-                or >= '0' and <= '9'
-                or '_' or '-';
-            builder.Append(safe ? ch : '_');
-        }
-
-        return builder.Length == 0 ? "default" : builder.ToString();
-    }
+        => SessionUploadPaths.SafeSessionId(sessionId);
 
     /// <summary>会话上传目录：<c>&lt;sessionRoot&gt;/.seeing/uploads/&lt;safeSessionId&gt;</c>。</summary>
     public static string BuildSessionDirectory(string sessionRoot, string sessionId)
-        => Path.Combine(sessionRoot, ".seeing", "uploads", SafeSessionId(sessionId));
+        => SessionUploadPaths.BuildDirectory(sessionRoot, sessionId);
 
     /// <summary>生成统一存储文件名：原名 + 时间戳 + 短后缀。</summary>
     public static string BuildStoredFileName(string originalName, DateTimeOffset now, string suffix)

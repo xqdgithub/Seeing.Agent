@@ -1,7 +1,10 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using Seeing.Agent.Abstractions.Llm;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Core.Output;
 using Seeing.Session.Core;
@@ -37,20 +40,39 @@ public class ImagePartResolverTests : IDisposable
         }
     }
 
-    private (ImagePartResolver Resolver, string RefDir) Create()
+    private (ImagePartResolver Resolver, string RefDir) Create(
+        string? projectRoot = null,
+        string? sessionWorkingDirectory = null)
     {
         var store = new FileSessionStore(_tempDir);
         var services = new ServiceCollection()
             .AddSingleton<ISessionStore>(store)
             .AddSingleton<IToolOutputStore>(new SessionToolOutputStore(store))
-            .AddSingleton<Seeing.Agent.Abstractions.Execution.IFileSystem>(new Seeing.IO.Local.LocalExecutionWorld().FileSystem)
-            .BuildServiceProvider();
+            .AddSingleton<Seeing.Agent.Abstractions.Execution.IFileSystem>(new Seeing.IO.Local.LocalExecutionWorld().FileSystem);
 
-        var outputStore = services.GetRequiredService<IToolOutputStore>();
+        if (projectRoot is not null)
+        {
+            var workspace = new Mock<IWorkspaceProvider>();
+            workspace.Setup(w => w.ProjectSeeingDirectory)
+                .Returns(Path.Combine(projectRoot, ".seeing"));
+            services.AddSingleton(workspace.Object);
+        }
+
+        if (sessionWorkingDirectory is not null)
+            services.AddSingleton<ISessionWorkspaceResolver>(new FixedWorkingDirectory(sessionWorkingDirectory));
+
+        var provider = services.BuildServiceProvider();
+
+        var outputStore = provider.GetRequiredService<IToolOutputStore>();
         var refDir = outputStore.GetRefDirectory(_sessionId);
         Directory.CreateDirectory(refDir);
 
-        return (new ImagePartResolver(services, capacity: 2), refDir);
+        return (new ImagePartResolver(provider, capacity: 2), refDir);
+    }
+
+    private sealed class FixedWorkingDirectory(string directory) : ISessionWorkspaceResolver
+    {
+        public string? ResolveWorkingDirectory(string sessionId) => directory;
     }
 
     [Fact]
@@ -66,6 +88,49 @@ public class ImagePartResolverTests : IDisposable
         result.Type.Should().Be(ChatContentPart.KindImage);
         result.MimeType.Should().Be("image/png");
         result.DataBase64.Should().Be(Convert.ToBase64String(new byte[] { 1, 2, 3, 4 }));
+    }
+
+    [Fact]
+    public void Resolve_UploadPathUnderProjectRoot_ShouldReturnBase64Image()
+    {
+        var (resolver, _) = Create(projectRoot: _tempDir);
+        var file = Path.Combine(_tempDir, ".seeing", "uploads", _sessionId, "pasted.png");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllBytes(file, [1, 2, 3, 4]);
+
+        var result = resolver.Resolve(_sessionId, SessionContentPart.CreateImageFromPath(file, "image/png", "pasted.png"));
+
+        result.Type.Should().Be(ChatContentPart.KindImage);
+        result.DataBase64.Should().Be(Convert.ToBase64String(new byte[] { 1, 2, 3, 4 }));
+    }
+
+    [Fact]
+    public void Resolve_UploadPathUnderSessionWorkingDirectory_ShouldReturnBase64Image()
+    {
+        var sessionRoot = Path.Combine(_tempDir, "session-cwd");
+        var (resolver, _) = Create(projectRoot: Path.Combine(_tempDir, "project"), sessionWorkingDirectory: sessionRoot);
+        var file = Path.Combine(sessionRoot, ".seeing", "uploads", _sessionId, "pasted.png");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllBytes(file, [9, 9]);
+
+        var result = resolver.Resolve(_sessionId, SessionContentPart.CreateImageFromPath(file, "image/png"));
+
+        result.Type.Should().Be(ChatContentPart.KindImage);
+        result.DataBase64.Should().Be(Convert.ToBase64String(new byte[] { 9, 9 }));
+    }
+
+    [Fact]
+    public void Resolve_OtherSessionUploads_ShouldDegradeToText()
+    {
+        var (resolver, _) = Create(projectRoot: _tempDir);
+        var file = Path.Combine(_tempDir, ".seeing", "uploads", "other-session", "pasted.png");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllBytes(file, [3]);
+
+        var result = resolver.Resolve(_sessionId, SessionContentPart.CreateImageFromPath(file, "image/png"));
+
+        result.Type.Should().Be(ChatContentPart.KindText);
+        result.Text.Should().Contain("不可用");
     }
 
     [Fact]
