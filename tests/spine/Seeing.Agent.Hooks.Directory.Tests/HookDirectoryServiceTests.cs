@@ -247,10 +247,14 @@ public class HookDirectoryServiceTests : IDisposable
         if (process is null)
             Assert.Fail("无法启动 cmd 创建目录联接。");
 
+        // 重定向了 stdout/stderr 时必须先读管道再等退出，否则缓冲区写满会和 WaitForExit 互锁。
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
         process.WaitForExit();
-        var error = process.StandardError.ReadToEnd();
+        var output = stdout.GetAwaiter().GetResult();
+        var error = stderr.GetAwaiter().GetResult();
         if (!System.IO.Directory.Exists(linkPath))
-            Assert.Fail($"创建目录联接失败（符号链接亦无特权）: {error.Trim()}");
+            Assert.Fail($"创建目录联接失败（符号链接亦无特权）: {error.Trim()} {output.Trim()}");
     }
 
     private HookPayload Payload() =>

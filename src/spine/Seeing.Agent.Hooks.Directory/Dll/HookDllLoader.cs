@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
@@ -66,17 +67,23 @@ public static class HookDllLoader
             return Failed(sourceDllPath, cachePath, hash, ex.Message, null);
         }
 
-        // 不调用 Unload。入口只锁影子副本，原文件在 Windows 上才能删掉；依赖仍从源路径解析。
-        var context = new AssemblyLoadContext(hash, isCollectible: false);
-        var resolver = new AssemblyDependencyResolver(sourceDllPath);
-        context.Resolving += (_, name) => ResolveDependency(context, resolver, name);
+        // 不调用 Unload。入口只锁影子副本，原文件在 Windows 上才能删掉。
+        // 托管依赖与原生库都从源路径解析：Resolving 优先默认上下文同名程序集，否则 AssemblyDependencyResolver；
+        // ResolvingUnmanagedDll 用同一 resolver 的 ResolveUnmanagedDllToPath，再 NativeLibrary.Load。
+        var context = new HookAssemblyLoadContext(hash, sourceDllPath);
 
         Assembly assembly;
         try
         {
             assembly = context.LoadFromAssemblyPath(Path.GetFullPath(cachePath));
         }
-        catch (Exception ex) when (ex is BadImageFormatException or FileLoadException or FileNotFoundException)
+        catch (BadImageFormatException ex)
+        {
+            // 根目录的原生 / 非托管 .dll 不是坏掉的钩子程序集。
+            logger.LogDebug(ex, "钩子 DLL 不是托管程序集，按伴随程序集跳过: {Path}", sourceDllPath);
+            return Companion(sourceDllPath, cachePath, hash, context);
+        }
+        catch (Exception ex) when (ex is FileLoadException or FileNotFoundException)
         {
             logger.LogWarning(ex, "钩子 DLL 加载失败: {Path}", sourceDllPath);
             return Failed(sourceDllPath, cachePath, hash, ex.Message, context);
@@ -125,14 +132,7 @@ public static class HookDllLoader
         if (handlers.Count == 0 && multis.Count == 0)
         {
             logger.LogDebug("钩子 DLL 没有合格处理器，按伴随程序集跳过: {Path}", sourceDllPath);
-            return new LoadedHookAssembly
-            {
-                SourcePath = sourceDllPath,
-                CachePath = cachePath,
-                ContentHash = hash,
-                Skip = HookDllSkip.Companion,
-                LoadContext = context,
-            };
+            return Companion(sourceDllPath, cachePath, hash, context);
         }
 
         return new LoadedHookAssembly
@@ -154,7 +154,7 @@ public static class HookDllLoader
         return string.Equals(Hash(File.ReadAllBytes(cachePath)), contentHash, StringComparison.Ordinal);
     }
 
-    private static Assembly? ResolveDependency(
+    internal static Assembly? ResolveDependency(
         AssemblyLoadContext context,
         AssemblyDependencyResolver resolver,
         AssemblyName name)
@@ -183,6 +183,20 @@ public static class HookDllLoader
     private static string Hash(byte[] bytes) =>
         Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 
+    private static LoadedHookAssembly Companion(
+        string sourcePath,
+        string cachePath,
+        string contentHash,
+        AssemblyLoadContext context) =>
+        new()
+        {
+            SourcePath = sourcePath,
+            CachePath = cachePath,
+            ContentHash = contentHash,
+            Skip = HookDllSkip.Companion,
+            LoadContext = context,
+        };
+
     private static LoadedHookAssembly Failed(
         string sourcePath,
         string cachePath,
@@ -198,4 +212,34 @@ public static class HookDllLoader
             Message = message,
             LoadContext = context,
         };
+}
+
+/// <summary>
+/// 钩子入口的加载上下文。托管解析仍优先默认上下文里的同名程序集；
+/// 原生库从源 DLL 的 <see cref="AssemblyDependencyResolver"/> 解析。
+/// </summary>
+internal sealed class HookAssemblyLoadContext : AssemblyLoadContext
+{
+    private readonly AssemblyDependencyResolver _resolver;
+
+    /// <summary>已挂到 <see cref="ResolvingUnmanagedDll"/> 的委托。测试核对接线，并可直接调用。</summary>
+    internal Func<Assembly, string, IntPtr> UnmanagedResolver { get; }
+
+    internal int UnmanagedResolveAttempts { get; private set; }
+
+    internal HookAssemblyLoadContext(string contextName, string sourceDllPath)
+        : base(contextName, isCollectible: false)
+    {
+        _resolver = new AssemblyDependencyResolver(sourceDllPath);
+        Resolving += (_, name) => HookDllLoader.ResolveDependency(this, _resolver, name);
+        UnmanagedResolver = ResolveUnmanaged;
+        ResolvingUnmanagedDll += UnmanagedResolver;
+    }
+
+    private IntPtr ResolveUnmanaged(Assembly _, string unmanagedDllName)
+    {
+        UnmanagedResolveAttempts++;
+        var path = _resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
+        return path is null ? IntPtr.Zero : NativeLibrary.Load(path);
+    }
 }

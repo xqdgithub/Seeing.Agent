@@ -8,7 +8,7 @@ namespace Seeing.Agent.Hooks.Directory.Scripts;
 public static class HookWorkerFiles
 {
     // 工人落在 hooks/.cache/*.js。祖先 package.json 的 "type":"module" 会让 node 把入口当 ESM，进程起不来。
-    // .cache/package.json 是更近的那一份，把入口固定成 CommonJS。用户脚本不在这个目录里，另由工人 _compile。
+    // .cache/package.json 是更近的那一份，把入口固定成 CommonJS。用户脚本不在这个目录里，另由工人 Module.wrap + vm.runInThisContext。
     private const string CommonJsPackage = "{\"type\":\"commonjs\"}\n";
 
     public static string Ensure(string cacheDirectory)

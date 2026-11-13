@@ -1,3 +1,6 @@
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Runtime.Loader;
 using System.Security.Cryptography;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
@@ -65,6 +68,45 @@ public class HookDllLoaderTests : IDisposable
         loaded.ContentHash.Should().Be(hash);
         Path.GetFullPath(loaded.CachePath).Should().Be(Path.GetFullPath(cachePath));
         File.ReadAllBytes(loaded.CachePath).Should().Equal(source);
+    }
+
+    [Fact]
+    public void Load_ShouldWireUnmanagedResolutionFromSourceDirectory()
+    {
+        var sample = CopyHandlers("sample.dll");
+        var loaded = HookDllLoader.Load(sample, CacheDir(), NullLogger.Instance);
+        var context = loaded.LoadContext.Should().BeOfType<HookAssemblyLoadContext>().Subject;
+
+        var field = typeof(AssemblyLoadContext).GetField(
+            "_resolvingUnmanagedDll",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        var subscribed = field?.GetValue(context) as Delegate;
+        subscribed.Should().NotBeNull();
+        subscribed!.GetInvocationList().Should().Contain(context.UnmanagedResolver);
+
+        var assembly = context.Assemblies.Should().ContainSingle().Subject;
+        var before = context.UnmanagedResolveAttempts;
+        NativeLibrary.TryLoad("seeing-hook-missing-native", assembly, null, out _)
+            .Should().BeFalse();
+        context.UnmanagedResolveAttempts.Should().BeGreaterThan(before);
+        context.UnmanagedResolver(assembly, "seeing-hook-missing-native").Should().Be(IntPtr.Zero);
+    }
+
+    [Fact]
+    public void Load_NonManagedBytes_ShouldSkipAsCompanionAtDebug()
+    {
+        var native = Path.Combine(_root, "hooks", "native.dll");
+        System.IO.Directory.CreateDirectory(Path.GetDirectoryName(native)!);
+        File.WriteAllBytes(native, "not-a-managed-assembly"u8.ToArray());
+        var logger = new ListLogger();
+
+        var loaded = HookDllLoader.Load(native, CacheDir(), logger);
+
+        loaded.Skip.Should().Be(HookDllSkip.Companion, loaded.Message);
+        loaded.Handlers.Should().BeEmpty();
+        loaded.Multis.Should().BeEmpty();
+        logger.Debugs.Should().ContainSingle();
+        logger.Warnings.Should().BeEmpty();
     }
 
     [Fact]
