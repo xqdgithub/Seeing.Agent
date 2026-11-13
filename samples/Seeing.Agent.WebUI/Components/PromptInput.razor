@@ -35,16 +35,20 @@
     }
     @if (!string.IsNullOrEmpty(_uploadError))
     {
-        <div class="prompt-upload-error">@_uploadError</div>
+        <div class="prompt-upload-error" role="status">
+            <span class="prompt-notice-text">@_uploadError</span>
+            <button type="button" class="prompt-notice-close" aria-label="关闭提示" @onclick="DismissUploadError">×</button>
+        </div>
     }
     @if (!string.IsNullOrEmpty(_voiceError))
     {
-        <div class="prompt-voice-error">
-            <span>@_voiceError</span>
+        <div class="prompt-voice-error" role="status">
+            <span class="prompt-notice-text">@_voiceError</span>
             @if (!_voiceReady)
             {
-                <button class="prompt-voice-error-action" @onclick="@(() => Navigation.NavigateTo("/models"))">去模型页配置</button>
+                <button type="button" class="prompt-voice-error-action" @onclick="@(() => Navigation.NavigateTo("/models"))">去模型页配置</button>
             }
+            <button type="button" class="prompt-notice-close" aria-label="关闭提示" @onclick="DismissVoiceError">×</button>
         </div>
     }
 
@@ -416,6 +420,13 @@
     private bool _voiceReady;
     private string? _voiceUnavailableReason;
     private string? _voiceError;
+    private int _voiceNoticeGeneration;
+    private int _uploadNoticeGeneration;
+    private readonly CancellationTokenSource _componentCts = new();
+    private bool _disposed;
+
+    /// <summary>输入区提示停留时间。到点自动收起，未到点也可以手动关掉。</summary>
+    private const int PromptNoticeDismissMs = 8000;
     private int _voiceSeconds;
     private string? _voiceMimeType;
 
@@ -467,7 +478,7 @@
     /// <summary>点击麦克风：空闲时开始录音，录音中则停止并转写。</summary>
     private async Task OnVoiceClick()
     {
-        _voiceError = null;
+        ClearVoiceError();
 
         if (_voiceState == VoiceState.Recording)
         {
@@ -498,7 +509,7 @@
         // 未配置模型：不请求麦克风，就地给配置指引（灰态可点，见设计 §6b）。
         if (!_voiceReady)
         {
-            _voiceError = _voiceUnavailableReason ?? "未配置语音转写模型";
+            ShowVoiceError(_voiceUnavailableReason ?? "未配置语音转写模型");
             StateHasChanged();
             return;
         }
@@ -527,14 +538,14 @@
             }
             else
             {
-                _voiceError = !string.IsNullOrWhiteSpace(result?.Message)
+                ShowVoiceError(!string.IsNullOrWhiteSpace(result?.Message)
                     ? result!.Message
-                    : DescribeVoiceFailure(result?.Code);
+                    : DescribeVoiceFailure(result?.Code));
             }
         }
         catch (Exception ex)
         {
-            _voiceError = $"无法开始录音：{ex.Message}";
+            ShowVoiceError($"无法开始录音：{ex.Message}");
 
             // JS 可能已经在录（异常发生在 interop 回程）：此时 .NET 认为 Idle，
             // 用户再点会得到 alreadyRecording 且永远停不下来。这里补一次取消，
@@ -550,6 +561,68 @@
         }
 
         StateHasChanged();
+    }
+
+    private void ShowVoiceError(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return;
+        _voiceError = message;
+        var generation = ++_voiceNoticeGeneration;
+        _ = DismissNoticeLaterAsync(generation, () => _voiceNoticeGeneration, () => _voiceError = null);
+    }
+
+    private void ClearVoiceError()
+    {
+        _voiceError = null;
+        _voiceNoticeGeneration++;
+    }
+
+    private void DismissVoiceError() => ClearVoiceError();
+
+    private void ShowUploadError(string message)
+    {
+        _uploadError = message;
+        var generation = ++_uploadNoticeGeneration;
+        _ = DismissNoticeLaterAsync(generation, () => _uploadNoticeGeneration, () => _uploadError = null);
+    }
+
+    private void ClearUploadError()
+    {
+        _uploadError = null;
+        _uploadNoticeGeneration++;
+    }
+
+    private void DismissUploadError() => ClearUploadError();
+
+    /// <summary>提示条到点收起。期间若被关掉或换成新提示，这一轮不再动界面。</summary>
+    private async Task DismissNoticeLaterAsync(int generation, Func<int> currentGeneration, Action clear)
+    {
+        try
+        {
+            await Task.Delay(PromptNoticeDismissMs, _componentCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        try
+        {
+            await InvokeAsync(() =>
+            {
+                if (_disposed || currentGeneration() != generation)
+                    return;
+                clear();
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+        }
     }
 
     /// <summary>把 JS 的失败代码翻成中文（脚本未给 message 时的兜底）。</summary>
@@ -600,7 +673,7 @@
 
         if (!string.IsNullOrWhiteSpace(error))
         {
-            _voiceError = error;
+            ShowVoiceError(error);
             _voiceBoundSessionKey = null;
             StateHasChanged();
             return;
@@ -608,7 +681,7 @@
 
         if (string.IsNullOrWhiteSpace(text))
         {
-            _voiceError = "未识别到语音";
+            ShowVoiceError("未识别到语音");
             _voiceBoundSessionKey = null;
             StateHasChanged();
             return;
@@ -634,7 +707,7 @@
             caret = InputText.Length;
         }
 
-        _voiceError = null;
+        ClearVoiceError();
         _voiceBoundSessionKey = null;
         StateHasChanged();
 
@@ -658,7 +731,7 @@
         _voiceBoundSessionKey = null;
 
         if (!string.IsNullOrWhiteSpace(reason))
-            _voiceError = reason;
+            ShowVoiceError(reason);
 
         StateHasChanged();
         return Task.CompletedTask;
@@ -1345,19 +1418,19 @@
         var sessionId = SessionState?.CurrentSession?.Id;
         if (string.IsNullOrWhiteSpace(sessionId))
         {
-            _uploadError = "当前会话未就绪，无法上传附件";
+            ShowUploadError("当前会话未就绪，无法上传附件");
             StateHasChanged();
             return;
         }
 
-        _uploadError = null;
+        ClearUploadError();
         var pending = items ?? [];
         for (var index = 0; index < pending.Length; index++)
         {
             var item = pending[index];
             if (Attachments.Count >= MaxAttachments)
             {
-                _uploadError = $"最多添加 {MaxAttachments} 个附件";
+                ShowUploadError($"最多添加 {MaxAttachments} 个附件");
                 for (var rest = index; rest < pending.Length; rest++)
                 {
                     if (pending[rest].Kind != "image")
@@ -1401,7 +1474,7 @@
     [JSInvokable]
     public Task HandleUploadFailed(string message)
     {
-        _uploadError = message;
+        ShowUploadError(message);
         StateHasChanged();
         return Task.CompletedTask;
     }
@@ -1420,6 +1493,12 @@
             // circuit 可能已断开
         }
 
+        if (!_disposed)
+        {
+            _disposed = true;
+            _componentCts.Cancel();
+            _componentCts.Dispose();
+        }
         ModelManager.ModelConfigChanged -= OnModelConfigChanged;
 
         _pasteRef?.Dispose();

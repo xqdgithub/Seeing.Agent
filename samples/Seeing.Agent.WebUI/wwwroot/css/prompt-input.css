@@ -367,6 +367,9 @@
     padding: 4px 8px;
     color: var(--color-error);
     font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 /* ========== 语音输入按钮 ========== */
@@ -423,4 +426,25 @@
     border: none;
     padding: 0;
     font-size: 12px;
+    flex-shrink: 0;
+}
+
+.prompt-notice-text {
+    min-width: 0;
+}
+
+.prompt-notice-close {
+    margin-left: auto;
+    flex-shrink: 0;
+    border: none;
+    background: none;
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 2px;
+}
+
+.prompt-notice-close:hover {
+    color: var(--color-text);
 }
