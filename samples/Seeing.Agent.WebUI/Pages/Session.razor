@@ -56,7 +56,7 @@
                         OnSelect="OnTileClick"
                         OnOpenDrawer="OpenRelationDrawer" />
     @* 双栏布局：主区为 active 会话（Full + SessionToolbar 头部），侧栏为非 active 会话（Summary 卡片）；
-       侧栏无窗口时隐藏，主窗全宽。头部用 SessionToolbar（Agent/模型切换、页级操作插槽）。 *@
+       侧栏无窗口时隐藏，主窗全宽。头部用 SessionToolbar（Agent 切换、页级操作插槽）；Native 模型与思考档在输入框底栏。 *@
     <div class="session-dual-grid">
         <div class="session-main-area">
             @if (string.IsNullOrEmpty(_activeSessionId))

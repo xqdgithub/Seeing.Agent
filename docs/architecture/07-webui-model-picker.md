@@ -15,7 +15,7 @@
 
 | 组件 | 形态 | 场景 |
 |------|------|------|
-| `ModelSelectBadge` | 工具栏按钮：模型名 + 灰度 `/ provider`；点击打开 Modal | Session Native |
+| `ModelSelectBadge` | 模型名 + 灰度 `/ provider`；点击打开 Modal | Session Native（输入框底栏） |
 | `ModelSelectModal` | 搜索、按 Provider 分组、元数据更全；单击即选 | Badge 打开 |
 | `ModelSelectDropdown` | AntDesign Select，分组 + Provider Tag | 配置页 |
 | `ModelPickerItem` | 目录 → UI 行映射与 `FilterType` / `ProviderId` 过滤 | 共用 |
@@ -40,7 +40,8 @@
 
 | 入口 | 组件 | 过滤 |
 |------|------|------|
-| Session 工具栏 | `ModelSelectBadge` | `Text` |
+| 会话输入框底栏（`ComposerModelPicker`） | `ModelSelectBadge` | `Text` |
+| ACP 透传（仍在 `SessionToolbar`） | 自由文本，不走 Badge | — |
 | Settings 默认模型 | `ModelSelectDropdown` | `Text`，可清空 |
 | Agent 配置默认模型 | `ModelSelectDropdown` | `Text`，可清空 |
 | Cron 任务模型 | `ModelSelectDropdown` | `Text` |

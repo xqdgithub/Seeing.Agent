@@ -57,7 +57,7 @@
                    @ref="@FileInputRef" />
 
         <!-- Command autocomplete dropdown -->
-        <div class="command-autocomplete-wrapper" style="position: relative; flex: 1; display: flex; flex-direction: column;">
+        <div class="command-autocomplete-wrapper">
             <textarea Id="@TextareaId"
                       Class="prompt-textarea"
                       @bind="@InputText"
@@ -67,8 +67,7 @@
                       @onkeydown="@HandleKeyDown"
                       @onkeydown:preventDefault="@_preventDefaultKeydown"
                       @ref="@TextareaRef"
-                      rows="1"
-                      style="resize: none; overflow-y: auto; min-height: 40px; max-height: 200px;"></textarea>
+                      rows="1"></textarea>
             
             @if (_showCommandDropdown && FilteredCommands.Count > 0)
             {
@@ -115,73 +114,66 @@
             }
         </div>
         
-        <div Class="prompt-actions">
-            <Space>
-                <SpaceItem>
-                    <Tooltip Title="@VoiceButtonTooltip">
-                        <Button Type="@ButtonType.Text"
-                                Size="@ButtonSize.Small"
-                                Class="@VoiceButtonClass"
-                                OnClick="@OnVoiceClick"
-                                Disabled="@(_voiceState == VoiceState.Transcribing)">
-                            @if (_voiceState == VoiceState.Recording)
-                            {
-                                <span class="prompt-voice-recording-dot"></span>
-                                <span style="font-size: 12px;">@VoiceElapsedText</span>
-                            }
-                            else
-                            {
-                                <Icon Type="@IconType.Outline.Audio" />
-                            }
-                        </Button>
-                    </Tooltip>
-                </SpaceItem>
-                <SpaceItem>
-                    <Tooltip Title="上传文件">
-                        <Button Type="@ButtonType.Text"
-                                Size="@ButtonSize.Small"
-                                Icon="@IconType.Outline.PaperClip"
-                                OnClick="@OnUploadClick"
-                                Disabled="@IsProcessing" />
-                    </Tooltip>
-                </SpaceItem>
-                <SpaceItem>
-                    <Tooltip Title="清空输入">
-                        <Button Type="@ButtonType.Text"
-                                Size="@ButtonSize.Small"
-                                Icon="@IconType.Outline.Delete"
-                                OnClick="@OnClear"
-                                Disabled="@IsProcessing" />
-                    </Tooltip>
-                </SpaceItem>
+        <div Class="prompt-toolbar">
+            <div class="prompt-toolbar-left">
+                <Tooltip Title="上传文件">
+                    <Button Type="@ButtonType.Text"
+                            Class="prompt-tool-btn"
+                            Icon="@IconType.Outline.Plus"
+                            OnClick="@OnUploadClick"
+                            Disabled="@IsProcessing" />
+                </Tooltip>
+                <Tooltip Title="@VoiceButtonTooltip">
+                    <Button Type="@ButtonType.Text"
+                            Class="@VoiceButtonClass"
+                            OnClick="@OnVoiceClick"
+                            Disabled="@(_voiceState == VoiceState.Transcribing)">
+                        @if (_voiceState == VoiceState.Recording)
+                        {
+                            <span class="prompt-voice-recording-dot"></span>
+                            <span class="prompt-voice-elapsed">@VoiceElapsedText</span>
+                        }
+                        else
+                        {
+                            <Icon Type="@IconType.Outline.Audio" />
+                        }
+                    </Button>
+                </Tooltip>
+                <Tooltip Title="清空输入">
+                    <Button Type="@ButtonType.Text"
+                            Class="prompt-tool-btn"
+                            Icon="@IconType.Outline.Delete"
+                            OnClick="@OnClear"
+                            Disabled="@IsProcessing" />
+                </Tooltip>
+            </div>
+            <div class="prompt-toolbar-right">
+                @if (ToolbarExtra != null)
+                {
+                    <div class="prompt-toolbar-extra">@ToolbarExtra</div>
+                }
                 @if (IsProcessing)
                 {
-                    <SpaceItem>
-                        <Tooltip Title="停止执行">
-                            <Button Type="@ButtonType.Text"
-                                    Size="@ButtonSize.Small"
-                                    Danger
-                                    Class="prompt-stop-btn"
-                                    OnClick="@OnCancelClick">
-                                <svg viewBox="0 0 1024 1024" width="14" height="14" aria-hidden="true">
-                                    <circle cx="512" cy="512" r="400" fill="none" stroke="currentColor" stroke-width="80" />
-                                    <rect x="352" y="352" width="320" height="320" rx="24" fill="currentColor" />
-                                </svg>
-                            </Button>
-                        </Tooltip>
-                    </SpaceItem>
-                }
-                <SpaceItem>
-                    <Tooltip Title="@(IsProcessing ? "发送消息（当前轮结束后处理）" : "发送消息 (Enter)")">
-                        <Button Type="@ButtonType.Primary"
-                                Size="@ButtonSize.Default"
-                                Icon="@IconType.Outline.Send"
-                                OnClick="@OnSubmit">
-                            发送
+                    <Tooltip Title="停止执行">
+                        <Button Type="@ButtonType.Text"
+                                Danger
+                                Class="prompt-stop-btn"
+                                OnClick="@OnCancelClick">
+                            <svg viewBox="0 0 1024 1024" width="14" height="14" aria-hidden="true">
+                                <circle cx="512" cy="512" r="400" fill="none" stroke="currentColor" stroke-width="80" />
+                                <rect x="352" y="352" width="320" height="320" rx="24" fill="currentColor" />
+                            </svg>
                         </Button>
                     </Tooltip>
-                </SpaceItem>
-            </Space>
+                }
+                <Tooltip Title="@(IsProcessing ? "发送消息（当前轮结束后处理）" : "发送消息 (Enter)")">
+                    <Button Type="@ButtonType.Primary"
+                            Shape="@ButtonShape.Circle"
+                            Icon="@IconType.Outline.Send"
+                            Class="prompt-send-btn"
+                            OnClick="@OnSubmit" />
+                </Tooltip>
+            </div>
         </div>
     </div>
     
@@ -352,6 +344,12 @@
     public bool AutoFocus { get; set; } = true;
 
     /// <summary>
+    /// 底栏右侧、发送按钮左侧的附加内容（模型与思考档）。
+    /// </summary>
+    [Parameter]
+    public RenderFragment? ToolbarExtra { get; set; }
+
+    /// <summary>
     /// 附件列表
     /// </summary>
     private List<AttachmentViewModel> Attachments { get; set; } = new();
@@ -444,7 +442,7 @@
     {
         get
         {
-            var classes = "prompt-voice-btn";
+            var classes = "prompt-voice-btn prompt-tool-btn";
             if (!_voiceReady) classes += " prompt-voice-btn--unavailable";
             if (_voiceState == VoiceState.Recording) classes += " prompt-voice-btn--recording";
             return classes;

@@ -57,7 +57,7 @@
         {
             @Header(Context)
         }
-        <!-- 内置工具栏：Agent/模型切换、重命名、分支、清空、出站绑定（仅 Full 模式）；左右插槽由外层注入页级导航 -->
+        <!-- 内置工具栏：Agent 切换、重命名、分支、清空、出站绑定（仅 Full 模式）；Native 模型与思考档在输入框底栏；左右插槽由外层注入页级导航 -->
         <CascadingValue Name="SessionScenario" Value="@SessionState.CurrentSession?.Scenario">
         <CascadingValue Name="SessionId" Value="@SessionId">
         <SessionToolbar Context="Context"
@@ -224,7 +224,11 @@
                                      AutoApproveDisabled="@(!Context.AllowAutoApproveChange)"
                                      OnCompactRequested="OnCompactRequested"
                                      OnSubmitCallback="@OnSubmitMessage"
-                                     OnCancelCallback="@OnCancelExecution" />
+                                     OnCancelCallback="@OnCancelExecution">
+                            <ToolbarExtra>
+                                <ComposerModelPicker Context="Context" />
+                            </ToolbarExtra>
+                        </PromptInput>
                     </div>
                 }
                 </div>

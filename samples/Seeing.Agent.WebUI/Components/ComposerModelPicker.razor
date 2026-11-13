@@ -1,0 +1,103 @@
+@using AntDesign
+@using Seeing.Agent.Core.Llm
+@using Seeing.Agent.WebUI.Services
+@implements IDisposable
+@inject ILlmService LlmService
+
+@*
+    输入框底栏的模型与思考档。
+    Native 会话从顶栏挪到这里，避免和输入区抢横向空间；
+    ACP 透传与子会话仍由 SessionToolbar 展示（自由文本 / 只读）。
+*@
+@if (Visible)
+{
+    <ModelSelectBadge Value="@Context.SelectedModel"
+                      ValueChanged="EventCallback.Factory.Create<string?>(this, OnModelChanged)"
+                      FilterType="ModelType.Text"
+                      AllowClear="false"
+                      IsInvalid="@Context.ModelInvalid"
+                      Placeholder="选择模型"
+                      Class="model-select-badge--composer"
+                      Style="max-width: 220px;" />
+    @if (TryGetThinkingLevels(out var thinkingLevels))
+    {
+        <div class="prompt-thinking-select">
+            <Select TItemValue="string" TItem="ThinkingLevelOption"
+                    Value="@Context.SelectedThinkingEffort"
+                    ValueExpression="@(() => Context.SelectedThinkingEffort)"
+                    ValueChanged="EventCallback.Factory.Create<string>(this, OnThinkingEffortChanged)"
+                    DataSource="@thinkingLevels"
+                    ValueName="@nameof(ThinkingLevelOption.Key)"
+                    LabelName="@nameof(ThinkingLevelOption.Label)"
+                    Style="width: 100%;"
+                    Size="@InputSize.Small"
+                    Placeholder="思考" />
+        </div>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public SessionWindowContext Context { get; set; } = new();
+
+    private bool Visible =>
+        Context.ShowModelSelector
+        && !Context.IsAcpPassthrough
+        && Context.CurrentSession != null;
+
+    protected override void OnInitialized()
+    {
+        Context.StateChanged += OnContextStateChanged;
+    }
+
+    private void OnContextStateChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task OnModelChanged(string? value)
+    {
+        var modelId = value ?? "";
+        // Badge 无 AllowClear；空事件多为思考档挂载引发的受控回滚
+        if (string.IsNullOrEmpty(modelId))
+            return;
+        if (string.Equals(Context.SelectedModel ?? "", modelId, StringComparison.Ordinal))
+            return;
+
+        if (Context.SetModelAsync != null)
+            await Context.SetModelAsync(modelId);
+    }
+
+    private async Task OnThinkingEffortChanged(string value)
+    {
+        if (string.Equals(Context.SelectedThinkingEffort ?? "", value ?? "", StringComparison.Ordinal))
+            return;
+
+        if (Context.SetThinkingEffortAsync != null)
+            await Context.SetThinkingEffortAsync(value);
+    }
+
+    private bool TryGetThinkingLevels(out List<ThinkingLevelOption> levels)
+    {
+        levels = new List<ThinkingLevelOption>();
+        var modelId = Context.SelectedModel;
+        if (string.IsNullOrWhiteSpace(modelId))
+            return false;
+
+        var thinking = LlmService.GetModelConfig(modelId)?.Options?.Thinking;
+        if (thinking is not { Supported: true } || thinking.Levels is null || thinking.Levels.Count == 0)
+            return false;
+
+        // 首项 = 「不指定」：清空会话级档位，交给模型声明的默认档。
+        // 不能用「默认」——那是模型配置里的概念（默认档），两者撞词后用户分不清在改哪一层。
+        levels.Add(new ThinkingLevelOption("", UiText.ThinkingEffortUnspecified));
+        foreach (var level in thinking.Levels)
+        {
+            if (string.IsNullOrWhiteSpace(level.Key))
+                continue;
+            levels.Add(new ThinkingLevelOption(level.Key, string.IsNullOrWhiteSpace(level.Label) ? level.Key : level.Label!));
+        }
+
+        return levels.Count > 1;
+    }
+
+    public void Dispose() => Context.StateChanged -= OnContextStateChanged;
+
+    private sealed record ThinkingLevelOption(string Key, string Label);
+}

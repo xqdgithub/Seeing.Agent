@@ -18,9 +18,8 @@ public class PromptInputVoiceIconTests
     {
         var source = ReadWebUiSource("Components/PromptInput.razor");
 
-        // 语音按钮的图标是「全文件唯一一处直接出现在 OnClick="@OnVoiceClick" 附近的 Icon」；
-        // 不能按 "prompt-voice-btn" 定位——那个字符串最早出现在 C# 的 VoiceButtonClass 属性里，
-        // 按它截取会拿到一段代码而不是模板。
+        // 语音按钮的图标在 OnClick="@OnVoiceClick" 到该按钮 </Button> 之间。
+        // 不能按 "prompt-voice-btn" 定位——那个字符串最早出现在 C# 的 VoiceButtonClass 属性里。
         var voiceIconBlock = ExtractVoiceIconBlock(source);
 
         voiceIconBlock.Should().NotBeEmpty("PromptInput 里应有语音按钮的图标声明");
@@ -33,7 +32,7 @@ public class PromptInputVoiceIconTests
     }
 
     /// <summary>
-    /// 从语音按钮的 <c>@onclick="@OnVoiceClick"</c> 起，截到该按钮结束的片段。
+    /// 从语音按钮的 <c>OnVoiceClick</c> 起，截到该按钮结束的片段。
     /// </summary>
     private static string ExtractVoiceIconBlock(string source)
     {
@@ -41,7 +40,7 @@ public class PromptInputVoiceIconTests
         if (start < 0)
             return string.Empty;
 
-        var end = source.IndexOf("</SpaceItem>", start, StringComparison.Ordinal);
+        var end = source.IndexOf("</Button>", start, StringComparison.Ordinal);
         return end < 0 ? source[start..] : source[start..end];
     }
 

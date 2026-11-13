@@ -3,14 +3,11 @@
 @using Services = Seeing.Agent.WebUI.Services
 @using Seeing.Session.Core
 @using Seeing.Agent.Abstractions.Agents
-@using Seeing.Agent.Core.Llm
-@using Seeing.Agent.Llm
 @using Seeing.Agent.Core.Configuration
 @using Seeing.Agent.Configuration
 @using Seeing.Agent.Core.Scenarios
 @using Seeing.Agent.WebUI.Shared
 @inject IAgentRegistry AgentRegistry
-@inject ILlmService LlmService
 @inject IMessageService MessageService
 @inject IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
 @inject IScenarioCatalog ScenarioCatalog
@@ -109,29 +106,6 @@
                        Placeholder="Provider/Model"
                        Style="width: 160px;"
                        Size="@InputSize.Small" />
-            }
-            else if (Context.ShowModelSelector && _optionsReady && Context.CurrentSession != null)
-            {
-                <ModelSelectBadge Value="@Context.SelectedModel"
-                                  ValueChanged="EventCallback.Factory.Create<string?>(this, OnModelChangedNullable)"
-                                  FilterType="ModelType.Text"
-                                  AllowClear="false"
-                                  IsInvalid="@Context.ModelInvalid"
-                                  Placeholder="选择模型"
-                                  Style="width: 160px; max-width: 160px;" />
-                @if (TryGetThinkingLevels(out var thinkingLevels))
-                {
-                    <Select TItemValue="string" TItem="ThinkingLevelOption"
-                            Value="@Context.SelectedThinkingEffort"
-                            ValueExpression="@(() => Context.SelectedThinkingEffort)"
-                            ValueChanged="EventCallback.Factory.Create<string>(this, OnThinkingEffortChanged)"
-                            DataSource="@thinkingLevels"
-                            ValueName="@nameof(ThinkingLevelOption.Key)"
-                            LabelName="@nameof(ThinkingLevelOption.Label)"
-                            Style="min-width: 100px;"
-                            Size="@InputSize.Small"
-                            Placeholder="思考" />
-                }
             }
         </div>
         <div class="session-toolbar-right">
@@ -336,7 +310,7 @@
         RefreshScenarioOptions();
 
         _agentNames = agentNames;
-        // 模型选择由 ModelSelectBadge 自行读目录；不因 Agent 列表为空而隐藏
+        // Native 模型目录由输入框底栏的 ModelSelectBadge 自行读取；此处不因 Agent 列表为空而挡住 Agent/ACP 控件
         _optionsReady = true;
         await InvokeAsync(StateHasChanged);
     }
@@ -383,56 +357,6 @@
     {
         ScenarioModalVisible = false;
     }
-
-    private Task OnModelChangedNullable(string? value) => OnModelChanged(value);
-
-    private async Task OnModelChanged(string? value)
-    {
-        var modelId = value ?? "";
-        // Badge 无 AllowClear；空事件多为思考档挂载引发的受控回滚
-        if (string.IsNullOrEmpty(modelId) && !Context.IsAcpPassthrough)
-            return;
-        if (string.Equals(Context.SelectedModel ?? "", modelId, StringComparison.Ordinal))
-            return;
-
-        if (Context.SetModelAsync != null)
-            await Context.SetModelAsync(modelId);
-    }
-
-    private async Task OnThinkingEffortChanged(string value)
-    {
-        if (string.Equals(Context.SelectedThinkingEffort ?? "", value ?? "", StringComparison.Ordinal))
-            return;
-
-        if (Context.SetThinkingEffortAsync != null)
-            await Context.SetThinkingEffortAsync(value);
-    }
-
-    private bool TryGetThinkingLevels(out List<ThinkingLevelOption> levels)
-    {
-        levels = new List<ThinkingLevelOption>();
-        var modelId = Context.SelectedModel;
-        if (string.IsNullOrWhiteSpace(modelId))
-            return false;
-
-        var thinking = LlmService.GetModelConfig(modelId)?.Options?.Thinking;
-        if (thinking is not { Supported: true } || thinking.Levels is null || thinking.Levels.Count == 0)
-            return false;
-
-        // 首项 = 「不指定」：清空会话级档位，交给模型声明的默认档。
-        // 不能用「默认」——那是模型配置里的概念（默认档），两者撞词后用户分不清在改哪一层。
-        levels.Add(new ThinkingLevelOption("", Services.UiText.ThinkingEffortUnspecified));
-        foreach (var level in thinking.Levels)
-        {
-            if (string.IsNullOrWhiteSpace(level.Key))
-                continue;
-            levels.Add(new ThinkingLevelOption(level.Key, string.IsNullOrWhiteSpace(level.Label) ? level.Key : level.Label!));
-        }
-
-        return levels.Count > 1;
-    }
-
-    private sealed record ThinkingLevelOption(string Key, string Label);
 
     private async Task OnAcpModelChanged(string? value)
     {

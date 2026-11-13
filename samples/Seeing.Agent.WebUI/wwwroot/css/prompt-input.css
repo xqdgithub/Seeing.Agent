@@ -3,19 +3,19 @@
  */
 
 .prompt-input-container {
-    padding: var(--space-4);
-    background: var(--color-bg-secondary);
-    border-top: 1px solid var(--color-border-secondary);
+    padding: 0;
+    background: transparent;
 }
 
 .prompt-input-wrapper {
     display: flex;
-    align-items: flex-end;
-    gap: var(--space-3);
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
     background: var(--color-bg);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    padding: var(--space-3);
+    border-radius: 16px;
+    padding: 10px 10px 8px;
     transition: var(--transition-fast);
 }
 
@@ -29,13 +29,24 @@
     background: var(--color-primary-bg);
 }
 
+.prompt-input-wrapper .command-autocomplete-wrapper {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
 .prompt-textarea {
-    flex: 1;
+    width: 100%;
+    min-height: 44px;
+    max-height: 200px;
+    padding: 4px 6px 6px;
+    overflow-y: auto;
     border: none !important;
     background: transparent !important;
     resize: none !important;
     font-size: var(--font-size-base);
     line-height: var(--line-height-normal);
+    box-sizing: border-box;
 }
 
 .prompt-textarea:focus {
@@ -43,18 +54,121 @@
     box-shadow: none !important;
 }
 
-.prompt-actions {
+/* 底栏：左操作、右模型与发送，输入区独占上方整行 */
+.prompt-toolbar {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
 }
 
-/* 停止按钮：圆+实心方块图标，与左侧其它小图标对齐 */
-.prompt-stop-btn {
+.prompt-toolbar-left,
+.prompt-toolbar-right,
+.prompt-toolbar-extra {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+}
+
+.prompt-toolbar-right {
+    margin-left: auto;
+    flex-shrink: 1;
+}
+
+.prompt-tool-btn.ant-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: 50%;
+    color: var(--color-text-secondary);
+}
+
+.prompt-tool-btn.ant-btn:hover {
+    background: var(--color-fill-tertiary, rgba(0, 0, 0, 0.04));
+    color: var(--color-text);
+}
+
+.prompt-voice-elapsed {
+    font-size: 12px;
+    line-height: 1;
+}
+
+.prompt-voice-btn--recording.prompt-tool-btn.ant-btn {
+    width: auto;
+    padding: 0 10px;
+    border-radius: 16px;
+}
+
+.prompt-send-btn.ant-btn {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    padding: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+
+/* 停止按钮：圆+实心方块图标，与发送按钮同尺寸 */
+.prompt-stop-btn.ant-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: 50%;
     color: var(--color-error, #ff4d4f);
+}
+
+/* 底栏里的模型名：无边框文字 + 下拉箭头，不占输入区宽度 */
+.prompt-toolbar-extra .model-select-badge--composer {
+    max-width: 220px;
+}
+
+.prompt-toolbar-extra .model-select-badge--composer .model-select-badge-chip.ant-btn {
+    height: 28px;
+    max-width: 220px;
+    padding: 0 4px 0 8px;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    color: var(--color-text-secondary);
+}
+
+.prompt-toolbar-extra .model-select-badge--composer .model-select-badge-chip.ant-btn:hover {
+    color: var(--color-text);
+    background: var(--color-fill-tertiary, rgba(0, 0, 0, 0.04));
+}
+
+.prompt-toolbar-extra .model-select-badge--composer .model-select-badge-provider {
+    display: none;
+}
+
+.prompt-toolbar-extra .model-select-badge--composer .model-select-badge-chip.ant-btn::after {
+    content: "";
+    flex-shrink: 0;
+    width: 0;
+    height: 0;
+    margin-left: 6px;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid currentColor;
+    opacity: 0.55;
+}
+
+.prompt-thinking-select {
+    width: 96px;
+    flex-shrink: 0;
+}
+
+.prompt-thinking-select .ant-select-selector {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding-inline: 4px !important;
 }
 
 /* ========== 底部提示栏 ========== */
@@ -199,17 +313,17 @@
 
 /* ========== 响应式调整 ========== */
 @media (max-width: 768px) {
-    .prompt-input-container {
-        padding: var(--space-3);
-    }
-    
     .prompt-input-wrapper {
-        flex-direction: column;
-        align-items: stretch;
+        padding: 8px 8px 6px;
     }
-    
-    .prompt-actions {
-        justify-content: flex-end;
+
+    .prompt-toolbar {
+        flex-wrap: wrap;
+    }
+
+    .prompt-toolbar-extra .model-select-badge--composer,
+    .prompt-toolbar-extra .model-select-badge--composer .model-select-badge-chip.ant-btn {
+        max-width: 140px;
     }
 
     .attachment-preview-container {

@@ -781,7 +781,6 @@
     z-index: 20;
     padding: var(--space-4);
     background: var(--color-bg-container);
-    border-top: 1px solid var(--color-border);
     flex-shrink: 0;
     max-width: var(--message-area-width);
     min-width: var(--message-area-min-width);
