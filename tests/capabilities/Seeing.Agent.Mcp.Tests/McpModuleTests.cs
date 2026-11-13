@@ -20,10 +20,15 @@ public class McpModuleTests
     }
 
     [Fact]
-    public void ProvidedTools_IsEmpty()
+    public void ProvidedTools_Contains_Manage_And_Resource_Tools()
     {
         var module = new McpModule();
-        module.ProvidedTools.Should().BeEmpty();
+        module.ProvidedTools.Should().Contain("mcp_list_servers");
+        module.ProvidedTools.Should().Contain("mcp_add_server");
+        module.ProvidedTools.Should().Contain("mcp_import_servers");
+        module.ProvidedTools.Should().Contain("mcp_list_resources");
+        module.ProvidedTools.Should().Contain("mcp_read_resource");
+        module.ProvidedTools.Should().Contain("mcp_list_resource_templates");
     }
 
     [Fact]

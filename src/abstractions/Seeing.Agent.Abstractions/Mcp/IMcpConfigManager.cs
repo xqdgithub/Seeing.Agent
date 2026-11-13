@@ -16,6 +16,10 @@ public interface IMcpConfigManager
     /// <param name="config">服务器配置</param>
     /// <param name="level">配置保存级别（可选，默认自动选择）</param>
     /// <param name="persist">是否在添加后自动持久化到文件（默认 true）</param>
+    /// <param name="connect">
+    /// 是否立即连接：<see langword="null"/> 跟随 <c>AutoStartOnAdd</c>；
+    /// <see langword="true"/>/<see langword="false"/> 显式覆盖。
+    /// </param>
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>操作结果</returns>
     Task<McpOperationResult> AddServerAsync(
@@ -23,6 +27,7 @@ public interface IMcpConfigManager
         McpServerConfig config,
         ConfigLevel? level = null,
         bool persist = true,
+        bool? connect = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

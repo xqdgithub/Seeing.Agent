@@ -17,7 +17,10 @@ using Seeing.Agent.Mcp.Factory;
 using Seeing.Agent.Mcp.Management;
 using Seeing.Agent.Mcp.OAuth;
 using Seeing.Agent.Mcp.Policy;
+using Seeing.Agent.Mcp.Tools.Manage;
 using Seeing.Agent.Mcp.Tools.Resources;
+using Seeing.Agent.Mcp.Workspace;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Seeing.Agent.Mcp;
 
@@ -29,10 +32,21 @@ public sealed class McpModule : ISeeingModule, IUiContributor
     private static readonly IReadOnlyList<string> s_providedSeams = ["mcp"];
 
     /// <summary>
-    /// 静态 ProvidedTools。Resource id（Task 5）在此；Task 4 合并管理工具时请追加、勿删除 Resource id。
+    /// 静态 ProvidedTools：管理工具 + Resource 工具。并行 Task 追加 id 时请用 Contain 断言，勿互斥 HaveCount。
     /// </summary>
     private static readonly string[] s_providedTools =
     [
+        "mcp_list_servers",
+        "mcp_get_server",
+        "mcp_add_server",
+        "mcp_update_server",
+        "mcp_remove_server",
+        "mcp_enable_server",
+        "mcp_disable_server",
+        "mcp_pause_server",
+        "mcp_resume_server",
+        "mcp_reconnect_server",
+        "mcp_import_servers",
         "mcp_list_resources",
         "mcp_read_resource",
         "mcp_list_resource_templates",
@@ -115,6 +129,25 @@ public sealed class McpModule : ISeeingModule, IUiContributor
         services.AddSingleton<IMcpManager, McpClientManager>();
         services.AddSingleton<McpClientManager>(sp => (McpClientManager)sp.GetRequiredService<IMcpManager>());
         services.AddSingleton<IComponentLoader, McpLoader>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IWorkspaceApplyParticipant, McpWorkspaceParticipant>());
+
+        // 管理工具（Activate 时 RegisterToolAsync）
+        services.AddSingleton<McpListServersTool>();
+        services.AddSingleton<McpGetServerTool>();
+        services.AddSingleton<McpAddServerTool>();
+        services.AddSingleton<McpUpdateServerTool>();
+        services.AddSingleton<McpRemoveServerTool>();
+        services.AddSingleton<McpEnableServerTool>();
+        services.AddSingleton<McpDisableServerTool>();
+        services.AddSingleton<McpPauseServerTool>();
+        services.AddSingleton<McpResumeServerTool>();
+        services.AddSingleton<McpReconnectServerTool>();
+        services.AddSingleton<McpImportServersTool>();
+
+        // Resource 工具
+        services.AddSingleton<McpListResourcesTool>();
+        services.AddSingleton<McpReadResourceTool>();
+        services.AddSingleton<McpListResourceTemplatesTool>();
     }
 
     /// <inheritdoc />
@@ -153,6 +186,8 @@ public sealed class McpModule : ISeeingModule, IUiContributor
         // 登记 OAuth 授权命令（配置在 InitializeAsync 后才可用）
         RegisterCommands(services);
 
+        await RegisterProvidedToolsAsync(services, cancellationToken).ConfigureAwait(false);
+
         // 登记动态工具贡献（工具集运行时可变，结算时并入 settledToolIds）
         services.GetService<IDynamicToolContributorRegistry>()
             ?.Register(new McpDynamicToolContributor(manager));
@@ -162,6 +197,7 @@ public sealed class McpModule : ISeeingModule, IUiContributor
     public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         UnregisterCommands(services);
+        await UnregisterProvidedToolsAsync(services, cancellationToken).ConfigureAwait(false);
 
         services.GetService<IDynamicToolContributorRegistry>()?.Unregister(Id);
 
@@ -171,6 +207,57 @@ public sealed class McpModule : ISeeingModule, IUiContributor
             await manager.ShutdownAsync(cancellationToken).ConfigureAwait(false);
             await manager.UnregisterAllToolsAsync(cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    private static async Task RegisterProvidedToolsAsync(
+        IServiceProvider services,
+        CancellationToken cancellationToken)
+    {
+        var tm = services.GetService<IToolManager>();
+        if (tm is null)
+            return;
+
+        if (services.GetService<McpListServersTool>() is { } listServers)
+            await tm.RegisterToolAsync(listServers, cancellationToken).ConfigureAwait(false);
+        if (services.GetService<McpGetServerTool>() is { } getServer)
+            await tm.RegisterToolAsync(getServer, cancellationToken).ConfigureAwait(false);
+        if (services.GetService<McpAddServerTool>() is { } addServer)
+            await tm.RegisterToolAsync(addServer, cancellationToken).ConfigureAwait(false);
+        if (services.GetService<McpUpdateServerTool>() is { } updateServer)
+            await tm.RegisterToolAsync(updateServer, cancellationToken).ConfigureAwait(false);
+        if (services.GetService<McpRemoveServerTool>() is { } removeServer)
+            await tm.RegisterToolAsync(removeServer, cancellationToken).ConfigureAwait(false);
+        if (services.GetService<McpEnableServerTool>() is { } enableServer)
+            await tm.RegisterToolAsync(enableServer, cancellationToken).ConfigureAwait(false);
+        if (services.GetService<McpDisableServerTool>() is { } disableServer)
+            await tm.RegisterToolAsync(disableServer, cancellationToken).ConfigureAwait(false);
+        if (services.GetService<McpPauseServerTool>() is { } pauseServer)
+            await tm.RegisterToolAsync(pauseServer, cancellationToken).ConfigureAwait(false);
+        if (services.GetService<McpResumeServerTool>() is { } resumeServer)
+            await tm.RegisterToolAsync(resumeServer, cancellationToken).ConfigureAwait(false);
+        if (services.GetService<McpReconnectServerTool>() is { } reconnectServer)
+            await tm.RegisterToolAsync(reconnectServer, cancellationToken).ConfigureAwait(false);
+        if (services.GetService<McpImportServersTool>() is { } importServers)
+            await tm.RegisterToolAsync(importServers, cancellationToken).ConfigureAwait(false);
+
+        if (services.GetService<McpListResourcesTool>() is { } list)
+            await tm.RegisterToolAsync(list, cancellationToken).ConfigureAwait(false);
+        if (services.GetService<McpReadResourceTool>() is { } read)
+            await tm.RegisterToolAsync(read, cancellationToken).ConfigureAwait(false);
+        if (services.GetService<McpListResourceTemplatesTool>() is { } templates)
+            await tm.RegisterToolAsync(templates, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task UnregisterProvidedToolsAsync(
+        IServiceProvider services,
+        CancellationToken cancellationToken)
+    {
+        var tm = services.GetService<IToolManager>();
+        if (tm is null)
+            return;
+
+        foreach (var id in s_providedTools)
+            await tm.UnregisterToolAsync(id, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

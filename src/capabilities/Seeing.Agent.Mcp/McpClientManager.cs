@@ -3,6 +3,7 @@ using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Tools;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Mcp.Configuration;
 using Seeing.Agent.Mcp.Core;
 using Seeing.Agent.Mcp.Factory;
@@ -25,6 +26,7 @@ namespace Seeing.Agent.Mcp
         private readonly McpWrapperFactoryRegistry _factoryRegistry;
         private readonly McpGlobalPolicy _globalPolicy;
         private readonly IMcpConfigPersistence _configPersistence;
+        private readonly IWorkspaceProvider? _workspaceProvider;
         private readonly IHttpClientFactory? _httpClientFactory;
         private readonly OAuth.IMcpOAuthConnectionPreparer? _oauthConnectionPreparer;
 
@@ -40,8 +42,12 @@ namespace Seeing.Agent.Mcp
         private readonly object _stateLock = new();
         private volatile bool _initialized;
         private bool _disposed;
+        private volatile bool _suppressProjectSave;
 
         public event EventHandler<McpStatusChangedEventArgs>? StatusChanged;
+
+        /// <summary>工作区切换 Applying 期间为 true：禁止项目级 Save。</summary>
+        public bool IsProjectSaveSuppressed => _suppressProjectSave;
 
         public McpClientManager(
             ILogger<McpClientManager> logger,
@@ -54,7 +60,8 @@ namespace Seeing.Agent.Mcp
             IHttpClientFactory? httpClientFactory = null,
             OAuth.IMcpOAuthConnectionPreparer? oauthConnectionPreparer = null,
             IMcpToolRegistry? toolRegistry = null,
-            McpProcessMonitor? processMonitor = null)
+            McpProcessMonitor? processMonitor = null,
+            IWorkspaceProvider? workspaceProvider = null)
         {
             _logger = logger;
             _loggerFactory = loggerFactory;
@@ -65,6 +72,7 @@ namespace Seeing.Agent.Mcp
             _configPersistence = configPersistence;
             _httpClientFactory = httpClientFactory;
             _oauthConnectionPreparer = oauthConnectionPreparer;
+            _workspaceProvider = workspaceProvider;
 
             // 优先用 DI 注入的实例（McpModule 已注册单例）。自行 new 会让 DI 里那两个单例
             // 成为永远不被使用的死注册，诊断时容易误判「注册了两个 registry」。
@@ -231,10 +239,21 @@ namespace Seeing.Agent.Mcp
 
         #region IMcpConfigManager 实现
 
-        public async Task<McpOperationResult> AddServerAsync(string name, McpServerConfig config, ConfigLevel? level = null, bool persist = true, CancellationToken cancellationToken = default)
+        public async Task<McpOperationResult> AddServerAsync(
+            string name,
+            McpServerConfig config,
+            ConfigLevel? level = null,
+            bool persist = true,
+            bool? connect = null,
+            CancellationToken cancellationToken = default)
         {
             config.Name = name;
             config.ConfigLevel = level ?? ConfigLevel.Project;
+
+            if (config.ConfigLevel == ConfigLevel.Project &&
+                TryRejectUnresolvedProjectWrite(name, McpOperationType.Add) is { } rejected)
+                return rejected;
+
             var validation = McpConfigValidator.Validate(config);
             if (!validation.IsValid)
                 return McpOperationResult.Failed(name, McpOperationType.Add, validation.Error!);
@@ -258,7 +277,8 @@ namespace Seeing.Agent.Mcp
                 }
             }
 
-            if (_globalPolicy.AutoStartOnAdd && !config.Disabled)
+            var shouldConnect = (connect ?? _globalPolicy.AutoStartOnAdd) && !config.Disabled;
+            if (shouldConnect)
             {
                 var coordinator = GetOrCreateCoordinator(name);
                 _ = coordinator.ConnectInBackgroundAsync(config, cancellationToken);
@@ -405,6 +425,14 @@ namespace Seeing.Agent.Mcp
 
         public async Task SaveConfigAsync(ConfigLevel level, CancellationToken cancellationToken = default)
         {
+            if (level == ConfigLevel.Project)
+            {
+                if (_suppressProjectSave)
+                    throw new InvalidOperationException("工作区切换中，禁止保存项目级 MCP 配置。");
+                if (_workspaceProvider is { IsResolved: false })
+                    throw new InvalidOperationException("工作区未选定，禁止保存项目级 MCP 配置。");
+            }
+
             // 加锁获取配置快照，避免迭代期间被修改
             Dictionary<string, McpServerConfig> configsToSave;
             lock (_stateLock)
@@ -563,6 +591,9 @@ namespace Seeing.Agent.Mcp
         /// <inheritdoc />
         public async Task<int> ImportFromJsonAsync(string json, ConfigLevel level, bool overwrite = false, bool persist = true, CancellationToken cancellationToken = default)
         {
+            if (level == ConfigLevel.Project && _workspaceProvider is { IsResolved: false })
+                throw new InvalidOperationException("工作区未选定，禁止导入项目级 MCP 配置。");
+
             // 输入验证：空值检查
             if (string.IsNullOrWhiteSpace(json))
             {
@@ -609,7 +640,8 @@ namespace Seeing.Agent.Mcp
                     {
                         config.ConfigLevel = level;
                         // persist: false 因为 ImportFromJsonAsync 会在最后统一持久化
-                        var result = await AddServerAsync(name, config, level, persist: false, cancellationToken);
+                        var result = await AddServerAsync(
+                            name, config, level, persist: false, connect: null, cancellationToken: cancellationToken);
                         if (result.Success) count++;
                     }
                 }
@@ -982,6 +1014,113 @@ namespace Seeing.Agent.Mcp
                 if (h.Message.Contains("401", StringComparison.Ordinal)) return true;
             }
             return false;
+        }
+
+        #endregion
+
+        #region 工作区切换
+
+        /// <summary>设置/清除项目级 Save 抑制（工作区切换 Applying 期间为 true）。</summary>
+        public void SetProjectSaveSuppressed(bool suppressed) => _suppressProjectSave = suppressed;
+
+        /// <summary>
+        /// Applying：抑制项目 Save，断开并剔除全部项目级会话（不写盘）。
+        /// </summary>
+        public async Task PrepareWorkspaceSwitchAsync(CancellationToken cancellationToken = default)
+        {
+            _suppressProjectSave = true;
+
+            List<string> projectNames;
+            lock (_stateLock)
+            {
+                projectNames = _configs
+                    .Where(kvp => (kvp.Value.ConfigLevel ?? ConfigLevel.Project) == ConfigLevel.Project)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+            }
+
+            foreach (var name in projectNames)
+            {
+                try
+                {
+                    await DisconnectServerAsync(name, cancellationToken).ConfigureAwait(false);
+                    await _toolRegistry.UnregisterAllToolsAsync(name).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "工作区切换：断开项目级 MCP {Name} 失败", name);
+                }
+
+                lock (_stateLock)
+                {
+                    _configs.TryRemove(name, out _);
+                    _statuses.TryRemove(name, out _);
+                    if (_coordinators.TryRemove(name, out var coordinator))
+                        coordinator.Dispose();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Applied：清除抑制，装入新根项目级配置；未禁用的按 Initialize 策略后台连接。
+        /// </summary>
+        public async Task CompleteWorkspaceSwitchAsync(
+            IReadOnlyDictionary<string, McpServerConfig> projectConfigs,
+            CancellationToken cancellationToken = default)
+        {
+            _suppressProjectSave = false;
+
+            foreach (var kvp in projectConfigs)
+            {
+                var name = kvp.Key;
+                var config = kvp.Value;
+                config.Name = name;
+                config.ConfigLevel = ConfigLevel.Project;
+
+                // 同名用户级被项目级覆盖：先断开旧会话
+                if (_configs.ContainsKey(name))
+                {
+                    try
+                    {
+                        await DisconnectServerAsync(name, cancellationToken).ConfigureAwait(false);
+                        await _toolRegistry.UnregisterAllToolsAsync(name).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "工作区切换：替换同名 MCP {Name} 时断开失败", name);
+                    }
+                }
+
+                // 对齐 Initialize：未禁用则连接；不写盘（配置已在新根文件中）
+                await AddServerAsync(
+                    name,
+                    config,
+                    ConfigLevel.Project,
+                    persist: false,
+                    connect: !config.Disabled,
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        private McpOperationResult? TryRejectUnresolvedProjectWrite(string name, McpOperationType operation)
+        {
+            if (_workspaceProvider is { IsResolved: false })
+            {
+                return McpOperationResult.Failed(
+                    name,
+                    operation,
+                    McpErrorInfo.ConfigInvalid(name, "工作区未选定，禁止项目级 MCP 写入。"));
+            }
+
+            if (_suppressProjectSave)
+            {
+                return McpOperationResult.Failed(
+                    name,
+                    operation,
+                    McpErrorInfo.ConfigInvalid(name, "工作区切换中，禁止项目级 MCP 写入。"));
+            }
+
+            return null;
         }
 
         #endregion
