@@ -1,19 +1,108 @@
 "use strict";
 
-// 协议独占 stdout。先留下真正的 write，再把日志出口全部转到 stderr。
+const fs = require("fs");
+const path = require("path");
+const vm = require("vm");
+const Module = require("module");
+const readline = require("readline");
+
+// 协议独占 stdout。先留下真正的 write。用户脚本可能改回 console / stdout，所以每次调用前再装一次。
 const realStdoutWrite = process.stdout.write.bind(process.stdout);
 
-process.stdout.write = function redirectedStdoutWrite(chunk, encoding, callback) {
-  return process.stderr.write(chunk, encoding, callback);
-};
+function redirectUserOutput() {
+  process.stdout.write = function redirectedStdoutWrite(chunk, encoding, callback) {
+    return process.stderr.write(chunk, encoding, callback);
+  };
 
-console.log = console.error.bind(console);
-console.info = console.error.bind(console);
-console.debug = console.error.bind(console);
-console.warn = console.error.bind(console);
+  console.log = console.error.bind(console);
+  console.info = console.error.bind(console);
+  console.debug = console.error.bind(console);
+  console.warn = console.error.bind(console);
+}
 
-const readline = require("readline");
-const { createRequire } = require("module");
+redirectUserOutput();
+
+// 最近的 package.json 若是 "type":"module"，Node 会把 .js 当成 ESM，module.exports 会报错。
+// 这里自己套 CommonJS 包装再执行。和入口同一份 package.json 下的相对 require 同样包装；
+// 这份 package.json 之外的依赖仍走原来的 require。每次调用先清掉入口的 require.cache。
+function loadCommonJsScript(filename) {
+  const abs = path.resolve(filename);
+  const resolved = Module.createRequire(abs).resolve(abs);
+  delete require.cache[filename];
+  delete require.cache[abs];
+  delete require.cache[resolved];
+  return loadForcedCommonJs(resolved, nearestPackageJson(resolved));
+}
+
+function loadForcedCommonJs(resolved, scope) {
+  const cached = require.cache[resolved];
+  if (cached) return cached.exports;
+
+  const mod = new Module(resolved);
+  mod.filename = resolved;
+  mod.paths = Module._nodeModulePaths(path.dirname(resolved));
+  require.cache[resolved] = mod;
+  try {
+    const compiled = vm.runInThisContext(Module.wrap(readScriptSource(resolved)), {
+      filename: resolved,
+    });
+    compiled.call(
+      mod.exports,
+      mod.exports,
+      makeScopedRequire(resolved, scope),
+      mod,
+      resolved,
+      path.dirname(resolved));
+    mod.loaded = true;
+  } catch (err) {
+    delete require.cache[resolved];
+    throw err;
+  }
+  return mod.exports;
+}
+
+function makeScopedRequire(parentFilename, scope) {
+  const native = Module.createRequire(parentFilename);
+  function req(request) {
+    const resolved = native.resolve(request);
+    if (samePackageJs(resolved, scope))
+      return loadForcedCommonJs(resolved, scope);
+    return native(request);
+  }
+  req.resolve = native.resolve;
+  req.cache = require.cache;
+  req.extensions = native.extensions;
+  req.main = require.main;
+  return req;
+}
+
+function samePackageJs(resolved, scope) {
+  return scope !== null
+    && path.extname(resolved).toLowerCase() === ".js"
+    && nearestPackageJson(resolved) === scope;
+}
+
+function nearestPackageJson(filename) {
+  let dir = path.dirname(path.resolve(filename));
+  for (;;) {
+    const candidate = path.resolve(dir, "package.json");
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+function readScriptSource(filename) {
+  let source = fs.readFileSync(filename, "utf8");
+  if (source.charCodeAt(0) === 0xFEFF)
+    source = source.slice(1);
+  if (source.startsWith("#!")) {
+    const newline = source.indexOf("\n");
+    source = newline === -1 ? "" : source.slice(newline + 1);
+  }
+  return source;
+}
 
 function errorMessage(err) {
   if (err && typeof err.message === "string" && err.message.length > 0)
@@ -53,16 +142,15 @@ async function handleLine(line) {
       return;
     }
 
-    const userRequire = createRequire(request.script);
-    const resolved = userRequire.resolve(request.script);
-    delete userRequire.cache[resolved];
-    const loaded = userRequire(request.script);
+    redirectUserOutput();
+    const loaded = loadCommonJsScript(request.script);
 
     if (typeof loaded !== "function") {
       reply({ id, ok: false, error: "module.exports 不是函数" });
       return;
     }
 
+    redirectUserOutput();
     const value = await loaded(request.event);
     if (value === null || value === undefined) {
       reply({ id, ok: true, continue: true });

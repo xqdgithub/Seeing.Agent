@@ -86,6 +86,9 @@ public class NodeHookClientTests
         firstResult.Status.Should().Be(ScriptCallStatus.Failed);
         firstResult.Error.Should().Be("timeout");
         process1.KillCount.Should().Be(1);
+        await process1.Disposed.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        process1.DisposeCount.Should().Be(1);
+        process1.DisposesDuringRead.Should().Be(0);
 
         var winner = await Task.WhenAny(second, runtime.SecondProcess);
         if (winner == second && runtime.Processes.Count < 2)
@@ -107,6 +110,8 @@ public class NodeHookClientTests
         secondResult.Status.Should().Be(ScriptCallStatus.Succeeded);
         workerPaths.Should().Be(2);
         runtime.StartCount.Should().Be(2);
+        process1.DisposeCount.Should().Be(1);
+        process2.DisposeCount.Should().Be(0);
     }
 
     [Fact]
@@ -149,6 +154,8 @@ public class NodeHookClientTests
         next.Status.Should().Be(ScriptCallStatus.Succeeded);
         next.Continue.Should().BeTrue();
         runtime.StartCount.Should().Be(1);
+        process.KillCount.Should().Be(0);
+        process.DisposeCount.Should().Be(0);
     }
 
     [Fact]
@@ -194,6 +201,47 @@ public class NodeHookClientTests
         }
     }
 
+    [Fact]
+    public void Ensure_ModulePackageType_ShouldPinCommonJsAndCompileScripts()
+    {
+        var cache = Path.Combine(Path.GetTempPath(), "seeing-hook-worker-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var worker = HookWorkerFiles.Ensure(cache);
+            var packagePath = Path.Combine(cache, "package.json");
+            Path.GetFullPath(Path.GetDirectoryName(worker)!).Should().Be(Path.GetFullPath(cache));
+            PackageType(packagePath).Should().Be("commonjs");
+
+            File.WriteAllText(packagePath, "{\"type\":\"module\"}\n");
+            HookWorkerFiles.Ensure(cache);
+            PackageType(packagePath).Should().Be("commonjs");
+
+            var source = File.ReadAllText(worker);
+            source.Should().NotContain("_compile");
+            source.Should().Contain("function loadCommonJsScript");
+            source.Should().Contain("Module.wrap(");
+            source.Should().Contain("runInThisContext");
+            source.Should().Contain("delete require.cache[resolved]");
+            source.Should().Contain("samePackageJs");
+
+            var handle = source.IndexOf("async function handleLine", StringComparison.Ordinal);
+            handle.Should().BeGreaterThanOrEqualTo(0);
+            var afterLoad = source[handle..];
+            var loadAt = afterLoad.IndexOf("loadCommonJsScript(", StringComparison.Ordinal);
+            loadAt.Should().BeGreaterThanOrEqualTo(0);
+            afterLoad = afterLoad[loadAt..];
+            var redirectAt = afterLoad.IndexOf("redirectUserOutput()", StringComparison.Ordinal);
+            var callAt = afterLoad.IndexOf("await loaded(", StringComparison.Ordinal);
+            redirectAt.Should().BeGreaterThanOrEqualTo(0);
+            callAt.Should().BeGreaterThan(redirectAt);
+        }
+        finally
+        {
+            if (System.IO.Directory.Exists(cache))
+                System.IO.Directory.Delete(cache, recursive: true);
+        }
+    }
+
     private static async Task AdvanceAsync(FakeTimeProvider clock, TimeSpan delta)
     {
         clock.Advance(delta);
@@ -220,6 +268,12 @@ public class NodeHookClientTests
 
     private static string Hash(byte[] bytes) =>
         Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+
+    private static string PackageType(string packagePath)
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(packagePath));
+        return doc.RootElement.GetProperty("type").GetString()!;
+    }
 
     private sealed class FakeNodeRuntime : INodeRuntime
     {
@@ -262,7 +316,17 @@ public class NodeHookClientTests
 
         public List<string> Written { get; } = [];
 
+        private readonly TaskCompletionSource _disposed =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _readsInFlight;
+
         public int KillCount { get; private set; }
+
+        public int DisposeCount { get; private set; }
+
+        public int DisposesDuringRead { get; private set; }
+
+        public Task Disposed => _disposed.Task;
 
         public Task WriteLineAsync(string line, CancellationToken cancellationToken)
         {
@@ -274,13 +338,21 @@ public class NodeHookClientTests
 
         public async Task<string?> ReadLineAsync(CancellationToken cancellationToken)
         {
-            while (await _stdout.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
+            Interlocked.Increment(ref _readsInFlight);
+            try
             {
-                if (_stdout.Reader.TryRead(out var line))
-                    return line;
-            }
+                while (await _stdout.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    if (_stdout.Reader.TryRead(out var line))
+                        return line;
+                }
 
-            return null;
+                return null;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _readsInFlight);
+            }
         }
 
         public ValueTask<string> ReadWrittenAsync() => _written.Reader.ReadAsync();
@@ -295,7 +367,11 @@ public class NodeHookClientTests
 
         public ValueTask DisposeAsync()
         {
+            if (Volatile.Read(ref _readsInFlight) > 0)
+                DisposesDuringRead++;
+            DisposeCount++;
             _stdout.Writer.TryComplete();
+            _disposed.TrySetResult();
             return ValueTask.CompletedTask;
         }
     }

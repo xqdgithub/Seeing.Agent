@@ -241,6 +241,21 @@ public sealed class NodeHookClient : INodeHookInvoker
         {
             FailGeneration(generation, ScriptInvocationResult.Failure("Node 进程已退出"));
             Interlocked.CompareExchange(ref _process, null, process);
+            // Kill 只打断进程。等这一代已经离开 ReadLine 再释放，避免和正在读的 stdout 抢 Dispose，
+            // 也不在调用锁里等生产进程最多 2 秒的退出宽限。
+            await DisposeWorkerAsync(process).ConfigureAwait(false);
+        }
+    }
+
+    private async Task DisposeWorkerAsync(INodeProcess process)
+    {
+        try
+        {
+            await process.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "释放 Node 工人进程失败。");
         }
     }
 

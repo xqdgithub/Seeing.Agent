@@ -89,7 +89,7 @@
 
 ## 3. 脚本契约
 
-脚本是 CommonJS。工作脚本用 `module.createRequire` 从一段固定的 CommonJS 包装按绝对路径加载用户文件，不继承 `hooks/package.json` 的 `"type": "module"`。因此目录即使标了 ESM，`.js` 仍按 CommonJS 的 `module.exports` 执行。`require` 相对该文件所在目录解析。
+脚本是 CommonJS。`hooks/.cache/package.json` 固定为 `{"type":"commonjs"}`，避免祖先 `"type":"module"` 让 `node hook-worker-*.js` 起不来。用户 `.js` 不能直接加载：最近的 `package.json` 会让它按 ESM 执行，`module.exports` 会报错。工人读出源码，用 `Module.wrap` 后 `vm.runInThisContext`，文件名保持该脚本的绝对路径。和它落在同一份 `package.json` 下的相对 `require` 走同一条包装；这份 `package.json` 之外的依赖仍用原来的 `require`。因此目录即使标了 ESM，`.js` 仍按 CommonJS 的 `module.exports` 执行。
 
 ```javascript
 module.exports = async function (event) {
@@ -118,7 +118,7 @@ module.exports = async function (event) {
 
 工作脚本以嵌入资源放在 `Seeing.Agent.Hooks.Directory` 程序集里，启动时写到 `hooks/.cache/hook-worker-<内容哈希>.js`。宿主执行 `node <worker>`，不经过 shell。
 
-协议独占 stdout。工作脚本从 stdin 按行读 UTF-8 JSON，向 stdout 只写协议 JSON 行。调用用户函数之前，把 `console.log` / `console.info` / `console.debug` / `console.warn` 和 `process.stdout.write` 转到 stderr。stderr 以 Debug 记入日志。
+协议独占 stdout。工作脚本从 stdin 按行读 UTF-8 JSON，向 stdout 只写协议 JSON 行。进程启动时，以及每一次调用用户函数之前，把 `console.log` / `console.info` / `console.debug` / `console.warn` 和 `process.stdout.write` 转到 stderr。stderr 以 Debug 记入日志。
 
 请求与响应用 `id` 配对。C# 侧 DTO 用 `[JsonPropertyName]` 固定为下面这些小写键。`SeeingJson.Readable` 没有 camelCase 命名策略，不能靠它改大小写。
 
@@ -142,7 +142,7 @@ module.exports = async function (event) {
 
 - 只有当前快照里至少有一个 `.js` 时才探测和启动。没有脚本时不启动。
 - 启动前用 `node -e "process.exit(0)"` 探测。失败、超时或不在 `PATH`：记一条 Warning，并记住「本次进程不再探测」。此后新增的 `.js` 也保持未登记，直到重启 Seeing。探测尚未失败过时，稍后才放进目录的第一批脚本仍会探测。DLL 不受影响。
-- 调用超时为 5 秒（常量 `HookScriptTimeout`，不做配置项）。这 5 秒只计算这一次自己的写入和读取，不把在锁上排队的时间算进去。超时后杀死进程，这次调用失败放行，在 `finally` 里放锁。已经在锁上等待的调用不被连坐跳过；轮到它时自行启动新进程，并使用自己的 5 秒。
+- 调用超时为 5 秒（常量 `HookScriptTimeout`，不做配置项）。这 5 秒只计算这一次自己的写入和读取，不把在锁上排队的时间算进去。超时后杀死进程，这次调用失败放行，在 `finally` 里放锁。这一代的读循环离开 stdout 之后再 `Dispose` 该进程，避免留下僵尸和句柄；释放不占调用锁，也不改这一代的失败结果。已经在锁上等待的调用不被连坐跳过；轮到它时自行启动新进程，并使用自己的 5 秒。
 - 进程意外退出：正在等待的那一次调用失败放行，下一调用再启动。
 - 调用方 `CancellationToken` 取消时：作废当前 `id`，停止等待，不杀进程，不记成脚本失败，不改 `mutable`，桥返回 `HookResult.Success`。迟到的旧响应因 `id` 对不上而被丢掉。下一次调用仍可使用这个进程。取消不用来实现 5 秒超时。桥不向 `HookManager` 抛 `OperationCanceledException`：`ExecuteBlockingAsync` 会把任何异常收成 `Continue: false`。
 - 取消发生时若用户脚本仍在运行，下一次调用可以写入新请求。工作脚本是一问一答：先写完上一次的响应（被宿主丢掉），再读下一次请求。下一次调用自己的 5 秒包含等上一次脚本结束的时间。上一次若是死循环，下一次会在自己的 5 秒后杀死进程并失败放行。
