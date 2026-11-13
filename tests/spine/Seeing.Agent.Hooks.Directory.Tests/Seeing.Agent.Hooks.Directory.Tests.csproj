@@ -25,5 +25,12 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\spine\Seeing.Agent.Hooks.Directory\Seeing.Agent.Hooks.Directory.csproj" />
     <ProjectReference Include="..\..\..\src\spine\Seeing.Agent.Core\Seeing.Agent.Core.csproj" />
+    <ProjectReference Include="..\..\..\src\primitives\Seeing.Files\Seeing.Files.csproj" />
+    <ProjectReference Include="..\Seeing.Agent.Hooks.Directory.Fixtures\Seeing.Agent.Hooks.Directory.Fixtures.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\Seeing.Agent.Hooks.Directory.EmptyFixture\Seeing.Agent.Hooks.Directory.EmptyFixture.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
   </ItemGroup>
 </Project>

@@ -98,6 +98,8 @@
   <Folder Name="/tests/spine/">
     <Project Path="tests/spine/Seeing.Agent.Invariants.Tests/Seeing.Agent.Invariants.Tests.csproj" />
     <Project Path="tests/spine/Seeing.Agent.Tests/Seeing.Agent.Tests.csproj" />
+    <Project Path="tests/spine/Seeing.Agent.Hooks.Directory.EmptyFixture/Seeing.Agent.Hooks.Directory.EmptyFixture.csproj" />
+    <Project Path="tests/spine/Seeing.Agent.Hooks.Directory.Fixtures/Seeing.Agent.Hooks.Directory.Fixtures.csproj" />
     <Project Path="tests/spine/Seeing.Agent.Hooks.Directory.Tests/Seeing.Agent.Hooks.Directory.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/hosting/">
