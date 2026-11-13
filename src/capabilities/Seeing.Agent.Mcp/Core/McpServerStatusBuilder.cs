@@ -15,6 +15,10 @@ public sealed class McpServerStatusBuilder
     public McpErrorInfo? LastError { get; set; }
     public int? ReconnectAttempts { get; set; }
     public string? ActivePolicy { get; set; }
+    public McpServerCapabilitiesInfo? Capabilities { get; set; }
+    public int? ResourceCount { get; set; }
+    public int? PromptCount { get; set; }
+    public int? SkillCount { get; set; }
 
     private McpServerStatusBuilder() { }
 
@@ -32,7 +36,11 @@ public sealed class McpServerStatusBuilder
             LastErrorAt = status.LastErrorAt,
             LastError = status.LastError,
             ReconnectAttempts = status.ReconnectAttempts,
-            ActivePolicy = status.ActivePolicy
+            ActivePolicy = status.ActivePolicy,
+            Capabilities = status.Capabilities,
+            ResourceCount = status.ResourceCount,
+            PromptCount = status.PromptCount,
+            SkillCount = status.SkillCount
         };
 
     public McpServerStatus Build()
@@ -48,7 +56,11 @@ public sealed class McpServerStatusBuilder
             LastErrorAt,
             LastError,
             ReconnectAttempts ?? 0,
-            ActivePolicy);
+            ActivePolicy,
+            Capabilities,
+            ResourceCount,
+            PromptCount,
+            SkillCount);
 
     public McpServerStatusBuilder WithState(McpConnectionState state)
     {

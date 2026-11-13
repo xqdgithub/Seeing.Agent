@@ -15,6 +15,18 @@ public sealed class McpServerStatus
     public int ReconnectAttempts { get; }
     public string? ActivePolicy { get; }
 
+    /// <summary>握手后能力摘要；未连接或尚未探测时为 null。</summary>
+    public McpServerCapabilitiesInfo? Capabilities { get; }
+
+    /// <summary>list 成功后的资源数；未支持或未探测时为 null。</summary>
+    public int? ResourceCount { get; }
+
+    /// <summary>list 成功后的 prompt 数；未支持或未探测时为 null。</summary>
+    public int? PromptCount { get; }
+
+    /// <summary>list 成功后的 skill 数；未支持或未探测时为 null。</summary>
+    public int? SkillCount { get; }
+
     public bool IsDisabled => State == McpConnectionState.Disabled || Config?.Disabled == true;
     public bool IsAvailable => State == McpConnectionState.Connected && !IsDisabled;
     public bool CanReconnect => !IsDisabled && State is McpConnectionState.Error or McpConnectionState.Reconnecting;
@@ -31,7 +43,11 @@ public sealed class McpServerStatus
         DateTimeOffset? lastErrorAt,
         McpErrorInfo? lastError,
         int reconnectAttempts,
-        string? activePolicy)
+        string? activePolicy,
+        McpServerCapabilitiesInfo? capabilities = null,
+        int? resourceCount = null,
+        int? promptCount = null,
+        int? skillCount = null)
     {
         Name = name;
         State = state;
@@ -45,6 +61,10 @@ public sealed class McpServerStatus
         LastError = lastError;
         ReconnectAttempts = reconnectAttempts;
         ActivePolicy = activePolicy;
+        Capabilities = capabilities;
+        ResourceCount = resourceCount;
+        PromptCount = promptCount;
+        SkillCount = skillCount;
     }
 
     public static McpServerStatus Create(
@@ -59,5 +79,6 @@ public sealed class McpServerStatus
         Name, State, Config, Priority, ToolCount,
         new List<string>(ToolNames), CreatedAt,
         LastConnectedAt, LastErrorAt, LastError,
-        ReconnectAttempts, ActivePolicy);
+        ReconnectAttempts, ActivePolicy,
+        Capabilities, ResourceCount, PromptCount, SkillCount);
 }
