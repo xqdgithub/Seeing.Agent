@@ -53,9 +53,9 @@
             }
             else
             {
-                @if (Context.IsAnchor || Context.Relation != SessionRelation.None)
+                @if (ToolbarRelationBadge is { } relationBadge)
                 {
-                    <Badge Status="@BadgeStatus.Default" Text="@Services.SessionRelationView.BadgeText(Context.Relation, Context.IsAnchor, Context.Label, Context.SuccessorTitle)" />
+                    <Badge Status="@BadgeStatus.Default" Text="@relationBadge" />
                 }
                 @if (Context.PendingInputCount > 0)
                 {
@@ -260,6 +260,25 @@
     private ScenarioForm ScenarioFormModel { get; set; } = new();
     private bool OutboundModalVisible;
     private OutboundEditForm OutboundForm { get; set; } = new();
+
+    /// <summary>
+    /// 工具栏关系徽标。纯「主线」不展示：当前会话就是锚点，标题已经说明身份。
+    /// 交接、分叉、备份仍保留。
+    /// </summary>
+    private string? ToolbarRelationBadge
+    {
+        get
+        {
+            if (Context.ShowSubAgentBadge)
+                return null;
+            if (!Context.IsAnchor && Context.Relation == SessionRelation.None)
+                return null;
+
+            var text = Services.SessionRelationView.BadgeText(
+                Context.Relation, Context.IsAnchor, Context.Label, Context.SuccessorTitle);
+            return text == "主线" ? null : text;
+        }
+    }
 
     private string? ProcessScenario => SeeingAgentOptions.CurrentValue.Scenario;
 

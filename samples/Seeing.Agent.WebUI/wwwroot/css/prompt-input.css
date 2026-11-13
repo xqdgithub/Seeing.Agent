@@ -201,26 +201,27 @@
     padding: var(--space-1) var(--space-2);
 }
 
-/* ========== 附件预览样式 ========== */
+/* ========== 附件预览：与输入卡片同边框、同圆角的小胶囊 ========== */
 .attachment-preview-container {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-2);
-    padding: var(--space-2);
-    margin-bottom: var(--space-2);
-    background: var(--color-bg-tertiary);
-    border-radius: var(--radius-md);
+    gap: 6px;
+    padding: 0 2px 8px;
+    margin: 0;
+    background: transparent;
 }
 
 .attachment-item {
     position: relative;
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
+    gap: 6px;
+    height: 32px;
+    max-width: 240px;
+    padding: 0 4px 0 8px;
     background: var(--color-bg);
-    border: 1px solid var(--color-border-secondary);
-    border-radius: var(--radius-base);
+    border: 1px solid var(--color-border);
+    border-radius: 16px;
     transition: var(--transition-fast);
 }
 
@@ -235,14 +236,16 @@
 }
 
 .attachment-item-image {
-    padding: var(--space-1);
+    height: 36px;
+    padding: 0 4px 0 4px;
 }
 
 .attachment-image-preview {
-    width: 60px;
-    height: 60px;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
     overflow: hidden;
-    border-radius: var(--radius-sm);
+    border-radius: 8px;
 }
 
 .attachment-image {
@@ -255,36 +258,41 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
-    background: var(--color-bg-tertiary);
-    border-radius: var(--radius-sm);
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    background: transparent;
 }
 
 .attachment-icon {
-    font-size: var(--font-size-lg);
+    font-size: 14px;
     color: var(--color-text-secondary);
 }
 
 .attachment-info {
     display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
     min-width: 0;
+    flex: 1;
 }
 
 .attachment-name {
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-medium);
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.2;
     color: var(--color-text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 150px;
+    max-width: 120px;
 }
 
 .attachment-size {
-    font-size: var(--font-size-xs);
+    flex-shrink: 0;
+    font-size: 11px;
+    line-height: 1.2;
     color: var(--color-text-tertiary);
 }
 
@@ -300,15 +308,24 @@
 .attachment-actions {
     display: flex;
     align-items: center;
-    margin-left: auto;
+    flex-shrink: 0;
 }
 
-.attachment-remove-btn {
+.attachment-remove-btn.ant-btn {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     color: var(--color-text-tertiary) !important;
 }
 
-.attachment-remove-btn:hover {
+.attachment-remove-btn.ant-btn:hover {
     color: var(--color-error) !important;
+    background: var(--color-fill-tertiary, rgba(0, 0, 0, 0.04));
 }
 
 /* ========== 响应式调整 ========== */
@@ -326,16 +343,8 @@
         max-width: 140px;
     }
 
-    .attachment-preview-container {
-        padding: var(--space-1);
-    }
-
-    .attachment-item {
-        padding: var(--space-1) var(--space-2);
-    }
-
     .attachment-name {
-        max-width: 100px;
+        max-width: 96px;
     }
 }
 
@@ -345,12 +354,13 @@
 }
 
 .attachment-path-badge {
-    align-self: flex-start;
-    padding: 0 4px;
+    flex-shrink: 0;
+    padding: 0 5px;
     border: 1px solid var(--color-border);
-    border-radius: 4px;
+    border-radius: 8px;
     color: var(--color-text-tertiary);
     font-size: 10px;
+    line-height: 16px;
 }
 
 .prompt-upload-error {

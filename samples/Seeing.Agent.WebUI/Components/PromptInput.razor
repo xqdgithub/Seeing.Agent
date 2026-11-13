@@ -139,13 +139,6 @@
                         }
                     </Button>
                 </Tooltip>
-                <Tooltip Title="清空输入">
-                    <Button Type="@ButtonType.Text"
-                            Class="prompt-tool-btn"
-                            Icon="@IconType.Outline.Delete"
-                            OnClick="@OnClear"
-                            Disabled="@IsProcessing" />
-                </Tooltip>
             </div>
             <div class="prompt-toolbar-right">
                 @if (ToolbarExtra != null)
@@ -1074,40 +1067,6 @@
         }
         
         StateHasChanged();
-    }
-
-    /// <summary>
-    /// 清空输入
-    /// </summary>
-    private async Task OnClear()
-    {
-        await DeletePathReferencesAsync();
-        InputText = "";
-        Attachments.Clear();
-        StateHasChanged();
-    }
-
-    /// <summary>删除尚未发送的路径引用上传文件。</summary>
-    private async Task DeletePathReferencesAsync()
-    {
-        var sessionId = SessionState?.CurrentSession?.Id;
-        if (string.IsNullOrWhiteSpace(sessionId))
-            return;
-
-        foreach (var attachment in Attachments.Where(a => a.IsPathReference).ToList())
-        {
-            if (string.IsNullOrWhiteSpace(attachment.SessionRelativePath))
-                continue;
-
-            try
-            {
-                await UploadedFileService.DeleteAsync(sessionId, attachment.SessionRelativePath!);
-            }
-            catch
-            {
-                // best-effort：删除失败不阻塞清空
-            }
-        }
     }
 
     /// <summary>
