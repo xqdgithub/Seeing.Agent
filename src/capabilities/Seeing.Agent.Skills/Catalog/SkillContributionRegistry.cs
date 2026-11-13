@@ -54,6 +54,9 @@ public sealed class SkillContributionRegistry : ISkillContributionRegistry
     }
 
     /// <inheritdoc />
+    public void NotifyChanged() => RaiseChanged();
+
+    /// <inheritdoc />
     public async Task<SkillContributionContent?> LoadAsync(
         string key,
         CancellationToken ct = default)

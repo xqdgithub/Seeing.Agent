@@ -8,6 +8,8 @@ using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Hooks;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Modules;
+using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Configuration;
@@ -17,6 +19,8 @@ using Seeing.Agent.Mcp.Factory;
 using Seeing.Agent.Mcp.Management;
 using Seeing.Agent.Mcp.OAuth;
 using Seeing.Agent.Mcp.Policy;
+using Seeing.Agent.Mcp.Skills;
+using Seeing.Agent.Mcp.Tools;
 using Seeing.Agent.Mcp.Tools.Manage;
 using Seeing.Agent.Mcp.Tools.Resources;
 using Seeing.Agent.Mcp.Workspace;
@@ -54,6 +58,7 @@ public sealed class McpModule : ISeeingModule, IUiContributor
 
     private readonly List<string> _registeredCommandNames = new();
     private McpPromptCommandSync? _promptCommandSync;
+    private McpSkillContributionSource? _skillContribution;
 
     /// <inheritdoc />
     public string Id => "mcp";
@@ -148,6 +153,19 @@ public sealed class McpModule : ISeeingModule, IUiContributor
         services.AddSingleton<McpListResourcesTool>();
         services.AddSingleton<McpReadResourceTool>();
         services.AddSingleton<McpListResourceTemplatesTool>();
+        // MCP Skills 贡献源（Activate 登记到 ISkillContributionRegistry；不走 RegisterAsync）
+        services.AddSingleton<McpSkillContributionSource>(sp =>
+        {
+            var mgr = sp.GetRequiredService<IMcpManager>();
+            var registry = sp.GetService<ISkillContributionRegistry>();
+            var logger = sp.GetService<ILogger<McpSkillContributionSource>>();
+            var factory = sp.GetService<IPermissionAuthorizerFactory>();
+            return new McpSkillContributionSource(
+                mgr,
+                registry,
+                authorizeResourceRead: CreateSkillResourceAuthorizer(factory),
+                logger);
+        });
     }
 
     /// <inheritdoc />
@@ -187,6 +205,7 @@ public sealed class McpModule : ISeeingModule, IUiContributor
         RegisterCommands(services);
 
         await RegisterProvidedToolsAsync(services, cancellationToken).ConfigureAwait(false);
+        RegisterSkillContribution(services);
 
         // 登记动态工具贡献（工具集运行时可变，结算时并入 settledToolIds）
         services.GetService<IDynamicToolContributorRegistry>()
@@ -196,6 +215,7 @@ public sealed class McpModule : ISeeingModule, IUiContributor
     /// <inheritdoc />
     public async Task DeactivateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
+        UnregisterSkillContribution(services);
         UnregisterCommands(services);
         await UnregisterProvidedToolsAsync(services, cancellationToken).ConfigureAwait(false);
 
@@ -258,6 +278,45 @@ public sealed class McpModule : ISeeingModule, IUiContributor
 
         foreach (var id in s_providedTools)
             await tm.UnregisterToolAsync(id, cancellationToken).ConfigureAwait(false);
+    }
+    private void RegisterSkillContribution(IServiceProvider services)
+    {
+        var source = services.GetService<McpSkillContributionSource>();
+        if (source is null)
+            return;
+
+        _skillContribution = source;
+        services.GetService<ISkillContributionRegistry>()?.Register(source);
+        source.Attach();
+    }
+
+    private void UnregisterSkillContribution(IServiceProvider services)
+    {
+        if (_skillContribution is null)
+            return;
+
+        _skillContribution.Detach();
+        services.GetService<ISkillContributionRegistry>()?.Unregister(_skillContribution);
+        _skillContribution = null;
+    }
+
+    /// <summary>
+    /// 技能加载回源：kind=<c>mcp.resource.read</c>，记忆键 server|uri。无工厂则 Fail-closed。
+    /// </summary>
+    private static Func<string, string, CancellationToken, Task<bool>>? CreateSkillResourceAuthorizer(
+        IPermissionAuthorizerFactory? factory)
+    {
+        if (factory is null)
+            return null;
+
+        return async (server, uri, ct) =>
+        {
+            var authorizer = factory.Create("mcp-skill-load");
+            var resolution = await McpResourcePermissionGate
+                .AuthorizeWithAuthorizerAsync(server, uri, authorizer, ct)
+                .ConfigureAwait(false);
+            return resolution.Decision == PermissionEffect.Allow;
+        };
     }
 
     /// <summary>

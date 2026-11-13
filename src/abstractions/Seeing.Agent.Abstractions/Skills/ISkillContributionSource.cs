@@ -30,6 +30,11 @@ public interface ISkillContributionRegistry
     IReadOnlyList<ISkillContributionSource> Sources { get; }
 
     /// <summary>
+    /// 通知已登记源的清单可能已变（如 MCP 断开 / 禁用），目录应重拉 <see cref="ISkillContributionSource.ListAsync"/>。
+    /// </summary>
+    void NotifyChanged();
+
+    /// <summary>
     /// 按键向各源回源加载；第一个返回非 null 的源胜出。
     /// </summary>
     Task<SkillContributionContent?> LoadAsync(string key, CancellationToken ct = default);
