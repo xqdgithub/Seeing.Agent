@@ -8,6 +8,7 @@ internal static class McpStateTransitions
         [McpConnectionState.Pending] = new HashSet<McpConnectionState>
         {
             McpConnectionState.Connecting,
+            McpConnectionState.Paused,
             McpConnectionState.Disabled,
             McpConnectionState.Removed
         },

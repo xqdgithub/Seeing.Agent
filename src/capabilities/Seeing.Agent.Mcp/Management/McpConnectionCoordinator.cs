@@ -348,32 +348,9 @@ internal sealed class McpConnectionCoordinator : IDisposable
             return McpOperationResult.NoChange(_serverName, McpOperationType.Disconnect,
                 currentStatus?.State ?? CoreMcpConnectionState.Pending);
 
-        if (_session != null)
-        {
-            var toolNames = currentStatus.ToolNames;
-            foreach (var toolName in toolNames)
-            {
-                var toolId = McpTool.BuildId(_serverName, toolName);
-                await _toolRegistry.UnregisterToolAsync(_serverName, toolId, ct);
+        await TearDownSessionAsync(currentStatus, ct).ConfigureAwait(false);
 
-                _hookManager.TriggerFireAndForget(
-                    HookRegistry.McpToolUnregistered, "",
-                    new Dictionary<string, object?> { ["toolId"] = toolId });
-            }
-
-            try
-            {
-                await _session.DisconnectAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "断开 MCP Server {Server} 连接时发生错误", _serverName);
-            }
-
-            _session = null;
-        }
-
-        var newStatus = McpServerStatusBuilder.From(currentStatus!)
+        var newStatus = McpServerStatusBuilder.From(currentStatus)
             .WithState(CoreMcpConnectionState.Pending)
             .WithToolCount(0)
             .WithToolNames(new List<string>())
@@ -467,36 +444,75 @@ internal sealed class McpConnectionCoordinator : IDisposable
             return McpOperationResult.Failed(_serverName, McpOperationType.Pause,
                 McpErrorInfo.ServerRemoved(_serverName));
 
-        var currentStatus = _getStatusFunc(_serverName);
-        if (currentStatus == null)
+        await _connectLock.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            var error = McpErrorInfo.ConfigInvalid(_serverName, "服务器状态未初始化");
-            return McpOperationResult.Failed(_serverName, McpOperationType.Pause, error);
+            var currentStatus = _getStatusFunc(_serverName);
+            if (currentStatus == null)
+            {
+                var error = McpErrorInfo.ConfigInvalid(_serverName, "服务器状态未初始化");
+                return McpOperationResult.Failed(_serverName, McpOperationType.Pause, error);
+            }
+
+            // Connected：正常暂停。Pending：竞态下断开后仍允许落到 Paused（勿再经 Pending 中转抛异常）。
+            if (currentStatus.State is not (CoreMcpConnectionState.Connected or CoreMcpConnectionState.Pending))
+            {
+                return McpOperationResult.NoChange(_serverName, McpOperationType.Pause, currentStatus.State);
+            }
+
+            var startTime = DateTime.Now;
+
+            // 拆会话但不把状态写成 Pending——否则 Pending→Paused 会在校验里炸穿 UI。
+            await TearDownSessionAsync(currentStatus, ct).ConfigureAwait(false);
+
+            var pausedStatus = McpServerStatusBuilder.From(currentStatus)
+                .WithState(CoreMcpConnectionState.Paused)
+                .WithToolCount(0)
+                .WithToolNames(new List<string>())
+                .WithCapabilities(null)
+                .Build();
+
+            await UpdateStateAsync(CoreMcpConnectionState.Paused, pausedStatus).ConfigureAwait(false);
+
+            _logger.LogInformation("MCP Server {Server} 已暂停", _serverName);
+
+            return McpOperationResult.Succeeded(_serverName, McpOperationType.Pause,
+                CoreMcpConnectionState.Paused, DateTime.Now - startTime);
+        }
+        finally
+        {
+            _connectLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// 注销工具并断开会话，不改写连接状态。供 Disconnect（再写 Pending）与 Pause（再写 Paused）共用。
+    /// </summary>
+    private async Task TearDownSessionAsync(McpServerStatus currentStatus, CancellationToken ct)
+    {
+        if (_session == null)
+            return;
+
+        foreach (var toolName in currentStatus.ToolNames)
+        {
+            var toolId = McpTool.BuildId(_serverName, toolName);
+            await _toolRegistry.UnregisterToolAsync(_serverName, toolId, ct).ConfigureAwait(false);
+
+            _hookManager.TriggerFireAndForget(
+                HookRegistry.McpToolUnregistered, "",
+                new Dictionary<string, object?> { ["toolId"] = toolId });
         }
 
-        if (currentStatus.State != CoreMcpConnectionState.Connected)
+        try
         {
-            return McpOperationResult.NoChange(_serverName, McpOperationType.Pause, currentStatus.State);
+            await _session.DisconnectAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "断开 MCP Server {Server} 连接时发生错误", _serverName);
         }
 
-        var startTime = DateTime.Now;
-
-        // 先断开连接
-        await ExecuteDisconnectAsync(ct);
-
-        // 设置为 Paused 状态
-        var pausedStatus = McpServerStatusBuilder.From(currentStatus)
-            .WithState(CoreMcpConnectionState.Paused)
-            .WithToolCount(0)
-            .WithToolNames(new List<string>())
-            .Build();
-
-        await UpdateStateAsync(CoreMcpConnectionState.Paused, pausedStatus);
-
-        _logger.LogInformation("MCP Server {Server} 已暂停", _serverName);
-
-        return McpOperationResult.Succeeded(_serverName, McpOperationType.Pause,
-            CoreMcpConnectionState.Paused, DateTime.Now - startTime);
+        _session = null;
     }
 
     public async Task<McpOperationResult> ResumeAsync(CancellationToken ct = default)

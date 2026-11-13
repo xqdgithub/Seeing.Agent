@@ -339,9 +339,68 @@
         _jsonEditorVisible = true;
     }
     
-    async Task PauseServer(string name) => await McpManager.PauseServerAsync(name);
-    async Task ResumeServer(string name) => await McpManager.ResumeServerAsync(name);
-    async Task ReconnectServer(string name) => await McpManager.ReconnectServerAsync(name);
+    async Task PauseServer(string name)
+    {
+        try
+        {
+            var result = await McpManager.PauseServerAsync(name);
+            if (result.Success)
+            {
+                MessageService.Success("服务器已暂停");
+                RefreshStatus();
+            }
+            else
+            {
+                MessageService.Error($"暂停失败：{result.Error?.UserMessage ?? result.Status?.ToString() ?? "未知错误"}");
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"暂停失败：{ex.Message}");
+        }
+    }
+
+    async Task ResumeServer(string name)
+    {
+        try
+        {
+            var result = await McpManager.ResumeServerAsync(name);
+            if (result.Success)
+            {
+                MessageService.Success("服务器已恢复");
+                RefreshStatus();
+            }
+            else
+            {
+                MessageService.Error($"恢复失败：{result.Error?.UserMessage ?? "未知错误"}");
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"恢复失败：{ex.Message}");
+        }
+    }
+
+    async Task ReconnectServer(string name)
+    {
+        try
+        {
+            var result = await McpManager.ReconnectServerAsync(name);
+            if (result.Success)
+            {
+                MessageService.Success("已触发重新连接");
+                RefreshStatus();
+            }
+            else
+            {
+                MessageService.Error($"重连失败：{result.Error?.UserMessage ?? "未知错误"}");
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"重连失败：{ex.Message}");
+        }
+    }
     
     string GetStateClass(McpServerStatus status) => status.State switch {
         McpConnectionState.Connected => "state-success",
