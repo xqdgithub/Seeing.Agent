@@ -82,7 +82,7 @@ namespace Seeing.Agent.Skills
         {
             ArgumentNullException.ThrowIfNull(entry);
 
-            if (entry.Source == SkillSource.Registered
+            if (entry.Source is SkillSource.Registered or SkillSource.Contribution
                 || string.IsNullOrWhiteSpace(entry.DirectoryPath)
                 || !Directory.Exists(entry.DirectoryPath))
             {

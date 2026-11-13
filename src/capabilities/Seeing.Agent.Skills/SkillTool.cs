@@ -21,6 +21,7 @@ namespace Seeing.Agent.Skills
     public class SkillTool : ITool
     {
         private readonly SkillManager _skillManager;
+        private readonly ISkillContributionRegistry? _contributions;
         private readonly ILogger<SkillTool> _logger;
 
         /// <summary>
@@ -28,10 +29,14 @@ namespace Seeing.Agent.Skills
         /// </summary>
         private const int MaxSkillFiles = 50;
 
-        public SkillTool(SkillManager skillManager, ILogger<SkillTool> logger)
+        public SkillTool(
+            SkillManager skillManager,
+            ILogger<SkillTool> logger,
+            ISkillContributionRegistry? contributions = null)
         {
             _skillManager = skillManager;
             _logger = logger;
+            _contributions = contributions;
         }
 
         public string Id => "skill";
@@ -79,23 +84,19 @@ namespace Seeing.Agent.Skills
             return JsonSerializer.SerializeToElement(schema);
         }
 
-        public Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
+        public async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
             // 获取技能名称
             if (!arguments.TryGetProperty("name", out var nameProp))
             {
-                return Task.FromResult(Failure("Missing required parameter: name. See '## Skills' section in the system prompt for available skill names."));
+                return Failure("Missing required parameter: name. See '## Skills' section in the system prompt for available skill names.");
             }
 
             var skillName = nameProp.GetString();
             if (string.IsNullOrEmpty(skillName))
             {
-                return Task.FromResult(Failure("Parameter 'name' must be a non-empty string. See '## Skills' section in the system prompt for available skill names."));
+                return Failure("Parameter 'name' must be a non-empty string. See '## Skills' section in the system prompt for available skill names.");
             }
-
-            SkillInfo skill;
-            string directory;
-            List<string> skillFiles;
 
             // 执行级钉住快照是本工具的唯一事实源：缺失即宿主未接线，失败并告警；
             // 不得读取 ISkillCatalog / SkillManager 的目录当前态（会与提示词清单分叉）。
@@ -104,8 +105,8 @@ namespace Seeing.Agent.Skills
                 _logger.LogWarning(
                     "技能钉住快照缺失，skill 工具不可用: SessionId={SessionId}",
                     context.SessionId);
-                return Task.FromResult(Failure(
-                    "Skill catalog is not available in this execution; retry the request."));
+                return Failure(
+                    "Skill catalog is not available in this execution; retry the request.");
             }
 
             // 解析与文件列表都以本轮快照为准
@@ -115,23 +116,27 @@ namespace Seeing.Agent.Skills
             if (entry is null)
             {
                 if (snapshot.DisabledNames.Contains(skillName))
-                    return Task.FromResult(Disabled(skillName));
+                    return Disabled(skillName);
 
-                return Task.FromResult(NotFound(skillName, snapshot));
+                return NotFound(skillName, snapshot);
             }
 
             if (snapshot.DisabledNames.Contains(entry.Info.Name))
-                return Task.FromResult(Disabled(skillName));
-
-            skill = entry.Info;
-            directory = entry.DirectoryPath;
-            skillFiles = _skillManager.GetSkillFiles(entry, MaxSkillFiles);
+                return Disabled(skillName);
 
             _logger.LogInformation("Loading skill: {Name}", skillName);
 
+            if (entry.Source == SkillSource.Contribution)
+            {
+                return await LoadContributionAsync(entry, context.CancellationToken).ConfigureAwait(false);
+            }
+
+            var skill = entry.Info;
+            var directory = entry.DirectoryPath;
+            var skillFiles = _skillManager.GetSkillFiles(entry, MaxSkillFiles);
             var output = BuildSkillContent(skill, directory, skillFiles);
 
-            return Task.FromResult(new ToolResult
+            return new ToolResult
             {
                 Success = true,
                 Title = $"Loaded skill: {skill.Name}",
@@ -142,7 +147,43 @@ namespace Seeing.Agent.Skills
                     ["dir"] = directory,
                     ["fileCount"] = skillFiles.Count
                 }
-            });
+            };
+        }
+
+        private async Task<ToolResult> LoadContributionAsync(
+            SkillCatalogEntry entry,
+            CancellationToken cancellationToken)
+        {
+            if (_contributions is null)
+            {
+                return Failure(
+                    $"Skill \"{entry.Info.Name}\" is a contribution skill but no contribution registry is available.");
+            }
+
+            var loaded = await _contributions
+                .LoadAsync(entry.Info.Name, cancellationToken)
+                .ConfigureAwait(false);
+            if (loaded is null || string.IsNullOrWhiteSpace(loaded.MarkdownBody))
+            {
+                return Failure($"Skill content is empty or unavailable: {entry.Info.Name}");
+            }
+
+            var skill = CloneInfo(entry.Info, loaded.MarkdownBody);
+            var output = BuildContributionContent(skill, loaded.Attachments);
+
+            return new ToolResult
+            {
+                Success = true,
+                Title = $"Loaded skill: {skill.Name}",
+                Output = output,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["name"] = skill.Name,
+                    ["dir"] = string.Empty,
+                    ["fileCount"] = loaded.Attachments.Count,
+                    ["source"] = "contribution"
+                }
+            };
         }
 
         /// <summary>
@@ -150,41 +191,7 @@ namespace Seeing.Agent.Skills
         /// </summary>
         private string BuildSkillContent(SkillInfo skill, string directory, List<string> skillFiles)
         {
-            var lines = new List<string>
-            {
-                $"<skill_content name=\"{EscapeXml(skill.Name)}\">",
-                $"# Skill: {skill.Name}",
-                ""
-            };
-
-            // 添加元数据
-            if (!string.IsNullOrEmpty(skill.Version))
-                lines.Add($"**Version:** {skill.Version}");
-            if (!string.IsNullOrEmpty(skill.Author))
-                lines.Add($"**Author:** {skill.Author}");
-            if (!string.IsNullOrEmpty(skill.License))
-                lines.Add($"**License:** {skill.License}");
-            if (!string.IsNullOrEmpty(skill.Compatibility))
-                lines.Add($"**Compatibility:** {skill.Compatibility}");
-            if (skill.Tags.Count > 0)
-                lines.Add($"**Tags:** {string.Join(", ", skill.Tags)}");
-            if (skill.Requires.Count > 0)
-                lines.Add($"**Requires:** {string.Join(", ", skill.Requires)}");
-            if (skill.Metadata.Count > 0)
-            {
-                lines.Add($"**Metadata:**");
-                foreach (var kvp in skill.Metadata)
-                {
-                    lines.Add($"  - {kvp.Key}: {kvp.Value}");
-                }
-            }
-
-            if (!string.IsNullOrEmpty(skill.Version) || !string.IsNullOrEmpty(skill.Author) ||
-                !string.IsNullOrEmpty(skill.License) || !string.IsNullOrEmpty(skill.Compatibility) ||
-                skill.Tags.Count > 0 || skill.Requires.Count > 0 || skill.Metadata.Count > 0)
-            {
-                lines.Add("");
-            }
+            var lines = BeginSkillContent(skill);
 
             // 添加技能内容
             lines.Add(skill.Content);
@@ -210,6 +217,89 @@ namespace Seeing.Agent.Skills
 
             return string.Join("\n", lines);
         }
+
+        /// <summary>贡献技能：无 file:/// 基目录；附件只列 URI。</summary>
+        private string BuildContributionContent(
+            SkillInfo skill,
+            IReadOnlyList<SkillContributionAttachment> attachments)
+        {
+            var lines = BeginSkillContent(skill);
+            lines.Add(skill.Content);
+            lines.Add("");
+            lines.Add("This skill is loaded from an external contribution source; there is no local file:// base directory.");
+
+            if (attachments.Count > 0)
+            {
+                lines.Add("");
+                lines.Add("<skill_attachments>");
+                foreach (var attachment in attachments)
+                {
+                    var mime = string.IsNullOrEmpty(attachment.MimeType)
+                        ? string.Empty
+                        : $" mime=\"{EscapeXml(attachment.MimeType)}\"";
+                    lines.Add(
+                        $"  <attachment path=\"{EscapeXml(attachment.RelativePath)}\" uri=\"{EscapeXml(attachment.Uri)}\"{mime} />");
+                }
+                lines.Add("</skill_attachments>");
+            }
+
+            lines.Add("</skill_content>");
+            return string.Join("\n", lines);
+        }
+
+        private static List<string> BeginSkillContent(SkillInfo skill)
+        {
+            var lines = new List<string>
+            {
+                $"<skill_content name=\"{EscapeXml(skill.Name)}\">",
+                $"# Skill: {skill.Name}",
+                ""
+            };
+
+            if (!string.IsNullOrEmpty(skill.Version))
+                lines.Add($"**Version:** {skill.Version}");
+            if (!string.IsNullOrEmpty(skill.Author))
+                lines.Add($"**Author:** {skill.Author}");
+            if (!string.IsNullOrEmpty(skill.License))
+                lines.Add($"**License:** {skill.License}");
+            if (!string.IsNullOrEmpty(skill.Compatibility))
+                lines.Add($"**Compatibility:** {skill.Compatibility}");
+            if (skill.Tags.Count > 0)
+                lines.Add($"**Tags:** {string.Join(", ", skill.Tags)}");
+            if (skill.Requires.Count > 0)
+                lines.Add($"**Requires:** {string.Join(", ", skill.Requires)}");
+            if (skill.Metadata.Count > 0)
+            {
+                lines.Add($"**Metadata:**");
+                foreach (var kvp in skill.Metadata)
+                    lines.Add($"  - {kvp.Key}: {kvp.Value}");
+            }
+
+            if (!string.IsNullOrEmpty(skill.Version) || !string.IsNullOrEmpty(skill.Author) ||
+                !string.IsNullOrEmpty(skill.License) || !string.IsNullOrEmpty(skill.Compatibility) ||
+                skill.Tags.Count > 0 || skill.Requires.Count > 0 || skill.Metadata.Count > 0)
+            {
+                lines.Add("");
+            }
+
+            return lines;
+        }
+
+        /// <summary>复制元数据并填入回源正文，避免改写钉住快照里的 <see cref="SkillInfo"/>。</summary>
+        private static SkillInfo CloneInfo(SkillInfo source, string content) => new()
+        {
+            Name = source.Name,
+            Description = source.Description,
+            Location = source.Location,
+            Content = content,
+            Version = source.Version,
+            Author = source.Author,
+            Tags = [.. source.Tags],
+            Requires = [.. source.Requires],
+            License = source.License,
+            Compatibility = source.Compatibility,
+            Metadata = new Dictionary<string, string>(source.Metadata),
+        };
 
         /// <summary>「技能不存在」提示：清单文本复用 <see cref="SkillCatalogFormatter"/>（唯一出口）。</summary>
         private ToolResult NotFound(string skillName, SkillCatalogSnapshot snapshot)

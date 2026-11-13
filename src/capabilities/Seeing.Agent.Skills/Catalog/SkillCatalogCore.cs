@@ -12,8 +12,9 @@ namespace Seeing.Agent.Skills.Catalog;
 
 /// <summary>
 /// <see cref="ISkillCatalog"/> 的唯一实现：不可变快照 + 单调版本 + 变更事件。
-/// <para>双通道：<c>_registered</c>（插件 / 内嵌资源，优先级最高）与 <c>_fileSkills</c>（文件系统，
-/// 按根优先级去重）。快照构建后用 <see cref="Volatile.Write{T}(ref T, T)"/> 原子替换，
+/// <para>三通道：<c>_registered</c>（插件 / 内嵌资源，优先级最高）、<c>_fileSkills</c>（文件系统，
+/// 按根优先级去重）、<c>_contributions</c>（外部贡献端口，不走 <see cref="RegisterAsync"/>；
+/// 同名时不得盖文件或注册项）。快照构建后用 <see cref="Volatile.Write{T}(ref T, T)"/> 原子替换，
 /// 读者永远看不到空窗（<see cref="Current"/> 读到的要么是旧快照、要么是新快照）。</para>
 /// <para>刷新单飞：并发调用在等锁期间若观察到版本已推进，直接返回当前快照，不重复扫盘。</para>
 /// </summary>
@@ -27,6 +28,8 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
 
     private readonly ILogger<SkillCatalogCore> _logger;
     private readonly ISeeingDirectories? _directories;
+    private readonly ISkillContributionRegistry? _contributionRegistry;
+    private readonly SkillContributionRegistry? _contributionRegistryConcrete;
 
     /// <summary>
     /// 状态文件写闸（与 <c>SkillWriter</c> 共用同一实例）：禁用状态的读取与写入必须串行，
@@ -65,7 +68,12 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
     private ImmutableDictionary<string, SkillCatalogEntry> _fileSkills =
         ImmutableDictionary.Create<string, SkillCatalogEntry>(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>外部贡献通道（不可变字典，按名称索引；与文件/注册冲突的条目不会进入本字典）。</summary>
+    private ImmutableDictionary<string, SkillCatalogEntry> _contributions =
+        ImmutableDictionary.Create<string, SkillCatalogEntry>(StringComparer.OrdinalIgnoreCase);
+
     private IReadOnlyList<SkillConflict> _fileConflicts = [];
+    private IReadOnlyList<SkillConflict> _contributionConflicts = [];
     private IReadOnlyList<SkillLoadIssue> _fileIssues = [];
     private IReadOnlySet<string> _disabledNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyDictionary<string, ConfigLevel> _disabledScopes =
@@ -89,17 +97,24 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
     /// 工作区提供者；用于判断项目级根是否可读（未选定时 <c>ProjectSeeingDirectory</c> 会抛异常）。
     /// 为 null 时按「目录契约始终可读」处理，保持既有测试语义。
     /// </param>
+    /// <param name="contributions">外部技能贡献登记表；为 null 时不合并贡献通道。</param>
     public SkillCatalogCore(
         ILogger<SkillCatalogCore> logger,
         ISeeingDirectories? directories = null,
         SkillWriteGate? writeGate = null,
-        IWorkspaceProvider? workspaces = null)
+        IWorkspaceProvider? workspaces = null,
+        ISkillContributionRegistry? contributions = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _directories = directories;
         _writeGate = writeGate;
         _workspaces = workspaces;
+        _contributionRegistry = contributions;
+        _contributionRegistryConcrete = contributions as SkillContributionRegistry;
         _roots = BuildDefaultRoots();
+
+        if (_contributionRegistryConcrete is not null)
+            _contributionRegistryConcrete.Changed += OnContributionsChangedAsync;
     }
 
     /// <inheritdoc />
@@ -212,6 +227,9 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
         var scan = await SkillFileScanner.ScanAsync(roots, _logger, ct).ConfigureAwait(false);
         var (disabledNames, disabledScopes) = disabledState;
 
+        // 贡献 ListAsync 在锁外执行；发布时再与最新文件/注册通道合并
+        var contributionMerge = await CollectContributionsAsync(ct).ConfigureAwait(false);
+
         lock (_publishLock)
         {
             _fileSkills = ToImmutable(scan.Entries);
@@ -221,8 +239,169 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
             _disabledScopes = disabledScopes;
             Volatile.Write(ref _fingerprint, fingerprint);
 
+            ApplyContributionMerge(contributionMerge);
             return Publish();
         }
+    }
+
+    /// <summary>
+    /// 仅重拉贡献源并发布新快照（不扫盘）。供源登记 / 连接变更后调用。
+    /// </summary>
+    public async Task<SkillCatalogSnapshot> RefreshContributionsAsync(CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        var observed = Current;
+        var contributionMerge = await CollectContributionsAsync(ct).ConfigureAwait(false);
+
+        SkillCatalogSnapshot snapshot;
+        lock (_publishLock)
+        {
+            ApplyContributionMerge(contributionMerge);
+            snapshot = Publish();
+        }
+
+        if (!ReferenceEquals(snapshot, observed))
+            RaiseChanged(snapshot);
+
+        return snapshot;
+    }
+
+    private Task OnContributionsChangedAsync(CancellationToken ct) =>
+        RefreshContributionsAsync(ct);
+
+    /// <summary>在锁外向各贡献源 <c>ListAsync</c>，返回待应用的条目与冲突（相对当时的注册/文件通道再裁决）。</summary>
+    private async Task<ContributionMerge> CollectContributionsAsync(CancellationToken ct)
+    {
+        if (_contributionRegistry is null)
+            return ContributionMerge.Empty;
+
+        var sources = _contributionRegistry.Sources;
+        if (sources.Count == 0)
+            return ContributionMerge.Empty;
+
+        var collected = new List<(SkillContributionDescriptor Descriptor, string SourceKind)>();
+        foreach (var source in sources)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var listed = await source.ListAsync(ct).ConfigureAwait(false);
+                foreach (var descriptor in listed)
+                {
+                    if (string.IsNullOrWhiteSpace(descriptor.Key))
+                        continue;
+                    collected.Add((descriptor, source.SourceKind));
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "列举技能贡献失败，已跳过该源：Kind={SourceKind}",
+                    source.SourceKind);
+            }
+        }
+
+        return new ContributionMerge(collected);
+    }
+
+    /// <summary>调用方必须持有 <see cref="_publishLock"/>。</summary>
+    private void ApplyContributionMerge(ContributionMerge merge)
+    {
+        if (merge.Descriptors.Count == 0)
+        {
+            _contributions = ImmutableDictionary.Create<string, SkillCatalogEntry>(StringComparer.OrdinalIgnoreCase);
+            _contributionConflicts = [];
+            return;
+        }
+
+        var builder = ImmutableDictionary.CreateBuilder<string, SkillCatalogEntry>(StringComparer.OrdinalIgnoreCase);
+        var conflicts = new List<SkillConflict>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (descriptor, sourceKind) in merge.Descriptors)
+        {
+            var key = descriptor.Key;
+
+            if (_registered.TryGetValue(key, out var registered))
+            {
+                conflicts.Add(new SkillConflict(
+                    key,
+                    SkillSource.Registered,
+                    registered.ProviderId ?? "registered",
+                    SkillSource.Contribution,
+                    descriptor.ProviderId));
+                _logger.LogWarning(
+                    "技能贡献与已注册技能冲突，已跳过贡献：{Name} 源={SourceKind} 提供方={ProviderId}",
+                    key,
+                    sourceKind,
+                    descriptor.ProviderId);
+                continue;
+            }
+
+            if (_fileSkills.TryGetValue(key, out var file))
+            {
+                conflicts.Add(new SkillConflict(
+                    key,
+                    file.Source,
+                    file.DirectoryPath,
+                    SkillSource.Contribution,
+                    descriptor.ProviderId));
+                _logger.LogWarning(
+                    "技能贡献与本地文件技能冲突，已跳过贡献：{Name} 源={SourceKind} 提供方={ProviderId}",
+                    key,
+                    sourceKind,
+                    descriptor.ProviderId);
+                continue;
+            }
+
+            if (!seen.Add(key) || builder.ContainsKey(key))
+            {
+                var winnerOrigin = builder.TryGetValue(key, out var existing)
+                    ? existing.ProviderId ?? sourceKind
+                    : sourceKind;
+                conflicts.Add(new SkillConflict(
+                    key,
+                    SkillSource.Contribution,
+                    winnerOrigin,
+                    SkillSource.Contribution,
+                    descriptor.ProviderId));
+                _logger.LogWarning(
+                    "技能贡献键重复，已跳过后者：{Name} 提供方={ProviderId}",
+                    key,
+                    descriptor.ProviderId);
+                continue;
+            }
+
+            var info = new SkillInfo
+            {
+                Name = key,
+                Description = descriptor.Description ?? string.Empty,
+                Content = string.Empty,
+                Location = string.Empty,
+            };
+
+            builder[key] = new SkillCatalogEntry(
+                info,
+                SkillSource.Contribution,
+                descriptor.ProviderId,
+                DirectoryPath: string.Empty);
+        }
+
+        _contributions = builder.ToImmutable();
+        _contributionConflicts = conflicts;
+    }
+
+    private readonly record struct ContributionMerge(
+        IReadOnlyList<(SkillContributionDescriptor Descriptor, string SourceKind)> Descriptors)
+    {
+        public static ContributionMerge Empty { get; } =
+            new([]);
     }
 
     /// <inheritdoc />
@@ -327,6 +506,9 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
+        if (_contributionRegistryConcrete is not null)
+            _contributionRegistryConcrete.Changed -= OnContributionsChangedAsync;
+
         lock (_subscriberLock)
             _subscribers.Clear();
 
@@ -336,14 +518,17 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
     // ===== 快照发布 =====
 
     /// <summary>
-    /// 合并双通道并发布新快照（版本 +1），最后在锁外触发事件。
+    /// 合并三通道并发布新快照（版本 +1），最后在锁外触发事件。
     /// <para>注册通道优先：同名文件技能被注册项遮蔽，并记录一条冲突（不静默覆盖）。</para>
+    /// <para>贡献通道不盖文件 / 注册项：冲突在 <see cref="ApplyContributionMerge"/> 已丢弃贡献。</para>
     /// <para>调用方必须持有 <see cref="_publishLock"/>：快照字段读取与版本推进同属一个临界区。</para>
     /// </summary>
     private SkillCatalogSnapshot Publish()
     {
-        var entries = new List<SkillCatalogEntry>(_registered.Count + _fileSkills.Count);
-        var conflicts = new List<SkillConflict>(_fileConflicts.Count + _registered.Count);
+        var entries = new List<SkillCatalogEntry>(
+            _registered.Count + _fileSkills.Count + _contributions.Count);
+        var conflicts = new List<SkillConflict>(
+            _fileConflicts.Count + _contributionConflicts.Count + _registered.Count);
 
         // 注册通道：名称稳定排序，保证快照内容与顺序可复现
         foreach (var entry in _registered.Values.OrderBy(e => e.Info.Name, StringComparer.Ordinal))
@@ -353,7 +538,12 @@ public sealed class SkillCatalogCore : ISkillCatalog, IDisposable
         foreach (var entry in _fileSkills.Values.OrderBy(e => e.Info.Name, StringComparer.Ordinal))
             entries.Add(entry);
 
+        // 贡献通道：已与文件/注册隔离；稳定排序
+        foreach (var entry in _contributions.Values.OrderBy(e => e.Info.Name, StringComparer.Ordinal))
+            entries.Add(entry);
+
         conflicts.AddRange(_fileConflicts);
+        conflicts.AddRange(_contributionConflicts);
 
         foreach (var registered in _registered.Values)
         {

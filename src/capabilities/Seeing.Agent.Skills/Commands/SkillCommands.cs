@@ -16,11 +16,16 @@ public sealed class SkillLoadCommand : ICommand
 {
     private readonly ISkillCatalog _catalog;
     private readonly ISessionManager _sessionManager;
+    private readonly ISkillContributionRegistry? _contributions;
 
-    public SkillLoadCommand(ISkillCatalog catalog, ISessionManager sessionManager)
+    public SkillLoadCommand(
+        ISkillCatalog catalog,
+        ISessionManager sessionManager,
+        ISkillContributionRegistry? contributions = null)
     {
         _catalog = catalog;
         _sessionManager = sessionManager;
+        _contributions = contributions;
     }
 
     public CommandMetadata Metadata { get; } = new()
@@ -61,6 +66,13 @@ public sealed class SkillLoadCommand : ICommand
         }
 
         var content = entry.Info.Content;
+        if (string.IsNullOrEmpty(content) && entry.Source == SkillSource.Contribution)
+        {
+            content = await SkillContributionContentResolver
+                .LoadBodyAsync(_contributions, entry.Info.Name, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         if (string.IsNullOrEmpty(content))
         {
             return CommandResult.Fail($"Skill content is empty: {skillName}");
@@ -385,15 +397,20 @@ public sealed class DynamicSkillCommand : ICommand
 {
     private readonly ISessionManager _sessionManager;
     private readonly string _skillName;
+    private readonly ISkillContributionRegistry? _contributions;
 
     public CommandMetadata Metadata { get; }
 
-    public DynamicSkillCommand(ISessionManager sessionManager, string skillName)
+    public DynamicSkillCommand(
+        ISessionManager sessionManager,
+        string skillName,
+        ISkillContributionRegistry? contributions = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(skillName);
 
         _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
         _skillName = skillName;
+        _contributions = contributions;
 
         Metadata = new CommandMetadata
         {
@@ -432,6 +449,15 @@ public sealed class DynamicSkillCommand : ICommand
         }
 
         var content = entry.Info.Content;
+        if (string.IsNullOrEmpty(content) && entry.Source == SkillSource.Contribution)
+        {
+            var registry = _contributions
+                ?? context.Services?.GetService<ISkillContributionRegistry>();
+            content = await SkillContributionContentResolver
+                .LoadBodyAsync(registry, entry.Info.Name, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         if (string.IsNullOrEmpty(content))
         {
             return CommandResult.Fail($"Skill content is empty: {_skillName}");

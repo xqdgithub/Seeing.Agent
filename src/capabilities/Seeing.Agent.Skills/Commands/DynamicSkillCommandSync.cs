@@ -18,6 +18,7 @@ internal sealed class DynamicSkillCommandSync : IDisposable
     private readonly ISkillCatalog _catalog;
     private readonly ICommandRegistry _registry;
     private readonly ISessionManager _sessionManager;
+    private readonly ISkillContributionRegistry? _contributions;
     private readonly ILogger _logger;
 
     /// <summary>本同步器登记过的命令名（撤销的输入集合）。</summary>
@@ -33,12 +34,14 @@ internal sealed class DynamicSkillCommandSync : IDisposable
         ISkillCatalog catalog,
         ICommandRegistry registry,
         ISessionManager sessionManager,
-        ILogger logger)
+        ILogger logger,
+        ISkillContributionRegistry? contributions = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _contributions = contributions;
     }
 
     /// <summary>订阅目录变更并按当前快照对齐一次（幂等）。</summary>
@@ -93,9 +96,18 @@ internal sealed class DynamicSkillCommandSync : IDisposable
 
             foreach (var name in desired.Where(name => !_registered.Contains(name)))
             {
+                // 与内置 / 其它模块命令重名：跳过并记日志，禁止靠 Register 覆盖
+                if (_registry.HasCommand(name))
+                {
+                    _logger.LogWarning(
+                        "动态技能命令与已有命令重名，已跳过：{SkillName}",
+                        name);
+                    continue;
+                }
+
                 try
                 {
-                    _registry.Register(new DynamicSkillCommand(_sessionManager, name));
+                    _registry.Register(new DynamicSkillCommand(_sessionManager, name, _contributions));
                     _registered.Add(name);
                 }
                 catch (Exception ex)

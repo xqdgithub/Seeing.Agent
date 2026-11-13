@@ -14,7 +14,13 @@ public enum SkillSource
     ProjectFile,
 
     /// <summary>用户级文件技能（主目录下的技能根）。</summary>
-    UserFile
+    UserFile,
+
+    /// <summary>
+    /// 外部贡献端口（如 MCP Skills）。不走 <see cref="ISkillCatalog.RegisterAsync"/>；
+    /// 同名时不得盖文件或注册通道，冲突则丢弃贡献。
+    /// </summary>
+    Contribution
 }
 
 /// <summary>

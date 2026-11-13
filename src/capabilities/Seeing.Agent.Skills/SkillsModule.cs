@@ -71,12 +71,18 @@ public sealed class SkillsModule : ISeeingModule, IUiContributor
         // 状态文件写闸：先于目录登记，使目录读侧与写入侧共用同一把闸（I3：读不得看到写了一半的文件）
         services.AddSingleton<SkillWriteGate>();
 
+        // 外部技能贡献登记表：MCP 等能力包只 Register 源；目录 Publish 合并，禁止 RegisterAsync
+        services.TryAddSingleton<SkillContributionRegistry>();
+        services.TryAddSingleton<ISkillContributionRegistry>(sp =>
+            sp.GetRequiredService<SkillContributionRegistry>());
+
         // 技能目录：可见性的唯一真相源（单例，全局共享同一快照序列）
         services.AddSingleton<SkillCatalogCore>(sp => new SkillCatalogCore(
             sp.GetRequiredService<ILogger<SkillCatalogCore>>(),
             sp.GetService<ISeeingDirectories>(),
             sp.GetRequiredService<SkillWriteGate>(),
-            sp.GetService<IWorkspaceProvider>()));
+            sp.GetService<IWorkspaceProvider>(),
+            sp.GetService<ISkillContributionRegistry>()));
         services.TryAddSingleton<ISkillCatalog>(sp => sp.GetRequiredService<SkillCatalogCore>());
 
         // 写入收口：文件通道唯一写入口（注册通道技能只读），skill-state.json 写闸串行化
@@ -90,7 +96,10 @@ public sealed class SkillsModule : ISeeingModule, IUiContributor
             sp.GetRequiredService<ILogger<SkillManager>>(),
             sp.GetRequiredService<ISkillCatalog>()));
         services.TryAddSingleton<ISkillManager>(sp => sp.GetRequiredService<SkillManager>());
-        services.AddSingleton<SkillTool>();
+        services.AddSingleton<SkillTool>(sp => new SkillTool(
+            sp.GetRequiredService<SkillManager>(),
+            sp.GetRequiredService<ILogger<SkillTool>>(),
+            sp.GetService<ISkillContributionRegistry>()));
         services.AddSingleton<IComponentLoader, SkillLoader>();
 
         // 技能上下文源：读执行作用域的钉住快照（Source 只依赖 IContextExecutionScope，绝不读目录当前态）。
@@ -258,7 +267,13 @@ public sealed class SkillsModule : ISeeingModule, IUiContributor
 
         var logger = services.GetService<ILogger<SkillsModule>>() ?? NullLogger<SkillsModule>.Instance;
 
-        _commandSync = new DynamicSkillCommandSync(catalog, registry, sessionManager, logger);
+        var contributions = services.GetService<ISkillContributionRegistry>();
+        _commandSync = new DynamicSkillCommandSync(
+            catalog,
+            registry,
+            sessionManager,
+            logger,
+            contributions);
         _commandSync.Start();
     }
 

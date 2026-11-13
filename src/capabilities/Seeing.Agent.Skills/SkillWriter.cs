@@ -126,7 +126,7 @@ public sealed class SkillWriter : ISkillWriter
         var entry = _catalog.Find(name);
         if (entry is null)
             return Failure($"技能不存在：{name}");
-        if (entry.Source == SkillSource.Registered)
+        if (entry.Source is SkillSource.Registered or SkillSource.Contribution)
             return Failure($"{PluginReadOnlyError}：{name}");
         if (string.IsNullOrWhiteSpace(entry.DirectoryPath) || !Directory.Exists(entry.DirectoryPath))
             return Failure($"技能目录不存在：{name}");
@@ -168,7 +168,7 @@ public sealed class SkillWriter : ISkillWriter
         var entry = _catalog.Find(name);
         if (entry is null)
             return Failure($"技能不存在：{name}");
-        if (entry.Source == SkillSource.Registered)
+        if (entry.Source is SkillSource.Registered or SkillSource.Contribution)
             return Failure($"{PluginReadOnlyError}：{name}");
 
         var directory = entry.DirectoryPath;
@@ -538,14 +538,18 @@ public sealed class SkillWriter : ISkillWriter
 
     // ===== 目标解析与校验 =====
 
-    /// <summary>注册通道技能只读：命中即返回拒绝结果。</summary>
+    /// <summary>注册 / 贡献通道技能只读：命中即返回拒绝结果。</summary>
     private SkillWriteResult? CheckWritable(string name)
     {
         var entry = _catalog.Find(name);
-        if (entry?.Source != SkillSource.Registered)
+        if (entry?.Source is not (SkillSource.Registered or SkillSource.Contribution))
             return null;
 
-        _logger.LogWarning("拒绝对注册通道技能写入：{Name} 提供方={ProviderId}", name, entry.ProviderId);
+        _logger.LogWarning(
+            "拒绝对只读通道技能写入：{Name} 来源={Source} 提供方={ProviderId}",
+            name,
+            entry.Source,
+            entry.ProviderId);
         return Failure($"{PluginReadOnlyError}：{name}");
     }
 
