@@ -122,6 +122,16 @@ namespace Seeing.Agent.Mcp
                 .ToList();
         }
 
+        /// <inheritdoc />
+        public IMcpSession? TryGetSession(string serverName)
+        {
+            if (string.IsNullOrWhiteSpace(serverName))
+                return null;
+            if (!_coordinators.TryGetValue(serverName, out var coordinator))
+                return null;
+            return coordinator.GetSession();
+        }
+
         #endregion
 
         #region IMcpController 实现

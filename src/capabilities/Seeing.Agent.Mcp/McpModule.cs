@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
@@ -17,6 +17,7 @@ using Seeing.Agent.Mcp.Factory;
 using Seeing.Agent.Mcp.Management;
 using Seeing.Agent.Mcp.OAuth;
 using Seeing.Agent.Mcp.Policy;
+using Seeing.Agent.Mcp.Tools.Resources;
 
 namespace Seeing.Agent.Mcp;
 
@@ -27,13 +28,24 @@ public sealed class McpModule : ISeeingModule, IUiContributor
 {
     private static readonly IReadOnlyList<string> s_providedSeams = ["mcp"];
 
+    /// <summary>
+    /// 静态 ProvidedTools。Resource id（Task 5）在此；Task 4 合并管理工具时请追加、勿删除 Resource id。
+    /// </summary>
+    private static readonly string[] s_providedTools =
+    [
+        "mcp_list_resources",
+        "mcp_read_resource",
+        "mcp_list_resource_templates",
+    ];
+
     private readonly List<string> _registeredCommandNames = new();
+    private McpPromptCommandSync? _promptCommandSync;
 
     /// <inheritdoc />
     public string Id => "mcp";
 
     /// <inheritdoc />
-    public IReadOnlyList<string> ProvidedTools { get; } = Array.Empty<string>();
+    public IReadOnlyList<string> ProvidedTools => s_providedTools;
 
     /// <inheritdoc />
     public IReadOnlyList<string> ProvidedSeams => s_providedSeams;
@@ -161,25 +173,52 @@ public sealed class McpModule : ISeeingModule, IUiContributor
         }
     }
 
-    /// <summary>登记 <c>/mcp-auth</c> OAuth 授权命令（缺少授权器或命令注册表时静默跳过）。</summary>
+    /// <summary>
+    /// 登记 <c>/mcp-auth</c>（有授权器时）与 MCP Prompt 斜杠命令同步。
+    /// Prompt 同步不依赖 OAuth——缺授权器时仍启动。
+    /// </summary>
     private void RegisterCommands(IServiceProvider services)
     {
-        if (services.GetService<ICommandRegistry>() is not { } registry
-            || services.GetService<IMcpOAuthAuthorizer>() is not { } authorizer)
-        {
+        _registeredCommandNames.Clear();
+
+        if (services.GetService<ICommandRegistry>() is not { } registry)
             return;
+
+        if (services.GetService<IMcpOAuthAuthorizer>() is { } authorizer)
+        {
+            var command = new McpAuthCommand(authorizer);
+            registry.Register(command);
+            _registeredCommandNames.Add(command.Metadata.Name);
         }
 
-        var command = new McpAuthCommand(authorizer);
-        registry.Register(command);
-
-        _registeredCommandNames.Clear();
-        _registeredCommandNames.Add(command.Metadata.Name);
+        StartPromptCommandSync(services, registry);
     }
 
-    /// <summary>注销本模块登记的命令。</summary>
+    private void StartPromptCommandSync(IServiceProvider services, ICommandRegistry registry)
+    {
+        _promptCommandSync?.Dispose();
+        _promptCommandSync = null;
+
+        if (services.GetService<IMcpManager>() is not { } manager)
+            return;
+
+        var logger = services.GetService<ILoggerFactory>()?.CreateLogger("McpPromptCommandSync")
+            ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+
+        _promptCommandSync = new McpPromptCommandSync(
+            manager,
+            registry,
+            resolveSession: manager.TryGetSession,
+            logger);
+        _promptCommandSync.Start();
+    }
+
+    /// <summary>注销本模块登记的静态命令，并停止 Prompt 同步（撤销动态 prompt 命令）。</summary>
     private void UnregisterCommands(IServiceProvider services)
     {
+        _promptCommandSync?.Dispose();
+        _promptCommandSync = null;
+
         if (_registeredCommandNames.Count == 0)
             return;
 
