@@ -1,13 +1,14 @@
+using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Mcp;
+
 namespace Seeing.Agent.Mcp.Factory;
 
-using Microsoft.Extensions.Logging;
-
+/// <summary>按传输类型创建 <see cref="IMcpSession"/>。</summary>
 public interface IMcpClientWrapperFactory
 {
     McpTransportType TransportType { get; }
 
-    IMcpClientWrapper Create(
+    IMcpSession Create(
         McpServerConfig config,
         IHttpClientFactory? httpClientFactory,
         ILoggerFactory loggerFactory);

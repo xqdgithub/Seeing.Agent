@@ -1,20 +1,15 @@
+using System.Net;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Mcp.OAuth;
-using System.Net;
 
-namespace Seeing.Agent.Mcp.Factory;
+namespace Seeing.Agent.Mcp.Session;
 
 /// <summary>
-/// OAuth 感知的 HTTP 传输包装器。
-/// <para>
-/// 连接前从 <see cref="McpOAuthStorage"/> 取有效访问令牌，过期前主动刷新，
-/// 并注入 <c>Authorization: Bearer {token}</c>；工具调用遇 401 时强制刷新后重试一次。
-/// 无令牌或刷新失败时不注入头（由服务端 401 暴露），绝不伪造令牌。
-/// </para>
+/// OAuth 装饰在 HTTP 会话外：连接前注入 Bearer；工具调用遇 401 时强制刷新并重试一次。
 /// </summary>
-internal sealed class OAuthHttpClientWrapper : IMcpClientWrapper
+internal sealed class OAuthHttpMcpSession : IMcpSession
 {
     private readonly McpServerConfig _config;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -23,9 +18,9 @@ internal sealed class OAuthHttpClientWrapper : IMcpClientWrapper
     private readonly McpOAuthStorage _storage;
     private readonly McpOAuthTokenClient _tokenClient;
 
-    private IMcpClientWrapper? _inner;
+    private IMcpSession? _inner;
 
-    public OAuthHttpClientWrapper(
+    public OAuthHttpMcpSession(
         McpServerConfig config,
         IHttpClientFactory httpClientFactory,
         ILogger logger,
@@ -41,10 +36,16 @@ internal sealed class OAuthHttpClientWrapper : IMcpClientWrapper
         _tokenClient = tokenClient;
     }
 
+    public string ServerName => _config.Name;
+
+    public McpServerCapabilitiesInfo Capabilities =>
+        _inner?.Capabilities
+        ?? new McpServerCapabilitiesInfo(false, false, false, false, false, false, false, false);
+
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
         var effective = await ResolveEffectiveConfigAsync(cancellationToken).ConfigureAwait(false);
-        _inner = new HttpMcpClientWrapper(effective, _httpClientFactory, _logger, _mode);
+        _inner = new HttpMcpSession(effective, _httpClientFactory, _logger, _mode);
         await _inner.ConnectAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -61,7 +62,6 @@ internal sealed class OAuthHttpClientWrapper : IMcpClientWrapper
         if (token is null)
             return _config;
 
-        // 过期前主动刷新
         if (token.IsExpiringSoon && !string.IsNullOrEmpty(token.RefreshToken))
         {
             try
@@ -87,25 +87,22 @@ internal sealed class OAuthHttpClientWrapper : IMcpClientWrapper
         return effective;
     }
 
-    public async Task<IReadOnlyList<Management.McpToolInfo>> ListToolsAsync(CancellationToken cancellationToken = default)
-    {
-        if (_inner is null)
-            return Array.Empty<Management.McpToolInfo>();
+    public Task<IReadOnlyList<McpSessionToolInfo>> ListToolsAsync(CancellationToken cancellationToken = default)
+        => _inner is null
+            ? Task.FromResult<IReadOnlyList<McpSessionToolInfo>>(Array.Empty<McpSessionToolInfo>())
+            : _inner.ListToolsAsync(cancellationToken);
 
-        return await _inner.ListToolsAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    public async Task<McpToolResult> CallToolAsync(
+    public async Task<McpSessionToolCallResult> CallToolAsync(
         string toolName,
-        Dictionary<string, object?> args,
+        IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken = default)
     {
         if (_inner is null)
-            return new McpToolResult { IsError = true, Content = "OAuth MCP 客户端未连接" };
+            return new McpSessionToolCallResult(true, "OAuth MCP 客户端未连接", "OAuth MCP 客户端未连接");
 
         try
         {
-            return await _inner.CallToolAsync(toolName, args, cancellationToken).ConfigureAwait(false);
+            return await _inner.CallToolAsync(toolName, arguments, cancellationToken).ConfigureAwait(false);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
         {
@@ -114,19 +111,73 @@ internal sealed class OAuthHttpClientWrapper : IMcpClientWrapper
             if (!await TryForceRefreshAsync(cancellationToken).ConfigureAwait(false))
                 throw;
 
-            await _inner.DisconnectAsync().ConfigureAwait(false);
+            await _inner.DisconnectAsync(cancellationToken).ConfigureAwait(false);
             var effective = await ResolveEffectiveConfigAsync(cancellationToken).ConfigureAwait(false);
-            _inner = new HttpMcpClientWrapper(effective, _httpClientFactory, _logger, _mode);
+            _inner = new HttpMcpSession(effective, _httpClientFactory, _logger, _mode);
             await _inner.ConnectAsync(cancellationToken).ConfigureAwait(false);
-            return await _inner.CallToolAsync(toolName, args, cancellationToken).ConfigureAwait(false);
+            return await _inner.CallToolAsync(toolName, arguments, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    public async Task DisconnectAsync()
+    public Task DisconnectAsync(CancellationToken cancellationToken = default)
+        => _inner is null ? Task.CompletedTask : _inner.DisconnectAsync(cancellationToken);
+
+    public async ValueTask DisposeAsync()
     {
         if (_inner is not null)
-            await _inner.DisconnectAsync().ConfigureAwait(false);
+            await _inner.DisposeAsync().ConfigureAwait(false);
     }
+
+    public Task<McpResourceListResult> ListResourcesAsync(
+        string? cursor = null,
+        CancellationToken cancellationToken = default)
+        => _inner is null
+            ? Task.FromResult(new McpResourceListResult(Array.Empty<McpResourceInfo>(), ErrorMessage: "OAuth MCP 客户端未连接"))
+            : _inner.ListResourcesAsync(cursor, cancellationToken);
+
+    public Task<McpResourceReadResult> ReadResourceAsync(
+        string uri,
+        CancellationToken cancellationToken = default)
+        => _inner is null
+            ? Task.FromResult(new McpResourceReadResult(Array.Empty<McpResourceContent>(), ErrorMessage: "OAuth MCP 客户端未连接"))
+            : _inner.ReadResourceAsync(uri, cancellationToken);
+
+    public Task<McpResourceTemplateListResult> ListResourceTemplatesAsync(
+        string? cursor = null,
+        CancellationToken cancellationToken = default)
+        => _inner is null
+            ? Task.FromResult(new McpResourceTemplateListResult(
+                Array.Empty<McpResourceTemplateInfo>(), ErrorMessage: "OAuth MCP 客户端未连接"))
+            : _inner.ListResourceTemplatesAsync(cursor, cancellationToken);
+
+    public Task<McpPromptListResult> ListPromptsAsync(
+        string? cursor = null,
+        CancellationToken cancellationToken = default)
+        => _inner is null
+            ? Task.FromResult(new McpPromptListResult(Array.Empty<McpPromptInfo>(), ErrorMessage: "OAuth MCP 客户端未连接"))
+            : _inner.ListPromptsAsync(cursor, cancellationToken);
+
+    public Task<McpPromptGetResult> GetPromptAsync(
+        string name,
+        IReadOnlyDictionary<string, object?>? arguments = null,
+        CancellationToken cancellationToken = default)
+        => _inner is null
+            ? Task.FromResult(new McpPromptGetResult(Array.Empty<McpPromptMessage>(), ErrorMessage: "OAuth MCP 客户端未连接"))
+            : _inner.GetPromptAsync(name, arguments, cancellationToken);
+
+    public Task<McpSkillExtListResult> ListSkillsAsync(
+        string? cursor = null,
+        CancellationToken cancellationToken = default)
+        => _inner is null
+            ? Task.FromResult(new McpSkillExtListResult(Array.Empty<McpSkillExtInfo>(), ErrorMessage: "OAuth MCP 客户端未连接"))
+            : _inner.ListSkillsAsync(cursor, cancellationToken);
+
+    public Task<McpSkillExtGetResult> GetSkillAsync(
+        string uri,
+        CancellationToken cancellationToken = default)
+        => _inner is null
+            ? Task.FromResult(new McpSkillExtGetResult(ErrorMessage: "OAuth MCP 客户端未连接"))
+            : _inner.GetSkillAsync(uri, cancellationToken);
 
     private async Task<bool> TryForceRefreshAsync(CancellationToken cancellationToken)
     {

@@ -1,18 +1,19 @@
-using Seeing.Agent.Abstractions.Mcp;
-namespace Seeing.Agent.Mcp.Factory;
-
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Mcp;
+using Seeing.Agent.Mcp.Session;
+
+namespace Seeing.Agent.Mcp.Factory;
 
 public class StdioWrapperFactory : IMcpClientWrapperFactory
 {
     public McpTransportType TransportType => McpTransportType.Stdio;
 
-    public IMcpClientWrapper Create(
+    public IMcpSession Create(
         McpServerConfig config,
         IHttpClientFactory? httpClientFactory,
         ILoggerFactory loggerFactory)
     {
-        var logger = loggerFactory.CreateLogger<StdioMcpClientWrapper>();
-        return new StdioMcpClientWrapper(config, logger);
+        var logger = loggerFactory.CreateLogger<StdioMcpSession>();
+        return new StdioMcpSession(config, logger);
     }
 }

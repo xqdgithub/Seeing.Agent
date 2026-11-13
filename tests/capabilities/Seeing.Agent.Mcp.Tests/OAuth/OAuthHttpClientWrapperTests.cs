@@ -3,8 +3,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Abstractions.Mcp.OAuth;
-using Seeing.Agent.Mcp.Factory;
 using Seeing.Agent.Mcp.OAuth;
+using Seeing.Agent.Mcp.Session;
 using System.Net;
 using Xunit;
 
@@ -35,7 +35,7 @@ public class OAuthHttpClientWrapperTests : IDisposable
         OAuth = oauth
     };
 
-    private static OAuthHttpClientWrapper CreateWrapper(
+    private static OAuthHttpMcpSession CreateSession(
         McpServerConfig config,
         McpOAuthStorage storage,
         RecordingHandler handler)
@@ -43,7 +43,7 @@ public class OAuthHttpClientWrapperTests : IDisposable
         var tokenClient = new McpOAuthTokenClient(
             NullLogger<McpOAuthTokenClient>.Instance,
             new FakeHttpClientFactory(handler));
-        return new OAuthHttpClientWrapper(
+        return new OAuthHttpMcpSession(
             config,
             new FakeHttpClientFactory(handler),
             NullLogger.Instance,
@@ -63,9 +63,9 @@ public class OAuthHttpClientWrapperTests : IDisposable
             ExpiresIn = 3600
         });
         var config = CreateConfig(new McpOAuthConfig { TokenEndpoint = "https://auth.example.com/token" });
-        var wrapper = CreateWrapper(config, storage, RecordingHandler.Json(HttpStatusCode.OK, "{}"));
+        var session = CreateSession(config, storage, RecordingHandler.Json(HttpStatusCode.OK, "{}"));
 
-        var effective = await wrapper.ResolveEffectiveConfigAsync(CancellationToken.None);
+        var effective = await session.ResolveEffectiveConfigAsync(CancellationToken.None);
 
         effective.Headers.Should().ContainKey("Authorization");
         effective.Headers!["Authorization"].Should().Be("Bearer at-valid");
@@ -77,9 +77,9 @@ public class OAuthHttpClientWrapperTests : IDisposable
     public async Task ResolveEffectiveConfig_WithoutStoredToken_ShouldNotInjectHeader()
     {
         var config = CreateConfig(new McpOAuthConfig { TokenEndpoint = "https://auth.example.com/token" });
-        var wrapper = CreateWrapper(config, CreateStorage(), RecordingHandler.Json(HttpStatusCode.OK, "{}"));
+        var session = CreateSession(config, CreateStorage(), RecordingHandler.Json(HttpStatusCode.OK, "{}"));
 
-        var effective = await wrapper.ResolveEffectiveConfigAsync(CancellationToken.None);
+        var effective = await session.ResolveEffectiveConfigAsync(CancellationToken.None);
 
         (effective.Headers is null || !effective.Headers.ContainsKey("Authorization")).Should().BeTrue();
     }
@@ -101,9 +101,9 @@ public class OAuthHttpClientWrapperTests : IDisposable
             ClientId = "client-1",
             TokenEndpoint = "https://auth.example.com/token"
         });
-        var wrapper = CreateWrapper(config, storage, handler);
+        var session = CreateSession(config, storage, handler);
 
-        var effective = await wrapper.ResolveEffectiveConfigAsync(CancellationToken.None);
+        var effective = await session.ResolveEffectiveConfigAsync(CancellationToken.None);
 
         effective.Headers!["Authorization"].Should().Be("Bearer at-refreshed");
         handler.CallCount.Should().Be(1);
@@ -116,9 +116,9 @@ public class OAuthHttpClientWrapperTests : IDisposable
         var storage = CreateStorage();
         await storage.SaveTokenAsync("server-1", new McpOAuthToken { AccessToken = "at", ExpiresIn = 3600 });
         var config = CreateConfig(new McpOAuthConfig { Disabled = true });
-        var wrapper = CreateWrapper(config, storage, RecordingHandler.Json(HttpStatusCode.OK, "{}"));
+        var session = CreateSession(config, storage, RecordingHandler.Json(HttpStatusCode.OK, "{}"));
 
-        var effective = await wrapper.ResolveEffectiveConfigAsync(CancellationToken.None);
+        var effective = await session.ResolveEffectiveConfigAsync(CancellationToken.None);
 
         (effective.Headers is null || !effective.Headers.ContainsKey("Authorization")).Should().BeTrue();
     }
@@ -133,9 +133,9 @@ public class OAuthHttpClientWrapperTests : IDisposable
             ExpiresIn = -10
         });
         var config = CreateConfig(new McpOAuthConfig { TokenEndpoint = "https://auth.example.com/token" });
-        var wrapper = CreateWrapper(config, storage, RecordingHandler.Json(HttpStatusCode.OK, "{}"));
+        var session = CreateSession(config, storage, RecordingHandler.Json(HttpStatusCode.OK, "{}"));
 
-        var effective = await wrapper.ResolveEffectiveConfigAsync(CancellationToken.None);
+        var effective = await session.ResolveEffectiveConfigAsync(CancellationToken.None);
 
         (effective.Headers is null || !effective.Headers.ContainsKey("Authorization")).Should().BeTrue();
     }

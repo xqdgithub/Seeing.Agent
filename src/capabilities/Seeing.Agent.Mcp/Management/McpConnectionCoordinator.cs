@@ -8,6 +8,7 @@ using Seeing.Agent.Mcp;
 using Seeing.Agent.Mcp.Factory;
 using Seeing.Agent.Mcp.OAuth;
 using Seeing.Agent.Mcp.Policy;
+using Seeing.Agent.Mcp.Session;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -19,7 +20,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
     private readonly string _serverName;
     private readonly SemaphoreSlim _connectLock = new(1, 1);
     private readonly SemaphoreSlim _stateLock = new(1, 1);
-    private IMcpClientWrapper? _client;
+    private IMcpSession? _session;
     private Task? _backgroundConnectTask;
     private TaskCompletionSource<bool>? _readyTcs;
     private bool _disposed;
@@ -146,8 +147,8 @@ internal sealed class McpConnectionCoordinator : IDisposable
 
         try
         {
-            _client = _factoryRegistry.Create(config, _httpClientFactory, _loggerFactory);
-            await _client.ConnectAsync(connectCt);
+            _session = _factoryRegistry.Create(config, _httpClientFactory, _loggerFactory);
+            await _session.ConnectAsync(connectCt);
 
             // 抢先占用 server 名：零工具 server 也能拒绝同名抢名；同一协调器（重连）不报错
             _toolRegistry.ClaimServer(_serverName, this);
@@ -155,7 +156,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
             if (await TryAbortConnectIfDisabledAsync(currentStatus, ct) is { } abortedAfterConnect)
                 return abortedAfterConnect;
 
-            var tools = await _client.ListToolsAsync(connectCt);
+            var tools = await _session.ListToolsAsync(connectCt);
 
             foreach (var tool in tools)
             {
@@ -170,7 +171,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
                 {
                     Name = tool.Name,
                     Description = tool.Description,
-                    ParametersSchema = tool.ParametersSchema
+                    ParametersSchema = ParseToolSchema(tool.InputSchemaJson)
                 };
                 await _toolRegistry.RegisterToolAsync(_serverName, toolId, toolInfo, this, connectCt);
                 toolNames.Add(tool.Name);
@@ -183,18 +184,20 @@ internal sealed class McpConnectionCoordinator : IDisposable
             if (await TryAbortConnectIfDisabledAsync(currentStatus, ct) is { } abortedBeforeReady)
                 return abortedBeforeReady;
 
-            // 绑定工具执行器到实际客户端；透传上层取消令牌至 MCP 传输层
+            // 绑定工具执行器到实际会话；透传上层取消令牌至 MCP 传输层
             await _toolRegistry.UpdateToolExecutorAsync(_serverName, async (toolName, args, ct) =>
             {
-                if (_client == null)
+                if (_session == null)
                     return new McpToolResult { IsError = true, Content = "MCP 客户端未连接" };
-                return await _client.CallToolAsync(toolName, args, ct);
+                var call = await _session.CallToolAsync(toolName, args, ct);
+                return new McpToolResult { IsError = call.IsError, Content = call.Content };
             });
 
             var newStatus = McpServerStatusBuilder.From(currentStatus)
                 .WithConnected()
                 .WithToolCount(tools.Count)
                 .WithToolNames(toolNames)
+                .WithCapabilities(_session.Capabilities)
                 .Build();
 
             await UpdateStateAsync(CoreMcpConnectionState.Connected, newStatus);
@@ -275,18 +278,18 @@ internal sealed class McpConnectionCoordinator : IDisposable
         // 连接失败时释放本连接对 server 名的占用（若已成功注册工具则不释放，交由注册表管理）
         _toolRegistry.ReleaseServer(_serverName, this);
 
-        if (_client == null) return;
+        if (_session == null) return;
 
         try
         {
-            await _client.DisconnectAsync();
+            await _session.DisconnectAsync();
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "清理失败连接时断开 MCP 客户端出错: {Server}", _serverName);
         }
 
-        _client = null;
+        _session = null;
     }
 
     public Task ConnectInBackgroundAsync(McpServerConfig config, CancellationToken ct)
@@ -345,7 +348,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
             return McpOperationResult.NoChange(_serverName, McpOperationType.Disconnect,
                 currentStatus?.State ?? CoreMcpConnectionState.Pending);
 
-        if (_client != null)
+        if (_session != null)
         {
             var toolNames = currentStatus.ToolNames;
             foreach (var toolName in toolNames)
@@ -360,20 +363,21 @@ internal sealed class McpConnectionCoordinator : IDisposable
 
             try
             {
-                await _client.DisconnectAsync();
+                await _session.DisconnectAsync();
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "断开 MCP Server {Server} 连接时发生错误", _serverName);
             }
 
-            _client = null;
+            _session = null;
         }
 
         var newStatus = McpServerStatusBuilder.From(currentStatus!)
             .WithState(CoreMcpConnectionState.Pending)
             .WithToolCount(0)
             .WithToolNames(new List<string>())
+            .WithCapabilities(null)
             .Build();
 
         await UpdateStateAsync(CoreMcpConnectionState.Pending, newStatus);
@@ -598,18 +602,18 @@ internal sealed class McpConnectionCoordinator : IDisposable
         // 工具已清空时归还 server 名占用（零工具 server 的中止路径尤其需要）
         _toolRegistry.ReleaseServer(_serverName, this);
 
-        if (_client != null)
+        if (_session != null)
         {
             try
             {
-                await _client.DisconnectAsync();
+                await _session.DisconnectAsync();
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "禁用中止连接时断开 MCP 客户端失败: {Server}", _serverName);
             }
 
-            _client = null;
+            _session = null;
         }
     }
 
@@ -769,7 +773,22 @@ internal sealed class McpConnectionCoordinator : IDisposable
         return McpErrorInfo.ProcessCrashed(_serverName, innerException: ex);
     }
 
-    public IMcpClientWrapper? GetClient() => _client;
+    public IMcpSession? GetSession() => _session;
+
+    private static System.Text.Json.JsonElement ParseToolSchema(string? inputSchemaJson)
+    {
+        if (string.IsNullOrWhiteSpace(inputSchemaJson))
+            return default;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(inputSchemaJson);
+            return doc.RootElement.Clone();
+        }
+        catch
+        {
+            return default;
+        }
+    }
 
     public void Dispose()
     {
@@ -781,13 +800,13 @@ internal sealed class McpConnectionCoordinator : IDisposable
 
         CompleteReadySource(false);
 
-        if (_client != null)
+        if (_session != null)
         {
             try
             {
                 try
                 {
-                    Task.Run(async () => await _client.DisconnectAsync())
+                    Task.Run(async () => await _session.DisconnectAsync())
                         .Wait(TimeSpan.FromSeconds(5));
                 }
                 catch (Exception ex)
@@ -800,7 +819,7 @@ internal sealed class McpConnectionCoordinator : IDisposable
             {
                 _logger.LogWarning(ex, "释放 MCP Server {Server} 连接时发生错误", _serverName);
             }
-            _client = null;
+            _session = null;
         }
     }
 }

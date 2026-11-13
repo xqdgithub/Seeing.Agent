@@ -1,8 +1,8 @@
-using Seeing.Agent.Abstractions.Mcp;
-namespace Seeing.Agent.Mcp.Factory;
-
-using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Mcp;
+
+namespace Seeing.Agent.Mcp.Factory;
 
 public class McpWrapperFactoryRegistry
 {
@@ -13,7 +13,7 @@ public class McpWrapperFactoryRegistry
         _factories.TryAdd(factory.TransportType, factory);
     }
 
-    public IMcpClientWrapper Create(
+    public IMcpSession Create(
         McpServerConfig config,
         IHttpClientFactory? httpClientFactory,
         ILoggerFactory loggerFactory)

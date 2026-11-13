@@ -1,9 +1,10 @@
-using Seeing.Agent.Abstractions.Mcp;
-namespace Seeing.Agent.Mcp.Factory;
-
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
+using Seeing.Agent.Abstractions.Mcp;
 using Seeing.Agent.Mcp.OAuth;
+using Seeing.Agent.Mcp.Session;
+
+namespace Seeing.Agent.Mcp.Factory;
 
 public class HttpWrapperFactory : IMcpClientWrapperFactory
 {
@@ -25,7 +26,7 @@ public class HttpWrapperFactory : IMcpClientWrapperFactory
         ? McpTransportType.Sse
         : McpTransportType.StreamableHttp;
 
-    public IMcpClientWrapper Create(
+    public IMcpSession Create(
         McpServerConfig config,
         IHttpClientFactory? httpClientFactory,
         ILoggerFactory loggerFactory)
@@ -35,9 +36,8 @@ public class HttpWrapperFactory : IMcpClientWrapperFactory
             throw new InvalidOperationException("HTTP 传输需要 IHttpClientFactory");
         }
 
-        var logger = loggerFactory.CreateLogger<HttpMcpClientWrapper>();
+        var logger = loggerFactory.CreateLogger<HttpMcpSession>();
 
-        // 配置了 OAuth 且未禁用时，走 OAuth 感知传输以注入 Bearer 令牌
         if (config.OAuth is { Disabled: false })
         {
             var storage = _oauthStorage
@@ -45,9 +45,9 @@ public class HttpWrapperFactory : IMcpClientWrapperFactory
             var tokenClient = _oauthTokenClient
                 ?? new McpOAuthTokenClient(loggerFactory.CreateLogger<McpOAuthTokenClient>(), httpClientFactory);
 
-            return new OAuthHttpClientWrapper(config, httpClientFactory, logger, _mode, storage, tokenClient);
+            return new OAuthHttpMcpSession(config, httpClientFactory, logger, _mode, storage, tokenClient);
         }
 
-        return new HttpMcpClientWrapper(config, httpClientFactory, logger, _mode);
+        return new HttpMcpSession(config, httpClientFactory, logger, _mode);
     }
 }

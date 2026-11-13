@@ -103,6 +103,12 @@ public sealed class McpServerStatusBuilder
         return this;
     }
 
+    public McpServerStatusBuilder WithCapabilities(McpServerCapabilitiesInfo? capabilities)
+    {
+        Capabilities = capabilities;
+        return this;
+    }
+
     public McpServerStatusBuilder WithConfig(McpServerConfig? config)
     {
         Config = config;

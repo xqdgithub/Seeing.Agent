@@ -130,38 +130,62 @@ public class McpClientManagerReinitializeTests
         public int CreatedCount => _createdCount;
         private int _createdCount;
 
-        public IMcpClientWrapper Create(
+        public IMcpSession Create(
             McpServerConfig config,
             IHttpClientFactory? httpClientFactory,
             ILoggerFactory loggerFactory)
         {
             Interlocked.Increment(ref _createdCount);
-            return new FakeWrapper(ToolCount);
+            return new FakeSession(ToolCount);
         }
     }
 
-    private sealed class FakeWrapper : IMcpClientWrapper
+    private sealed class FakeSession : IMcpSession
     {
         private readonly int _toolCount;
 
-        public FakeWrapper(int toolCount) => _toolCount = toolCount;
+        public FakeSession(int toolCount) => _toolCount = toolCount;
 
-        public Task ConnectAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public string ServerName => "fake";
+        public McpServerCapabilitiesInfo Capabilities { get; private set; } =
+            new(false, false, false, false, false, false, false, false);
 
-        public Task DisconnectAsync() => Task.CompletedTask;
-
-        public Task<IReadOnlyList<Seeing.Agent.Mcp.Management.McpToolInfo>> ListToolsAsync(CancellationToken cancellationToken = default)
+        public Task ConnectAsync(CancellationToken cancellationToken = default)
         {
-            var tools = Enumerable.Range(1, _toolCount)
-                .Select(i => new Seeing.Agent.Mcp.Management.McpToolInfo { Name = $"tool_{i}", Description = "测试工具" })
-                .ToList();
-            return Task.FromResult<IReadOnlyList<Seeing.Agent.Mcp.Management.McpToolInfo>>(tools);
+            Capabilities = new McpServerCapabilitiesInfo(true, false, false, false, false, false, false, false);
+            return Task.CompletedTask;
         }
 
-        public Task<McpToolResult> CallToolAsync(
+        public Task DisconnectAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        public Task<IReadOnlyList<McpSessionToolInfo>> ListToolsAsync(CancellationToken cancellationToken = default)
+        {
+            var tools = Enumerable.Range(1, _toolCount)
+                .Select(i => new McpSessionToolInfo($"tool_{i}", "测试工具"))
+                .ToList();
+            return Task.FromResult<IReadOnlyList<McpSessionToolInfo>>(tools);
+        }
+
+        public Task<McpSessionToolCallResult> CallToolAsync(
             string toolName,
-            Dictionary<string, object?> args,
+            IReadOnlyDictionary<string, object?> arguments,
             CancellationToken cancellationToken = default)
-            => Task.FromResult(new McpToolResult { IsError = false, Content = "ok" });
+            => Task.FromResult(new McpSessionToolCallResult(false, "ok"));
+
+        public Task<McpResourceListResult> ListResourcesAsync(string? cursor = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(McpResourceListResult.Unsupported());
+        public Task<McpResourceReadResult> ReadResourceAsync(string uri, CancellationToken cancellationToken = default)
+            => Task.FromResult(McpResourceReadResult.Unsupported());
+        public Task<McpResourceTemplateListResult> ListResourceTemplatesAsync(string? cursor = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(McpResourceTemplateListResult.Unsupported());
+        public Task<McpPromptListResult> ListPromptsAsync(string? cursor = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(McpPromptListResult.Unsupported());
+        public Task<McpPromptGetResult> GetPromptAsync(string name, IReadOnlyDictionary<string, object?>? arguments = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(McpPromptGetResult.Unsupported());
+        public Task<McpSkillExtListResult> ListSkillsAsync(string? cursor = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(McpSkillExtListResult.Unsupported());
+        public Task<McpSkillExtGetResult> GetSkillAsync(string uri, CancellationToken cancellationToken = default)
+            => Task.FromResult(McpSkillExtGetResult.Unsupported());
     }
 }
