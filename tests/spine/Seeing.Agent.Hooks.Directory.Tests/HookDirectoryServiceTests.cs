@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -136,12 +137,9 @@ public class HookDirectoryServiceTests : IDisposable
     [Fact]
     public async Task SynchronizeAsync_SymlinkOutsideRoot_ShouldNotRegister()
     {
-        var outsideFile = Path.Combine(_outside, "outside.js");
-        File.WriteAllText(outsideFile, "");
         var hooksDir = Path.Combine(_user, "hooks");
         System.IO.Directory.CreateDirectory(hooksDir);
-        var link = Path.Combine(hooksDir, "tool.execute.before.js");
-        File.CreateSymbolicLink(link, outsideFile);
+        PlaceOutOfBoundaryEntry(hooksDir);
 
         var hooks = new RecordingHookManager();
         var invoker = new FakeInvoker { Available = true };
@@ -203,6 +201,56 @@ public class HookDirectoryServiceTests : IDisposable
         System.IO.Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, "");
         return path;
+    }
+
+    /// <summary>
+    /// 优先文件符号链接；无特权时在 hooks 下建目录联接，目标在根外且内含可登记脚本。
+    /// 两者都经 <c>PathBoundary.ResolveLinkTarget</c>。联接也建不出则让测试失败，不 Skip。
+    /// </summary>
+    private void PlaceOutOfBoundaryEntry(string hooksDir)
+    {
+        var outsideFile = Path.Combine(_outside, "outside.js");
+        File.WriteAllText(outsideFile, "");
+        var link = Path.Combine(hooksDir, "tool.execute.before.js");
+        try
+        {
+            File.CreateSymbolicLink(link, outsideFile);
+            return;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
+        {
+            // 无符号链接特权（Windows 未开开发者模式）：改走目录联接。
+        }
+
+        var target = Path.Combine(_outside, "payload");
+        System.IO.Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(target, "audit.js"), "");
+        CreateDirectoryJunction(Path.Combine(hooksDir, "tool.execute.before"), target);
+    }
+
+    private static void CreateDirectoryJunction(string linkPath, string sourceDir)
+    {
+        if (!OperatingSystem.IsWindows())
+            Assert.Fail("无法创建符号链接，且本平台不支持目录联接。");
+
+        var psi = new ProcessStartInfo(
+            "cmd.exe",
+            $"/c mklink /J \"{linkPath}\" \"{sourceDir.TrimEnd(Path.DirectorySeparatorChar)}\"")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
+        using var process = Process.Start(psi);
+        if (process is null)
+            Assert.Fail("无法启动 cmd 创建目录联接。");
+
+        process.WaitForExit();
+        var error = process.StandardError.ReadToEnd();
+        if (!System.IO.Directory.Exists(linkPath))
+            Assert.Fail($"创建目录联接失败（符号链接亦无特权）: {error.Trim()}");
     }
 
     private HookPayload Payload() =>
