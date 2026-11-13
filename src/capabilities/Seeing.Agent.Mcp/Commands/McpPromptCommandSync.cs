@@ -77,8 +77,17 @@ internal sealed class McpPromptCommandSync : IDisposable
 
     private void AlignAllLocked()
     {
-        foreach (var (name, status) in _manager.GetAllStatus())
+        // Moq / 精简 Activate 测试可能未桩 GetAllStatus；空表视为无 server。
+        var all = _manager.GetAllStatus();
+        if (all is null || all.Count == 0)
+            return;
+
+        foreach (var (name, status) in all)
+        {
+            if (status is null)
+                continue;
             AlignServerLocked(name, status);
+        }
     }
 
     private void AlignServerLocked(string serverName, McpServerStatus status)

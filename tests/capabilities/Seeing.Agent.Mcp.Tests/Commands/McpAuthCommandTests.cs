@@ -77,6 +77,8 @@ public class McpAuthCommandTests
         manager.Setup(m => m.ShutdownAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         manager.Setup(m => m.UnregisterAllToolsAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         manager.Setup(m => m.GetTools()).Returns(Array.Empty<McpToolInfo>());
+        manager.Setup(m => m.GetAllStatus()).Returns(new Dictionary<string, McpServerStatus>());
+        manager.Setup(m => m.TryGetSession(It.IsAny<string>())).Returns((IMcpSession?)null);
 
         var registry = new CommandRegistry();
         var services = new ServiceCollection();
