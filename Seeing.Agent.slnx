@@ -32,6 +32,7 @@
   </Folder>
   <Folder Name="/src/spine/">
     <Project Path="src/spine/Seeing.Agent.Core/Seeing.Agent.Core.csproj" />
+    <Project Path="src/spine/Seeing.Agent.Hooks.Directory/Seeing.Agent.Hooks.Directory.csproj" />
   </Folder>
   <Folder Name="/src/hosting/">
     <Project Path="src/hosting/Seeing.Agent.Hosting/Seeing.Agent.Hosting.csproj" />
@@ -97,6 +98,7 @@
   <Folder Name="/tests/spine/">
     <Project Path="tests/spine/Seeing.Agent.Invariants.Tests/Seeing.Agent.Invariants.Tests.csproj" />
     <Project Path="tests/spine/Seeing.Agent.Tests/Seeing.Agent.Tests.csproj" />
+    <Project Path="tests/spine/Seeing.Agent.Hooks.Directory.Tests/Seeing.Agent.Hooks.Directory.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/hosting/">
     <Project Path="tests/hosting/Seeing.Agent.Hosting.Tests/Seeing.Agent.Hosting.Tests.csproj" />

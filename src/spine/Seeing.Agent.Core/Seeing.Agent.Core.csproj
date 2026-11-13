@@ -59,6 +59,7 @@
     <ProjectReference Include="..\..\primitives\Seeing.Files\Seeing.Files.csproj" />
     <ProjectReference Include="..\..\primitives\Seeing.Session\Seeing.Session.csproj" />
     <ProjectReference Include="..\..\primitives\Seeing.ConfigSchema\Seeing.ConfigSchema.csproj" />
+    <ProjectReference Include="..\Seeing.Agent.Hooks.Directory\Seeing.Agent.Hooks.Directory.csproj" />
   </ItemGroup>
 
   <ItemGroup>
