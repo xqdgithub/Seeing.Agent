@@ -248,8 +248,9 @@
                     {
                         <Divider>建议清单</Divider>
                         <div class="reflection-hint">
-                            点「生成 SKILL」会把该条建议直接写入技能库。这是显式动作，
-                            <b>不受「运行模式」限制</b>；默认写项目级——结论来自本项目的会话。
+                            点「生成 SKILL」会打开编辑弹窗：可改名称、级别、描述与正文后再保存。
+                            这是显式动作，<b>不受「运行模式」限制</b>；默认写项目级。
+                            技能名须为小写字母、数字与连字符（如 <code>my-skill</code>）。
                         </div>
                         @for (var i = 0; i < _detail.Suggestions.Count; i++)
                         {
@@ -259,15 +260,23 @@
                                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
                                     <div style="font-weight: 600;">@suggestion.Target</div>
                                     <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small"
-                                            Loading="@(_creatingIndex == index)"
-                                            Disabled="@(_creatingIndex is not null)"
-                                            OnClick="@(() => CreateSkillAsync(index))">
+                                            Disabled="@(_creatingIndex is not null || _skillModalVisible)"
+                                            OnClick="@(() => OpenCreateSkillModal(index))">
                                         生成 SKILL
                                     </Button>
                                 </div>
-                                <div style="font-size: 12px; color: #666; margin: 4px 0;">
-                                    @suggestion.Reason
-                                </div>
+                                @if (!string.IsNullOrWhiteSpace(suggestion.Description))
+                                {
+                                    <div style="font-size: 12px; color: #666; margin: 4px 0;">
+                                        <span style="color: #999;">描述：</span>@suggestion.Description
+                                    </div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(suggestion.Reason))
+                                {
+                                    <div style="font-size: 12px; color: #999; margin: 4px 0;">
+                                        备注：@suggestion.Reason
+                                    </div>
+                                }
                                 @if (!string.IsNullOrWhiteSpace(suggestion.SuggestedContent))
                                 {
                                     <pre style="white-space: pre-wrap; font-size: 12px; margin: 8px 0 0;">@suggestion.SuggestedContent</pre>
@@ -293,6 +302,52 @@
     </ChildContent>
 </WorkspacePageShell>
 
+<Modal @bind-Visible="_skillModalVisible"
+       Title="@("生成 SKILL")"
+       Width="720"
+       OnOk="ConfirmCreateSkillAsync"
+       OkText="@("保存")"
+       CancelText="@("取消")"
+       ConfirmLoading="@(_creatingIndex is not null)"
+       DestroyOnClose="true">
+    <div style="margin-bottom: 16px;">
+        <label style="font-weight: 500; display: block; margin-bottom: 8px;">技能名称 <span style="color: red;">*</span></label>
+        <Input @bind-Value="_draftName"
+               Placeholder="如 build-before-edit，仅小写字母、数字与连字符"
+               OnChange="@((string _) => ValidateDraftName())" />
+        @if (!string.IsNullOrEmpty(_draftNameError))
+        {
+            <div style="color: #cf1322; font-size: 12px; margin-top: 4px;">@_draftNameError</div>
+        }
+    </div>
+    <div style="margin-bottom: 16px;">
+        <label style="font-weight: 500; display: block; margin-bottom: 8px;">存储级别 <span style="color: red;">*</span></label>
+        <RadioGroup TValue="string" @bind-Value="_draftLevel" ButtonStyle="@RadioButtonStyle.Solid">
+            <Radio Value="@("project")">项目级（.seeing/skills）</Radio>
+            <Radio Value="@("user")">用户级（~/.seeing/skills）</Radio>
+        </RadioGroup>
+    </div>
+    <div style="margin-bottom: 16px;">
+        <label style="font-weight: 500; display: block; margin-bottom: 8px;">描述 <span style="color: red;">*</span></label>
+        <TextArea Rows="2" @bind-Value="_draftDescription"
+                  Placeholder="Agent 选型用：何时用 / 做什么（勿写会话回顾）" />
+        <div style="font-size: 12px; color: #999; margin-top: 4px;">
+            写入 SKILL.md 的 description，供 Agent 决定是否加载；不要写「本会话中…」这类备注。
+        </div>
+    </div>
+    @if (!string.IsNullOrWhiteSpace(_draftNotes))
+    {
+        <div style="margin-bottom: 16px;">
+            <label style="font-weight: 500; display: block; margin-bottom: 8px;">备注</label>
+            <div style="font-size: 12px; color: #666; white-space: pre-wrap;">@_draftNotes</div>
+        </div>
+    }
+    <div style="margin-bottom: 8px;">
+        <label style="font-weight: 500; display: block; margin-bottom: 8px;">正文 <span style="color: red;">*</span></label>
+        <TextArea Rows="10" @bind-Value="_draftContent" Placeholder="步骤化祈使句正文" />
+    </div>
+</Modal>
+
 @code {
     private const int MaxRuns = 200;
 
@@ -305,6 +360,16 @@
     private bool _loading = true;
     private int? _creatingIndex;
     private Timer? _activePoll;
+
+    // ── 生成 SKILL 弹窗 ──
+    private bool _skillModalVisible;
+    private int _draftSuggestionIndex = -1;
+    private string _draftName = string.Empty;
+    private string _draftDescription = string.Empty;
+    private string _draftNotes = string.Empty;
+    private string _draftContent = string.Empty;
+    private string _draftLevel = "project";
+    private string? _draftNameError;
 
     // ── 筛选状态 ──
     private string _searchText = string.Empty;
@@ -472,37 +537,97 @@
         }
     }
 
+    /// <summary>打开生成弹窗：预填建议字段；不合规名称会立刻标红，保存前须改对。</summary>
+    private void OpenCreateSkillModal(int suggestionIndex)
+    {
+        if (_detail is null || suggestionIndex < 0 || suggestionIndex >= _detail.Suggestions.Count)
+            return;
+
+        var suggestion = _detail.Suggestions[suggestionIndex];
+        _draftSuggestionIndex = suggestionIndex;
+        _draftName = suggestion.Target?.Trim() ?? string.Empty;
+        // 描述只取 description：旧记录可能只有 reason（备注），不得再把备注预填成技能描述。
+        _draftDescription = suggestion.Description?.Trim() ?? string.Empty;
+        _draftNotes = suggestion.Reason?.Trim() ?? string.Empty;
+        _draftContent = suggestion.SuggestedContent?.Trim() ?? string.Empty;
+        _draftLevel = "project";
+        _draftNameError = ReflectionSuggestionsWriter.TryValidateSkillName(_draftName, out var error)
+            ? null
+            : error;
+        _skillModalVisible = true;
+    }
+
+    private void ValidateDraftName()
+    {
+        _draftNameError = ReflectionSuggestionsWriter.TryValidateSkillName(_draftName, out var error)
+            ? null
+            : error;
+    }
+
     /// <summary>
-    /// 生成 SKILL：固定写项目级（结论来自本项目会话）。
-    /// <para>
-    /// 级别不给选择器：跨项目复用应当走技能页的晋升，而不是在复盘页猜级别。
-    /// 见 <c>docs/architecture/25</c> §11.4。
-    /// </para>
+    /// 确认落盘：本地先校验名称，再经 Operations 写入（级别默认项目级，可改用户级）。
+    /// 失败时保持弹窗打开，与 MCP 配置弹窗同一口径。
     /// </summary>
-    private async Task CreateSkillAsync(int suggestionIndex)
+    private async Task ConfirmCreateSkillAsync()
     {
         if (_detail is null || _creatingIndex is not null)
             return;
 
-        _creatingIndex = suggestionIndex;
+        if (!ReflectionSuggestionsWriter.TryValidateSkillName(_draftName, out var nameError))
+        {
+            _draftNameError = nameError;
+            _skillModalVisible = true;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_draftDescription))
+        {
+            MessageService.Warning("请填写描述");
+            _skillModalVisible = true;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_draftContent))
+        {
+            MessageService.Warning("请填写正文");
+            _skillModalVisible = true;
+            return;
+        }
+
+        var level = string.Equals(_draftLevel, "user", StringComparison.OrdinalIgnoreCase)
+            ? ConfigLevel.User
+            : ConfigLevel.Project;
+
+        _creatingIndex = _draftSuggestionIndex;
+        _draftNameError = null;
         try
         {
+            var draft = new ReflectionSkillDraft(
+                _draftName.Trim(),
+                _draftDescription.Trim(),
+                _draftContent.Trim());
+
             var result = await Operations.CreateSkillAsync(
                 _detail.RunId,
-                suggestionIndex,
-                ConfigLevel.Project);
+                _draftSuggestionIndex,
+                level,
+                draft);
 
             if (!result.Success)
             {
                 MessageService.Warning(result.Error ?? "生成失败");
+                _skillModalVisible = true;
                 return;
             }
 
-            MessageService.Success($"技能「{result.SkillName}」已写入项目级，可在「技能」页查看");
+            var levelLabel = level == ConfigLevel.User ? "用户级" : "项目级";
+            MessageService.Success($"技能「{result.SkillName}」已写入{levelLabel}，可在「技能」页查看");
+            _skillModalVisible = false;
         }
         catch (Exception ex)
         {
             MessageService.Error($"生成失败：{ex.Message}");
+            _skillModalVisible = true;
         }
         finally
         {

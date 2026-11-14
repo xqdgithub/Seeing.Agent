@@ -133,7 +133,7 @@ public sealed class ReflectionExecutorTests
     /// <summary>构造一条合法的建议 JSON。</summary>
     private static string SuggestionJson()
         => """
-           {"suggestions":[{"kind":"skill","target":"先编译再改代码","suggestedContent":"先 dotnet build，再改代码","reason":"能提前暴露编译错误","evidence":["第 1 轮直接改了代码"]}]}
+           {"suggestions":[{"kind":"skill","target":"build-before-edit","description":"改代码前先跑构建：在编辑项目源码前执行 dotnet build。","suggestedContent":"先 dotnet build，再改代码","reason":"能提前暴露编译错误","evidence":["第 1 轮直接改了代码"]}]}
            """;
 
     [Fact]

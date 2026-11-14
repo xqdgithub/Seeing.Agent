@@ -303,7 +303,7 @@ public sealed class ReflectionRunOperationsTests
                 "run_h", 0, Seeing.Agent.Abstractions.Configuration.ConfigLevel.Project);
 
             result.Success.Should().BeTrue("手动生成是显式动作，不受「自动写盘」的模式限制");
-            result.SkillName.Should().Be("先编译再改代码");
+            result.SkillName.Should().Be("build-before-edit");
         }
         finally
         {
@@ -315,7 +315,7 @@ public sealed class ReflectionRunOperationsTests
     public async Task CreateSkill_Should_Write_Project_Level_By_Default()
     {
         // 级别决策：复盘结论来自本项目会话，因此默认落项目级。
-        // 跨项目复用走「技能页晋升」，不在复盘页猜级别（见 docs/architecture/25 §11.4）。
+        // 弹窗可改用户级；跨项目复用仍可走技能页晋升（见 docs/architecture/25 §11.4）。
         var directory = NewTempDirectory();
         try
         {
@@ -336,7 +336,80 @@ public sealed class ReflectionRunOperationsTests
                 "run_i", 0, Seeing.Agent.Abstractions.Configuration.ConfigLevel.Project);
 
             writer.LastLevel.Should().Be(Seeing.Agent.Abstractions.Configuration.ConfigLevel.Project);
-            writer.LastName.Should().Be("先编译再改代码");
+            writer.LastName.Should().Be("build-before-edit");
+        }
+        finally
+        {
+            TryDelete(directory);
+        }
+    }
+
+    [Fact]
+    public async Task CreateSkill_Should_Reject_Chinese_Target_Without_Draft()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var journal = new ReflectionJournal(directory);
+            await journal.AppendAsync(Record("run_zh", chineseTarget: true));
+
+            var writer = new RecordingSkillWriter();
+            var operations = new ReflectionRunOperations(
+                journal,
+                new ReflectionRunReader(directory),
+                new ReflectionSuggestionsWriter(
+                    new FixedOptionsMonitor(new Seeing.Agent.Reflection.Configuration.ReflectionOptions()),
+                    Microsoft.Extensions.Logging.Abstractions.NullLogger<ReflectionSuggestionsWriter>.Instance,
+                    writer,
+                    catalog: null));
+
+            var result = await operations.CreateSkillAsync(
+                "run_zh", 0, Seeing.Agent.Abstractions.Configuration.ConfigLevel.Project);
+
+            result.Success.Should().BeFalse();
+            result.Error.Should().Contain("小写字母");
+            writer.LastName.Should().BeNull();
+        }
+        finally
+        {
+            TryDelete(directory);
+        }
+    }
+
+    [Fact]
+    public async Task CreateSkill_Should_Honour_Draft_Override()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var journal = new ReflectionJournal(directory);
+            await journal.AppendAsync(Record("run_draft", chineseTarget: true));
+
+            var writer = new RecordingSkillWriter();
+            var operations = new ReflectionRunOperations(
+                journal,
+                new ReflectionRunReader(directory),
+                new ReflectionSuggestionsWriter(
+                    new FixedOptionsMonitor(new Seeing.Agent.Reflection.Configuration.ReflectionOptions()),
+                    Microsoft.Extensions.Logging.Abstractions.NullLogger<ReflectionSuggestionsWriter>.Instance,
+                    writer,
+                    catalog: null));
+
+            var result = await operations.CreateSkillAsync(
+                "run_draft",
+                0,
+                Seeing.Agent.Abstractions.Configuration.ConfigLevel.User,
+                new ReflectionSkillDraft(
+                    "build-before-edit",
+                    "改过的描述",
+                    "先 build，再改代码"));
+
+            result.Success.Should().BeTrue();
+            result.SkillName.Should().Be("build-before-edit");
+            writer.LastLevel.Should().Be(Seeing.Agent.Abstractions.Configuration.ConfigLevel.User);
+            writer.LastName.Should().Be("build-before-edit");
+            writer.LastDescription.Should().Be("改过的描述");
+            writer.LastContent.Should().Be("先 build，再改代码");
         }
         finally
         {
@@ -385,7 +458,8 @@ public sealed class ReflectionRunOperationsTests
     private static Seeing.Agent.Reflection.Abstractions.ReflectionRunRecord Record(
         string runId,
         string executionId = "exec-1",
-        bool withSuggestion = false)
+        bool withSuggestion = false,
+        bool chineseTarget = false)
         => new(
             SessionId: "ses-1",
             ExecutionId: executionId,
@@ -393,13 +467,14 @@ public sealed class ReflectionRunOperationsTests
             At: DateTimeOffset.UtcNow,
             Outcome: ReflectionRunOutcomes.Suggested,
             CreatedSkills: Array.Empty<string>(),
-            Suggestions: withSuggestion
+            Suggestions: withSuggestion || chineseTarget
                 ?
                 [
                     new ReflectionSuggestion(
                         "skill",
-                        "先编译再改代码",
+                        chineseTarget ? "先编译再改代码" : "build-before-edit",
                         "先 dotnet build，再改代码",
+                        "改代码前先跑构建：在编辑项目源码前执行 dotnet build。",
                         "能提前暴露编译错误",
                         new[] { "第 1 轮直接改了代码" })
                 ]
@@ -445,6 +520,10 @@ public sealed class ReflectionRunOperationsTests
 
         public string? LastName { get; private set; }
 
+        public string? LastDescription { get; private set; }
+
+        public string? LastContent { get; private set; }
+
         public Task<Seeing.Agent.Abstractions.Skills.SkillWriteResult> CreateAsync(
             Seeing.Agent.Abstractions.Skills.SkillDraft draft,
             Seeing.Agent.Abstractions.Configuration.ConfigLevel level,
@@ -453,6 +532,8 @@ public sealed class ReflectionRunOperationsTests
         {
             LastLevel = level;
             LastName = draft.Name;
+            LastDescription = draft.Description;
+            LastContent = draft.Content;
             return Task.FromResult(new Seeing.Agent.Abstractions.Skills.SkillWriteResult(true, null, null));
         }
 

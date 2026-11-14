@@ -22,7 +22,7 @@ public static class Prompts
         ## 任务定义
 
         1. 阅读下方给出的执行记录，关注「怎么做」的流程：先做什么、按什么顺序、遇到哪种情况改走哪条路。
-        2. 如果确实存在可复用的流程性经验，产出一条技能建议（kind / target / suggestedContent / reason / evidence）。
+        2. 如果确实存在可复用的流程性经验，产出一条技能建议（kind / target / description / suggestedContent / reason / evidence）。
         3. 如果没有，只输出 `{"action":"skip"}`。除此之外不要输出任何文字。
 
         ## 反模式清单（命中任一条就不要写技能）
@@ -37,6 +37,27 @@ public static class Prompts
 
         命中上述任一条，就不要写技能；此时输出 `{"action":"skip"}`。
 
+        ## 字段分工（必须遵守）
+
+        - `description`（必填）：写入技能 frontmatter，**仅供 Agent 决定是否加载该技能**。
+          写成「何时用 / 做什么」的选型句，简体中文，≤120 字，一两句即可。
+          前半句要出现触发场景或动作对象，让 Agent 能对上用户意图。
+        - `reason`（可选，备注）：给人看的介绍——本会话为何值得沉淀、出现了哪些信号。
+          **禁止**把备注内容写进 `description`。
+        - `suggestedContent`：步骤化祈使句正文，不是散文。
+        - `evidence`：来自执行记录的具体依据。
+
+        ### description 正例
+
+        - `用户要预约或查询场馆门票（国博、颐和园等）时：按固定查法走通，并明确告知代订边界。`
+        - `改代码前先跑构建：在编辑项目源码前执行 dotnet build，用编译错误挡住无效改动。`
+
+        ### description 反例（出现即重写，不要输出）
+
+        - `本会话中「帮我约国博」「颐和园呢」连续出现同类请求，查法固定而规则各异，按此流程可一次到位并明确告知代订边界。`
+          （会话回顾 / 复盘叙事，不能当选型描述）
+        - `为什么值得复用`、`能提前暴露编译错误`（这是备注语气，应放 `reason`）
+
         ## 写入纪律
 
         1. 一条技能只讲一件事。需要讲三件事，就产出三条建议，不要塞进一条。
@@ -44,6 +65,7 @@ public static class Prompts
         3. 不要写「可能需要」「视情况而定」这类含糊表述。拿不准就不写。
         4. 不要重复技能清单里已有的技能。技能清单已由上文的技能目录注入，你不必列举、也不必复述。
         5. 每条建议必须给出 evidence（来自执行记录的具体依据）。没有依据的建议会被丢弃。
+        6. `target` 必须是英文 kebab-case 技能名：仅小写字母、数字与连字符（如 `build-before-edit`）。禁止中文、空格、大写。中文说明写进 `description` / `reason` / `suggestedContent`。
 
         ## 输出格式
 
@@ -56,7 +78,7 @@ public static class Prompts
         有建议时，输出：
 
         ```json
-        {"suggestions":[{"kind":"skill","target":"技能名","suggestedContent":"步骤化正文","reason":"为什么值得复用","evidence":["记录中的依据"]}]}
+        {"suggestions":[{"kind":"skill","target":"build-before-edit","description":"改代码前先跑构建：在编辑项目源码前执行 dotnet build，用编译错误挡住无效改动。","suggestedContent":"步骤化正文","reason":"本会话连续跳过构建直接改文件导致返工","evidence":["记录中的依据"]}]}
         ```
         """;
 

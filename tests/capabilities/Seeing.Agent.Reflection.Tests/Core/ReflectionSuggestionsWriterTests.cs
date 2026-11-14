@@ -78,7 +78,7 @@ public sealed class ReflectionSuggestionsWriterTests
 
         // 只有 target 没有正文 = 模型只提了「要有个技能叫 X」，没有可落盘的内容。
         var created = await f.Writer.ApplyAsync(
-            [new ReflectionSuggestion("skill", "my-flow", null, "理由", ["证据"])],
+            [new ReflectionSuggestion("skill", "my-flow", null, "选型描述", "备注", ["证据"])],
             "ses_src");
 
         created.Should().BeEmpty();
@@ -94,6 +94,71 @@ public sealed class ReflectionSuggestionsWriterTests
 
         created.Should().BeEmpty("名称含路径分隔符，会逃出技能根目录");
         f.SkillWriter.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Apply_Should_Skip_Chinese_Name()
+    {
+        var f = new Fixture(ReflectionMode.ApplyCreate);
+
+        var created = await f.Writer.ApplyAsync([Suggestion("先编译再改代码")], "ses_src");
+
+        created.Should().BeEmpty("复盘落盘要求 kebab-case，与技能创建页一致");
+        f.SkillWriter.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Apply_Should_Skip_Uppercase_Name()
+    {
+        var f = new Fixture(ReflectionMode.ApplyCreate);
+
+        var created = await f.Writer.ApplyAsync([Suggestion("My-Flow")], "ses_src");
+
+        created.Should().BeEmpty();
+        f.SkillWriter.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData("my-flow", true)]
+    [InlineData("a", true)]
+    [InlineData("build-before-edit", true)]
+    [InlineData("先编译", false)]
+    [InlineData("MyFlow", false)]
+    [InlineData("my_flow", false)]
+    [InlineData("my flow", false)]
+    [InlineData("-my", false)]
+    [InlineData("my-", false)]
+    public void TryValidateSkillName_Should_Match_Create_Page_Rule(string name, bool expected)
+    {
+        var ok = ReflectionSuggestionsWriter.TryValidateSkillName(name, out var error);
+        ok.Should().Be(expected);
+        if (expected)
+            error.Should().BeNull();
+        else
+            error.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task CreateFromSuggestion_Should_Use_Draft_Override()
+    {
+        var f = new Fixture(ReflectionMode.SuggestOnly);
+
+        var result = await f.Writer.CreateFromSuggestionAsync(
+            Suggestion("先编译再改代码"),
+            "ses_src",
+            ConfigLevel.Project,
+            new ReflectionSkillDraft("build-before-edit", "改过的描述", "改过的正文"));
+
+        result.Success.Should().BeTrue();
+        result.SkillName.Should().Be("build-before-edit");
+        f.SkillWriter.Verify(w => w.CreateAsync(
+            It.Is<SkillDraft>(d =>
+                d.Name == "build-before-edit"
+                && d.Description == "改过的描述"
+                && d.Content == "改过的正文"),
+            ConfigLevel.Project,
+            false,
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -124,20 +189,47 @@ public sealed class ReflectionSuggestionsWriterTests
     }
 
     [Fact]
-    public async Task Apply_Should_Fall_Back_To_Name_When_Reason_Missing()
+    public async Task Apply_Should_Fall_Back_To_Name_When_Description_Missing()
     {
-        // SkillDraft 要求 description 非空；模型漏写 reason 不该让整条建议作废。
+        // SkillDraft 要求 description 非空；漏写 description 时用名称兜底，不回落 reason 备注。
         var f = new Fixture(ReflectionMode.ApplyCreate);
 
         var created = await f.Writer.ApplyAsync(
-            [new ReflectionSuggestion("skill", "my-flow", "正文", "", ["证据"])],
+            [new ReflectionSuggestion("skill", "my-flow", "正文", "", "本会话里值得沉淀", ["证据"])],
             "ses_src");
 
         created.Should().Equal("my-flow");
         f.SkillWriter.Verify(w => w.CreateAsync(
-            It.Is<SkillDraft>(d => d.Description == "my-flow"),
+            It.Is<SkillDraft>(d =>
+                d.Description == "my-flow"
+                && d.Metadata!["notes"] == "本会话里值得沉淀"),
             It.IsAny<ConfigLevel>(),
             It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Apply_Should_Use_Description_Not_Reason_For_Skill_Draft()
+    {
+        var f = new Fixture(ReflectionMode.ApplyCreate);
+
+        var created = await f.Writer.ApplyAsync(
+            [new ReflectionSuggestion(
+                "skill",
+                "venue-booking",
+                "先查余票，再告知代订边界",
+                "用户要预约或查询场馆门票时：按固定查法走通，并明确告知代订边界。",
+                "本会话中「帮我约国博」「颐和园呢」连续出现同类请求",
+                ["用户连续问国博与颐和园"])],
+            "ses_src");
+
+        created.Should().Equal("venue-booking");
+        f.SkillWriter.Verify(w => w.CreateAsync(
+            It.Is<SkillDraft>(d =>
+                d.Description == "用户要预约或查询场馆门票时：按固定查法走通，并明确告知代订边界。"
+                && d.Metadata!["notes"].Contains("国博")),
+            ConfigLevel.Project,
+            false,
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -188,7 +280,7 @@ public sealed class ReflectionSuggestionsWriterTests
     }
 
     private static ReflectionSuggestion Suggestion(string target, string content = "逐步执行的正文")
-        => new("skill", target, content, "可复用的流程", ["记录中的依据"]);
+        => new("skill", target, content, "改代码前先跑构建：在编辑前执行构建。", "可复用的流程", ["记录中的依据"]);
 
     /// <summary>
     /// 构造一个「目录中已存在」的条目。

@@ -77,11 +77,13 @@ public sealed class ReflectionRunOperations
     /// <param name="runId">记录的稳定标识（用于定位建议清单）。</param>
     /// <param name="suggestionIndex">建议在清单中的序号（从 0 开始）。</param>
     /// <param name="level">目标层级。</param>
+    /// <param name="draft">用户在弹窗确认过的草稿；为 <c>null</c> 时用建议原文。</param>
     /// <param name="ct">取消令牌。</param>
     public async Task<ReflectionSkillCreationResult> CreateSkillAsync(
         string runId,
         int suggestionIndex,
         ConfigLevel level,
+        ReflectionSkillDraft? draft = null,
         CancellationToken ct = default)
     {
         var record = await _reader.FindByRunIdAsync(runId, ct).ConfigureAwait(false);
@@ -94,7 +96,7 @@ public sealed class ReflectionRunOperations
         var suggestion = record.Suggestions[suggestionIndex];
 
         var result = await _writer
-            .CreateFromSuggestionAsync(suggestion, record.SessionId, level, ct)
+            .CreateFromSuggestionAsync(suggestion, record.SessionId, level, draft, ct)
             .ConfigureAwait(false);
 
         if (result.Success)

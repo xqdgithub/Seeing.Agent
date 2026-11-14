@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Configuration;
@@ -21,8 +22,8 @@ namespace Seeing.Agent.Reflection.Core;
 /// 权限面从「必须允许写文件」收窄到「完全不允许写」，安全边界更容易论证。</item>
 /// </list>
 /// <para>
-/// 校验顺序对齐平台既有口径（<c>SkillWriter.TryValidateName</c> 与 <c>SkillFileScanner</c>），
-/// 不自创新规则：名称正则、路径字符、正文长度、注入片段。
+/// 名称规则与技能创建页一致（kebab-case），比平台 <c>SkillWriter</c> 更严；
+/// 其余校验（正文长度、注入片段、查重）沿用本写入器既有口径。
 /// </para>
 /// </summary>
 public sealed class ReflectionSuggestionsWriter
@@ -36,8 +37,14 @@ public sealed class ReflectionSuggestionsWriter
     /// <summary>技能正文最大长度。</summary>
     public const int MaxContentLength = 8000;
 
-    /// <summary>技能名中禁止出现的字符（跨平台文件名非法字符 + 路径分隔符）。</summary>
-    private static readonly char[] s_illegalNameChars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|'];
+    /// <summary>
+    /// 技能名规范：与技能创建页一致——仅小写字母、数字与连字符（kebab-case）。
+    /// <para>复盘写入器比平台 <c>SkillWriter</c> 更严：平台为兼容生态保留宽松名，
+    /// 复盘产出面向本仓新建技能，必须与 UI 创建口径一致，避免中文名落盘。</para>
+    /// </summary>
+    private static readonly Regex s_skillNamePattern = new(
+        @"^[a-z0-9]+(-[a-z0-9]+)*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
     /// 正文中禁止出现的提示注入片段（大小写不敏感）。
@@ -84,15 +91,17 @@ public sealed class ReflectionSuggestionsWriter
     /// <see cref="TryCreateAsync"/>，不另开一套口径。
     /// </para>
     /// </summary>
-    /// <param name="suggestion">要落盘的建议。</param>
+    /// <param name="suggestion">要落盘的建议（草稿缺省时从中取字段）。</param>
     /// <param name="sourceSessionId">源会话 ID（写入 frontmatter 供追溯）。</param>
     /// <param name="level">目标层级：项目级 / 用户级。</param>
+    /// <param name="draft">用户确认过的草稿；为 <c>null</c> 时用建议原文（ApplyCreate / 兼容旧调用）。</param>
     /// <param name="ct">取消令牌。</param>
     /// <returns>写入结果；失败时带可展示原因。</returns>
     public async Task<ReflectionSkillCreationResult> CreateFromSuggestionAsync(
         ReflectionSuggestion suggestion,
         string sourceSessionId,
         ConfigLevel level,
+        ReflectionSkillDraft? draft = null,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(suggestion);
@@ -103,10 +112,43 @@ public sealed class ReflectionSuggestionsWriter
                 "技能写入通道不可用：当前启动能力集不含 skills 模块。");
         }
 
-        var (name, error) = await TryCreateAsync(suggestion, sourceSessionId, level, ct).ConfigureAwait(false);
+        var (name, error) = await TryCreateAsync(suggestion, sourceSessionId, level, draft, ct)
+            .ConfigureAwait(false);
         return name is null
             ? ReflectionSkillCreationResult.Failed(error ?? "建议无法落成技能。")
             : ReflectionSkillCreationResult.Created(name);
+    }
+
+    /// <summary>
+    /// 技能名是否符合复盘落盘规范（与技能创建页同一正则）。
+    /// </summary>
+    /// <param name="name">待校验名称。</param>
+    /// <param name="error">失败原因（可直接展示）；成功时为 <c>null</c>。</param>
+    /// <returns>合法返回 <c>true</c>。</returns>
+    public static bool TryValidateSkillName(string? name, out string? error)
+    {
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            error = "技能名不能为空。";
+            return false;
+        }
+
+        var trimmed = name.Trim();
+        if (trimmed.Length > MaxNameLength)
+        {
+            error = $"技能名超长（{trimmed.Length} > {MaxNameLength}）。";
+            return false;
+        }
+
+        if (!s_skillNamePattern.IsMatch(trimmed))
+        {
+            error = "技能名只能包含小写字母、数字和连字符（如 my-skill）。";
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -149,7 +191,7 @@ public sealed class ReflectionSuggestionsWriter
 
             // 自动路径固定写项目级：这些建议来自「本项目的会话」，落到本项目技能目录才可追溯。
             var (name, _) = await TryCreateAsync(
-                suggestion, sourceSessionId, ConfigLevel.Project, ct).ConfigureAwait(false);
+                suggestion, sourceSessionId, ConfigLevel.Project, draft: null, ct).ConfigureAwait(false);
             if (name is not null)
                 created.Add(name);
         }
@@ -164,11 +206,13 @@ public sealed class ReflectionSuggestionsWriter
     /// <param name="suggestion">建议内容。</param>
     /// <param name="sourceSessionId">源会话 ID（frontmatter 追溯）。</param>
     /// <param name="level">目标层级。</param>
+    /// <param name="draft">用户草稿；为 <c>null</c> 时用建议字段。</param>
     /// <param name="ct">取消令牌。</param>
     private async Task<(string? Name, string? Error)> TryCreateAsync(
         ReflectionSuggestion suggestion,
         string sourceSessionId,
         ConfigLevel level,
+        ReflectionSkillDraft? draft,
         CancellationToken ct)
     {
         // 写入通道在这里再判一次：两个公开入口都已判过，但本方法是唯一真正用 _writer 的地方，
@@ -176,8 +220,10 @@ public sealed class ReflectionSuggestionsWriter
         if (_writer is not { } writer)
             return (null, "技能写入通道不可用：当前启动能力集不含 skills 模块。");
 
-        var name = suggestion.Target?.Trim();
-        var content = suggestion.SuggestedContent?.Trim();
+        var name = (draft?.Name ?? suggestion.Target)?.Trim();
+        var content = (draft?.Content ?? suggestion.SuggestedContent)?.Trim();
+        // 描述只取 description（草稿优先）：reason 是给人看的备注，绝不能当 SKILL 选型描述落盘。
+        var descriptionSource = draft?.Description ?? suggestion.Description;
 
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -192,16 +238,10 @@ public sealed class ReflectionSuggestionsWriter
             return (null, "该建议只有技能名、没有正文，没有可写入的内容。");
         }
 
-        if (name.Length > MaxNameLength)
+        if (!TryValidateSkillName(name, out var nameError))
         {
-            _logger.LogDebug("跳过建议：名称超长（{Length}>{Max}，Skill={Skill}）", name.Length, MaxNameLength, name);
-            return (null, $"技能名超长（{name.Length} > {MaxNameLength}）。");
-        }
-
-        if (name.IndexOfAny(s_illegalNameChars) >= 0 || name.Any(char.IsControl))
-        {
-            _logger.LogDebug("跳过建议：名称含非法字符（Skill={Skill}）", name);
-            return (null, "技能名含非法字符（禁止 \\ / : * ? \" < > |）。");
+            _logger.LogDebug("跳过建议：名称不合规（Skill={Skill}, Reason={Reason}）", name, nameError);
+            return (null, nameError);
         }
 
         if (content.Length > MaxContentLength)
@@ -229,16 +269,18 @@ public sealed class ReflectionSuggestionsWriter
             return (null, $"已存在同名技能「{name}」，请到技能页编辑或换个名字。");
         }
 
-        // 描述缺失时用名称兜底：SkillDraft 要求非空，但模型漏写 description 不该让整条建议作废。
-        var description = string.IsNullOrWhiteSpace(suggestion.Reason)
+        // 描述缺失时用名称兜底：SkillDraft 要求非空；不回落 reason（备注叙事会污染选型）。
+        var description = string.IsNullOrWhiteSpace(descriptionSource)
             ? name
-            : Truncate(suggestion.Reason.Trim(), MaxDescriptionLength);
+            : Truncate(descriptionSource.Trim(), MaxDescriptionLength);
 
         var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["distilled-by"] = "seeing-reflection",
             ["source-session"] = sourceSessionId ?? string.Empty
         };
+        if (!string.IsNullOrWhiteSpace(suggestion.Reason))
+            metadata["notes"] = Truncate(suggestion.Reason.Trim(), MaxDescriptionLength);
 
         try
         {

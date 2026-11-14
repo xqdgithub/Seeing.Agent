@@ -26,7 +26,7 @@ Agent 在回合收尾后可以**异步复盘**这一轮的执行过程，把「�
 | `Core/ReflectionJournal.cs` | `runs/{yyyyMMdd}/{executionId}.json`，每 run 一文件 |
 | `Core/ExecutionUsageLedger.cs` | `usage.json`，UTC 日切，累计 `ExecutionOutcome.Usage` |
 | `Core/Prompts.cs` | 复盘系统提示词（任务定义 / 反模式清单 / 写入纪律）与用户提示词 |
-| `Core/Suggestions.cs` | 建议清单 JSON 解析（容忍围栏、丢弃无 evidence/无 reason 条目） |
+| `Core/Suggestions.cs` | 建议清单 JSON 解析（容忍围栏、丢弃无 evidence/无 description 条目；`reason` 为可选备注） |
 | `Core/ReflectionSuggestionsWriter.cs` | **复盘唯一的写盘出口**：按 Mode 把建议落成项目级技能，返回实际创建的名字 |
 | `Core/ReflectionTurnCounter.cs` | 轮次计数（有界 LRU，上限 512） |
 | `Integration/ReflectionAgentDefinition.cs` | `reflection` agent 定义（`Primary` + `IsHidden`，纯只读） |
@@ -492,12 +492,20 @@ journal / 账本 / 记录页仍读写 A 的 `.seeing/reflection`：新工作区�
 
 ### 11.3 生成 SKILL
 
-`ReflectionSuggestionsWriter.CreateFromSuggestionAsync(suggestion, sessionId, level)`：
+`ReflectionSuggestionsWriter.CreateFromSuggestionAsync(suggestion, sessionId, level, draft?)`：
 
 - **不看 `ReflectionMode`**：模式约束的是「复盘跑完后自动写盘」这个自主行为，
   而这是用户对着具体建议的显式点击 —— 同「手动触发跳过 `Enabled`」的理由；
 - 校验全部复用 `TryCreateAsync`（名称合法性 / 正文长度 / 提示注入 / 查重），不另开一套口径；
-- 失败原因直接可展示（重名 / 非法字符 / 注入片段），因为用户就站在那条建议前面。
+- **名称规范**（复盘写入器全路径，含 ApplyCreate）：`^[a-z0-9]+(-[a-z0-9]+)*$`，
+  与技能创建页一致；比平台 `SkillWriter` 更严。公开静态方法 `TryValidateSkillName`；
+- **手动流程**：记录页弹窗可改名称 / 级别 / 描述 / 正文，经 `ReflectionSkillDraft` 覆盖建议字段；
+  中文 target 原样预填并标红，保存前必须改合规；
+- **字段分工**：`description` 写入 SKILL frontmatter（Agent 选型句：何时用 / 做什么）；
+  `reason` 只作备注展示与 metadata `notes`，**不得**回落成技能描述（会话回顾会污染选型）；
+- 失败原因直接可展示（重名 / 不合规名 / 注入片段），因为用户就站在那条建议前面。
+
+详见 `docs/superpowers/specs/2026-11-13-reflection-skill-create-dialog-design.md`。
 
 ### 11.4 技能层级决策（关键）
 
@@ -508,7 +516,7 @@ journal / 账本 / 记录页仍读写 A 的 `.seeing/reflection`：新工作区�
 | 复盘记录（journal / usage / 记录页） | `{工作区}/.seeing/reflection/` | 与 session、预算同域；切项目天然隔离 |
 | 复盘配置 | `~/.seeing/reflection.json` | 个人偏好，跨项目一致 |
 | 自动写入的技能 | **项目级** | 结论来自本项目会话 |
-| 手动生成的技能 | **默认项目级**，API 支持显式用户级 | 同上；跨项目复用走技能页晋升 |
+| 手动生成的技能 | **默认项目级**，弹窗可选用户级 | 同上；跨项目复用亦可走技能页晋升 |
 
 **为什么不做「跨项目记录汇总 → 全局技能」（本次明确不做）**：
 

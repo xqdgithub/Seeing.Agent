@@ -226,7 +226,7 @@ public sealed class ReflectionRunFilterTests
             Outcome: isFailure ? "failed:timeout" : ReflectionRunOutcomes.Suggested,
             CreatedSkills: Enumerable.Range(0, createdSkills).Select(i => $"skill-{i}").ToList(),
             Suggestions: Enumerable.Range(0, suggestions)
-                .Select(i => new ReflectionSuggestion("skill", $"target-{i}", "content", "reason", ["evidence"]))
+                .Select(i => new ReflectionSuggestion("skill", $"target-{i}", "content", "description", "reason", ["evidence"]))
                 .ToList(),
             InputTokens: 10,
             OutputTokens: 5,

@@ -6,15 +6,23 @@ namespace Seeing.Agent.Reflection.Core;
 /// 一条复盘建议。
 /// </summary>
 /// <param name="Kind">建议类型（如 <c>skill</c>）。</param>
-/// <param name="Target">建议目标（技能名、条目名等）。</param>
-/// <param name="SuggestedContent">建议写入的正文；可为空（例如仅提示改名）。</param>
-/// <param name="Reason">为什么值得采纳。</param>
+/// <param name="Target">建议目标（技能名；须为英文 kebab-case）。</param>
+/// <param name="SuggestedContent">建议写入的技能正文；可为空（例如仅提示改名）。</param>
+/// <param name="Description">
+/// 技能 frontmatter 描述：Agent 据此决定是否加载该技能。
+/// 须写成「何时用 / 做什么」，不得写成会话回顾。
+/// </param>
+/// <param name="Reason">
+/// 备注：为何值得沉淀、本会话里出现了什么信号等介绍性说明。
+/// 只给人看，不写入技能描述。
+/// </param>
 /// <param name="Evidence">来自执行记录的具体依据。</param>
 public sealed record ReflectionSuggestion(
     string Kind,
     string Target,
     string? SuggestedContent,
-    string Reason,
+    string? Description,
+    string? Reason,
     IReadOnlyList<string> Evidence);
 
 /// <summary>
@@ -95,6 +103,10 @@ public static class Suggestions
 
     /// <summary>
     /// 解析单条建议；缺字段或无依据时返回 <c>null</c>（整条丢弃）。
+    /// <para>
+    /// 必填：kind / target / description / evidence。
+    /// reason（备注）可选——只给人读，不参与落盘描述。
+    /// </para>
     /// </summary>
     private static ReflectionSuggestion? ParseOne(JsonElement item)
     {
@@ -105,12 +117,13 @@ public static class Suggestions
 
         var kind = ReadString(item, "kind");
         var target = ReadString(item, "target");
-        var reason = ReadString(item, "reason");
+        var description = ReadString(item, "description");
 
-        // 无类型、无目标、无依据的建议不可采纳，直接丢弃。
+        // 无类型、无目标、无技能描述的建议不可采纳，直接丢弃。
+        // reason 是备注，缺了不拦；description 会进 SKILL.md，必须有。
         if (string.IsNullOrWhiteSpace(kind)
             || string.IsNullOrWhiteSpace(target)
-            || string.IsNullOrWhiteSpace(reason))
+            || string.IsNullOrWhiteSpace(description))
         {
             return null;
         }
@@ -125,7 +138,8 @@ public static class Suggestions
             Kind: kind!,
             Target: target!,
             SuggestedContent: ReadString(item, "suggestedContent"),
-            Reason: reason!,
+            Description: description!.Trim(),
+            Reason: ReadString(item, "reason")?.Trim(),
             Evidence: evidence);
     }
 
