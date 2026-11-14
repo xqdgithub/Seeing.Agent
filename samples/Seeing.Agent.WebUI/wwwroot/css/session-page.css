@@ -681,6 +681,33 @@
     flex-shrink: 0;
 }
 
+.session-toolbar-info {
+    flex-shrink: 0;
+    color: var(--color-text-secondary);
+}
+
+.session-toolbar-info:hover {
+    color: var(--color-text);
+}
+
+.session-info-id-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+.session-info-id {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-size: var(--font-size-sm);
+    word-break: break-all;
+}
+
+.session-info-title {
+    min-width: 0;
+    word-break: break-word;
+}
+
 .session-toolbar-right {
     display: flex;
     align-items: center;

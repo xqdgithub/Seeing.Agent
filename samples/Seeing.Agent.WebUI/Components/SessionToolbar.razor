@@ -1,5 +1,6 @@
 @using AntDesign
 @using Microsoft.Extensions.Options
+@using Microsoft.JSInterop
 @using Services = Seeing.Agent.WebUI.Services
 @using Seeing.Session.Core
 @using Seeing.Agent.Abstractions.Agents
@@ -11,6 +12,7 @@
 @inject IMessageService MessageService
 @inject IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
 @inject IScenarioCatalog ScenarioCatalog
+@inject IJSRuntime JSRuntime
 @implements IDisposable
 
 @if (Mode == Services.SessionWindowMode.Full)
@@ -31,6 +33,13 @@
             }
             @if (!string.IsNullOrEmpty(Context.SessionId))
             {
+                <Tooltip Title="会话信息">
+                    <Button Type="@ButtonType.Text"
+                            Size="@ButtonSize.Small"
+                            Icon="@IconType.Outline.InfoCircle"
+                            Class="session-toolbar-info"
+                            OnClick="@ShowSessionInfo" />
+                </Tooltip>
                 <WorkbenchPicker SessionId="@Context.SessionId" SessionScenario="@Context.SessionScenario" />
             }
             @if (Context.ShowScenarioBadge && Context.CurrentSession != null)
@@ -119,13 +128,6 @@
                     返回主会话
                 </Button>
             }
-            <Tooltip Title="重命名会话">
-                <Button Type="@ButtonType.Text"
-                        Size="@ButtonSize.Small"
-                        Icon="@IconType.Outline.Edit"
-                        OnClick="@OnRenameSession"
-                        Disabled="@(!Context.CanRename)" />
-            </Tooltip>
             @if (Context.CanDetach)
             {
                 <Tooltip Title="分叉为独立会话（可编辑）">
@@ -133,15 +135,6 @@
                             Size="@ButtonSize.Small"
                             Icon="@IconType.Outline.Copy"
                             OnClick="@OnBranchSession" />
-                </Tooltip>
-            }
-            @if (Context.CanEditOutboundBinding)
-            {
-                <Tooltip Title="编辑出站绑定">
-                    <Button Type="@ButtonType.Text"
-                            Size="@ButtonSize.Small"
-                            Icon="@IconType.Outline.Api"
-                            OnClick="@OnEditOutbound" />
                 </Tooltip>
             }
             <Tooltip Title="清空会话">
@@ -159,6 +152,71 @@
             }
         </div>
     </div>
+}
+
+@if (_infoModalVisible)
+{
+    <Modal Title="会话信息"
+           Visible="true"
+           OnCancel="@HideSessionInfo"
+           Footer="@null"
+           Width="560">
+        <Descriptions Bordered Column="1" Size="@DescriptionsSize.Small" Class="session-info-descriptions">
+            <DescriptionsItem Title="会话 ID">
+                <div class="session-info-id-row">
+                    <code class="session-info-id">@_infoSessionId</code>
+                    <Tooltip Title="复制 ID">
+                        <Button Type="@ButtonType.Text"
+                                Size="@ButtonSize.Small"
+                                Icon="@IconType.Outline.Copy"
+                                OnClick="@CopySessionIdAsync" />
+                    </Tooltip>
+                </div>
+            </DescriptionsItem>
+            <DescriptionsItem Title="标题">
+                <div class="session-info-id-row">
+                    <span class="session-info-title">@DisplayOrDash(_infoTitle)</span>
+                    @if (Context.CanRename)
+                    {
+                        <Tooltip Title="重命名会话">
+                            <Button Type="@ButtonType.Text"
+                                    Size="@ButtonSize.Small"
+                                    Icon="@IconType.Outline.Edit"
+                                    OnClick="@OnRenameFromInfo" />
+                        </Tooltip>
+                    }
+                </div>
+            </DescriptionsItem>
+            <DescriptionsItem Title="类型">@_infoKind</DescriptionsItem>
+            <DescriptionsItem Title="来源">@_infoOrigin</DescriptionsItem>
+            <DescriptionsItem Title="状态">@_infoStatus</DescriptionsItem>
+            <DescriptionsItem Title="智能体">@DisplayOrDash(_infoAgent)</DescriptionsItem>
+            <DescriptionsItem Title="模型">@DisplayOrDash(_infoModel)</DescriptionsItem>
+            <DescriptionsItem Title="工作模式">@DisplayOrDash(_infoScenario)</DescriptionsItem>
+            <DescriptionsItem Title="工作目录">@DisplayOrDash(_infoWorkingDirectory)</DescriptionsItem>
+            <DescriptionsItem Title="会话组">@DisplayOrDash(_infoGroupId)</DescriptionsItem>
+            <DescriptionsItem Title="父会话">@DisplayOrDash(_infoParentSessionId)</DescriptionsItem>
+            <DescriptionsItem Title="分区">@DisplayOrDash(_infoPartitionId)</DescriptionsItem>
+            <DescriptionsItem Title="出站绑定">
+                <div class="session-info-id-row">
+                    <span class="session-info-title">@DisplayOrDash(_infoChannelRoute)</span>
+                    @if (Context.CanEditOutboundBinding)
+                    {
+                        <Tooltip Title="编辑出站绑定">
+                            <Button Type="@ButtonType.Text"
+                                    Size="@ButtonSize.Small"
+                                    Icon="@IconType.Outline.Edit"
+                                    OnClick="@OnEditOutboundFromInfo" />
+                        </Tooltip>
+                    }
+                </div>
+            </DescriptionsItem>
+            <DescriptionsItem Title="创建时间">@_infoCreatedAt</DescriptionsItem>
+            <DescriptionsItem Title="更新时间">@_infoUpdatedAt</DescriptionsItem>
+            <DescriptionsItem Title="最后活跃">@_infoLastActiveAt</DescriptionsItem>
+            <DescriptionsItem Title="消息数">@_infoMessageCount</DescriptionsItem>
+        </Descriptions>
+    </Modal>
 }
 
 @if (RenameModalVisible)
@@ -260,6 +318,25 @@
     private ScenarioForm ScenarioFormModel { get; set; } = new();
     private bool OutboundModalVisible;
     private OutboundEditForm OutboundForm { get; set; } = new();
+
+    private bool _infoModalVisible;
+    private string _infoSessionId = "";
+    private string? _infoTitle;
+    private string _infoKind = "—";
+    private string _infoOrigin = "—";
+    private string _infoStatus = "—";
+    private string? _infoAgent;
+    private string? _infoModel;
+    private string? _infoScenario;
+    private string? _infoWorkingDirectory;
+    private string? _infoGroupId;
+    private string? _infoParentSessionId;
+    private string? _infoPartitionId;
+    private string? _infoChannelRoute;
+    private string _infoCreatedAt = "—";
+    private string _infoUpdatedAt = "—";
+    private string _infoLastActiveAt = "—";
+    private string _infoMessageCount = "—";
 
     /// <summary>
     /// 工具栏关系徽标。纯「主线」不展示：当前会话就是锚点，标题已经说明身份。
@@ -388,9 +465,87 @@
         Context.SetAcpMode?.Invoke(value ?? "");
     }
 
-    private void OnRenameSession()
+    private void ShowSessionInfo()
     {
-        RenameForm.Title = Context.Title ?? "";
+        var session = Context.CurrentSession;
+        _infoSessionId = session?.Id ?? Context.SessionId;
+        _infoTitle = session?.Title ?? Context.Title;
+        _infoKind = FormatKind(session?.Kind);
+        _infoOrigin = FormatOrigin(session?.Origin);
+        _infoStatus = session?.Status.ToString() ?? "—";
+        _infoAgent = session?.SelectedAgent ?? Context.SelectedAgent;
+        _infoModel = session?.SelectedModel ?? Context.SelectedModel;
+        _infoScenario = session?.Scenario ?? Context.SessionScenario;
+        _infoWorkingDirectory = session?.WorkingDirectory;
+        _infoGroupId = session?.GroupId;
+        _infoParentSessionId = Context.ParentSessionId;
+        _infoPartitionId = session?.PartitionId;
+        _infoChannelRoute = FormatChannelRoute(session?.ChannelRoute);
+        _infoCreatedAt = FormatDateTime(session?.CreatedAt);
+        _infoUpdatedAt = FormatDateTime(session?.UpdatedAt);
+        _infoLastActiveAt = FormatDateTime(session?.LastActiveAt);
+        _infoMessageCount = session is null ? "—" : session.MessageCount.ToString();
+        _infoModalVisible = true;
+    }
+
+    private void HideSessionInfo() => _infoModalVisible = false;
+
+    private async Task CopySessionIdAsync()
+    {
+        if (string.IsNullOrEmpty(_infoSessionId))
+            return;
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", _infoSessionId);
+            MessageService.Success("已复制会话 ID");
+        }
+        catch
+        {
+            // 剪贴板不可用时静默失败
+        }
+    }
+
+    private static string DisplayOrDash(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "—" : value;
+
+    private static string FormatDateTime(DateTime? value) =>
+        value is { } dt && dt != default ? dt.ToString("yyyy-MM-dd HH:mm:ss") : "—";
+
+    private static string FormatKind(SessionKind? kind) => kind switch
+    {
+        SessionKind.Root => "主会话",
+        SessionKind.SubAgent => "子会话",
+        null => "—",
+        _ => kind.Value.ToString()
+    };
+
+    private static string FormatOrigin(SessionOrigin? origin) => origin switch
+    {
+        SessionOrigin.User => "用户",
+        SessionOrigin.SubAgentTask => "子任务",
+        SessionOrigin.Reflection => "复盘",
+        SessionOrigin.Scheduler => "定时任务",
+        SessionOrigin.Heartbeat => "心跳",
+        null => "—",
+        _ => origin.Value.ToString()
+    };
+
+    private static string? FormatChannelRoute(SessionChannelRoute? route)
+    {
+        if (route is null)
+            return null;
+
+        var parts = new[] { route.ChannelId, route.Kind, route.ExternalId, route.Title }
+            .Where(p => !string.IsNullOrWhiteSpace(p));
+        var text = string.Join(" / ", parts);
+        return string.IsNullOrWhiteSpace(text) ? null : text;
+    }
+
+    private void OnRenameFromInfo()
+    {
+        RenameForm.Title = _infoTitle ?? Context.Title ?? "";
+        _infoModalVisible = false;
         RenameModalVisible = true;
     }
 
@@ -398,8 +553,10 @@
     {
         if (!string.IsNullOrWhiteSpace(RenameForm.Title))
         {
+            var title = RenameForm.Title.Trim();
             if (Context.RenameAsync != null)
-                await Context.RenameAsync(RenameForm.Title.Trim());
+                await Context.RenameAsync(title);
+            _infoTitle = title;
         }
 
         RenameModalVisible = false;
@@ -431,12 +588,10 @@
     private static string? NormalizeOutbound(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    private void OnEditOutbound()
+    private void OnEditOutboundFromInfo()
     {
         var session = Context.CurrentSession;
-        if (session == null) return;
-
-        var route = session.ChannelRoute;
+        var route = session?.ChannelRoute;
         OutboundForm = new OutboundEditForm
         {
             ChannelId = route?.ChannelId ?? "",
@@ -444,6 +599,7 @@
             ExternalId = route?.ExternalId ?? "",
             Title = route?.Title ?? ""
         };
+        _infoModalVisible = false;
         OutboundModalVisible = true;
     }
 
@@ -471,6 +627,7 @@
         if (Context.SaveOutboundAsync != null)
             await Context.SaveOutboundAsync(route);
 
+        _infoChannelRoute = FormatChannelRoute(route);
         OutboundModalVisible = false;
         await InvokeAsync(StateHasChanged);
     }
