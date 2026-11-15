@@ -2,6 +2,19 @@
  * Seeing.Agent WebUI JavaScript Utilities
  */
 
+/*
+ * AntDesign Modal 打开时会调 disableBodyScroll，给 body 写
+ *   position:relative; width:calc(100% - scrollbar); overflow:hidden
+ * 本应用壳层已是固定视口（overflow:hidden），误判滚动条会把整页挤窄一截。
+ * ant-design-blazor.js 先于本文件加载，直接把锁滚动改成空操作。
+ */
+(function neutralizeAntModalBodyScroll() {
+    const helper = window.AntDesign?.interop?.domManipulationHelper;
+    if (!helper || typeof helper.disableBodyScroll !== 'function')
+        return;
+    helper.disableBodyScroll = function () { };
+})();
+
 // 自动滚动到指定元素
 function scrollIntoView(elementId) {
     const element = document.getElementById(elementId);
@@ -239,30 +252,77 @@ function disposeDropZone(containerId) {
 
 // ========== Textarea 自动高度调整 ==========
 
-// 自动调整 textarea 高度
+/**
+ * 按内容重算 textarea 高度。
+ * 必须先压到 0 再读 scrollHeight：用 height:auto 时，在 flex 列布局里
+ * 会短暂撑满剩余空间，把高度误写成接近 max（工作区切换 / 消息流布局抖动时常见）。
+ */
 function autoResizeTextarea(textarea) {
-    if (!textarea) return;
-    
-    // 重置高度以获取正确的 scrollHeight
-    textarea.style.height = 'auto';
-    
-    // 设置新高度（最小 40px，最大 200px）
-    const newHeight = Math.min(Math.max(textarea.scrollHeight, 40), 200);
-    textarea.style.height = newHeight + 'px';
+    if (!textarea || textarea._seeingAutoResizing) return;
+
+    textarea._seeingAutoResizing = true;
+    try {
+        textarea.style.height = '0px';
+        // 与 .prompt-textarea 的 min-height / max-height 对齐
+        const newHeight = Math.min(Math.max(textarea.scrollHeight, 44), 200);
+        textarea.style.height = newHeight + 'px';
+    } finally {
+        // 同帧内的 ResizeObserver 回调忽略；下一帧再允许重入
+        requestAnimationFrame(() => { textarea._seeingAutoResizing = false; });
+    }
 }
 
-// 设置 textarea 自动高度调整
+/** 供 Blazor 在程序化改值后显式重算（@bind 清空不派发 input）。 */
+function autoResizeTextareaById(textareaId) {
+    autoResizeTextarea(document.getElementById(textareaId));
+}
+
+/**
+ * 绑定自动高度：input / focus / 父级宽度变化 / 程序化改 value。
+ * 幂等——重复调用只重算，不叠监听。
+ */
 function setupTextareaAutoResize(textareaId) {
     const textarea = document.getElementById(textareaId);
     if (!textarea) return;
-    
-    // 初始化高度
-    autoResizeTextarea(textarea);
-    
-    // 监听输入事件
-    textarea.addEventListener('input', () => {
+
+    if (textarea.dataset.autoResizeBound === '1') {
         autoResizeTextarea(textarea);
-    });
+        return;
+    }
+    textarea.dataset.autoResizeBound = '1';
+
+    autoResizeTextarea(textarea);
+
+    textarea.addEventListener('input', () => autoResizeTextarea(textarea));
+    // 点击聚焦时重测：布局变化后「一点就恢复」的用户路径
+    textarea.addEventListener('focus', () => autoResizeTextarea(textarea));
+
+    // 只观察父级宽度（工作区/侧栏切换），避免观察自身 height 写入造成循环
+    const widthHost = textarea.parentElement;
+    if (widthHost && typeof ResizeObserver !== 'undefined') {
+        let lastWidth = widthHost.clientWidth;
+        const ro = new ResizeObserver(() => {
+            const width = widthHost.clientWidth;
+            if (width === lastWidth) return;
+            lastWidth = width;
+            autoResizeTextarea(textarea);
+        });
+        ro.observe(widthHost);
+    }
+
+    // Blazor 改 .value 不派发 input；拦截 setter，提交清空 / 会话切换后也能收回高度
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    if (descriptor && descriptor.get && descriptor.set) {
+        Object.defineProperty(textarea, 'value', {
+            configurable: true,
+            enumerable: descriptor.enumerable,
+            get() { return descriptor.get.call(this); },
+            set(v) {
+                descriptor.set.call(this, v);
+                requestAnimationFrame(() => autoResizeTextarea(textarea));
+            }
+        });
+    }
 }
 
 // ========== 智能滚动管理 ==========
@@ -764,16 +824,54 @@ function setCommandDropdownState(textareaId, isOpen) {
 }
 
 /**
- * 判断是否为移动设备浏览器（非桌面端缩窄窗口）
- * 使用 navigator 属性区分，不依赖窗口宽度
- * @returns {boolean}
+ * 是否应使用移动端布局（汉堡侧栏、内容区无左边距）。
+ * 含三类：移动 UA、触控小屏、以及窄视口（≤768）。
+ * 窄视口必须算进去：DevTools Responsive / 桌面缩窗若不切汉堡，
+ * 会留下左侧灰侧栏（含审批中心）并占走内容区 margin。
  */
 function isMobileBrowser() {
     var hasTouch = navigator.maxTouchPoints > 0;
-    var ua = navigator.userAgent;
+    var ua = navigator.userAgent || '';
     var isMobileUA = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
     var smallScreen = window.screen.width <= 1024 && window.screen.height <= 1024;
-    return isMobileUA || (hasTouch && smallScreen);
+    var narrowViewport = window.matchMedia
+        && window.matchMedia('(max-width: 768px)').matches;
+    return !!(isMobileUA || (hasTouch && smallScreen) || narrowViewport);
+}
+
+/** @type {{ mql: MediaQueryList, handler: EventListener } | null} */
+var _mobileLayoutSubscription = null;
+
+/**
+ * 订阅窄视口变化，回调 .NET OnMobileLayoutChanged(bool)。
+ * 幂等：重复订阅会先卸旧监听。
+ */
+function subscribeMobileLayoutChanged(dotNetRef) {
+    unsubscribeMobileLayoutChanged();
+    if (!window.matchMedia || !dotNetRef) return;
+
+    var mql = window.matchMedia('(max-width: 768px)');
+    var handler = function () {
+        try {
+            dotNetRef.invokeMethodAsync('OnMobileLayoutChanged', isMobileBrowser());
+        } catch (e) {
+            // circuit 已释放
+        }
+    };
+
+    if (mql.addEventListener) mql.addEventListener('change', handler);
+    else mql.addListener(handler);
+
+    _mobileLayoutSubscription = { mql: mql, handler: handler };
+}
+
+function unsubscribeMobileLayoutChanged() {
+    var sub = _mobileLayoutSubscription;
+    _mobileLayoutSubscription = null;
+    if (!sub) return;
+
+    if (sub.mql.removeEventListener) sub.mql.removeEventListener('change', sub.handler);
+    else if (sub.mql.removeListener) sub.mql.removeListener(sub.handler);
 }
 
 /**

@@ -17,9 +17,8 @@
 @inject IAgentRegistry AgentRegistry
 @inject IModelConfigManager ModelManager
 @inject IJSRuntime JSRuntime
-@inject PermissionInboxView PermissionView
 @inject Seeing.Agent.WebUI.Services.HostRequestDispatcher HostDispatcher
-@implements IDisposable
+@implements IAsyncDisposable
 
 <Layout Class="app-layout"
         Style="@($"--sider-width:{AppSidebar.ExpandedWidth}px;--sider-collapsed-width:{AppSidebar.CollapsedWidth}px;min-height:100vh;")">
@@ -43,17 +42,8 @@
                 OnClickStopPropagation="true" />
     }
 
-    @if (AppState.IsMobile)
-    {
-        <Badge Count="@PermissionView.TotalCount"
-               Style="position: fixed; right: 16px; bottom: 88px; z-index: 150;">
-            <Button Icon="@IconType.Outline.SafetyCertificate"
-                    Shape="@ButtonShape.Circle"
-                    Size="@ButtonSize.Large"
-                    OnClick="OpenPermissionCenter"
-                    OnClickStopPropagation="true" />
-        </Badge>
-    }
+    @* 移动端不再单独挂审批 FAB：审批中心已在汉堡侧栏菜单内（带角标），
+       外挂按钮会让人以为「审批没进汉堡」，且与汉堡抢视线。 *@
 
     <Layout Class="@GetContentClass()">
         <Content Class="content-area">
@@ -68,6 +58,7 @@
 @code {
     private bool _hasRendered;
     private AppSidebar? _sidebarRef;
+    private DotNetObjectReference<MainLayout>? _layoutRef;
 
     protected override void OnInitialized()
     {
@@ -87,8 +78,6 @@
         // 监听模型配置变更
         ModelManager.ModelConfigChanged += OnModelConfigChanged;
 
-        PermissionView.Changed += OnPermissionChanged;
-
         // 只加载 Agent 和 Model 列表，不自动加载会话
         // 会话加载由 Session.razor 根据 URL 参数决定
         await LoadAgentsAndModelsAsync();
@@ -101,9 +90,33 @@
             _hasRendered = true;
 
             // JS Interop 仅在首次渲染后可用（避开预渲染）
+            _layoutRef = DotNetObjectReference.Create(this);
             AppState.IsMobile = await JSRuntime.InvokeAsync<bool>("isMobileBrowser");
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("subscribeMobileLayoutChanged", _layoutRef);
+            }
+            catch
+            {
+                // 旧缓存 app.js 或缺函数时不拖垮 circuit
+            }
+
             AppState.NotifyChange();
         }
+    }
+
+    /// <summary>视口跨过 768 边界时由 JS 回调；与首屏 isMobileBrowser 共用同一判定。</summary>
+    [JSInvokable]
+    public void OnMobileLayoutChanged(bool isMobile)
+    {
+        if (AppState.IsMobile == isMobile)
+            return;
+
+        AppState.IsMobile = isMobile;
+        if (!isMobile)
+            AppState.MobileSidebarOpen = false;
+
+        AppState.NotifyChange();
     }
 
     private void OnAppStateChange()
@@ -164,15 +177,21 @@
     private void CloseMobileSidebar()
         => _sidebarRef?.CloseMobileSidebar();
 
-    private void OpenPermissionCenter()
-        => _sidebarRef?.OpenPermissionCenter();
-
-    private void OnPermissionChanged() => InvokeAsync(StateHasChanged);
-
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         AppState.OnChange -= OnAppStateChange;
         ModelManager.ModelConfigChanged -= OnModelConfigChanged;
-        PermissionView.Changed -= OnPermissionChanged;
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("unsubscribeMobileLayoutChanged");
+        }
+        catch
+        {
+            // circuit 可能已断开
+        }
+
+        _layoutRef?.Dispose();
+        _layoutRef = null;
     }
 }

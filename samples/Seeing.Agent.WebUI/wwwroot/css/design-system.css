@@ -184,6 +184,7 @@
 
 html, body {
   height: 100%;
+  width: 100%;
   font-family: var(--font-family);
   font-size: var(--font-size-base);
   line-height: var(--line-height-normal);
@@ -191,6 +192,17 @@ html, body {
   background-color: var(--color-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * 兜底：若仍有路径给 body 打上 ant-scrolling-effect / inline 宽度，
+ * 强制拉回，避免「选择模型」闪一下整页压缩。主修复在 app.js 空操作 disableBodyScroll。
+ */
+body.ant-scrolling-effect {
+  width: 100% !important;
+  max-width: 100% !important;
+  padding-right: 0 !important;
+  position: static !important;
 }
 
 #app, app {

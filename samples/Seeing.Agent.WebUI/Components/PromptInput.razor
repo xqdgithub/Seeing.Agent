@@ -67,7 +67,7 @@
                       @bind="@InputText"
                       @bind:event="oninput"
                       @bind:after="@HandleInputChange"
-                      placeholder="@(AppState.IsMobile ? HelpText : Placeholder)"
+                      placeholder="@Placeholder"
                       @onkeydown="@HandleKeyDown"
                       @onkeydown:preventDefault="@_preventDefaultKeydown"
                       @ref="@TextareaRef"
@@ -1115,6 +1115,15 @@
 
             InputText = "";
             Attachments.Clear();
+            // Blazor 清空 value 偶发不走 JS setter；提交后显式收回高度，避免残留多行高度
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("autoResizeTextareaById", TextareaId);
+            }
+            catch
+            {
+                // JS 未就绪时忽略；下次 focus/input 仍会重算
+            }
         }
         finally
         {
@@ -1549,12 +1558,13 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // 执行结束后重新聚焦输入框
+        // 执行结束后重算高度并聚焦：消息流布局已变，仅靠 focus 事件在已聚焦时不会再触发
         if (_pendingRefocus)
         {
             _pendingRefocus = false;
             try
             {
+                await JSRuntime.InvokeVoidAsync("autoResizeTextareaById", TextareaId);
                 await JSRuntime.InvokeVoidAsync("focusElement", TextareaId);
             }
             catch

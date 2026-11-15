@@ -29,6 +29,11 @@
   vertical-align: middle;
 }
 
+/* 默认隐藏；仅输入框底栏 composer 变体显示（见 prompt-input.css） */
+.model-select-badge-caret {
+  display: none;
+}
+
 /* 对齐工具栏 Agent Select (InputSize.Small ≈ 24px) */
 .model-select-badge .model-select-badge-chip.ant-btn {
   display: inline-flex;

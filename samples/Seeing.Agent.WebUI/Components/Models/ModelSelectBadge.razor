@@ -4,33 +4,40 @@
 @inject IModelConfigManager ModelManager
 @implements IDisposable
 
-<div class="@RootClass">
-    <Tooltip Title="@_badgeTitle">
-        <Button Type="@ButtonType.Default"
-                Size="@ButtonSize.Small"
-                Disabled="@Disabled"
-                Danger="@(IsInvalid || _isOrphan)"
-                Class="@ChipClass"
-                Style="@EffectiveStyle"
-                OnClick="OpenModalAsync">
-            @if (string.IsNullOrEmpty(Value))
-            {
-                <span class="model-select-badge-inner">
-                    <span class="model-select-badge-text is-placeholder">@Placeholder</span>
-                </span>
-            }
-            else
-            {
-                <span class="model-select-badge-inner">
-                    <span class="model-select-badge-text">@_badgeLabel</span>
-                    @if (!string.IsNullOrEmpty(_badgeProvider))
-                    {
-                        <span class="model-select-badge-provider">/ @_badgeProvider</span>
-                    }
-                </span>
-            }
-        </Button>
-    </Tooltip>
+@*
+    完整 catalog key 用原生 title，不用 AntDesign Tooltip：
+    点击打开 Modal 时 Tooltip 会先弹出黑条（如 trip/model），再锁滚动挤一下页面，
+    最后才出现「选择模型」——看起来像闪一下奇怪压缩。原生 title 只在悬停出现、不进 portal。
+
+    下拉三角必须是独立 DOM，不能用 ant-btn::after：
+    AntDesign 按钮点击波纹也占用 ::after，一点击会变成蓝色下箭头叠在徽章上。
+*@
+<div class="@RootClass" title="@(_modalVisible ? null : _badgeTitle)">
+    <Button Type="@ButtonType.Default"
+            Size="@ButtonSize.Small"
+            Disabled="@Disabled"
+            Danger="@(IsInvalid || _isOrphan)"
+            Class="@ChipClass"
+            Style="@EffectiveStyle"
+            OnClick="OpenModalAsync">
+        @if (string.IsNullOrEmpty(Value))
+        {
+            <span class="model-select-badge-inner">
+                <span class="model-select-badge-text is-placeholder">@Placeholder</span>
+            </span>
+        }
+        else
+        {
+            <span class="model-select-badge-inner">
+                <span class="model-select-badge-text">@_badgeLabel</span>
+                @if (!string.IsNullOrEmpty(_badgeProvider))
+                {
+                    <span class="model-select-badge-provider">/ @_badgeProvider</span>
+                }
+            </span>
+        }
+    </Button>
+    <span class="model-select-badge-caret" aria-hidden="true"></span>
     @if (AllowClear && !Disabled && !string.IsNullOrEmpty(Value))
     {
         <Button Type="@ButtonType.Text"
