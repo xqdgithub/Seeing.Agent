@@ -131,16 +131,14 @@
                 <Tooltip Title="@VoiceButtonTooltip">
                     <Button Type="@ButtonType.Text"
                             Class="@VoiceButtonClass"
+                            NoSpanWrap="true"
+                            Icon="@(_voiceState == VoiceState.Recording ? null : IconType.Outline.Audio)"
                             OnClick="@OnVoiceClick"
                             Disabled="@(_voiceState == VoiceState.Transcribing)">
                         @if (_voiceState == VoiceState.Recording)
                         {
                             <span class="prompt-voice-recording-dot"></span>
                             <span class="prompt-voice-elapsed">@VoiceElapsedText</span>
-                        }
-                        else
-                        {
-                            <Icon Type="@IconType.Outline.Audio" />
                         }
                     </Button>
                 </Tooltip>
