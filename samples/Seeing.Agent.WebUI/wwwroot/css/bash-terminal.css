@@ -1,4 +1,4 @@
-/* bash 终端展示卡 */
+/* bash 命令卡：浅色、命令/输出靠颜色区分；折叠头栏保持现有密度 */
 
 .bash-terminal-shell {
     border: 1px solid var(--color-border-secondary, #e8e8e8);
@@ -10,31 +10,37 @@
 .bash-terminal-header {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 8px;
     padding: 8px 12px;
     cursor: pointer;
     user-select: none;
 }
 
 .bash-terminal-title {
-    margin-left: 6px;
+    flex: 1;
+    min-width: 0;
     font-weight: 600;
     font-size: 13px;
     color: var(--color-text, #262626);
-    max-width: 50%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
+.bash-terminal-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
 .bash-duration {
-    margin-left: 8px;
     font-size: 11px;
     color: var(--color-text-tertiary, #8c8c8c);
 }
 
 .bash-exit-badge {
-    margin-left: 6px;
     font-size: 11px;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     padding: 0 6px;
@@ -60,38 +66,26 @@
     border: 1px solid #d9d9d9;
 }
 
+/* 展开体：紧凑 */
 .bash-terminal-body {
     border-top: 1px solid var(--color-border-secondary, #f0f0f0);
-    padding: 8px 12px 12px;
-}
-
-.bash-workdir {
-    font-size: 11px;
-    color: var(--color-text-tertiary, #8c8c8c);
-    margin-bottom: 6px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.bash-command-row {
+    padding: 8px 10px 8px;
     display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    margin-bottom: 8px;
+    flex-direction: column;
+    gap: 6px;
 }
 
 .bash-command {
-    flex: 1;
-    min-width: 0;
+    display: block;
     font-size: 12px;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     background: #f5f5f5;
+    color: #262626;
     border-radius: 4px;
     padding: 6px 8px;
     white-space: pre-wrap;
     word-break: break-all;
-    color: #262626;
+    line-height: 1.45;
 }
 
 .bash-prompt {
@@ -100,50 +94,20 @@
     user-select: none;
 }
 
-.bash-action-btn {
-    flex-shrink: 0;
-    padding-inline: 0 !important;
-}
-
-.bash-output-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 4px;
-}
-
-.bash-output-label {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--color-text-secondary, #595959);
-}
-
-.bash-output-label.is-error {
-    color: var(--color-error, #cf1322);
-    margin-top: 8px;
-    margin-bottom: 4px;
-}
-
 .bash-terminal-pre {
     margin: 0;
     max-height: 420px;
     overflow: auto;
-    padding: 10px 12px;
-    border-radius: 6px;
-    background: #1e1e1e;
-    color: #d4d4d4;
+    padding: 8px 10px;
+    border-radius: 4px;
+    background: #fafafa;
+    color: #595959;
+    border: 1px solid #f0f0f0;
     font-size: 12px;
     line-height: 1.5;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-
-.bash-terminal-pre.is-wrap {
     white-space: pre-wrap;
     word-break: break-word;
-}
-
-.bash-terminal-pre.is-nowrap {
-    white-space: pre;
 }
 
 .bash-terminal-pre.is-collapsed {
@@ -151,10 +115,32 @@
 }
 
 .bash-terminal-pre.is-error {
-    background: #2a1215;
-    color: #ffa39e;
+    background: #fff7f7;
+    color: #a8071a;
+    border-color: #ffccc7;
 }
 
-.bash-error-block {
-    margin-top: 8px;
+.bash-output-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 12px;
+}
+
+.bash-text-action {
+    border: none;
+    background: transparent;
+    padding: 0;
+    font-size: 11px;
+    color: var(--color-primary, #1677ff);
+    cursor: pointer;
+    line-height: 1;
+}
+
+.bash-text-action.is-muted {
+    color: var(--color-text-tertiary, #8c8c8c);
+}
+
+.bash-text-action:hover {
+    text-decoration: underline;
 }

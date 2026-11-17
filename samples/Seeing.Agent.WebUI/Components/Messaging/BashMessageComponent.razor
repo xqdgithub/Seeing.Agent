@@ -7,93 +7,68 @@
 @inject IJSRuntime JSRuntime
 @inject MessageService MessageService
 
-@* bash 专用终端展示卡（只读，无 stdin） *@
+@* bash 专用命令卡（只读，无 stdin）：命令/输出靠颜色区分，浅色紧凑 *@
 
 <div class="tool-call-shell bash-terminal-shell">
     <div class="bash-terminal-header" onclick="@ToggleExpand">
-        <Icon Type="@IconType.Outline.Code" Style="color: var(--color-primary); font-size: 14px;" />
         <span class="bash-terminal-title">@_card.DisplayTitle</span>
-        <Tag Color="@ToolCall.StatusTagColor" Style="margin-left: 6px; font-size: 11px;">@ToolCall.StatusText</Tag>
-
-        @if (_card.ExitCode.HasValue)
-        {
-            <span class="bash-exit-badge @BashToolDisplayHelper.ExitBadgeClass(_card.ExitCode)">
-                @BashToolDisplayHelper.ExitBadgeText(_card.ExitCode)
-            </span>
-        }
-        @if (_card.TimedOut)
-        {
-            <Tag Color="@("warning")" Style="margin-left: 4px; font-size: 11px;">超时</Tag>
-        }
-        @if (_card.Aborted)
-        {
-            <Tag Color="@("default")" Style="margin-left: 4px; font-size: 11px;">已取消</Tag>
-        }
-        @if (!string.IsNullOrEmpty(ToolCall.GetFormattedDuration()))
-        {
-            <span class="bash-duration">@ToolCall.GetFormattedDuration()</span>
-        }
-        @if (ToolCall.IsRunning)
-        {
-            <Spin Size="@SpinSize.Small" Style="margin-left: 8px;" />
-        }
-        <Icon Type="@(_isExpanded ? IconType.Outline.Down : IconType.Outline.Right)"
-              Style="margin-left: auto; font-size: 12px; color: var(--color-text-tertiary);" />
+        <div class="bash-terminal-meta">
+            <Tag Color="@ToolCall.StatusTagColor" Style="font-size: 11px;">@ToolCall.StatusText</Tag>
+            @if (_card.ExitCode.HasValue)
+            {
+                <span class="bash-exit-badge @BashToolDisplayHelper.ExitBadgeClass(_card.ExitCode)">
+                    @BashToolDisplayHelper.ExitBadgeText(_card.ExitCode)
+                </span>
+            }
+            @if (_card.TimedOut)
+            {
+                <Tag Color="@("warning")" Style="font-size: 11px;">超时</Tag>
+            }
+            @if (_card.Aborted)
+            {
+                <Tag Color="@("default")" Style="font-size: 11px;">已取消</Tag>
+            }
+            @if (!string.IsNullOrEmpty(ToolCall.GetFormattedDuration()))
+            {
+                <span class="bash-duration">@ToolCall.GetFormattedDuration()</span>
+            }
+            @if (ToolCall.IsRunning)
+            {
+                <Spin Size="@SpinSize.Small" />
+            }
+            <Icon Type="@(_isExpanded ? IconType.Outline.Down : IconType.Outline.Right)"
+                  Style="font-size: 12px; color: var(--color-text-tertiary);" />
+        </div>
     </div>
 
     @if (_isExpanded)
     {
         <div class="bash-terminal-body">
-            @if (!string.IsNullOrWhiteSpace(_card.Workdir))
+            <code class="bash-command" title="@(_card.Workdir ?? "")">
+                <span class="bash-prompt">$</span>@(_card.Command ?? "")
+            </code>
+
+            @if (!string.IsNullOrEmpty(_card.DisplayOutput))
             {
-                <div class="bash-workdir" title="@_card.Workdir">@_card.Workdir</div>
+                <pre @ref="_outputRef"
+                     class="bash-terminal-pre @(_outputExpanded ? null : "is-collapsed")"
+                     @onscroll="OnOutputScroll">@_card.DisplayOutput</pre>
             }
-
-            <div class="bash-command-row">
-                <code class="bash-command"><span class="bash-prompt">$</span> @(_card.Command ?? "")</code>
-                <Button Size="@ButtonSize.Small"
-                        Type="@ButtonType.Link"
-                        Icon="@IconType.Outline.Copy"
-                        Class="bash-action-btn"
-                        OnClick="CopyCommandAsync">复制命令</Button>
-            </div>
-
-            <div class="bash-output-toolbar">
-                <span class="bash-output-label">输出</span>
-                <Space Size="@SpaceSize.Small">
-                    <SpaceItem>
-                        <Button Size="@ButtonSize.Small"
-                                Type="@ButtonType.Link"
-                                OnClick="ToggleWrap">@(_wrap ? "不换行" : "换行")</Button>
-                    </SpaceItem>
-                    <SpaceItem>
-                        <Button Size="@ButtonSize.Small"
-                                Type="@ButtonType.Link"
-                                Icon="@(_outputExpanded ? IconType.Outline.Compress : IconType.Outline.Expand)"
-                                OnClick="ToggleOutputExpanded">
-                            @(_outputExpanded ? "收起" : "展开全部")
-                        </Button>
-                    </SpaceItem>
-                    <SpaceItem>
-                        <Button Size="@ButtonSize.Small"
-                                Type="@ButtonType.Link"
-                                Icon="@IconType.Outline.Copy"
-                                OnClick="CopyOutputAsync">复制输出</Button>
-                    </SpaceItem>
-                </Space>
-            </div>
-
-            <pre @ref="_outputRef"
-                 class="bash-terminal-pre @(_wrap ? "is-wrap" : "is-nowrap") @(_outputExpanded ? null : "is-collapsed")"
-                 @onscroll="OnOutputScroll">@_card.DisplayOutput</pre>
 
             @if (!string.IsNullOrEmpty(ToolCall.Error))
             {
-                <div class="bash-error-block">
-                    <div class="bash-output-label is-error">错误</div>
-                    <pre class="bash-terminal-pre is-error">@ToolCall.Error</pre>
-                </div>
+                <pre class="bash-terminal-pre is-error">@ToolCall.Error</pre>
             }
+
+            <div class="bash-output-actions">
+                @if (BashToolDisplayHelper.ShouldCollapseByDefault(_card.DisplayOutput, false))
+                {
+                    <button type="button" class="bash-text-action" @onclick="ToggleOutputExpanded">
+                        @(_outputExpanded ? "收起" : "展开全部")
+                    </button>
+                }
+                <button type="button" class="bash-text-action is-muted" @onclick="CopyAsync">复制</button>
+            </div>
         </div>
     }
 </div>
@@ -107,7 +82,6 @@
     private BashCardModel _card = BashCardModel.From(new ToolCallViewModel { Name = "bash" });
     private bool _isExpanded;
     private bool _outputExpanded = true;
-    private bool _wrap = true;
     private bool _stickToBottom = true;
     private bool _userToggledCard;
     private bool _userToggledOutput;
@@ -126,9 +100,8 @@
             _lastToolCallId = ToolCall.Id;
             _userToggledCard = false;
             _userToggledOutput = false;
-            _wrap = true;
             _stickToBottom = true;
-            // 执行中默认展开；历史已完成默认折叠（与 Task 卡一致）
+            // 执行中默认展开；历史已完成默认折叠（头栏样式与现网一致）
             _isExpanded = ToolCall.IsRunning;
             _outputExpanded = !BashToolDisplayHelper.ShouldCollapseByDefault(_card.DisplayOutput, ToolCall.IsRunning);
         }
@@ -141,7 +114,7 @@
             }
         }
 
-        // 输出区：仅在用户未手动切换时，按长度在结束瞬间收起；流式过程勿强行展开（否则手动收起无效）
+        // 输出区：仅在用户未手动切换时，按长度在结束瞬间收起；流式过程勿强行展开
         if (!_userToggledOutput && !ToolCall.IsRunning
             && _lastStatus is "running" or "pending"
             && status is "success" or "failed" or "cancelled" or "rejected")
@@ -164,7 +137,6 @@
         }
         catch (JSException)
         {
-            // 旧缓存 app.js 或缺函数时不拖垮 circuit
             _stickToBottom = false;
         }
         catch (JSDisconnectedException) { }
@@ -184,8 +156,6 @@
         _outputExpanded = !_outputExpanded;
     }
 
-    private void ToggleWrap() => _wrap = !_wrap;
-
     private async Task OnOutputScroll()
     {
         try
@@ -198,29 +168,20 @@
         }
     }
 
-    private async Task CopyCommandAsync()
+    private async Task CopyAsync()
     {
-        var text = _card.Command ?? "";
-        if (string.IsNullOrEmpty(text)) return;
-        try
-        {
-            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text);
-            MessageService.Success("已复制命令");
-        }
-        catch
-        {
-            MessageService.Error("复制失败");
-        }
-    }
+        var text = !string.IsNullOrEmpty(_card.DisplayOutput)
+            ? _card.DisplayOutput
+            : (_card.Command ?? "");
+        if (string.IsNullOrEmpty(text) && string.IsNullOrEmpty(ToolCall.Error))
+            return;
+        if (string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(ToolCall.Error))
+            text = ToolCall.Error;
 
-    private async Task CopyOutputAsync()
-    {
-        var text = _card.DisplayOutput;
-        if (string.IsNullOrEmpty(text)) return;
         try
         {
             await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text);
-            MessageService.Success("已复制输出");
+            MessageService.Success("已复制");
         }
         catch
         {
