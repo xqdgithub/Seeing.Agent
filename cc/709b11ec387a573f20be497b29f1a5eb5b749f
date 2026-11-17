@@ -1,0 +1,22 @@
+samples/Seeing.Agent.WebUI/wwwroot/css/prompt-input.css
+  s_3781b765b25077::t_84f5b5a619e7b6 417
+  s_3781b765b25077::t_191ad8a3deac3d 86-88
+samples/Seeing.Agent.WebUI/Components/PromptInput.razor
+  s_3781b765b25077::t_949c5365fbfe0e 135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "cc709b11ec387a573f20be497b29f1a5eb5b749f",
+  "prompts": {},
+  "sessions": {
+    "s_3781b765b25077": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "60de0982-3ef7-42b0-bd66-88ea1372c648",
+        "model": "default"
+      },
+      "human_author": "qd.xu <qd.xu@trip.com>"
+    }
+  }
+}
