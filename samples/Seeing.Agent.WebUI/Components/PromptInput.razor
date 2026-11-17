@@ -15,6 +15,7 @@
 @using Seeing.Agent.Tools.Support
 @using Seeing.Agent.Llm
 @using Seeing.Agent.Abstractions.Llm
+@using Seeing.Agent.Abstractions.Runtime
 @implements IAsyncDisposable
 @inject IJSRuntime JSRuntime
 @inject AppState AppState
@@ -935,7 +936,7 @@
             }
         }
         
-        // 上键：召回上一条用户消息到输入框（仅在输入框为空时，避免覆盖正在输入的内容）
+        // 上键：召回上一条已消费用户消息（跳过排队中未读，避免空框 ↑ 再 Enter 重复入队）
         if (e.Key == "ArrowUp")
         {
             _preventDefaultKeydown = true;
@@ -943,7 +944,8 @@
             {
                 var lastUserMsg = SessionState?.Messages
                     .LastOrDefault(m => string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase)
-                                        && !string.IsNullOrWhiteSpace(m.Content));
+                                        && !string.IsNullOrWhiteSpace(m.Content)
+                                        && !IsUnreadInboxUser(m));
                 if (lastUserMsg != null)
                 {
                     InputText = lastUserMsg.Content;
@@ -1154,6 +1156,28 @@
     /// <summary>
     /// 构建 Skill 调用模板
     /// </summary>
+    /// <summary>排队中未消费的入站 user（上键召回时跳过）。</summary>
+    private static bool IsUnreadInboxUser(SessionMessage message)
+    {
+        var metadata = message.Metadata;
+        if (metadata is null)
+            return false;
+
+        if (!metadata.TryGetValue(InboxMetadataKeys.Presentation, out var presentationObj)
+            || !string.Equals(presentationObj?.ToString(), "user", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (metadata.TryGetValue(InboxMetadataKeys.Consumed, out var consumedObj))
+        {
+            if (consumedObj is true)
+                return false;
+            if (consumedObj is string s && bool.TryParse(s, out var parsed) && parsed)
+                return false;
+        }
+
+        return true;
+    }
+
     private static string BuildSkillTemplate(SkillInfo skill, string arguments)
     {
         var sb = new StringBuilder();

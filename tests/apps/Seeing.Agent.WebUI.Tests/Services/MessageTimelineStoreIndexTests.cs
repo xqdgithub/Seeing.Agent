@@ -1,4 +1,6 @@
+using System.Collections.Immutable;
 using FluentAssertions;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.WebUI.Services;
 using Seeing.Session.Core;
 
@@ -197,5 +199,48 @@ public class MessageTimelineStoreIndexTests
 
         store.Items.Should().ContainSingle();
         store.Items[0].Message!.Id.Should().Be("m1");
+    }
+
+    private static SessionMessage PendingUser(string id, string content) => new()
+    {
+        Id = id,
+        Role = MessageRole.User,
+        Content = content,
+        SessionId = "s1",
+        Metadata = ImmutableDictionary<string, object>.Empty
+            .Add(InboxMetadataKeys.Presentation, "user")
+            .Add(InboxMetadataKeys.Consumed, false)
+            .Add(InboxMetadataKeys.SenderKind, "human")
+    };
+
+    [Fact]
+    public void ReconcileAppend_RemovedPending_ShouldDropFromQueueWithoutPromoting()
+    {
+        var store = new MessageTimelineStore();
+        var pending = PendingUser("p1", "误入队");
+        store.ResetFromSession([pending], "s1");
+        store.PendingMessages.Should().ContainSingle();
+        store.Items.Should().BeEmpty();
+
+        // 模拟全部撤销：消息已从会话物理删除
+        store.ReconcileAppendFromSession(Array.Empty<SessionMessage>(), "s1");
+
+        store.PendingMessages.Should().BeEmpty();
+        store.Items.Should().BeEmpty("撤销删除后不得晋升为主时间线用户消息");
+    }
+
+    [Fact]
+    public void ReconcileAppend_ConsumedPending_ShouldPromoteToTimeline()
+    {
+        var store = new MessageTimelineStore();
+        var pending = PendingUser("p1", "正常消费");
+        store.ResetFromSession([pending], "s1");
+
+        pending.Metadata = pending.Metadata!.SetItem(InboxMetadataKeys.Consumed, true);
+        store.ReconcileAppendFromSession([pending], "s1");
+
+        store.PendingMessages.Should().BeEmpty();
+        store.Items.Should().ContainSingle()
+            .Which.Message!.Content.Should().Be("正常消费");
     }
 }

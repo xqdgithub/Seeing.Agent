@@ -611,58 +611,106 @@
     border-radius: var(--radius-sm);
 }
 
-/* ========== 排队中消息（输入框上方独立小卡片，区别于正式消息气泡） ========== */
-.pending-messages-bar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
+/* ========== 排队条（输入框上方紧凑卡片） ========== */
+.pending-queue-bar {
     margin-bottom: var(--space-2);
-    background: var(--color-bg-secondary, #fafafa);
-    border: 1px dashed var(--color-border, #d9d9d9);
-    border-radius: var(--radius-md);
-}
-
-.pending-message-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    max-width: 320px;
-    padding: 2px var(--space-2);
+    padding: 10px 12px;
     background: var(--color-bg, #ffffff);
-    border: 1px dashed var(--color-border-secondary, #f0f0f0);
-    border-radius: var(--radius-sm);
-    font-size: var(--font-size-sm);
-    color: var(--color-text-tertiary);
+    border: 1px solid var(--color-border, #e8e8e8);
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
-.pending-message-chip .pending-message-icon {
+.pending-queue-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-bottom: 8px;
+}
+
+.pending-queue-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text, #262626);
+}
+
+.pending-queue-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     flex-shrink: 0;
-    font-size: 13px;
-    color: var(--color-text-tertiary);
 }
 
-.pending-message-index {
+.pending-queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.pending-queue-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: var(--color-bg-secondary, #fafafa);
+    border: 1px solid var(--color-border-secondary, #f0f0f0);
+    border-radius: 6px;
+    font-size: 12px;
+    min-width: 0;
+}
+
+.pending-queue-index {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 16px;
+    width: 16px;
     height: 16px;
-    padding: 0 4px;
-    border-radius: 8px;
-    background: var(--color-bg-tertiary, #f5f5f5);
-    color: var(--color-text-secondary);
-    font-size: 11px;
+    border-radius: 50%;
+    background: var(--color-bg-tertiary, #d9d9d9);
+    color: var(--color-text-secondary, #595959);
+    font-size: 10px;
     line-height: 1;
 }
 
-.pending-message-text {
+.pending-queue-text {
+    flex: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--color-text-secondary);
+    color: var(--color-text, #262626);
+}
+
+.pending-queue-send-through {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-primary, #1677ff);
+    font-size: 11px;
+    padding: 0;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.pending-queue-send-through:hover {
+    text-decoration: underline;
+}
+
+.pending-queue-discard {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-text-tertiary, #8c8c8c);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 2px;
+    cursor: pointer;
+}
+
+.pending-queue-discard:hover {
+    color: var(--color-text, #262626);
 }
 
 /* ========== 加载状态 ========== */

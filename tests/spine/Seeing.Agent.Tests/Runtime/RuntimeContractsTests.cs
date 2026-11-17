@@ -12,6 +12,9 @@ public class RuntimeContractsTests
         var t = typeof(ISessionRuntime);
         t.GetMethod(nameof(ISessionRuntime.DeliverAsync)).Should().NotBeNull();
         t.GetMethod(nameof(ISessionRuntime.InterruptAsync)).Should().NotBeNull();
+        t.GetMethod(nameof(ISessionRuntime.DiscardPendingAsync)).Should().NotBeNull();
+        t.GetMethod(nameof(ISessionRuntime.DiscardPendingMessageAsync)).Should().NotBeNull();
+        t.GetMethod(nameof(ISessionRuntime.InterruptThroughAsync)).Should().NotBeNull();
         t.GetMethod(nameof(ISessionRuntime.StopAsync)).Should().NotBeNull();
         t.GetMethod(nameof(ISessionRuntime.WaitForIdleAsync)).Should().NotBeNull();
     }

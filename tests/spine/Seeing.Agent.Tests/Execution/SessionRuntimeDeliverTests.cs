@@ -292,8 +292,7 @@ public class SessionRuntimeDeliverTests
 
         discarded.Should().Be(1);
         runner.RunCount.Should().Be(0);
-        var message = sessionManager.Get("s1")!.Messages.Should().ContainSingle().Subject;
-        message.Metadata![InboxMetadataKeys.Consumed].Should().Be(true);
+        sessionManager.Get("s1")!.Messages.Should().BeEmpty("撤销应从会话删除，不留可渲染残骸");
     }
 
     [Fact]
@@ -317,8 +316,65 @@ public class SessionRuntimeDeliverTests
         runner.RunCount.Should().Be(1);
         lock (runner.Batches)
             runner.Batches.Should().ContainSingle();
-        sessionManager.Get("s1")!.Messages
-            .Should().Contain(m => m.Content == "unread" && Equals(m.Metadata![InboxMetadataKeys.Consumed], true));
+        sessionManager.Get("s1")!.Messages.Should().NotContain(m => m.Content == "unread");
+        sessionManager.Get("s1")!.Messages.Should().Contain(m => m.Content == "first");
+    }
+
+    [Fact]
+    public async Task DiscardPendingMessage_ShouldRemoveOnlyTarget()
+    {
+        var runtime = CreateRuntime(out var sessionManager, out var runner, out _);
+        await sessionManager.EnsureSessionAsync("s1");
+        await runtime.DeliverAsync(Msg("s1", InboxDelivery.Inject, body: "keep"));
+        await runtime.DeliverAsync(Msg("s1", InboxDelivery.Inject, body: "drop"));
+
+        var dropId = sessionManager.Get("s1")!.Messages.Single(m => m.Content == "drop").Id!;
+        var ok = await runtime.DiscardPendingMessageAsync("s1", dropId);
+
+        ok.Should().BeTrue();
+        runner.RunCount.Should().Be(0);
+        var session = sessionManager.Get("s1")!;
+        session.Messages.Should().ContainSingle(m => m.Content == "keep");
+        session.Messages.Should().NotContain(m => m.Content == "drop");
+    }
+
+    [Fact]
+    public async Task InterruptThrough_ShouldConsumeOnlyThroughCutoff_ThenRemainder()
+    {
+        var runtime = CreateRuntime(out var sessionManager, out var runner, out _);
+        await sessionManager.EnsureSessionAsync("s1");
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        runner.OnRunAsync = () => releaseFirst.Task;
+
+        await runtime.DeliverAsync(Msg("s1", InboxDelivery.Wake, body: "running"));
+        await WaitUntilAsync(() => runner.RunCount == 1);
+
+        await runtime.DeliverAsync(Msg("s1", InboxDelivery.Inject, body: "a"));
+        await runtime.DeliverAsync(Msg("s1", InboxDelivery.Inject, body: "b"));
+        await runtime.DeliverAsync(Msg("s1", InboxDelivery.Inject, body: "c"));
+
+        var throughId = sessionManager.Get("s1")!.Messages.Single(m => m.Content == "a").Id!;
+        var ok = await runtime.InterruptThroughAsync("s1", throughId);
+        ok.Should().BeTrue();
+
+        releaseFirst.SetResult();
+        await WaitUntilAsync(() => runner.RunCount >= 2);
+
+        lock (runner.Batches)
+        {
+            runner.Batches.Should().HaveCountGreaterThanOrEqualTo(2);
+            var second = runner.Batches[1];
+            second.Inputs.Select(m => m.Content).Should().Equal("a");
+        }
+
+        await WaitUntilAsync(() => runner.RunCount >= 3);
+        await runtime.WaitForIdleAsync("s1");
+
+        lock (runner.Batches)
+        {
+            var remainder = runner.Batches.Skip(2).SelectMany(b => b.Inputs.Select(m => m.Content)).ToList();
+            remainder.Should().Equal("b", "c");
+        }
     }
 
     private sealed class RecordingPublisher : IExecutionEventPublisher

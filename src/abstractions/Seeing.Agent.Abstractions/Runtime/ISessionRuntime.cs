@@ -81,11 +81,26 @@ public interface ISessionRuntime
     Task<bool> InterruptAsync(string sessionId, CancellationToken ct = default);
 
     /// <summary>
-    /// 丢弃未消费入站：与消费循环同一把会话锁内标记 consumed 并保存，返回条数。
-    /// 不启动消费循环。默认实现为无操作，供尚未接入的测试替身编译。
+    /// 丢弃未消费入站：与消费循环同一把会话锁内<b>从会话删除</b>这些消息并保存，返回条数。
+    /// 不启动消费循环；删除后任意宿主都不应再渲染或送入 LLM。默认实现为无操作。
     /// </summary>
     Task<int> DiscardPendingAsync(string sessionId, CancellationToken ct = default)
         => Task.FromResult(0);
+
+    /// <summary>
+    /// 丢弃单条未消费入站（按 messageId）：从会话删除。找不到或不在未读集合时返回 false。
+    /// 不启动消费循环。默认实现为无操作。
+    /// </summary>
+    Task<bool> DiscardPendingMessageAsync(string sessionId, string messageId, CancellationToken ct = default)
+        => Task.FromResult(false);
+
+    /// <summary>
+    /// 发送到此：搁置 <paramref name="throughMessageId"/> 之后的未读，硬停当前轮（若有），
+    /// 确保消费循环只先吃到截止点（含该条）；本批取走后解除搁置。
+    /// 截止点无效时返回 false。默认实现为无操作。
+    /// </summary>
+    Task<bool> InterruptThroughAsync(string sessionId, string throughMessageId, CancellationToken ct = default)
+        => Task.FromResult(false);
 
     /// <summary>停止会话：取消当前轮 + 终止消费循环 + 不再消费剩余未读；级联子会话。</summary>
     Task<int> StopAsync(string sessionId, CancellationToken ct = default);

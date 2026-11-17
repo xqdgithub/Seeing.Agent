@@ -181,31 +181,48 @@
                                 }
                             </div>
                         }
-                        @* 中断并执行：有排队未读且正在执行时显示 *@
-                        @if (Context.CanInterruptAndRun)
-                        {
-                            <div class="interrupt-and-run-bar" style="padding: 8px 12px; margin-bottom: 8px; background: var(--color-warning-bg, #fff7e6); border-radius: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                                <Icon Type="@IconType.Outline.Thunderbolt" />
-                                <span style="flex: 1; font-size: 13px;">当前有 @Context.PendingInputCount 条排队消息，可中断当前轮并立即执行。</span>
-                                <Button Type="@ButtonType.Primary"
-                                        Size="@ButtonSize.Small"
-                                        OnClick="@OnInterruptAndRun">
-                                    中断并执行
-                                </Button>
-                            </div>
-                        }
-                        @* 排队中：已入站但尚未被消费的 user 消息（不进主时间线，独立小卡片展示） *@
+                        @* 排队条：单删 / 发送到此 / 全部撤销 / 中断并发送 *@
                         @if (Timeline.PendingMessages.Count > 0)
                         {
-                            <div class="pending-messages-bar" role="status" aria-label="排队中的消息">
-                                @foreach (var (pm, idx) in Timeline.PendingMessages.Select((m, i) => (m, i + 1)))
-                                {
-                                    <div class="pending-message-chip" title="排队中，等待当前回复结束后处理">
-                                        <Icon Type="@IconType.Outline.ClockCircle" Class="pending-message-icon" />
-                                        <span class="pending-message-index">@idx</span>
-                                        <span class="pending-message-text">@Truncate(pm.Content, 80)</span>
+                            <div class="pending-queue-bar" role="region" aria-label="排队中的消息">
+                                <div class="pending-queue-header">
+                                    <span class="pending-queue-title">排队中 · @Timeline.PendingMessages.Count</span>
+                                    <div class="pending-queue-actions">
+                                        <Button Type="@ButtonType.Default"
+                                                Size="@ButtonSize.Small"
+                                                OnClick="@OnDiscardAllPending">
+                                            全部撤销
+                                        </Button>
+                                        @if (Context.CanInterruptAndRun)
+                                        {
+                                            <Button Type="@ButtonType.Primary"
+                                                    Size="@ButtonSize.Small"
+                                                    OnClick="@OnInterruptAndRun">
+                                                中断并发送
+                                            </Button>
+                                        }
                                     </div>
-                                }
+                                </div>
+                                <div class="pending-queue-list">
+                                    @foreach (var (pm, idx) in Timeline.PendingMessages.Select((m, i) => (m, i + 1)))
+                                    {
+                                        <div class="pending-queue-item" title="@pm.Content">
+                                            <span class="pending-queue-index">@idx</span>
+                                            <span class="pending-queue-text">@Truncate(pm.Content, 80)</span>
+                                            <button type="button"
+                                                    class="pending-queue-send-through"
+                                                    @onclick="@(() => OnSendThroughPending(pm.Id))">
+                                                发送到此
+                                            </button>
+                                            <button type="button"
+                                                    class="pending-queue-discard"
+                                                    aria-label="撤销"
+                                                    @onclick="@(() => OnDiscardPendingMessage(pm.Id))">
+                                                ×
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
                             </div>
                         }
                         <SlotHost SlotName="session_prompt"
@@ -1732,12 +1749,9 @@
     /// </summary>
     private async Task OnSubmitMessage(PromptSubmitEventArgs args)
     {
-        // 验证输入
+        // 验证输入：空提交静默忽略（避免误触 Enter 刷错误条 / 重复入队）
         if (string.IsNullOrWhiteSpace(args.Text) && args.Attachments.Count == 0)
-        {
-            ErrorMessage = "请输入消息内容";
             return;
-        }
 
         // 确保有当前会话
         if (SessionState.CurrentSession == null)
@@ -1909,7 +1923,7 @@
     }
 
     /// <summary>
-    /// 中断并执行：停止当前轮但保留消费循环，立即消费排队未读（<see cref="ISessionRuntime.InterruptAsync"/>）。
+    /// 中断并发送：停止当前轮但保留消费循环，立即消费排队未读（<see cref="ISessionRuntime.InterruptAsync"/>）。
     /// 与"取消执行"（<see cref="OnCancelExecution"/> 走 StopAsync 终止循环）区别在于循环去向。
     /// </summary>
     private async Task OnInterruptAndRun()
@@ -1934,6 +1948,93 @@
 
         SyncTimelineAssistantFromStream();
         CompleteCurrentTimelineTurn();
+        ReconcileTimelineFromSession();
+        SyncContextState();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnDiscardPendingMessage(string messageId)
+    {
+        var sessionId = SessionState.SessionId;
+        if (string.IsNullOrEmpty(sessionId) || string.IsNullOrEmpty(messageId))
+            return;
+
+        try
+        {
+            await SessionRuntime.DiscardPendingMessageAsync(sessionId, messageId);
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"撤销失败：{ex.Message}");
+        }
+
+        SessionState.PendingInputCount = SessionRuntime.GetOverview(sessionId).PendingInputCount;
+        ReconcileTimelineFromSession();
+        SyncContextState();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnDiscardAllPending()
+    {
+        var sessionId = SessionState.SessionId;
+        if (string.IsNullOrEmpty(sessionId))
+            return;
+
+        try
+        {
+            await SessionRuntime.DiscardPendingAsync(sessionId);
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"全部撤销失败：{ex.Message}");
+        }
+
+        SessionState.PendingInputCount = SessionRuntime.GetOverview(sessionId).PendingInputCount;
+        ReconcileTimelineFromSession();
+        SyncContextState();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnSendThroughPending(string messageId)
+    {
+        var sessionId = SessionState.SessionId;
+        if (string.IsNullOrEmpty(sessionId) || string.IsNullOrEmpty(messageId))
+            return;
+
+        var wasActive = SessionState.HasActiveExecution;
+        bool ok;
+        try
+        {
+            ok = await SessionRuntime.InterruptThroughAsync(sessionId, messageId);
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"发送到此失败：{ex.Message}");
+            ReconcileTimelineFromSession();
+            SyncContextState();
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (!ok)
+        {
+            MessageService.Warning("发送到此失败：消息已不在排队中");
+            ReconcileTimelineFromSession();
+            SyncContextState();
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        // 仅在运行时确认成功后再对齐本地执行态（失败时不得误清，否则与后台脱节）
+        if (wasActive)
+        {
+            SessionState.CancelExecution();
+            SessionState.ExecutionStatus = ExecutionStatus.Pending;
+            SessionState.CurrentExecutionId = null;
+            SyncTimelineAssistantFromStream();
+            CompleteCurrentTimelineTurn();
+        }
+
         ReconcileTimelineFromSession();
         SyncContextState();
         await InvokeAsync(StateHasChanged);

@@ -4,6 +4,11 @@ public static class InboxMetadataKeys
 {
     public const string Delivery = "inbox.delivery";
     public const string Consumed = "inbox.consumed";
+    /// <summary>
+    /// 临时搁置：仍算排队（UI/计数可见），但不进入本轮消费集合。
+    /// 由 <c>InterruptThroughAsync</c> 打上，本批消费后清除。
+    /// </summary>
+    public const string Held = "inbox.held";
     public const string SenderKind = "inbox.sender_kind";
     public const string SenderId = "inbox.sender_id";
     public const string SenderName = "inbox.sender_name";

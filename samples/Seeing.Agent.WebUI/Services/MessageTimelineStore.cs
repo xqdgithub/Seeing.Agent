@@ -478,6 +478,20 @@ public sealed class MessageTimelineStore
         var added = false;
         var indexInSession = -1;
 
+        // 会话里已物理删除的排队项（DiscardPending）：从投影摘掉，不得残留在排队条
+        var sessionIds = new HashSet<string>(
+            materialized.Where(m => !string.IsNullOrEmpty(m.Id)).Select(m => m.Id!),
+            StringComparer.Ordinal);
+        for (var i = _pending.Count - 1; i >= 0; i--)
+        {
+            var pendingId = _pending[i].Id;
+            if (sessionIds.Contains(pendingId))
+                continue;
+            _pending.RemoveAt(i);
+            _itemByMessageId.Remove(pendingId);
+            added = true;
+        }
+
         foreach (var msg in materialized)
         {
             indexInSession++;

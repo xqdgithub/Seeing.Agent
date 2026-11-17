@@ -289,20 +289,9 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     if (session.Metadata.Remove(SessionControlKeys.StopReason))
                         await sessionManager.SaveAsync(sessionId).ConfigureAwait(false);
 
-                    if (!_activeLoops.ContainsKey(sessionId))
-                    {
-                        // 先注册后运行（Ready 门控），避免循环体在 `_activeLoops` 登记前就结束造成条目泄漏；
-                        // 句柄持有自身 Task 引用，退出时按值移除，避免误删「新循环」条目。
-                        var handle = new LoopHandle();
-                        var loop = Task.Run(async () =>
-                        {
-                            await handle.Ready.Task.ConfigureAwait(false);
-                            await RunLoopAsync(sessionId, handle, _disposeCts.Token).ConfigureAwait(false);
-                        });
-                        handle.Loop = loop;
-                        _activeLoops[sessionId] = loop;
-                        handle.Ready.SetResult();
-                    }
+                    // 先注册后运行（Ready 门控），避免循环体在 `_activeLoops` 登记前就结束造成条目泄漏；
+                    // 句柄持有自身 Task 引用，退出时按值移除，避免误删「新循环」条目。
+                    EnsureLoopLocked(sessionId);
                 }
                 finally
                 {
@@ -361,7 +350,17 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                         break;
                     }
 
-                    pending = session.Messages.Where(IsPendingInboxMessage).ToList();
+                    pending = session.Messages.Where(IsConsumableInboxMessage).ToList();
+                    if (pending.Count == 0)
+                    {
+                        // 竞态：截止点消息被丢弃后可能只剩搁置未读。解除搁置避免永久搁浅。
+                        if (ClearHeldMessages(session))
+                        {
+                            await sessionManager.SaveAsync(sessionId).ConfigureAwait(false);
+                            pending = session.Messages.Where(IsConsumableInboxMessage).ToList();
+                        }
+                    }
+
                     if (pending.Count == 0)
                     {
                         // 【唤醒不丢】投递方先落盘、再抢 gate 检查 _activeLoops；循环在 gate 内
@@ -405,8 +404,15 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                     foreach (var m in pending)
                     {
                         var metadata = m.Metadata ?? ImmutableDictionary<string, object>.Empty;
-                        m.Metadata = metadata.SetItem(InboxMetadataKeys.Consumed, true);
+                        metadata = metadata.SetItem(InboxMetadataKeys.Consumed, true);
+                        // 本批已取走：解除其余消息的搁置，使其回到普通排队，供下一轮消费。
+                        if (metadata.ContainsKey(InboxMetadataKeys.Held))
+                            metadata = metadata.Remove(InboxMetadataKeys.Held);
+                        m.Metadata = metadata;
                     }
+
+                    ClearHeldMessages(session, except: pending);
+
                     await sessionManager.SaveAsync(sessionId).ConfigureAwait(false);
                 }
                 finally
@@ -1021,6 +1027,33 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         return !(TryGetMetaBool(message.Metadata, InboxMetadataKeys.Consumed, out var consumed) && consumed);
     }
 
+    /// <summary>可被本轮消费：未读且未搁置。</summary>
+    private static bool IsConsumableInboxMessage(SessionMessage message)
+    {
+        if (!IsPendingInboxMessage(message))
+            return false;
+
+        return !(TryGetMetaBool(message.Metadata, InboxMetadataKeys.Held, out var held) && held);
+    }
+
+    /// <summary>清除搁置标记；<paramref name="except"/> 中的消息跳过。返回是否有改动。</summary>
+    private static bool ClearHeldMessages(
+        SessionData session, IReadOnlyCollection<SessionMessage>? except = null)
+    {
+        var changed = false;
+        foreach (var m in session.Messages)
+        {
+            if (except is not null && except.Contains(m))
+                continue;
+            if (m.Metadata is null || !m.Metadata.ContainsKey(InboxMetadataKeys.Held))
+                continue;
+            m.Metadata = m.Metadata.Remove(InboxMetadataKeys.Held);
+            changed = true;
+        }
+
+        return changed;
+    }
+
     private static int CountUnread(SessionData session) =>
         session.Messages.Count(IsPendingInboxMessage);
 
@@ -1147,22 +1180,144 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                 return 0;
 
             foreach (var message in pending)
-            {
-                var metadata = message.Metadata ?? ImmutableDictionary<string, object>.Empty;
-                message.Metadata = metadata.SetItem(InboxMetadataKeys.Consumed, true);
-
-                // 被丢弃的消息不会再有执行来兑现等待：显式取消而不是让调用方永久挂起。
-                if (_awaiters.TryRemove(message.Id, out var awaiter))
-                    CancelAwaiter(awaiter, new OperationCanceledException("入站消息已被丢弃，不会产生执行终态。"));
-            }
+                RemovePendingMessage(session, message);
 
             await sessionManager.SaveAsync(sessionId).ConfigureAwait(false);
+            RefreshPendingCount(sessionId, session);
             return pending.Count;
         }
         finally
         {
             gate.Release();
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> DiscardPendingMessageAsync(
+        string sessionId, string messageId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(messageId))
+            return false;
+
+        var gate = _sessionGates.GetOrAdd(sessionId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            using var scope = _services.CreateScope();
+            var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
+            var session = await sessionManager.TryGetOrLoadAsync(sessionId).ConfigureAwait(false);
+            if (session is null)
+                return false;
+
+            var message = session.Messages.FirstOrDefault(m =>
+                string.Equals(m.Id, messageId, StringComparison.Ordinal)
+                && IsPendingInboxMessage(m));
+            if (message is null)
+                return false;
+
+            RemovePendingMessage(session, message);
+            await sessionManager.SaveAsync(sessionId).ConfigureAwait(false);
+            RefreshPendingCount(sessionId, session);
+            return true;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> InterruptThroughAsync(
+        string sessionId, string throughMessageId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(throughMessageId))
+            return false;
+
+        var gate = _sessionGates.GetOrAdd(sessionId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        var needInterrupt = false;
+        try
+        {
+            using var scope = _services.CreateScope();
+            var sessionManager = scope.ServiceProvider.GetRequiredService<ISessionManager>();
+            var session = await sessionManager.TryGetOrLoadAsync(sessionId).ConfigureAwait(false);
+            if (session is null)
+                return false;
+
+            var pending = session.Messages.Where(IsPendingInboxMessage).ToList();
+            var throughIndex = pending.FindIndex(m =>
+                string.Equals(m.Id, throughMessageId, StringComparison.Ordinal));
+            if (throughIndex < 0)
+                return false;
+
+            // 截止点之后：搁置；截止点及之前：确保可消费（清 held）。
+            for (var i = 0; i < pending.Count; i++)
+            {
+                var metadata = pending[i].Metadata ?? ImmutableDictionary<string, object>.Empty;
+                if (i <= throughIndex)
+                {
+                    if (metadata.ContainsKey(InboxMetadataKeys.Held))
+                        pending[i].Metadata = metadata.Remove(InboxMetadataKeys.Held);
+                }
+                else
+                {
+                    pending[i].Metadata = metadata.SetItem(InboxMetadataKeys.Held, true);
+                }
+            }
+
+            await sessionManager.SaveAsync(sessionId).ConfigureAwait(false);
+            RefreshPendingCount(sessionId, session);
+
+            // 清除停止态并确保循环在跑（空闲时「发送到此」也要能唤醒）。
+            _stoppedSessions.TryRemove(sessionId, out _);
+            EnsureLoopLocked(sessionId);
+            needInterrupt = _states.TryGetValue(sessionId, out var state)
+                && state.CurrentExecution?.Cts is not null;
+        }
+        finally
+        {
+            gate.Release();
+        }
+
+        if (needInterrupt)
+            await InterruptAsync(sessionId, ct).ConfigureAwait(false);
+
+        return true;
+    }
+
+    /// <summary>
+    /// 撤销排队：从会话物理删除，避免仅标 consumed 后被任意宿主当普通用户消息渲染。
+    /// </summary>
+    private void RemovePendingMessage(SessionData session, SessionMessage message)
+    {
+        session.RemoveMessage(message);
+
+        // 被丢弃的消息不会再有执行来兑现等待：显式取消而不是让调用方永久挂起。
+        if (!string.IsNullOrEmpty(message.Id) && _awaiters.TryRemove(message.Id, out var awaiter))
+            CancelAwaiter(awaiter, new OperationCanceledException("入站消息已被丢弃，不会产生执行终态。"));
+    }
+
+    private void RefreshPendingCount(string sessionId, SessionData session)
+    {
+        var pendingCount = CountUnread(session);
+        _states.GetOrAdd(sessionId, _ => new SessionExecutionState()).PendingInputCount = pendingCount;
+    }
+
+    /// <summary>调用方须已持有会话 gate。</summary>
+    private void EnsureLoopLocked(string sessionId)
+    {
+        if (_activeLoops.ContainsKey(sessionId))
+            return;
+
+        var handle = new LoopHandle();
+        var loop = Task.Run(async () =>
+        {
+            await handle.Ready.Task.ConfigureAwait(false);
+            await RunLoopAsync(sessionId, handle, _disposeCts.Token).ConfigureAwait(false);
+        });
+        handle.Loop = loop;
+        _activeLoops[sessionId] = loop;
+        handle.Ready.SetResult();
     }
 
     public async Task<int> StopAsync(string sessionId, CancellationToken ct = default)
