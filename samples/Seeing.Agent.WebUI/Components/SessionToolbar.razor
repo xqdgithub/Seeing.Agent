@@ -3,6 +3,7 @@
 @using Microsoft.JSInterop
 @using Services = Seeing.Agent.WebUI.Services
 @using Seeing.Session.Core
+@using Seeing.Agent.Abstractions.Commands
 @using Seeing.Agent.Abstractions.Agents
 @using Seeing.Agent.Core.Configuration
 @using Seeing.Agent.Configuration
@@ -13,6 +14,7 @@
 @inject IOptionsMonitor<SeeingAgentOptions> SeeingAgentOptions
 @inject IScenarioCatalog ScenarioCatalog
 @inject IJSRuntime JSRuntime
+@inject Services.IHostActionRegistry HostActions
 @implements IDisposable
 
 @if (Mode == Services.SessionWindowMode.Full)
@@ -92,12 +94,14 @@
                     }
                 </div>
             }
-            else if (_optionsReady && Context.CurrentSession != null)
+            @if (Context.ShowModelSelector && !Context.IsAcpPassthrough && _optionsReady && Context.CurrentSession != null)
             {
                 <Select TItemValue="string" TItem="string"
                         Value="@Context.SelectedAgent"
                         ValueExpression="@(() => Context.SelectedAgent)"
                         ValueChanged="EventCallback.Factory.Create<string>(this, OnAgentChanged)"
+                        Open="_agentPickerOpen"
+                        OpenChanged="EventCallback.Factory.Create<bool>(this, OnAgentPickerOpenChanged)"
                         DataSource="@_agentNames"
                         Style="min-width: 120px;"
                         Size="@InputSize.Small"
@@ -374,6 +378,46 @@
     {
         Context.StateChanged += OnContextStateChanged;
         await LoadOptionsAsync();
+    }
+
+    protected override void OnParametersSet() => EnsureRegistration();
+
+    private bool _agentPickerOpen;
+    private string? _registeredSessionId;
+    private IDisposable? _registration;
+
+    /// <summary>按当前会话重注册 <c>agent.picker</c>；切换会话时撤销旧键。</summary>
+    private void EnsureRegistration()
+    {
+        var sessionId = Context.SessionId;
+        if (string.IsNullOrEmpty(sessionId)
+            || string.Equals(_registeredSessionId, sessionId, StringComparison.Ordinal))
+            return;
+
+        _registration?.Dispose();
+        _registration = HostActions.Register(sessionId, CommandActionNames.AgentPicker, OnAgentPickerAsync);
+        _registeredSessionId = sessionId;
+    }
+
+    private Task<Services.HostActionResult> OnAgentPickerAsync(CommandAction action)
+    {
+        // 与 agent.set 的可用性保持一致：ACP 透传会话的 Agent 由后端决定，不打开选择器。
+        if (Context.IsAcpPassthrough)
+        {
+            return Task.FromResult(new Services.HostActionResult(
+                Services.HostActionStatus.Unavailable,
+                "ACP 透传会话的 Agent 由后端决定，无法通过命令切换。"));
+        }
+
+        _agentPickerOpen = true;
+        _ = InvokeAsync(StateHasChanged);
+        return Task.FromResult(new Services.HostActionResult(Services.HostActionStatus.Handled));
+    }
+
+    private void OnAgentPickerOpenChanged(bool open)
+    {
+        _agentPickerOpen = open;
+        _ = InvokeAsync(StateHasChanged);
     }
 
     /// <summary>
@@ -668,6 +712,8 @@
     public void Dispose()
     {
         Context.StateChanged -= OnContextStateChanged;
+        _registration?.Dispose();
+        _registration = null;
     }
 
     /// <summary>重命名表单模型</summary>
