@@ -1,7 +1,7 @@
 # WebUI 斜杠命令与宿主动作（Host Actions）设计
 
 - 日期：2026-11-18
-- 状态：待批准
+- 状态：已实现（P1）
 - 相关：`docs/architecture/14-session-inbox-runtime-release-notes.md`（唯一执行入口）、`docs/architecture/19-tool-context-budgeting-release-notes.md`（上下文源与会话暴露态）、`docs/architecture/40-ui-extension-unified-architecture-release-notes.md`（UI 信封）
 
 ## 1. 问题与根因
@@ -253,7 +253,12 @@ canEdit = !isChild || Owner == Human
 
 ## 12. 留给实现者的决定
 
-- `MessageViewModel` 上错误样式复用哪个字段（对齐现有 `ErrorMessageComponent`）。
-- 动作载荷的键名大小写约定（建议 camelCase，与 JSON 元数据一致）。
-- 临时条目的 Key 生成细节（时间戳精度）。
+- `MessageViewModel` 上错误样式复用哪个字段（本实现用内容前缀 `❌`，未引入独立错误块）。
+- 动作载荷的键名大小写约定（本实现用 camelCase：`modelId` / `agentId` / `path` / `text`）。
+- 临时条目的 Key 生成细节（本实现为 `cmd:{commandName}:{timestampTicks}`）。
 - `HostActionRegistry` 是否再暴露“已注册动作列表”供命令探测（本期不做；回退机制已足够）。
+
+## 13. 实现与验证记录
+
+- 自动化：`Seeing.Agent.Hosting.Tests` 114 通过、`Seeing.Agent.WebUI.Tests` 544 通过、`Seeing.Agent.Mcp.Tests` 148 通过；全量 `dotnet build Seeing.Agent.slnx` 通过。
+- 手动交互验证（`/model`、`/agent`、`/mcp`、`/cron-list`、子会话接管/交还）需要在实际 WebUI 页面操作，未在自动化环境中执行，待人工确认。
