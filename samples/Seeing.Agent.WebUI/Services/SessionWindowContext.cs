@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Sessions;
 using Seeing.Session.Core;
 
 namespace Seeing.Agent.WebUI.Services;
@@ -51,8 +52,17 @@ public sealed class SessionWindowContext
     public bool ShowSubAgentBadge { get; internal set; }
     /// <summary>展示 ACP Mode/Model 输入（Child 隐藏）</summary>
     public bool ShowAcpModeSelector { get; internal set; }
-    /// <summary>展示模型选择（Child 隐藏）</summary>
+    /// <summary>展示模型选择（受编辑能力控制）</summary>
     public bool ShowModelSelector { get; internal set; }
+
+    /// <summary>
+    /// 当前用户是否可编辑会话配置（模型/Agent/标题/清空/出站等）。
+    /// <para>主会话恒为 true；子会话只有 <c>Owner == Human</c>（已接管）时为 true。</para>
+    /// </summary>
+    public bool CanEdit { get; internal set; }
+
+    /// <summary>是否显示“接管”入口（子会话且尚未被人类接管）。</summary>
+    public bool CanTakeOver { get; internal set; }
     /// <summary>展示"返回主会话"（有父的 Child）</summary>
     public bool ShowReturnToParent { get; internal set; }
     /// <summary>允许重命名（Child 禁止）</summary>
@@ -76,27 +86,30 @@ public sealed class SessionWindowContext
     public bool CanInterruptAndRun { get; internal set; }
 
     /// <summary>
-    /// 按组内成员关系计算窗口能力标记：
-    /// Child（<see cref="SessionRelation.Child"/>）会话允许输入/提交（会话入站运行时已放开子会话介入），
-    /// 禁改名/清空/出站绑定/自动批准切换，隐藏场景徽标与模型/ACP 选择，但可分离为独立会话、返回父会话、
-    /// 推送产出给父会话。
+    /// 按组内成员关系与归属计算窗口能力标记。
+    /// <para>
+    /// 编辑能力 = <c>!isChild || owner == Human</c>：主会话恒可编辑；子会话默认只读，
+    /// 被人类接管（Owner=Human）后与主会话一致。子会话专属能力（分离/返回父/推送产出）不变。
+    /// </para>
     /// </summary>
-    public void ApplyCapabilities(bool isChild, bool hasParent)
+    public void ApplyCapabilities(bool isChild, bool hasParent, SessionOwner owner)
     {
         IsChild = isChild;
         IsReadOnly = false;
-        AllowAutoApproveChange = !isChild;
+        CanEdit = !isChild || owner == SessionOwner.Human;
+        CanTakeOver = isChild && owner != SessionOwner.Human;
+        AllowAutoApproveChange = CanEdit;
         ShowScenarioBadge = !isChild;
         ShowSubAgentBadge = isChild;
-        ShowAcpModeSelector = !isChild;
-        ShowModelSelector = !isChild;
+        ShowAcpModeSelector = CanEdit;
+        ShowModelSelector = CanEdit;
         ShowReturnToParent = isChild && hasParent;
-        CanRename = !isChild;
+        CanRename = CanEdit;
         CanDetach = isChild;
-        CanBranch = !isChild;
-        CanEditOutboundBinding = !isChild;
-        CanClear = !isChild;
-        CanCreateSession = !isChild;
+        CanBranch = CanEdit;
+        CanEditOutboundBinding = CanEdit;
+        CanClear = CanEdit;
+        CanCreateSession = CanEdit;
         CanPushToParent = isChild && hasParent;
     }
 

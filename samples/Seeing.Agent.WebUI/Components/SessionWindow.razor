@@ -149,16 +149,27 @@
                 @if (!ShowEmptyState)
                 {
                     <div Class="session-input-container">
-                        @* 子会话操作条：推送当前产出给父会话 / 交还父会话（仅 Child） *@
-                        @if (Context.IsChild && (Context.CanPushToParent || Context.CanReleaseToParent))
+                        @* 子会话操作条：接管 / 推送当前产出给父会话 / 交还父会话（仅 Child） *@
+                        @if (Context.IsChild && (Context.CanTakeOver || Context.CanPushToParent || Context.CanReleaseToParent))
                         {
                             <div class="subagent-actions-bar" style="padding: 8px 12px; margin-bottom: 8px; background: var(--color-bg-secondary, #f5f5f5); border-radius: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                                 <Icon Type="@IconType.Outline.Robot" />
                                 <span style="flex: 1; font-size: 13px; color: var(--color-text-secondary);">
                                     @(Context.Owner == Seeing.Agent.Abstractions.Sessions.SessionOwner.Human
                                         ? $"已被你接管{(Context.TakenOverAt.HasValue ? $"（{Context.TakenOverAt.Value.LocalDateTime:yyyy-MM-dd HH:mm}）" : "")}；完成时不会唤醒父会话。"
-                                        : "子会话可直接输入并接管；完成上报将唤醒父会话。")
+                                        : "子会话默认只读，接管后才能修改配置；完成上报将唤醒父会话。")
                                 </span>
+                                @if (Context.CanTakeOver)
+                                {
+                                    <Tooltip Title="接管子会话（放开编辑能力；不停止执行）">
+                                        <Button Type="@ButtonType.Primary"
+                                                Size="@ButtonSize.Small"
+                                                Icon="@IconType.Outline.Edit"
+                                                OnClick="@OnTakeOverAsync">
+                                            接管
+                                        </Button>
+                                    </Tooltip>
+                                }
                                 @if (Context.CanPushToParent)
                                 {
                                     <Tooltip Title="把当前产出作为通知推送给父会话（不生成新总结）">
@@ -1528,7 +1539,14 @@
         var s = SessionState.CurrentSession;
         Context.CurrentSession = s;
         Context.Title = s?.Title ?? "新会话";
-        Context.ApplyCapabilities(IsChildView, hasParent: !string.IsNullOrEmpty(_parentSessionId));
+
+        // 会话归属（接管态）必须先读：编辑能力由 isChild + Owner 共同决定。
+        var control = s?.GetControl();
+        var owner = control?.Owner ?? Seeing.Agent.Abstractions.Sessions.SessionOwner.Parent;
+        Context.ApplyCapabilities(
+            IsChildView,
+            hasParent: !string.IsNullOrEmpty(_parentSessionId),
+            owner);
         Context.ParentSessionId = _parentSessionId;
         Context.Relation = _relation;
         Context.IsAnchor = _isAnchor;
@@ -1549,8 +1567,7 @@
             SeeingAgentOptions.CurrentValue.Scenario);
 
         // 会话归属（接管态）：Owner==Human 时展示接管时间/接管人，并允许"交还父会话"
-        var control = s?.GetControl();
-        Context.Owner = control?.Owner ?? Seeing.Agent.Abstractions.Sessions.SessionOwner.Parent;
+        Context.Owner = owner;
         Context.TakenOverAt = control?.TakenOverAt;
         Context.TakenOverBy = control?.TakenOverBy;
         Context.CanReleaseToParent = Context.IsChild && Context.Owner == Seeing.Agent.Abstractions.Sessions.SessionOwner.Human;
@@ -2148,6 +2165,24 @@
         {
             MessageService.Error($"推送失败：{ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// 显式接管子会话：归属改为人类，放开编辑能力；只改归属，不停止执行。
+    /// </summary>
+    private async Task OnTakeOverAsync()
+    {
+        var session = SessionState.CurrentSession;
+        if (session == null)
+            return;
+
+        session.SetOwner(SessionOwner.Human, "webui");
+        session.UpdatedAt = DateTime.Now;
+        await SessionManager.SaveAsync(session.Id);
+
+        MessageService.Success("已接管子会话");
+        SyncContextState();
+        await InvokeAsync(StateHasChanged);
     }
 
     /// <summary>
