@@ -457,6 +457,46 @@ public sealed class MessageTimelineStore
     }
 
     /// <summary>
+    /// 追加一条只在当前页面可见的临时系统条目（不写入会话、不进 LLM 上下文）。
+    /// <para>
+    /// 供命令结果使用：刷新或切换会话时 <see cref="ResetFromSession"/> 会清空全部条目，
+    /// 临时条目随之消失，符合“只在当前页面临时显示”的产品语义。
+    /// </para>
+    /// </summary>
+    /// <param name="key">时间线条目键（调用方保证唯一，建议 <c>cmd:</c> 前缀）。</param>
+    /// <param name="markdown">展示内容（系统消息渲染管线按文本块处理）。</param>
+    /// <param name="isError">是否错误提示；当前用内容前缀表达，未引入独立错误块。</param>
+    public void AppendTransientNotice(string key, string markdown, bool isError = false)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+
+        var vm = new MessageViewModel
+        {
+            Id = key,
+            SessionId = _boundSessionId ?? string.Empty,
+            Role = "system",
+            Content = isError ? $"❌ {markdown}" : markdown,
+            IsComplete = true
+        };
+
+        var existing = _items.FindIndex(i => string.Equals(i.Key, key, StringComparison.Ordinal));
+        if (existing >= 0)
+            _items.RemoveAt(existing);
+
+        var item = new TimelineItem
+        {
+            Key = key,
+            Kind = TimelineItemKind.System,
+            Message = vm
+        };
+        _items.Add(item);
+        _itemByMessageId[key] = item;
+
+        RefreshTailHint();
+        RaiseChanged();
+    }
+
+    /// <summary>
     /// Append session messages that are not yet represented in the timeline (no full rebuild).
     /// Used after submit / execution end for user or system rows added outside the streaming path.
     /// </summary>
