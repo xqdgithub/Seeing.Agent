@@ -151,6 +151,7 @@ public static class WebUiHost
         builder.Services.AddScoped<UploadedFileService>();
         builder.Services.AddScoped<SpeechTranscriptionService>();
         builder.Services.AddScoped<MessageTimelineStore>();
+        builder.Services.AddScoped<IHostActionRegistry, HostActionRegistry>();
         // 会话资源 URL 生成（引用式图片 → 浏览器可加载 URL）；工具与用户附件共用
         builder.Services.AddScoped<SessionAssetUrlBuilder>();
 
