@@ -236,5 +236,53 @@ namespace Seeing.Agent.Core.Commands
             _logger?.LogDebug("已取消注册命令: {Name}", metadata.Name);
             return true;
         }
+
+        /// <summary>
+        /// 取消注册指定实例的命令（不影响其它 Runtime / 其它模块的同名命令）。
+        /// <para>动态登记方（技能、MCP prompt）持有自己创建的实例，撤销时按实例定位，
+        /// 避免「同名命令同时存在于多个 Runtime」时误删别人的那份。</para>
+        /// </summary>
+        public bool Unregister(ICommand command)
+        {
+            ArgumentNullException.ThrowIfNull(command);
+
+            var metadata = command.Metadata;
+            var removed = false;
+
+            // 默认桶（不分 Runtime）：只移除同一实例
+            if (_defaultCommands.TryGetValue(metadata.Name, out var defaultCommand)
+                && ReferenceEquals(defaultCommand, command))
+            {
+                removed |= _defaultCommands.TryRemove(metadata.Name, out _);
+
+                foreach (var pair in _defaultAliases)
+                {
+                    if (ReferenceEquals(pair.Value, command))
+                        removed |= _defaultAliases.TryRemove(pair);
+                }
+            }
+
+            // Runtime 桶：键是 (name, runtime)，同名的另一个 Runtime 不是同一实例，逐项比对
+            foreach (var pair in _commandsByRuntime)
+            {
+                if (!ReferenceEquals(pair.Value, command))
+                    continue;
+
+                removed |= _commandsByRuntime.TryRemove(pair);
+            }
+
+            foreach (var pair in _aliasByRuntime)
+            {
+                if (!ReferenceEquals(pair.Value, command))
+                    continue;
+
+                removed |= _aliasByRuntime.TryRemove(pair);
+            }
+
+            if (removed)
+                _logger?.LogDebug("已按实例取消注册命令: {Name}", metadata.Name);
+
+            return removed;
+        }
     }
 }

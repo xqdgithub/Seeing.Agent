@@ -201,6 +201,11 @@ public class McpPromptCommandTests
         }
 
         public bool Unregister(string name) => _commands.Remove(name);
+
+        public bool Unregister(ICommand command) =>
+            _commands.TryGetValue(command.Metadata.Name, out var existing)
+            && ReferenceEquals(existing, command)
+            && _commands.Remove(command.Metadata.Name);
         public bool HasCommand(string name) => _commands.ContainsKey(name);
         public ICommand? GetCommand(string name)
             => _commands.TryGetValue(name, out var c) ? c : null;

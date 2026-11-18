@@ -1,6 +1,8 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Commands.Attributes;
+using Seeing.Session.Core;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using YamlDotNet.Serialization;
@@ -351,22 +353,76 @@ namespace Seeing.Agent.Core.Commands.Discovery
                 _logger = logger;
             }
 
-            public Task<CommandResult> ExecuteAsync(CommandContext context, CancellationToken cancellationToken = default)
+            public async Task<CommandResult> ExecuteAsync(CommandContext context, CancellationToken cancellationToken = default)
             {
                 if (string.IsNullOrEmpty(_template))
                 {
-                    return Task.FromResult(CommandResult.Fail("命令模板为空"));
+                    return CommandResult.Fail("命令模板为空");
                 }
 
                 try
                 {
                     var output = RenderTemplate(_template, context.Arguments);
-                    return Task.FromResult(CommandResult.Ok(output, shouldContinue: true));
+
+                    // 模板命令的语义是「展开成一条用户消息，再交给 Agent」：
+                    // 把命令原文那条 user 消息改写成展开结果（与 /skill 同一条规则），
+                    // 否则命令原文被移除后，模型这一轮根本收不到用户输入。
+                    var replaced = await TryReplaceCommandMessageAsync(context, output, cancellationToken);
+
+                    return new CommandResult
+                    {
+                        Success = true,
+                        Message = output,
+                        ShouldContinue = true,
+                        // 命令原文已改写成展开结果时不能移除；未命中会话时也保留原文，避免静默丢掉用户输入
+                        RemoveCommandMessage = false,
+                        NeedsRefresh = replaced
+                    };
                 }
                 catch (Exception ex)
                 {
                     _logger?.LogError(ex, "Markdown 命令执行失败: {Name}", Metadata.Name);
-                    return Task.FromResult(CommandResult.Fail(ex.Message));
+                    return CommandResult.Fail(ex.Message);
+                }
+            }
+
+            /// <summary>把命令消息改写成展开结果并落盘；会话不可用时返回 false（保留原文）。</summary>
+            private async Task<bool> TryReplaceCommandMessageAsync(
+                CommandContext context,
+                string output,
+                CancellationToken cancellationToken)
+            {
+                if (context.Services is null || string.IsNullOrEmpty(context.SessionId))
+                    return false;
+
+                if (context.Services.GetService(typeof(ISessionManager)) is not ISessionManager sessions)
+                    return false;
+
+                try
+                {
+                    var session = sessions.Get(context.SessionId);
+                    if (!SessionCommandMessage.HasMatch(session, context.Input))
+                    {
+                        _logger?.LogWarning(
+                            "Markdown 命令未找到对应的用户消息，已保留原文: {Name}", Metadata.Name);
+                        return false;
+                    }
+
+                    await sessions.UpdateSessionAsync(
+                        context.SessionId,
+                        s => SessionCommandMessage.Replace(s, context.Input, output),
+                        cancellationToken).ConfigureAwait(false);
+
+                    return true;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Markdown 命令改写用户消息失败，已保留原文: {Name}", Metadata.Name);
+                    return false;
                 }
             }
 

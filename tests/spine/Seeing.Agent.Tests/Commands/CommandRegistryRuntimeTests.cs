@@ -230,6 +230,47 @@ public class CommandRegistryRuntimeTests
     }
 
     [Fact]
+    public void Unregister_ByInstance_ShouldRemoveOnlyThatRuntimeVariant()
+    {
+        // Arrange：同名命令分别登记在 Native / ACP 两个 Runtime（技能正是这种形态）
+        var registry = new CommandRegistry();
+        var nativeClear = new ClearNativeCommand();
+        var acpClear = new ClearAcpCommand();
+        registry.Register(nativeClear);
+        registry.Register(acpClear);
+
+        // Act：撤销 Native 那一份
+        var removed = registry.Unregister(nativeClear);
+
+        // Assert
+        removed.Should().BeTrue();
+        registry.GetCommand("clear", AgentRuntime.Native).Should().BeNull("按实例撤销只删自己那一份");
+        registry.GetCommand("clear", AgentRuntime.AcpPassthrough).Should().BeSameAs(acpClear,
+            "另一 Runtime 的同名命令必须原样保留（按名撤销会随机删错）");
+        registry.HasCommand("clear").Should().BeTrue();
+    }
+
+    [Fact]
+    public void Unregister_ByInstance_ShouldBeNoOp_ForUnknownInstance()
+    {
+        var registry = new CommandRegistry();
+        registry.Register(new ClearNativeCommand());
+
+        registry.Unregister(new ClearNativeCommand()).Should().BeFalse("另一个实例不得删掉已登记的命令");
+        registry.HasCommand("clear").Should().BeTrue();
+    }
+
+    [Fact]
+    public void Unregister_ByName_ShouldStillRemoveRegisteredCommand()
+    {
+        var registry = new CommandRegistry();
+        registry.Register(new NativeCommand());
+
+        registry.Unregister("test-native").Should().BeTrue();
+        registry.HasCommand("test-native").Should().BeFalse();
+    }
+
+    [Fact]
     public void SupportsRuntime_EmptyArray_ShouldReturnTrueForAllRuntimes()
     {
         // Arrange

@@ -1,6 +1,9 @@
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Core.Commands.Discovery;
+using Seeing.Session.Core;
 using System.Reflection;
 using Xunit;
 
@@ -260,6 +263,86 @@ Hello {{1}}, this is {{arguments}}";
 
     public class MarkdownCommandExecutionTests
     {
+        /// <summary>
+        /// 模板命令 = 「把命令原文那条 user 消息改写成展开结果，再继续执行 Agent」。
+        /// 旧实现只移除命令消息、不写回展开结果，模型这一轮就收不到用户输入（模板等于没生效）。
+        /// </summary>
+        [Fact]
+        public async Task ExecuteAsync_Should_Rewrite_CommandMessage_With_Rendered_Text()
+        {
+            var session = new SessionData { Id = "s1" };
+            session.AddMessage(SessionMessage.UserMessage("/review foo bar"));
+
+            var sessions = new Mock<ISessionManager>();
+            sessions.Setup(m => m.Get("s1")).Returns(session);
+            sessions.Setup(m => m.UpdateSessionAsync(
+                    "s1",
+                    It.IsAny<Action<SessionData>>(),
+                    It.IsAny<CancellationToken>()))
+                .Callback<string, Action<SessionData>, CancellationToken>((_, mutate, _) => mutate(session))
+                .ReturnsAsync(session);
+
+            var command = CreateCommand(new CommandMetadata
+            {
+                Name = "review",
+                Description = "评审",
+                Template = "请评审：{{arguments}}"
+            });
+
+            var result = await command.ExecuteAsync(
+                new CommandContext
+                {
+                    SessionId = "s1",
+                    Input = "/review foo bar",
+                    Arguments = "foo bar",
+                    Services = BuildServices(sessions.Object)
+                },
+                TestContext.Current.CancellationToken);
+
+            result.Success.Should().BeTrue();
+            result.ShouldContinue.Should().BeTrue();
+            result.RemoveCommandMessage.Should().BeFalse("命令消息已被改写为展开结果，不能移除");
+            result.NeedsRefresh.Should().BeTrue("界面需要重绘被改写的消息");
+            result.Message.Should().Be("请评审：foo bar");
+
+            session.Messages.Should().ContainSingle()
+                .Which.Content.Should().Be("请评审：foo bar", "展开结果必须成为这一轮的用户输入");
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_Without_Session_Should_Keep_Command_Message()
+        {
+            var command = CreateCommand(new CommandMetadata
+            {
+                Name = "review",
+                Description = "评审",
+                Template = "请评审：{{arguments}}"
+            });
+
+            var result = await command.ExecuteAsync(
+                new CommandContext { Input = "/review foo", Arguments = "foo" },
+                TestContext.Current.CancellationToken);
+
+            result.Success.Should().BeTrue();
+            result.ShouldContinue.Should().BeTrue();
+            result.RemoveCommandMessage.Should().BeFalse("无法改写时保留原文，避免静默丢掉用户输入");
+            result.NeedsRefresh.Should().BeFalse();
+        }
+
+        private static ICommand CreateCommand(CommandMetadata metadata)
+        {
+            var markdownCommandType = typeof(CommandDiscovery)
+                .GetNestedType("MarkdownCommand", BindingFlags.NonPublic | BindingFlags.Instance);
+            return (ICommand)Activator.CreateInstance(markdownCommandType!, metadata, null)!;
+        }
+
+        private static IServiceProvider BuildServices(ISessionManager sessions)
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton(sessions);
+            return services.BuildServiceProvider();
+        }
+
         [Fact]
         public async Task ExecuteAsync_ShouldReturnSuccess_WhenTemplateIsValid()
         {

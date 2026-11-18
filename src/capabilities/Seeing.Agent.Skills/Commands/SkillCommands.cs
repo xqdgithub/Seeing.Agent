@@ -352,40 +352,18 @@ public static class SkillTemplateProcessor
 /// <para>新架构下用户消息先由 <c>SessionRuntime.DeliverAsync</c> 落盘、项目指令随后由
 /// <c>ExecutionRunner</c> 注入，命令消息不再是会话末条。盲取末条会误改指令消息并残留命令文本
 /// （命令文本原样透传给 LLM）。</para>
+/// <para>实现已收敛到原语层 <see cref="SessionCommandMessage"/>（Markdown 命令共用同一规则），
+/// 本类保留为命令侧门面，不要在此重新实现匹配逻辑。</para>
 /// </summary>
 internal static class SkillCommandMessageLocator
 {
     /// <summary>是否存在与命令原文匹配的 user 消息。</summary>
     public static bool HasMatch(SessionData session, string? input)
-        => FindMessage(session, input) is not null;
+        => SessionCommandMessage.HasMatch(session, input);
 
     /// <summary>将匹配的命令 user 消息内容替换为 <paramref name="content"/>。</summary>
     public static void Replace(SessionData session, string? input, string content)
-    {
-        var message = FindMessage(session, input);
-        if (message is not null)
-            message.Content = content;
-    }
-
-    /// <summary>按内容匹配最后一条 user 消息（命中当前命令）；未命中返回 null。</summary>
-    private static SessionMessage? FindMessage(SessionData session, string? input)
-    {
-        if (session is null || string.IsNullOrEmpty(input))
-            return null;
-
-        var messages = session.Messages;
-        for (var i = messages.Count - 1; i >= 0; i--)
-        {
-            var message = messages[i];
-            if (string.Equals(message.Role, MessageRole.User, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(message.Content, input, StringComparison.Ordinal))
-            {
-                return message;
-            }
-        }
-
-        return null;
-    }
+        => SessionCommandMessage.Replace(session, input, content);
 }
 
 /// <summary>

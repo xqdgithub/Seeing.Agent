@@ -29,10 +29,13 @@ public sealed class AcpModule : ISeeingModule, IUiContributor
 
     private readonly AcpModuleActivity? _activity;
     private readonly AcpConnectionOwner? _connectionOwner;
-    private readonly List<string> _registeredCommandNames = new();
 
-    /// <summary>本模块登记过的 ACP 动态技能命令名（撤销的输入集合，含已禁用项）。</summary>
-    private readonly HashSet<string> _registeredSkillCommandNames = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>本模块登记的静态 ACP 命令（名字 → 实例；按实例撤销，避免误删同名命令）。</summary>
+    private readonly Dictionary<string, ICommand> _registeredCommands = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>本模块登记的 ACP 动态技能命令（名字 → 实例；含已禁用项，撤销的输入集合）。</summary>
+    private readonly Dictionary<string, AcpDynamicSkillCommand> _registeredSkillCommands =
+        new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// 命令注册闸：目录事件在 watcher / 执行线程并发投递，同时 Deactivate 也会改同一组集合。
@@ -244,7 +247,7 @@ public sealed class AcpModule : ISeeingModule, IUiContributor
 
         lock (_commandGate)
         {
-            _registeredCommandNames.Clear();
+            _registeredCommands.Clear();
             // 先关同步开关：下面按快照对齐完成后再打开（避免订阅与首次对齐之间插入半个状态）
             _skillCommandSyncEnabled = false;
         }
@@ -255,7 +258,7 @@ public sealed class AcpModule : ISeeingModule, IUiContributor
             {
                 registry.Register(command);
                 lock (_commandGate)
-                    _registeredCommandNames.Add(command.Metadata.Name);
+                    _registeredCommands[command.Metadata.Name] = command;
             }
         }
 
@@ -265,7 +268,7 @@ public sealed class AcpModule : ISeeingModule, IUiContributor
             var logger = services.GetService<ILogger<AcpModule>>() ?? NullLogger<AcpModule>.Instance;
             lock (_commandGate)
             {
-                _registeredSkillCommandNames.Clear();
+                _registeredSkillCommands.Clear();
                 _skillCommandSyncEnabled = true;
             }
 
@@ -297,28 +300,42 @@ public sealed class AcpModule : ISeeingModule, IUiContributor
             foreach (var entry in enabled)
                 desired.Add(entry.Info.Name);
 
-            foreach (var name in _registeredSkillCommandNames.Where(name => !desired.Contains(name)).ToList())
+            foreach (var name in _registeredSkillCommands.Keys.Where(name => !desired.Contains(name)).ToList())
             {
-                _registeredSkillCommandNames.Remove(name);
-                _registeredCommandNames.Remove(name);
+                var command = _registeredSkillCommands[name];
+                _registeredSkillCommands.Remove(name);
 
-                // 仅撤销本模块登记的 ACP 透传命令，避免误删同名默认命令
-                var existing = registry.GetCommand(name);
-                if (existing is AcpDynamicSkillCommand)
-                    registry.Unregister(name);
-            }
-
-            foreach (var name in desired.Where(name => !_registeredSkillCommandNames.Contains(name)))
-            {
+                // 只撤销本模块登记的实例：同名命令可能在默认桶或别的 Runtime 里
                 try
                 {
-                    var description = enabled
-                        .FirstOrDefault(entry => string.Equals(entry.Info.Name, name, StringComparison.OrdinalIgnoreCase))
-                        ?.Info.Description;
+                    registry.Unregister(command);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "撤销 ACP 动态技能命令失败：{SkillName}", name);
+                }
+            }
 
-                    registry.Register(new AcpDynamicSkillCommand(name, description));
-                    _registeredSkillCommandNames.Add(name);
-                    _registeredCommandNames.Add(name);
+            foreach (var name in desired.Where(name => !_registeredSkillCommands.ContainsKey(name)))
+            {
+                // 只看 AcpPassthrough 这一组：同名命令可能已由别的模块登记在另一个 Runtime
+                if (registry.GetCommand(name, AgentRuntime.AcpPassthrough) is not null)
+                {
+                    logger.LogWarning(
+                        "ACP 动态技能命令与已有命令重名，已跳过：{SkillName}",
+                        name);
+                    continue;
+                }
+
+                var command = new AcpDynamicSkillCommand(
+                    name,
+                    enabled.FirstOrDefault(entry => string.Equals(entry.Info.Name, name, StringComparison.OrdinalIgnoreCase))
+                        ?.Info.Description);
+
+                try
+                {
+                    registry.Register(command);
+                    _registeredSkillCommands[name] = command;
                 }
                 catch (Exception ex)
                 {
@@ -336,25 +353,23 @@ public sealed class AcpModule : ISeeingModule, IUiContributor
             // 先关同步开关：撤销之后任何晚到事件都不得复活命令（Deactivate 幂等）
             _skillCommandSyncEnabled = false;
 
-            if (_registeredCommandNames.Count == 0)
+            if (services.GetService<ICommandRegistry>() is not { } registry)
             {
-                // 早退路径也必须清空技能命令集合：不依赖「两个集合始终成对增删」的不变式（N7）
-                _registeredSkillCommandNames.Clear();
+                _registeredCommands.Clear();
+                _registeredSkillCommands.Clear();
                 return;
             }
 
-            if (services.GetService<ICommandRegistry>() is { } registry)
-            {
-                foreach (var name in _registeredCommandNames)
-                {
-                    var existing = registry.GetCommand(name);
-                    // 仅撤销运行时限定命令（AcpPassthrough），避免误删同名默认命令（如内置 /clear）
-                    if (existing is not null && existing.Metadata.SupportedRuntimes.Length > 0)
-                        registry.Unregister(name);
-                }
-            }
-            _registeredCommandNames.Clear();
-            _registeredSkillCommandNames.Clear();
+            // 按实例撤销：静态 ACP 命令与技能透传命令都只删自己登记的那一份，
+            // 不再靠「SupportedRuntimes.Length > 0」之类的猜测去区分同名命令。
+            foreach (var command in _registeredCommands.Values)
+                registry.Unregister(command);
+
+            foreach (var command in _registeredSkillCommands.Values)
+                registry.Unregister(command);
+
+            _registeredCommands.Clear();
+            _registeredSkillCommands.Clear();
         }
     }
 }

@@ -213,8 +213,60 @@ public sealed class SkillManagerFacadeTests : IDisposable
         }
     }
 
-    // ===== 辅助 =====
+    /// <summary>
+    /// 同名命令已由别的模块登记在另一个 Runtime（ACP 透传）时，Native 技能命令仍必须登记。
+    /// <para>旧判据是 <c>HasCommand(name)</c>（跨 Runtime 只按名），ACP 一开所有技能都会被误判重名，
+    /// 表现为面板「技能」组里只有静态 <c>/skill</c>，没有任何 <c>/&lt;技能名&gt;</c>。</para>
+    /// </summary>
+    [Fact]
+    public async Task SameNameInAnotherRuntime_ShouldNotBlockNativeSkillCommand()
+    {
+        var catalog = CreateCatalog();
+        await catalog.RegisterAsync(
+            new SkillInfo { Name = "demo", Description = "d", Content = "c" },
+            "test",
+            TestContext.Current.CancellationToken);
 
+        var registry = new FakeCommandRegistry();
+        registry.Register(new ForeignRuntimeCommand("demo"));
+
+        var services = new ServiceCollection();
+        services.AddSingleton(catalog);
+        services.AddSingleton<ISkillCatalog>(catalog);
+        services.AddSingleton<ICommandRegistry>(registry);
+        services.AddSingleton(Mock.Of<ISessionManager>());
+        await using var provider = services.BuildServiceProvider();
+
+        var module = new SkillsModule();
+        await module.ActivateAsync(provider);
+        try
+        {
+            registry.GetCommand("demo", Seeing.Agent.Abstractions.Agents.AgentRuntime.Native)
+                .Should().BeOfType<DynamicSkillCommand>(
+                    "别的 Runtime 有同名命令不算重名：判重必须限定在本 Runtime");
+        }
+        finally
+        {
+            await module.DeactivateAsync(provider);
+        }
+    }
+
+    /// <summary>模拟「同名、但属于 AcpPassthrough」的命令（ACP 透传技能命令）。</summary>
+    private sealed class ForeignRuntimeCommand(string name) : ICommand
+    {
+        public CommandMetadata Metadata { get; } = new()
+        {
+            Name = name,
+            Description = "ACP 透传",
+            Type = CommandType.Skill,
+            SupportedRuntimes = [Seeing.Agent.Abstractions.Agents.AgentRuntime.AcpPassthrough]
+        };
+
+        public Task<CommandResult> ExecuteAsync(CommandContext context, CancellationToken cancellationToken = default)
+            => Task.FromResult(CommandResult.Ok());
+    }
+
+    // ===== 辅助 =====
     /// <summary>带两层禁用状态的目录（项目级 / 用户级 .seeing 落在临时目录下）。</summary>
     private SkillCatalogCore CreateCatalog()
     {
@@ -310,6 +362,11 @@ public sealed class SkillManagerFacadeTests : IDisposable
         public bool HasCommand(string name) => _commands.ContainsKey(name);
 
         public bool Unregister(string name) => _commands.Remove(name);
+
+        public bool Unregister(ICommand command) =>
+            GetCommand(command.Metadata.Name) is { } existing
+            && ReferenceEquals(existing, command)
+            && Unregister(command.Metadata.Name);
 
         public int Count => _commands.Count;
     }

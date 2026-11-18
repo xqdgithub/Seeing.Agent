@@ -100,6 +100,66 @@ public class AcpModuleLifecycleTests
             "停用后 AcpReloadHandler 已撤销，配置重载不得再触发");
     }
 
+    /// <summary>
+    /// ACP 卸构只撤销自己登记的透传命令：Native 侧同名技能命令必须原样保留。
+    /// <para>旧实现按名撤销（<c>GetCommand(name)</c> + <c>Unregister(name)</c>），
+    /// 同名时可能删到 Native 那一份，表现为「关掉 ACP 后技能命令消失」。</para>
+    /// </summary>
+    [Fact]
+    public async Task Deactivate_Should_Not_Remove_NativeCommand_WithSameName()
+    {
+        var registry = new CommandRegistry();
+        var nativeCommand = new NativeSkillCommand("demo-skill");
+        registry.Register(nativeCommand);
+
+        var discovery = new Mock<ICommandDiscovery>();
+        discovery.Setup(d => d.DiscoverFromType(It.IsAny<Type>(), It.IsAny<object?>()))
+            .Returns(Array.Empty<ICommand>());
+
+        var catalog = new SkillCatalogCore(NullLogger<SkillCatalogCore>.Instance);
+        catalog.SetRoots([Path.Combine(Path.GetTempPath(), $"seeing-acp-skill-{Guid.NewGuid():N}")]);
+        await catalog.RegisterAsync(
+            new SkillInfo { Name = "demo-skill", Description = "演示" },
+            "test",
+            TestContext.Current.CancellationToken);
+
+        var services = new ServiceCollection();
+        services.AddSingleton(catalog);
+        services.AddSingleton<ISkillCatalog>(catalog);
+        services.AddSingleton<ICommandRegistry>(registry);
+        services.AddSingleton(discovery.Object);
+        services.AddSingleton(new AcpCommands());
+        await using var provider = services.BuildServiceProvider();
+
+        var module = CreateModule(CreateOptions(new AcpOptions()));
+        await module.ActivateAsync(provider);
+
+        registry.GetCommand("demo-skill", AgentRuntime.AcpPassthrough)
+            .Should().BeOfType<AcpDynamicSkillCommand>("ACP 侧按自己的 Runtime 登记");
+
+        await module.DeactivateAsync(provider);
+
+        registry.GetCommand("demo-skill", AgentRuntime.Native).Should().BeSameAs(nativeCommand,
+            "ACP 卸构不得删除 Native 的同名命令");
+        registry.GetCommand("demo-skill", AgentRuntime.AcpPassthrough).Should().BeNull(
+            "只撤销本模块登记的那一份");
+    }
+
+    /// <summary>模拟 Native 侧的动态技能命令（同名、不同 Runtime）。</summary>
+    private sealed class NativeSkillCommand(string name) : ICommand
+    {
+        public CommandMetadata Metadata { get; } = new()
+        {
+            Name = name,
+            Description = "Native 技能",
+            Type = CommandType.Skill,
+            SupportedRuntimes = [AgentRuntime.Native]
+        };
+
+        public Task<CommandResult> ExecuteAsync(CommandContext context, CancellationToken cancellationToken = default)
+            => Task.FromResult(CommandResult.Ok());
+    }
+
     [Fact]
     public async Task AcpCommands_ShouldFollowCatalogEvents()
     {
@@ -369,6 +429,8 @@ public class AcpModuleLifecycleTests
         public bool HasCommand(string name) => _inner.HasCommand(name);
 
         public bool Unregister(string name) => _inner.Unregister(name);
+
+        public bool Unregister(ICommand command) => _inner.Unregister(command);
 
         public int Count => _inner.Count;
     }

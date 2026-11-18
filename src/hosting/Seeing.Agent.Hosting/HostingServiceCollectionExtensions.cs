@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Agents;
 using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Modules;
@@ -32,6 +33,12 @@ public static class HostingServiceCollectionExtensions
         // 注册命令发现（具体类 + Abstractions 端口）
         services.AddSingleton<CommandDiscovery>();
         services.AddSingleton<ICommandDiscovery>(sp => sp.GetRequiredService<CommandDiscovery>());
+
+        // Markdown 自定义命令（~/.seeing/commands、{项目}/.seeing/commands）：
+        // 首次登记由 InitializeCommands() 触发；工作区切换 / 全量配置重载走 IReloadHandler。
+        // 放在 Hosting：命令发现端口（ICommandDiscovery）只在这里注册，Core 保持可选能力零依赖。
+        services.TryAddSingleton<MarkdownCommandLoader>();
+        services.AddSingleton<IReloadHandler>(sp => sp.GetRequiredService<MarkdownCommandLoader>());
 
         // 注册命令提供者（Skill 命令由 Skills 模块经 ICommand 贡献）
         services.AddSingleton<BuiltInCommands>();
@@ -148,6 +155,10 @@ public static class HostingServiceCollectionExtensions
         // 模块贡献的 ICommand（Skills 等经 DI 登记的静态命令；动态 skill 由 SkillLoader 写入）
         foreach (var command in services.GetServices<ICommand>())
             registry.Register(command);
+
+        // 用户级 / 项目级 Markdown 命令：必须在内置命令之后登记（同名时让内置命令胜出，不静默覆盖）。
+        // 后续工作区切换由 MarkdownCommandLoader 作为 IReloadHandler 重扫，不依赖本方法再被调用。
+        services.GetService<MarkdownCommandLoader>()?.Reload();
 
         return services;
     }

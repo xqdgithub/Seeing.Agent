@@ -302,5 +302,10 @@ public sealed class SkillContributionCatalogTests : IDisposable
             DynamicSkillNames.Remove(name);
             return true;
         }
+
+        public bool Unregister(ICommand command) =>
+            GetCommand(command.Metadata.Name) is { } existing
+            && ReferenceEquals(existing, command)
+            && Unregister(command.Metadata.Name);
     }
 }
