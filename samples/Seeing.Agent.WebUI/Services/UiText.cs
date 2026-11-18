@@ -7,6 +7,7 @@ using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Memory.Core.Models;
 using Seeing.Agent.Reflection.Core;
 using Seeing.Agent.Scheduler.Models;
+using Seeing.Agent.WebUI.Models;
 
 namespace Seeing.Agent.WebUI.Services;
 
@@ -68,6 +69,39 @@ public static class UiText
 
     /// <summary>省略号（中文全角），禁止用 <c>...</c> 或 <c>…</c> 混排。</summary>
     public const string Ellipsis = "……";
+
+    // ===== 斜杠命令 =====
+
+    /// <summary>命令面板分组标题（按来源分组，顺序与 <see cref="CommandGroupKind"/> 一致）。</summary>
+    public static string CommandGroupTitle(CommandGroupKind kind) => kind switch
+    {
+        CommandGroupKind.BuiltIn => "内置命令",
+        CommandGroupKind.Skill => Skill,
+        CommandGroupKind.Custom => "自定义命令",
+        CommandGroupKind.Extension => "扩展",
+        _ => "其他"
+    };
+
+    /// <summary>命令来源徽标（技能 / 自定义 / 扩展）；内置命令返回 null，改显示分类徽标。</summary>
+    public static string? CommandGroupBadge(CommandGroupKind kind) => kind switch
+    {
+        CommandGroupKind.Skill => Skill,
+        CommandGroupKind.Custom => "自定义",
+        CommandGroupKind.Extension => "扩展",
+        _ => null
+    };
+
+    /// <summary>命令分类徽标（不直出 <c>CommandCategory</c> 枚举名）。</summary>
+    public static string CommandCategoryText(string? categoryName) => categoryName?.ToLowerInvariant() switch
+    {
+        "basic" => "基础",
+        "navigation" => "导航",
+        "agent" => Agent,
+        "tools" => Tool,
+        "system" => "系统",
+        "extension" => "扩展",
+        _ => string.IsNullOrWhiteSpace(categoryName) ? None : categoryName
+    };
 
     // ===== 智能体运行时 =====
 

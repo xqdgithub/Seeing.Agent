@@ -21,7 +21,9 @@ public class CommandListService
     }
 
     /// <summary>
-    /// 获取所有可用命令（从后端 CommandRegistry），根据当前 Agent 的 Runtime 过滤
+    /// 获取所有可用命令（从后端 CommandRegistry），根据当前 Agent 的 Runtime 过滤。
+    /// <para>排序即面板展示顺序：先按分组（内置 → 技能 → 自定义 → 扩展），
+    /// 组内按 <c>SortOrder</c> 再按名称。</para>
     /// </summary>
     public List<CommandItemViewModel> GetAvailableCommands(SessionState? session = null)
     {
@@ -29,29 +31,69 @@ public class CommandListService
         var currentRuntime = GetCurrentRuntime(session);
 
         // 按 Runtime 过滤命令
-        var metadata = _commandRegistry.GetCommandsByRuntime(currentRuntime)
+        var commands = _commandRegistry.GetCommandsByRuntime(currentRuntime)
             .Select(c => c.Metadata)
             .Where(c => !c.IsHidden)
-            .OrderBy(c => c.SortOrder)
-            .ThenBy(c => c.Name);
-
-        var commands = metadata.Select(m => new CommandItemViewModel
-        {
-            Value = $"/{m.Name}",
-            Name = m.Name,
-            Description = m.Description,
-            IconType = GetIconForCategory(m.Category),
-            Category = m.Category.ToString(),
-            Aliases = m.Aliases,
-            Priority = m.SortOrder,
-            IsBuiltIn = true,
-            Keybind = GetKeybindForCommand(m.Name),
-            IsDisabled = !CanExecute(m.Name, session),
-            DisabledReason = GetDisabledReason(m.Name, session)
-        }).ToList();
+            .Select(m => CreateViewModel(m, session))
+            .OrderBy(c => c.GroupOrder)
+            .ThenBy(c => c.Priority)
+            .ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         return commands;
     }
+
+    /// <summary>命令元数据 → 视图模型（分组与分类徽标在这里一次算清，组件只负责渲染）。</summary>
+    private CommandItemViewModel CreateViewModel(CommandMetadata metadata, SessionState? session)
+    {
+        var group = ResolveGroup(metadata);
+        return new CommandItemViewModel
+        {
+            Value = $"/{metadata.Name}",
+            Name = metadata.Name,
+            Description = metadata.Description,
+            IconType = ResolveIcon(metadata, group),
+            Category = metadata.Category.ToString(),
+            Aliases = metadata.Aliases,
+            Priority = metadata.SortOrder,
+            IsSkill = metadata.Type == CommandType.Skill,
+            IsCustom = group == CommandGroupKind.Custom,
+            IsBuiltIn = group == CommandGroupKind.BuiltIn,
+            Source = metadata.Source,
+            Group = group,
+            GroupTitle = UiText.CommandGroupTitle(group),
+            Keybind = GetKeybindForCommand(metadata.Name),
+            IsDisabled = !CanExecute(metadata.Name, session),
+            DisabledReason = GetDisabledReason(metadata.Name, session)
+        };
+    }
+
+    /// <summary>
+    /// 命令分组判定（唯一入口）：类型优先，其次来源，最后回落到内置。
+    /// </summary>
+    private static CommandGroupKind ResolveGroup(CommandMetadata metadata)
+    {
+        if (metadata.Type == CommandType.Skill)
+            return CommandGroupKind.Skill;
+
+        if (string.Equals(metadata.Source, "mcp", StringComparison.OrdinalIgnoreCase)
+            || metadata.Category == CommandCategory.Extension)
+        {
+            return CommandGroupKind.Extension;
+        }
+
+        // Markdown 命令的 Source 是文件路径（CommandDiscovery 写入 filePath）
+        if (IsFileSource(metadata.Source))
+            return CommandGroupKind.Custom;
+
+        return CommandGroupKind.BuiltIn;
+    }
+
+    private static bool IsFileSource(string? source)
+        => !string.IsNullOrWhiteSpace(source)
+           && (source.EndsWith(".md", StringComparison.OrdinalIgnoreCase)
+               || source.Contains(Path.DirectorySeparatorChar)
+               || source.Contains(Path.AltDirectorySeparatorChar));
 
     /// <summary>
     /// 获取当前 Agent 的 Runtime
@@ -94,8 +136,16 @@ public class CommandListService
     }
 
     /// <summary>
-    /// 根据命令分类映射图标
+    /// 根据命令分组 / 分类映射图标
     /// </summary>
+    private static string ResolveIcon(CommandMetadata metadata, CommandGroupKind group) => group switch
+    {
+        CommandGroupKind.Skill => IconType.Outline.Book,
+        CommandGroupKind.Custom => IconType.Outline.FileText,
+        CommandGroupKind.Extension => IconType.Outline.Appstore,
+        _ => GetIconForCategory(metadata.Category)
+    };
+
     private static string GetIconForCategory(CommandCategory category) => category switch
     {
         CommandCategory.Basic => IconType.Outline.Home,

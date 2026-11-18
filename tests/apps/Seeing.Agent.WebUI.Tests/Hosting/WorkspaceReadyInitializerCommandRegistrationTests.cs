@@ -53,6 +53,65 @@ public class WorkspaceReadyInitializerCommandRegistrationTests
     }
 
     /// <summary>
+    /// 一次性初始化<b>不得</b>承担「每次切换工作区都要重做」的重活：
+    /// 它被 <c>_ran</c> 锁成一次性，第二次切换会静默不执行。
+    /// 这类工作必须挂 <c>IReloadHandler</c>（ComponentManager / MarkdownCommandLoader /
+    /// DynamicSkillCommandSync / GatewayChannelRegistryReloadHandler）。
+    /// </summary>
+    [Fact]
+    public void RunIfNeeded_Should_Not_Contain_Workspace_Scoped_Reload_Work()
+    {
+        var calls = ReadCalledMemberNames(typeof(WorkspaceReadyInitializer).Assembly.Location);
+
+        calls.Should().NotContain("LoadAllAsync", "组件重扫（技能/MCP）由 ComponentManager 的 ReloadHandler 负责");
+        calls.Should().NotContain("SettleAsync", "模块结算由 ModuleSettlementReloadHandler 负责");
+        calls.Should().NotContain("AttachReloadHandlers", "Handler 挂载由 WorkspaceReloadInvoker 负责");
+    }
+
+    /// <summary>扫描 <see cref="WorkspaceReadyInitializer"/> 所有方法里调用到的成员名。</summary>
+    private static List<string> ReadCalledMemberNames(string assemblyPath)
+    {
+        using var fs = File.OpenRead(assemblyPath);
+        using var pe = new PEReader(fs);
+        var md = pe.GetMetadataReader();
+        var names = new List<string>();
+
+        foreach (var typeHandle in md.TypeDefinitions)
+        {
+            var typeDef = md.GetTypeDefinition(typeHandle);
+            if (md.GetString(typeDef.Name) != nameof(WorkspaceReadyInitializer))
+                continue;
+
+            foreach (var methodHandle in typeDef.GetMethods())
+            {
+                var methodDef = md.GetMethodDefinition(methodHandle);
+                if (methodDef.RelativeVirtualAddress == 0)
+                    continue;
+
+                var il = pe.GetMethodBody(methodDef.RelativeVirtualAddress).GetILBytes();
+                if (il is null)
+                    continue;
+
+                for (var i = 0; i + 4 < il.Length; i++)
+                {
+                    if (il[i] != 0x28 && il[i] != 0x6F)
+                        continue;
+
+                    var token = BitConverter.ToInt32(il, i + 1);
+                    if ((token >> 24) != 0x0A)
+                        continue;
+
+                    var memberRef = md.GetMemberReference(
+                        MetadataTokens.MemberReferenceHandle(token & 0x00FFFFFF));
+                    names.Add(md.GetString(memberRef.Name));
+                }
+            }
+        }
+
+        return names;
+    }
+
+    /// <summary>
     /// 扫描 <c>WorkspaceReadyInitializer</c> 类型中所有方法的 IL，
     /// 收集对名为 <c>InitializeCommands</c> 的成员引用所归属的类型全名。
     /// </summary>

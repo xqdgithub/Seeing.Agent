@@ -37,7 +37,6 @@
 @inject SkillManager SkillManager
 @inject ILlmService LlmService
 @inject IModelManager ModelManager
-@inject Services.CommandListService CommandListService
 @inject Seeing.Agent.TokenBudget.IBudgetStatusNotifier BudgetNotifier
 @inject Seeing.Agent.TokenBudget.ITokenBudgetManager TokenBudgetManager
 @inject ISessionManager SessionManager
@@ -231,7 +230,6 @@
                                      SessionKey="@SessionState.SessionId"
                                      Placeholder="@GetPlaceholderText()"
                                      HelpText="@GetHelpText()"
-                                     AvailableCommands="@_availableCommands"
                                      SessionState="SessionState"
                                      CancellationTokenSource="@SessionState.CancellationTokenSource"
                                      BudgetStatus="SessionState.BudgetStatus"
@@ -400,7 +398,6 @@
     private IDisposable? _sessionEventSubscription;
     private IDisposable? _seeingAgentOptionsSubscription;
     private bool _globalAutoApprove;
-    private List<CommandItemViewModel> _availableCommands = new();
     private string _currentStreamingMessageId = string.Empty;
     private bool _modelInvalid;
     private string? ErrorMessage;
@@ -483,9 +480,6 @@
 
         if (ViewMode == Services.SessionWindowMode.Full)
         {
-            // 加载命令列表（从后端）
-            await LoadCommandsFromBackend();
-
             // 会话装载统一走 EnsureSessionLoadedAsync：与 OnParametersSetAsync 共用同一路径，
             // 避免两处各写一遍导致重复全量重建（表现为「闪两下」）。
             effectiveSessionId = await EnsureSessionLoadedAsync(SessionId);
@@ -651,7 +645,6 @@
             {
                 Context.SessionId = sessionId;
                 SubscribeToBudgetUpdates();
-                await LoadCommandsFromBackend();
             }
 
             return sessionId;
@@ -1638,9 +1631,6 @@
 
         await RefreshIsAcpAsync();
 
-        // 切换 Agent 后重新加载命令列表（按 Runtime 过滤）
-        _ = LoadCommandsFromBackend();
-
         // 切换到 ACP Agent 时，清空 Provider 和 Model，让用户重新输入
         if (!wasAcp && Context.IsAcpPassthrough)
         {
@@ -1682,7 +1672,6 @@
         SyncContextState();
         await SessionManager.SaveAsync(SessionState.CurrentSession.Id);
         SyncContextState();
-        _ = LoadCommandsFromBackend();
         await RefreshIsAcpAsync();
     }
 
@@ -2382,21 +2371,6 @@
 
         SessionState.CurrentSession.AutoApprove = value;
         await SessionManager.SetAutoApproveAsync(SessionState.CurrentSession.Id, value);
-    }
-
-    /// <summary>
-    /// 从后端加载命令列表
-    /// </summary>
-    private async Task LoadCommandsFromBackend()
-    {
-        try
-        {
-            _availableCommands = await Task.Run(() => CommandListService.GetAvailableCommands(SessionState));
-        }
-        catch (Exception)
-        {
-            _availableCommands = new List<CommandItemViewModel>();
-        }
     }
 
     /// <summary>

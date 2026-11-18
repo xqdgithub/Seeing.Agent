@@ -6,6 +6,7 @@ using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Memory.Core.Models;
 using Seeing.Agent.Reflection.Core;
 using Seeing.Agent.Scheduler.Models;
+using Seeing.Agent.WebUI.Models;
 using Seeing.Agent.WebUI.Services;
 
 namespace Seeing.Agent.WebUI.Tests.Services;
@@ -243,4 +244,34 @@ public class UiTextTests
         UiText.FileSize(2048).Should().Be("2 KB");
         UiText.FileSize(5 * 1024 * 1024).Should().Be("5 MB");
     }
+
+    // ===== 斜杠命令面板 =====
+
+    [Theory]
+    [InlineData(CommandGroupKind.BuiltIn, "内置命令")]
+    [InlineData(CommandGroupKind.Skill, "技能")]
+    [InlineData(CommandGroupKind.Custom, "自定义命令")]
+    [InlineData(CommandGroupKind.Extension, "扩展")]
+    public void CommandGroupTitle_ShouldMapToChinese(CommandGroupKind kind, string expected)
+        => UiText.CommandGroupTitle(kind).Should().Be(expected);
+
+    [Theory]
+    [InlineData("Basic", "基础")]
+    [InlineData("Navigation", "导航")]
+    [InlineData("Agent", "智能体")]
+    [InlineData("Tools", "工具")]
+    [InlineData("System", "系统")]
+    [InlineData("Extension", "扩展")]
+    public void CommandCategoryText_ShouldNotLeakEnumName(string category, string expected)
+    {
+        var text = UiText.CommandCategoryText(category);
+
+        text.Should().Be(expected);
+        text.Should().NotBe(category, "CommandCategory 枚举名不得直出界面");
+    }
+
+    [Fact]
+    public void CommandGroupBadge_ShouldReturnNull_ForBuiltIn()
+        => UiText.CommandGroupBadge(CommandGroupKind.BuiltIn).Should().BeNull(
+            "内置命令显示分类徽标，不显示来源徽标");
 }

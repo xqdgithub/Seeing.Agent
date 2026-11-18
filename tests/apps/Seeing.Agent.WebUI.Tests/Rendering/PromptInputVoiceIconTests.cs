@@ -32,11 +32,13 @@ public class PromptInputVoiceIconTests
     }
 
     /// <summary>
-    /// 从语音按钮的 <c>OnVoiceClick</c> 起，截到该按钮结束的片段。
+    /// 从语音按钮所在的 Tooltip 起，截到按钮结束的片段。
+    /// <para>不能用 <c>OnVoiceClick</c> 当起点：它出现在 <c>Icon</c> 属性之后，
+    /// 从那里截会漏掉图标声明，断言永远看不到 <c>IconType</c>。</para>
     /// </summary>
     private static string ExtractVoiceIconBlock(string source)
     {
-        var start = source.IndexOf("OnVoiceClick", StringComparison.Ordinal);
+        var start = source.IndexOf("<Tooltip Title=\"@VoiceButtonTooltip\">", StringComparison.Ordinal);
         if (start < 0)
             return string.Empty;
 

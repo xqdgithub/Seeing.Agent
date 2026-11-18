@@ -23,6 +23,7 @@
 @inject Seeing.Agent.WebUI.Services.UploadedFileService UploadedFileService
 @inject IModelConfigManager ModelManager
 @inject NavigationManager Navigation
+@inject Seeing.Agent.WebUI.Services.CommandListService CommandListService
 
 <div Class="prompt-input-container" id="@ContainerId" data-session-id="@SessionState?.CurrentSession?.Id">
     <!-- 附件预览 -->
@@ -77,12 +78,26 @@
             @if (_showCommandDropdown && FilteredCommands.Count > 0)
             {
                 <div class="command-dropdown" style="position: absolute; bottom: 100%; left: 0; right: 0; background: var(--color-bg-container); border: 1px solid var(--color-border); border-radius: 8px; box-shadow: 0 6px 16px 0 rgba(0,0,0,0.08); max-height: 300px; overflow-y: auto; margin-bottom: 8px; z-index: 1000;">
-                    <ul class="command-list" style="list-style: none; padding: 4px 0; margin: 0;">
+                    <ul class="command-list" role="listbox" style="list-style: none; padding: 4px 0; margin: 0;">
+                        @{
+                            var optionIndex = 0;
+                            CommandGroupKind? lastGroup = null;
+                        }
                         @foreach (var cmd in FilteredCommands)
                         {
+                            if (lastGroup != cmd.Group)
+                            {
+                                lastGroup = cmd.Group;
+                                <li class="command-group-header" role="presentation">@cmd.GroupTitle</li>
+                            }
+
                             var isSelected = cmd.Value == _selectedCommand;
+                            var optionIndex0 = optionIndex++;
                             var disabledStyle = cmd.IsDisabled ? "opacity: 0.5; cursor: not-allowed;" : "";
-                            <li class="command-item @(isSelected ? "selected" : "") @(cmd.IsDisabled ? "disabled" : "")" 
+                            <li id="@($"{ContainerId}-opt-{optionIndex0}")"
+                                class="command-item @(isSelected ? "selected" : "") @(cmd.IsDisabled ? "disabled" : "")" 
+                                role="option"
+                                aria-selected="@isSelected"
                                 style="padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; @(isSelected ? "background: var(--color-primary-bg);" : "") @disabledStyle"
                                 @onclick="() => SelectCommand(cmd)"
                                 @onmouseenter="() => _selectedCommand = cmd.Value"
@@ -95,22 +110,7 @@
                                     <span class="cmd-keybind" style="color: var(--color-text-quaternary); font-size: 10px; padding: 1px 4px; background: var(--color-fill-tertiary); border-radius: 3px; flex-shrink: 0;">@cmd.Keybind</span>
                                 }
                                 <span class="cmd-category" style="color: var(--color-text-quaternary); font-size: 11px; flex-shrink: 0; padding: 1px 4px; background: var(--color-fill-secondary); border-radius: 4px;">
-                                    @if (cmd.IsCustom)
-                                    {
-                                        <text>自定义</text>
-                                    }
-                                    else if (cmd.IsBuiltIn)
-                                    {
-                                        <text>@cmd.Category</text>
-                                    }
-                                    else if (cmd.IsTool)
-                                    {
-                                        <text>工具</text>
-                                    }
-                                    else if (cmd.IsSkill)
-                                    {
-                                        <text>技能</text>
-                                    }
+                                    @(UiText.CommandGroupBadge(cmd.Group) ?? UiText.CommandCategoryText(cmd.Category))
                                 </span>
                             </li>
                         }
@@ -220,12 +220,6 @@
     /// </summary>
     [Parameter]
     public bool IsProcessing { get; set; }
-
-    /// <summary>
-    /// 可用命令列表（从后端获取）
-    /// </summary>
-    [Parameter]
-    public List<CommandItemViewModel> AvailableCommands { get; set; } = new();
 
     /// <summary>
     /// 会话状态（用于命令可用性检查）
@@ -373,19 +367,18 @@
     private bool IsDragging { get; set; }
 
     /// <summary>
-    /// 所有可用命令（工具 + 技能）
+    /// 命令缓存：每次打开面板时从 <see cref="CommandListService"/> 现取，
+    /// 保证技能增删 / 工作区切换后无需刷新页面即可见。
     /// </summary>
     private List<CommandItemViewModel> _allCommands = new();
 
     /// <summary>
-    /// 过滤后的命令列表（用于显示）
+    /// 过滤后的命令列表（用于显示；保持分组排序，键盘导航按此扁平索引）
     /// </summary>
     private List<CommandItemViewModel> FilteredCommands { get; set; } = new();
 
-    /// <summary>
-    /// 下拉框是否打开
-    /// </summary>
-    private bool _isDropdownOpen = false;
+    /// <summary>命令拉取中（避免连打 `/` 时并发重复取）。</summary>
+    private bool _commandsLoading;
 
     /// <summary>
     /// 是否显示命令下拉框
@@ -736,93 +729,98 @@
         return Task.CompletedTask;
     }
     /// <summary>
-    /// 加载所有命令（仅从后端获取的命令，已按 Runtime 过滤）
+    /// 从注册表现取命令（注册表是内存读，代价可忽略）。
+    /// <para>每次「关闭 → 打开」面板时调用：技能动态注册 / 工作区切换重载后无需刷新页面。</para>
     /// </summary>
-    private void LoadCommands()
+    private async Task RefreshCommandsAsync()
     {
-        _allCommands = new List<CommandItemViewModel>();
+        if (_commandsLoading)
+            return;
 
-        // 仅添加后端命令（已按 Runtime 过滤，包含可用性检查和禁用原因）
-        foreach (var cmd in AvailableCommands)
-        {
-            _allCommands.Add(cmd);
-        }
-
-        // 按优先级和名称排序
-        _allCommands = _allCommands
-            .OrderBy(c => c.Priority)
-            .ThenBy(c => c.Name)
-            .ToList();
-    }
-
-    /// <summary>
-    /// 处理命令搜索（Mentions OnSearch 回调）
-    /// </summary>
-    private async Task HandleCommandSearch((string searchValue, string prefix) args)
-    {
-        // 标记下拉框打开
-        _isDropdownOpen = true;
-
-        // 确保命令已加载
-        if (_allCommands.Count == 0 && AvailableCommands.Count > 0)
-        {
-            LoadCommands();
-        }
-
-        // 过滤命令
-        var searchLower = args.searchValue?.ToLowerInvariant() ?? "";
-        if (string.IsNullOrEmpty(searchLower))
-        {
-            // 无搜索词，显示所有命令
-            FilteredCommands = _allCommands.ToList();
-        }
-        else
-        {
-            // 按名称或描述过滤（大小写不敏感）
-            FilteredCommands = _allCommands
-                .Where(c => c.Name.ToLowerInvariant().Contains(searchLower) ||
-                           c.Description.ToLowerInvariant().Contains(searchLower))
-                .ToList();
-        }
-
-        StateHasChanged();
-    }
-
-    /// <summary>
-    /// 加载命令选项（Mentions LoadOptions 回调）
-    /// </summary>
-    private async Task<IEnumerable<MentionsDynamicOption>> LoadCommandOptions(string search, CancellationToken cancellationToken)
-    {
-        _isDropdownOpen = true;
-
+        _commandsLoading = true;
         try
         {
-            var isValid = await JSRuntime.InvokeAsync<bool>("isSlashTriggerValid", TextareaId);
-            if (!isValid) return Enumerable.Empty<MentionsDynamicOption>();
+            // GetAvailableCommands 内部对 IAgentRegistry 做了同步等待，放线程池避免占用 circuit 线程
+            _allCommands = await Task.Run(() => CommandListService.GetAvailableCommands(SessionState));
         }
         catch
         {
-            // JSInterop error, return empty
+            // 取列表失败保留上一次结果：面板继续可用，不打断输入
+        }
+        finally
+        {
+            _commandsLoading = false;
         }
 
-        if (_allCommands.Count == 0 && AvailableCommands.Count > 0)
+        if (_disposed || !_showCommandDropdown)
+            return;
+
+        ApplyCommandFilter();
+        _ = SetDropdownStateAsync(FilteredCommands.Count > 0);
+
+        try
         {
-            LoadCommands();
+            StateHasChanged();
         }
-
-        var searchLower = search?.ToLowerInvariant() ?? "";
-        var filtered = string.IsNullOrEmpty(searchLower)
-            ? _allCommands.ToList()
-            : _allCommands.Where(c => c.Name.ToLowerInvariant().Contains(searchLower) || c.Description.ToLowerInvariant().Contains(searchLower)).ToList();
-
-        return filtered.Select(cmd => new MentionsDynamicOption
+        catch (ObjectDisposedException)
         {
-            Value = cmd.Value,
-            Display = _optionDisplay(cmd.Name)
-        });
+            // circuit 已断开：无需重绘
+        }
+        catch (InvalidOperationException)
+        {
+            // 渲染器已释放
+        }
     }
 
-    private RenderFragment<string> _optionDisplay => name => builder => builder.AddContent(0, name);
+    /// <summary>
+    /// 按当前 `/` 后的搜索词过滤命令（保持分组排序，分组在渲染时插入组标题）。
+    /// </summary>
+    private void ApplyCommandFilter()
+    {
+        var search = GetCommandSearchText();
+        FilteredCommands = string.IsNullOrEmpty(search)
+            ? _allCommands.ToList()
+            : _allCommands
+                .Where(c => c.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
+                            || c.Description.Contains(search, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+        if (!FilteredCommands.Any(c => c.Value == _selectedCommand))
+            _selectedCommand = FilteredCommands.Count > 0 ? FilteredCommands[0].Value : "";
+    }
+
+    /// <summary>
+    /// 当前 `/` 后的搜索词；返回 null 表示当前输入不触发命令面板。
+    /// </summary>
+    private string? GetCommandSearchText()
+    {
+        if (string.IsNullOrEmpty(InputText))
+            return null;
+
+        var lastSlashIndex = InputText.LastIndexOf('/');
+        if (lastSlashIndex < 0)
+            return null;
+
+        // `/` 后出现空格 = 命令已完整，面板收起
+        var afterSlash = InputText.Substring(lastSlashIndex);
+        if (afterSlash.Contains(' '))
+            return null;
+
+        return afterSlash.Length > 1 ? afterSlash.Substring(1) : "";
+    }
+
+    /// <summary>滚动到指定命令项（容器是 max-height 的滚动区，选中项可能已在视野外）。</summary>
+    private async Task ScrollCommandIntoViewAsync(int index)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("scrollCommandOptionIntoView", $"{ContainerId}-opt-{index}");
+        }
+        catch
+        {
+            // 面板可能刚好关闭 / JS 未就绪：滚动失败不影响选中
+        }
+    }
 
     /// <summary>
     /// 获取拖拽区域 CSS 类
@@ -878,24 +876,26 @@
             switch (e.Key)
             {
                 case "ArrowDown":
-                    // 向下选择
+                    // 向下选择（并滚动使其可见）
                     {
                         _preventDefaultKeydown = true;
                         var currentIndex = FilteredCommands.FindIndex(c => c.Value == _selectedCommand);
                         var nextIndex = currentIndex < FilteredCommands.Count - 1 ? currentIndex + 1 : 0;
                         _selectedCommand = FilteredCommands[nextIndex].Value;
                         StateHasChanged();
+                        await ScrollCommandIntoViewAsync(nextIndex);
                     }
                     return;
                     
                 case "ArrowUp":
-                    // 向上选择
+                    // 向上选择（并滚动使其可见）
                     {
                         _preventDefaultKeydown = true;
                         var currentIndex = FilteredCommands.FindIndex(c => c.Value == _selectedCommand);
                         var prevIndex = currentIndex > 0 ? currentIndex - 1 : FilteredCommands.Count - 1;
                         _selectedCommand = FilteredCommands[prevIndex].Value;
                         StateHasChanged();
+                        await ScrollCommandIntoViewAsync(prevIndex);
                     }
                     return;
                     
@@ -978,91 +978,26 @@
     }
 
     /// <summary>
-    /// 处理 TextArea 值变更
-    /// </summary>
-    private void HandleTextAreaValueChanged(string value)
-    {
-        // 检测是否选择了命令（值突然包含完整的 /command 格式）
-        // 如果输入值变化且下拉框打开，可能是选择了命令
-        if (_isDropdownOpen && !string.IsNullOrEmpty(value))
-        {
-            var lastSlashIndex = value.LastIndexOf('/');
-            if (lastSlashIndex >= 0)
-            {
-                // 检查是否是完整命令（后面有空格或结束）
-                var afterSlash = value.Substring(lastSlashIndex);
-                var hasCompleteCommand = afterSlash.Contains(' ') || 
-                    _allCommands.Any(c => c.Value == afterSlash);
-                
-                // 如果检测到完整命令，关闭下拉框
-                if (hasCompleteCommand)
-                {
-                    _isDropdownOpen = false;
-                }
-            }
-        }
-        
-        InputText = value;
-    }
-
-    /// <summary>
     /// 输入变更后处理（检测 / 触发命令下拉框）
     /// </summary>
     private void HandleInputChange()
     {
-        // 确保命令已加载
-        if (_allCommands.Count == 0 && AvailableCommands.Count > 0)
-        {
-            LoadCommands();
-        }
-
-        // 检测是否输入了 /
-        if (string.IsNullOrEmpty(InputText))
-        {
-            _showCommandDropdown = false;
-            _selectedCommand = "";
-            return;
-        }
-
-        var lastSlashIndex = InputText.LastIndexOf('/');
-        if (lastSlashIndex < 0)
-        {
-            _showCommandDropdown = false;
-            _selectedCommand = "";
-            return;
-        }
-
-        // 检查 / 后面是否有空格（完整命令）
-        var afterSlash = InputText.Substring(lastSlashIndex);
-        if (afterSlash.Contains(' '))
-        {
-            _showCommandDropdown = false;
-            _selectedCommand = "";
-            return;
-        }
-
-        // 获取搜索词（/ 后面的内容）
-        var search = afterSlash.Length > 1 ? afterSlash.Substring(1) : "";
-
-        // 过滤命令
-        var searchLower = search.ToLowerInvariant();
-        FilteredCommands = string.IsNullOrEmpty(searchLower)
-            ? _allCommands.ToList()
-            : _allCommands.Where(c => c.Name.ToLowerInvariant().Contains(searchLower) ||
-                                      c.Description.ToLowerInvariant().Contains(searchLower)).ToList();
-
-        if (FilteredCommands.Count > 0)
-        {
-            _showCommandDropdown = true;
-            _selectedCommand = FilteredCommands[0].Value;
-            _ = SetDropdownStateAsync(true);
-        }
-        else
+        if (GetCommandSearchText() is null)
         {
             _showCommandDropdown = false;
             _selectedCommand = "";
             _ = SetDropdownStateAsync(false);
+            return;
         }
+
+        var wasOpen = _showCommandDropdown;
+        ApplyCommandFilter();
+        _showCommandDropdown = true;
+        _ = SetDropdownStateAsync(FilteredCommands.Count > 0);
+
+        // 「关闭 → 打开」时现取注册表：技能动态注册 / 工作区切换后无需刷新页面
+        if (!wasOpen)
+            _ = RefreshCommandsAsync();
     }
 
     /// <summary>

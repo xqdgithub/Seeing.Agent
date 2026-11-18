@@ -824,6 +824,19 @@ function setCommandDropdownState(textareaId, isOpen) {
 }
 
 /**
+ * 滚动命令面板，使选中项可见。
+ * 面板是 max-height + overflow-y 的滚动区，键盘上下移动时选中项会跑出视野。
+ * block: 'nearest' —— 已可见时不动，减少闪烁。
+ * @param {string} optionId - 命令项元素 ID
+ */
+function scrollCommandOptionIntoView(optionId) {
+    const item = document.getElementById(optionId);
+    if (item) {
+        item.scrollIntoView({ block: 'nearest' });
+    }
+}
+
+/**
  * 是否应使用移动端布局（汉堡侧栏、内容区无左边距）。
  * 含三类：移动 UA、触控小屏、以及窄视口（≤768）。
  * 窄视口必须算进去：DevTools Responsive / 桌面缩窗若不切汉堡，
