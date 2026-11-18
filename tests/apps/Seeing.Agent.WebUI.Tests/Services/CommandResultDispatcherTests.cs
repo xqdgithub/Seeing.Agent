@@ -16,8 +16,47 @@ public class CommandResultDispatcherTests
         return (new CommandResultDispatcher(registry, store, NullLogger<CommandResultDispatcher>.Instance), store, registry);
     }
 
-    private static CommandResultEvent Evt(string? message, CommandAction? action = null)
-        => new() { SessionId = "s1", CommandName = "cron-list", Success = true, Message = message, Action = action };
+    private static CommandResultEvent Evt(
+        string? message,
+        CommandAction? action = null,
+        bool shouldContinue = false,
+        DateTime? timestamp = null)
+        => new()
+        {
+            SessionId = "s1",
+            CommandName = "cron-list",
+            Success = true,
+            Message = message,
+            Action = action,
+            ShouldContinue = shouldContinue,
+            Timestamp = timestamp ?? DateTime.UtcNow
+        };
+
+    [Fact]
+    public async Task Event_Produced_Before_Binding_Should_Be_Ignored()
+    {
+        var (dispatcher, store, registry) = Create();
+        using var registration = registry.Register("s1", "model.set", _ =>
+            Task.FromResult(new HostActionResult(HostActionStatus.Handled, "已切换")));
+
+        var boundAt = DateTime.UtcNow;
+        var replayed = Evt(
+            "旧事件",
+            new CommandAction { Name = "model.set" },
+            timestamp: boundAt.AddMinutes(-5));
+
+        await dispatcher.DispatchAsync("s1", replayed, boundAt);
+
+        store.Items.Should().BeEmpty("回放的历史命令不得重新执行或重新提示");
+    }
+
+    [Fact]
+    public async Task Continue_Command_Without_Action_Should_Not_Append_Message()
+    {
+        var (dispatcher, store, _) = Create();
+        await dispatcher.DispatchAsync("s1", Evt("整段展开后的模板", shouldContinue: true));
+        store.Items.Should().BeEmpty("继续执行类命令的 Message 是传输字段，展开内容已在会话里");
+    }
 
     [Fact]
     public async Task No_Action_With_Message_Should_Append_Notice()

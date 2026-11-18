@@ -94,7 +94,7 @@
                     }
                 </div>
             }
-            @if (Context.ShowModelSelector && !Context.IsAcpPassthrough && _optionsReady && Context.CurrentSession != null)
+            @if (Context.ShowModelSelector && _optionsReady && Context.CurrentSession != null)
             {
                 <Select TItemValue="string" TItem="string"
                         Value="@Context.SelectedAgent"
@@ -401,12 +401,12 @@
 
     private Task<Services.HostActionResult> OnAgentPickerAsync(CommandAction action)
     {
-        // 与 agent.set 的可用性保持一致：ACP 透传会话的 Agent 由后端决定，不打开选择器。
-        if (Context.IsAcpPassthrough)
+        // 选择器没渲染时必须明确回落，否则返回 Handled 会让 /agent 又变成“静默无反应”。
+        if (!Context.ShowModelSelector || !_optionsReady || Context.CurrentSession == null)
         {
             return Task.FromResult(new Services.HostActionResult(
                 Services.HostActionStatus.Unavailable,
-                "ACP 透传会话的 Agent 由后端决定，无法通过命令切换。"));
+                "当前会话不可切换 Agent。"));
         }
 
         _agentPickerOpen = true;

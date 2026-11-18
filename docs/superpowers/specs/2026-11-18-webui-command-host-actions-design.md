@@ -79,7 +79,7 @@ public sealed record CommandAction
 | `ModelPicker` | `model.picker` | — | 打开模型选择弹窗 |
 | `ModelSet` | `model.set` | `modelId` | 会话级切换模型（`Context.SetModelAsync`）。子会话在命令执行时已隐式接管；ACP 透传不可用 |
 | `AgentPicker` | `agent.picker` | — | 展开 Agent 下拉 |
-| `AgentSet` | `agent.set` | `agentId` | 会话级切换 Agent（`Context.SetAgentAsync`）。子会话在命令执行时已隐式接管；ACP 透传不可用 |
+| `AgentSet` | `agent.set` | `agentId` | 会话级切换 Agent（`Context.SetAgentAsync`）。子会话在命令执行时已隐式接管；ACP 会话也允许切换（这是退出 ACP 的入口） |
 | `PageNavigate` | `page.navigate` | `path` | `NavigationManager.NavigateTo(path)` |
 | `Notice` | `notice` | `text`、`level`（info/error） | 追加一条临时系统条目 |
 | `SessionNew` | `session.new` | `title?` | 新建并切换会话（P2 才由 `SessionWindow` 注册处理器） |
@@ -144,6 +144,7 @@ public interface IHostActionRegistry
 2. **无 `Action` 且 `Message` 非空**：追加一条临时系统条目。
 3. **`NavigationTarget`**：保持现状（先导航后呈现的顺序不变）。
 4. **`NeedsRefresh`**：保持现状。
+5. **回放闸门**：事件流订阅会先灌入最近 ≤100 条历史事件（`ExecutionEventPublisher`）。分派器必须跳过时间戳早于“事件流绑定时刻”的事件，否则刷新页面会重放历史命令：`/mcp` 会再次跳转、`/model x` 会静默改回模型、临时条目会重新出现。绑定时刻在 `AttachConsumer` 之前记录。
 
 失败（`Success=false`）时临时条目使用错误样式；同时保留现有 `LastError`/提示条行为不变。
 
@@ -260,5 +261,6 @@ canEdit = !isChild || Owner == Human
 
 ## 13. 实现与验证记录
 
-- 自动化：`Seeing.Agent.Hosting.Tests` 114 通过、`Seeing.Agent.WebUI.Tests` 544 通过、`Seeing.Agent.Mcp.Tests` 148 通过；全量 `dotnet build Seeing.Agent.slnx` 通过。
+- 自动化：`Seeing.Agent.Hosting.Tests` 114 通过、`Seeing.Agent.WebUI.Tests` 549 通过、`Seeing.Agent.Mcp.Tests` 148 通过；全量 `dotnet build Seeing.Agent.slnx` 通过。
+- 最终审查修复：回放闸门（C1）、继续类命令不重复展示 Message（I1）、ACP 会话允许切回 Native Agent（I2）、`agent.picker` 未渲染时回退 `Unavailable`（I3）、Summary 卡片不注册动作（I4）。
 - 手动交互验证（`/model`、`/agent`、`/mcp`、`/cron-list`、子会话接管/交还）需要在实际 WebUI 页面操作，未在自动化环境中执行，待人工确认。

@@ -21,6 +21,14 @@ public class SessionToolbarAgentPickerContractTests
             .Should().NotContain("else if (_optionsReady && Context.CurrentSession != null)");
     }
 
+    [Fact]
+    public void Agent_Picker_Should_Report_Unavailable_When_Select_Not_Rendered()
+    {
+        ReadWebUiFile("Components", "SessionToolbar.razor")
+            .Should().Contain("当前会话不可切换 Agent",
+                "选择器未渲染时不能返回 Handled，否则 /agent 又变成静默无反应");
+    }
+
     private static string ReadWebUiFile(params string[] relativeSegments)
     {
         var parts = new List<string> { RepoRoot(), "samples", "Seeing.Agent.WebUI" };

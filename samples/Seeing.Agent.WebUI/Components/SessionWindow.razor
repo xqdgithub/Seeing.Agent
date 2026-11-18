@@ -436,6 +436,12 @@
     /// <summary>宿主动作已注册的会话 Id（切换会话时重键，避免旧键失效后动作全部回落）。</summary>
     private string? _actionsSessionId;
 
+    /// <summary>
+    /// 事件流绑定时刻（UTC）：早于它的事件是订阅回放，命令动作必须跳过，
+    /// 否则刷新页面会重放历史命令（再次导航 / 再次切模型 / 临时提示重现）。
+    /// </summary>
+    private DateTime _streamBoundAtUtc = DateTime.UtcNow;
+
     /// <summary>当前会话已注册的宿主动作句柄（Dispose / 换键时撤销）。</summary>
     private readonly List<IDisposable> _actionRegistrations = new();
 
@@ -1268,6 +1274,8 @@
         }
 
         var circuitId = CircuitContext.Id ?? "";
+        // 回放闸门：必须在 AttachConsumer 之前记时刻（attach 会先灌入历史事件）。
+        _streamBoundAtUtc = DateTime.UtcNow;
         _handler = Router.GetOrCreateConsumer<Services.EventStreamHandler>(sessionId, circuitId);
         _handler.ClearCache();
         // async Task 方法不能直接赋给 Action 委托（CS0407），用 lambda 桥接并保留引用以便退订
@@ -1416,7 +1424,7 @@
             // 命令结果：动作由宿主执行；无动作/未注册时显示临时系统条目。
             // 必须在 _sync.ProcessEvent 之后（NeedsRefresh 会全量重建并清空时间线）。
             if (isFull && evt is CommandResultEvent commandResultEvt)
-                await CommandDispatcher.DispatchAsync(EffectiveSessionId, commandResultEvt);
+                await CommandDispatcher.DispatchAsync(EffectiveSessionId, commandResultEvt, _streamBoundAtUtc);
 
             EnsureRetryTimer();
 
@@ -1593,14 +1601,20 @@
     /// </summary>
     private void EnsureHostActions()
     {
+        // Summary 卡片不处理命令事件，也不注册动作：否则会以“后注册者生效”遮蔽
+        // 同会话 Full 窗口的处理器，让 /model 等动作静默失效。
+        if (ViewMode != Services.SessionWindowMode.Full)
+        {
+            DisposeHostActions();
+            return;
+        }
+
         var sessionId = EffectiveSessionId;
         if (string.IsNullOrEmpty(sessionId)
             || string.Equals(_actionsSessionId, sessionId, StringComparison.Ordinal))
             return;
 
-        foreach (var registration in _actionRegistrations)
-            registration.Dispose();
-        _actionRegistrations.Clear();
+        DisposeHostActions();
         _actionsSessionId = sessionId;
 
         _actionRegistrations.Add(HostActions.Register(
@@ -1611,6 +1625,14 @@
             sessionId, CommandActionNames.ModelSet, HandleModelSetActionAsync));
         _actionRegistrations.Add(HostActions.Register(
             sessionId, CommandActionNames.AgentSet, HandleAgentSetActionAsync));
+    }
+
+    private void DisposeHostActions()
+    {
+        foreach (var registration in _actionRegistrations)
+            registration.Dispose();
+        _actionRegistrations.Clear();
+        _actionsSessionId = null;
     }
 
     /// <summary>导航动作：载荷 <c>path</c> 必须非空。</summary>
@@ -2546,10 +2568,7 @@
         _budgetSubscription?.Dispose();
         _sessionEventSubscription?.Dispose();
         _seeingAgentOptionsSubscription?.Dispose();
-        foreach (var registration in _actionRegistrations)
-            registration.Dispose();
-        _actionRegistrations.Clear();
-        _actionsSessionId = null;
+        DisposeHostActions();
         WorkbenchState.Changed -= OnWorkbenchStateChanged;
 
         // 退订事件回调并摘除 handler 订阅（aggregator 的父会话订阅由 Rebind 自行切换；

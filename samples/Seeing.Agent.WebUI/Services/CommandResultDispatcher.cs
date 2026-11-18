@@ -33,9 +33,18 @@ public sealed class CommandResultDispatcher
     }
 
     /// <summary>处理命令结果事件（只产生临时提示，不落盘）。</summary>
-    public async Task DispatchAsync(string sessionId, CommandResultEvent evt)
+    /// <param name="sessionId">目标会话。</param>
+    /// <param name="evt">命令结果事件。</param>
+    /// <param name="boundAtUtc">
+    /// 事件流绑定时刻（UTC）。早于该时刻的事件属于订阅回放，必须跳过——
+    /// 否则刷新页面会重放历史命令（再次导航、再次切模型、临时提示重新出现）。
+    /// </param>
+    public async Task DispatchAsync(string sessionId, CommandResultEvent evt, DateTime? boundAtUtc = null)
     {
         ArgumentNullException.ThrowIfNull(evt);
+
+        if (boundAtUtc is { } bound && evt.Timestamp < bound)
+            return;
 
         if (evt.Action is { } action)
         {
@@ -64,7 +73,9 @@ public sealed class CommandResultDispatcher
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(evt.Message))
+        // 继续执行类命令（技能展开、Markdown 模板）的 Message 只是传输字段：
+        // 展开内容已经作为用户消息在时间线里，再显示一次会让用户以为被执行了两遍。
+        if (!evt.ShouldContinue && !string.IsNullOrWhiteSpace(evt.Message))
             Append(evt, evt.Message!, isError: !evt.Success);
     }
 

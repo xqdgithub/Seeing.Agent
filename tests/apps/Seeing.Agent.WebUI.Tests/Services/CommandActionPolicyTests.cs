@@ -35,10 +35,16 @@ public class CommandActionPolicyTests
     }
 
     [Fact]
-    public async Task AgentSet_Acp_Should_Be_Unavailable()
+    public async Task AgentSet_Acp_Should_Still_Invoke_So_User_Can_Leave_Acp()
     {
-        var result = await CommandActionPolicy.AgentSetAsync("build", isAcpPassthrough: true, _ => Task.CompletedTask);
-        result.Status.Should().Be(HostActionStatus.Unavailable);
+        string? applied = null;
+        var result = await CommandActionPolicy.AgentSetAsync(
+            "build",
+            isAcpPassthrough: true,
+            id => { applied = id; return Task.CompletedTask; });
+
+        applied.Should().Be("build", "ACP 会话仍必须能切回 Native Agent，否则用户被困在 ACP");
+        result.Status.Should().Be(HostActionStatus.Handled);
     }
 
     [Fact]

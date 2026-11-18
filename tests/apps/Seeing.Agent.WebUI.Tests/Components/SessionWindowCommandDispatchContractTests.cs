@@ -23,6 +23,14 @@ public class SessionWindowCommandDispatchContractTests
         razor.Should().Contain("_actionsSessionId");
     }
 
+    [Fact]
+    public void Only_Full_Window_Should_Register_Actions()
+    {
+        ReadSessionWindow()
+            .Should().Contain("ViewMode != Services.SessionWindowMode.Full",
+                "Summary 卡片不处理命令事件，也不应注册宿主动作（避免遮蔽同会话 Full 窗口的处理器）");
+    }
+
     private static string ReadSessionWindow()
     {
         var path = Path.Combine(

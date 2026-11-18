@@ -27,16 +27,15 @@ public static class CommandActionPolicy
         return new HostActionResult(HostActionStatus.Handled, $"已切换模型：{modelId}");
     }
 
-    /// <summary>Agent 切换：ACP 透传不可用；载荷为空视为未处理。</summary>
+    /// <summary>Agent 切换：载荷为空视为未处理（ACP 会话允许切回 Native Agent，不受模型限制）。</summary>
     public static async Task<HostActionResult> AgentSetAsync(
         string? agentId,
         bool isAcpPassthrough,
         Func<string, Task>? setAgent)
     {
-        if (isAcpPassthrough)
-            return new HostActionResult(
-                HostActionStatus.Unavailable,
-                "ACP 透传会话的 Agent 由后端决定，无法通过命令切换。");
+        // isAcpPassthrough 保留在签名里：模型由 ACP 后端决定，但 Agent 切换是退出 ACP 的唯一入口，
+        // 不能一并禁用（否则用户被困在 ACP 会话里）。
+        _ = isAcpPassthrough;
 
         if (string.IsNullOrWhiteSpace(agentId) || setAgent is null)
             return new HostActionResult(HostActionStatus.NotHandled);

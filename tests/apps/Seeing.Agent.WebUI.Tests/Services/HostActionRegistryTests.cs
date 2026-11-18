@@ -43,6 +43,24 @@ public class HostActionRegistryTests
     }
 
     [Fact]
+    public async Task Rekey_Should_Move_Registration_To_New_Session()
+    {
+        var registry = new HostActionRegistry();
+        var first = registry.Register("s1", "x", _ =>
+            Task.FromResult(new HostActionResult(HostActionStatus.Handled, "old")));
+
+        // 模拟窗口切到 s2：撤销旧键，按新会话注册
+        first.Dispose();
+        using var second = registry.Register("s2", "x", _ =>
+            Task.FromResult(new HostActionResult(HostActionStatus.Handled, "new")));
+
+        (await registry.InvokeAsync("s1", new CommandAction { Name = "x" })).Status
+            .Should().Be(HostActionStatus.NotHandled);
+        (await registry.InvokeAsync("s2", new CommandAction { Name = "x" })).Message
+            .Should().Be("new");
+    }
+
+    [Fact]
     public async Task Handler_Throw_Should_Return_NotHandled()
     {
         var registry = new HostActionRegistry();
