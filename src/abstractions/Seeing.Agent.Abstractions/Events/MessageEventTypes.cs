@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Abstractions.Llm;
+﻿using Seeing.Agent.Abstractions.Commands;
+using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Tools;
@@ -426,6 +427,11 @@ public record CommandResultEvent : IMessageEvent
     /// 宿主据此短路：不再把命令文本作为普通消息发送给大模型。
     /// </summary>
     public bool ShouldContinue { get; init; } = true;
+
+    /// <summary>
+    /// 命令请求宿主执行的动作（可选）；为空表示只展示 <see cref="Message"/>。
+    /// </summary>
+    public CommandAction? Action { get; init; }
 }
 
 /// <summary>

@@ -1083,7 +1083,23 @@ internal sealed class ExecutionRunner : IExecutionRunner
         // 命令结果事件总是发布：短路命令据此终止本轮；继续类命令（如 /skill 展开、
         // Markdown 模板）借此携带 NeedsRefresh，让 UI 刷新被命令改写的消息内容
         // （否则内容已改并落盘但界面不刷新，需手动刷新页面才可见）。
-        yield return new CommandResultEvent
+        yield return CreateCommandResultEvent(sessionId, cmdName, result);
+
+        if (!result.ShouldContinue || result.ShouldExit)
+            yield break;
+
+        // 继续执行 Agent
+        yield return null;
+    }
+
+    /// <summary>
+    /// 构造命令结果事件（唯一出口，便于单测锁住字段透传）。
+    /// </summary>
+    internal static CommandResultEvent CreateCommandResultEvent(
+        string sessionId,
+        string cmdName,
+        CommandResult result)
+        => new()
         {
             SessionId = sessionId,
             CommandName = cmdName,
@@ -1092,15 +1108,9 @@ internal sealed class ExecutionRunner : IExecutionRunner
             NavigationTarget = result.GetNavigationTarget(),
             NeedsRefresh = result.NeedsRefresh,
             // 短路标志：宿主据此跳过 Agent 执行，不再把命令文本发给大模型
-            ShouldContinue = result.ShouldContinue && !result.ShouldExit
+            ShouldContinue = result.ShouldContinue && !result.ShouldExit,
+            Action = result.Action
         };
-
-        if (!result.ShouldContinue || result.ShouldExit)
-            yield break;
-
-        // 继续执行 Agent
-        yield return null;
-    }
 
     /// <summary>
     /// 标记会话为 Error 状态（执行失败时调用）。

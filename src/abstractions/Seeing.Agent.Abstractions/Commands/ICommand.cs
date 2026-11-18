@@ -183,6 +183,12 @@ namespace Seeing.Agent.Abstractions.Commands
         /// <summary>附加数据</summary>
         public Dictionary<string, object>? Metadata { get; init; }
 
+        /// <summary>
+        /// 命令请求宿主执行的动作（可选）。
+        /// <para>宿主认识就执行，不认识或不可用时回退展示 <see cref="Message"/>。</para>
+        /// </summary>
+        public CommandAction? Action { get; init; }
+
         /// <summary>创建成功结果（默认不继续执行 Agent）</summary>
         public static CommandResult Ok(string? message = null, bool needsRefresh = false, bool shouldContinue = false)
             => new() { Success = true, Message = message, NeedsRefresh = needsRefresh, ShouldContinue = shouldContinue };
