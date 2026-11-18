@@ -4,6 +4,7 @@
 @using Seeing.Agent.WebUI.State
 @using Seeing.Agent.WebUI.Shared
 @using Seeing.Agent.Abstractions.Events
+@using Seeing.Agent.Abstractions.Commands
 @using Seeing.Agent.Abstractions.Reminders
 @using Seeing.Agent.Abstractions.Sessions
 @using Services = Seeing.Agent.WebUI.Services
@@ -47,6 +48,8 @@
 @inject ILogger<SessionWindow> Logger
 @inject Seeing.Agent.WebUI.Workbench.WorkbenchDockState WorkbenchState
 @inject Services.SessionAssetUrlBuilder AssetUrls
+@inject Services.CommandResultDispatcher CommandDispatcher
+@inject Services.IHostActionRegistry HostActions
 @implements IDisposable
 
 <div Class="@($"session-window session-window--{ModeCss}{(IsCompactSummary ? " session-window--compact" : "")}")">
@@ -418,6 +421,12 @@
 
     /// <summary>组件是否已销毁：渲染回调必须据此短路，避免在已销毁组件上排队渲染。</summary>
     private bool _disposed;
+
+    /// <summary>宿主动作已注册的会话 Id（切换会话时重键，避免旧键失效后动作全部回落）。</summary>
+    private string? _actionsSessionId;
+
+    /// <summary>当前会话已注册的宿主动作句柄（Dispose / 换键时撤销）。</summary>
+    private readonly List<IDisposable> _actionRegistrations = new();
 
     /// <summary>聊天主列是否隐藏（由工作台全屏开关驱动；仅影响 Full 模式的布局）。</summary>
     private bool _chatHidden;
@@ -1374,7 +1383,7 @@
         // 事件流由后台线程广播（Router.ConsumeLoopAsync → OnStateChanged）；
         // 时间线等 UI 状态的变更与渲染必须回到 Blazor 同步上下文串行执行，
         // 否则会与 Dispatcher 渲染线程并发操作同一集合，抛出 "Collection was modified"。
-        await InvokeAsync(() =>
+        await InvokeAsync(async () =>
         {
             // 时间线管道只服务 Full 窗口；Summary 跳过它拿到主要收益。
             // 标题有两条独立通道：
@@ -1392,6 +1401,11 @@
                 _sync.Title = titleEvt.Title;
                 ApplyTitleToUi(titleEvt.Title);
             }
+
+            // 命令结果：动作由宿主执行；无动作/未注册时显示临时系统条目。
+            // 必须在 _sync.ProcessEvent 之后（NeedsRefresh 会全量重建并清空时间线）。
+            if (isFull && evt is CommandResultEvent commandResultEvt)
+                await CommandDispatcher.DispatchAsync(EffectiveSessionId, commandResultEvt);
 
             EnsureRetryTimer();
 
@@ -1551,7 +1565,73 @@
 
         _ = InvokeAsync(StateHasChanged); // 渲染自触发：外层头部读新值
         _ = RefreshIsAcpAsync();
+
+        // 会话可能在这一帧才拿到 id（加载完成 / 切换 active）：动作注册键必须跟着走。
+        EnsureHostActions();
     }
+
+    /// <summary>
+    /// 注册当前会话的宿主动作；会话 Id 变化时撤销旧键并重注册。
+    /// <para>注册键是 <c>(sessionId, actionName)</c>，切会话复用同一窗口实例时必须重键。</para>
+    /// </summary>
+    private void EnsureHostActions()
+    {
+        var sessionId = EffectiveSessionId;
+        if (string.IsNullOrEmpty(sessionId)
+            || string.Equals(_actionsSessionId, sessionId, StringComparison.Ordinal))
+            return;
+
+        foreach (var registration in _actionRegistrations)
+            registration.Dispose();
+        _actionRegistrations.Clear();
+        _actionsSessionId = sessionId;
+
+        _actionRegistrations.Add(HostActions.Register(
+            sessionId, CommandActionNames.PageNavigate, HandlePageNavigateActionAsync));
+        _actionRegistrations.Add(HostActions.Register(
+            sessionId, CommandActionNames.Notice, HandleNoticeActionAsync));
+        _actionRegistrations.Add(HostActions.Register(
+            sessionId, CommandActionNames.ModelSet, HandleModelSetActionAsync));
+        _actionRegistrations.Add(HostActions.Register(
+            sessionId, CommandActionNames.AgentSet, HandleAgentSetActionAsync));
+    }
+
+    /// <summary>导航动作：载荷 <c>path</c> 必须非空。</summary>
+    private Task<Services.HostActionResult> HandlePageNavigateActionAsync(CommandAction action)
+    {
+        var path = TryGetPayload(action, "path");
+        if (string.IsNullOrWhiteSpace(path))
+            return Task.FromResult(new Services.HostActionResult(Services.HostActionStatus.NotHandled));
+
+        NavigationManager.NavigateTo(path);
+        return Task.FromResult(new Services.HostActionResult(Services.HostActionStatus.Handled));
+    }
+
+    /// <summary>提示动作：只把文本交回分派器统一追加，避免这里重复追加。</summary>
+    private Task<Services.HostActionResult> HandleNoticeActionAsync(CommandAction action)
+    {
+        var text = TryGetPayload(action, "text");
+        return string.IsNullOrWhiteSpace(text)
+            ? Task.FromResult(new Services.HostActionResult(Services.HostActionStatus.NotHandled))
+            : Task.FromResult(new Services.HostActionResult(Services.HostActionStatus.Handled, text));
+    }
+
+    /// <summary>模型切换：ACP 透传不可用，其余交给会话级切换。</summary>
+    private Task<Services.HostActionResult> HandleModelSetActionAsync(CommandAction action)
+        => Services.CommandActionPolicy.ModelSetAsync(
+            TryGetPayload(action, "modelId"),
+            Context.IsAcpPassthrough,
+            Context.SetModelAsync);
+
+    /// <summary>Agent 切换：ACP 透传不可用，其余交给会话级切换。</summary>
+    private Task<Services.HostActionResult> HandleAgentSetActionAsync(CommandAction action)
+        => Services.CommandActionPolicy.AgentSetAsync(
+            TryGetPayload(action, "agentId"),
+            Context.IsAcpPassthrough,
+            Context.SetAgentAsync);
+
+    private static string? TryGetPayload(CommandAction action, string key)
+        => action.Payload.TryGetValue(key, out var value) ? value?.ToString() : null;
 
     /// <summary>执行态变更上报（仅在变化时回调；供页面侧收集运行态，不写入 registry）。</summary>
     private void ReportExecutionState()
@@ -2431,6 +2511,10 @@
         _budgetSubscription?.Dispose();
         _sessionEventSubscription?.Dispose();
         _seeingAgentOptionsSubscription?.Dispose();
+        foreach (var registration in _actionRegistrations)
+            registration.Dispose();
+        _actionRegistrations.Clear();
+        _actionsSessionId = null;
         WorkbenchState.Changed -= OnWorkbenchStateChanged;
 
         // 退订事件回调并摘除 handler 订阅（aggregator 的父会话订阅由 Rebind 自行切换；
