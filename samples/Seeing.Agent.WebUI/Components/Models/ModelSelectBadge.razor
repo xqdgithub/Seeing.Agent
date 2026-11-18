@@ -19,7 +19,7 @@
             Danger="@(IsInvalid || _isOrphan)"
             Class="@ChipClass"
             Style="@EffectiveStyle"
-            OnClick="OpenModalAsync">
+            OnClick="OpenAsync">
         @if (string.IsNullOrEmpty(Value))
         {
             <span class="model-select-badge-inner">
@@ -103,7 +103,8 @@
             StateHasChanged();
         });
 
-    private async Task OpenModalAsync()
+    /// <summary>打开模型选择弹窗（供按钮点击与宿主动作 <c>model.picker</c> 共用）。</summary>
+    public async Task OpenAsync()
     {
         if (Disabled)
             return;
