@@ -12,16 +12,13 @@ namespace Seeing.Agent.Hosting.Commands;
 public class AgentCommands
 {
     private readonly IAgentRegistry _agentRegistry;
-    private readonly IAgentRuntimeManager _runtimeManager;
     private readonly ILlmService _llmService;
 
     public AgentCommands(
         IAgentRegistry agentRegistry,
-        IAgentRuntimeManager runtimeManager,
         ILlmService llmService)
     {
         _agentRegistry = agentRegistry;
-        _runtimeManager = runtimeManager;
         _llmService = llmService;
     }
 
@@ -50,10 +47,10 @@ public class AgentCommands
                 list += $"- **{agent.Name}**: {agent.Description ?? ""}\n";
             }
             list += "\nUse `/agent <name>` to switch.";
-            return CommandResult.Ok(list);
+            return WithAction(list, CommandActionNames.AgentPicker);
         }
 
-        // 切换 Agent
+        // 切换 Agent：命令只声明动作，实际切换由宿主按会话执行
         var targetName = context.Arguments.Trim();
         var targetAgent = agentList.FirstOrDefault(a =>
             string.Equals(a.Name, targetName, StringComparison.OrdinalIgnoreCase));
@@ -63,11 +60,10 @@ public class AgentCommands
             return CommandResult.Fail($"Agent not found: {targetName}");
         }
 
-        // 执行切换（持久化）
-        await _runtimeManager.SetDefaultAgentAsync(targetAgent.Name);
-
-        return CommandResult.WithData($"Switched to agent: {targetAgent.Name}",
-            new Dictionary<string, object> { ["agentSwitch"] = targetAgent.Name });
+        return WithAction(
+            $"请在支持交互的宿主中切换 Agent：{targetAgent.Name}",
+            CommandActionNames.AgentSet,
+            new Dictionary<string, object?> { ["agentId"] = targetAgent.Name });
     }
 
     /// <summary>
@@ -94,17 +90,35 @@ public class AgentCommands
                 list += $"- **{model.Key}**: {model.Value?.Name ?? model.Key}\n";
             }
             list += "\nUse `/model <name>` to switch.";
-            return CommandResult.Ok(list);
+            return WithAction(list, CommandActionNames.ModelPicker);
         }
 
-        // 切换模型（前端处理实际切换）
+        // 切换模型：命令只声明动作，实际切换由宿主按会话执行
         var targetName = context.Arguments.Trim();
         if (!models.ContainsKey(targetName))
         {
             return CommandResult.Fail($"Model not found: {targetName}");
         }
 
-        return CommandResult.WithData($"Switched to model: {targetName}",
-            new Dictionary<string, object> { ["modelSwitch"] = targetName });
+        return WithAction(
+            $"请在支持交互的宿主中切换模型：{targetName}",
+            CommandActionNames.ModelSet,
+            new Dictionary<string, object?> { ["modelId"] = targetName });
     }
+
+    private static CommandResult WithAction(
+        string message,
+        string actionName,
+        IReadOnlyDictionary<string, object?>? payload = null)
+        => new()
+        {
+            Success = true,
+            Message = message,
+            ShouldContinue = false,
+            Action = new CommandAction
+            {
+                Name = actionName,
+                Payload = payload ?? CommandAction.Empty
+            }
+        };
 }

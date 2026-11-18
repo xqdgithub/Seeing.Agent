@@ -62,6 +62,8 @@ public class ToolsCommandsMcpTests
         result.Message.Should().Contain("mcp__docs__search");
         result.Message.Should().NotContain("read_file");
         result.Message.Should().NotContain("No MCP tools available");
+        result.Action!.Name.Should().Be(CommandActionNames.PageNavigate);
+        result.Action.Payload!["path"].Should().Be("/mcp");
     }
 
     /// <summary>最小非 MCP 工具桩。</summary>

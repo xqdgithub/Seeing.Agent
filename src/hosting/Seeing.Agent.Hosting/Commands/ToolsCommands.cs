@@ -59,7 +59,17 @@ public class ToolsCommands
             }
 
             list += "\nUse the Settings page to manage MCP servers.";
-            return CommandResult.Ok(list);
+            return new CommandResult
+            {
+                Success = true,
+                Message = list,
+                ShouldContinue = false,
+                Action = new CommandAction
+                {
+                    Name = CommandActionNames.PageNavigate,
+                    Payload = new Dictionary<string, object?> { ["path"] = "/mcp" }
+                }
+            };
         }
 
         // 其他 MCP 操作需要 MCP 管理服务
