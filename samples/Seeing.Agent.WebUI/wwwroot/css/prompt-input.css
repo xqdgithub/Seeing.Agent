@@ -75,6 +75,8 @@
 .prompt-toolbar-right {
     margin-left: auto;
     flex-shrink: 1;
+    /* 模型名/思考档与发送按钮之间留出呼吸位，不要贴在一起 */
+    gap: 8px;
 }
 
 .prompt-tool-btn.ant-btn {
