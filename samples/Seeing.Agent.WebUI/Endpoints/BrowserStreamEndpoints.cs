@@ -612,6 +612,10 @@ public static class BrowserStreamEndpoints
                     // screencast 的 maxWidth/maxHeight 只在启动时生效；视口变了必须重启
                     // （StartCoreAsync 读的是页面**实际**视口）
                     await hub.RestartAsync(sessionId, ct).ConfigureAwait(false);
+
+                    // 视口/帧缩放变了必须推一次 state：前端 backing 与坐标都读它，
+                    // 不推就会停在旧尺寸（E2E 实测：帧已变 800×600，state 仍 1280×800）。
+                    PushState(hub, sink, current);
                 }
                 break;
 
