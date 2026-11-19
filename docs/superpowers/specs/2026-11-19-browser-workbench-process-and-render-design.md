@@ -163,18 +163,18 @@ Seeing WebUI─┘                      每个 profile 一个
 
 ### 4.3 页面创建：每页一个窗口
 
-`BrowserPageFactory.CreateAsync(sessionId, url)`：
+`BrowserPageFactory.CreateAsync(IBrowser browser, IBrowserContext? context, CancellationToken ct)`：
 
-- **DefaultContext（PersistLogin=true）**：
-  `Target.createTarget { url, newWindow: true }` → `WaitForTargetAsync` → `target.PageAsync()`。
-- **隔离上下文（PersistLogin=false）**：`context.NewPageAsync()`（本身就是独立窗口）；或同样用 `createTarget { browserContextId, newWindow:true }`。
+- 统一使用 `CreatePageOptions { Type = CreatePageType.Window }`（PuppeteerSharp 25.15 原生支持；实测两路各 60fps）。
+- DefaultContext（PersistLogin=true）：`browser.NewPageAsync(options)`。
+- 隔离上下文（PersistLogin=false）：`context.NewPageAsync(options)`。
 - 宿主启动参数加 `--disable-backgrounding-occluded-windows`，避免有头模式下窗口被遮挡后节流。
 
 **语义承认**：有头模式下每个会话会打开一个独立的 OS 窗口（不是标签页）。设置在文案里说明。
 
 ### 4.4 客户端存活：文件锁，不用心跳
 
-- 客户端在**第一次创建页面**时获取 `clients/<profileHash>/<pid>.lock`（`FileShare.None`），在**最后一个页面关闭/被回收**时释放。
+- 客户端在**第一次创建页面**时获取 `clients/<profileHash>/<pid>.lock`（`FileShare.None`），在**最后一个页面关闭/被回收**时释放；`BrowserClientPresence` 对象本身随进程存活，只按页面计数增减锁句柄，再次开页会重新获取。
 - 宿主判定：目录里每个 `*.lock`，尝试以 `FileShare.None` 打开；失败 = 客户端存活；成功 = 已死（立即释放该临时句柄）。
 - 无过期阈值、无休眠/GC 误杀。PID 复用由“锁冲突”天然处理。
 - `lastSeenAt` 心跳删除；发现文件只在启动、page 归属变化、退出时写。
@@ -183,11 +183,21 @@ Seeing WebUI─┘                      每个 profile 一个
 
 ```
 ① 读发现文件 → 版本匹配 → 短 TCP 探活（GET /json/version，1s）→ 成功 → ConnectAsync
-② 失败/过期/探活失败 → 拉起宿主（当前 exe + --browser-host --profile <dir>）→ 轮询 15s
+② 失败/过期/探活失败 → 拉起宿主 → 轮询 15s（每 500ms 重试“读发现 → 探活 → 必要时再拉起”）
 ③ 版本不匹配 → BrowserHostVersionMismatchException（提示重启浏览器）
 ④ 连接断开 → 清缓存；下次重连
 ```
 
+**拉起命令**（宿主级配置必须传过去，否则自定义 Edge 路径 / 无头开关全部失效）：
+
+```
+<apphost 或 dotnet> <entry> --browser-host --profile <dir>
+  [--idle-seconds N] [--headless <true|false>]
+  [--executable <path>] [--user-agent <ua>] [--extra-arg <arg>]...
+```
+
+- **apphost 解析**：优先 `AppContext.BaseDirectory` 下与本进程同名的 `.exe`；不存在则 `dotnet <entry.dll>`（覆盖 `dotnet run` / `vstest` 场景，`MainModule.FileName` 在这些场景下是 `dotnet.exe`，不可用）。
+- `--watchdog` 也必须被各 `Program.Main` 分发，否则 POSIX 兜底会落到正常 UI 启动。
 - 客户端**只用 `Disconnect()`**；代码库禁止客户端调用 `CloseAsync`（架构测试用 grep 守住）。
 - 反检测分层：浏览器级（UA/参数）归宿主；页面级只对自己 page 注入，**禁止** `PagesAsync()` 遍历或挂 `TargetCreated`。
 
@@ -225,11 +235,21 @@ Seeing WebUI─┘                      每个 profile 一个
   "browserPid": 31420,
   "browserStartedAt": "2026-11-19T10:23:46+08:00",
   "endpoint": "ws://127.0.0.1:52341/devtools/browser/...",
-  "lastError": null
+  "lastError": null,
+  "effective": {
+    "headless": true,
+    "executablePath": "C:\\...\\msedge.exe",
+    "userAgent": null,
+    "antiDetection": true,
+    "extraArgs": [],
+    "hostIdleSeconds": 1800
+  }
 }
 ```
 
-删除前必须校验 `hostPid == 当前宿主`（防止误删后继者的文件）；存活判定必须同时比对 `hostStartedAt`（防 PID 复用）。
+删除前必须校验 `hostPid == 当前宿主`（防止误删后继者的文件）；存活判定必须同时比对 `hostStartedAt`（防 PID 复用）：`BrowserHostLocator.IsSameHost(info, hostPid, hostStartedAt)`。
+
+`effective` 是“宿主实际生效值”。客户端把自己的 `BrowserOptions` 与它比较：不一致时提示“修改需重启浏览器”，**不自动重启**（避免在用户操作中突然换掉浏览器）。
 
 ### 4.10 安全边界（如实记录）
 
@@ -239,9 +259,10 @@ Seeing WebUI─┘                      每个 profile 一个
 
 ### 4.11 配置归属
 
-- 宿主：`Headless`、`ExecutablePath`、`ExtraArgs`、`UserAgent`、`ProfileDirectory`、`HostIdleSeconds`。
+- 宿主：`Headless`、`ExecutablePath`、`ExtraArgs`、`UserAgent`、`AntiDetection`、`HostIdleSeconds`。
 - 客户端：`HighResStream`、`IdleSeconds`（页面级回收）、视口。
-- 发现文件带实际生效值；设置页标明“由宿主持有，修改需重启”。
+- **`PersistLogin` 只决定页面上下文**（DefaultContext 复用 cookie / 隔离 BrowserContext），**不决定宿主 user-data-dir**。宿主始终使用固定的 `ProfileDirectory`（默认 `~/.seeing/browser-profile`），否则宿主单例键与发现文件 hash 没有稳定身份。
+- 发现文件 `effective` 带实际生效值；设置页标明“由宿主持有，修改需重启”。
 
 ### 4.12 迁移
 
@@ -332,7 +353,7 @@ BrowserScreencastHub（客户端每会话）
 
 | 路径 | 职责 |
 |---|---|
-| `src/hosting/Seeing.Agent.HostComposition/BrowserHostRunner.cs` | `--browser-host` 入口、单例、拉起、日志、空闲退出 |
+| `samples/Seeing.Agent.HostComposition/BrowserHostRunner.cs` | `--browser-host` / `--watchdog` 入口、单例、拉起、日志、空闲退出 |
 | `src/capabilities/.../Engine/BrowserHostLocator.cs` | 发现文件、探活、拉起、版本 |
 | `src/capabilities/.../Engine/BrowserHostLock.cs` | 宿主单例锁 |
 | `src/capabilities/.../Engine/BrowserClientPresence.cs` | 客户端存活锁 + 页面清单 |
