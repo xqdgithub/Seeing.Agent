@@ -4,56 +4,74 @@ using Xunit;
 namespace Seeing.Agent.Tools.Browser.Tests;
 
 /// <summary>
-/// 持久 profile 撞锁后的恢复路径守门。
+/// 客户端释放路径守门：与共享宿主之间只有 <c>Disconnect()</c>，**禁止**关浏览器。
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>范围</b>：只硬化「断连/关停后的二次 Launch 撞锁」路径。
-/// 健康的切会话应复用同一进程（<c>BrowserEvidenceProbes.SecondSession_ShouldReuseSameBrowserProcess_NotRelaunch</c>），
-/// 不应走到 Launch；若切会话仍报占用，先查为什么会二次 Launch，而不是只靠本文件的恢复逻辑。
+/// <b>为什么用源码断言而不是行为测试</b>：<c>CloseAsync</c> 的破坏性只在「多个客户端共享一个浏览器」时
+/// 才显形（它会把别人的 Chromium 一起关掉），而单元测试里通常只有一个客户端、断掉也看不出来。
+/// 设计文档明确要求「架构测试用 grep 守住」这条纪律，这里就是那道门。
 /// </para>
 /// <para>
-/// 旧缺陷：KillLeftover 返回 0 就 throw、profile 锁进 10 秒冷却、Close 后立刻删 PID——
-/// 会把「锁马上会放」做成假性永久失败。
+/// 历史缺陷：客户端旧模型自己 <c>LaunchAsync</c> 并在关停时 <c>CloseAsync</c>。改成共享宿主后，
+/// 一次客户端退出会让所有会话的页面与登录态一起消失，且没有任何报错指向这里。
 /// </para>
 /// </remarks>
 public class BrowserProfileLockRecoveryTests
 {
     [Fact]
-    public void LaunchAsync_ShouldRetryAfterProfileLockEvenWhenKillFindsNothing()
+    public void EngineReleasePath_ShouldOnlyDisconnect()
     {
-        // 锚定到 profile 锁分支，避免 LaunchAsync 前半段截断漏掉重试行
-        var lockBranch = ReadEngineRegion("profile 被残留浏览器进程占用");
-        lockBranch.Should().NotBeNull();
+        var region = ReadEngineRegion("private void DisconnectCurrent()");
+        region.Should().NotBeNull("客户端的释放路径必须存在且可审计");
 
-        // 旧缺陷：if (killed == 0) throw; —— PID 刚被干净路径删掉、子进程还握锁时永久失败
-        lockBranch.Should().NotContain("if (killed == 0)",
-            "杀不到残留进程时仍应进入 RetryLaunchAfterCleanupAsync 等锁释放，" +
-            "而不是立刻放弃（切会话再开时最常见）");
-        lockBranch.Should().Contain("RetryLaunchAfterCleanupAsync",
-            "profile 锁必须走条件轮询重试");
+        region.Should().Contain("Disconnect()",
+            "唯一允许的释放通道是 IBrowser.Disconnect()（PuppeteerSharp 没有 DisconnectAsync）");
+
+        region.Should().NotContain("browser.CloseAsync",
+            "客户端调用 CloseAsync 会关掉共享浏览器，杀死所有人的页面与登录态");
+
+        region.Should().NotContain("browser.DisposeAsync",
+            "客户端调用 IBrowser.DisposeAsync 同样会关掉共享浏览器");
     }
 
     [Fact]
-    public void GetBrowserAsync_ShouldSkipCooldownForProfileLock()
+    public void ShutdownAsync_ShouldNotCloseBrowser()
     {
-        var get = ReadEngineRegion("public async Task<IBrowser> GetBrowserAsync(");
-        get.Should().NotBeNull();
-        get.Should().Contain("IsProfileLockFailure",
-            "profile 锁与「找不到可执行文件」一样是可恢复失败，不得进 10 秒冷却；" +
-            "否则用户切会话连点会被缓存错误卡住");
+        var region = ReadEngineRegion("public async Task ShutdownAsync(");
+        region.Should().NotBeNull();
+
+        region.Should().Contain("DisconnectCurrent",
+            "模块停用只断开连接，浏览器归宿主");
+
+        region.Should().NotContain("CloseAsync",
+            "停用模块不得关闭共享浏览器");
     }
 
     [Fact]
-    public void DisposeBrowserQuietly_ShouldKeepPidWhileProcessStillAlive()
+    public void Engine_ShouldNotLaunchOrOwnBrowserProcess()
     {
-        var dispose = ReadEngineRegion("private async Task DisposeBrowserQuietlyAsync(");
-        dispose.Should().NotBeNull();
-        dispose.Should().Contain("HasExited",
-            "CloseAsync 返回时子进程可能还握着 Singleton 锁；进程未退出就删 PID，" +
-            "下次撞锁时 KillLeftover 找不到目标，只能干瞪眼");
-        dispose.Should().Contain("WaitForExitAsync",
-            "应尽量等主进程退出再删 PID");
+        var source = ReadEngineSource();
+        source.Should().NotBeNull();
+
+        source.Should().NotContain("Puppeteer.LaunchAsync",
+            "客户端不再拉起自己的浏览器进程 —— 那是宿主（BrowserProcessHost）的职责");
+
+        // 只查订阅/遍历这类真正的污染调用；文档注释里提到「禁止」不算违规。
+        source.Should().NotContain("TargetCreated +=",
+            "禁止挂 TargetCreated 做反检测：会污染其它客户端正在使用的页面");
+
+        source.Should().NotContain("await browser.PagesAsync(",
+            "禁止遍历 PagesAsync() 做反检测：会改到别的客户端的页面");
+    }
+
+    private static string? ReadEngineSource()
+    {
+        var path = Path.Combine(
+            FindRepositoryRoot(),
+            "src", "capabilities", "Seeing.Agent.Tools.Browser", "Engine", "BrowserEngine.cs");
+
+        return File.Exists(path) ? File.ReadAllText(path) : null;
     }
 
     private static string? ReadEngineRegion(string marker)

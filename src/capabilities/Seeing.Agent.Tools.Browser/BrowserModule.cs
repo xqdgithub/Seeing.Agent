@@ -116,6 +116,12 @@ public sealed class BrowserModule : ISeeingModule, IUiContributor
         services.TryAddSingleton<IOptions<BrowserOptions>>(sp =>
             sp.GetRequiredService<ConfigSectionOptionsMonitor<BrowserOptions>>());
 
+        // 客户端侧只持有「到共享宿主的连接」，不拥有浏览器进程：
+        // BrowserEngine 负责连接/重连，BrowserSessionHost 负责页面 + 客户端 presence，
+        // BrowserScreencastHub 负责画面流。三者都必须是进程级单例 —— 否则同一进程会
+        // 打开多个 CDP 连接，把同一会话的页面拆到不同实例上（客户端 presence 与画面流各拿一份）。
+        //
+        // ⚠ 这里**不**注册任何「浏览器进程归属」的服务（旧的 BrowserProcessHost 只属于宿主进程）。
         services.TryAddSingleton<BrowserEngine>();
         services.TryAddSingleton<BrowserSessionHost>();
         services.TryAddSingleton<IBrowserSessionHost>(sp => sp.GetRequiredService<BrowserSessionHost>());
@@ -188,10 +194,12 @@ public sealed class BrowserModule : ISeeingModule, IUiContributor
                 await tools.UnregisterToolAsync(id, cancellationToken).ConfigureAwait(false);
         }
 
-        // 停用必须释放资源：否则「停用浏览器模块」只停了工具，Chromium 还在跑。
-        // 但**不能 Dispose 这两个 DI 单例**：模块可能被重新启用（热重载），
+        // 停用只**断开**与共享宿主的连接，绝不停浏览器进程：
+        // 浏览器属于宿主，其它客户端（桌面 / TUI / 其它 WebUI 窗口）可能正在用它，
+        // 一个模块停用就把所有人的窗口关掉是不可接受的。
+        // 但**不能 Dispose 这些 DI 单例**：模块可能被重新启用（热重载），
         // 而单例一旦 Dispose，内部的信号量就永久失效，下次调用抛 ObjectDisposedException
-        // （症状：停用再启用后浏览器永远起不来）。因此走「关闭资源但保持实例可用」的关停方法。
+        // （症状：停用再启用后浏览器永远连不上）。因此走「释放资源但保持实例可用」的关停方法。
         if (services.GetService<BrowserLifetimeService>() is { } lifetime)
             await lifetime.StopAsync(cancellationToken).ConfigureAwait(false);
 

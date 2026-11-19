@@ -8,7 +8,7 @@ using Xunit;
 namespace Seeing.Agent.Tools.Browser.Tests;
 
 /// <summary>
-/// 持久登录端到端守门：cookie 必须真的跨浏览器重启存活，且同一 profile 的第二个会话能看到它。
+/// 持久登录端到端守门：cookie 必须在客户端「断开 → 重连」后仍然在，且同一 profile 的第二个会话能看到它。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -17,23 +17,31 @@ namespace Seeing.Agent.Tools.Browser.Tests;
 /// 而错用隔离上下文时的症状正是「代码看起来完全正确，但重启后登录态为 0」。
 /// </para>
 /// <para>
+/// <b>为什么现在是「断开重连」而不是「关停重开」</b>：浏览器归宿主进程所有，客户端只连 CDP。
+/// 客户端断开绝不能关掉浏览器 —— 若这里改成关停后登录态为 0，说明客户端误用了
+/// <c>CloseAsync</c>/<c>DisposeAsync</c>，把共享浏览器连带杀掉了。
+/// </para>
+/// <para>
 /// <b>默认跳过</b>：需要真实浏览器。本机跑：<c>set SEEING_BROWSER_TESTS=1</c>。
 /// </para>
 /// </remarks>
 [Trait("Category", "RequiresBrowser")]
 public class BrowserPersistLoginEndToEndTests
 {
-    private static bool Enabled =>
-        string.Equals(Environment.GetEnvironmentVariable("SEEING_BROWSER_TESTS"), "1", StringComparison.Ordinal);
+    private static bool Enabled => BrowserTestGate.Enabled;
 
     [Fact]
-    public async Task Cookie_ShouldSurviveBrowserRestart()
+    public async Task Cookie_ShouldSurviveClientReconnect()
     {
         if (!Enabled)
-            return;
+            Assert.Skip("需要真实浏览器：设置 SEEING_BROWSER_TESTS=1 后运行");
+
+        if (!BrowserEngine.ResolveExecutable(new BrowserOptions()).Found)
+            Assert.Skip("本机没有可用 Chromium / Edge，跳过真实启动用例");
 
         var ct = TestContext.Current.CancellationToken;
         var profileDir = Path.Combine(Path.GetTempPath(), "seeing-persist-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(profileDir);
 
         // 本地站点：/login 种 cookie，/ 回显收到的 cookie
         using var listener = new HttpListener();
@@ -70,6 +78,9 @@ public class BrowserPersistLoginEndToEndTests
 
         try
         {
+            // 宿主只起一次：登录态由「同一个浏览器」保留，客户端各自断开/重连。
+            TestHost.Start(profileDir);
+
             var options = new TestOptionsMonitor<BrowserOptions>(new BrowserOptions
             {
                 Headless = true,
@@ -78,9 +89,9 @@ public class BrowserPersistLoginEndToEndTests
                 ProfileDirectory = profileDir
             });
 
-            // ── 第一轮：登录，然后彻底关停（模拟进程重启）──
+            // ── 第一轮：登录，然后客户端断开（浏览器必须继续存活）──
             {
-                await using var provider = BuildProvider(options);
+                await using var provider = BuildProvider(options, profileDir);
                 var host = provider.GetRequiredService<IBrowserSessionHost>();
 
                 var page = await host.GetPageAsync("s_login", $"http://127.0.0.1:{port}/login", ct);
@@ -92,12 +103,9 @@ public class BrowserPersistLoginEndToEndTests
                 await provider.GetRequiredService<BrowserEngine>().ShutdownAsync(ct);
             }
 
-            // 给 Chromium 一点时间把内存中的 cookie 刷到磁盘（关停返回时写盘可能仍在进行）。
-            await WaitForFileAsync(Path.Combine(profileDir, "Default", "Network", "Cookies"), ct);
-
-            // ── 第二轮：同一 profile 重新启动，登录态必须还在 ──
+            // ── 第二轮：同一 profile 重新连接，登录态必须还在 ──
             {
-                await using var provider = BuildProvider(options);
+                await using var provider = BuildProvider(options, profileDir);
                 var host = provider.GetRequiredService<IBrowserSessionHost>();
 
                 var page = await host.GetPageAsync("s_verify", $"http://127.0.0.1:{port}/", ct);
@@ -106,16 +114,18 @@ public class BrowserPersistLoginEndToEndTests
 
                 received.Should().NotBeNull();
                 received!.ToString().Should().Contain("SEEING_AUTH=persisted-abc",
-                    "持久 profile 必须让 cookie 跨重启存活；" +
-                    "若这里为空，说明用了隔离上下文（cookie 不落盘）");
+                    "断开客户端不得关掉共享浏览器；" +
+                    "若这里为空，说明客户端用了 CloseAsync/DisposeAsync 把浏览器杀掉了");
             }
         }
         finally
         {
             stop.Cancel();
             try { listener.Stop(); } catch { }
-            try { await server.ConfigureAwait(false); } catch { }
+            try { await server; } catch { }
 
+            // 必须清理宿主：否则会在测试机留下一个占着 profile 的浏览器进程。
+            TestHost.Cleanup(profileDir);
             await TryDeleteAsync(profileDir);
         }
     }
@@ -124,10 +134,14 @@ public class BrowserPersistLoginEndToEndTests
     public async Task PersistLoginDisabled_ShouldNotShareCookieAcrossSessions()
     {
         if (!Enabled)
-            return;
+            Assert.Skip("需要真实浏览器：设置 SEEING_BROWSER_TESTS=1 后运行");
+
+        if (!BrowserEngine.ResolveExecutable(new BrowserOptions()).Found)
+            Assert.Skip("本机没有可用 Chromium / Edge，跳过真实启动用例");
 
         var ct = TestContext.Current.CancellationToken;
         var profileDir = Path.Combine(Path.GetTempPath(), "seeing-isolated-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(profileDir);
 
         using var listener = new HttpListener();
         var port = FindFreePort();
@@ -161,6 +175,9 @@ public class BrowserPersistLoginEndToEndTests
 
         try
         {
+            // 隔离上下文是「每个客户端各自 CreateBrowserContextAsync」，同一宿主即可验证。
+            TestHost.Start(profileDir);
+
             var options = new TestOptionsMonitor<BrowserOptions>(new BrowserOptions
             {
                 Headless = true,
@@ -169,7 +186,7 @@ public class BrowserPersistLoginEndToEndTests
                 ProfileDirectory = profileDir
             });
 
-            await using var provider = BuildProvider(options);
+            await using var provider = BuildProvider(options, profileDir);
             var host = provider.GetRequiredService<IBrowserSessionHost>();
 
             // 会话 A 登录
@@ -188,18 +205,27 @@ public class BrowserPersistLoginEndToEndTests
         {
             stop.Cancel();
             try { listener.Stop(); } catch { }
-            try { await server.ConfigureAwait(false); } catch { }
+            try { await server; } catch { }
 
+            TestHost.Cleanup(profileDir);
             await TryDeleteAsync(profileDir);
         }
     }
 
-    private static ServiceProvider BuildProvider(IOptionsMonitor<BrowserOptions> options)
+    /// <summary>
+    /// 建一个「客户端」DI 容器：引擎只连接共享宿主，不拥有浏览器。
+    /// </summary>
+    /// <param name="options">配置。</param>
+    /// <param name="baseDirectory">
+    /// 发现文件根目录（与 <see cref="TestHost"/> 启动宿主时用的 <c>SEEING_BROWSER_BASE_DIR</c> 一致）。
+    /// </param>
+    private static ServiceProvider BuildProvider(
+        IOptionsMonitor<BrowserOptions> options, string baseDirectory)
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(options);
-        services.AddSingleton<BrowserEngine>();
+        services.AddSingleton(_ => new BrowserEngine(options, null, baseDirectory));
         services.AddSingleton<BrowserSessionHost>();
         services.AddSingleton<IBrowserSessionHost>(sp => sp.GetRequiredService<BrowserSessionHost>());
         return services.BuildServiceProvider();
@@ -212,13 +238,6 @@ public class BrowserPersistLoginEndToEndTests
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
         return port;
-    }
-
-    /// <summary>等文件出现（条件轮询，不猜固定时长）。</summary>
-    private static async Task WaitForFileAsync(string path, CancellationToken ct)
-    {
-        for (var i = 0; i < 100 && !File.Exists(path); i++)
-            await Task.Delay(50, ct).ConfigureAwait(false);
     }
 
     private static async Task TryDeleteAsync(string dir)

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using PuppeteerSharp;
@@ -28,132 +28,164 @@ public enum BrowserPlatform
 }
 
 /// <summary>
-/// 进程级浏览器引擎：可执行文件探测、懒启动、崩溃自愈、统一关闭。
+/// 浏览器客户端连接器：发现共享宿主 → 探活 → <c>ConnectAsync</c>；失败则拉起宿主并重试。
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>为什么懒启动</b>：启动 Chromium 要 200–400ms 与数十 MB 内存。绝大多数会话根本不碰浏览器，
-/// 在模块 Activate 时就拉起进程是纯浪费。
+/// <b>客户端不再拥有浏览器进程</b>：一个 profile 只有一个宿主进程持有 Chromium（见
+/// <c>BrowserProcessHost</c>），任意多个客户端（桌面 / TUI / WebUI 多窗口）连同一个 CDP endpoint。
+/// 客户端各自建页、各自断开，谁退出都不该带走别人的页面与登录态。
 /// </para>
 /// <para>
-/// <b>为什么全局只有一个 Browser</b>：会话隔离由 <c>BrowserContext</c> 提供（cookie/存储互不干扰）。
-/// 每会话一个进程在并发会话下是内存炸弹。
+/// <b>唯一释放通道是 <see cref="IBrowser.Disconnect"/></b>：PuppeteerSharp 没有
+/// <c>DisconnectAsync</c>，而 <c>CloseAsync</c> / <c>DisposeAsync</c> 都会向共享浏览器发
+/// <c>Browser.close</c> —— 一次客户端退出会杀掉所有人的 Chromium。因此本类**禁止**调用它们。
 /// </para>
 /// <para>
-/// <b>失败缓存</b>：启动失败后 10 秒内不再重试。否则模型连续调用几个 browser_* 工具会触发多次
-/// 进程启动尝试，每次都要等超时，看起来像「界面卡死」。
+/// <b>为什么懒连接</b>：连接与拉起宿主都有成本（后者要启动 Chromium）。绝大多数会话根本不碰浏览器，
+/// 上一次工具调用才连是唯一合理的时机。
+/// </para>
+/// <para>
+/// <b>失败缓存</b>：连接失败后 10 秒内不再重试。否则模型连续调用几个 browser_* 工具会反复
+/// 走满 15 秒拉起窗口，看起来像「界面卡死」。
+/// </para>
+/// <para>
+/// <b>反检测分层</b>：浏览器级（UA 启动参数、指纹相关的启动开关）由宿主决定；
+/// 客户端只对<b>自己创建的 page</b> 注入页面级脚本（见 <see cref="ApplyAntiDetectionToPageAsync"/>）。
+/// 遍历 <c>PagesAsync()</c> 或挂 <c>TargetCreated</c> 会把伪装强加给别的客户端正在用的页面。
 /// </para>
 /// </remarks>
 public sealed class BrowserEngine : IAsyncDisposable
 {
+    /// <summary>连接失败后的冷却时长。</summary>
     private static readonly TimeSpan FailureCooldown = TimeSpan.FromSeconds(10);
+
+    /// <summary>TCP 探活上限（1 秒内连上并拿到 HTTP 响应才算宿主可用）。</summary>
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(1);
+
+    /// <summary>拉起宿主后等待它就绪的总预算。</summary>
+    private static readonly TimeSpan HostStartupLimit = TimeSpan.FromSeconds(15);
+
+    /// <summary>等待宿主就绪的轮询间隔（E5：轮询实现细节，命中即返回）。</summary>
+    private static readonly TimeSpan HostStartupPollInterval = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>一轮连接流程里最多拉起几次宿主（防止「拉起就崩」变成进程风暴）。</summary>
+    private const int MaxHostLaunches = 3;
 
     private readonly IOptionsMonitor<BrowserOptions> _options;
     private readonly ILogger<BrowserEngine> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly string? _baseDirectoryOverride;
 
     private IBrowser? _browser;
-
-    /// <summary>当前浏览器进程实际使用的 profile 目录（<see langword="null"/> = 临时目录）。</summary>
-    /// <remarks>
-    /// 记录它的唯一目的是热重载：用户改了 <see cref="BrowserOptions.PersistLogin"/> 或
-    /// <see cref="BrowserOptions.ProfileDirectory"/> 后，<c>IOptionsMonitor</c> 立刻返回新值，
-    /// 但进程还在用旧 profile。不比对就会「配了新的却仍然读旧登录态」，
-    /// 而症状是「换了 profile 目录但登录态还在」——看不出是没重启。
-    /// </remarks>
-    private string? _launchedProfileDirectory;
-
-    /// <summary>
-    /// 启动时用的「进程级签名」：凡是**只能在启动时生效**的配置都进这个串。
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>为什么需要它</b>：<c>Headless</c>、<c>AntiDetection</c>、<c>ExecutablePath</c>、
-    /// <c>ExtraArgs</c> 都只能通过「重新拉起进程」生效。早期只比对 profile 目录，
-    /// 于是用户在设置页把「无头模式」关掉、保存、重启配置也读到了新值，
-    /// 但浏览器进程仍是旧的 —— 开关形同虚设（实测确认的缺口）。
-    /// </para>
-    /// <para>
-    /// <b>为什么不逐项比较</b>：漏项是迟早的事（新增一个启动参数就容易忘）。
-    /// 拼成一个签名串后，任何进入签名的配置变化都会触发重启，增删项只需改一处。
-    /// </para>
-    /// </remarks>
-    private string? _launchedSignature;
 
     private DateTimeOffset? _failedAt;
     private string? _failureReason;
 
-    /// <summary>上次失败是否应跳过冷却（可恢复：缺可执行文件 / profile 锁）。</summary>
-    /// <remarks>
-    /// 找不到可执行文件：装完就该立刻可用。profile 锁：残留进程一退就该立刻可启动。
-    /// 这两类进 10 秒冷却只会让用户连点空转（切会话再开时尤其明显）。
-    /// </remarks>
-    private bool _skipFailureCooldown;
-
     /// <summary>创建引擎。</summary>
-    /// <param name="options">配置（热重载：每次启动读当前值）。</param>
+    /// <param name="options">配置（热重载：每次连接读当前值）。</param>
     /// <param name="logger">日志。</param>
     public BrowserEngine(IOptionsMonitor<BrowserOptions> options, ILogger<BrowserEngine>? logger = null)
+        : this(options, logger, baseDirectoryOverride: null)
+    {
+    }
+
+    /// <summary>创建引擎，并显式指定发现文件 / 客户端锁根目录（仅测试与诊断用）。</summary>
+    /// <param name="options">配置。</param>
+    /// <param name="logger">日志。</param>
+    /// <param name="baseDirectoryOverride">
+    /// 发现文件根目录；<see langword="null"/> = 环境变量 <c>SEEING_BROWSER_BASE_DIR</c>，再回落
+    /// <c>~/.seeing/browser</c>。生产代码走公开构造函数。
+    /// </param>
+    internal BrowserEngine(
+        IOptionsMonitor<BrowserOptions> options,
+        ILogger<BrowserEngine>? logger,
+        string? baseDirectoryOverride)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? NullLogger<BrowserEngine>.Instance;
+        _baseDirectoryOverride = baseDirectoryOverride;
     }
 
-    /// <summary>当前是否已有存活浏览器进程。</summary>
+    /// <summary>当前是否已连上共享宿主。</summary>
     public bool IsStarted => _browser is { IsConnected: true };
 
     /// <summary>
-    /// 取（必要时启动）浏览器进程。
+    /// 本客户端连接的宿主 profile 目录（绝对路径）。
     /// </summary>
-    /// <exception cref="BrowserUnavailableException">没有可用浏览器，或启动失败。</exception>
+    /// <remarks>
+    /// 必须与宿主用同一个纯函数解析：两边各自现算会得到两个身份，客户端永远找不到正在跑的宿主，
+    /// 每次都再拉起一个（见 <see cref="BrowserHostLocator.ResolveHostProfileDirectory"/>）。
+    /// </remarks>
+    internal string HostProfileDirectory
+        => BrowserHostLocator.ResolveHostProfileDirectory(_options.CurrentValue.ProfileDirectory);
+
+    /// <summary>
+    /// 发现文件 / 客户端锁的根目录（<see cref="BrowserHostLocator.BaseDirectory"/>）。
+    /// </summary>
+    /// <remarks>
+    /// <see cref="BrowserSessionHost"/> 建 presence 时必须用同一份目录，否则宿主扫客户端存活时
+    /// 看不到本进程，会把它判成「没有客户端」并空闲退出。
+    /// 目录解析只在 <see cref="BrowserHostLocator.ResolveBaseDirectory"/> 一处实现（含
+    /// <see cref="BrowserHostLocator.BaseDirectoryVariable"/> 覆盖），这里不再复制一份。
+    /// </remarks>
+    internal string DiscoveryBaseDirectory
+        => BrowserHostLocator.ResolveBaseDirectory(_baseDirectoryOverride);
+
+    /// <summary>
+    /// 最近一次连接使用的 CDP endpoint（测试与诊断用；未连接时为 <see langword="null"/>）。
+    /// </summary>
+    internal string? CurrentEndpointForTest { get; private set; }
+
+    /// <summary>
+    /// 取（必要时连接并拉起宿主）共享浏览器。
+    /// </summary>
+    /// <exception cref="BrowserHostVersionMismatchException">发现文件协议版本与当前实现不一致。</exception>
+    /// <exception cref="BrowserUnavailableException">宿主无法就绪，或浏览器连不上。</exception>
     public async Task<IBrowser> GetBrowserAsync(CancellationToken cancellationToken = default)
     {
-        if (_browser is { IsConnected: true } alive && !ProfileChanged())
+        if (_browser is { IsConnected: true } alive)
             return alive;
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_browser is { IsConnected: true } again && !ProfileChanged())
+            if (_browser is { IsConnected: true } again)
                 return again;
 
-            // 失败冷却：短期内不再重试，直接复用上次的原因。
-            //
-            // 例外（跳过冷却）：可恢复失败——「找不到可执行文件」（装完就该立刻可用）、
-            // 「profile 被残留进程占用」（锁马上会放，进冷却只会让切会话再开连点 10 秒全失败）。
-            if (_failedAt is { } failedAt
-                && DateTimeOffset.UtcNow - failedAt < FailureCooldown
-                && !_skipFailureCooldown)
-            {
-                throw new BrowserUnavailableException(_failureReason ?? "浏览器启动失败");
-            }
-
-            // 旧实例（已断开 / profile 配置已变）先释放，避免句柄与 profile 锁泄漏
-            await DisposeBrowserQuietlyAsync().ConfigureAwait(false);
+            // 失败冷却：短期内不再重连，直接复用上次的原因。
+            // 版本不匹配**不**进冷却（见下面的专用异常路径）：它只能靠重启宿主解决，
+            // 用户重启后应当立刻可用，而不是再等 10 秒。
+            if (_failedAt is { } failedAt && DateTimeOffset.UtcNow - failedAt < FailureCooldown)
+                throw new BrowserUnavailableException(_failureReason ?? "浏览器宿主不可用");
 
             try
             {
-                _browser = await LaunchAsync(cancellationToken).ConfigureAwait(false);
+                var browser = await ConnectOrStartAsync(cancellationToken).ConfigureAwait(false);
+                _browser = browser;
                 _failedAt = null;
                 _failureReason = null;
-                _skipFailureCooldown = false;
-                _logger.LogInformation(
-                    "浏览器已启动（{Headless}，{Profile}）",
-                    _options.CurrentValue.Headless ? "无头" : "有头",
-                    DescribeProfile(_launchedProfileDirectory));
-                return _browser;
+                return browser;
+            }
+            catch (BrowserHostVersionMismatchException)
+            {
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (BrowserUnavailableException ex)
             {
-                Remember(ex.Message, skipCooldown: ShouldSkipFailureCooldown(ex));
+                Remember(ex.Message);
                 throw;
             }
             catch (Exception ex)
             {
-                var message = $"启动浏览器失败：{ex.Message}";
-                Remember(message, skipCooldown: IsProfileLockFailure(ex) || IsProfileLockFailure(message));
-                _logger.LogWarning(ex, "启动浏览器失败");
-                throw new BrowserUnavailableException(_failureReason!);
+                var message = $"连接浏览器宿主失败：{ex.Message}";
+                Remember(message);
+                _logger.LogWarning(ex, "连接浏览器宿主失败");
+                throw new BrowserUnavailableException(message);
             }
         }
         finally
@@ -161,6 +193,436 @@ public sealed class BrowserEngine : IAsyncDisposable
             _gate.Release();
         }
     }
+
+    /// <summary>
+    /// 连接已有宿主；没有可用宿主则拉起，并在 15 秒内每 500ms 重试一次完整流程。
+    /// </summary>
+    /// <remarks>
+    /// <b>每轮都重新读发现文件</b>：旧宿主正在退出时，发现文件可能仍是旧的（端点已失效），
+    /// 而新宿主稍后才覆盖它。只读一次会一直用那个过期端点，永远连不上。
+    /// </remarks>
+    private async Task<IBrowser> ConnectOrStartAsync(CancellationToken cancellationToken)
+    {
+        var options = _options.CurrentValue;
+        var profile = HostProfileDirectory;
+        var locator = new BrowserHostLocator(profile, DiscoveryBaseDirectory, _logger);
+
+        // ① 已有宿主：读发现 → 版本 → 探活 → ConnectAsync
+        var info = locator.Read();
+        ThrowIfVersionMismatch(locator, info);
+
+        if (info is not null
+            && await TryConnectAsync(locator, info, options, cancellationToken).ConfigureAwait(false) is { } connected)
+        {
+            return connected;
+        }
+
+        // ② 没有可用宿主：拉起（宿主级配置必须传过去，否则自定义 Edge 路径 / 无头开关全部失效）
+        var hostProcess = StartHostProcess(profile, options);
+        var launches = 1;
+        var deadline = DateTimeOffset.UtcNow + HostStartupLimit;
+
+        try
+        {
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                // E5：轮询间隔（命中即返回，不是「等状态就绪」的固定等待）。
+                await Task.Delay(HostStartupPollInterval, cancellationToken).ConfigureAwait(false);
+
+                info = locator.Read();
+                ThrowIfVersionMismatch(locator, info);
+
+                if (info is not null
+                    && await TryConnectAsync(locator, info, options, cancellationToken).ConfigureAwait(false) is { } browser)
+                {
+                    return browser;
+                }
+
+                // 拉起的宿主已经退出且发现文件仍不可用：再拉一次（覆盖「旧宿主退出、锁刚释放」的窗口）。
+                // ⚠ 退出码**不**作为成功判据：Windows Job 的 KILL_ON_JOB_CLOSE 会让崩溃也表现为 exit 0。
+                // 这里只把「进程没了」当作「值得再拉一次」的信号，成功与否始终由发现文件 + 探活决定。
+                // 有上限，避免宿主反复崩溃时把机器拖死。
+                if (launches < MaxHostLaunches && (hostProcess is null || HasExitedQuietly(hostProcess)))
+                {
+                    hostProcess?.Dispose();
+                    hostProcess = StartHostProcess(profile, options);
+                    launches++;
+                }
+            }
+        }
+        finally
+        {
+            // 只释放本进程的 Process 句柄，**不杀**子进程：宿主是共享的，可能已被其它客户端连上。
+            hostProcess?.Dispose();
+        }
+
+        throw new BrowserUnavailableException(
+            $"浏览器宿主未在 {HostStartupLimit.TotalSeconds:0} 秒内就绪（profile：{profile}）。" +
+            $"宿主日志：{Path.Combine(locator.BaseDirectory, $"host-{locator.ProfileHash}.log")}。");
+    }
+
+    /// <summary>发现文件版本不匹配时抛出专用异常（提示用户重启浏览器宿主）。</summary>
+    private void ThrowIfVersionMismatch(BrowserHostLocator locator, BrowserHostInfo? info)
+    {
+        if (info is null || locator.VersionMatches(info))
+            return;
+
+        throw new BrowserHostVersionMismatchException(
+            $"运行中的浏览器宿主协议版本为 {info.Version}，当前实现需要 {BrowserHostLocator.CurrentVersion}。" +
+            "请重启浏览器宿主（关闭宿主进程后下次使用浏览器会自动重启），或稍后重试。");
+    }
+
+    /// <summary>探活 → 连接 → 复核宿主身份；任何一步失败返回 <see langword="null"/>。</summary>
+    /// <remarks>
+    /// <b>连接后必须复核发现文件</b>：探活与连接之间，旧宿主可能已退出、新宿主已覆盖发现文件。
+    /// 不对 PID + 启动时刻做一次 <see cref="BrowserHostLocator.IsSameHost"/> 复核，
+    /// 客户端会一直连在一个「已经被替换掉」的宿主上（下一次调用才发现端点失效）。
+    /// </remarks>
+    private async Task<IBrowser?> TryConnectAsync(
+        BrowserHostLocator locator,
+        BrowserHostInfo info,
+        BrowserOptions options,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(info.Endpoint))
+            return null;
+
+        if (!await ProbeEndpointAsync(info.Endpoint, ProbeTimeout, cancellationToken).ConfigureAwait(false))
+        {
+            _logger.LogDebug("浏览器宿主探活失败（endpoint={Endpoint}），按「宿主不可用」处理", info.Endpoint);
+            return null;
+        }
+
+        IBrowser browser;
+        try
+        {
+            browser = await Puppeteer.ConnectAsync(
+                new ConnectOptions { BrowserWSEndpoint = info.Endpoint }).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // 探活成功但连接失败：宿主的 CDP 可能刚好在关闭，交给下一轮重试。
+            _logger.LogDebug(ex, "连接浏览器宿主失败（endpoint={Endpoint}）", info.Endpoint);
+            return null;
+        }
+
+        // 复核：发现文件必须仍然描述「我们刚连上的这个宿主」。
+        var current = locator.Read();
+        if (!BrowserHostLocator.IsSameHost(current, info.HostPid, info.HostStartedAt)
+            || !string.Equals(current!.Generation, info.Generation, StringComparison.Ordinal))
+        {
+            _logger.LogDebug(
+                "连接期间宿主已更换（读到 {CurrentPid}/{CurrentGeneration}，连接的是 {Pid}/{Generation}），重新连接",
+                current?.HostPid ?? 0, current?.Generation ?? "-", info.HostPid, info.Generation);
+
+            // 只断开，绝不能关掉共享浏览器（它现在属于新宿主）。
+            DisconnectQuietly(browser);
+            return null;
+        }
+
+        _logger.LogInformation(
+            "已连接浏览器宿主（generation={Generation}，endpoint={Endpoint}，profile={Profile}）",
+            info.Generation, info.Endpoint, info.ProfileDirectory);
+
+        browser.Disconnected += OnBrowserDisconnected;
+        CurrentEndpointForTest = info.Endpoint;
+
+        if (ShouldRelaunch(info, options))
+        {
+            // 只提示，不自动重启：用户可能正在页面里操作，换掉宿主等于把人家的窗口关掉。
+            _logger.LogWarning(
+                "浏览器宿主正在使用的设置与本机配置不一致；改动需重启浏览器宿主后生效（profile={Profile}）",
+                info.ProfileDirectory);
+        }
+
+        return browser;
+    }
+
+    /// <summary>
+    /// 短 TCP 探活：连上 endpoint 的端口并确认它能回一个 HTTP 响应（1 秒内）。
+    /// </summary>
+    /// <remarks>
+    /// <b>为什么不用 <c>HttpClient</c></b>：这里只要「端口活着且是 Chromium 的 HTTP 端点」，
+    /// 一个 socket + 一次 GET 足够；<c>HttpClient</c> 的实例生命周期管理对一次探活是纯负担。
+    /// <b>为什么先探活再 <c>ConnectAsync</c></b>：发现文件可能属于刚崩溃的宿主，
+    /// 直接连会抛一个看不出原因的 WebSocket 异常；先探活能把「端点失效」变成可预期的重试。
+    /// </remarks>
+    internal static async Task<bool> ProbeEndpointAsync(
+        string endpoint,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri)
+            || string.IsNullOrWhiteSpace(uri.Host)
+            || uri.Scheme is not ("ws" or "wss" or "http" or "https"))
+        {
+            return false;
+        }
+
+        var port = uri.IsDefaultPort
+            ? (uri.Scheme is "ws" or "http" ? 80 : 443)
+            : uri.Port;
+
+        using var client = new System.Net.Sockets.TcpClient();
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+
+        try
+        {
+            await client.ConnectAsync(uri.Host, port, timeoutCts.Token).ConfigureAwait(false);
+
+            var request = System.Text.Encoding.ASCII.GetBytes(
+                $"GET /json/version HTTP/1.1\r\nHost: {uri.Host}:{port}\r\nConnection: close\r\n\r\n");
+
+            using var stream = client.GetStream();
+            await stream.WriteAsync(request, timeoutCts.Token).ConfigureAwait(false);
+
+            var buffer = new byte[5];
+            var read = await stream.ReadAsync(buffer, timeoutCts.Token).ConfigureAwait(false);
+            return read == buffer.Length
+                   && System.Text.Encoding.ASCII.GetString(buffer).StartsWith("HTTP/", StringComparison.Ordinal);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // 调用方取消：必须抛出，不能伪装成「宿主不可用」而进入重试循环
+            throw;
+        }
+        catch (Exception ex) when (ex is OperationCanceledException
+                                       or System.Net.Sockets.SocketException
+                                       or IOException
+                                       or ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 拼接「启动宿主」的命令：优先本进程同目录的 apphost，否则 <c>dotnet &lt;entry.dll&gt;</c>。
+    /// </summary>
+    /// <param name="profileDirectory">宿主 profile 目录（绝对路径）。</param>
+    /// <param name="options">客户端配置（宿主级项会转成命令行参数）。</param>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么不能只看 <see cref="Environment.ProcessPath"/></b>：<c>dotnet run</c> / <c>vstest</c>
+    /// 下它是 <c>dotnet.exe</c> / <c>testhost.exe</c>，直接拿它加 <c>--browser-host</c> 会被当成子命令报错。
+    /// 那种场景必须显式给出入口 dll。
+    /// </para>
+    /// <para>
+    /// <b>宿主级配置必须通过命令行传</b>：宿主进程读的是命令行（没有客户端的 seeing.json 上下文）。
+    /// 少传一项，用户的「自定义 Edge 路径 / 有头模式 / 追加参数」就在共享模式下静默失效。
+    /// </para>
+    /// </remarks>
+    internal static (string FileName, string[] PrefixArgs) ResolveHostCommand(
+        string profileDirectory,
+        BrowserOptions options)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(profileDirectory);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+        var arguments = new List<string>();
+
+        var appHostPath = entryName is null
+            ? null
+            : Path.Combine(
+                AppContext.BaseDirectory,
+                OperatingSystem.IsWindows() ? entryName + ".exe" : entryName);
+
+        var processPath = Environment.ProcessPath;
+        var isDotnetMuxer = string.Equals(
+            Path.GetFileNameWithoutExtension(processPath),
+            "dotnet",
+            StringComparison.OrdinalIgnoreCase);
+
+        string fileName;
+        if (!isDotnetMuxer && appHostPath is not null && File.Exists(appHostPath))
+        {
+            fileName = appHostPath;
+        }
+        else
+        {
+            fileName = string.IsNullOrWhiteSpace(processPath) ? "dotnet" : processPath!;
+
+            var entryDll = entryName is null
+                ? null
+                : Path.Combine(AppContext.BaseDirectory, entryName + ".dll");
+
+            if (entryDll is not null && File.Exists(entryDll))
+                arguments.Add(entryDll);
+        }
+
+        arguments.Add(HostSwitchMarker);
+        arguments.Add("--profile");
+        arguments.Add(profileDirectory);
+
+        // 与 BrowserHostRunner.ParseHostStartup 的参数表一一对应。
+        arguments.Add("--headless");
+        arguments.Add(options.Headless ? "true" : "false");
+
+        // 反检测是浏览器级设置（启动参数 + UA），必须由宿主决定；
+        // 客户端只做页面级注入。不传这一项，用户在设置页关掉反检测后在共享模式下毫无效果。
+        // 参数名与宿主解析（BrowserHostRunner.ParseHostStartup 的 --anti-detection）严格一致。
+        arguments.Add("--anti-detection");
+        arguments.Add(options.AntiDetection ? "true" : "false");
+
+        if (!string.IsNullOrWhiteSpace(options.ExecutablePath))
+        {
+            arguments.Add("--executable");
+            arguments.Add(options.ExecutablePath);
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.UserAgent))
+        {
+            arguments.Add("--user-agent");
+            arguments.Add(options.UserAgent);
+        }
+
+        if (options.ExtraArgs is { Length: > 0 } extraArgs)
+        {
+            foreach (var arg in extraArgs)
+            {
+                arguments.Add("--extra-arg");
+                arguments.Add(arg);
+            }
+        }
+
+        return (fileName, [.. arguments]);
+    }
+
+    /// <summary>宿主的模式开关（与 <c>BrowserHostRunner.BrowserHostSwitch</c> 同一字面量）。</summary>
+    private const string HostSwitchMarker = "--browser-host";
+
+    /// <summary>
+    /// 宿主实际生效的设置与本机配置是否不一致（不一致只提示「需重启宿主」，不自动重启）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么不能自动重启</b>：重启宿主会关掉所有人的浏览器窗口与页面。
+    /// 用户可能正在有头窗口里处理登录/验证码，为了「让一个配置项生效」而把窗口撤掉是不可接受的。
+    /// </para>
+    /// <para>
+    /// <b>为什么 <c>ExecutablePath</c> 只在本地显式配置时才比较</b>：宿主总会把可执行文件解析成
+    /// 绝对路径（自动探测时客户端配置是 <see langword="null"/>），那种「本地为空、宿主有值」
+    /// 不是不一致。
+    /// </para>
+    /// </remarks>
+    internal static bool ShouldRelaunch(BrowserHostInfo info, BrowserOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (info?.Effective is not { } effective)
+            return false;
+
+        if (effective.Headless != options.Headless)
+            return true;
+
+        if (effective.AntiDetection != options.AntiDetection)
+            return true;
+
+        if (!string.Equals(NormalizeText(effective.UserAgent), NormalizeText(options.UserAgent), StringComparison.Ordinal))
+            return true;
+
+        if (!SameArgs(effective.ExtraArgs, options.ExtraArgs))
+            return true;
+
+        if (!string.IsNullOrWhiteSpace(options.ExecutablePath))
+        {
+            var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+
+            if (!string.Equals(
+                    NormalizePath(options.ExecutablePath), NormalizePath(effective.ExecutablePath), comparison))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string NormalizeText(string? value) => value?.Trim() ?? string.Empty;
+
+    private static string NormalizePath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        try
+        {
+            return Path.TrimEndingDirectorySeparator(Path.GetFullPath(value));
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            // 路径不可规范化（非法字符等）：按原串比较，至少不会把明显不同的路径判成相同
+            return value;
+        }
+    }
+
+    private static bool SameArgs(string[]? left, string[]? right)
+    {
+        var a = left ?? [];
+        var b = right ?? [];
+
+        if (a.Length != b.Length)
+            return false;
+
+        for (var i = 0; i < a.Length; i++)
+        {
+            if (!string.Equals(a[i], b[i], StringComparison.Ordinal))
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>拉起宿主进程（不等待、不接管）：<c>CreateNoWindow</c>，与客户端脱离。</summary>
+    /// <remarks>返回 <see langword="null"/> 表示启动失败（原因已记日志）；调用方仍会进入重试循环。</remarks>
+    private System.Diagnostics.Process? StartHostProcess(string profileDirectory, BrowserOptions options)
+    {
+        var (fileName, prefixArgs) = ResolveHostCommand(profileDirectory, options);
+
+        var startInfo = new System.Diagnostics.ProcessStartInfo(fileName)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+
+            // 发现文件根目录必须与客户端一致：测试用环境变量隔离，
+            // 生产下就是默认的 ~/.seeing/browser（显式传一份，避免两边各算一次）。
+            Environment = { [BrowserHostLocator.BaseDirectoryVariable] = DiscoveryBaseDirectory },
+        };
+
+        foreach (var arg in prefixArgs)
+            startInfo.ArgumentList.Add(arg);
+
+        try
+        {
+            var process = System.Diagnostics.Process.Start(startInfo);
+            _logger.LogInformation(
+                "已拉起浏览器宿主（{File}，profile={Profile}）", fileName, profileDirectory);
+            return process;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception
+                                       or InvalidOperationException
+                                       or IOException)
+        {
+            _logger.LogWarning(ex, "拉起浏览器宿主失败：{File}", fileName);
+            return null;
+        }
+    }
+
+    private static bool HasExitedQuietly(System.Diagnostics.Process process)
+    {
+        try
+        {
+            return process.HasExited;
+        }
+        catch (InvalidOperationException)
+        {
+            return true;
+        }
+    }
+
 
     /// <summary>
     /// 探测可用浏览器可执行文件。
@@ -432,135 +894,6 @@ public sealed class BrowserEngine : IAsyncDisposable
         }
     }
 
-    private async Task<IBrowser> LaunchAsync(CancellationToken cancellationToken)
-    {
-        var options = _options.CurrentValue;
-        var executable = ResolveExecutable(options);
-
-        var launchOptions = new LaunchOptions
-        {
-            Headless = options.Headless,
-            Args = BuildLaunchArgs(options)
-        };
-
-        if (executable.Found)
-        {
-            launchOptions.ExecutablePath = executable.Path;
-        }
-        else
-        {
-            // 没有系统浏览器：明确失败，不静默去下一步载几百 MB。
-            // 用专用异常类型而不是普通 BrowserUnavailableException：
-            // 上层（GetBrowserAsync）要据此判断「这是还没装，装完就该立刻重试」，
-            // 而不是解析错误字符串（文案一改就失效）。
-            throw new BrowserExecutableMissingException(
-                $"{executable.Source}。{InstallHint()}" +
-                $"或在 seeing.json 的 {BrowserOptions.SectionName}.ExecutablePath 指定浏览器路径");
-        }
-
-        // 有头模式要求有图形会话。Linux 服务器（无 DISPLAY）上 Chromium 会直接退出，
-        // 错误只有一句 "Missing X server or $DISPLAY"；在这里提前拦下并给出可执行方案，
-        // 比让用户对着「启动浏览器失败」猜要省事。
-        //
-        // 刻意**不**静默回落无头：用户开有头就是为了反检测，悄悄换成无头会让
-        // 「设置里明明关了无头，行为却没变」这种更难查的问题出现。
-        if (!options.Headless && MissingDisplay())
-        {
-            throw new BrowserUnavailableException(
-                "有头模式需要图形会话，但当前环境没有 DISPLAY / WAYLAND_DISPLAY。" +
-                "三种做法：① 在设置页打开「无头模式」；" +
-                "② 用虚拟显示启动服务：xvfb-run -a dotnet run --project samples/Seeing.Agent.WebUI；" +
-                "③ 用 SSH X11 转发并设置 DISPLAY。");
-        }
-
-        // 持久 profile：让浏览器重启后仍保留 cookie / localStorage / 登录态。
-        // 不指定时 PuppeteerSharp 每次建临时目录并销毁，等于每次都全新访客（实测登录态为 0）。
-        var profileDirectory = options.PersistLogin ? ResolveProfileDirectory(options) : null;
-        if (profileDirectory is not null)
-        {
-            try
-            {
-                Directory.CreateDirectory(profileDirectory);
-                launchOptions.UserDataDir = profileDirectory;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // 目录不可用不该让整个模块不可用：退回临时 profile 并留警告。
-                // （例如用户把 ProfileDirectory 指到只读盘；此时「能用但每次重新登录」远好过「完全用不了」。）
-                profileDirectory = null;
-                _logger.LogWarning(ex,
-                    "持久 profile 目录不可用，本次改用临时 profile：{Directory}",
-                    options.ProfileDirectory);
-            }
-        }
-
-        _logger.LogDebug("使用浏览器：{Path}（{Source}）", executable.Path, executable.Source);
-
-        IBrowser browser;
-        try
-        {
-            browser = await Puppeteer.LaunchAsync(launchOptions).ConfigureAwait(false);
-        }
-        catch (ProcessException ex) when (profileDirectory is not null && IsProfileLocked(ex))
-        {
-            // 持久 profile 的固有失败模式：上一个浏览器进程没退干净（崩溃 / 强杀 / 上一轮测试中断），
-            // profile 目录被它锁着，Chromium 拒绝启动。
-            //
-            // 不做处理的话这里是**永久性**失败：失败冷却过后重试仍会撞同一把锁，
-            // 用户只看到「浏览器起不来」，且没有任何提示说明是残留进程。
-            // 只清理「命令行里带这个 profile 路径」的进程，绝不碰用户自己的浏览器。
-            _logger.LogWarning(
-                "profile 被残留浏览器进程占用，清理后重试：{Directory}", profileDirectory);
-
-            // 先尽量清 PID 文件里的残留；杀不到（PID 已删、进程正在退）也不能立刻放弃——
-            // CloseAsync 返回后子进程还可能握着锁几秒。旧逻辑 if (killed==0) throw
-            // 会把「锁马上会放」做成永久性失败。
-            // 注意：健康的「切会话再开」应复用同一进程（见 BrowserEvidenceProbes），
-            // 不应走到这里；本分支只服务断连/关停后的二次 Launch。
-            await KillLeftoverProcessAsync(profileDirectory).ConfigureAwait(false);
-
-            // 等 profile 锁释放：条件轮询而不是固定等待
-            browser = await RetryLaunchAfterCleanupAsync(launchOptions, profileDirectory, ex, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (ProcessException ex) when (TryExplainLaunchFailure(ex, out var explanation))
-        {
-            // 其余 ProcessException：Linux 上最常见的是缺少 Chromium 的运行时共享库
-            // （libnss3 / libatk / libgbm …）或图形会话缺失。
-            // 原始异常只有一句 "Failed to launch browser!" + 一段 stderr，
-            // 用户看不出「该 apt install 什么」。这里把它翻成可执行的指引。
-            _logger.LogWarning(ex, "启动浏览器失败：{Reason}", explanation);
-            throw new BrowserUnavailableException(explanation!);
-        }
-
-        browser.Disconnected += OnBrowserDisconnected;
-
-        // 反检测的页面级部分：UA 伪装 + navigator/WebGL 指纹修补。
-        // 必须在这里做（而不是在 BrowserSessionHost 建页时）：所有页面都该一致，
-        // 包括 agent 用工具新建的页；且 UA 要在首次导航前生效。
-        if (options.AntiDetection || !string.IsNullOrWhiteSpace(options.UserAgent))
-        {
-            await ApplyAntiDetectionAsync(browser, options).ConfigureAwait(false);
-        }
-
-        // 记录 PID：下次启动若撞到「已占用」，靠它精确定位残留进程。
-        // 注意必须在 LaunchAsync 成功之后写 —— 启动失败时进程根本不存在。
-        if (profileDirectory is not null)
-            RecordBrowserProcess(browser, profileDirectory, executable.Path);
-
-        // 只在启动成功后记录实际 profile 与签名：启动失败时若提前赋值，
-        // ProfileChanged() 会误判「配置没变」而跳过重启（浏览器明明没起来）。
-        _launchedProfileDirectory = profileDirectory;
-        _launchedSignature = ComputeSignature(options);
-
-        // 下载一律拒绝：agent 不应把文件写到未知位置。
-        // 隔离上下文能经 BrowserContextOptions.DownloadBehavior 声明，但 DefaultContext
-        // （持久 profile 必须用它，否则 cookie 不落盘）拿不到那个选项，只能用浏览器级 CDP。
-        await DenyDownloadsAsync(browser).ConfigureAwait(false);
-
-        return browser;
-    }
-
     /// <summary>
     /// 把启动失败的原始异常翻成「用户能照着做」的说明；返回 false 表示不识别（保留原始异常）。
     /// </summary>
@@ -638,182 +971,6 @@ public sealed class BrowserEngine : IAsyncDisposable
         var rest = message[(index + marker.Length)..].TrimStart();
         var end = rest.IndexOf(':');
         return end > 0 ? rest[..end].Trim() : rest.Split(' ', '\n', '\r')[0];
-    }
-
-    /// <summary>判定异常是否为「profile 已被另一浏览器进程占用」。</summary>
-    internal static bool IsProfileLocked(Exception ex)
-        => ex is ProcessException && IsProfileLockFailure(ex.Message);
-
-    /// <summary>文案/异常是否在描述 profile 锁（可恢复，应跳过失败冷却）。</summary>
-    internal static bool IsProfileLockFailure(Exception ex)
-        => IsProfileLockFailure(ex.Message);
-
-    /// <summary>文案是否在描述 profile 锁。</summary>
-    internal static bool IsProfileLockFailure(string? message)
-        => !string.IsNullOrEmpty(message)
-           && message.Contains("already running", StringComparison.OrdinalIgnoreCase);
-
-    private static bool ShouldSkipFailureCooldown(BrowserUnavailableException ex)
-        => ex is BrowserExecutableMissingException || IsProfileLockFailure(ex);
-
-    /// <summary>记录本引擎启动的浏览器进程 PID（落在 profile 目录内，随 profile 一起失效）。</summary>
-    private const string PidFileName = ".seeing-engine.pid";
-
-    /// <summary>写 PID 记录，供下次启动时识别「上一个进程没退干净」。</summary>
-    /// <remarks>
-    /// <para>
-    /// <b>为什么需要落盘而不是只放内存</b>：进程崩溃/被强杀时内存记录一起消失，
-    /// 而 Chromium 对 profile 目录持有主锁 —— 残留进程会让后续每次启动都失败，
-    /// 且没有任何线索指向「是某个残留进程」。落一个 PID 文件才能定位到具体进程。
-    /// </para>
-    /// <para>
-    /// <b>为什么同时记可执行文件路径</b>：PID 会被系统复用。只凭 PID 杀进程可能误杀无关进程，
-    /// 加路径校验把风险降到「同一浏览器在 PID 复用后恰好占用同路径」这种可忽略的情形。
-    /// </para>
-    /// </remarks>
-    private void RecordBrowserProcess(IBrowser browser, string profileDirectory, string? executablePath)
-    {
-        try
-        {
-            var processId = browser.Process?.Id;
-            if (processId is null or 0)
-                return;
-
-            // 用原子写（Seeing.Files.AtomicFileWrite 是仓库唯一允许的实现）：
-            // 直写会在「写到一半被强杀」时留下半截文件，而下次启动正好要读它判断残留进程——
-            // 半截内容会解析失败，等于静默失去自动清理能力。
-            var path = Path.Combine(profileDirectory, PidFileName);
-            Seeing.Files.AtomicFileWrite.WriteAllTextAtomic(
-                path,
-                $"{processId}\n{executablePath ?? string.Empty}",
-                subject: "浏览器进程记录",
-                logger: _logger);
-        }
-        catch (Exception ex)
-        {
-            // 记录失败只是失去「下次自动清理」的能力，不影响当前会话
-            _logger.LogDebug(ex, "记录浏览器进程 PID 失败（忽略）");
-        }
-    }
-
-    /// <summary>
-    /// 结束「上次未退干净」的浏览器进程；返回被结束的数量。
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>只杀 PID 文件里记录的那个进程</b>，不按进程名批量清理 ——
-    /// 用户自己的 Edge 用同一可执行文件，按名杀会连带关掉他正在用的浏览器
-    /// （未提交的表单、播放中的视频都是真实损失）。
-    /// </para>
-    /// <para>
-    /// <b>为什么必须整树删除</b>：Chromium 是多进程架构，渲染/GPU/utility 子进程虽不持主锁，
-    /// 但会继续占用 profile 内的文件句柄；只杀主进程会留下孤儿进程。
-    /// </para>
-    /// </remarks>
-    private async Task<int> KillLeftoverProcessAsync(string profileDirectory)
-    {
-        var pidFile = Path.Combine(profileDirectory, PidFileName);
-        if (!File.Exists(pidFile))
-            return 0;
-
-        try
-        {
-            var lines = File.ReadAllLines(pidFile);
-            if (lines.Length == 0 || !int.TryParse(lines[0].Trim(), out var processId))
-                return 0;
-
-            var expectedPath = lines.Length > 1 ? lines[1].Trim() : string.Empty;
-
-            using var process = System.Diagnostics.Process.GetProcessById(processId);
-
-            // 路径校验：PID 可能已被复用给别的程序
-            if (expectedPath.Length > 0)
-            {
-                string? actualPath = null;
-                try { actualPath = process.MainModule?.FileName; }
-                catch { /* 权限不足时拿不到；退化为仅按 PID 判定 */ }
-
-                if (actualPath is not null
-                    && !string.Equals(actualPath, expectedPath, StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.LogDebug(
-                        "PID {Pid} 已被别的程序复用（{Actual}），不清理", processId, actualPath);
-                    return 0;
-                }
-            }
-
-            process.Kill(entireProcessTree: true);
-
-            // 用异步等待而不是 WaitForExit(ms)：后者在调用线程上同步阻塞最长 5 秒。
-            // 这里的调用点是「清理残留进程」，通常毫秒级返回；给个上限防止卡死即可。
-            try
-            {
-                await process.WaitForExitAsync(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                // 5 秒内没退干净：进程锁会由后续重试轮询兜住，这里不当作失败
-                _logger.LogDebug("残留进程 PID {Pid} 在 5 秒内未退出", processId);
-            }
-
-            _logger.LogInformation("已结束残留的浏览器进程 PID {Pid}", processId);
-            return 1;
-        }
-        catch (ArgumentException)
-        {
-            // 进程已不存在：正常情况（上次是干净退出的，只是没删掉 PID 文件）
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "清理残留浏览器进程失败（忽略）");
-            return 0;
-        }
-        finally
-        {
-            try { File.Delete(pidFile); } catch { }
-        }
-    }
-
-    /// <summary>清理残留进程后重试启动（条件轮询等锁释放，不猜固定时长）。</summary>
-    /// <param name="launchOptions">启动参数。</param>
-    /// <param name="profileDirectory">profile 目录（重试期间再次清理用）。</param>
-    /// <param name="original">首次失败的异常（全部重试失败后作为内层异常）。</param>
-    /// <param name="cancellationToken">取消令牌（用户取消时不必等满 20 轮 × 150ms）。</param>
-    private async Task<IBrowser> RetryLaunchAfterCleanupAsync(
-        LaunchOptions launchOptions,
-        string profileDirectory,
-        Exception original,
-        CancellationToken cancellationToken)
-    {
-        Exception? last = original;
-
-        for (var attempt = 0; attempt < 20; attempt++)
-        {
-            // 轮询间隔（AGENTS.md 例外 E5）：命中即返回，不是「等状态就绪」的固定等待。
-            // 必须接取消令牌：否则用户取消后仍要空转满 3 秒。
-            await Task.Delay(150, cancellationToken).ConfigureAwait(false);
-
-            try
-            {
-                return await Puppeteer.LaunchAsync(launchOptions).ConfigureAwait(false);
-            }
-            catch (ProcessException ex)
-            {
-                last = ex;
-                if (!IsProfileLocked(ex))
-                    throw;
-
-                // 锁仍被占：可能还有子进程未退，再清理一次（幂等）
-                if (attempt % 5 == 4)
-                    await KillLeftoverProcessAsync(profileDirectory).ConfigureAwait(false);
-            }
-        }
-
-        throw new BrowserUnavailableException(
-            $"profile 目录被残留浏览器进程占用，已尝试清理仍无法启动：{profileDirectory}。" +
-            $"请手动结束后再试。原始错误：{last?.Message}");
     }
 
     /// <summary>
@@ -946,99 +1103,27 @@ public sealed class BrowserEngine : IAsyncDisposable
                 : "请安装 Chromium（如 sudo apt install chromium-browser）或 Google Chrome，";
 
     /// <summary>
-    /// 应用反检测的页面级伪装：UA、navigator 属性、WebGL vendor/renderer。
+    /// 对<b>本客户端自己创建的</b>页面应用 UA 与 stealth 脚本（<see cref="BrowserSessionHost"/> 建页后调用）。
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>为什么这些必须伪装</b>：反爬/验证码服务的首要判断依据是一组 JS 层指纹。
-    /// 单个特征都不致命，但叠加起来足以判定「不是真人浏览器」：
-    /// </para>
-    /// <list type="bullet">
-    /// <item><c>navigator.webdriver</c> —— 自动化最直接的标记</item>
-    /// <item><c>navigator.plugins.length === 0</c> —— 真实 Chrome/Edge 至少有几个内置项</item>
-    /// <item><c>navigator.languages</c> 为空或只有 en-US —— 与实际 locale 不符</item>
-    /// <item>WebGL <c>UNMASKED_RENDERER_WEBGL</c> 为 SwiftShader —— 软件渲染的铁证</item>
-    /// <item>UA 含 <c>HeadlessChrome</c> —— 无头模式的自我声明</item>
-    /// </list>
-    /// <para>
-    /// <b>为什么用 <c>EvaluateFunctionOnNewDocumentAsync</c></b>：它让脚本在每个新文档创建时、
-    /// 页面自己的脚本执行**之前**运行。用事后 <c>evaluate</c> 太晚——指纹检测脚本
-    /// 通常在 <c>&lt;head&gt;</c> 里就执行完了。
+    /// <b>为什么只接受单个 page</b>：浏览器是共享的，<c>PagesAsync()</c> 遍历或挂
+    /// <c>TargetCreated</c> 会把伪装强加给别的客户端正在用的页面 —— 那是别人的会话，
+    /// 本客户端没有权利改它的 UA 与注入脚本。
     /// </para>
     /// <para>
-    /// <b>为什么 <c>TargetCreated</c> 不够</b>（实测）：该事件回调里页面可能已经导航过，
-    /// 此时脚本只影响「下一次」导航，而指纹检测往往就在首次导航时执行。
-    /// 因此必须<b>同时</b>用 <c>browser.OnNewPageAsync</c> 之类的前置钩子做不到时，
-    /// 采用「每次建页后立刻导航前」的顺序保证——见 <c>BrowserSessionHost</c> 的调用点。
+    /// <b>为什么必须在首次导航前调用</b>：<c>EvaluateFunctionOnNewDocumentAsync</c> 只对
+    /// 之后创建的文档生效；页面已经导航过就漏掉首次指纹检测。幂等：重复设置同一 UA 与同一脚本无副作用。
     /// </para>
-    /// <para>
-    /// <b>诚实说明边界</b>：这是对抗性工程，没有一劳永逸。真正有效的三件事依次是：
-    /// 有头模式（<see cref="BrowserOptions.Headless"/>=false）＞ 干净但真实的 profile ＞ 本伪装。
-    /// IP 信誉与账号历史同样重要，那些不在本模块能力范围内。
-    /// </para>
-    /// </remarks>
-    private async Task ApplyAntiDetectionAsync(IBrowser browser, BrowserOptions options)
-    {
-        try
-        {
-            var pages = await browser.PagesAsync().ConfigureAwait(false);
-            foreach (var page in pages)
-            {
-                await ApplyToPageAsync(page, options, browser).ConfigureAwait(false);
-            }
-
-            // 之后新建的页面（agent 的工具、用户的地址栏）也要覆盖。
-            // 注意这个钩子只能保证「后续导航」被覆盖；若页面在回调到达前已经导航，
-            // 首次执行会漏。BrowserSessionHost 在建页后会再调一次 ApplyToPageAsync 兜底。
-            //
-            // 用**具名**处理器而不是匿名 lambda：匿名处理器无法退订，
-            // 每次浏览器重启都会在事件上累积一个（并持有 options/browser 引用），
-            // 长跑实例里表现为缓慢的委托链增长。
-            void OnTargetCreated(object? _, TargetChangedArgs e) => _ = ApplyToNewTargetAsync(e, options, browser);
-
-            browser.TargetCreated += OnTargetCreated;
-
-            // 浏览器断开时摘掉：同一 BrowserEngine 会反复起停浏览器，
-            // 不摘会让旧浏览器的处理器永远留在事件上（它已经不会再触发，但引用不会释放）。
-            browser.Disconnected += (_, _) => browser.TargetCreated -= OnTargetCreated;
-        }
-        catch (Exception ex)
-        {
-            // 反检测失败不应阻断浏览器可用性
-            _logger.LogWarning(ex, "应用反检测设置失败，浏览器将以默认指纹运行");
-        }
-    }
-
-    /// <summary>对单个页面应用 UA 与 stealth 脚本（供宿主在建页后兜底调用）。</summary>
-    /// <remarks>
-    /// <b>为什么要有公开入口</b>：<c>TargetCreated</c> 事件到达时页面可能已开始导航，
-    /// 首次页面的 stealth 会漏。宿主在「新建页面后、首次导航前」显式调一次才能保证覆盖。
-    /// 幂等：重复设置同一 UA 与同一脚本无副作用。
     /// </remarks>
     public async Task ApplyAntiDetectionToPageAsync(IPage page)
     {
+        ArgumentNullException.ThrowIfNull(page);
+
         if (!_options.CurrentValue.AntiDetection && string.IsNullOrWhiteSpace(_options.CurrentValue.UserAgent))
             return;
 
         await ApplyToPageAsync(page, _options.CurrentValue, _browser).ConfigureAwait(false);
-    }
-
-    /// <summary>处理新创建的 target：若是页面则应用反检测。</summary>
-    private async Task ApplyToNewTargetAsync(TargetChangedArgs e, BrowserOptions options, IBrowser browser)
-    {
-        try
-        {
-            if (e.Target.Type != TargetType.Page)
-                return;
-
-            if (await e.Target.PageAsync().ConfigureAwait(false) is { } created)
-                await ApplyToPageAsync(created, options, browser).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // 事件回调里的异常不得外溢（会变成未观察任务异常）
-            _logger.LogDebug(ex, "对新页面应用反检测失败（忽略）");
-        }
     }
 
     private async Task ApplyToPageAsync(IPage page, BrowserOptions options, IBrowser? browser)
@@ -1176,15 +1261,6 @@ public sealed class BrowserEngine : IAsyncDisposable
         return Path.Combine(userHome, ".seeing", "browser-profile");
     }
 
-    /// <summary>判定「配置里的进程级设置是否已与当前进程不一致」（热重载需要重启浏览器）。</summary>
-    /// <remarks>
-    /// 覆盖所有**只能在启动时生效**的项：Headless / AntiDetection / ExecutablePath /
-    /// ExtraArgs / UserAgent / profile 选择。视口、超时、空闲回收这些运行期读取的项不在其中
-    /// —— 它们改了不需要重启。
-    /// </remarks>
-    private bool ProfileChanged()
-        => !string.Equals(ComputeSignature(_options.CurrentValue), _launchedSignature, StringComparison.Ordinal);
-
     /// <summary>计算进程级配置签名（只含启动时才能生效的项）。</summary>
     /// <remarks>
     /// <b>为什么公开</b>：设置页要判断「哪些改动需要重启才能生效」，从而给出准确提示。
@@ -1207,108 +1283,72 @@ public sealed class BrowserEngine : IAsyncDisposable
             profile);
     }
 
-    /// <summary>浏览器级拒绝下载（默认上下文没有 <c>BrowserContextOptions</c> 可用）。</summary>
-    private async Task DenyDownloadsAsync(IBrowser browser)
-    {
-        try
-        {
-            var cdp = await browser.CreateCDPSessionAsync().ConfigureAwait(false);
-            await cdp.SendAsync("Browser.setDownloadBehavior", new Dictionary<string, object>
-            {
-                ["behavior"] = "deny"
-            }).ConfigureAwait(false);
-            await cdp.DetachAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // 失败不阻断启动：下载只是额外护栏，页面仍可正常使用。
-            _logger.LogDebug(ex, "设置浏览器级下载拒绝失败（忽略）");
-        }
-    }
-
-    private static string DescribeProfile(string? directory)
-        => directory is null ? "临时 profile（重启即丢失登录态）" : $"profile {directory}";
-
+    /// <summary>
+    /// 宿主断连：清缓存，下次调用重新连接（不存在「重启浏览器」这回事，浏览器归宿主）。
+    /// </summary>
     private void OnBrowserDisconnected(object? sender, EventArgs e)
     {
-        _logger.LogWarning("浏览器进程已断开；下次调用将重新启动");
+        _logger.LogWarning("与浏览器宿主的连接已断开；下次调用将重新连接");
 
-        // 只清「确实是当前这个浏览器」的引用：旧实例迟到的 Disconnected 事件可能在
-        // GetBrowserAsync 已把新实例赋给 _browser 之后才到达，无条件置 null 会
-        // 把健康的引用清掉（下次调用又白重启一次浏览器）。
+        // 只清「确实是当前这个连接」的引用：旧连接迟到的 Disconnected 事件可能在
+        // GetBrowserAsync 已把新连接赋给 _browser 之后才到达，无条件置 null 会把健康的引用清掉。
         //
         // 用比较交换而不是取锁：本方法在 CDP 回调线程上执行，
         // 而 _gate 持有时会 await 浏览器操作——在那里等锁会与 CDP 线程互相等待。
-        Interlocked.CompareExchange(ref _browser, null, sender as IBrowser);
+        if (ReferenceEquals(Interlocked.CompareExchange(ref _browser, null, sender as IBrowser), sender))
+            CurrentEndpointForTest = null;
     }
 
-    private void Remember(string reason, bool skipCooldown = false)
+    private void Remember(string reason)
     {
         _failedAt = DateTimeOffset.UtcNow;
         _failureReason = reason;
-        _skipFailureCooldown = skipCooldown;
     }
 
-    private async Task DisposeBrowserQuietlyAsync()
+    /// <summary>
+    /// 断开当前连接（唯一的释放通道）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>只能 <see cref="IBrowser.Disconnect"/></b>：PuppeteerSharp 没有 <c>DisconnectAsync</c>，
+    /// 而 <c>CloseAsync</c> / <c>DisposeAsync</c> 都会向共享浏览器发 <c>Browser.close</c> ——
+    /// 一个客户端退出会关掉所有人的 Chromium（含别人的页面与登录态）。
+    /// </para>
+    /// <para>
+    /// <b>为什么不 <c>DisposeAsync</c> 释放 <see cref="IBrowser"/></b>：它对连接对象而言等价于关闭浏览器，
+    /// 见上一条。断开后直接丢掉引用，由 GC 收掉客户端侧的代理对象。
+    /// </para>
+    /// </remarks>
+    private void DisconnectCurrent()
     {
-        if (_browser is null)
-            return;
-
         var browser = _browser;
-        var profileDirectory = _launchedProfileDirectory;
-        var process = browser.Process;
         _browser = null;
-        _launchedProfileDirectory = null;
-        _launchedSignature = null;
+        CurrentEndpointForTest = null;
+
+        if (browser is not null)
+            DisconnectQuietly(browser);
+    }
+
+    /// <summary>断开单个连接（不抛：清理路径不应因为连接已死而中断）。</summary>
+    private void DisconnectQuietly(IBrowser browser)
+    {
         browser.Disconnected -= OnBrowserDisconnected;
 
         try
         {
-            await browser.CloseAsync().ConfigureAwait(false);
-            await browser.DisposeAsync().ConfigureAwait(false);
+            browser.Disconnect();
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "关闭浏览器时出现异常（忽略）");
-        }
-
-        // PID 文件只在主进程确认退出后删：CloseAsync 返回时子进程还可能握着 profile 锁。
-        // 此时若删掉 PID，下次撞锁 KillLeftover 找不到目标 → 「被另一个会话占用」假象。
-        if (profileDirectory is null)
-            return;
-
-        var pidPath = Path.Combine(profileDirectory, PidFileName);
-        try
-        {
-            if (process is { HasExited: false })
-            {
-                try
-                {
-                    await process.WaitForExitAsync(
-                            new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    _logger.LogDebug(
-                        "关闭后浏览器进程 {Pid} 仍未退出，保留 PID 文件供下次清理",
-                        process.Id);
-                }
-            }
-
-            if (process is null || process.HasExited)
-                File.Delete(pidPath);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "处理浏览器 PID 记录失败（忽略）");
+            _logger.LogDebug(ex, "断开浏览器连接时出现异常（忽略）");
         }
     }
 
     /// <summary>
-    /// 关停浏览器进程但保持引擎可再次使用（模块停用 / 热重载路径）。
+    /// 断开与共享宿主的连接，但保持引擎可再次使用（模块停用 / 热重载路径）。
     /// </summary>
     /// <remarks>
+    /// <b>绝不关浏览器</b>：浏览器属于宿主进程，其它客户端可能正在使用。
     /// 与 <see cref="DisposeAsync"/> 的区别：这里<b>不释放</b>内部信号量。
     /// 模块停用后可能被重新启用，DI 单例仍是同一个实例；释放信号量会让后续调用永久失败。
     /// </remarks>
@@ -1317,10 +1357,9 @@ public sealed class BrowserEngine : IAsyncDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await DisposeBrowserQuietlyAsync().ConfigureAwait(false);
+            DisconnectCurrent();
             _failedAt = null;
             _failureReason = null;
-            _skipFailureCooldown = false;
         }
         finally
         {
@@ -1334,7 +1373,7 @@ public sealed class BrowserEngine : IAsyncDisposable
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            await DisposeBrowserQuietlyAsync().ConfigureAwait(false);
+            DisconnectCurrent();
         }
         finally
         {
@@ -1344,11 +1383,26 @@ public sealed class BrowserEngine : IAsyncDisposable
     }
 }
 
-/// <summary>没有可用浏览器 / 启动失败。</summary>
+/// <summary>没有可用浏览器 / 宿主不可用。</summary>
 public class BrowserUnavailableException : Exception
 {
     /// <summary>创建异常。</summary>
     public BrowserUnavailableException(string message) : base(message)
+    {
+    }
+}
+
+/// <summary>
+/// 运行中的宿主协议版本与当前实现不一致（代码升级了，旧宿主还在跑）。
+/// </summary>
+/// <remarks>
+/// <b>为什么单独一个类型</b>：这不是「浏览器坏了」，而是必须由用户/运维重启宿主才能解决的断代问题。
+/// 调用方（设置页、工具）要据此给出「重启浏览器宿主」的指引，而不是「安装浏览器」之类的建议。
+/// </remarks>
+public sealed class BrowserHostVersionMismatchException : BrowserUnavailableException
+{
+    /// <summary>创建异常。</summary>
+    public BrowserHostVersionMismatchException(string message) : base(message)
     {
     }
 }
