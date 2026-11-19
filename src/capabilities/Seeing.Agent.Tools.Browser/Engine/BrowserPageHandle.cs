@@ -743,12 +743,26 @@ public sealed class BrowserPageHandle : IAsyncDisposable
     /// 必须按类型名或基类判定，否则单片的超时会穿透成「工具失败」而不是「继续下一片」。
     /// </para>
     /// </remarks>
-    public Task<bool> WaitForAsync(
+    public Task<BrowserWaitResult> WaitForAsync(
         BrowserWaitCondition condition,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
-        => RunAsync<bool>(async () =>
+        CancellationToken cancellationToken,
+        TimeSpan? duration = null)
+        => RunAsync<BrowserWaitResult>(async () =>
         {
+            // kind=timeout 的语义是「固定等待 duration」：duration 缺省等于 timeout，
+            // 且不得大于总预算。直接 Delay（取消由它观察），不参与下面的分片循环。
+            if (condition.Kind == BrowserWaitKind.Timeout)
+            {
+                var wait = duration ?? timeout;
+                if (wait > timeout)
+                    wait = timeout;
+                if (wait > TimeSpan.Zero)
+                    await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
+                await RefreshIdentityAsync().ConfigureAwait(false);
+                return BrowserWaitResult.Ready;
+            }
+
             var deadline = DateTimeOffset.UtcNow + timeout;
 
             // 分片等待：每片最多 200ms，片间检查取消。
@@ -769,17 +783,15 @@ public sealed class BrowserPageHandle : IAsyncDisposable
                 try
                 {
                     if (await TryWaitOnceAsync(condition, sliceMs, cancellationToken).ConfigureAwait(false))
-                        return true;
+                        return BrowserWaitResult.Ready;
 
-                    // kind=timeout 的语义是「等够时长即成功」，不是「等不到条件则失败」：
-                    // 预算用尽时它是成功，其它条件类型才是超时。
                     if (isLastSlice)
                     {
-                        if (condition.Kind == BrowserWaitKind.Timeout)
-                        {
-                            await RefreshIdentityAsync().ConfigureAwait(false);
-                            return true;
-                        }
+                        // networkidle 在真实站点几乎不可能成立（埋点/心跳/广告持续有请求）。
+                        // 预算用尽时按「已就绪」返回，由上层在结果文案里说明原因，
+                        // 而不是让 agent 把「网络没完全空闲」误判成页面失败。
+                        if (condition.Kind == BrowserWaitKind.NetworkIdle)
+                            return BrowserWaitResult.ReadyAfterBudget;
 
                         throw new TimeoutException($"等待超时（{timeout.TotalSeconds:F0} 秒）");
                     }

@@ -151,6 +151,18 @@ public readonly record struct BrowserWaitCondition(BrowserWaitKind Kind, string?
             : null;
 }
 
+/// <summary>等待结果。</summary>
+/// <param name="Satisfied">是否可按就绪处理。</param>
+/// <param name="BudgetExhausted">是否因预算用尽而按就绪处理（目前只用于 networkidle）。</param>
+public readonly record struct BrowserWaitResult(bool Satisfied, bool BudgetExhausted)
+{
+    /// <summary>条件已成立。</summary>
+    public static BrowserWaitResult Ready => new(true, false);
+
+    /// <summary>预算用尽，但按约定视为可用（networkidle）。</summary>
+    public static BrowserWaitResult ReadyAfterBudget => new(true, true);
+}
+
 /// <summary>滚动方向。</summary>
 public enum BrowserScrollDirection
 {
