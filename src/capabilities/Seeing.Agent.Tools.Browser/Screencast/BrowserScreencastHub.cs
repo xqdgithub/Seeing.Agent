@@ -515,7 +515,7 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
             try
             {
                 return await BrowserStillSource
-                    .CaptureAsync(page, Epoch, rev, cancellationToken)
+                    .CaptureAsync(page, Epoch, rev, cancellationToken, _hub._logger)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException)

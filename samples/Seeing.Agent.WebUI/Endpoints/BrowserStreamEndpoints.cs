@@ -189,7 +189,12 @@ public static class BrowserStreamEndpoints
 
                     AttachBusy(null);
                     subscribedPage = null;
-                    sink.OnState(new BrowserPageState(string.Empty, string.Empty, 0, false, false));
+
+                    // 页面已没了：没有 ViewportWidth/FrameScale 可报，但代次仍要带上——
+                    // 流对象还在（只是不再采集），丢掉代次会让前端把随后的新帧误判为旧代次。
+                    // 0 的含义是「本会话从未有过画面流（未知）」，前端不得把 0 当权威代次比较。
+                    sink.OnState(new BrowserPageState(
+                        string.Empty, string.Empty, 0, false, false, hub.EpochOf(sessionId)));
                 }
 
                 return;
@@ -223,8 +228,10 @@ public static class BrowserStreamEndpoints
         {
             if (page is null)
             {
-                // 先告知「尚未启动」，让前端显示空态而不是一直等首帧
-                sink.OnState(new BrowserPageState(string.Empty, string.Empty, 0, false, false));
+                // 先告知「尚未启动」，让前端显示空态而不是一直等首帧。
+                // 代次照实带：0 = 本会话还没有过画面流（未知），不是「第 0 代」。
+                sink.OnState(new BrowserPageState(
+                    string.Empty, string.Empty, 0, false, false, hub.EpochOf(sessionId)));
             }
             else
             {
@@ -497,17 +504,58 @@ public static class BrowserStreamEndpoints
 
             case "hires":
                 // 静帧请求：用户滚动/操作后停下，前端要一张清晰图（超采样模式的补图）。
-                // 抓不到就静默跳过——前端 2 秒后自会再请求，这里不该阻塞输入循环。
-                var stillRev = (long)ReadDouble(root, "rev");
-                var still = await hub.TryCaptureStillAsync(sessionId, stillRev, ct).ConfigureAwait(false);
-                if (still is not null)
-                    sink.OnFrame(still);
+                // 必须 fire-and-forget：抓一张最多要 800ms，而输入循环同时在处理
+                // mouse/wheel（拖动时每秒几十条）——在这里 await 会让画布拖动一顿一顿的。
+                QueueStillCapture(hub, sessionId, sink, logger, ct, (long)ReadDouble(root, "rev"));
                 break;
 
             case "ping":
                 // 保活：无需动作
                 break;
         }
+    }
+
+    /// <summary>
+    /// 把一次静帧请求投递到后台抓取，立即返回。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么不 await</b>：输入循环承载拖拽与滚轮的鼠标流（每秒几十条）。
+    /// 抓一张静帧最多 800ms，在循环里等它会让「拖动」变成一格一格的。
+    /// </para>
+    /// <para>
+    /// 并发由 <see cref="BrowserScreencastHub.TryCaptureStillAsync"/> 内部的单飞锁兜住：
+    /// 前一张还在抓时，新请求立刻拿到 <see langword="null"/>（过期图没意义），不会堆积。
+    /// </para>
+    /// <para>
+    /// 失败、超时、取消都只记 Debug：静帧是锦上添花，前端 2 秒后自会重请求。
+    /// </para>
+    /// </remarks>
+    private static void QueueStillCapture(
+        BrowserScreencastHub hub,
+        string sessionId,
+        WebSocketFrameSink sink,
+        ILogger logger,
+        CancellationToken ct,
+        long rev)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var still = await hub.TryCaptureStillAsync(sessionId, rev, ct).ConfigureAwait(false);
+                if (still is not null)
+                    sink.OnFrame(still);
+            }
+            catch (OperationCanceledException)
+            {
+                // 连接已断 / 会话关闭：正常路径
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "抓静帧失败（忽略）：{SessionId}", sessionId);
+            }
+        });
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using PuppeteerSharp;
 
 namespace Seeing.Agent.Tools.Browser;
@@ -43,17 +44,22 @@ internal static class BrowserStillSource
     /// <param name="epoch">当前画面代次（写进帧头，前端据此丢弃旧代次）。</param>
     /// <param name="rev">代次内的版本号；按协议写进 <see cref="BrowserFrame.Seq"/>。</param>
     /// <param name="cancellationToken">取消令牌（连接断开 / 页面关闭）。</param>
+    /// <param name="logger">
+    /// 日志（可空）。静帧失败是常态级事件，只在 Debug 记录阶段名与异常：
+    /// 没有日志时「偶尔抓不到图」完全无法定位（分不清是主路径挂了、退路挂了，还是超时）。
+    /// </param>
     public static async Task<BrowserFrame?> CaptureAsync(
         BrowserPageHandle page,
         uint epoch,
         long rev,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(page);
 
         var (width, height) = ResolveSize(page);
 
-        var data = await CaptureWithBudgetAsync(page, cancellationToken).ConfigureAwait(false);
+        var data = await CaptureWithBudgetAsync(page, cancellationToken, logger).ConfigureAwait(false);
         if (data is null || data.Length == 0)
             return null;
 
@@ -80,17 +86,23 @@ internal static class BrowserStillSource
 
     private static async Task<byte[]?> CaptureWithBudgetAsync(
         BrowserPageHandle page,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ILogger? logger)
     {
         // 不能只依赖 CancellationToken：ScreenshotDataAsync 没有 token 参数，
         // 卡住时只能「不再等它」，并把迟到的异常 observe 掉。
-        var work = CaptureCoreAsync(page);
+        var work = CaptureCoreAsync(page, logger);
 
         var finished = await Task.WhenAny(work, Task.Delay(CaptureTimeout, cancellationToken))
             .ConfigureAwait(false);
 
         if (!ReferenceEquals(finished, work))
         {
+            logger?.LogDebug(
+                "静帧抓取超预算（{Timeout}ms），放弃：{SessionId}",
+                CaptureTimeout.TotalMilliseconds,
+                page.SessionId);
+
             _ = work.ContinueWith(
                 static t => _ = t.Exception,
                 CancellationToken.None,
@@ -103,19 +115,20 @@ internal static class BrowserStillSource
         {
             return await work.ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            logger?.LogDebug(ex, "静帧抓取失败（忽略）：{SessionId}", page.SessionId);
             return null;
         }
     }
 
-    private static async Task<byte[]?> CaptureCoreAsync(BrowserPageHandle page)
+    private static async Task<byte[]?> CaptureCoreAsync(BrowserPageHandle page, ILogger? logger)
     {
-        var data = await TryScreenshotAsync(page).ConfigureAwait(false);
+        var data = await TryScreenshotAsync(page, logger).ConfigureAwait(false);
         if (data is not null)
             return data;
 
-        return await TryCdpCaptureAsync(page).ConfigureAwait(false);
+        return await TryCdpCaptureAsync(page, logger).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -126,7 +139,7 @@ internal static class BrowserStillSource
     /// 「智能体正在操作」遮罩并抢页级互斥。静帧是用户滚一下就触发的前端动作，
     /// 每滚一次闪一次遮罩（还可能挡住输入）显然不对。
     /// </remarks>
-    private static async Task<byte[]?> TryScreenshotAsync(BrowserPageHandle page)
+    private static async Task<byte[]?> TryScreenshotAsync(BrowserPageHandle page, ILogger? logger)
     {
         try
         {
@@ -139,9 +152,11 @@ internal static class BrowserStillSource
 
             return data is { Length: > 0 } ? data : null;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // 降级到 CDP 直取；这里不逐条记日志：静帧失败是常态级事件（页面正在导航等）
+            // 阶段名进日志：否则「静帧没了」只能靠猜是主路径还是退路出的问题。
+            // 失败是常态（页面正在导航、有头窗口被遮挡），所以是 Debug 而非 Warning。
+            logger?.LogDebug(ex, "静帧主路径（Puppeteer screenshot）失败，降级到 CDP：{SessionId}", page.SessionId);
             return null;
         }
     }
@@ -153,7 +168,7 @@ internal static class BrowserStillSource
     /// 用独立会话而不是流式 screencast 那条：那条被 <c>startScreencast</c> 占着，
     /// 混发截图命令会与帧回调抢同一条连接，且 detach 时会连带打断画面流。
     /// </remarks>
-    private static async Task<byte[]?> TryCdpCaptureAsync(BrowserPageHandle page)
+    private static async Task<byte[]?> TryCdpCaptureAsync(BrowserPageHandle page, ILogger? logger)
     {
         ICDPSession? cdp = null;
         try
@@ -164,6 +179,7 @@ internal static class BrowserStillSource
             if (metrics is not { } metricsElement
                 || !TryBuildClip(metricsElement, page.PixelRatio, out var clip))
             {
+                logger?.LogDebug("静帧退路：getLayoutMetrics 没有可用的可见视口，放弃：{SessionId}", page.SessionId);
                 return null;
             }
 
@@ -176,10 +192,15 @@ internal static class BrowserStillSource
                 ["clip"] = clip
             }).ConfigureAwait(false);
 
-            return response is { } responseElement ? ReadScreenshotData(responseElement) : null;
+            var data = response is { } responseElement ? ReadScreenshotData(responseElement) : null;
+            if (data is null)
+                logger?.LogDebug("静帧退路：captureScreenshot 未返回可用数据：{SessionId}", page.SessionId);
+
+            return data;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            logger?.LogDebug(ex, "静帧退路（CDP captureScreenshot）失败：{SessionId}", page.SessionId);
             return null;
         }
         finally
@@ -190,9 +211,10 @@ internal static class BrowserStillSource
                 {
                     await cdp.DetachAsync().ConfigureAwait(false);
                 }
-                catch
+                catch (Exception ex)
                 {
                     // 页面可能已关闭
+                    logger?.LogDebug(ex, "静帧退路：CDP 会话 detach 失败（忽略）：{SessionId}", page.SessionId);
                 }
             }
         }

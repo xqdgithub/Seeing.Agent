@@ -65,6 +65,10 @@ public interface IBrowserFrameSink
 /// <param name="Epoch">
 /// 画面代次。与帧头里的 <see cref="BrowserFrame.Epoch"/> 同源：换页面或重启 screencast 后递增，
 /// 前端据此丢弃旧代次的帧（否则重建后的第一帧会被上一代次的画面盖住）。
+/// <para>
+/// <b><c>0</c> 表示「未知」</b>（本会话从未有过画面流），不是「第 0 代」。
+/// 前端不得把 0 当权威代次参与比较：收到 <c>epoch = 0</c> 时应保留上一次已知代次。
+/// </para>
 /// </param>
 /// <param name="ViewportWidth">
 /// 实际 <c>Page.setViewport</c> 的视口宽（CSS 像素）。<b>这是坐标与画布 backing 的唯一权威</b>：
