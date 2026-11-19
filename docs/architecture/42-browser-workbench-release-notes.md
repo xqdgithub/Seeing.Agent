@@ -98,13 +98,14 @@ e3 button "提交" (disabled)
 
 | 关注点 | 实现 |
 |--------|------|
-| 传输 | 独立 WebSocket `/api/browser/{sessionId}/stream`（不塞 Blazor circuit：JPEG 帧会让服务端渲染全面卡顿） |
-| 采集 | CDP `Page.startScreencast`（jpeg, quality=60, everyNthFrame=1） |
-| **必须 ack** | 每帧立即 `Page.screencastFrameAck`。**不 ack 则只有第一帧**（探针已实测） |
-| 背压 | 只保留最新帧：上一帧没写完就丢新帧（丢帧不丢 ack）。慢客户端不会把内存打满 |
+| 传输 | 独立 WebSocket `/api/browser/{sessionId}/stream`（不塞 Blazor circuit：JPEG 帧会让服务端渲染全面卡顿）。**下行帧是二进制**：18 字节头 + JPEG；控制消息（`state`/`error`/`takeover`）仍是 JSON 文本。见第二十一节 |
+| 采集 | CDP `Page.startScreencast`（jpeg, quality=80, everyNthFrame=1）；`maxWidth/maxHeight` = 页面**实际**视口（CSS 像素），否则 Chromium 先等比缩小再编码 |
+| **必须 ack** | 每帧恰好一次 `Page.screencastFrameAck`（所有权转移给帧泵）。**不 ack 则只有第一帧**（探针已实测） |
+| 背压 | sink 队列容量 1（`DropOldest`）：慢客户端只拿最新帧，帧不会在内存里堆积 |
 | 多观看者 | 每 viewer 一条 WS；Hub 内一个 CDP screencast 广播（CDP screencast 是页级单例，重复 start 会互相顶掉） |
 | 生命周期 | 首个 viewer 连上启动；最后一个离开后**延迟 1 分钟**停止（避免刷新导致反复启停） |
-| 坐标 | 前端按 canvas 显示比例换算到视口像素，服务端直接 `Mouse.*` |
+| 坐标 | 权威是 `state.viewportWidth/Height`（实际 SetViewport 的 CSS 尺寸）；前端按 canvas 显示矩形折算，服务端直接 `Mouse.*` |
+| 清晰度 | 普通模式由静帧（`Page.captureScreenshot`，物理像素）补；超采样模式（`Browser.HighResStream`）让流本身就是物理像素 |
 | 并发 | 人工输入与 agent 工具调用共用 `BrowserPageHandle` 的**会话级互斥**，鼠标状态机不会错乱 |
 
 ## 七、实测发现并修掉的六个缺陷
@@ -1097,3 +1098,66 @@ canvas 尺寸清空。切回来是全新挂载，谈不上「保持」。
 立刻失败 2 项，改回后通过。
 
 全量：458（WebUI）+ 90（Workbench）+ 185（Browser）+ 解决方案 0 错误。
+
+## 二十一、统一渲染管线：二进制帧 / 静帧 / 超采样
+
+「画面模糊」与「拖拽时画面抖」看起来是两个问题，实际上是同一条管线上三个决定各自为政：
+传输格式（JSON + base64）、帧来源（只有 screencast）、视口与像素比（前端随手写回）叠加出来的。
+
+### 21.1 二进制协议：`kind u8 | version u8 | epoch u32 | seq u32 | width u16 | height u16 | length u32`
+
+全部小端，18 字节头 + JPEG 载荷（`BrowserFrameCodec`；编解码两侧都校验版本、种类与**载荷长度精确相等**）。
+去掉 base64 省掉 33% 膨胀 + 两端各一次编解码；`length` 不符一律不渲染（半张图比不画更糟）。
+
+帧分两种，前端按 `kind` 分流：
+
+| kind | `seq` 语义 | 前端仲裁 |
+|------|-----------|---------|
+| `1` flow（screencast） | 流帧序号，单调递增 | `seq <= lastFlowSeq` 丢弃并更新 |
+| `2` still（截图补帧） | **承载 `rev`**（发起请求时的 `lastFlowSeq`），不新增字段 | `rev < lastFlowSeq` 丢弃，**不**推进 `lastFlowSeq`；收到即清「在途」 |
+
+`epoch` 是画面代次（换页面 / 重建 screencast 递增）。前端在 `epoch` 变化时清空 `lastFlowSeq/lastDrawnSeq`，
+否则新代次的前若干帧会被当成过期帧丢掉（画面停在上一次）。`state.epoch = 0` 表示**未知**（本会话还没有画面流），
+前端保留上一次已知代次，不当权威值比较。
+
+### 21.2 为什么 `hires` 必须 fire-and-forget
+
+静帧请求（`{type:'hires', rev}`）与鼠标/滚轮共用同一条输入循环。抓一张静帧最多 800ms，
+在循环里 `await` 会让拖拽变成一格一格。端点只做 `Task.Run` 投递，并发由 Hub 内部的单飞锁兜住
+（前一张还在抓时新请求立刻拿到 `null`——过期图没有意义）。
+
+### 21.3 前端：坐标权威与画布 backing
+
+- 坐标量程 = `state.viewportWidth/Height`（服务端**实际** SetViewport 的 CSS 尺寸）。前端不再从帧像素反写视口：
+  帧是编码尺寸，与视口不是一回事（超采样下视口已乘 dpr）。
+- `sendResize` 只发**面板 CSS 尺寸 + `devicePixelRatio`**，不乘任何东西（乘 dpr 是服务端的事，两端都乘会平方放大）。
+- backing（`canvas.width/height`）= `round(viewportWidth × frameScale)`，即物理像素；
+  **只在值变化时赋值** —— 给 `canvas.width` 赋值会重置画布（清空 + 重置上下文状态），逐帧赋值就是逐帧闪黑。
+- 帧像素 < backing（普通模式的流帧）时缩放铺满；静帧是物理像素，恰好 1:1 落地——这才是文字清晰的来源。
+- `state` 消息**不动画布**：页面静止时改 backing 会留下空白，直到下一帧才重画。
+
+### 21.4 静帧请求的时序与失败恢复
+
+| 时机 | 行为 |
+|------|------|
+| 收到流帧 / 滚轮 / 按下抬起 / resize 已发出 | `markActivity`：重置 200ms 去抖 |
+| 去抖到点 | `mode === 'normal'` 且无在途且 WS 已连 → 发 `{type:'hires', rev: lastFlowSeq}`，记 `hiresPendingAt` |
+| 收到 still | 清在途；`rev < lastFlowSeq` 则丢弃并**重新去抖**（当前画面仍缺清晰图） |
+| 2s 内没等到 | 清在途；若 `stillCoveredRev < lastFlowSeq` 重新去抖 |
+| `mode === 'highres'` | 完全不请求（流本身已是物理像素） |
+
+没有这两条恢复路径的版本有一个静默故障：一次丢包后「在途」永久为真，之后**再也不发静帧**——画面永久模糊，
+而且没有任何报错。
+
+### 21.5 超采样（`Browser.HighResStream`，默认关闭）
+
+开启后：视口 = 面板 × dpr、`dsf = 1`、`frameScale = 1`、不请求静帧。代价是网页按放大后的 CSS 视口**重新排版**
+（不是简单的位图放大），所以它只是可选开关，不是默认。下次重启浏览器生效。
+
+### 21.6 验收
+
+19 条验收标准的「自动 / 手工」归属见
+[`docs/superpowers/plans/2026-11-19-browser-workbench-acceptance.md`](../superpowers/plans/2026-11-19-browser-workbench-acceptance.md)。
+本次前端改造另用 Node 桩驱动真实 `browser-workbench.js` 做了 22 项行为断言（二进制解析、坏帧拒收、epoch 重置、
+静帧仲裁、去抖/在途/超时恢复、highres 不请求、resize 只发面板尺寸）——这类断言不依赖真浏览器，
+适合放进未来的前端单测。
