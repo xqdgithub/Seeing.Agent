@@ -944,15 +944,25 @@ public sealed class BrowserPageHandle : IAsyncDisposable
     /// 用户看到的是「刷新一下，智能体又说它在操作」，而 agent 根本没在跑。
     /// 更糟的是遮罩会拦截输入，接管按钮自己也被压在下面。
     /// </remarks>
+    /// <summary>
+    /// 首次生效的像素比。之后只改宽高、不再跟随每个观看者的 dpr：
+    /// 多个工作台/跨屏窗口的 dpr 不同时，反复改 <c>DeviceScaleFactor</c> 会让页面
+    /// 在两种缩放之间来回跳（用户报的「一下小字一下大字」）。
+    /// </summary>
+    private double? _stablePixelRatio;
+
     public Task ResizeAsync(int width, int height, double pixelRatio, CancellationToken cancellationToken)
         => RunHumanAsync<bool>(async () =>
         {
+            // 只在第一次生效：后续 dpr 变化不再改变页面缩放（清晰度由静帧承担）。
+            var dpr = _stablePixelRatio ??= NormalizePixelRatio(pixelRatio);
+
             // 模式换算集中在 ResolveViewport：普通模式下 dsf=dpr（帧仍按 CSS 视口出图），
             // 超采样模式下 dpr 乘进视口本身、dsf=1。两种模式的实际视口不同，必须都记下来，
             // 否则 screencast 重启与前端坐标换算会各自算一套。
             var highRes = _options.CurrentValue.HighResStream;
             var (viewportWidth, viewportHeight, frameScale) =
-                ResolveViewport(width, height, pixelRatio, highRes);
+                ResolveViewport(width, height, dpr, highRes);
 
             await _page.SetViewportAsync(new ViewPortOptions
             {
@@ -967,7 +977,7 @@ public sealed class BrowserPageHandle : IAsyncDisposable
             RequestedHeight = height;
             ViewportWidth = viewportWidth;
             ViewportHeight = viewportHeight;
-            PixelRatio = NormalizePixelRatio(pixelRatio);
+            PixelRatio = dpr;
             FrameScale = frameScale;
 
             await RefreshIdentityAsync().ConfigureAwait(false);
