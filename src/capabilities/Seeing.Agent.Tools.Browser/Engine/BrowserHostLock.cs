@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 namespace Seeing.Agent.Tools.Browser;
 
 /// <summary>
@@ -20,6 +22,11 @@ namespace Seeing.Agent.Tools.Browser;
 /// <b>为什么拿不到锁直接返回 <see langword="null"/> 而不是抛</b>：这是正常的「已有宿主在跑」，
 /// 调用方（宿主启动器）应当安静退出（退出码 0），而不是把用户界面打成红色错误。
 /// </para>
+/// <para>
+/// <b>两种失败必须分开记日志</b>：「已被占用」是正常竞争（Debug），
+/// 「目录不可写」是配置 / 权限故障（Warning）—— 两者都返回 <see langword="null"/>，
+/// 但排查方向完全相反：前者说明「本该连上现有宿主」，后者说明「宿主根本起不来」。
+/// </para>
 /// </remarks>
 public sealed class BrowserHostLock : IDisposable
 {
@@ -27,13 +34,15 @@ public sealed class BrowserHostLock : IDisposable
     public const string FileName = ".browser-host.lock";
 
     private readonly string _path;
+    private readonly ILogger? _logger;
 
     private FileStream? _handle;
 
-    private BrowserHostLock(string path, FileStream handle)
+    private BrowserHostLock(string path, FileStream handle, ILogger? logger)
     {
         _path = path;
         _handle = handle;
+        _logger = logger;
     }
 
     /// <summary>锁文件完整路径。</summary>
@@ -43,10 +52,11 @@ public sealed class BrowserHostLock : IDisposable
     public bool IsHeld => Volatile.Read(ref _handle) is not null;
 
     /// <summary>
-    /// 尝试获取指定 profile 的宿主单例锁；已被占用时返回 <see langword="null"/>。
+    /// 尝试获取指定 profile 的宿主单例锁；已被占用或目录不可用时返回 <see langword="null"/>。
     /// </summary>
     /// <param name="profileDirectory">宿主 profile 目录（不存在会自动创建）。</param>
-    public static BrowserHostLock? TryAcquire(string profileDirectory)
+    /// <param name="logger">日志（可选）。</param>
+    public static BrowserHostLock? TryAcquire(string profileDirectory, ILogger? logger = null)
     {
         var directory = BrowserHostLocator.NormalizeProfileDirectory(profileDirectory);
         var path = System.IO.Path.Combine(directory, FileName);
@@ -64,17 +74,38 @@ public sealed class BrowserHostLock : IDisposable
                 bufferSize: 1,
                 FileOptions.None);
 
-            return new BrowserHostLock(path, handle);
+            logger?.LogDebug("已获取宿主单例锁：{Path}", path);
+            return new BrowserHostLock(path, handle, logger);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
-            // IOException：已被另一宿主以 FileShare.None 打开（正常竞争）
-            // UnauthorizedAccessException：目录不可写 / 权限不足（同样不该继续当宿主）
+            // 目录 / 锁文件不可写：宿主即使拿到锁也无法写发现文件与 profile，
+            // 这是配置或权限故障，与「已有宿主在跑」完全不同。
+            logger?.LogWarning(
+                ex,
+                "宿主单例锁无法创建（目录不可写或无权限），本次不作为宿主启动：{Path}",
+                path);
+            return null;
+        }
+        catch (IOException ex)
+        {
+            // 正常竞争：另一个宿主已以 FileShare.None 持有该锁
+            logger?.LogDebug(
+                ex,
+                "宿主单例锁已被其他进程占用，本次不作为宿主启动：{Path}",
+                path);
             return null;
         }
     }
 
     /// <summary>释放锁句柄。**不删除锁文件**（见类型注释的 unlink 竞态）。</summary>
     public void Dispose()
-        => Interlocked.Exchange(ref _handle, null)?.Dispose();
+    {
+        var handle = Interlocked.Exchange(ref _handle, null);
+        if (handle is null)
+            return;
+
+        handle.Dispose();
+        _logger?.LogDebug("已释放宿主单例锁：{Path}", _path);
+    }
 }

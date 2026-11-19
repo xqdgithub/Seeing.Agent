@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Seeing.Files;
 using Seeing.Serialization;
 
@@ -56,14 +57,17 @@ public sealed class BrowserClientPresence : IDisposable
     /// <summary>当前归属本客户端的 target（有序写盘，便于比对与日志）。</summary>
     private readonly HashSet<string> _targetIds = new(StringComparer.Ordinal);
 
+    private readonly ILogger? _logger;
+
     private FileStream? _lockHandle;
     private bool _wrotePages;
     private bool _disposed;
 
-    private BrowserClientPresence(string clientsDirectory, int clientPid)
+    private BrowserClientPresence(string clientsDirectory, int clientPid, ILogger? logger)
     {
         ClientsDirectory = clientsDirectory;
         ClientPid = clientPid;
+        _logger = logger;
     }
 
     /// <summary>本客户端锁 / 页面清单所在目录。</summary>
@@ -113,14 +117,27 @@ public sealed class BrowserClientPresence : IDisposable
     /// </para>
     /// </remarks>
     /// <param name="profileDirectory">宿主 profile 目录（与宿主使用同一份绝对路径）。</param>
-    public static BrowserClientPresence Start(string profileDirectory)
+    /// <param name="logger">日志（可选）。</param>
+    public static BrowserClientPresence Start(string profileDirectory, ILogger? logger = null)
+        => Start(profileDirectory, BrowserHostLocator.ResolveBaseDirectory(), logger);
+
+    /// <summary>
+    /// 同上，但显式指定发现文件 / 客户端锁根目录（仅测试与诊断用）。
+    /// </summary>
+    /// <param name="profileDirectory">宿主 profile 目录。</param>
+    /// <param name="baseDirectory">客户端锁根目录（生产代码不传，默认 <c>~/.seeing/browser</c>）。</param>
+    /// <param name="logger">日志（可选）。</param>
+    internal static BrowserClientPresence Start(
+        string profileDirectory,
+        string baseDirectory,
+        ILogger? logger = null)
     {
-        var locator = new BrowserHostLocator(profileDirectory);
+        var locator = new BrowserHostLocator(profileDirectory, baseDirectory, logger);
         Directory.CreateDirectory(locator.ClientsDirectory);
 
         // 先加锁再返回：调用方在这一刻确实已是「准备建页的客户端」，
         // 宿主扫存活列表必须立刻能看到本进程（否则「已连上但未建页」会被判成没客户端）。
-        var presence = new BrowserClientPresence(locator.ClientsDirectory, Environment.ProcessId);
+        var presence = new BrowserClientPresence(locator.ClientsDirectory, Environment.ProcessId, logger);
         presence.TryAcquireLock();
         return presence;
     }
@@ -154,6 +171,10 @@ public sealed class BrowserClientPresence : IDisposable
             _targetIds.Add(targetId);
 
             WritePages();
+
+            _logger?.LogDebug(
+                "客户端 presence 登记页面：{TargetId}（当前 {PageCount} 页，{ClientsDirectory}）",
+                targetId, _targetIds.Count, ClientsDirectory);
         }
     }
 
@@ -175,6 +196,10 @@ public sealed class BrowserClientPresence : IDisposable
 
             WritePages();
 
+            _logger?.LogDebug(
+                "客户端 presence 注销页面：{TargetId}（剩余 {PageCount} 页）",
+                targetId, _targetIds.Count);
+
             if (_targetIds.Count == 0)
                 ReleaseLock();
         }
@@ -193,18 +218,39 @@ public sealed class BrowserClientPresence : IDisposable
     /// 由宿主在持有「已确认死亡」结论后执行；查询函数顺手删文件会让调用方读到与预期不一致的状态。
     /// </para>
     /// </remarks>
-    public static IReadOnlyList<int> AliveClientPids(string profileDirectory)
+    /// <param name="profileDirectory">宿主 profile 目录。</param>
+    /// <param name="logger">日志（可选；宿主每轮扫描都会调用，异常路径必须有线索）。</param>
+    public static IReadOnlyList<int> AliveClientPids(string profileDirectory, ILogger? logger = null)
+        => AliveClientPids(profileDirectory, BrowserHostLocator.ResolveBaseDirectory(), logger);
+
+    /// <summary>同上，但显式指定客户端锁根目录（仅测试与诊断用）。</summary>
+    internal static IReadOnlyList<int> AliveClientPids(
+        string profileDirectory,
+        string baseDirectory,
+        ILogger? logger = null)
     {
-        var locator = new BrowserHostLocator(profileDirectory);
-        return AliveClientPidsIn(locator.ClientsDirectory);
+        var locator = new BrowserHostLocator(profileDirectory, baseDirectory, logger);
+        return AliveClientPidsIn(locator.ClientsDirectory, logger);
     }
 
     /// <summary>读指定客户端的页面归属清单；文件不存在或不可解析时返回空数组。</summary>
     /// <param name="profileDirectory">宿主 profile 目录。</param>
     /// <param name="clientPid">客户端 PID。</param>
-    public static IReadOnlyList<string> ReadPageTargets(string profileDirectory, int clientPid)
+    /// <param name="logger">日志（可选）。</param>
+    public static IReadOnlyList<string> ReadPageTargets(
+        string profileDirectory,
+        int clientPid,
+        ILogger? logger = null)
+        => ReadPageTargets(profileDirectory, BrowserHostLocator.ResolveBaseDirectory(), clientPid, logger);
+
+    /// <summary>同上，但显式指定客户端锁根目录（仅测试与诊断用）。</summary>
+    internal static IReadOnlyList<string> ReadPageTargets(
+        string profileDirectory,
+        string baseDirectory,
+        int clientPid,
+        ILogger? logger = null)
     {
-        var locator = new BrowserHostLocator(profileDirectory);
+        var locator = new BrowserHostLocator(profileDirectory, baseDirectory, logger);
         var path = System.IO.Path.Combine(
             locator.ClientsDirectory, clientPid + PagesFileExtension);
 
@@ -217,8 +263,15 @@ public sealed class BrowserClientPresence : IDisposable
             var manifest = JsonSerializer.Deserialize<PageManifest>(stream, s_readOptions);
             return manifest?.TargetIds ?? [];
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        catch (JsonException ex)
         {
+            // 清单损坏 → 宿主会少回收几个遗留页面（可接受的降级），但必须留下线索
+            logger?.LogDebug(ex, "页面归属清单无法解析，按空清单处理：{Path}", path);
+            return [];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger?.LogDebug(ex, "页面归属清单不可读，按空清单处理：{Path}", path);
             return [];
         }
     }
@@ -243,10 +296,12 @@ public sealed class BrowserClientPresence : IDisposable
             // 目录里只剩别人的文件时删除会失败（IOException），忽略即可。
             // 全部客户端都退出后把空目录收掉，避免 ~/.seeing/browser/clients 无限堆积。
             TryDeleteEmptyDirectory(ClientsDirectory);
+
+            _logger?.LogDebug("客户端 presence 已释放：{ClientsDirectory}", ClientsDirectory);
         }
     }
 
-    private static IReadOnlyList<int> AliveClientPidsIn(string clientsDirectory)
+    private static IReadOnlyList<int> AliveClientPidsIn(string clientsDirectory, ILogger? logger)
     {
         string[] files;
         try
@@ -259,6 +314,7 @@ public sealed class BrowserClientPresence : IDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // 目录正好被最后一个客户端收掉 / 权限不足：本轮按「没有存活客户端」处理
+            logger?.LogDebug(ex, "客户端锁目录不可枚举，本轮按无客户端处理：{Directory}", clientsDirectory);
             return [];
         }
 
@@ -267,9 +323,12 @@ public sealed class BrowserClientPresence : IDisposable
         {
             // 文件名即 PID（<pid>.lock）；不认得的文件直接跳过，绝不按内容猜。
             if (!int.TryParse(System.IO.Path.GetFileNameWithoutExtension(path), out var pid))
+            {
+                logger?.LogDebug("忽略无法解析出 PID 的客户端锁文件：{Path}", path);
                 continue;
+            }
 
-            if (IsLockHeld(path))
+            if (IsLockHeld(path, logger))
                 pids.Add(pid);
         }
 
@@ -278,7 +337,7 @@ public sealed class BrowserClientPresence : IDisposable
     }
 
     /// <summary>锁文件是否正被某个进程以 <see cref="FileShare.None"/> 持有。</summary>
-    private static bool IsLockHeld(string path)
+    private static bool IsLockHeld(string path, ILogger? logger)
     {
         try
         {
@@ -290,20 +349,27 @@ public sealed class BrowserClientPresence : IDisposable
                 FileShare.None,
                 bufferSize: 1,
                 FileOptions.None);
+            logger?.LogDebug("客户端锁无人持有（客户端已死）：{Path}", path);
             return false;
         }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
             // 扫描期间被释放并删除：按「已死」处理
+            logger?.LogDebug(ex, "客户端锁在扫描期间被删除，按已死处理：{Path}", path);
             return false;
         }
-        catch (IOException)
+        catch (IOException ex)
         {
+            logger?.LogDebug(ex, "客户端锁被持有（客户端存活）：{Path}", path);
             return true;
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
             // 拿不到读权限无法证明它死了；宁可少回收遗留页面，也不误判存活客户端为死
+            logger?.LogWarning(
+                ex,
+                "客户端锁不可读，保守按存活处理（不回收其页面）：{Path}",
+                path);
             return true;
         }
     }
@@ -317,12 +383,14 @@ public sealed class BrowserClientPresence : IDisposable
         try
         {
             _lockHandle = OpenLock();
+            _logger?.LogDebug("客户端 presence 已获取存活锁：{Path}", LockPath);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // 同一 PID 的文件锁是最容易踩的坑：若本进程已有另一个 presence 持锁，
             // 这里必然失败。静默继续会让宿主把本进程判成「已死」并回收页面，
             // 因此明确抛出，由调用方决定（通常意味着 presence 被重复创建）。
+            _logger?.LogError(ex, "客户端 presence 无法获取存活锁：{Path}", LockPath);
             throw new IOException($"无法获取浏览器客户端存活锁：{LockPath}", ex);
         }
     }
@@ -333,10 +401,12 @@ public sealed class BrowserClientPresence : IDisposable
         try
         {
             _lockHandle ??= OpenLock();
+            _logger?.LogDebug("客户端 presence 已启动并持锁：{Path}", LockPath);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // 拿不到锁不在这里抛：对象可能只是等待重连，真正的失败点是建页
+            _logger?.LogDebug(ex, "客户端 presence 启动时未能持锁（建页时会再试）：{Path}", LockPath);
         }
     }
 
@@ -365,6 +435,7 @@ public sealed class BrowserClientPresence : IDisposable
         handle.Dispose();
 
         AtomicFileWrite.TryDelete(LockPath);
+        _logger?.LogDebug("客户端 presence 已释放存活锁：{Path}", LockPath);
     }
 
     private string[] Snapshot()
@@ -379,11 +450,12 @@ public sealed class BrowserClientPresence : IDisposable
     {
         var manifest = new PageManifest(Snapshot());
         var json = JsonSerializer.Serialize(manifest, s_writeOptions);
-        AtomicFileWrite.WriteAllTextAtomic(PagesPath, json, subject: "浏览器页面归属清单");
+        AtomicFileWrite.WriteAllTextAtomic(
+            PagesPath, json, subject: "浏览器页面归属清单", logger: _logger);
         _wrotePages = true;
     }
 
-    private static void TryDeleteEmptyDirectory(string directory)
+    private void TryDeleteEmptyDirectory(string directory)
     {
         try
         {
@@ -393,6 +465,7 @@ public sealed class BrowserClientPresence : IDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // 有别的客户端在用这个目录（或权限不足）：不是错误
+            _logger?.LogDebug(ex, "客户端锁目录未能删除（仍有其他客户端）：{Directory}", directory);
         }
     }
 

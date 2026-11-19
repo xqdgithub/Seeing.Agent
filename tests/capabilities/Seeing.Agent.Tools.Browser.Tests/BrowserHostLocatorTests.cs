@@ -8,12 +8,14 @@ namespace Seeing.Agent.Tools.Browser.Tests;
 /// 发现文件、宿主单例锁、客户端存活锁与页面归属清单的测试。
 /// </summary>
 /// <remarks>
-/// 客户端锁/页面清单落在真实的 <c>~/.seeing/browser/clients/&lt;profileHash&gt;/</c>
-/// （<see cref="BrowserClientPresence.Start"/> 没有 baseDirectory 参数），
-/// 每个用例用独立的 profile 目录得到独立 hash，<see cref="System.IDisposable"/> 清理自己产生的文件。
+/// 客户端锁 / 页面清单通过 internal 重载显式指定临时根目录，不写真实
+/// <c>~/.seeing/browser/clients</c>；每个用例用独立目录，<see cref="System.IDisposable"/> 清理。
 /// </remarks>
 public sealed class BrowserHostLocatorTests
 {
+    /// <summary>用例内隔离的客户端锁根目录（与生产默认根目录同构，但不污染用户目录）。</summary>
+    private static string Root(string profileDirectory) => Path.Combine(profileDirectory, "browser-root");
+
     [Fact]
     public void HostLock_WhenHeld_SecondAcquireFails()
     {
@@ -55,12 +57,12 @@ public sealed class BrowserHostLocatorTests
         using var dir = new TempDirectory();
         var pid = Environment.ProcessId;
 
-        var presence = BrowserClientPresence.Start(dir.Path);
-        BrowserClientPresence.AliveClientPids(dir.Path).Should().Contain(pid);
+        var presence = BrowserClientPresence.Start(dir.Path, Root(dir.Path));
+        BrowserClientPresence.AliveClientPids(dir.Path, Root(dir.Path)).Should().Contain(pid);
 
         presence.Dispose();
 
-        BrowserClientPresence.AliveClientPids(dir.Path).Should().NotContain(pid);
+        BrowserClientPresence.AliveClientPids(dir.Path, Root(dir.Path)).Should().NotContain(pid);
     }
 
     [Fact]
@@ -69,12 +71,12 @@ public sealed class BrowserHostLocatorTests
         using var dir = new TempDirectory();
         var pid = Environment.ProcessId;
 
-        using var presence = BrowserClientPresence.Start(dir.Path);
+        using var presence = BrowserClientPresence.Start(dir.Path, Root(dir.Path));
         presence.AcquirePage("target-1");
 
         File.Exists(presence.LockPath).Should().BeTrue();
         File.Exists(presence.PagesPath).Should().BeTrue();
-        BrowserClientPresence.AliveClientPids(dir.Path).Should().Contain(pid);
+        BrowserClientPresence.AliveClientPids(dir.Path, Root(dir.Path)).Should().Contain(pid);
     }
 
     [Fact]
@@ -83,15 +85,15 @@ public sealed class BrowserHostLocatorTests
         using var dir = new TempDirectory();
         var pid = Environment.ProcessId;
 
-        using var presence = BrowserClientPresence.Start(dir.Path);
+        using var presence = BrowserClientPresence.Start(dir.Path, Root(dir.Path));
 
         presence.AcquirePage("target-1");
         presence.ReleasePage("target-1");
-        BrowserClientPresence.AliveClientPids(dir.Path).Should().NotContain(pid);
+        BrowserClientPresence.AliveClientPids(dir.Path, Root(dir.Path)).Should().NotContain(pid);
 
         // 最后一个页面关闭后锁被释放；再次开页必须重新加锁（presence 对象随进程存活）
         presence.AcquirePage("target-2");
-        BrowserClientPresence.AliveClientPids(dir.Path).Should().Contain(pid);
+        BrowserClientPresence.AliveClientPids(dir.Path, Root(dir.Path)).Should().Contain(pid);
 
         presence.ReleasePage("target-2");
     }
@@ -102,16 +104,16 @@ public sealed class BrowserHostLocatorTests
         using var dir = new TempDirectory();
         var pid = Environment.ProcessId;
 
-        using var presence = BrowserClientPresence.Start(dir.Path);
+        using var presence = BrowserClientPresence.Start(dir.Path, Root(dir.Path));
         presence.AcquirePage("target-b");
         presence.AcquirePage("target-a");
 
-        BrowserClientPresence.ReadPageTargets(dir.Path, pid)
+        BrowserClientPresence.ReadPageTargets(dir.Path, Root(dir.Path), pid)
             .Should().BeEquivalentTo(["target-a", "target-b"]);
 
         presence.ReleasePage("target-a");
 
-        BrowserClientPresence.ReadPageTargets(dir.Path, pid)
+        BrowserClientPresence.ReadPageTargets(dir.Path, Root(dir.Path), pid)
             .Should().BeEquivalentTo(["target-b"]);
     }
 
@@ -121,14 +123,14 @@ public sealed class BrowserHostLocatorTests
         using var dir = new TempDirectory();
         var pid = Environment.ProcessId;
 
-        using var presence = BrowserClientPresence.Start(dir.Path);
+        using var presence = BrowserClientPresence.Start(dir.Path, Root(dir.Path));
         presence.AcquirePage("target-1");
         presence.AcquirePage("target-1");
 
         presence.ReleasePage("target-1");
 
         // 重复 acquire 不应把计数加两次；释放一次就该回到 0 页
-        BrowserClientPresence.AliveClientPids(dir.Path).Should().NotContain(pid);
+        BrowserClientPresence.AliveClientPids(dir.Path, Root(dir.Path)).Should().NotContain(pid);
     }
 
     [Fact]
@@ -145,6 +147,40 @@ public sealed class BrowserHostLocatorTests
     public void ProfileHash_ShouldIgnoreTrailingSeparator()
         => BrowserHostLocator.ComputeProfileHash(@"C:\p\A\")
             .Should().Be(BrowserHostLocator.ComputeProfileHash(@"C:\p\A"));
+
+    [Fact]
+    public void ResolveHostProfileDirectory_WhenConfigured_ShouldWin()
+    {
+        var configured = Path.Combine(Path.GetTempPath(), "seeing-configured-profile");
+
+        BrowserHostLocator.ResolveHostProfileDirectory(configured, Path.GetTempPath())
+            .Should().Be(Path.GetFullPath(configured));
+    }
+
+    [Fact]
+    public void ResolveHostProfileDirectory_WhenNotConfigured_ShouldBeStableDefault()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "seeing-home");
+        var expected = Path.Combine(home, ".seeing", BrowserHostLocator.ProfileDirectoryName);
+
+        BrowserHostLocator.ResolveHostProfileDirectory(null, home).Should().Be(expected);
+
+        // 空白配置等同于未配置：默认路径必须稳定（宿主单例键与发现文件 hash 都来自它）
+        BrowserHostLocator.ResolveHostProfileDirectory("   ", home).Should().Be(expected);
+    }
+
+    [Fact]
+    public void Info_WhenContentIsCorrupt_ShouldBeNull()
+    {
+        using var dir = new TempDirectory();
+        var locator = new BrowserHostLocator(dir.Path, Root(dir.Path));
+
+        Directory.CreateDirectory(Path.GetDirectoryName(locator.InfoPath)!);
+        File.WriteAllText(locator.InfoPath, "{ not json");
+
+        // 半截 / 改坏的文件必须降级成「没有宿主」而不是抛（但仍记 Debug，见类型注释）
+        locator.Read().Should().BeNull();
+    }
 
     [Fact]
     public void Info_RoundTrip_ShouldPreserveAllFields()
