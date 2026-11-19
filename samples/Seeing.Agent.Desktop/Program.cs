@@ -169,8 +169,22 @@ internal static class Program
         }
         finally
         {
-            // 窗口关闭 → 触发 Host 正常停止（释放 circuit、后台执行与文件句柄）。
-            app?.StopAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+            if (app is not null)
+            {
+                try
+                {
+                    // 窗口关闭 → 触发 Host 正常停止（释放 circuit、后台执行与文件句柄）。
+                    app.StopAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+                }
+                finally
+                {
+                    // StopAsync 只停服，不释放容器。WebUI 走 app.RunAsync() 时由框架补这一步，
+                    // 桌面壳是手写生命周期，必须自己补：否则实现 IAsyncDisposable 的单例
+                    // （浏览器引擎连接、调度器后台循环、文件句柄）要等进程退出才释放。
+                    // 注意：浏览器宿主进程是共享的，按空闲退出，不在这里结束。
+                    app.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                }
+            }
         }
     }
 

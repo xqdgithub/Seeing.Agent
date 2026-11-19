@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Tools.Browser;
@@ -32,6 +34,9 @@ public static class BrowserStreamEndpoints
     /// <summary>流路由模板。</summary>
     public const string Route = "/api/browser/{sessionId}/stream";
 
+    /// <summary>宿主重启路由（设置页「重启浏览器」按钮）。</summary>
+    public const string HostRestartRoute = "/browser/host/restart";
+
     /// <summary>单条上行消息上限（字节）：只承载输入事件，远小于帧；超限显式拒绝。</summary>
     private const int MaxInboundBytes = 1024 * 1024;
 
@@ -55,8 +60,116 @@ public static class BrowserStreamEndpoints
     public static IEndpointRouteBuilder MapBrowserStreamEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet(Route, HandleAsync);
+        endpoints.MapPost(HostRestartRoute, RestartHost);
         return endpoints;
     }
+
+    /// <summary>
+    /// 结束当前 profile 的浏览器宿主进程（设置页「重启浏览器」按钮）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么只结束宿主、不自己拉起新宿主</b>：新宿主由下一次 <c>browser_open</c> 按当时的配置自然拉起。
+    /// 在这里顺手启动一个会带来两个问题——用户只是想让新设置「以后生效」，立刻占着浏览器窗口没有意义；
+    /// 而且拉起是客户端的职责（要传 browser 级配置），端点没有那份上下文。
+    /// </para>
+    /// <para>
+    /// <b>为什么必须校验进程身份</b>：发现文件可能是崩溃前的残留，PID 也可能已被系统复用。
+    /// 只比对 PID 会杀掉无关进程；因此用 <see cref="BrowserHostLocator.IsSameHost"/>
+    /// 同时比对「发现文件里的 PID + 启动时刻」与「实际进程的启动时刻」。
+    /// </para>
+    /// <para>
+    /// <b>浏览器的去处</b>：宿主被强杀时，Windows 由 Job（KILL_ON_JOB_CLOSE）、POSIX 由看门狗
+    /// 连带清掉 Chromium。端点自己不去碰浏览器进程。
+    /// </para>
+    /// <para>
+    /// <b>信任边界</b>：与 CDP 端点一致——本机、无鉴权。任何本机进程本来就能直接控制浏览器，
+    /// 这里不额外扩大暴露面。
+    /// </para>
+    /// </remarks>
+    private static IResult RestartHost(
+        IModuleCatalog modules,
+        IOptionsMonitor<BrowserOptions> browserOptions,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("BrowserHostRestart");
+
+        // 与画面流端点同一条门控：模块停用时能力必须整体消失。
+        if (!IsModuleEnabled(modules))
+            return Results.NotFound();
+
+        var profile = BrowserHostLocator.NormalizeProfileDirectory(
+            BrowserHostLocator.ResolveHostProfileDirectory(browserOptions.CurrentValue.ProfileDirectory));
+
+        var locator = new BrowserHostLocator(profile, logger: logger);
+        var info = locator.Read();
+        if (info is null)
+            return NoHostResult();
+
+        Process process;
+        try
+        {
+            process = Process.GetProcessById(info.HostPid);
+        }
+        catch (Exception ex) when (ex is ArgumentException
+                                       or InvalidOperationException
+                                       or System.ComponentModel.Win32Exception)
+        {
+            // 进程已不在：发现文件是残留，交给下一次 browser_open 重新拉起。
+            return NoHostResult();
+        }
+
+        using (process)
+        {
+            DateTimeOffset actualStartedAt;
+            try
+            {
+                if (process.HasExited)
+                    return NoHostResult();
+
+                actualStartedAt = new DateTimeOffset(process.StartTime);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException
+                                           or System.ComponentModel.Win32Exception
+                                           or NotSupportedException)
+            {
+                return NoHostResult();
+            }
+
+            if (!BrowserHostLocator.IsSameHost(info, info.HostPid, actualStartedAt))
+            {
+                // PID 被复用：绝不能杀一个碰巧拿到同一 PID 的无关进程。
+                logger.LogWarning(
+                    "发现文件与进程启动时刻不一致，拒绝结束进程 {Pid}（文件 {FileStartedAt}，实际 {ActualStartedAt}）",
+                    info.HostPid, info.HostStartedAt, actualStartedAt);
+                return Results.Json(new { ok = false, reason = "no host" });
+            }
+
+            try
+            {
+                // 只杀宿主本身：entireProcessTree=false 让 Job / watchdog 负责浏览器的生命周期，
+                // 与「宿主被任务管理器强杀」走同一条恢复路径。
+                process.Kill(entireProcessTree: false);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException
+                                           or System.ComponentModel.Win32Exception
+                                           or NotSupportedException)
+            {
+                logger.LogWarning(ex, "结束浏览器宿主失败（pid={Pid}）", info.HostPid);
+                return Results.Json(new { ok = false, reason = "kill failed" });
+            }
+
+            logger.LogInformation(
+                "已按用户请求结束浏览器宿主（pid={Pid}，generation={Generation}），下次使用浏览器时重新拉起",
+                info.HostPid, info.Generation);
+
+            return Results.Json(new { ok = true });
+        }
+    }
+
+    /// <summary>「没有可结束的宿主」的响应体（端点契约里的失败形态）。</summary>
+    private static IResult NoHostResult()
+        => Results.Json(new { ok = false, reason = "no host" });
 
     private static async Task HandleAsync(
         HttpContext context,

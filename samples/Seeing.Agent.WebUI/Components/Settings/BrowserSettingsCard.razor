@@ -1,10 +1,15 @@
 ﻿@using AntDesign
 @using Microsoft.Extensions.Options
+@using System.ComponentModel
+@using System.Diagnostics
+@using System.Text.Json
 @using Seeing.Agent.Abstractions.Configuration
 @using Seeing.Agent.Tools.Browser
 @using Seeing.Agent.WebUI.Services
 @inject SeeingConfigService ConfigService
 @inject IOptionsMonitor<BrowserOptions> BrowserOptionsMonitor
+@inject IHttpClientFactory HttpClientFactory
+@inject NavigationManager NavigationManager
 @inject IMessageService MessageService
 @implements IDisposable
 
@@ -28,11 +33,99 @@
     if (_pendingRestart)
     {
         <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 16px;"
-               Message="有配置已变更但尚未生效。浏览器进程只在下次启动时读取这些设置——请保存后重启 WebUI（或停用再启用浏览器模块）。" />
+               Message="有浏览器设置已保存，但当前运行的浏览器还是旧设置。请点击下方「重启浏览器」；若浏览器没在运行，下次打开时会直接用新设置。" />
     }
+
+    @* ── 浏览器进程（只读） ── *@
+    <Card Title="浏览器进程" Style="margin-bottom: 16px;">
+        <Descriptions Column="2">
+            <DescriptionsItem Title="状态">
+                @if (_hostAlive)
+                {
+                    <Tag Color="@("green")">运行中</Tag>
+                }
+                else
+                {
+                    <Tag>未运行</Tag>
+                    <span style="color:#888;font-size:12px;">
+                        @(_hostInfo is null ? "首次使用浏览器时会自动启动" : "以下为上次运行的记录")
+                    </span>
+                }
+            </DescriptionsItem>
+            <DescriptionsItem Title="配置文件位置">
+                <code>@HostProfilePath</code>
+            </DescriptionsItem>
+            <DescriptionsItem Title="进程号">
+                @(_hostInfo is { } processInfo ? processInfo.HostPid.ToString() : "-")
+            </DescriptionsItem>
+            <DescriptionsItem Title="启动标识">
+                @(_hostInfo?.Generation ?? "-")
+            </DescriptionsItem>
+            <DescriptionsItem Title="连接地址" Span="2">
+                @if (string.IsNullOrWhiteSpace(_hostInfo?.Endpoint))
+                {
+                    <span>-</span>
+                }
+                else
+                {
+                    <code>@_hostInfo!.Endpoint</code>
+                }
+            </DescriptionsItem>
+            <DescriptionsItem Title="上次错误" Span="2">
+                @if (string.IsNullOrWhiteSpace(_hostInfo?.LastError))
+                {
+                    <span>无</span>
+                }
+                else
+                {
+                    <span style="color:#cf1322;">@_hostInfo!.LastError</span>
+                }
+            </DescriptionsItem>
+        </Descriptions>
+
+        <div style="margin-top: 16px; color:#888; font-size:12px;">
+            @(_hostAlive ? "正在使用的设置" : "上次运行使用的设置")
+        </div>
+
+        @if (_hostInfo?.Effective is { } effective)
+        {
+            <Descriptions Column="2">
+                <DescriptionsItem Title="启动方式">
+                    @(effective.Headless ? "无头（不弹窗口）" : "有窗口显示")
+                </DescriptionsItem>
+                <DescriptionsItem Title="浏览器程序">
+                    @(string.IsNullOrWhiteSpace(effective.ExecutablePath) ? "自动探测" : effective.ExecutablePath)
+                </DescriptionsItem>
+                <DescriptionsItem Title="User-Agent">
+                    @(string.IsNullOrWhiteSpace(effective.UserAgent) ? "自动" : effective.UserAgent)
+                </DescriptionsItem>
+                <DescriptionsItem Title="反自动化检测规避">
+                    @(effective.AntiDetection ? "开启" : "关闭")
+                </DescriptionsItem>
+                <DescriptionsItem Title="自动退出" Span="2">
+                    @DescribeHostIdle(effective.HostIdleSeconds)
+                </DescriptionsItem>
+            </Descriptions>
+        }
+        else
+        {
+            <div style="color:#888;font-size:12px;">尚无运行记录</div>
+        }
+
+        <div style="display:flex;align-items:center;gap:12px;margin-top:16px;flex-wrap:wrap;">
+            <Button Loading="@_restarting" OnClick="RestartBrowserAsync">重启浏览器</Button>
+            <Button Type="@ButtonType.Link" Size="@ButtonSize.Small" OnClick="RefreshHostAndRender">刷新状态</Button>
+            <span style="color:#888;font-size:12px;">
+                浏览器相关设置修改后需要重启才会生效。
+            </span>
+        </div>
+    </Card>
 
     @* ── 显示与反检测 ── *@
     <Card Title="运行模式" Style="margin-bottom: 16px;">
+        <div class="browser-settings-hint" style="color:#888;font-size:12px;margin-bottom:12px;line-height:1.6;">
+            下列设置在浏览器进程启动时读取，由浏览器进程持有；改动后需重启浏览器才会生效。
+        </div>
         <Form Model="@_model" Layout="@FormLayout.Vertical">
             <FormItem>
                 <div style="display:flex;align-items:center;gap:8px;">
@@ -86,6 +179,7 @@
                     当前生效：<code>@EffectiveProfilePath</code>
                     <br />
                     同一目录不能被两个浏览器进程同时打开；多个实例请各配不同目录。
+                    目录在启动浏览器时读取，改动后需重启浏览器。
                 </div>
             </FormItem>
         </Form>
@@ -122,6 +216,9 @@
 
     @* ── 安全边界 ── *@
     <Card Title="安全边界" Style="margin-bottom: 16px;">
+        <div class="browser-settings-hint" style="color:#888;font-size:12px;margin-bottom:12px;line-height:1.6;">
+            可执行文件、启动参数与 User-Agent 都在浏览器进程启动时读取，改动后需重启浏览器才会生效。
+        </div>
         <Form Model="@_model" Layout="@FormLayout.Vertical">
             <FormItem>
                 <div style="display:flex;align-items:center;gap:8px;">
@@ -143,8 +240,8 @@
                     <Button Type="@ButtonType.Link" Size="@ButtonSize.Small"
                             OnClick="RefreshExecutableAndRender">重新探测</Button>
                     <br />
-                    每次启动浏览器都会重新探测磁盘，因此<b>装好浏览器后无需重启服务</b>，
-                    下次调用即可命中；这里点「重新探测」只是刷新本页显示。
+                    浏览器进程在启动时探测磁盘，并把结果固定下来；换浏览器或改了路径后需重启浏览器。
+                    这里点「重新探测」只刷新本页显示。
                 </div>
             </FormItem>
 
@@ -177,10 +274,25 @@
     private bool _saving;
     private bool _pendingRestart;
 
+    /// <summary>最近一次读到的发现文件内容（可能属于已经退出的宿主，用于展示上次错误与上次设置）。</summary>
+    private BrowserHostInfo? _hostInfo;
+
+    /// <summary>发现文件描述的宿主进程是否仍然存活（PID 与启动时刻都要对上）。</summary>
+    private bool _hostAlive;
+
+    /// <summary>「重启浏览器」请求进行中（防重复点击，同时驱动按钮 Loading）。</summary>
+    private bool _restarting;
+
     /// <summary>进入编辑时的进程级签名快照（保存后比对，判断是否真的需要重启）。</summary>
     private string _signatureBeforeSave = string.Empty;
     private string _resolvedExecutable = "(未检测)";
     private string EffectiveProfilePath => BrowserEngine.ResolveProfileDirectory(BrowserOptionsMonitor.CurrentValue);
+
+    /// <summary>
+    /// 浏览器进程使用的 profile 目录（与「复用持久 profile」开关无关：宿主必须有稳定的身份）。
+    /// </summary>
+    private string HostProfilePath => BrowserHostLocator.ResolveHostProfileDirectory(
+        BrowserOptionsMonitor.CurrentValue.ProfileDirectory);
 
     private IDisposable? _optionsSub;
 
@@ -193,12 +305,14 @@
             _ = InvokeAsync(() =>
             {
                 RefreshExecutable();
+                RefreshHost();
                 StateHasChanged();
             });
         });
 
         ResetToEffective();
         RefreshExecutable();
+        RefreshHost();
     }
 
     public void Dispose() => _optionsSub?.Dispose();
@@ -239,6 +353,126 @@
     {
         RefreshExecutable();
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// 读发现文件，刷新「浏览器进程」卡片。
+    /// </summary>
+    /// <remarks>
+    /// <b>为什么同时保留「进程已死」的发现文件</b>：宿主崩溃/被杀时不会清理这个文件，
+    /// 里面的 <c>lastError</c> 与 <c>effective</c> 正是排查「为什么浏览器起不来」的唯一线索。
+    /// 全丢掉会让设置页在故障时变成一片空白，只能去翻日志文件。
+    /// </remarks>
+    private void RefreshHost()
+    {
+        var locator = new BrowserHostLocator(HostProfilePath);
+        _hostInfo = locator.Read();
+        _hostAlive = _hostInfo is not null && IsHostProcessAlive(_hostInfo);
+    }
+
+    private void RefreshHostAndRender()
+    {
+        RefreshHost();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 发现文件描述的宿主进程是否仍是「同一个活进程」。
+    /// </summary>
+    /// <remarks>
+    /// 只比对 PID 不够：PID 会被系统复用，读到崩溃前的残留文件时可能命中一个无关进程。
+    /// 因此与重启端点使用同一份判定（<see cref="BrowserHostLocator.IsSameHost"/>）。
+    /// </remarks>
+    private static bool IsHostProcessAlive(BrowserHostInfo info)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(info.HostPid);
+            return !process.HasExited
+                   && BrowserHostLocator.IsSameHost(info, info.HostPid, new DateTimeOffset(process.StartTime));
+        }
+        catch (Exception ex) when (ex is ArgumentException
+                                       or InvalidOperationException
+                                       or Win32Exception
+                                       or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>宿主空闲退出秒数的用户语言描述（0 = 不自动退出）。</summary>
+    private static string DescribeHostIdle(int seconds)
+        => seconds > 0
+            ? $"{seconds} 秒没有客户端连用时自动退出"
+            : "不自动退出（常驻后台）";
+
+    /// <summary>
+    /// 请求结束当前浏览器进程（重启）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么不在这里直接杀进程</b>：结束宿主是服务端动作，且必须做「发现文件 + 启动时刻」的身份校验。
+    /// 走 <c>POST /browser/host/restart</c> 让逻辑只有一份，页面只负责发起与回显结果。
+    /// </para>
+    /// <para>
+    /// <b>为什么不自动重启</b>：用户可能正在有头窗口里登录/过验证码，换掉浏览器等于把窗口撤走。
+    /// 这里只结束旧进程，新进程由下一次打开浏览器时按当时的设置拉起。
+    /// </para>
+    /// </remarks>
+    private async Task RestartBrowserAsync()
+    {
+        if (_restarting)
+            return;
+
+        _restarting = true;
+        try
+        {
+            var client = HttpClientFactory.CreateClient();
+            // 同源调用：BaseUri 由宿主决定（WebUI 与桌面壳的端口/前缀都不写死）。
+            client.BaseAddress = new Uri(NavigationManager.BaseUri);
+
+            using var response = await client.PostAsync("browser/host/restart", content: null);
+            var body = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                MessageService.Error($"重启浏览器失败（HTTP {(int)response.StatusCode}）");
+                return;
+            }
+
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            var ok = root.TryGetProperty("ok", out var okElement) && okElement.ValueKind == JsonValueKind.True;
+            var reason = root.TryGetProperty("reason", out var reasonElement)
+                         && reasonElement.ValueKind == JsonValueKind.String
+                ? reasonElement.GetString()
+                : null;
+
+            if (ok)
+            {
+                MessageService.Success("已结束浏览器进程；下次打开浏览器时会按当前设置重新启动");
+                // 「需重启」到这里已经兑现（旧进程没了，新进程必然读新配置），不能再留着警告。
+                _pendingRestart = false;
+                _signatureBeforeSave = BrowserEngine.ComputeSignature(BrowserOptionsMonitor.CurrentValue);
+            }
+            else if (string.Equals(reason, "no host", StringComparison.Ordinal))
+            {
+                MessageService.Warning("当前没有正在运行的浏览器，无需重启");
+            }
+            else
+            {
+                MessageService.Error("重启浏览器失败，请查看浏览器宿主日志后重试");
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageService.Error($"重启浏览器失败：{ex.Message}");
+        }
+        finally
+        {
+            _restarting = false;
+            RefreshHost();
+        }
     }
 
     /// <summary>输入框占位文案：按平台给出真实候选顺序（写死 Windows 会误导 Linux 用户）。</summary>
@@ -285,7 +519,11 @@
 
             MessageService.Success("浏览器设置已保存");
             _pendingRestart = !string.Equals(savedSignature, _signatureBeforeSave, StringComparison.Ordinal);
+
+            // 基线随之推进：否则「什么都不改再点一次保存」仍会按旧基线判成「需重启」。
+            _signatureBeforeSave = savedSignature;
             RefreshExecutable();
+            RefreshHost();
         }
         catch (Exception ex)
         {
