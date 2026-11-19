@@ -77,6 +77,11 @@ public interface IBrowserSessionHost
 /// 实测默认上下文支持多页并存、关到零页浏览器也不退出。
 /// </para>
 /// <para>
+/// <b>为什么每个页面是一个独立窗口而不是标签页</b>：Chromium 只给可见的标签页出
+/// screencast 帧，后台标签页实测掉到 0 帧 —— 共用同一个浏览器时会有会话永远黑屏。
+/// 建页统一走 <see cref="BrowserPageFactory"/>（<c>CreatePageType.Window</c>）。
+/// </para>
+/// <para>
 /// <b>为什么空闲回收只关页面</b>：关掉进程会让下一次调用多付 200–400ms 冷启动；关页面已能释放
 /// 绝大部分内存（渲染进程随之回收），进程留着复用。
 /// </para>
@@ -200,7 +205,8 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
             {
                 // DefaultContext 不是「每会话新建」，因此这里不持有可关闭的 context 引用：
                 // 关闭会话只关页面，浏览器与 profile 继续存活（这正是登录态得以保留的原因）。
-                page = await browser.NewPageAsync().ConfigureAwait(false);
+                page = await BrowserPageFactory.CreateAsync(browser, context: null, cancellationToken)
+                    .ConfigureAwait(false);
             }
             else
             {
@@ -209,7 +215,8 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
                     DownloadBehavior = new DownloadBehavior { Policy = DownloadPolicy.Deny }
                 }).ConfigureAwait(false);
 
-                page = await context.NewPageAsync().ConfigureAwait(false);
+                page = await BrowserPageFactory.CreateAsync(browser, context, cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             // 持久登录模式下页面建在默认上下文里，拿不到 BrowserContextOptions.DownloadBehavior，
