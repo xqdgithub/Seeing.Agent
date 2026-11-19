@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Seeing.Agent.Tools.Browser;
 
@@ -47,12 +48,18 @@ public static class BrowserFrameCodec
 
     /// <summary>把一帧编码为可直接发送的字节数组。</summary>
     /// <exception cref="ArgumentNullException"><paramref name="frame"/> 或其 <c>Data</c> 为 null。</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="frame"/> 的 <see cref="BrowserFrame.Kind"/> 未知。</exception>
     /// <exception cref="OverflowException">序号/尺寸超出头字段可表达的位宽。</exception>
     public static byte[] Encode(BrowserFrame frame)
     {
         ArgumentNullException.ThrowIfNull(frame);
 
         var data = frame.Data ?? throw new ArgumentNullException(nameof(frame), "帧数据不能为 null");
+
+        // 编码侧也校验种类：否则产出的长度/版本都合法、只有 kind 字节是垃圾，
+        // 接收方要等到 TryDecode 才拒收——契约应当对称，越早失败越容易定位。
+        if (!IsKnownKind(frame.Kind))
+            throw new ArgumentOutOfRangeException(nameof(frame), frame.Kind, "帧种类未知：只允许 Flow / Still");
 
         // 长度字段由 Data.Length 推出，因此「头里的 length 与真实载荷一致」在编码侧天然成立；
         // 解码侧再校验一次，防止截断帧被当成完整帧渲染（半张图比报错更糟）。
@@ -72,16 +79,16 @@ public static class BrowserFrameCodec
     }
 
     /// <summary>尝试解码一帧；头不完整、版本/种类未知、载荷长度不符时返回 <c>false</c>。</summary>
-    public static bool TryDecode(ReadOnlySpan<byte> payload, out BrowserFrame frame)
+    public static bool TryDecode(ReadOnlySpan<byte> payload, [NotNullWhen(true)] out BrowserFrame? frame)
     {
-        frame = null!;
+        frame = null;
 
         if (payload.Length < HeaderSize)
             return false;
 
         var kind = (BrowserFrameKind)payload[0];
 
-        if (kind is not (BrowserFrameKind.Flow or BrowserFrameKind.Still))
+        if (!IsKnownKind(kind))
             return false;
 
         if (payload[1] != Version)
@@ -108,4 +115,7 @@ public static class BrowserFrameCodec
 
         return true;
     }
+
+    private static bool IsKnownKind(BrowserFrameKind kind)
+        => kind is BrowserFrameKind.Flow or BrowserFrameKind.Still;
 }

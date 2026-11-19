@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using FluentAssertions;
 using Xunit;
 
@@ -21,11 +22,14 @@ public class BrowserFrameProtocolTests
         b.Length.Should().Be(21);
         b[0].Should().Be(2);
         b[1].Should().Be(1);
-        BitConverter.ToUInt32(b, 2).Should().Be(9);
-        BitConverter.ToUInt32(b, 6).Should().Be(7);
-        BitConverter.ToUInt16(b, 10).Should().Be(1000);
-        BitConverter.ToUInt16(b, 12).Should().Be(750);
-        BitConverter.ToUInt32(b, 14).Should().Be(3);
+
+        // 用 BinaryPrimitives 而不是 BitConverter：BitConverter 跟随机器字节序，
+        // 在大端机器上会把一个正确的实现判成红。
+        BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(2)).Should().Be(9u);
+        BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(6)).Should().Be(7u);
+        BinaryPrimitives.ReadUInt16LittleEndian(b.AsSpan(10)).Should().Be(1000);
+        BinaryPrimitives.ReadUInt16LittleEndian(b.AsSpan(12)).Should().Be(750);
+        BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(14)).Should().Be(3u);
     }
 
     [Fact]
@@ -41,4 +45,27 @@ public class BrowserFrameProtocolTests
     [Fact]
     public void TryDecode_WhenTruncated_ShouldReturnFalse()
         => BrowserFrameCodec.TryDecode(new byte[10], out _).Should().BeFalse();
+
+    [Fact]
+    public void Encode_WhenSeqExceedsUInt32_ShouldThrow()
+    {
+        // 头里 seq 是 u32；超范围必须显式失败，不能静默截断——
+        // 截断后的序号会与旧帧撞车，前端去重/丢帧判定就失效。
+        var frame = new BrowserFrame([1], (long)uint.MaxValue + 1, 10, 20);
+
+        var act = () => BrowserFrameCodec.Encode(frame);
+
+        act.Should().Throw<OverflowException>();
+    }
+
+    [Fact]
+    public void TryDecode_WhenVersionUnknown_ShouldReturnFalseAndNullFrame()
+    {
+        var payload = BrowserFrameCodec.Encode(new BrowserFrame([1], 1, 10, 20));
+        payload[1] = 2;
+
+        BrowserFrameCodec.TryDecode(payload, out var frame).Should().BeFalse();
+
+        frame.Should().BeNull();
+    }
 }
