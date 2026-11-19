@@ -107,6 +107,31 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
     }
 
     /// <summary>
+    /// 按页面当前实际状态构造一条状态快照（视口/帧倍率/模式都取自实际页面，不读配置视口）。
+    /// </summary>
+    /// <remarks>
+    /// <b>为什么集中在一处</b>：状态有多个发布点（订阅、忙碌、导航、接管、重建失败）。
+    /// 只要有一处漏填新字段，前端就会收到 <c>viewportWidth=0</c> 并把画布 backing 清成 0
+    /// （表现为「操作一下画面就没了」）。所有发布点都必须走这里。
+    /// </remarks>
+    public BrowserPageState CreateState(BrowserPageHandle page, bool running = true)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        return new BrowserPageState(
+            page.CurrentUrl,
+            page.CurrentTitle,
+            page.RefEpoch,
+            page.IsBusy,
+            running,
+            EpochOf(page.SessionId),
+            page.ViewportWidth,
+            page.ViewportHeight,
+            page.FrameScale,
+            _options.CurrentValue.HighResStream ? "highres" : "normal");
+    }
+
+    /// <summary>
     /// 向该会话的所有观看者广播一次页面状态（操作前后各调一次，前端遮罩才跟着开关）。
     /// </summary>
     /// <remarks>
@@ -114,6 +139,8 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
     /// </remarks>
     public void PublishState(string sessionId, BrowserPageHandle page)
     {
+        ArgumentNullException.ThrowIfNull(page);
+
         if (string.IsNullOrWhiteSpace(sessionId))
             return;
 
@@ -123,8 +150,52 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
         // Running 恒为 true：本方法只在「有页面且正在推状态」时被调用
         // （调用方都先确认过 page 存在）。页面关闭走的是 DropSessionAsync 那条路径，
         // 那里推的是 running=false。
-        stream.PublishState(new BrowserPageState(
-            page.CurrentUrl, page.CurrentTitle, page.RefEpoch, page.IsBusy, Running: true));
+        stream.PublishState(CreateState(page));
+    }
+
+    /// <summary>
+    /// 取某会话当前的画面代次；没有流时为 <c>0</c>。
+    /// </summary>
+    /// <remarks>
+    /// 端点的状态消息要带代次（与帧头同源），但它拿不到 <see cref="SessionStream"/>。
+    /// 这里只暴露「读」，代次的推进仍由流的启停独占。
+    /// </remarks>
+    public uint EpochOf(string sessionId)
+        => !string.IsNullOrWhiteSpace(sessionId) && _streams.TryGetValue(sessionId, out var stream)
+            ? stream.Epoch
+            : 0u;
+
+    /// <summary>
+    /// 抓一张当前视口静帧；不适合抓时返回 <see langword="null"/>。
+    /// </summary>
+    /// <param name="sessionId">会话 id。</param>
+    /// <param name="rev">代次内的版本号（原样写进帧头的 seq 字段）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么返回帧而不是直接广播</b>：静帧是「谁请求谁需要」——只有发起请求的那个观看者
+    /// 正在滚动/静止，把一张 1~2 MB 的高清图推给同会话的其他观看者纯属浪费。
+    /// </para>
+    /// <para>
+    /// <b>为什么 <see cref="BrowserOptions.HighResStream"/> 开启时直接返回 null</b>：
+    /// 此时流本身就是全分辨率，再抓一张没有增益，只会多一次 CDP 往返。
+    /// </para>
+    /// </remarks>
+    public async Task<BrowserFrame?> TryCaptureStillAsync(
+        string sessionId,
+        long rev,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return null;
+
+        if (_options.CurrentValue.HighResStream)
+            return null;
+
+        if (!_streams.TryGetValue(sessionId, out var stream))
+            return null;
+
+        return await stream.CaptureStillAsync(rev, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -215,6 +286,38 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
         private readonly object _stopGraceGate = new();
         private long _seq;
 
+        /// <summary>
+        /// 静帧单飞锁：同一会话同时只允许一张在抓。
+        /// </summary>
+        /// <remarks>
+        /// 用「拿不到就放弃」而不是排队：排队会让一次快速的连续滚动堆出十几张请求，
+        /// 前面几张抓回来时画面早就变了（前端按 rev 也会丢弃），纯属浪费 CPU。
+        /// </remarks>
+        private readonly SemaphoreSlim _stillGate = new(1, 1);
+
+        /// <summary>
+        /// 本代次编号（全局递增）。
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// 每次 screencast 启动（首次订阅 / 页面重建 / 视口重启）都换一个新代次。
+        /// 前端据此丢弃上一代次的帧：重启后 CDP 的 <c>seq</c> 会从头开始，
+        /// 只比 <c>seq</c> 会把新画面全判成旧帧。
+        /// </para>
+        /// <para>
+        /// 用全局递增（而不是每会话从 1 开始）：多会话共用一张前端渲染器时，
+        /// 代次必须能跨会话比较。
+        /// </para>
+        /// </remarks>
+        private uint _epoch;
+
+        private static uint s_lastEpoch;
+
+        /// <summary>当前画面代次（无 screencast 时为最后一次的值，从未启动过则 0）。</summary>
+        internal uint Epoch => Volatile.Read(ref _epoch);
+
+        private static uint NextEpoch() => Interlocked.Increment(ref s_lastEpoch);
+
         public SessionStream(BrowserScreencastHub hub, string sessionId)
         {
             _hub = hub;
@@ -257,8 +360,7 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
                     _sinks.Add(sink);
 
                 // 立刻推一次当前状态，前端状态条不用等第一次变化
-                sink.OnState(new BrowserPageState(
-                    page.CurrentUrl, page.CurrentTitle, page.RefEpoch, page.IsBusy, true));
+                sink.OnState(_hub.CreateState(page));
 
                 return new Subscription(this, sink);
             }
@@ -295,8 +397,7 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
                     _hub._logger.LogWarning(ex, "重启画面流失败，流已停止：{SessionId}", _sessionId);
 
                     // 回滚 + 通知：保持 _cdp/_page 为 null，让下次订阅/输入重新建立
-                    PublishState(new BrowserPageState(
-                        page.CurrentUrl, page.CurrentTitle, page.RefEpoch, false, false));
+                    PublishState(_hub.CreateState(page, running: false));
                     PublishError("画面流已中断，正在重建……");
                     throw;
                 }
@@ -332,26 +433,30 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
             var cdp = await page.Page.CreateCDPSessionAsync().ConfigureAwait(false);
             _cdp = cdp;
             _page = page;
-            _pump = new FramePump(this);
+
+            // 每次启动都换新代次：重启后 CDP 的帧序号从头开始，前端只能靠代次判断
+            // 「这批帧属于新会话」，否则整段新画面都会被当成旧帧丢掉。
+            Volatile.Write(ref _epoch, NextEpoch());
+            _pump = new FramePump(Broadcast, _hub._logger);
 
             cdp.MessageReceived += OnMessageReceived;
 
-            // 用「视口 × 像素比」= 真实物理像素。
-            // 只用 CSS 视口会在高 DPI 屏上被放大显示（文字发虚）；
-            // 用配置值则面板一拖宽就被降采样。两者都不行，见 PixelRatio 的注释。
+            // 用页面**实际**视口（CSS 像素）作上限。实测 screencast 永远按 CSS 视口出图
+            // （与 dsf 无关）：给一个比视口小的值，Chromium 会先等比缩小再编码；给配置值则
+            // 面板一拖宽就被降采样。两者都会让文字发虚，见 PixelRatio / FrameScale 的注释。
             await cdp.SendAsync("Page.startScreencast", new Dictionary<string, object>
             {
                 ["format"] = "jpeg",
                 ["quality"] = JpegQuality,
-                ["maxWidth"] = page.RenderWidth,
-                ["maxHeight"] = page.RenderHeight,
+                ["maxWidth"] = page.ViewportWidth,
+                ["maxHeight"] = page.ViewportHeight,
                 ["everyNthFrame"] = 1
             }).ConfigureAwait(false);
 
             _hub._logger.LogDebug(
-                "已为会话 {SessionId} 启动画面流（视口 {VW}×{VH}, 出图 {RW}×{RH}, dpr={Dpr}）",
+                "已为会话 {SessionId} 启动画面流（视口 {VW}×{VH}, dpr={Dpr}, frameScale={Scale}）",
                 _sessionId, page.ViewportWidth, page.ViewportHeight,
-                page.RenderWidth, page.RenderHeight, page.PixelRatio);
+                page.PixelRatio, page.FrameScale);
         }
 
         private async Task StopCoreAsync()
@@ -384,6 +489,60 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
             _pump = null;
         }
 
+        /// <summary>
+        /// 抓一张当前视口静帧（单飞；正在抓就放弃）。
+        /// </summary>
+        internal async Task<BrowserFrame?> CaptureStillAsync(long rev, CancellationToken cancellationToken)
+        {
+            var page = _page;
+            if (page is null)
+                return null;
+
+            bool acquired;
+
+            try
+            {
+                acquired = await _stillGate.WaitAsync(0, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
+
+            if (!acquired)
+                return null;
+
+            try
+            {
+                return await BrowserStillSource
+                    .CaptureAsync(page, Epoch, rev, cancellationToken, _hub._logger)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
+            finally
+            {
+                _stillGate.Release();
+            }
+        }
+
+        /// <summary>
+        /// 收到一帧 screencast。
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>ack 必须恰好一次</b>：Chromium 收到 <c>Page.screencastFrameAck</c> 才推下一帧。
+        /// 漏一次的表现不是「掉一帧」，而是画面<b>永久停在最后一帧</b>；多发一次会让
+        /// Chromium 的帧窗口计数错乱（后续帧被提前释放或永远不来）。
+        /// </para>
+        /// <para>
+        /// 因此这里把 ack 包装成不可重入的单次动作，并把它的所有权「转移」给
+        /// <see cref="FramePump"/>：泵在广播完（或该帧被更新的帧覆盖、被丢弃）时调用它。
+        /// 所有提前退出的分支（空帧、没有 sessionId、没有泵）都在 <c>finally</c> 里就地 ack。
+        /// </para>
+        /// </remarks>
         private void OnMessageReceived(object? sender, MessageEventArgs e)
         {
             if (!string.Equals(e.MessageID, "Page.screencastFrame", StringComparison.Ordinal))
@@ -393,19 +552,31 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
             if (cdp is null)
                 return;
 
+            // null 表示「ack 的所有权已经不在本方法」
+            Action? ack = null;
+
             try
             {
                 using var document = JsonDocument.Parse(e.MessageData.ToString() ?? "{}");
                 var root = document.RootElement;
 
+                var cdpSessionId = root.TryGetProperty("sessionId", out var sessionElement)
+                                   && sessionElement.ValueKind == JsonValueKind.Number
+                    ? sessionElement.GetInt32()
+                    : 0;
+
+                // 没有 sessionId 就无法回 ack（Chromium 也不认），但仍要走同一条单次出口，
+                // 保证「所有分支都恰好经过一次 ack」这条不变量在代码上是统一的。
+                ack = cdpSessionId != 0
+                    ? AckOnce(() => SendFrameAck(cdp, cdpSessionId))
+                    : AckOnce(static () => { });
+
                 var base64 = root.TryGetProperty("data", out var dataElement)
                     ? dataElement.GetString()
                     : null;
 
-                var sessionId = root.TryGetProperty("sessionId", out var sessionElement)
-                                && sessionElement.ValueKind == JsonValueKind.Number
-                    ? sessionElement.GetInt32()
-                    : 0;
+                if (string.IsNullOrEmpty(base64))
+                    return;     // finally 里 ack
 
                 var metadata = root.TryGetProperty("metadata", out var metadataElement)
                     ? metadataElement
@@ -423,30 +594,60 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
                     ? (int)dh.GetDouble()
                     : _hub._options.CurrentValue.EffectiveHeight;
 
-                // ack 无条件发出去（无论我们是否用这一帧），否则 Chromium 停止推帧
-                if (sessionId != 0)
-                {
-                    _ = cdp.SendAsync("Page.screencastFrameAck", new Dictionary<string, object>
-                    {
-                        ["sessionId"] = sessionId
-                    }).ContinueWith(
-                        static t => _ = t.Exception,
-                        CancellationToken.None,
-                        TaskContinuationOptions.OnlyOnFaulted,
-                        TaskScheduler.Default);
-                }
-
-                if (string.IsNullOrEmpty(base64))
-                    return;
-
                 var bytes = Convert.FromBase64String(base64);
                 var seq = Interlocked.Increment(ref _seq);
-                _pump?.Offer(new BrowserFrame(bytes, seq, width, height));
+                var frame = new BrowserFrame(bytes, seq, width, height, BrowserFrameKind.Flow, Epoch);
+
+                var pump = _pump;
+                if (pump is null)
+                    return;     // finally 里 ack
+
+                pump.Offer(frame, ack);
+                ack = null;     // 所有权转移：泵保证恰好一次
             }
             catch (Exception ex)
             {
                 _hub._logger.LogDebug(ex, "解析画面帧失败（忽略该帧）");
             }
+            finally
+            {
+                // 解析失败 / 空帧 / 没有泵：立即 ack，绝不让 Chromium 等一个永远不会来的 ack
+                if (ack is not null)
+                {
+                    try
+                    {
+                        ack();
+                    }
+                    catch (Exception ex)
+                    {
+                        _hub._logger.LogDebug(ex, "画面帧 ack 失败（忽略）");
+                    }
+                }
+            }
+        }
+
+        /// <summary>把一个动作包装成「最多执行一次」。</summary>
+        private static Action AckOnce(Action ack)
+        {
+            var done = 0;
+            return () =>
+            {
+                if (Interlocked.Exchange(ref done, 1) == 0)
+                    ack();
+            };
+        }
+
+        /// <summary>回帧应答。失败（CDP 已断开）不抛：ack 是尽力而为，不能连带打断帧回调。</summary>
+        private static void SendFrameAck(ICDPSession cdp, int cdpSessionId)
+        {
+            _ = cdp.SendAsync("Page.screencastFrameAck", new Dictionary<string, object>
+            {
+                ["sessionId"] = cdpSessionId
+            }).ContinueWith(
+                static t => _ = t.Exception,
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted,
+                TaskScheduler.Default);
         }
 
         /// <summary>向本流的全部观看者推一条状态。</summary>
@@ -610,68 +811,6 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
 
                 _disposed = true;
                 await _stream.RemoveViewerAsync(_sink).ConfigureAwait(false);
-            }
-        }
-    }
-
-    /// <summary>
-    /// 帧泵：只保留最新帧，串行写给观看者。
-    /// <para>慢客户端只丢帧、不阻塞 CDP 回调；CDP 回调阻塞会连带卡住浏览器。</para>
-    /// </summary>
-    private sealed class FramePump
-    {
-        private readonly SessionStream _stream;
-        private readonly object _lock = new();
-
-        private BrowserFrame? _pending;
-        private bool _flushing;
-
-        public FramePump(SessionStream stream) => _stream = stream;
-
-        public void Offer(BrowserFrame frame)
-        {
-            lock (_lock)
-            {
-                // 覆盖旧帧：宁可丢中间帧，也不要堆积
-                _pending = frame;
-
-                if (_flushing)
-                    return;
-
-                _flushing = true;
-            }
-
-            _ = Task.Run(FlushAsync);
-        }
-
-        private async Task FlushAsync()
-        {
-            while (true)
-            {
-                BrowserFrame? frame;
-                lock (_lock)
-                {
-                    frame = _pending;
-                    _pending = null;
-
-                    if (frame is null)
-                    {
-                        _flushing = false;
-                        return;
-                    }
-                }
-
-                try
-                {
-                    _stream.Broadcast(frame);
-                }
-                catch
-                {
-                    // Broadcast 内部已逐观看者兜底
-                }
-
-                // 让出线程：高帧率下避免占满线程池
-                await Task.Yield();
             }
         }
     }

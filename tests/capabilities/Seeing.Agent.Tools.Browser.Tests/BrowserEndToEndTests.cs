@@ -13,7 +13,7 @@ using Xunit;
 namespace Seeing.Agent.Tools.Browser.Tests;
 
 /// <summary>
-/// 真实浏览器端到端：启动 headless Edge → 打开页面 → 快照 → 按 ref 点击 → 输入 → 截图 → screencast → 关闭。
+/// 真实浏览器端到端：共享宿主（headless Edge）→ 打开页面 → 快照 → 按 ref 点击 → 输入 → 截图 → screencast → 关闭。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -21,9 +21,15 @@ namespace Seeing.Agent.Tools.Browser.Tests;
 /// <c>set SEEING_BROWSER_TESTS=1</c> 后再执行。
 /// </para>
 /// <para>
+/// <b>谁来起浏览器</b>：客户端已不再自己 <c>LaunchAsync</c>。每个用例先用
+/// <see cref="BrowserHostScope"/> 起一个真实宿主，引擎只连它的 CDP；作用域结束时宿主与
+/// 临时 profile 一起收掉。
+/// </para>
+/// <para>
 /// 它不是「集成测试的替代品」—— 单测覆盖策略与渲染，这条用例只担保「真的能开起来并点得动」。
 /// </para>
 /// </remarks>
+[Collection(BrowserHostCollection.Name)]
 [Trait("Category", "RequiresBrowser")]
 public class BrowserEndToEndTests
 {
@@ -46,29 +52,13 @@ public class BrowserEndToEndTests
         var tempDir = Path.Combine(Path.GetTempPath(), "seeing-browser-e2e-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
 
+        var profile = NewProfile();
+        var options = NewOptions(profile, width: 900, height: 600);
+        using var hostScope = new BrowserHostScope(profile, options.CurrentValue);
+
         try
         {
-            var services = new ServiceCollection();
-            services.AddLogging();
-
-            var options = new TestOptionsMonitor<BrowserOptions>(new BrowserOptions
-            {
-                Headless = true,
-                IdleSeconds = 0,
-                ViewportWidth = 900,
-                ViewportHeight = 600
-            });
-
-            services.AddSingleton<Microsoft.Extensions.Options.IOptionsMonitor<BrowserOptions>>(options);
-            services.AddSingleton<BrowserEngine>();
-            services.AddSingleton<BrowserSessionHost>();
-            services.AddSingleton<IBrowserSessionHost>(sp => sp.GetRequiredService<BrowserSessionHost>());
-            services.AddSingleton<Seeing.Agent.Core.Output.IToolOutputStore>(sp =>
-                new SessionToolOutputStore(new FileSessionStore(tempDir)));
-            services.AddSingleton<ISessionArtifactStore>(sp =>
-                new SessionArtifactStore(sp.GetRequiredService<Seeing.Agent.Core.Output.IToolOutputStore>()));
-
-            await using var provider = services.BuildServiceProvider();
+            await using var provider = BuildProvider(options, profile, artifactRoot: tempDir);
 
             var host = provider.GetRequiredService<IBrowserSessionHost>();
             var artifacts = provider.GetRequiredService<ISessionArtifactStore>();
@@ -156,23 +146,10 @@ public class BrowserEndToEndTests
         if (!Enabled)
             return;
 
-        var services = new ServiceCollection();
-        services.AddLogging();
-
-        var options = new TestOptionsMonitor<BrowserOptions>(new BrowserOptions
-        {
-            Headless = true,
-            IdleSeconds = 0,
-            ViewportWidth = 640,
-            ViewportHeight = 480
-        });
-
-        services.AddSingleton<Microsoft.Extensions.Options.IOptionsMonitor<BrowserOptions>>(options);
-        services.AddSingleton<BrowserEngine>();
-        services.AddSingleton<BrowserSessionHost>();
-        services.AddSingleton<IBrowserSessionHost>(sp => sp.GetRequiredService<BrowserSessionHost>());
-
-        await using var provider = services.BuildServiceProvider();
+        var profile = NewProfile();
+        var options = NewOptions(profile);
+        using var hostScope = new BrowserHostScope(profile, options.CurrentValue);
+        await using var provider = BuildProvider(options, profile);
 
         var host = provider.GetRequiredService<IBrowserSessionHost>();
         var hub = new BrowserScreencastHub(options);
@@ -200,23 +177,10 @@ public class BrowserEndToEndTests
         if (!Enabled)
             return;
 
-        var services = new ServiceCollection();
-        services.AddLogging();
-
-        var options = new TestOptionsMonitor<BrowserOptions>(new BrowserOptions
-        {
-            Headless = true,
-            IdleSeconds = 0,
-            ViewportWidth = 640,
-            ViewportHeight = 480
-        });
-
-        services.AddSingleton<Microsoft.Extensions.Options.IOptionsMonitor<BrowserOptions>>(options);
-        services.AddSingleton<BrowserEngine>();
-        services.AddSingleton<BrowserSessionHost>();
-        services.AddSingleton<IBrowserSessionHost>(sp => sp.GetRequiredService<BrowserSessionHost>());
-
-        await using var provider = services.BuildServiceProvider();
+        var profile = NewProfile();
+        var options = NewOptions(profile);
+        using var hostScope = new BrowserHostScope(profile, options.CurrentValue);
+        await using var provider = BuildProvider(options, profile);
 
         var host = provider.GetRequiredService<BrowserSessionHost>();
         var hub = new BrowserScreencastHub(options);
@@ -271,23 +235,10 @@ public class BrowserEndToEndTests
         if (!Enabled)
             return;
 
-        var services = new ServiceCollection();
-        services.AddLogging();
-
-        var options = new TestOptionsMonitor<BrowserOptions>(new BrowserOptions
-        {
-            Headless = true,
-            IdleSeconds = 0,
-            ViewportWidth = 640,
-            ViewportHeight = 480
-        });
-
-        services.AddSingleton<Microsoft.Extensions.Options.IOptionsMonitor<BrowserOptions>>(options);
-        services.AddSingleton<BrowserEngine>();
-        services.AddSingleton<BrowserSessionHost>();
-        services.AddSingleton<IBrowserSessionHost>(sp => sp.GetRequiredService<BrowserSessionHost>());
-
-        await using var provider = services.BuildServiceProvider();
+        var profile = NewProfile();
+        var options = NewOptions(profile);
+        using var hostScope = new BrowserHostScope(profile, options.CurrentValue);
+        await using var provider = BuildProvider(options, profile);
 
         var host = provider.GetRequiredService<BrowserSessionHost>();
         var hub = new BrowserScreencastHub(options);
@@ -350,19 +301,14 @@ public class BrowserEndToEndTests
         if (!Enabled)
             return;
 
+        var profile = NewProfile();
+        var options = NewOptions(profile);
+        using var hostScope = new BrowserHostScope(profile, options.CurrentValue);
+
         var services = new ServiceCollection();
         services.AddLogging();
-
-        var options = new TestOptionsMonitor<BrowserOptions>(new BrowserOptions
-        {
-            Headless = true,
-            IdleSeconds = 0,
-            ViewportWidth = 640,
-            ViewportHeight = 480
-        });
-
         services.AddSingleton<Microsoft.Extensions.Options.IOptionsMonitor<BrowserOptions>>(options);
-        services.AddSingleton<BrowserEngine>();
+        services.AddSingleton(_ => new BrowserEngine(options, null, profile));
         services.AddSingleton<BrowserSessionHost>();
         services.AddSingleton<BrowserPageNotifier>();
 
@@ -393,6 +339,50 @@ public class BrowserEndToEndTests
         await host.CloseAsync(sessionId, TestContext.Current.CancellationToken);
         await notifier.StopAsync(TestContext.Current.CancellationToken);
     }
+
+    /// <summary>
+    /// 客户端的默认配置：headless + 持久 profile（与共享宿主的固定 profile 同一目录）。
+    /// </summary>
+    private static TestOptionsMonitor<BrowserOptions> NewOptions(
+        string profile, int width = 640, int height = 480)
+        => new(new BrowserOptions
+        {
+            Headless = true,
+            PersistLogin = true,
+            ProfileDirectory = profile,
+            IdleSeconds = 0,
+            ViewportWidth = width,
+            ViewportHeight = height
+        });
+
+    /// <summary>建一个只连宿主、不拥有浏览器的客户端容器。</summary>
+    private static ServiceProvider BuildProvider(
+        TestOptionsMonitor<BrowserOptions> options,
+        string profile,
+        string? artifactRoot = null)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<Microsoft.Extensions.Options.IOptionsMonitor<BrowserOptions>>(options);
+
+        // 引擎与客户端锁都必须指向宿主同一份 profile / 发现文件根目录。
+        services.AddSingleton(_ => new BrowserEngine(options, null, profile));
+        services.AddSingleton<BrowserSessionHost>();
+        services.AddSingleton<IBrowserSessionHost>(sp => sp.GetRequiredService<BrowserSessionHost>());
+
+        if (artifactRoot is not null)
+        {
+            services.AddSingleton<Seeing.Agent.Core.Output.IToolOutputStore>(_ =>
+                new SessionToolOutputStore(new FileSessionStore(artifactRoot)));
+            services.AddSingleton<ISessionArtifactStore>(sp =>
+                new SessionArtifactStore(sp.GetRequiredService<Seeing.Agent.Core.Output.IToolOutputStore>()));
+        }
+
+        return services.BuildServiceProvider();
+    }
+
+    private static string NewProfile()
+        => Path.Combine(Path.GetTempPath(), "e2e-profile-" + Guid.NewGuid().ToString("N")[..8]);
 
     /// <summary>
     /// 触发画面变化直到收到首帧。

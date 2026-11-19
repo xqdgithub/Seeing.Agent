@@ -242,6 +242,18 @@ public class BrowserExecutableResolutionTests
     }
 
     [Fact]
+    public void BuildLaunchArgs_ShouldDisableBackgroundingOfOccludedWindows()
+    {
+        // 有头模式下把浏览器窗口拖到别的窗口后面时，Chromium 会按「被遮挡」降优先级，
+        // screencast 帧率明显下降（工作台表现为画面卡住）。这条开关两种模式下都必须有。
+        BrowserEngine.BuildLaunchArgs(new BrowserOptions { AntiDetection = true })
+            .Should().Contain("--disable-backgrounding-occluded-windows");
+
+        BrowserEngine.BuildLaunchArgs(new BrowserOptions { AntiDetection = false })
+            .Should().Contain("--disable-backgrounding-occluded-windows");
+    }
+
+    [Fact]
     public void InstallHint_ShouldBePlatformSpecific()
     {
         var hint = BrowserEngine.InstallHint();

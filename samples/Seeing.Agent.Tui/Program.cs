@@ -18,6 +18,14 @@ using Seeing.Agent.Tui.Logging;
 using Seeing.Agent.Tui.Rendering;
 using Seeing.Agent.Tui.Services;
 
+// 宿主子模式：客户端会用「当前进程的可执行文件」拉起它，
+// 因此必须在 TUI 初始化（编码、宿主组装、控制台）之前把开关接走。
+if (args.Contains(BrowserHostRunner.BrowserHostSwitch, StringComparer.Ordinal)
+    || args.Contains(BrowserHostRunner.WatchdogSwitch, StringComparer.Ordinal))
+{
+    return await BrowserHostRunner.RunAsync(args, CancellationToken.None);
+}
+
 // 任何 Console/AnsiConsole 访问之前统一 UTF-8：系统默认 GBK(936) 会让中文输入乱码。
 TuiConsoleEncoding.EnsureUtf8();
 

@@ -28,8 +28,8 @@ public class BrowserRestartSignatureTests
     [InlineData("ExecutablePath")]
     [InlineData("UserAgent")]
     [InlineData("ExtraArgs")]
-    [InlineData("PersistLogin")]
     [InlineData("ProfileDirectory")]
+    [InlineData("HostIdleSeconds")]
     public void ProcessLevelSetting_ShouldChangeSignature(string setting)
     {
         var baseline = new BrowserOptions();
@@ -42,8 +42,8 @@ public class BrowserRestartSignatureTests
             case "ExecutablePath": changed.ExecutablePath = @"C:\custom\edge.exe"; break;
             case "UserAgent": changed.UserAgent = "Mozilla/5.0 custom"; break;
             case "ExtraArgs": changed.ExtraArgs = ["--proxy-server=http://127.0.0.1:7890"]; break;
-            case "PersistLogin": changed.PersistLogin = !baseline.PersistLogin; break;
             case "ProfileDirectory": changed.ProfileDirectory = Path.Combine(Path.GetTempPath(), "p-x"); break;
+            case "HostIdleSeconds": changed.HostIdleSeconds = baseline.HostIdleSeconds + 60; break;
             default: throw new ArgumentOutOfRangeException(nameof(setting));
         }
 
@@ -58,9 +58,10 @@ public class BrowserRestartSignatureTests
     [InlineData("ViewportHeight")]
     [InlineData("DefaultTimeoutSeconds")]
     [InlineData("AllowPrivateHosts")]
+    [InlineData("PersistLogin")]
     public void RuntimeSetting_ShouldNotChangeSignature(string setting)
     {
-        // 这些项在运行期实时读取（回收扫描 / 每次操作 / 每次导航），
+        // 这些项在运行期实时读取（回收扫描 / 每次操作 / 每次导航 / 每次建页），
         // 改动不需要重启；进签名会导致「改个超时就重启浏览器」的无谓抖动。
         var baseline = new BrowserOptions();
         var changed = new BrowserOptions();
@@ -72,6 +73,11 @@ public class BrowserRestartSignatureTests
             case "ViewportHeight": changed.ViewportHeight = baseline.ViewportHeight + 100; break;
             case "DefaultTimeoutSeconds": changed.DefaultTimeoutSeconds = baseline.DefaultTimeoutSeconds + 10; break;
             case "AllowPrivateHosts": changed.AllowPrivateHosts = !baseline.AllowPrivateHosts; break;
+
+            // PersistLogin 只切换「页面上下文」（DefaultContext vs 隔离上下文），
+            // 不改变 Chromium 的 user-data-dir（宿主始终用固定 profile 目录）。
+            // 早期把它当进程级项，会让用户关掉持久登录时被迫重启浏览器。
+            case "PersistLogin": changed.PersistLogin = !baseline.PersistLogin; break;
             default: throw new ArgumentOutOfRangeException(nameof(setting));
         }
 

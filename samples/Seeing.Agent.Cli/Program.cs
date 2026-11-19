@@ -1,5 +1,6 @@
 using Seeing.Agent.Cli.Commands;
 using Seeing.Agent.Cli.Services;
+using Seeing.Agent.HostComposition;
 using System.CommandLine;
 
 namespace Seeing.Agent.Cli;
@@ -8,6 +9,14 @@ internal class Program
 {
     static async Task<int> Main(string[] args)
     {
+        // 宿主子模式：客户端会用「当前进程的可执行文件」拉起它，
+        // 因此每个入口都必须在解析自己的命令行之前把这两个开关接走。
+        if (args.Contains(BrowserHostRunner.BrowserHostSwitch, StringComparer.Ordinal)
+            || args.Contains(BrowserHostRunner.WatchdogSwitch, StringComparer.Ordinal))
+        {
+            return await BrowserHostRunner.RunAsync(args, CancellationToken.None);
+        }
+
         // 无参数 = 在启动目录原地进入 TUI；`tui` / `start tui` 为等价的显式入口。
         if (args.Length == 0)
             return await TuiCommand.ExecuteAsync(new TuiForwardOptions());

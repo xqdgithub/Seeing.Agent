@@ -1,7 +1,10 @@
+using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Tools.Browser;
@@ -31,6 +34,9 @@ public static class BrowserStreamEndpoints
     /// <summary>流路由模板。</summary>
     public const string Route = "/api/browser/{sessionId}/stream";
 
+    /// <summary>宿主重启路由（设置页「重启浏览器」按钮）。</summary>
+    public const string HostRestartRoute = "/browser/host/restart";
+
     /// <summary>单条上行消息上限（字节）：只承载输入事件，远小于帧；超限显式拒绝。</summary>
     private const int MaxInboundBytes = 1024 * 1024;
 
@@ -54,8 +60,116 @@ public static class BrowserStreamEndpoints
     public static IEndpointRouteBuilder MapBrowserStreamEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet(Route, HandleAsync);
+        endpoints.MapPost(HostRestartRoute, RestartHost);
         return endpoints;
     }
+
+    /// <summary>
+    /// 结束当前 profile 的浏览器宿主进程（设置页「重启浏览器」按钮）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么只结束宿主、不自己拉起新宿主</b>：新宿主由下一次 <c>browser_open</c> 按当时的配置自然拉起。
+    /// 在这里顺手启动一个会带来两个问题——用户只是想让新设置「以后生效」，立刻占着浏览器窗口没有意义；
+    /// 而且拉起是客户端的职责（要传 browser 级配置），端点没有那份上下文。
+    /// </para>
+    /// <para>
+    /// <b>为什么必须校验进程身份</b>：发现文件可能是崩溃前的残留，PID 也可能已被系统复用。
+    /// 只比对 PID 会杀掉无关进程；因此用 <see cref="BrowserHostLocator.IsSameHost"/>
+    /// 同时比对「发现文件里的 PID + 启动时刻」与「实际进程的启动时刻」。
+    /// </para>
+    /// <para>
+    /// <b>浏览器的去处</b>：宿主被强杀时，Windows 由 Job（KILL_ON_JOB_CLOSE）、POSIX 由看门狗
+    /// 连带清掉 Chromium。端点自己不去碰浏览器进程。
+    /// </para>
+    /// <para>
+    /// <b>信任边界</b>：与 CDP 端点一致——本机、无鉴权。任何本机进程本来就能直接控制浏览器，
+    /// 这里不额外扩大暴露面。
+    /// </para>
+    /// </remarks>
+    private static IResult RestartHost(
+        IModuleCatalog modules,
+        IOptionsMonitor<BrowserOptions> browserOptions,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("BrowserHostRestart");
+
+        // 与画面流端点同一条门控：模块停用时能力必须整体消失。
+        if (!IsModuleEnabled(modules))
+            return Results.NotFound();
+
+        var profile = BrowserHostLocator.NormalizeProfileDirectory(
+            BrowserHostLocator.ResolveHostProfileDirectory(browserOptions.CurrentValue.ProfileDirectory));
+
+        var locator = new BrowserHostLocator(profile, logger: logger);
+        var info = locator.Read();
+        if (info is null)
+            return NoHostResult();
+
+        Process process;
+        try
+        {
+            process = Process.GetProcessById(info.HostPid);
+        }
+        catch (Exception ex) when (ex is ArgumentException
+                                       or InvalidOperationException
+                                       or System.ComponentModel.Win32Exception)
+        {
+            // 进程已不在：发现文件是残留，交给下一次 browser_open 重新拉起。
+            return NoHostResult();
+        }
+
+        using (process)
+        {
+            DateTimeOffset actualStartedAt;
+            try
+            {
+                if (process.HasExited)
+                    return NoHostResult();
+
+                actualStartedAt = new DateTimeOffset(process.StartTime);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException
+                                           or System.ComponentModel.Win32Exception
+                                           or NotSupportedException)
+            {
+                return NoHostResult();
+            }
+
+            if (!BrowserHostLocator.IsSameHost(info, info.HostPid, actualStartedAt))
+            {
+                // PID 被复用：绝不能杀一个碰巧拿到同一 PID 的无关进程。
+                logger.LogWarning(
+                    "发现文件与进程启动时刻不一致，拒绝结束进程 {Pid}（文件 {FileStartedAt}，实际 {ActualStartedAt}）",
+                    info.HostPid, info.HostStartedAt, actualStartedAt);
+                return Results.Json(new { ok = false, reason = "no host" });
+            }
+
+            try
+            {
+                // 只杀宿主本身：entireProcessTree=false 让 Job / watchdog 负责浏览器的生命周期，
+                // 与「宿主被任务管理器强杀」走同一条恢复路径。
+                process.Kill(entireProcessTree: false);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException
+                                           or System.ComponentModel.Win32Exception
+                                           or NotSupportedException)
+            {
+                logger.LogWarning(ex, "结束浏览器宿主失败（pid={Pid}）", info.HostPid);
+                return Results.Json(new { ok = false, reason = "kill failed" });
+            }
+
+            logger.LogInformation(
+                "已按用户请求结束浏览器宿主（pid={Pid}，generation={Generation}），下次使用浏览器时重新拉起",
+                info.HostPid, info.Generation);
+
+            return Results.Json(new { ok = true });
+        }
+    }
+
+    /// <summary>「没有可结束的宿主」的响应体（端点契约里的失败形态）。</summary>
+    private static IResult NoHostResult()
+        => Results.Json(new { ok = false, reason = "no host" });
 
     private static async Task HandleAsync(
         HttpContext context,
@@ -188,7 +302,12 @@ public static class BrowserStreamEndpoints
 
                     AttachBusy(null);
                     subscribedPage = null;
-                    sink.OnState(new BrowserPageState(string.Empty, string.Empty, 0, false, false));
+
+                    // 页面已没了：没有 ViewportWidth/FrameScale 可报，但代次仍要带上——
+                    // 流对象还在（只是不再采集），丢掉代次会让前端把随后的新帧误判为旧代次。
+                    // 0 的含义是「本会话从未有过画面流（未知）」，前端不得把 0 当权威代次比较。
+                    sink.OnState(new BrowserPageState(
+                        string.Empty, string.Empty, 0, false, false, hub.EpochOf(sessionId)));
                 }
 
                 return;
@@ -222,8 +341,10 @@ public static class BrowserStreamEndpoints
         {
             if (page is null)
             {
-                // 先告知「尚未启动」，让前端显示空态而不是一直等首帧
-                sink.OnState(new BrowserPageState(string.Empty, string.Empty, 0, false, false));
+                // 先告知「尚未启动」，让前端显示空态而不是一直等首帧。
+                // 代次照实带：0 = 本会话还没有过画面流（未知），不是「第 0 代」。
+                sink.OnState(new BrowserPageState(
+                    string.Empty, string.Empty, 0, false, false, hub.EpochOf(sessionId)));
             }
             else
             {
@@ -385,7 +506,7 @@ public static class BrowserStreamEndpoints
         // 接管：先于一切输入处理。它不是浏览器操作，而是「停 agent + 告知」。
         if (string.Equals(type, "takeover", StringComparison.Ordinal))
         {
-            await HandleTakeoverAsync(sessionId, host, runtime, sink, logger, ct).ConfigureAwait(false);
+            await HandleTakeoverAsync(sessionId, host, hub, runtime, sink, logger, ct).ConfigureAwait(false);
             return;
         }
 
@@ -416,7 +537,7 @@ public static class BrowserStreamEndpoints
 
             // 第一次导航后页面才存在：此刻补订阅，前端才会收到画面
             await ensureSubscribed().ConfigureAwait(false);
-            PushState(sink, page);
+            PushState(hub, sink, page);
             return;
         }
 
@@ -473,29 +594,85 @@ public static class BrowserStreamEndpoints
             case "resize":
                 var width = (int)ReadDouble(root, "width");
                 var height = (int)ReadDouble(root, "height");
-                var pixelRatio = (int)Math.Round(ReadDouble(root, "pixelRatio"));
-                if (pixelRatio < 1)
-                    pixelRatio = 1;
+                // dpr 不取整：125% 屏上是 1.25，取整会让 DeviceScaleFactor 与前端像素比不符。
+                // 合法范围与页面共用同一处判定，否则「服务端存 1、前端每条消息发 1.25」
+                // 会让下面的判重永远为真 → 每条 resize 都重建 screencast。
+                var pixelRatio = BrowserPageHandle.NormalizePixelRatio(ReadDouble(root, "pixelRatio"));
 
                 // 尺寸或像素比变了才动：每次 resize 都要重建 CDP screencast（四个往返），
                 // 前端去抖之外这里再挡一次，避免无意义的重建与画面闪烁。
+                // 比的是「面板尺寸」而不是 ViewportWidth：超采样下实际视口 = 面板 × dpr。
                 if (width >= 320 && height >= 240
-                    && (width != current.ViewportWidth
-                        || height != current.ViewportHeight
-                        || pixelRatio != current.PixelRatio))
+                    && (width != current.RequestedWidth
+                        || height != current.RequestedHeight
+                        || Math.Abs(pixelRatio - current.PixelRatio) > 0.0001))
                 {
                     await current.ResizeAsync(width, height, pixelRatio, ct).ConfigureAwait(false);
 
                     // screencast 的 maxWidth/maxHeight 只在启动时生效；视口变了必须重启
-                    // （RestartAsync 内部读的是页面**实际**视口 × 像素比）
+                    // （StartCoreAsync 读的是页面**实际**视口）
                     await hub.RestartAsync(sessionId, ct).ConfigureAwait(false);
+
+                    // 视口/帧缩放变了必须推一次 state：前端 backing 与坐标都读它，
+                    // 不推就会停在旧尺寸（E2E 实测：帧已变 800×600，state 仍 1280×800）。
+                    PushState(hub, sink, current);
                 }
+                break;
+
+            case "hires":
+                // 静帧请求：用户滚动/操作后停下，前端要一张清晰图（超采样模式的补图）。
+                // 必须 fire-and-forget：抓一张最多要 800ms，而输入循环同时在处理
+                // mouse/wheel（拖动时每秒几十条）——在这里 await 会让画布拖动一顿一顿的。
+                QueueStillCapture(hub, sessionId, sink, logger, ct, (long)ReadDouble(root, "rev"));
                 break;
 
             case "ping":
                 // 保活：无需动作
                 break;
         }
+    }
+
+    /// <summary>
+    /// 把一次静帧请求投递到后台抓取，立即返回。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么不 await</b>：输入循环承载拖拽与滚轮的鼠标流（每秒几十条）。
+    /// 抓一张静帧最多 800ms，在循环里等它会让「拖动」变成一格一格的。
+    /// </para>
+    /// <para>
+    /// 并发由 <see cref="BrowserScreencastHub.TryCaptureStillAsync"/> 内部的单飞锁兜住：
+    /// 前一张还在抓时，新请求立刻拿到 <see langword="null"/>（过期图没意义），不会堆积。
+    /// </para>
+    /// <para>
+    /// 失败、超时、取消都只记 Debug：静帧是锦上添花，前端 2 秒后自会重请求。
+    /// </para>
+    /// </remarks>
+    private static void QueueStillCapture(
+        BrowserScreencastHub hub,
+        string sessionId,
+        WebSocketFrameSink sink,
+        ILogger logger,
+        CancellationToken ct,
+        long rev)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var still = await hub.TryCaptureStillAsync(sessionId, rev, ct).ConfigureAwait(false);
+                if (still is not null)
+                    sink.OnFrame(still);
+            }
+            catch (OperationCanceledException)
+            {
+                // 连接已断 / 会话关闭：正常路径
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "抓静帧失败（忽略）：{SessionId}", sessionId);
+            }
+        });
     }
 
     /// <summary>
@@ -522,6 +699,7 @@ public static class BrowserStreamEndpoints
     private static async Task HandleTakeoverAsync(
         string sessionId,
         IBrowserSessionHost host,
+        BrowserScreencastHub hub,
         ISessionRuntime? runtime,
         WebSocketFrameSink sink,
         ILogger logger,
@@ -575,10 +753,10 @@ public static class BrowserStreamEndpoints
             sessionId, interrupted ? "成功" : "时无执行在跑", actions.Count);
 
         // 回一条状态给前端：让遮罩明确解除（而不是靠 busy 事件间接推断）
-        sink.OnState(new BrowserPageState(
-            host.TryGetPage(sessionId)?.CurrentUrl ?? string.Empty,
-            host.TryGetPage(sessionId)?.CurrentTitle ?? string.Empty,
-            0, false, true));
+        var takeoverPage = host.TryGetPage(sessionId);
+        sink.OnState(takeoverPage is null
+            ? new BrowserPageState(string.Empty, string.Empty, 0, false, true, hub.EpochOf(sessionId))
+            : hub.CreateState(takeoverPage, running: true) with { Busy = false });
 
         sink.OnTakeoverResult(interrupted, actions.Count);
     }
@@ -641,12 +819,12 @@ public static class BrowserStreamEndpoints
             await page.KeyUpAsync(key, ct).ConfigureAwait(false);
     }
 
-    private static BrowserPageState StateOf(BrowserPageHandle page, bool running = true)
-        => new(page.CurrentUrl, page.CurrentTitle, page.RefEpoch, page.IsBusy, running);
-
     /// <summary>把当前页面状态推给观看者（操作前后各推一次，遮罩才会跟着开关）。</summary>
-    private static void PushState(WebSocketFrameSink sink, BrowserPageHandle page)
-        => sink.OnState(StateOf(page));
+    private static void PushState(
+        BrowserScreencastHub hub,
+        WebSocketFrameSink sink,
+        BrowserPageHandle page)
+        => sink.OnState(hub.CreateState(page));
 
     private static double ReadDouble(JsonElement element, string name)
         => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number
@@ -654,21 +832,41 @@ public static class BrowserStreamEndpoints
             : 0;
 
     /// <summary>
-    /// 把 screencast 帧写进 WebSocket。
+    /// 把 screencast 帧写进 WebSocket（二进制：18 字节头 + JPEG）。
     /// </summary>
     /// <remarks>
-    /// <b>背压</b>：写操作串行化，且「上一帧还没写完就丢弃新帧」。慢客户端（后台标签页）因此
-    /// 不会让帧在内存里堆积。丢帧是安全的：帧本身是幂等的画面快照，下一帧会覆盖。
+    /// <para>
+    /// <b>背压</b>：帧走容量为 1 的 <see cref="Channel"/>（<see cref="BoundedChannelFullMode.DropOldest"/>），
+    /// 由单消费者串行发送。慢客户端（后台标签页）因此不会让帧在内存里堆积——
+    /// 新帧直接顶掉还没发出去的旧帧。丢帧是安全的：帧本身是幂等的画面快照，下一帧会覆盖。
+    /// </para>
+    /// <para>
+    /// <b>为什么不用「正在写」标志位</b>：那个写法只能记住「有写在跑」，新帧到了只能丢，
+    /// 于是慢客户端永远只拿到某一帧、后面的全丢（直到某一帧恰好写完）。
+    /// Channel 的 DropOldest 语义是「保留最新的」，这才是画面流想要的。
+    /// </para>
+    /// <para>
+    /// <b>为什么是二进制</b>：一帧 JPEG 转 base64 会膨胀 33%，外面再包一层 JSON 字符串，
+    /// 宿主与前端各要做一次编解码。画面流对带宽和延迟都敏感。
+    /// </para>
     /// </remarks>
     private sealed class WebSocketFrameSink : IBrowserFrameSink
     {
         private readonly WebSocket _socket;
         private readonly ILogger _logger;
 
+        /// <summary>只保留最新一帧的发送队列（满时丢最旧的）。</summary>
+        private readonly Channel<BrowserFrame> _frames = Channel.CreateBounded<BrowserFrame>(
+            new BoundedChannelOptions(1)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = true,
+                SingleWriter = false
+            });
+
         private SemaphoreSlim? _sendGate;
-        private CancellationToken _ct;
-        private int _writing;
-        private long _dropped;
+        private CancellationToken _ct = CancellationToken.None;
+        private Task? _writer;
 
         public WebSocketFrameSink(WebSocket socket, ILogger logger)
         {
@@ -680,80 +878,99 @@ public static class BrowserStreamEndpoints
         {
             _sendGate = sendGate;
             _ct = ct;
+
+            // 单消费者：帧的顺序由这里保证；状态/错误消息仍走 SendAsync（同一把 sendGate 串行）
+            _writer ??= Task.Run(() => PumpAsync(ct));
         }
 
-        public void Detach() => _sendGate = null;
+        public void Detach()
+        {
+            _sendGate = null;
+
+            // 让消费者自然退出（不要在这里等：Detach 由请求收尾路径同步调用）
+            _frames.Writer.TryComplete();
+        }
 
         public void OnFrame(BrowserFrame frame)
         {
-            // 已有发送在进行：丢这一帧（下一帧是新画面，丢弃无损）
-            if (Interlocked.CompareExchange(ref _writing, 1, 0) != 0)
-            {
-                _dropped++;
-                return;
-            }
-
-            _ = SendFrameAsync(frame);
+            // 非阻塞：CDP 回调线程上绝不能被网络发送拖住
+            _frames.Writer.TryWrite(frame);
         }
 
-        private async Task SendFrameAsync(BrowserFrame frame)
+        private async Task PumpAsync(CancellationToken ct)
         {
             try
             {
-                var gate = _sendGate;
-                if (gate is null || _socket.State != WebSocketState.Open)
-                    return;
-
-                await gate.WaitAsync(_ct).ConfigureAwait(false);
-                try
+                await foreach (var frame in _frames.Reader.ReadAllAsync(ct).ConfigureAwait(false))
                 {
-                    if (_socket.State != WebSocketState.Open)
-                        return;
-
-                    var json = JsonSerializer.Serialize(new
+                    try
                     {
-                        type = "frame",
-                        seq = frame.Seq,
-                        mime = "image/jpeg",
-                        data = Convert.ToBase64String(frame.Data),
-                        width = frame.Width,
-                        height = frame.Height
-                    });
-
-                    var bytes = Encoding.UTF8.GetBytes(json);
-                    await _socket.SendAsync(
-                        new ArraySegment<byte>(bytes),
-                        WebSocketMessageType.Text,
-                        true,
-                        _ct).ConfigureAwait(false);
-                }
-                finally
-                {
-                    gate.Release();
+                        await WriteFrameAsync(frame, ct).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+                    catch (WebSocketException ex)
+                    {
+                        _logger.LogDebug(ex, "写画面帧失败；连接可能已断开");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "写画面帧失败（忽略）");
+                    }
                 }
             }
             catch (OperationCanceledException)
             {
-                // 连接关闭
+                // 连接关闭：正常路径
             }
-            catch (WebSocketException ex)
+        }
+
+        private async Task WriteFrameAsync(BrowserFrame frame, CancellationToken ct)
+        {
+            var gate = _sendGate;
+            if (gate is null || _socket.State != WebSocketState.Open)
+                return;
+
+            // 编码在锁外做：编一帧是纯 CPU，不该占着发送锁
+            var payload = BrowserFrameCodec.Encode(frame);
+
+            await gate.WaitAsync(ct).ConfigureAwait(false);
+            try
             {
-                _logger.LogDebug(ex, "写画面帧失败；连接可能已断开");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "写画面帧失败（忽略）");
+                if (_socket.State != WebSocketState.Open)
+                    return;
+
+                await _socket.SendAsync(
+                    new ArraySegment<byte>(payload),
+                    WebSocketMessageType.Binary,
+                    true,
+                    ct).ConfigureAwait(false);
             }
             finally
             {
-                Interlocked.Exchange(ref _writing, 0);
+                gate.Release();
             }
         }
 
         public void OnState(BrowserPageState state)
         {
             _ = SendAsync(
-                new { type = "state", url = state.Url, title = state.Title, busy = state.Busy, running = state.Running },
+                new
+                {
+                    type = "state",
+                    url = state.Url,
+                    title = state.Title,
+                    busy = state.Busy,
+                    running = state.Running,
+                    epoch = state.Epoch,
+                    // 坐标与画布 backing 的权威来源（实际 SetViewport 的 CSS 尺寸）
+                    viewportWidth = state.ViewportWidth,
+                    viewportHeight = state.ViewportHeight,
+                    frameScale = state.FrameScale,
+                    mode = state.Mode
+                },
                 _ct);
         }
 

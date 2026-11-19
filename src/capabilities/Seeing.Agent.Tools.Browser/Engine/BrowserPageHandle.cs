@@ -154,8 +154,11 @@ public sealed class BrowserPageHandle : IAsyncDisposable
         // 建页时用的就是配置视口（BrowserSessionHost 已 SetViewportAsync）
         ViewportWidth = options.CurrentValue.EffectiveWidth;
         ViewportHeight = options.CurrentValue.EffectiveHeight;
+        RequestedWidth = ViewportWidth;
+        RequestedHeight = ViewportHeight;
         // 建页时还不知道前端 dpr；首次 resize 消息会带上并触发 screencast 重启。
         PixelRatio = 1;
+        FrameScale = 1;
 
         _page.Dialog += OnDialog;
         _page.Console += OnConsole;
@@ -223,13 +226,17 @@ public sealed class BrowserPageHandle : IAsyncDisposable
     public string CurrentTitle { get; private set; } = string.Empty;
 
     /// <summary>
-    /// 当前视口尺寸（CSS 像素）。
+    /// 当前视口宽度（CSS 像素，<b>实际传给 SetViewport 的值</b>）。
     /// </summary>
     /// <remarks>
     /// <b>为什么必须记录</b>：CDP <c>Page.startScreencast</c> 的 <c>maxWidth/maxHeight</c>
     /// 只在启动时生效，视口变化后必须重启 screencast 才能跟上。若重启时读的是<b>配置</b>视口而不是
     /// 实际视口，面板拖宽后帧仍按配置值等比缩小 → 画布被降采样、文字发虚
     /// （这正是「resize 后重启」要解决的问题，读错来源等于没修）。
+    /// <para>
+    /// 超采样模式下这个值 = 面板宽 × dpr（前端坐标换算的唯一权威），面板原始尺寸见
+    /// <see cref="RequestedWidth"/>。
+    /// </para>
     /// </remarks>
     public int ViewportWidth { get; private set; }
 
@@ -237,22 +244,95 @@ public sealed class BrowserPageHandle : IAsyncDisposable
     public int ViewportHeight { get; private set; }
 
     /// <summary>
-    /// 出图像素比（前端 <c>devicePixelRatio</c>，上限 2）。
+    /// 前端设备像素比（<c>devicePixelRatio</c>，夹在 1–2）。
     /// </summary>
     /// <remarks>
-    /// <b>为什么布局与出图要分开</b>：CDP 的 <c>Page.setViewport</c> 用 CSS 像素
-    /// （决定网页怎么排版），而 screencast 的 <c>maxWidth/maxHeight</c> 决定编码分辨率。
-    /// 高 DPI 屏上 CSS 554px 占 1108 个物理像素：若 screencast 仍按 554 编码，
-    /// 浏览器会把帧放大 2 倍显示 → 文字发虚（用户报的「分辨率很低」）。
-    /// 两者不能混用：把 dpr 乘进 viewport 会让网页以为自己在 2 倍宽的屏幕上（排版稀疏）。
+    /// <para>
+    /// <b>为什么必须是小数</b>：125% 缩放（常见于笔记本）的 dpr 是 <c>1.25</c>。旧实现取整成
+    /// <c>1</c>，于是 <c>DeviceScaleFactor</c> 与前端像素比不符，文字比例失真。
+    /// </para>
+    /// <para>
+    /// <b>它不是帧倍率</b>：帧像素 / 视口 CSS 见 <see cref="FrameScale"/>。实测 screencast
+    /// 永远按 CSS 视口出图（与 dsf 无关），所以普通模式下帧比 <c>viewport × dpr</c> 小，
+    /// 清晰度由静帧补足。
+    /// </para>
+    /// <para>
+    /// 静帧尺寸（<see cref="BrowserStillSource.ResolveSize"/>）按 <c>视口 × dpr</c> 计算，
+    /// 仅普通模式成立；超采样模式下视口本身已含 dpr，静帧也不会被请求。
+    /// </para>
     /// </remarks>
-    public int PixelRatio { get; private set; } = 1;
+    public double PixelRatio { get; private set; } = 1;
 
-    /// <summary>出图宽度（CSS 宽 × 像素比）。</summary>
-    public int RenderWidth => Math.Clamp(ViewportWidth * PixelRatio, 320, 4096);
+    /// <summary>
+    /// 帧像素 / 视口 CSS 像素（前端 backing = <c>round(viewportWidth × FrameScale)</c>）。
+    /// </summary>
+    /// <remarks>
+    /// 普通模式 = dpr：帧仍是 CSS 尺寸，画布按物理像素放大显示（静帧负责清晰度）。
+    /// 超采样模式 = 1：dpr 已乘进视口，帧与视口同尺寸。
+    /// </remarks>
+    public double FrameScale { get; private set; } = 1;
 
-    /// <summary>出图高度（CSS 高 × 像素比）。</summary>
-    public int RenderHeight => Math.Clamp(ViewportHeight * PixelRatio, 240, 4096);
+    /// <summary>
+    /// 最近一次 resize 请求的面板尺寸（CSS 像素，<b>未</b>乘 dpr）。
+    /// </summary>
+    /// <remarks>
+    /// 超采样模式下 <see cref="ViewportWidth"/> 已经乘过 dpr，而前端每条 resize 消息带的仍是面板尺寸。
+    /// 端点必须拿这两个值判重，否则「面板 800 vs 视口 1000」永远不相等 → 每条消息都重建 screencast，
+    /// 画面持续闪烁。建页时等于配置视口。
+    /// </remarks>
+    public int RequestedWidth { get; private set; }
+
+    /// <summary>最近一次 resize 请求的面板高度（CSS 像素，未乘 dpr）。</summary>
+    public int RequestedHeight { get; private set; }
+
+    /// <summary>
+    /// 把前端 dpr 夹到可用范围。
+    /// </summary>
+    /// <remarks>
+    /// <c>0</c> / 负数会让 <c>Page.setViewport</c> 直接报错，<c>NaN</c>（前端字段缺失时）也必须兜住；
+    /// 大于 2 的超采样只会徒增编码成本与带宽（前端同样按 2 封顶）。端点与页面共用这一处判定，
+    /// 避免「前端按 2 发、服务端按 3 存」这类去重永久失配。
+    /// </remarks>
+    public static double NormalizePixelRatio(double dpr)
+        => double.IsFinite(dpr) ? Math.Clamp(dpr, 1d, 2d) : 1d;
+
+    /// <summary>
+    /// 面板尺寸 + dpr → 实际 <c>SetViewport</c> 的 CSS 尺寸与帧倍率。
+    /// </summary>
+    /// <param name="cssWidth">面板宽（CSS 像素）。</param>
+    /// <param name="cssHeight">面板高（CSS 像素）。</param>
+    /// <param name="dpr">前端设备像素比。</param>
+    /// <param name="highRes">是否超采样（<see cref="BrowserOptions.HighResStream"/>）。</param>
+    /// <remarks>
+    /// <para>
+    /// <b>普通模式</b>：视口就是面板尺寸，<c>dsf = dpr</c>。实测 screencast 仍按 CSS 视口出图，
+    /// 所以帧比画布 backing 小（由静帧补清晰度）；倍率如实报给前端，否则放大比例错。
+    /// </para>
+    /// <para>
+    /// <b>超采样模式</b>：把 dpr 乘进视口本身、<c>dsf = 1</c>。网页按放大后的 CSS 视口排版
+    /// （这就是「超采样」的代价），但持续流本身就是全分辨率，前端不需要再放大。
+    /// </para>
+    /// <para>尺寸夹在协议可表达的范围内：宽 320–4096、高 240–4096（帧头是 u16）。</para>
+    /// </remarks>
+    internal static (int ViewportWidth, int ViewportHeight, double FrameScale) ResolveViewport(
+        int cssWidth,
+        int cssHeight,
+        double dpr,
+        bool highRes)
+    {
+        var ratio = NormalizePixelRatio(dpr);
+
+        var width = Math.Clamp(cssWidth, 320, 4096);
+        var height = Math.Clamp(cssHeight, 240, 4096);
+
+        if (!highRes)
+            return (width, height, ratio);
+
+        return (
+            Math.Clamp((int)Math.Round(width * ratio), 320, 4096),
+            Math.Clamp((int)Math.Round(height * ratio), 240, 4096),
+            1d);
+    }
 
     /// <summary>底层页面（仅供 screencast 等基础设施使用，工具不直接碰）。</summary>
     internal IPage Page => _page;
@@ -841,6 +921,10 @@ public sealed class BrowserPageHandle : IAsyncDisposable
     /// <summary>
     /// 更新视口（面板尺寸变化时）。
     /// </summary>
+    /// <param name="width">面板宽（CSS 像素，未乘 dpr）。</param>
+    /// <param name="height">面板高（CSS 像素，未乘 dpr）。</param>
+    /// <param name="pixelRatio">前端设备像素比（小数，如 1.25）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     /// <remarks>
     /// <b>为什么走人工通道</b>：视口大小完全由用户在界面上拖拽面板决定，与 agent 无关。
     /// 走 <see cref="RunAsync"/> 的后果是可见且确定的：页面每次刷新 → WS 重连 →
@@ -848,23 +932,31 @@ public sealed class BrowserPageHandle : IAsyncDisposable
     /// 用户看到的是「刷新一下，智能体又说它在操作」，而 agent 根本没在跑。
     /// 更糟的是遮罩会拦截输入，接管按钮自己也被压在下面。
     /// </remarks>
-    public Task ResizeAsync(int width, int height, int pixelRatio, CancellationToken cancellationToken)
+    public Task ResizeAsync(int width, int height, double pixelRatio, CancellationToken cancellationToken)
         => RunHumanAsync<bool>(async () =>
         {
-            var clampedWidth = Math.Clamp(width, 320, 4096);
-            var clampedHeight = Math.Clamp(height, 240, 4096);
+            // 模式换算集中在 ResolveViewport：普通模式下 dsf=dpr（帧仍按 CSS 视口出图），
+            // 超采样模式下 dpr 乘进视口本身、dsf=1。两种模式的实际视口不同，必须都记下来，
+            // 否则 screencast 重启与前端坐标换算会各自算一套。
+            var highRes = _options.CurrentValue.HighResStream;
+            var (viewportWidth, viewportHeight, frameScale) =
+                ResolveViewport(width, height, pixelRatio, highRes);
 
             await _page.SetViewportAsync(new ViewPortOptions
             {
-                Width = clampedWidth,
-                Height = clampedHeight
+                Width = viewportWidth,
+                Height = viewportHeight,
+                // dsf 必须与帧倍率一致：普通模式 = dpr（让网页按物理像素排版），
+                // 超采样模式 = 1（dpr 已经在 CSS 尺寸里，再乘一次会把网页排成双倍宽）。
+                DeviceScaleFactor = frameScale
             }).ConfigureAwait(false);
 
-            // 记录实际视口与像素比：screencast 重启时用「视口 × 像素比」作
-            // maxWidth/maxHeight，既保证布局正确（CSS 像素），又保证出图清晰（物理像素）。
-            ViewportWidth = clampedWidth;
-            ViewportHeight = clampedHeight;
-            PixelRatio = Math.Clamp(pixelRatio, 1, 2);
+            RequestedWidth = width;
+            RequestedHeight = height;
+            ViewportWidth = viewportWidth;
+            ViewportHeight = viewportHeight;
+            PixelRatio = NormalizePixelRatio(pixelRatio);
+            FrameScale = frameScale;
 
             await RefreshIdentityAsync().ConfigureAwait(false);
             return true;

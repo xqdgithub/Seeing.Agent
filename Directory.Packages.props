@@ -36,6 +36,8 @@
     <PackageVersion Include="YamlDotNet" Version="18.1.0" />
     <PackageVersion Include="System.Reactive" Version="7.0.0" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
+    <!-- 浏览器宿主：按 user-data-dir 查占用进程（仅 Windows 编译/引用，见 Tools.Browser.csproj） -->
+    <PackageVersion Include="System.Management" Version="9.0.0" />
     <!-- 测试相关 -->
     <PackageVersion Include="Cronos" Version="0.9.0" />
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />

@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- 能力包只依赖 Abstractions + 原语；`BrowserHostRunner` 放在 `src/hosting/Seeing.Agent.HostComposition`。
+- 能力包只依赖 Abstractions + 原语；`BrowserHostRunner` 放在 `samples/Seeing.Agent.HostComposition`。
 - 帧协议：小端、18 字节头、`version = 1`；still 帧的 `seq` 字段承载 `rev`。
 - 坐标权威 = `state.viewportWidth/Height`（实际 SetViewport 的 CSS 尺寸）。
 - 客户端**禁止** `browser.CloseAsync()`；只用 `Disconnect()`。
@@ -96,7 +96,9 @@ git commit -m "feat(browser): create one window per page so background screencas
   - `public IBrowser Browser { get; }` / `string Endpoint` / `int BrowserPid` / `DateTimeOffset BrowserStartedAt`
   - `internal static string? ParseDevToolsEndpoint(string fileContent)`
   - `public sealed class BrowserJobObject : IDisposable`
-  - `public static BrowserJobObject? AssignCurrentProcess()`（Windows：创建 job、把自己 assign 进去、`KILL_ON_JOB_CLOSE`）
+  - `public static BrowserJobObject? Create()`（Windows；`KILL_ON_JOB_CLOSE`）
+  - `public bool TryAssign(int processId)`
+  - `public static BrowserJobObject? AssignCurrentProcess()`（仅宿主进程调用）
 
 - [ ] **Step 1: 写失败测试**
 
@@ -107,14 +109,20 @@ public void ParseDevToolsEndpoint_ShouldBuildLoopbackUrl()
         .Should().Be("ws://127.0.0.1:52341/devtools/browser/abc");
 
 [Fact]
-public async Task JobObject_WhenDisposed_ShouldKillChildProcess()
+public async Task JobObject_WhenDisposed_ShouldKillAssignedChild()
 {
     if (!OperatingSystem.IsWindows()) return;
-    using var job = BrowserJobObject.AssignCurrentProcess();
+    using var job = BrowserJobObject.Create();
     job.Should().NotBeNull();
-    // 真实子进程由 BrowserHostSmokeTests 覆盖；这里只验证创建成功。
+    using var child = Process.Start(new ProcessStartInfo("cmd.exe", "/c timeout /t 60 /nobreak")
+    { CreateNoWindow = true, UseShellExecute = false })!;
+    job!.TryAssign(child.Id).Should().BeTrue();
+    job.Dispose();
+    (await TestWait.UntilAsync(() => child.HasExited, TimeSpan.FromSeconds(5))).Should().BeTrue();
 }
 ```
+
+> **测试不得 `AssignCurrentProcess`**：把测试进程放进带 `KILL_ON_JOB_CLOSE` 的 job，dispose 会杀死测试进程自己。
 
 - [ ] **Step 2: 运行确认失败**
 
@@ -145,8 +153,9 @@ git commit -m "feat(browser): process host with tcp endpoint and self-assigned j
 
 **Interfaces:**
 - Produces:
-  - `public sealed record BrowserHostInfo(int Version, string Generation, int HostPid, DateTimeOffset HostStartedAt, string ProfileDirectory, int? BrowserPid, DateTimeOffset? BrowserStartedAt, string Endpoint, string? LastError)`
-  - `BrowserHostLocator(string profileDirectory, string? baseDirectory = null)`：`Read/Write/TryDelete/ComputeInfoPath/VersionMatches`
+  - `public sealed record BrowserHostInfo(int Version, string Generation, int HostPid, DateTimeOffset HostStartedAt, string ProfileDirectory, int? BrowserPid, DateTimeOffset? BrowserStartedAt, string Endpoint, string? LastError, BrowserHostEffective? Effective)`
+  - `public sealed record BrowserHostEffective(bool Headless, string? ExecutablePath, string? UserAgent, bool AntiDetection, string[] ExtraArgs, int HostIdleSeconds)`
+  - `BrowserHostLocator(string profileDirectory, string? baseDirectory = null)`：`Read/Write/TryDelete/ComputeInfoPath/VersionMatches/IsSameHost(info, hostPid, hostStartedAt)`
   - `BrowserHostLock.TryAcquire(string profileDirectory) → BrowserHostLock?`
   - `BrowserClientPresence`：`static Start(profileDirectory)`、`AcquirePage(string targetId)`、`ReleasePage(string targetId)`、`Dispose()`、`static IReadOnlyList<int> AliveClientPids(string profileDirectory)`
 
@@ -186,7 +195,8 @@ public void InfoPath_ShouldBeStablePerProfile()
 - 宿主锁：`<profile>/.browser-host.lock`，`OpenOrCreate + FileShare.None`，**永不删除**。
 - 客户端锁：`~/.seeing/browser/clients/<profileHash>/<pid>.lock`，`FileShare.None`；释放即删除。
 - 页面清单：同目录 `<pid>.pages.json`，原子写 `{ "targetIds": [] }`。
-- 发现文件：`~/.seeing/browser/host-<profileHash>.json`，含 `generation`/`lastError`；`TryDelete` 校验 `HostPid == 当前进程`。
+- 发现文件：`~/.seeing/browser/host-<profileHash>.json`，含 `generation`/`lastError`/`effective`；`TryDelete` 校验 `HostPid == 当前进程`；`IsSameHost` 同时比对 PID 与 `HostStartedAt`。
+- `ComputeProfileHash` 基于**绝对 profile 路径**（宿主始终有固定目录，与 `PersistLogin` 无关）。
 
 - [ ] **Step 4: 运行确认通过**
 
@@ -202,14 +212,17 @@ git commit -m "feat(browser): discovery, host lock and client presence"
 ### Task A4: 宿主运行器、子命令、日志、崩溃退出
 
 **Files:**
-- Create: `src/hosting/Seeing.Agent.HostComposition/BrowserHostRunner.cs`
+- Create: `samples/Seeing.Agent.HostComposition/BrowserHostRunner.cs`
+- Create: `src/capabilities/Seeing.Agent.Tools.Browser/Engine/BrowserProcessProbe.cs`
+- Create: `tests/capabilities/Seeing.Agent.Tools.Browser.Tests/TestSupport/TestHost.cs`
 - Modify: `samples/Seeing.Agent.Desktop/Program.cs`、`samples/Seeing.Agent.WebUI/Program.cs`、`samples/Seeing.Agent.Tui/Program.cs`、`samples/Seeing.Agent.Cli/Program.cs`（`Main` 开头分发）
 - Test: `tests/capabilities/Seeing.Agent.Tools.Browser.Tests/BrowserHostSmokeTests.cs`（新建，RequiresBrowser）
 
 **Interfaces:**
 - Produces:
   - `public static Task<int> BrowserHostRunner.RunAsync(string[] args, CancellationToken ct)`
-  - CLI：`--browser-host --profile <dir> [--idle-seconds N]`；`--watchdog <hostPid> <browserPid>`
+  - CLI：`--browser-host --profile <dir> [--idle-seconds N] [--headless <bool>] [--executable <path>] [--user-agent <ua>] [--extra-arg <arg>]...`；`--watchdog <hostPid> <browserPid>`
+  - `TestHost.Start(string profileDirectory, int idleSeconds = 300) → Process`；`TestHost.Cleanup(string profileDirectory)`
   - 日志：`~/.seeing/browser/host-<hash>.log`（滚动 5MB × 2）
 
 - [ ] **Step 1: 写失败测试（集成）**
@@ -220,7 +233,7 @@ public async Task Host_ShouldPublishAndDieWithBrowser()
 {
     if (!BrowserTestGate.Enabled) return;
     var profile = NewProfile();
-    using var host = TestHost.Start(profile);          // 当前测试 exe 不存在 → 用 samples 输出
+    using var host = TestHost.Start(profile);   // 内部：dotnet run --project samples/Seeing.Agent.Cli -- --browser-host --profile <dir> --idle-seconds 300
     var locator = new BrowserHostLocator(profile, profile);
     var info = await TestWait.UntilAsync(() => locator.Read(), TimeSpan.FromSeconds(20));
     info.Should().NotBeNull();
@@ -236,17 +249,19 @@ public async Task Host_ShouldPublishAndDieWithBrowser()
 
 - [ ] **Step 3: 实现**
 
-- `RunAsync`：watchdog 分支；正常分支：`BrowserHostLock.TryAcquire`（失败退出 0）→ `BrowserProcessHost.StartAsync`（先 assign self job）→ 写发现文件 → 日志 → 每 30s 回收死客户端页面 → 空闲判定 → `finally` 校验后删发现文件。
+- `RunAsync`：watchdog 分支；正常分支：`BrowserHostLock.TryAcquire`（失败退出 0）→ 从参数解析 `BrowserHostEffective` → `BrowserProcessHost.StartAsync`（先 assign self job）→ 写发现文件（含 `effective`）→ 日志 → 每 30s 回收死客户端页面 → 空闲判定 → `finally` 校验后删发现文件。
+- **profile 锁恢复（I1）**：`StartAsync` 抛 `ProcessException` 且消息含 `already running` / `ProcessSingleton` 时，用 `BrowserProcessProbe.FindByProfileDirectory(profile)` 找占用进程：父进程已死 → 结束整树后重试（最多 15s）；父进程存活 → 退出 1，把 PID 写进 `lastError`。不得把原始 “Failed to launch browser!” 直接透出。
 - `browser.Disconnected` → 写 `lastError` → 返回非 0（进程退出，Job/watchdog 清浏览器）。
-- 各 `Program.cs`：`if (args.Contains("--browser-host")) return await BrowserHostRunner.RunAsync(args, default);`
+- 各 `Program.cs`：`if (args.Contains("--browser-host") || args.Contains("--watchdog")) return await BrowserHostRunner.RunAsync(args, default);`
 - POSIX：spawn 同一 exe `--watchdog <hostPid> <browserPid>`。
+- `TestHost.Start`：`dotnet run --project samples/Seeing.Agent.Cli --no-build -- --browser-host --profile <dir> --idle-seconds <n>`；`Cleanup`：读发现文件拿 hostPid → Kill → 等进程消失（条件轮询）。
 
 - [ ] **Step 4: 运行确认通过**
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add src/hosting/Seeing.Agent.HostComposition samples tests/capabilities/Seeing.Agent.Tools.Browser.Tests/BrowserHostSmokeTests.cs
+git add samples/Seeing.Agent.HostComposition samples tests/capabilities/Seeing.Agent.Tools.Browser.Tests/BrowserHostSmokeTests.cs tests/capabilities/Seeing.Agent.Tools.Browser.Tests/TestSupport/TestHost.cs
 git commit -m "feat(browser): --browser-host entry with logging and crash exit"
 ```
 
@@ -262,9 +277,10 @@ git commit -m "feat(browser): --browser-host entry with logging and crash exit"
 
 **Interfaces:**
 - Produces:
-  - `BrowserEngine.GetBrowserAsync`：读发现 → 1s TCP 探活 → `ConnectAsync`；失败拉起宿主（当前 exe + `--browser-host`）→ 15s 轮询
+  - `BrowserEngine.GetBrowserAsync`：读发现 → 1s TCP 探活 → `ConnectAsync`；失败拉起宿主 → 15s 内每 500ms 重试（读发现 → 探活 → 必要时再拉起）
   - `BrowserEngine.ShutdownAsync`：`browser.Disconnect()`
-  - `internal static string ResolveHostArguments(string profileDirectory)` → `--browser-host --profile "<dir>"`
+  - `internal static (string FileName, string[] PrefixArgs) ResolveHostCommand(string profileDirectory)`：优先 `AppContext.BaseDirectory` 下同名 apphost；否则 `dotnet <entry.dll>`；参数含 `--browser-host --profile` 与宿主级配置
+  - `BrowserClientPresence` 对象随进程存活；锁句柄按页面计数获取/释放
 
 - [ ] **Step 1: 写失败测试**
 
@@ -292,8 +308,9 @@ public async Task Shutdown_ShouldNotCloseSharedBrowser()
 
 - 删除客户端 `LaunchAsync` 主路径与 `ApplyAntiDetectionAsync(browser, options)`（遍历全浏览器会污染别人）；UA 由宿主参数传入。
 - `DisposeBrowserQuietlyAsync` → `browser.Disconnect()`；这是唯一释放通道。
-- 拉起宿主：`Process.GetCurrentProcess().MainModule.FileName` + `ResolveHostArguments`，`CreateNoWindow`。
-- `BrowserSessionHost` 在创建/关闭页面时 `BrowserClientPresence.AcquirePage/ReleasePage`；无页面时释放 presence。
+- 拉起宿主：`ResolveHostCommand(profile)`（apphost 或 `dotnet <entry.dll>`）+ 宿主级配置参数，`CreateNoWindow`。拉起后进入 15s 重试循环，**每次都重新读发现→探活→必要时再拉起**（覆盖“旧宿主正在退出、锁未释放”的窗口）。
+- `BrowserSessionHost` 在创建/关闭页面时 `BrowserClientPresence.AcquirePage/ReleasePage`；presence 对象随进程，值为 0 时释放锁句柄，再次开页重新获取。
+- 客户端把 `effective` 与本地 `BrowserOptions` 比较；不一致只提示“修改需重启浏览器”，不自动重启。`ComputeSignature` 改为基于 `BrowserHostEffective` 的比较，`BrowserRestartSignatureTests` 同步改为“effective 变化 → 提示重启”。
 - `BrowserLifetimeService.StopAsync` 只断开。
 
 - [ ] **Step 4: 运行确认通过；改 `BrowserPersistLoginEndToEndTests` 为“断开重连”并在 finally 清理宿主**
@@ -310,8 +327,7 @@ git commit -m "feat(browser): connect to shared host and never close it"
 ### Task A6: 空闲退出、迁移、设置卡
 
 **Files:**
-- Modify: `src/hosting/Seeing.Agent.HostComposition/BrowserHostRunner.cs`
-- Create: `src/capabilities/Seeing.Agent.Tools.Browser/Engine/BrowserProcessProbe.cs`
+- Modify: `samples/Seeing.Agent.HostComposition/BrowserHostRunner.cs`
 - Create: `samples/Seeing.Agent.WebUI/Components/Settings/BrowserSettingsCard.razor`
 - Test: `tests/capabilities/Seeing.Agent.Tools.Browser.Tests/BrowserMigrationCleanupTests.cs`（新建）
 
@@ -345,7 +361,7 @@ UI 常开但不开浏览器 → 30 分钟后宿主退出；旧版本残留能清
 - [ ] **Step 5: 提交**
 
 ```bash
-git add src/hosting/Seeing.Agent.HostComposition src/capabilities/Seeing.Agent.Tools.Browser samples/Seeing.Agent.WebUI tests/capabilities/Seeing.Agent.Tools.Browser.Tests/BrowserMigrationCleanupTests.cs
+git add samples/Seeing.Agent.HostComposition src/capabilities/Seeing.Agent.Tools.Browser samples/Seeing.Agent.WebUI tests/capabilities/Seeing.Agent.Tools.Browser.Tests/BrowserMigrationCleanupTests.cs
 git commit -m "feat(browser): idle exit, migration and settings card"
 ```
 

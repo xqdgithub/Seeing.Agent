@@ -77,6 +77,11 @@ public interface IBrowserSessionHost
 /// 实测默认上下文支持多页并存、关到零页浏览器也不退出。
 /// </para>
 /// <para>
+/// <b>为什么每个页面是一个独立窗口而不是标签页</b>：Chromium 只给可见的标签页出
+/// screencast 帧，后台标签页实测掉到 0 帧 —— 共用同一个浏览器时会有会话永远黑屏。
+/// 建页统一走 <see cref="BrowserPageFactory"/>（<c>CreatePageType.Window</c>）。
+/// </para>
+/// <para>
 /// <b>为什么空闲回收只关页面</b>：关掉进程会让下一次调用多付 200–400ms 冷启动；关页面已能释放
 /// 绝大部分内存（渲染进程随之回收），进程留着复用。
 /// </para>
@@ -91,6 +96,17 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
     private readonly Dictionary<string, SessionEntry> _sessions = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ITimer? _reaper;
+
+    /// <summary>
+    /// 本进程在宿主那里的「存在证明」（锁 + 页面归属清单）。
+    /// </summary>
+    /// <remarks>
+    /// <b>懒创建（Ruling 6）</b>：只有真正要建页时才 <see cref="BrowserClientPresence.Start"/>。
+    /// 在构造函数里创建会让「UI 常开但从未用过浏览器」也持有存活锁，宿主永远等不到空闲退出。
+    /// 对象创建后随进程存活，锁句柄由 <see cref="BrowserClientPresence.AcquirePage"/> /
+    /// <see cref="BrowserClientPresence.ReleasePage"/> 按页面计数增减。
+    /// </remarks>
+    private BrowserClientPresence? _presence;
 
     /// <summary>创建宿主。</summary>
     /// <param name="engine">进程级引擎。</param>
@@ -111,6 +127,11 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
         // 每 30 秒扫一次；回收动作本身很轻（只有超时会关页面）
         _reaper = _timeProvider.CreateTimer(_ => _ = ReapAsync(), null,
             TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+
+        // 连接丢失时页面句柄不会自动失效（PuppeteerSharp 的 Page.IsClosed 依赖
+        // Target.detachedFromTarget，而断连收不到）。不订阅它，宿主崩溃/被杀后
+        // 同一 sessionId 会一直命中指向死连接的页面，该会话的浏览器被永久锁死。
+        _engine.ConnectionLost += OnConnectionLostAsync;
     }
 
     /// <inheritdoc />
@@ -200,7 +221,8 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
             {
                 // DefaultContext 不是「每会话新建」，因此这里不持有可关闭的 context 引用：
                 // 关闭会话只关页面，浏览器与 profile 继续存活（这正是登录态得以保留的原因）。
-                page = await browser.NewPageAsync().ConfigureAwait(false);
+                page = await BrowserPageFactory.CreateAsync(browser, context: null, cancellationToken)
+                    .ConfigureAwait(false);
             }
             else
             {
@@ -209,7 +231,8 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
                     DownloadBehavior = new DownloadBehavior { Policy = DownloadPolicy.Deny }
                 }).ConfigureAwait(false);
 
-                page = await context.NewPageAsync().ConfigureAwait(false);
+                page = await BrowserPageFactory.CreateAsync(browser, context, cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             // 持久登录模式下页面建在默认上下文里，拿不到 BrowserContextOptions.DownloadBehavior，
@@ -230,12 +253,27 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
             // 因为部分修补在脚本后半段，被冲掉后只剩前半段生效的假象。
             await _engine.ApplyAntiDetectionToPageAsync(page).ConfigureAwait(false);
 
+            // 登记页面归属：宿主靠它回收「客户端崩溃后遗留的页面」。
+            // targetId 取不到（极罕见）时仍要登记：存活锁比清单准确更重要 ——
+            // 不持锁会让宿主认为「没有客户端」并空闲退出，把正在用的页面一起带走。
+            // 用一个明确不可解析的占位 id，宿主 closeTarget 失败会被记日志，而不是静默丢掉页面。
+            var targetId = await ResolveTargetIdAsync(page).ConfigureAwait(false);
+            if (targetId is null)
+            {
+                targetId = "unknown-" + Guid.NewGuid().ToString("N");
+                _logger.LogWarning(
+                    "无法读取会话 {SessionId} 页面的 targetId，页面归属清单使用占位 id（宿主回收时会跳过）",
+                    sessionId);
+            }
+
+            EnsurePresence().AcquirePage(targetId);
+
             handle = new BrowserPageHandle(sessionId, page, refEpoch: 0, _options,
                 _logger is ILogger<BrowserSessionHost> hostLogger
                     ? new TypedLogger(hostLogger, sessionId)
                     : NullLogger.Instance);
 
-            entry = new SessionEntry(handle, context);
+            entry = new SessionEntry(handle, context, targetId);
 
             // 锁内只做字典交换，回收旧 entry 放到锁外 await：
             // 旧写法的 stale.DisposeQuietly() 在 lock 内做 .GetAwaiter().GetResult()，
@@ -249,7 +287,10 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
             }
 
             if (stale is not null)
+            {
                 await stale.DisposeAsync().ConfigureAwait(false);
+                stale.ReleasePresence(_presence);
+            }
         }
         catch
         {
@@ -268,6 +309,10 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
 
             if (context is not null)
                 await DisposeContextQuietlyAsync(context).ConfigureAwait(false);
+
+            // presence 可能是本轮刚懒创建的：没登记上任何页面就把它收掉，
+            // 否则那把它在 Start 时就抢到的存活锁会一直挂着，宿主永远不空闲退出。
+            DisposePresenceIfUnused();
 
             throw;
         }
@@ -299,6 +344,70 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
         await RaisePageCreatedAsync(sessionId, handle).ConfigureAwait(false);
 
         return handle;
+    }
+
+    /// <summary>
+    /// 引擎到宿主的连接丢失：把所有页面句柄作废，并让画面流释放对应订阅。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么必须作废而不是等 <c>Page.IsClosed</c></b>：PuppeteerSharp 的
+    /// <c>Page.IsClosed</c> 只在收到 <c>Target.detachedFromTarget</c> 后变 true；
+    /// 宿主进程被杀时整条 CDP 连接直接消失，收不到任何 target 事件，于是
+    /// 句柄<b>永远</b>看起来是活的。<c>TryGetPage</c> 命中它之后，后续工具调用全部
+    /// 打在一个死连接上 —— 表现为「重启宿主后这个会话的浏览器再也用不了」。
+    /// </para>
+    /// <para>
+    /// <b>为什么清理期间不持 <see cref="_gate"/></b>：<c>DisposeAsync</c> 内部可能 await
+    /// CDP 操作（页面/上下文关闭），而 CDP 连接已经断了，这些调用可能很慢或抛异常。
+    /// 持锁等待会让「新建页面」一起被卡住。因此锁内只做字典交换与清表。
+    /// </para>
+    /// <para>
+    /// <b>为什么连 <c>PageClosed</c> 也发</b>：画面流持有指向旧页面的 CDP 会话；
+    /// 不通知它，Hub 里会留下一条「有观众、无采集」的死流（画布永远停在最后一帧）。
+    /// 集中器按页面实例比对，只清指向被作废页面的那条。
+    /// </para>
+    /// </remarks>
+    private async Task OnConnectionLostAsync()
+    {
+        SessionEntry[] entries;
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            lock (_sessions)
+            {
+                entries = _sessions.Values.ToArray();
+                _sessions.Clear();
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        if (entries.Length == 0)
+            return;
+
+        foreach (var entry in entries)
+        {
+            // 连接已死：Dispose 的每一次 CDP 调用都可能抛，且这里已经无法补救。
+            // 吞掉异常继续处理其余页面 —— 留下一个未清理的 entry 字符串没有价值。
+            try
+            {
+                await entry.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "连接丢失后回收页面失败（忽略）：{SessionId}", entry.Page.SessionId);
+            }
+
+            entry.ReleasePresence(_presence);
+            await RaisePageClosedAsync(entry.Page.SessionId, entry.Page).ConfigureAwait(false);
+        }
+
+        _logger.LogInformation(
+            "浏览器宿主连接已断开，已作废 {Count} 个会话页面；下次使用同一会话时会自动重建页面",
+            entries.Length);
     }
 
     /// <summary>通知订阅方：该会话有新页面可用（画面流应立即建立）。</summary>
@@ -344,12 +453,72 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
         {
             var closedPage = entry.Page;
             await entry.DisposeAsync().ConfigureAwait(false);
+
+            // 注销页面归属：1 → 0 时 presence 会释放存活锁（宿主据此判断能否空闲退出）。
+            entry.ReleasePresence(_presence);
+
             _logger.LogInformation("已关闭会话 {SessionId} 的浏览器页面", sessionId);
 
             // 带上被关掉的那个页面实例：订阅方据此只清「指向它」的那条流，
             // 不会误杀同会话里已经新建好的另一条流。
             await RaisePageClosedAsync(sessionId, closedPage).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// 懒创建本进程在宿主那里的存在证明（第一次真要建页时才调用，调用方持 <see cref="_gate"/>）。
+    /// </summary>
+    /// <remarks>
+    /// 目录与宿主必须完全一致：profile 用宿主的固定解析，根目录用引擎解析的结果
+    /// （含测试的 <c>SEEING_BROWSER_BASE_DIR</c> 覆盖）。两边各算一次会让宿主扫不到本进程，
+    /// 于是它按「没有客户端」空闲退出，把别人的页面一起带走。
+    /// </remarks>
+    private BrowserClientPresence EnsurePresence()
+        => _presence ??= BrowserClientPresence.Start(
+            _engine.HostProfileDirectory,
+            _engine.DiscoveryBaseDirectory,
+            _logger);
+
+    /// <summary>presence 里一个页面都没有时收掉它（失败路径专用，避免空持一把存活锁）。</summary>
+    private void DisposePresenceIfUnused()
+    {
+        var presence = _presence;
+        if (presence is null || presence.PageCount > 0)
+            return;
+
+        _presence = null;
+        presence.Dispose();
+    }
+
+    /// <summary>
+    /// 读取页面的 CDP targetId（页面归属清单的键）。
+    /// </summary>
+    /// <remarks>
+    /// PuppeteerSharp 的 <c>ITarget</c> 不暴露 id，只能问 CDP。<see cref="IPage.Client"/> 是
+    /// 页面自己的会话，读 <c>Target.getTargetInfo</c> 不会影响其它客户端。
+    /// </remarks>
+    private async Task<string?> ResolveTargetIdAsync(IPage page)
+    {
+        try
+        {
+            var response = await page.Client.SendAsync("Target.getTargetInfo").ConfigureAwait(false);
+            if (response is { } payload
+                && payload.TryGetProperty("targetInfo", out var info)
+                && info.TryGetProperty("targetId", out var id)
+                && id.GetString() is { Length: > 0 } targetId)
+            {
+                return targetId;
+            }
+
+            _logger.LogDebug("Target.getTargetInfo 未返回 targetId；该页面不会被登记到归属清单");
+        }
+        catch (Exception ex)
+        {
+            // 不影响建页：最坏情况是「客户端崩溃后宿主不会单独回收这一页」。
+            _logger.LogDebug(ex, "读取页面 targetId 失败（页面归属清单将缺少这一项）");
+        }
+
+        return null;
     }
 
     /// <summary>通知订阅方：该会话的某个页面已关闭（画面流必须释放对应 CDP 会话）。</summary>
@@ -450,7 +619,15 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
             }
 
             foreach (var entry in entries)
+            {
                 await entry.DisposeAsync().ConfigureAwait(false);
+                entry.ReleasePresence(_presence);
+            }
+
+            // 模块停用后不能再占着客户端的存活锁：否则宿主会认为「还有客户端」而不退出。
+            var presence = _presence;
+            _presence = null;
+            presence?.Dispose();
         }
         finally
         {
@@ -462,6 +639,7 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _reaper?.Dispose();
+        _engine.ConnectionLost -= OnConnectionLostAsync;
 
         SessionEntry[] entries;
         lock (_sessions)
@@ -471,7 +649,14 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
         }
 
         foreach (var entry in entries)
+        {
             await entry.DisposeAsync().ConfigureAwait(false);
+            entry.ReleasePresence(_presence);
+        }
+
+        var presence = _presence;
+        _presence = null;
+        presence?.Dispose();
 
         _gate.Dispose();
     }
@@ -482,16 +667,31 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
         /// <summary>隔离上下文；持久登录模式下为 <see langword="null"/>（页面建在默认上下文里）。</summary>
         private readonly IBrowserContext? _context;
         private bool _closed;
+        private bool _presenceReleased;
 
-        public SessionEntry(BrowserPageHandle page, IBrowserContext? context)
+        public SessionEntry(BrowserPageHandle page, IBrowserContext? context, string? targetId)
         {
             Page = page;
             _context = context;
+            TargetId = targetId;
         }
 
         public BrowserPageHandle Page { get; }
 
+        /// <summary>CDP targetId（宿主回收遗留页面用）；读取失败时是占位 id。</summary>
+        public string? TargetId { get; }
+
         public bool IsClosed => _closed || Page.Page.IsClosed;
+
+        /// <summary>从客户端 presence 注销这一页（幂等：1 → 0 时释放存活锁）。</summary>
+        public void ReleasePresence(BrowserClientPresence? presence)
+        {
+            if (_presenceReleased || TargetId is null)
+                return;
+
+            _presenceReleased = true;
+            presence?.ReleasePage(TargetId);
+        }
 
         public async ValueTask DisposeAsync()
         {

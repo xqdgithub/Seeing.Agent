@@ -11,6 +11,14 @@ using Seeing.Agent.HostComposition;
 using Seeing.Agent.Hosting.Gateway;
 using Seeing.Agent.TokenBudget.Extensions;
 
+// 宿主子模式：本入口同样注册了 BrowserModule，客户端可能用它拉起宿主；
+// 因此必须在构建 Host 之前把开关接走（与 WebUI / Tui / CLI 保持一致）。
+if (args.Contains(BrowserHostRunner.BrowserHostSwitch, StringComparer.Ordinal)
+    || args.Contains(BrowserHostRunner.WatchdogSwitch, StringComparer.Ordinal))
+{
+    return await BrowserHostRunner.RunAsync(args, CancellationToken.None);
+}
+
 var builder = Host.CreateApplicationBuilder(args);
 
 var registry = new ConfigSectionRegistry();
@@ -52,6 +60,8 @@ host.Services.ReloadGatewayChannelRegistry();
 logger.LogInformation("Gateway Server 就绪，按 Ctrl+C 退出。");
 
 await host.RunAsync();
+
+return 0;
 
 /// <summary>读取 <c>--workspace &lt;目录&gt;</c>。</summary>
 static string? ReadWorkspaceArgument(string[] args)
