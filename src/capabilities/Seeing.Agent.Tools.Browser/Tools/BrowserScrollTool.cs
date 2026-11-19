@@ -7,8 +7,15 @@ namespace Seeing.Agent.Tools.Browser.Tools;
 /// <summary>
 /// <c>browser_scroll</c>：滚动页面或指定元素内部。
 /// </summary>
+[ToolCapability(ToolCapabilityKeys.TimeoutBudget, "60000")]
 public sealed class BrowserScrollTool : BrowserToolBase
 {
+    /// <summary>默认滚动距离（像素）。</summary>
+    public const int DefaultAmountPx = BrowserInputLimits.DefaultScrollPx;
+
+    /// <summary>滚动距离上限（像素）。</summary>
+    public const int MaxAmountPx = BrowserInputLimits.MaxScrollPx;
+
     /// <summary>创建工具。</summary>
     public BrowserScrollTool(ILogger<BrowserScrollTool> logger, IBrowserSessionHost host)
         : base(logger, host)
@@ -21,7 +28,7 @@ public sealed class BrowserScrollTool : BrowserToolBase
     /// <inheritdoc />
     public override string Description =>
         "滚动网页：默认滚动整页，给 ref 时滚动该元素内部。\n\n" +
-        "- direction 默认 down；amount 为像素（默认 600）。\n" +
+        "- direction 默认 down；amountPx 为像素距离（默认 600，范围 1–20000）。\n" +
         "- 滚动后页面可能加载新内容，需要新的 ref 就重新 `browser_snapshot`。\n" +
         "- 滚动只为看到内容时，优先考虑用 `browser_snapshot` 的可见文本，省去多轮操作。";
 
@@ -38,12 +45,13 @@ public sealed class BrowserScrollTool : BrowserToolBase
                 @default = "down",
                 description = "滚动方向：up、down（默认）、left、right"
             },
-            amount = new
+            amountPx = new
             {
                 type = "integer",
                 minimum = 1,
-                maximum = 20000,
-                description = "滚动距离（像素，默认 600）"
+                maximum = MaxAmountPx,
+                @default = DefaultAmountPx,
+                description = $"滚动距离（像素，默认 {DefaultAmountPx}，范围 1–{MaxAmountPx}）。越界会失败，不会被截断"
             },
             @ref = new
             {
@@ -56,25 +64,35 @@ public sealed class BrowserScrollTool : BrowserToolBase
     /// <inheritdoc />
     public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
     {
-        if (!TryGetPage(context.SessionId, out var page, out var failure))
-            return failure!;
-
+        // 参数是契约：先校验，再碰会话状态。
         var directionText = BrowserJson.ReadString(arguments, "direction");
         var direction = BrowserJson.ReadEnum<BrowserScrollDirection>(arguments, "direction")
                         ?? BrowserScrollDirection.Down;
         if (directionText is { Length: > 0 } && BrowserJson.ReadEnum<BrowserScrollDirection>(arguments, "direction") is null)
             return Failure($"direction 只能是 {BrowserJson.Choices<BrowserScrollDirection>()}，收到 '{directionText}'");
 
-        var amount = BrowserJson.ReadInt(arguments, "amount") ?? 600;
+        if (BrowserJson.RejectObsoleteField(arguments, "amount", "amountPx", "像素", "amountPx=600") is { } legacyAmount)
+            return Failure(legacyAmount);
+
+        if (BrowserJson.TryReadInt(arguments, "amountPx", 1, MaxAmountPx, out var amountValue) is { } amountProblem)
+            return Failure(amountProblem);
+
+        var amountPx = amountValue ?? DefaultAmountPx;
 
         var reference = BrowserJson.ReadString(arguments, "ref");
         BrowserElementTarget? target = string.IsNullOrWhiteSpace(reference)
             ? null
             : new BrowserElementTarget { Ref = reference };
 
+        if (target is { } declared && declared.Validate() is { } targetProblem)
+            return Failure(targetProblem);
+
+        if (!TryGetPage(context.SessionId, out var page, out var failure))
+            return failure!;
+
         try
         {
-            var message = await page.ScrollAsync(direction, amount, target, context.CancellationToken)
+            var message = await page.ScrollAsync(direction, amountPx, target, context.CancellationToken)
                 .ConfigureAwait(false);
 
             return Success(
@@ -83,7 +101,7 @@ public sealed class BrowserScrollTool : BrowserToolBase
                 new Dictionary<string, object>
                 {
                     ["direction"] = direction.ToString(),
-                    ["amount"] = amount,
+                    ["amountPx"] = amountPx,
                     ["target"] = target?.ToString() ?? "page"
                 });
         }

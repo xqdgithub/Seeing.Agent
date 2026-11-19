@@ -8,6 +8,7 @@ namespace Seeing.Agent.Tools.Browser.Tools;
 /// <summary>
 /// <c>browser_click</c>：按 ref（推荐）、CSS 选择器或视口坐标点击。
 /// </summary>
+[ToolCapability(ToolCapabilityKeys.TimeoutBudget, "60000")]
 public sealed class BrowserClickTool : BrowserToolBase
 {
     /// <summary>创建工具。</summary>
@@ -47,18 +48,18 @@ public sealed class BrowserClickTool : BrowserToolBase
             clickCount = new
             {
                 type = "integer",
-                minimum = 1,
-                maximum = 3,
-                description = "连击次数（默认 1；2 为双击）"
-            }        }
+                minimum = BrowserInputLimits.MinClickCount,
+                maximum = BrowserInputLimits.MaxClickCount,
+                @default = BrowserInputLimits.MinClickCount,
+                description = $"连击次数（默认 {BrowserInputLimits.MinClickCount}；2 为双击，范围 {BrowserInputLimits.MinClickCount}–{BrowserInputLimits.MaxClickCount}）"
+            }
+        }
     });
 
     /// <inheritdoc />
     public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
     {
-        if (!TryGetPage(context.SessionId, out var page, out var failure))
-            return failure!;
-
+        // 参数是契约：先校验，再碰会话状态。
         var target = ReadTarget(arguments);
         if (target.Validate() is { } problem)
             return Failure(problem);
@@ -68,7 +69,18 @@ public sealed class BrowserClickTool : BrowserToolBase
         if (buttonText is { Length: > 0 } && BrowserJson.ReadEnum<MouseButton>(arguments, "button") is null)
             return Failure($"button 只能是 left、right、middle，收到 '{buttonText}'");
 
-        var clickCount = BrowserJson.ReadInt(arguments, "clickCount") ?? 1;
+        if (BrowserJson.TryReadInt(
+                arguments, "clickCount",
+                BrowserInputLimits.MinClickCount, BrowserInputLimits.MaxClickCount,
+                out var clickCountValue) is { } clickCountProblem)
+        {
+            return Failure(clickCountProblem);
+        }
+
+        var clickCount = clickCountValue ?? BrowserInputLimits.MinClickCount;
+
+        if (!TryGetPage(context.SessionId, out var page, out var failure))
+            return failure!;
 
         try
         {

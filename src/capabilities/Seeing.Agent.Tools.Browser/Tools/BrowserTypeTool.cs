@@ -7,6 +7,7 @@ namespace Seeing.Agent.Tools.Browser.Tools;
 /// <summary>
 /// <c>browser_type</c>：在输入框内输入文本（可先清空、可自动回车提交）。
 /// </summary>
+[ToolCapability(ToolCapabilityKeys.TimeoutBudget, "60000")]
 public sealed class BrowserTypeTool : BrowserToolBase
 {
     /// <summary>创建工具。</summary>
@@ -51,8 +52,8 @@ public sealed class BrowserTypeTool : BrowserToolBase
             {
                 type = "integer",
                 minimum = 0,
-                maximum = 500,
-                description = "逐字输入延迟（毫秒，默认 0；某些页面需要慢速输入才触发联想）"
+                maximum = BrowserInputLimits.MaxTypeDelayMs,
+                description = $"逐字输入延迟（毫秒，默认 0，上限 {BrowserInputLimits.MaxTypeDelayMs}；某些页面需要慢速输入才触发联想）"
             }
         },
         required = new[] { "text" }
@@ -61,9 +62,7 @@ public sealed class BrowserTypeTool : BrowserToolBase
     /// <inheritdoc />
     public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
     {
-        if (!TryGetPage(context.SessionId, out var page, out var failure))
-            return failure!;
-
+        // 参数是契约：先校验，再碰会话状态。缺 text 却去开页面是最典型的误导。
         var text = BrowserJson.ReadString(arguments, "text");
         if (text is null)
             return Failure("缺少必需参数: text");
@@ -73,10 +72,24 @@ public sealed class BrowserTypeTool : BrowserToolBase
             return Failure("缺少元素定位：请提供 ref（由 browser_snapshot 获得）或 selector");
         if (target.HasCoordinates)
             return Failure("输入文字不支持坐标定位，请提供 ref 或 selector");
+        if (target.Validate() is { } targetProblem)
+            return Failure(targetProblem);
 
-        var clear = BrowserJson.ReadBool(arguments, "clear") ?? true;
-        var submit = BrowserJson.ReadBool(arguments, "submit") ?? false;
-        var delayMs = Math.Clamp(BrowserJson.ReadInt(arguments, "delayMs") ?? 0, 0, 500);
+        if (BrowserJson.TryReadBool(arguments, "clear", out var clearValue) is { } clearProblem)
+            return Failure(clearProblem);
+
+        if (BrowserJson.TryReadBool(arguments, "submit", out var submitValue) is { } submitProblem)
+            return Failure(submitProblem);
+
+        if (BrowserJson.TryReadInt(arguments, "delayMs", 0, BrowserInputLimits.MaxTypeDelayMs, out var delayValue) is { } delayProblem)
+            return Failure(delayProblem);
+
+        var clear = clearValue ?? true;
+        var submit = submitValue ?? false;
+        var delayMs = delayValue ?? 0;
+
+        if (!TryGetPage(context.SessionId, out var page, out var failure))
+            return failure!;
 
         try
         {

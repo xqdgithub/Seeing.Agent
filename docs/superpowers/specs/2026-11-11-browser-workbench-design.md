@@ -225,7 +225,7 @@ e3 button "提交"
 // browser_open
 { "url": "string (必需，http/https 或 about:blank)",
   "waitUntil": "enum[load, domcontentloaded, networkidle] (默认 domcontentloaded)",
-  "timeout": "integer (秒，可选)" }
+  "timeoutMs": "integer (毫秒，可选，1000–120000)" }
 
 // browser_snapshot
 { "maxElements": "integer (默认 200，上限 500)",
@@ -251,13 +251,14 @@ e3 button "提交"
 
 // browser_scroll
 { "direction": "enum[up, down, left, right] (默认 down)",
-  "amount": "integer (像素，默认 600)",
+  "amountPx": "integer (像素，默认 600，范围 1–20000)",
   "ref": "string (可选：在该元素内滚动)" }
 
 // browser_wait_for
 { "kind": "enum[selector, ref, text, networkidle, timeout] (必需)",
   "value": "string (selector/text 时必需)",
-  "timeout": "integer (秒，默认 30)" }
+  "timeoutMs": "integer (毫秒，默认 30000，范围 50–120000；越界失败不截断)",
+  "durationMs": "integer (仅 kind=timeout，毫秒，缺省等于 timeoutMs)" }
 
 // browser_screenshot
 { "fullPage": "boolean (默认 false)",
@@ -574,7 +575,7 @@ new WorkbenchContribution
 | ref 失效 | 「ref 'e2' 已失效（页面已变化），请重新调用 `browser_snapshot` 获取最新元素」 |
 | ref 不存在 | 「页面中没有 ref 'e2'；当前快照共 3 个元素（e1–e3）」 |
 | 元素不可见/被遮挡 | 「元素 e2 当前不可点击（不可见或被其他元素遮挡）」 |
-| 超时 | 「等待超时（30 秒）：未出现 selector '.result'」 |
+| 超时 | 「等待超时（30000 毫秒）：选择器 '.result' 未就绪」 |
 | 无浏览器可执行文件 | 「未找到可用的浏览器：请安装 Edge/Chrome，或在 seeing.json 的 Browser.ExecutablePath 指定路径」 |
 | 私网地址被拒 | 「目标地址属于内网/回环，已被拒绝；如确需访问请在 seeing.json 设 Browser.AllowPrivateHosts=true」 |
 | 未启用模块 | 工具的 schema 根本不存在（模块未启用 → 工具不挂载），无需文案 |

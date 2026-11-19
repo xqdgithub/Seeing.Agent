@@ -114,7 +114,10 @@ public class BrowserToolsTests
     public async Task ToolsWithoutPage_ShouldGuideToOpen()
     {
         var context = new ToolContext { SessionId = "s1" };
-        var arguments = System.Text.Json.JsonDocument.Parse("""{"text":"a","key":"Enter","expression":"1","kind":"networkidle"}""").RootElement;
+        // 每个工具都给一份合法参数：参数校验现在排在取页面之前，
+        // 参数错会先被报出来，这条用例只验证「没有页面时的指引」。
+        var arguments = System.Text.Json.JsonDocument.Parse(
+            """{"text":"a","key":"Enter","expression":"1","kind":"networkidle","ref":"e1"}""").RootElement;
 
         foreach (var tool in AllTools())
         {
@@ -135,13 +138,13 @@ public class BrowserToolsTests
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BrowserClickTool>.Instance,
             EmptyHost());
 
-        // 页面存在与否不是重点：参数校验在取页面之后，因此这里只验证「无页面」路径不吞掉原因
+        // 参数校验排在取页面之前：定位冲突与「有没有页面」无关，必须先报冲突本身
         var result = await tool.ExecuteAsync(
             System.Text.Json.JsonDocument.Parse("""{"ref":"e1","x":1,"y":2}""").RootElement,
             new ToolContext { SessionId = "s1" });
 
         result.Success.Should().BeFalse();
-        result.Error.Should().Contain("browser_open");
+        result.Error.Should().Contain("只能二选一");
     }
 
     [Fact]
@@ -174,6 +177,23 @@ public class BrowserToolsTests
 
         result.Success.Should().BeFalse();
         result.Error.Should().Contain("协议");
+    }
+
+    [Fact]
+    public async Task Open_LegacySecondsTimeout_ShouldBeRejectedWithGuidance()
+    {
+        var tool = new BrowserOpenTool(
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<BrowserOpenTool>.Instance,
+            EmptyHost(),
+            new TestOptionsMonitor<BrowserOptions>(new BrowserOptions()));
+
+        var result = await tool.ExecuteAsync(
+            System.Text.Json.JsonDocument.Parse("""{"url":"https://example.com","timeout":15}""").RootElement,
+            new ToolContext { SessionId = "s1" });
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("timeoutMs");
+        result.Error.Should().Contain("毫秒");
     }
 
     [Fact]

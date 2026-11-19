@@ -7,6 +7,7 @@ namespace Seeing.Agent.Tools.Browser.Tools;
 /// <summary>
 /// <c>browser_forward</c>：浏览器历史前进。
 /// </summary>
+[ToolCapability(ToolCapabilityKeys.TimeoutBudget, "60000")]
 public sealed class BrowserForwardTool : BrowserToolBase
 {
     /// <summary>创建工具。</summary>
@@ -43,13 +44,14 @@ public sealed class BrowserForwardTool : BrowserToolBase
     /// <inheritdoc />
     public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
     {
-        if (!TryGetPage(context.SessionId, out var page, out var failure))
-            return failure!;
-
+        // 参数是契约：先校验，再碰会话状态。
         var waitText = BrowserJson.ReadString(arguments, "waitUntil");
         var waitUntil = BrowserJson.ReadEnum<BrowserWaitUntil>(arguments, "waitUntil") ?? BrowserWaitUntil.DomContentLoaded;
         if (waitText is { Length: > 0 } && BrowserJson.ReadEnum<BrowserWaitUntil>(arguments, "waitUntil") is null)
             return Failure($"waitUntil 只能是 {BrowserJson.Choices<BrowserWaitUntil>()}，收到 '{waitText}'");
+
+        if (!TryGetPage(context.SessionId, out var page, out var failure))
+            return failure!;
 
         try
         {

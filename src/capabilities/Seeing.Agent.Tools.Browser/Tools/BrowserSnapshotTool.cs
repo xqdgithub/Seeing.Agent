@@ -11,6 +11,7 @@ namespace Seeing.Agent.Tools.Browser.Tools;
 /// 这是 agent 操作页面的<b>主入口</b>：先快照拿到 ref，再用 <c>browser_click</c>/<c>browser_type</c>
 /// 按 ref 操作。相比「猜 CSS 选择器」，ref 由快照现场打标，几乎不会写错。
 /// </remarks>
+[ToolCapability(ToolCapabilityKeys.TimeoutBudget, "60000")]
 public sealed class BrowserSnapshotTool : BrowserToolBase
 {
     /// <summary>创建工具。</summary>
@@ -55,16 +56,27 @@ public sealed class BrowserSnapshotTool : BrowserToolBase
     /// <inheritdoc />
     public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
     {
+        // 参数是契约：先校验，再碰会话状态。参数错与「还没打开页面」无关。
+        if (BrowserJson.TryReadInt(
+                arguments, "maxElements", 1, BrowserSnapshotBuilder.MaxElementsLimit,
+                out var maxElementsValue) is { } maxElementsProblem)
+        {
+            return Failure(maxElementsProblem);
+        }
+
+        if (BrowserJson.TryReadBool(arguments, "includeText", out var includeTextValue) is { } includeTextProblem)
+            return Failure(includeTextProblem);
+
         if (!TryGetPage(context.SessionId, out var page, out var failure))
             return failure!;
 
-        var maxElements = BrowserJson.ReadInt(arguments, "maxElements") ?? BrowserSnapshotBuilder.DefaultMaxElements;
-        var includeText = BrowserJson.ReadBool(arguments, "includeText") ?? true;
+        var maxElements = maxElementsValue ?? BrowserSnapshotBuilder.DefaultMaxElements;
+        var includeText = includeTextValue ?? true;
 
         try
         {
             var snapshot = await page.SnapshotAsync(
-                Math.Clamp(maxElements, 1, BrowserSnapshotBuilder.MaxElementsLimit),
+                maxElements,
                 includeText,
                 context.CancellationToken).ConfigureAwait(false);
 

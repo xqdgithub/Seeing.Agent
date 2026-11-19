@@ -7,6 +7,7 @@ namespace Seeing.Agent.Tools.Browser.Tools;
 /// <summary>
 /// <c>browser_press</c>：向当前聚焦元素发送按键（Enter、Tab、Escape、方向键、组合键）。
 /// </summary>
+[ToolCapability(ToolCapabilityKeys.TimeoutBudget, "60000")]
 public sealed class BrowserPressTool : BrowserToolBase
 {
     /// <summary>创建工具。</summary>
@@ -44,12 +45,13 @@ public sealed class BrowserPressTool : BrowserToolBase
     /// <inheritdoc />
     public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
     {
-        if (!TryGetPage(context.SessionId, out var page, out var failure))
-            return failure!;
-
+        // 参数是契约：先校验，再碰会话状态。
         var key = BrowserJson.ReadString(arguments, "key");
         if (string.IsNullOrWhiteSpace(key))
             return Failure("缺少必需参数: key");
+
+        if (!TryGetPage(context.SessionId, out var page, out var failure))
+            return failure!;
 
         try
         {

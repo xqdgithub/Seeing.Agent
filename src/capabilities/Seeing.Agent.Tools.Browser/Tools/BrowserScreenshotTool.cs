@@ -19,6 +19,7 @@ namespace Seeing.Agent.Tools.Browser.Tools;
 /// 由框架在出站前物化（见 <c>docs/superpowers/specs/2026-11-11-tool-image-parts-design.md</c>）。
 /// </para>
 /// </remarks>
+[ToolCapability(ToolCapabilityKeys.TimeoutBudget, "60000")]
 public sealed class BrowserScreenshotTool : BrowserToolBase
 {
     private readonly ISessionArtifactStore _artifacts;
@@ -68,14 +69,22 @@ public sealed class BrowserScreenshotTool : BrowserToolBase
     /// <inheritdoc />
     public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
     {
-        if (!TryGetPage(context.SessionId, out var page, out var failure))
-            return failure!;
+        // 参数是契约：先校验，再碰会话状态。
+        if (BrowserJson.TryReadBool(arguments, "fullPage", out var fullPageValue) is { } fullPageProblem)
+            return Failure(fullPageProblem);
 
-        var fullPage = BrowserJson.ReadBool(arguments, "fullPage") ?? false;
         var reference = BrowserJson.ReadString(arguments, "ref");
         BrowserElementTarget? target = string.IsNullOrWhiteSpace(reference)
             ? null
             : new BrowserElementTarget { Ref = reference };
+
+        if (target is { } declared && declared.Validate() is { } targetProblem)
+            return Failure(targetProblem);
+
+        var fullPage = fullPageValue ?? false;
+
+        if (!TryGetPage(context.SessionId, out var page, out var failure))
+            return failure!;
 
         try
         {

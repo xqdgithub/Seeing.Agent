@@ -10,6 +10,7 @@ namespace Seeing.Agent.Tools.Browser.Tools;
 /// <remarks>
 /// 主动关闭比等空闲回收好：它当场释放渲染进程内存，并让工作台画布立刻显示「未启动」。
 /// </remarks>
+[ToolCapability(ToolCapabilityKeys.TimeoutBudget, "60000")]
 public sealed class BrowserCloseTool : BrowserToolBase
 {
     /// <summary>创建工具。</summary>

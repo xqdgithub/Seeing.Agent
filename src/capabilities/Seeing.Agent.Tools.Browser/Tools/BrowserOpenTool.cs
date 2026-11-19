@@ -26,8 +26,15 @@ namespace Seeing.Agent.Tools.Browser.Tools;
 /// 只是没有可视面板 —— 因此打开工作台失败不得改变工具本身的成功/失败。
 /// </para>
 /// </remarks>
+[ToolCapability(ToolCapabilityKeys.TimeoutBudget, "130000")]
 public sealed class BrowserOpenTool : BrowserToolBase
 {
+    /// <summary>导航超时下限（毫秒）。</summary>
+    private const int MinTimeoutMs = 1_000;
+
+    /// <summary>导航超时上限（毫秒）。</summary>
+    private const int MaxTimeoutMs = 120_000;
+
     private readonly IOptionsMonitor<BrowserOptions> _options;
 
     /// <summary>创建工具。</summary>
@@ -46,6 +53,7 @@ public sealed class BrowserOpenTool : BrowserToolBase
     public override string Description =>
         "打开网页并在界面上显示浏览器面板，供后续 browser_* 工具操作。\n\n" +
         "- url 只支持 http、https、about:blank、data:text/html；内网与回环地址默认被拒。\n" +
+        "- 时长参数以毫秒计（timeoutMs），越界会失败而不会被截断。\n" +
         "- 会在用户界面打开「浏览器」工作台（无界面环境只建页面，不影响后续工具）。\n" +
         "- 已有页面时导航到新地址，保留同一浏览器会话（cookie 与登录态延续）。\n" +
         "- 打开后可调用 `browser_snapshot` 拿到可点击元素清单；需要看画面用 `browser_screenshot`。\n" +
@@ -69,12 +77,12 @@ public sealed class BrowserOpenTool : BrowserToolBase
                 @default = "domcontentloaded",
                 description = "等待页面就绪的时机：domcontentloaded（默认，通常够用）、load（含全部子资源）、networkidle（网络空闲）"
             },
-            timeout = new
+            timeoutMs = new
             {
                 type = "integer",
-                minimum = 1,
-                maximum = 300,
-                description = "导航超时（秒，可选；缺省用配置的 30 秒）"
+                minimum = 1000,
+                maximum = 120000,
+                description = "导航超时毫秒数（可选；缺省用浏览器配置的操作超时，默认 30000）。越界会失败，不会被截断"
             }
         },
         required = new[] { "url" }
@@ -97,9 +105,23 @@ public sealed class BrowserOpenTool : BrowserToolBase
         if (waitText is { Length: > 0 } && BrowserJson.ReadEnum<BrowserWaitUntil>(arguments, "waitUntil") is null)
             return Failure($"waitUntil 只能是 {BrowserJson.Choices<BrowserWaitUntil>()}，收到 '{waitText}'");
 
-        var timeoutSeconds = BrowserJson.ReadInt(arguments, "timeout");
-        using var timeoutCts = timeoutSeconds is > 0
-            ? new CancellationTokenSource(TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds.Value, 1, 300)))
+        // 时长参数一律用毫秒：与 browser_wait_for 的 timeoutMs 同一契约，越界直接失败，不夹取。
+        if (BrowserJson.RejectObsoleteField(arguments, "timeout", "timeoutMs", "毫秒", "timeoutMs=30000") is { } legacyTimeout)
+            return Failure(legacyTimeout);
+
+        if (BrowserJson.TryReadMilliseconds(arguments, "timeoutMs", out var timeoutValue) is { } timeoutProblem)
+            return Failure(timeoutProblem);
+
+        var timeoutMs = timeoutValue;
+        if (timeoutMs is < MinTimeoutMs or > MaxTimeoutMs)
+        {
+            return Failure(
+                $"timeoutMs 单位是毫秒，范围 {MinTimeoutMs}–{MaxTimeoutMs}；收到 {timeoutMs}" +
+                "（例如等 30 秒请传 30000）");
+        }
+
+        using var timeoutCts = timeoutMs is { } ms
+            ? new CancellationTokenSource(TimeSpan.FromMilliseconds(ms))
             : null;
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
@@ -125,6 +147,13 @@ public sealed class BrowserOpenTool : BrowserToolBase
                     ["status"] = result.Status ?? 0,
                     ["ref_epoch"] = page.RefEpoch
                 });
+        }
+        catch (OperationCanceledException) when (
+            timeoutCts?.IsCancellationRequested == true
+            && !context.CancellationToken.IsCancellationRequested)
+        {
+            // 自己的超时到点：不能笼统说「已取消」，否则模型分不清是用户中止还是页面太慢
+            return Failure($"打开网页超时（{timeoutMs} 毫秒）");
         }
         catch (Exception ex)
         {

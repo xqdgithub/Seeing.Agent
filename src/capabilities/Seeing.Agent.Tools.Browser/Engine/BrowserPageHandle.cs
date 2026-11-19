@@ -535,7 +535,11 @@ public sealed class BrowserPageHandle : IAsyncDisposable
                 await _page.Mouse.ClickAsync(
                     (decimal)target.X!.Value,
                     (decimal)target.Y!.Value,
-                    new ClickOptions { Button = button, Count = Math.Clamp(clickCount, 1, 3) })
+                    new ClickOptions
+                    {
+                        Button = button,
+                        Count = Math.Clamp(clickCount, BrowserInputLimits.MinClickCount, BrowserInputLimits.MaxClickCount)
+                    })
                     .ConfigureAwait(false);
 
                 await SettleAfterClickAsync(navigatedCoordinates).ConfigureAwait(false);
@@ -564,7 +568,7 @@ public sealed class BrowserPageHandle : IAsyncDisposable
             await element.ClickAsync(new ClickOptions
             {
                 Button = button,
-                Count = Math.Clamp(clickCount, 1, 3)
+                Count = Math.Clamp(clickCount, BrowserInputLimits.MinClickCount, BrowserInputLimits.MaxClickCount)
             }).ConfigureAwait(false);
 
             await SettleAfterClickAsync(navigated).ConfigureAwait(false);
@@ -694,7 +698,7 @@ public sealed class BrowserPageHandle : IAsyncDisposable
         CancellationToken cancellationToken)
         => RunAsync<string>(async () =>
         {
-            var delta = Math.Clamp(amount <= 0 ? 600 : amount, 1, 20000);
+            var delta = Math.Clamp(amount, 1, BrowserInputLimits.MaxScrollPx);
             var (dx, dy) = direction switch
             {
                 BrowserScrollDirection.Up => (0, -delta),
@@ -730,20 +734,19 @@ public sealed class BrowserPageHandle : IAsyncDisposable
     /// <summary>等待条件成立。</summary>
     /// <remarks>
     /// <para>
-    /// <b>取消必须能打断等待</b>：PuppeteerSharp 的 <c>WaitFor*</c> 系列只接受超时，
-    /// 没有 CancellationToken 参数。只用超时的话「用户取消会话」不会产生任何效果 ——
-    /// 工具会一直跑到超时才返回，前端看起来永远「执行中」（用户实测报障）。
-    /// 因此这里把等待切成小片：片间检查取消令牌，取消后最多一片的延迟就脱离。
+    /// <b>一次调用，交给 PuppeteerSharp 原生的超时与取消</b>：<see cref="WaitForOptions"/> 自带
+    /// <c>Timeout</c> 与 <c>CancellationToken</c>，取消会真正中止等待并清理 CDP 等待任务。
     /// </para>
     /// <para>
-    /// <b>为什么不用 Task.WaitAsync(ct)</b>：它能达成同样效果，但底层 WaitFor* 任务会继续
-    /// 在浏览器里挂着（无法中止），可能影响同页面的后续操作。分片方式能让每次等待都在
-    /// 短时间内自然结束。
+    /// <b>为什么不再切片</b>：切片是为「库不支持取消」时代写的补丁，代价是网络空闲永远判不成立 ——
+    /// 观察窗口（<c>IdleTime</c>）与强制超时都被压到同一片长（200ms），两者同时到点，
+    /// 页面再空闲也会被判成「本片未空闲」。实测：同一张空闲页，原生 <c>Timeout=3000/IdleTime=500</c>
+    /// 512ms 返回，切片版跑满 3013ms 才靠「预算用尽」收场。
     /// </para>
     /// <para>
-    /// <b>注意两个异常来源</b>：PuppeteerSharp 的等待超时抛的是
-    /// <c>WaitTaskTimeoutException</c>（**不是** <see cref="TimeoutException"/> 的子类），
-    /// 必须按类型名或基类判定，否则单片的超时会穿透成「工具失败」而不是「继续下一片」。
+    /// <b>网络空闲的现实</b>：真实站点常有埋点/心跳/长连接，预算用尽仍不空闲是常态。
+    /// 这时按「就绪」返回并标注 <see cref="BrowserWaitResult.BudgetExhausted"/>，
+    /// 由上层在文案里说明，而不是把「网络没安静」误判成页面失败。
     /// </para>
     /// </remarks>
     public Task<BrowserWaitResult> WaitForAsync(
@@ -753,8 +756,10 @@ public sealed class BrowserPageHandle : IAsyncDisposable
         TimeSpan? duration = null)
         => RunAsync<BrowserWaitResult>(async () =>
         {
+            var timeoutMs = ToMilliseconds(timeout);
+
             // kind=timeout 的语义是「固定等待 duration」：duration 缺省等于 timeout，
-            // 且不得大于总预算。直接 Delay（取消由它观察），不参与下面的分片循环。
+            // 且不得大于总预算。直接 Delay（取消由它观察）。
             if (condition.Kind == BrowserWaitKind.Timeout)
             {
                 var wait = duration ?? timeout;
@@ -766,123 +771,82 @@ public sealed class BrowserPageHandle : IAsyncDisposable
                 return BrowserWaitResult.Ready;
             }
 
-            var deadline = DateTimeOffset.UtcNow + timeout;
-
-            // 分片等待：每片最多 200ms，片间检查取消。
-            // 太长的单片会让取消延迟变大；太短会频繁重建 CDP 等待（每次都有开销）。
-            const int SliceMs = 200;
-
-            while (true)
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var remainingMs = (int)(deadline - DateTimeOffset.UtcNow).TotalMilliseconds;
-                if (remainingMs <= 0)
-                    throw new TimeoutException($"等待超时（{timeout.TotalSeconds:F0} 秒）");
-
-                var sliceMs = Math.Min(remainingMs, SliceMs);
-                var isLastSlice = sliceMs >= remainingMs;
-
-                try
+                switch (condition.Kind)
                 {
-                    if (await TryWaitOnceAsync(condition, sliceMs, cancellationToken).ConfigureAwait(false))
-                        return BrowserWaitResult.Ready;
+                    case BrowserWaitKind.Selector:
+                        await _page.WaitForSelectorAsync(condition.Value!, new WaitForSelectorOptions
+                        {
+                            Timeout = timeoutMs,
+                            CancellationToken = cancellationToken
+                        }).ConfigureAwait(false);
+                        break;
 
-                    if (isLastSlice)
-                    {
-                        // networkidle 在真实站点几乎不可能成立（埋点/心跳/广告持续有请求）。
-                        // 预算用尽时按「已就绪」返回，由上层在结果文案里说明原因，
-                        // 而不是让 agent 把「网络没完全空闲」误判成页面失败。
-                        if (condition.Kind == BrowserWaitKind.NetworkIdle)
+                    case BrowserWaitKind.Ref:
+                        // 复用同一构造点（含 ref 形状校验），避免这条路径绕过白名单
+                        var refSelector = new BrowserElementTarget { Ref = condition.Value }.ResolveSelector();
+                        await _page.WaitForSelectorAsync(refSelector!, new WaitForSelectorOptions
+                        {
+                            Timeout = timeoutMs,
+                            CancellationToken = cancellationToken
+                        }).ConfigureAwait(false);
+                        break;
+
+                    case BrowserWaitKind.Text:
+                        await _page.WaitForFunctionAsync(
+                            "(text) => document.body && document.body.innerText.includes(text)",
+                            new WaitForFunctionOptions
+                            {
+                                Timeout = timeoutMs,
+                                CancellationToken = cancellationToken
+                            },
+                            condition.Value!).ConfigureAwait(false);
+                        break;
+
+                    case BrowserWaitKind.NetworkIdle:
+                        try
+                        {
+                            await _page.WaitForNetworkIdleAsync(new WaitForNetworkIdleOptions
+                            {
+                                Timeout = timeoutMs,
+                                // 空闲窗口必须明显小于强制超时：两者相等时同时到点，
+                                // 「连续 IdleTime 没有请求」永远无法被观察到。
+                                IdleTime = 500,
+                                CancellationToken = cancellationToken
+                            }).ConfigureAwait(false);
+                        }
+                        catch (Exception ex) when (IsWaitTimeout(ex) && !cancellationToken.IsCancellationRequested)
+                        {
+                            // 预算用尽仍未空闲：真实站点常态，按就绪处理并由上层注明
                             return BrowserWaitResult.ReadyAfterBudget;
+                        }
 
-                        throw new TimeoutException($"等待超时（{timeout.TotalSeconds:F0} 秒）");
-                    }
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    // 取消优先于超时：明确抛出，让上层落成「已取消」终态。
-                    // 注意这一条必须排在超时判定**之前**：Task.Delay(slice, ct) 取消时
-                    // 抛的也是 OperationCanceledException，若先按超时吞掉就永远取消不了。
-                    throw;
-                }
-                catch (Exception ex) when (IsWaitTimeout(ex))
-                {
-                    if (isLastSlice)
-                        throw new TimeoutException($"等待超时（{timeout.TotalSeconds:F0} 秒）", ex);
+                        break;
 
-                    // 本片超时但总预算未尽：继续下一片（同时也是取消的响应点）
+                    default:
+                        throw new ArgumentOutOfRangeException(
+                            nameof(condition), condition.Kind, "未知的等待条件");
                 }
+
+                return BrowserWaitResult.Ready;
+            }
+            catch (Exception ex) when (IsWaitTimeout(ex) && !cancellationToken.IsCancellationRequested)
+            {
+                // 取消优先于超时：用户取消时不能伪装成「等到超时」。
+                throw new TimeoutException($"等待超时（{timeoutMs} 毫秒）", ex);
             }
         }, cancellationToken);
+
+    /// <summary>把等待时长换算成毫秒（至少 1，避免 0 被库当成「不限时」）。</summary>
+    private static int ToMilliseconds(TimeSpan value)
+        => (int)Math.Clamp(Math.Round(value.TotalMilliseconds), 1, int.MaxValue);
 
     /// <summary>判定异常是否为「等待超时」（PuppeteerSharp 用自己的类型，不是 BCL 的 TimeoutException）。</summary>
     private static bool IsWaitTimeout(Exception ex)
         => ex is TimeoutException
            || ex is OperationCanceledException
            || ex.GetType().Name.Contains("Timeout", StringComparison.Ordinal);
-
-    /// <summary>单片等待：返回条件是否在本片内成立（超时抛 <see cref="TimeoutException"/>）。</summary>
-    private async Task<bool> TryWaitOnceAsync(
-        BrowserWaitCondition condition,
-        int sliceMs,
-        CancellationToken cancellationToken)
-    {
-        switch (condition.Kind)
-        {
-            case BrowserWaitKind.Selector:
-                await _page.WaitForSelectorAsync(condition.Value!, new WaitForSelectorOptions
-                {
-                    Timeout = sliceMs
-                }).ConfigureAwait(false);
-                return true;
-
-            case BrowserWaitKind.Ref:
-                // 复用同一构造点（含 ref 形状校验），避免这条路径绕过白名单
-                var refSelector = new BrowserElementTarget { Ref = condition.Value }.ResolveSelector();
-                await _page.WaitForSelectorAsync(refSelector!, new WaitForSelectorOptions
-                {
-                    Timeout = sliceMs
-                }).ConfigureAwait(false);
-                return true;
-
-            case BrowserWaitKind.Text:
-                await _page.WaitForFunctionAsync(
-                    "(text) => document.body && document.body.innerText.includes(text)",
-                    new WaitForFunctionOptions { Timeout = sliceMs },
-                    condition.Value!).ConfigureAwait(false);
-                return true;
-
-            case BrowserWaitKind.NetworkIdle:
-                // 「网络空闲」在真实网站上很难满足：广告、埋点、心跳会一直有零星请求。
-                // 单片内最多等 sliceMs（由外层控制在 200ms 量级，保证取消响应快）；
-                // 超时视为「本片未空闲」但不算失败 —— 外层会继续下一片直到总预算用尽，
-                // 而总预算用尽时按已就绪处理（DOM 通常已可用）。
-                // 真正的就绪判定始终交给紧随其后的 browser_snapshot。
-                try
-                {
-                    await _page.WaitForNetworkIdleAsync(new WaitForNetworkIdleOptions
-                    {
-                        Timeout = sliceMs,
-                        IdleTime = Math.Min(500, sliceMs)
-                    }).ConfigureAwait(false);
-                    return true;
-                }
-                catch (Exception ex) when (IsWaitTimeout(ex) && !cancellationToken.IsCancellationRequested)
-                {
-                    return false;   // 本片未空闲，交给外层继续
-                }
-
-            default:
-                // kind=timeout：固定等待指定时长。
-                //
-                // 这里**必须**只在整段时间结束时返回 true，不能在每片结束时返回 ——
-                // 早期实现每片都 return true，于是第一片（200ms）就「成功」了，
-                // 取消与真正的等待时长全部失效（实测：30 秒等待 + 1.5 秒取消 → 报「正常完成」）。
-                await Task.Delay(sliceMs, cancellationToken).ConfigureAwait(false);
-                return false;   // 让外层按剩余时间继续；真正到期时由外层抛 TimeoutException
-        }
-    }
 
     /// <summary>截图。</summary>
     public Task<byte[]> ScreenshotAsync(

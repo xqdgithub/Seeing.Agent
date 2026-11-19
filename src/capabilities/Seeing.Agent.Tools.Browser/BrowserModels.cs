@@ -208,6 +208,30 @@ public sealed record BrowserNavigationResult(string Url, string Title, int? Stat
     }
 }
 
+/// <summary>输入类参数的单一真源（工具 schema 与执行层共用）。</summary>
+/// <remarks>
+/// <b>为什么集中在一处</b>：默认值与上下限曾同时在工具层和引擎层各写一份
+/// （<c>600</c>、<c>1..3</c>、<c>0..500</c>），改一处漏一处就会漂移 ——
+/// 工具说「最多 3 次」，执行层按别的数夹，调用方无从判断哪个是真的。
+/// </remarks>
+public static class BrowserInputLimits
+{
+    /// <summary>默认滚动距离（像素）。</summary>
+    public const int DefaultScrollPx = 600;
+
+    /// <summary>滚动距离上限（像素）。</summary>
+    public const int MaxScrollPx = 20_000;
+
+    /// <summary>点击次数下限。</summary>
+    public const int MinClickCount = 1;
+
+    /// <summary>点击次数上限（3 = 三击）。</summary>
+    public const int MaxClickCount = 3;
+
+    /// <summary>逐字输入延迟上限（毫秒）。</summary>
+    public const int MaxTypeDelayMs = 500;
+}
+
 /// <summary>JSON 解析辅助（工具参数读取的唯一入口，避免各处重复写 JsonElement 样板）。</summary>
 internal static class BrowserJson
 {
@@ -225,6 +249,99 @@ internal static class BrowserJson
            && value.TryGetInt32(out var number)
             ? number
             : null;
+
+    /// <summary>
+    /// 读取整数参数并校验范围，区分「未提供」与「提供了但不合法」。
+    /// </summary>
+    /// <param name="arguments">工具参数。</param>
+    /// <param name="name">参数名。</param>
+    /// <param name="min">最小值（含）。</param>
+    /// <param name="max">最大值（含）。</param>
+    /// <param name="value">读到的值；未提供时为 <see langword="null"/>。</param>
+    /// <returns>格式或范围错误原因；<see langword="null"/> 表示读取成功（含「未提供」）。</returns>
+    /// <remarks>
+    /// <b>为什么不复用 <see cref="ReadInt"/></b>：它对类型不对的值返回 <see langword="null"/>，
+    /// 与「未提供」无法区分，于是 <c>"maxElements": "300"</c> 会静默回落到默认值 ——
+    /// 调用方以为参数生效了，实际用的是另一套值。参数是契约，错了要说出来。
+    /// </remarks>
+    public static string? TryReadInt(
+        JsonElement arguments, string name, int min, int max, out int? value)
+    {
+        value = null;
+
+        if (arguments.ValueKind != JsonValueKind.Object
+            || !arguments.TryGetProperty(name, out var element))
+        {
+            return null;
+        }
+
+        if (element.ValueKind != JsonValueKind.Number || !element.TryGetInt32(out var number))
+            return $"{name} 必须是整数；收到 {element.GetRawText()}";
+
+        if (number < min || number > max)
+            return $"{name} 范围 {min}–{max}；收到 {number}";
+
+        value = number;
+        return null;
+    }
+
+    /// <summary>
+    /// 读取布尔参数，区分「未提供」与「提供了但不是布尔值」。
+    /// </summary>
+    /// <param name="arguments">工具参数。</param>
+    /// <param name="name">参数名。</param>
+    /// <param name="value">读到的值；未提供时为 <see langword="null"/>。</param>
+    /// <returns>格式错误原因；<see langword="null"/> 表示读取成功（含「未提供」）。</returns>
+    /// <remarks>
+    /// <b>为什么这条更关键</b>：布尔参数的默认值往往是「有副作用的那一支」（<c>clear=true</c>
+    /// 会清空输入框）。<c>"false"</c> 这种字符串一旦被静默当成「未提供」，
+    /// 工具就会执行与调用方意图相反的破坏性动作。
+    /// </remarks>
+    public static string? TryReadBool(JsonElement arguments, string name, out bool? value)
+    {
+        value = null;
+
+        if (arguments.ValueKind != JsonValueKind.Object
+            || !arguments.TryGetProperty(name, out var element))
+        {
+            return null;
+        }
+
+        if (element.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            return $"{name} 必须是布尔值 true/false；收到 {element.GetRawText()}";
+
+        value = element.GetBoolean();
+        return null;
+    }
+
+    /// <summary>
+    /// 读取整数毫秒参数，并区分「未提供」与「提供了但不是整数」。
+    /// </summary>
+    /// <param name="arguments">工具参数。</param>
+    /// <param name="name">参数名（带 Ms 后缀，单位即毫秒）。</param>
+    /// <param name="value">读到的毫秒数；未提供时为 <see langword="null"/>。</param>
+    /// <returns>格式错误原因；<see langword="null"/> 表示读取成功（含「未提供」）。</returns>
+    /// <remarks>
+    /// <b>为什么不复用 <see cref="ReadInt"/></b>：它对类型不对的值返回 <see langword="null"/>，
+    /// 与「未提供」无法区分，于是 <c>"timeoutMs": "5000"</c> 会静默回落到默认预算 ——
+    /// 这正是「参数填错却看不出」的一类问题。时长参数必须把这种输入显式顶回去。
+    /// </remarks>
+    public static string? TryReadMilliseconds(JsonElement arguments, string name, out int? value)
+    {
+        value = null;
+
+        if (arguments.ValueKind != JsonValueKind.Object
+            || !arguments.TryGetProperty(name, out var element))
+        {
+            return null;
+        }
+
+        if (element.ValueKind != JsonValueKind.Number || !element.TryGetInt32(out var ms))
+            return $"{name} 必须是整数毫秒；收到 {element.GetRawText()}";
+
+        value = ms;
+        return null;
+    }
 
     public static double? ReadDouble(JsonElement arguments, string name)
         => arguments.ValueKind == JsonValueKind.Object
@@ -254,4 +371,24 @@ internal static class BrowserJson
     /// <summary>渲染枚举的合法取值（用于失败文案）。</summary>
     public static string Choices<TEnum>() where TEnum : struct, Enum
         => string.Join(", ", Enum.GetValues<TEnum>().Select(v => v.ToString().ToLowerInvariant()));
+
+    /// <summary>
+    /// 旧字段出现时给出改名指引。
+    /// </summary>
+    /// <param name="arguments">工具参数。</param>
+    /// <param name="legacyName">已废弃的字段名。</param>
+    /// <param name="newName">替代字段名。</param>
+    /// <param name="unit">新字段的单位（如「毫秒」「像素」）。</param>
+    /// <param name="example">替代写法的示例（如 <c>amountPx=600</c>）。</param>
+    /// <returns>失败原因；旧字段未出现时返回 <see langword="null"/>。</returns>
+    /// <remarks>
+    /// <b>为什么不做静默兼容</b>：旧字段往往没有单位后缀，把它按两种单位理解都能「跑通」，
+    /// 正是这种模糊让 <c>timeout=15000</c> 变成了 300 秒。明确失败一次，下一轮就会用对字段。
+    /// </remarks>
+    public static string? RejectObsoleteField(
+        JsonElement arguments, string legacyName, string newName, string unit, string example)
+        => arguments.ValueKind == JsonValueKind.Object
+           && arguments.TryGetProperty(legacyName, out _)
+            ? $"{legacyName} 已更名为 {newName}（{unit}）；例如 {example}"
+            : null;
 }

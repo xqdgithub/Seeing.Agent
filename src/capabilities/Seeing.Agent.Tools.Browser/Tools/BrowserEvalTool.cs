@@ -17,6 +17,7 @@ namespace Seeing.Agent.Tools.Browser.Tools;
 /// <b>边界</b>：执行环境是页面（浏览器渲染进程），没有 Node / 文件系统访问；受同源策略约束。
 /// </para>
 /// </remarks>
+[ToolCapability(ToolCapabilityKeys.TimeoutBudget, "120000")]
 public sealed class BrowserEvalTool : BrowserToolBase
 {
     /// <summary>创建工具。</summary>
@@ -60,14 +61,18 @@ public sealed class BrowserEvalTool : BrowserToolBase
     /// <inheritdoc />
     public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
     {
-        if (!TryGetPage(context.SessionId, out var page, out var failure))
-            return failure!;
-
+        // 参数是契约：先校验，再碰会话状态。
         var expression = BrowserJson.ReadString(arguments, "expression");
         if (string.IsNullOrWhiteSpace(expression))
             return Failure("缺少必需参数: expression");
 
-        var awaitPromise = BrowserJson.ReadBool(arguments, "awaitPromise") ?? true;
+        if (BrowserJson.TryReadBool(arguments, "awaitPromise", out var awaitPromiseValue) is { } awaitPromiseProblem)
+            return Failure(awaitPromiseProblem);
+
+        var awaitPromise = awaitPromiseValue ?? true;
+
+        if (!TryGetPage(context.SessionId, out var page, out var failure))
+            return failure!;
 
         try
         {

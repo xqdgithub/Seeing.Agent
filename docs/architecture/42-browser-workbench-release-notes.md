@@ -805,6 +805,8 @@ public sealed record BrowserHumanAction
 
 ## 十六、等待工具：取消、超时与预算语义（修正）
 
+> **本节记录的是 2026-11-19 之前的实现（秒级参数 + 200ms 分片）。现行契约见 §16.1。**
+
 ### 现象
 
 取消会话后，执行中的 `browser_wait_for` 仍是「执行中」，要等满超时才结束。
@@ -885,6 +887,76 @@ while (true)
 新：BrowserWaitForToolTests                → 4/4（Schema 暴露 duration、描述含“上限”、timeout.skip、结果语义）
 新：Browser.Tests 全量                     → 291 通过 / 0 失败 / 11 跳过
 ```
+
+### 16.1 修订（2026-11-19）：毫秒契约 + 交给原生等待
+
+**现象**：`{"kind":"networkidle","timeout":15000}` 表现成「一直在等待」。
+
+**两个根因（同时存在，缺一不可解释）**
+
+| # | 根因 | 位置 |
+|---|------|------|
+| 1 | `timeout` 是秒，`Math.Clamp(15000, 1, 300)` 静默放大到 **300 秒**；又声明了 `timeout.skip`，全局兜底超时拦不住 | `BrowserWaitForTool` |
+| 2 | 分片里 `IdleTime` 与 `Timeout` 同为片长（200ms），空闲窗口与强制超时同时到点 → 空闲**永远判不成立**，只能跑满预算后「按就绪处理」 | `BrowserPageHandle.TryWaitOnceAsync`（已删除） |
+
+**实测（真实 Edge + 本地空闲页，同一时刻）**
+
+```
+封装 WaitForAsync(NetworkIdle, 3s)                  → 3013ms，BudgetExhausted=true
+原生 WaitForNetworkIdleAsync(Timeout=3000, Idle=500) →  512ms，正常空闲
+```
+
+**修订**
+
+- 参数改为 `timeoutMs` / `durationMs`（毫秒），范围 50–120000；`browser_open.timeout` 同步改 `timeoutMs`（1000–120000）。
+- **越界一律失败**并说明单位，不再夹取；旧字段 `timeout` / `duration` 明确拒绝并给改名示例。
+- 等待改为**一次原生调用**：`Timeout = timeoutMs` + `WaitForOptions.CancellationToken`，删除 200ms 分片与 `TryWaitOnceAsync`；networkidle 固定 `IdleTime = 500`。
+- `timeout.skip` → `timeout.budget = 130000`（自身上限 + 收尾开销），外层仍有一道兜底。
+- 结果语义不变：`networkidle` 预算用尽 = 成功 + `budgetExhausted=true` + 文案注明。
+
+**守门**
+
+| 用例 | 钉住什么 |
+|------|---------|
+| `Schema_ShouldExposeMillisecondFieldsOnly` | 只暴露带单位的毫秒字段 |
+| `OutOfRangeTimeout_ShouldFailInsteadOfClamping` | 15 / 900000 这类值必须失败，不能被放大 |
+| `LegacySecondsParameter_ShouldBeRejectedWithGuidance` | 旧 `timeout` 不静默兼容 |
+| `Capabilities_ShouldBoundGlobalTimeoutInsteadOfSkipping` | 不再豁免全局超时 |
+| `NetworkIdle_OnIdlePage_ShouldReturnAfterIdleWindowNotFullBudget`（真浏览器） | 空闲页 10s 预算必须 < 5s 返回且 `budgetExhausted=false` |
+| `NetworkIdle_OnAlwaysBusyPage_ShouldExhaustBudget`（真浏览器） | 持续请求才允许 `budgetExhausted=true` |
+
+详见 `docs/superpowers/specs/2026-11-19-browser-wait-milliseconds-design.md`。
+
+### 16.2 工具参数契约统一（2026-11-19）
+
+同一套纪律推广到全部 12 个 `browser_*` 工具：**入参是契约，错了就说出来，不猜、不夹、不回落默认**。
+
+**发现的静默降级**
+
+| 参数 | 旧行为 | 后果 |
+|---|---|---|
+| `browser_type.clear` 传 `"false"` | 非 Bool → 回落 `true` | **清空用户已有内容**（破坏性） |
+| `browser_type.submit` 传 `"true"` | 回落 `false` | 回车没发，模型以为提交了 |
+| `browser_eval.awaitPromise` 传 `"false"` | 回落 `true` | 可能挂到超时 |
+| `browser_screenshot.fullPage` 传 `"true"` | 回落 `false` | 只截可视区 |
+| `browser_scroll.amount=-100` | `<=0 ? 600` | **向同方向滚 600px**（方向错误） |
+| `clickCount/maxElements/delayMs` 越界或类型不符 | 夹取/回落默认 | 参数「看起来生效了」 |
+
+**修订**
+
+- `BrowserJson.TryReadInt(name,min,max)` / `TryReadBool(name)`：区分「未提供」与「提供了但不合法」；
+  旧字段统一走 `RejectObsoleteField`（`amount`→`amountPx`、`timeout`→`timeoutMs`、`duration`→`durationMs`）。
+- 参数校验统一提到 `TryGetPage` 之前：缺参不再被「还没打开页面」挡在前面。
+- `BrowserInputLimits` 收敛默认值与范围（`600`、`1..3`、`0..500`），schema 与执行层共用一处真源。
+- 12 个工具统一声明 `timeout.budget`：`browser_open`/`browser_wait_for` = 130000，`browser_eval` = 120000，
+  其余 = 60000。此前除 `wait_for` 外**没有任何外层超时**（全局默认 `null`），一次卡住的 CDP 调用会一直占住会话互斥。
+- 引擎保留夹取作为最后防线，但删掉 `amount <= 0 ? 600` 这类隐藏默认。
+
+**守门**：`BrowserToolParameterContractTests`（类型/越界/改名/参数先行/全工具超时预算）；
+`BrowserToolsTests` 的共享参数补 `ref`（校验已提前）。
+全量（含真浏览器）：**331 通过 / 0 失败**。
+
+详见 `docs/superpowers/specs/2026-11-19-browser-tool-parameter-contract-design.md`。
 
 ## 十七、浏览器设置页（配置卡）
 
