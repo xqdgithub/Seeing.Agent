@@ -561,19 +561,10 @@ public static class BrowserHostRunner
     }
 
     /// <summary>
-    /// 回收「锁已释放」的客户端留下的页面与清单。
+    /// 回收「锁已释放」的客户端留下的页面与清单（实现见 <see cref="BrowserClientReclaimer"/>）。
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <b>为什么按 targetId 关页面而不是按客户端</b>：客户端崩溃时不会执行任何清理代码，
-    /// 唯一可靠的事实是它写下的 <c>pages.json</c>。<c>Target.closeTarget</c> 是浏览器级操作，
-    /// 不需要客户端连接存在。
-    /// </para>
-    /// <para>
-    /// <b>为什么删除锁文件是安全的</b>：扫描前刚刚判定该 PID 已死（<see cref="BrowserClientPresence.AliveClientPids"/>）。
-    /// 若恰好在扫描与删除之间该 PID 被复用并重新持锁，<c>File.Delete</c> 在 Windows 上会因共享冲突失败，
-    /// 我们只记 Debug 并跳过 —— 不能把活客户端的锁删掉。
-    /// </para>
+    /// 维护路径失败不该把宿主主循环一起带走：浏览器可能正好断开。
     /// </remarks>
     private static async Task ReclaimDeadClientsAsync(
         BrowserProcessHost processHost,
@@ -581,122 +572,25 @@ public static class BrowserHostRunner
         ILogger log,
         CancellationToken ct)
     {
-        if (!Directory.Exists(locator.ClientsDirectory))
-            return;
-
-        IReadOnlyList<int> alivePids;
         try
         {
-            alivePids = BrowserClientPresence.AliveClientPids(locator.ProfileDirectory);
+            await BrowserClientReclaimer
+                .ReclaimAsync(processHost.Browser, locator, log, ct)
+                .ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (OperationCanceledException)
         {
-            log.LogDebug(ex, "扫描存活客户端失败（本轮跳过回收）");
-            return;
-        }
-
-        var alive = new HashSet<int>(alivePids);
-        string[] lockFiles;
-        try
-        {
-            lockFiles = Directory.GetFiles(
-                locator.ClientsDirectory, "*" + BrowserClientPresence.LockFileExtension);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            log.LogDebug(ex, "枚举客户端锁失败（本轮跳过回收）");
-            return;
-        }
-
-        ICDPSession? session = null;
-        try
-        {
-            foreach (var lockFile in lockFiles)
-            {
-                ct.ThrowIfCancellationRequested();
-
-                if (!int.TryParse(
-                        Path.GetFileNameWithoutExtension(lockFile),
-                        NumberStyles.Integer,
-                        CultureInfo.InvariantCulture,
-                        out var clientPid)
-                    || clientPid <= 0
-                    || alive.Contains(clientPid))
-                {
-                    continue;
-                }
-
-                var targets = BrowserClientPresence.ReadPageTargets(locator.ProfileDirectory, clientPid);
-                if (targets.Count > 0)
-                {
-                    session ??= await processHost.Browser.Target.CreateCDPSessionAsync().ConfigureAwait(false);
-
-                    foreach (var targetId in targets)
-                    {
-                        if (string.IsNullOrWhiteSpace(targetId))
-                            continue;
-
-                        try
-                        {
-                            await session.SendAsync("Target.closeTarget", new { targetId })
-                                .ConfigureAwait(false);
-                            log.LogInformation(
-                                "已关闭死客户端 {ClientPid} 的遗留页面 {TargetId}", clientPid, targetId);
-                        }
-                        catch (Exception ex) when (ex is not OperationCanceledException)
-                        {
-                            // 页面可能已经被用户手动关掉 / target 已失效：继续处理其余 target。
-                            log.LogDebug(ex, "关闭遗留页面 {TargetId} 失败", targetId);
-                        }
-                    }
-                }
-
-                DeleteClientFiles(locator.ClientsDirectory, clientPid, log);
-            }
+            // 宿主收到停止信号：正常退出路径，不再继续回收。
+            throw;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             log.LogDebug(ex, "回收死客户端页面时失败（下一轮继续）");
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
             // 浏览器可能已在回收过程中断开：维护路径失败不该把宿主主循环一起带走。
             log.LogWarning(ex, "回收死客户端页面时出现未预期的异常（下一轮继续）");
-        }
-        finally
-        {
-            if (session is not null)
-            {
-                try
-                {
-                    await session.DetachAsync().ConfigureAwait(false);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    // 浏览器可能已经断开：detach 失败不影响宿主主循环。
-                    log.LogDebug(ex, "释放 CDP 会话失败");
-                }
-            }
-        }
-    }
-
-    private static void DeleteClientFiles(string clientsDirectory, int clientPid, ILogger log)
-    {
-        var lockPath = Path.Combine(clientsDirectory, clientPid + BrowserClientPresence.LockFileExtension);
-        var pagesPath = Path.Combine(clientsDirectory, clientPid + BrowserClientPresence.PagesFileExtension);
-
-        foreach (var path in new[] { pagesPath, lockPath })
-        {
-            try
-            {
-                if (File.Exists(path))
-                    File.Delete(path);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // 锁仍在被持有（PID 被复用）/ 权限不足：保留文件比误删活客户端的锁安全。
-                log.LogDebug(ex, "删除死客户端文件失败：{Path}", path);
-            }
         }
     }
 

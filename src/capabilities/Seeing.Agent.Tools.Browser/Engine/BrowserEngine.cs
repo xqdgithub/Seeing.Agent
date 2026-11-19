@@ -107,6 +107,25 @@ public sealed class BrowserEngine : IAsyncDisposable
         _baseDirectoryOverride = baseDirectoryOverride;
     }
 
+    /// <summary>
+    /// 与宿主的连接丢失（宿主崩溃 / 被杀 / 网络断开）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么需要这个事件</b>：连接断掉后，<see cref="BrowserSessionHost"/> 手里的页面句柄
+    /// <b>不会自己失效</b> —— PuppeteerSharp 的 <c>Page.IsClosed</c> 只在收到
+    /// <c>Target.detachedFromTarget</c> 时才变 true，而断连时收不到任何事件。于是
+    /// <c>TryGetPage</c> 会一直命中一个指向死连接的页面，该会话的浏览器被永久锁死，
+    /// 直到进程重启。
+    /// </para>
+    /// <para>
+    /// <b>为什么是 fire-and-forget</b>：本事件在 CDP 回调线程上触发，而订阅方要做的是
+    /// <c>await</c> 页面/上下文的清理（可能较慢）。在 CDP 线程上同步等待清理会堵住连接收尾，
+    /// 甚至与清理内部等待 CDP 的动作互相死锁。因此这里只投递，不等。
+    /// </para>
+    /// </remarks>
+    public event Func<Task>? ConnectionLost;
+
     /// <summary>当前是否已连上共享宿主。</summary>
     public bool IsStarted => _browser is { IsConnected: true };
 
@@ -456,6 +475,9 @@ public sealed class BrowserEngine : IAsyncDisposable
         arguments.Add(profileDirectory);
 
         // 与 BrowserHostRunner.ParseHostStartup 的参数表一一对应。
+        arguments.Add("--idle-seconds");
+        arguments.Add(options.HostIdleSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
         arguments.Add("--headless");
         arguments.Add(options.Headless ? "true" : "false");
 
@@ -517,6 +539,9 @@ public sealed class BrowserEngine : IAsyncDisposable
             return true;
 
         if (effective.AntiDetection != options.AntiDetection)
+            return true;
+
+        if (effective.HostIdleSeconds != options.HostIdleSeconds)
             return true;
 
         if (!string.Equals(NormalizeText(effective.UserAgent), NormalizeText(options.UserAgent), StringComparison.Ordinal))
@@ -1004,6 +1029,11 @@ public sealed class BrowserEngine : IAsyncDisposable
             "--disable-dev-shm-usage",
             "--disable-background-timer-throttling",
             "--disable-renderer-backgrounding",
+
+            // 窗口被其它窗口遮住时 Chromium 会把该窗口降到「隐藏」优先级，screencast 帧率
+            // 会明显下降（有头模式下把浏览器窗口拖到别的窗口后面就能复现）。
+            // 工作台的画面必须持续出帧，所以关掉这条节流。
+            "--disable-backgrounding-occluded-windows",
             "--mute-audio"
         };
 
@@ -1261,17 +1291,32 @@ public sealed class BrowserEngine : IAsyncDisposable
         return Path.Combine(userHome, ".seeing", "browser-profile");
     }
 
-    /// <summary>计算进程级配置签名（只含启动时才能生效的项）。</summary>
+    /// <summary>
+    /// 计算进程级配置签名（只含<b>启动时才能生效</b>的项，字段与宿主 effective 对齐）。
+    /// </summary>
     /// <remarks>
+    /// <para>
     /// <b>为什么公开</b>：设置页要判断「哪些改动需要重启才能生效」，从而给出准确提示。
     /// 若宿主自己复制一份判断逻辑，两边字段集合必然漂移——症状是「提示说不用重启，
     /// 但实际没生效」或反过来。签名只有一份定义，宿主只比对结果。
+    /// </para>
+    /// <para>
+    /// <b>为什么用 <see cref="BrowserHostLocator.ResolveHostProfileDirectory"/> 而不是
+    /// <c>PersistLogin ? 持久目录 : "(temp)"</c></b>：宿主始终使用固定 profile 目录作为
+    /// Chromium 的 <c>user-data-dir</c>（见 Ruling 7），<c>PersistLogin</c> 只切换
+    /// <b>页面上下文</b>（默认上下文 vs 隔离上下文），是运行期语义。早期按
+    /// <c>PersistLogin</c> 决定 profile 的写法会让「关掉持久登录」被误判成需要重启，
+    /// 而真正的 profile 目录变更（需要重启）却可能被掩盖。
+    /// </para>
+    /// <para>
+    /// <b><see cref="BrowserOptions.PersistLogin"/> 不进签名</b>：它在每次建页时读取，
+    /// 改了立即影响新页面，不需要重启浏览器。
+    /// </para>
     /// </remarks>
     public static string ComputeSignature(BrowserOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        var profile = options.PersistLogin ? ResolveProfileDirectory(options) : "(temp)";
         var args = options.ExtraArgs is { Length: > 0 } extra ? string.Join('\u001f', extra) : string.Empty;
 
         return string.Join('\u001e',
@@ -1280,7 +1325,8 @@ public sealed class BrowserEngine : IAsyncDisposable
             options.ExecutablePath ?? string.Empty,
             options.UserAgent ?? string.Empty,
             args,
-            profile);
+            BrowserHostLocator.ResolveHostProfileDirectory(options.ProfileDirectory),
+            options.HostIdleSeconds);
     }
 
     /// <summary>
@@ -1296,7 +1342,39 @@ public sealed class BrowserEngine : IAsyncDisposable
         // 用比较交换而不是取锁：本方法在 CDP 回调线程上执行，
         // 而 _gate 持有时会 await 浏览器操作——在那里等锁会与 CDP 线程互相等待。
         if (ReferenceEquals(Interlocked.CompareExchange(ref _browser, null, sender as IBrowser), sender))
+        {
             CurrentEndpointForTest = null;
+            NotifyConnectionLost();
+        }
+    }
+
+    /// <summary>
+    /// 通知订阅方「连接已丢」；订阅方清理在后台执行，异常只记日志。
+    /// </summary>
+    /// <remarks>
+    /// 只有「当前连接」真的没了才调用（见 <see cref="OnBrowserDisconnected"/> 的身份校验与
+    /// <see cref="DisconnectCurrent"/>）。<c>TryConnectAsync</c> 里复核失败的那条连接从未被
+    /// 赋给 <see cref="_browser"/>，断开它不能清掉现有会话的页面。
+    /// </remarks>
+    private void NotifyConnectionLost()
+    {
+        var handler = ConnectionLost;
+        if (handler is null)
+            return;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await handler().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // 清理失败也要吞掉：引擎下次调用会重新连接，残留句柄由 GC 收，
+                // 而让异常逃逸会把 CDP 线程或线程池的未观察异常变成进程级事故。
+                _logger.LogDebug(ex, "处理浏览器连接丢失时出错（忽略）");
+            }
+        });
     }
 
     private void Remember(string reason)
@@ -1326,7 +1404,13 @@ public sealed class BrowserEngine : IAsyncDisposable
         CurrentEndpointForTest = null;
 
         if (browser is not null)
+        {
             DisconnectQuietly(browser);
+
+            // 主动断开（模块停用 / 进程退出）与被动断连对页面句柄是同一件事：
+            // 连接没了，句柄就不可再用。宿主的会话清理是幂等的（表已空时什么都不做）。
+            NotifyConnectionLost();
+        }
     }
 
     /// <summary>断开单个连接（不抛：清理路径不应因为连接已死而中断）。</summary>

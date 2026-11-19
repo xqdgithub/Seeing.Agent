@@ -25,7 +25,7 @@
 | 5 | 浏览器崩溃 → 宿主退出 → 客户端重拉成功 | `BrowserProcessHostTests`、`BrowserHostSmokeTests` | `已跑(自动)` | |
 | 6 | 同一 profile 一个宿主；不同 profile 各自独立 | `BrowserHostLocatorTests`、`BrowserProfileLockRecoveryTests` | `已跑(自动)` | |
 | 7 | UI 常开不用浏览器 → 锁释放 → 超 `HostIdleSeconds` 宿主退出；登录态保留 | `BrowserLifetimeTests`（空闲判定） | `部分` | 未真等一个空闲周期；可把 `Browser.HostIdleSeconds` 降到 20s 手工复核 |
-| 8 | 客户端崩溃 → 锁释放、页面被回收，无孤儿 | — | `未执行` | 需要杀 UI 进程 + 观察宿主日志的双手工场景 |
+| 8 | 客户端崩溃 → 锁释放、页面被回收，无孤儿 | `BrowserClientReclaimerTests`（真实宿主 + 手工造 lock/pages.json，双向断言） | `已跑(自动)`：死客户端 target 被关、活客户端 target 与锁文件不受影响 | 用「无主锁文件」模拟崩溃客户端，未真的杀 UI 进程 |
 | 9 | 迁移：旧 PID 存活 → 拒绝；已死 → 清理并启动 | `BrowserHostLocatorTests` | `已跑(自动)` | |
 | 10 | 版本不匹配 → 明确提示重启浏览器 | `BrowserHostLocatorTests`、`BrowserRestartSignatureTests` | `已跑(自动)` | |
 | 11 | 宿主日志含启动参数、endpoint、连接、退出原因 | `BrowserHostSmokeTests`、`BrowserProcessHostTests` | `已跑(自动)` | |
@@ -37,7 +37,7 @@
 | 12 | 桌面与 WebUI 行为一致 | — | `未执行` | 桌面宿主未起 |
 | 13 | 静止 300ms 后画布尺寸 = `round(viewportWidth × frameScale)` | 协议侧 `BrowserFrameProtocolTests`、`BrowserViewportResolutionTests`；前端侧 Node 桩 | `已跑(自动)` + `已跑(桩)`：`800×1.25 / 600×1.25 → 1000×750` | 真浏览器的 `canvas.width` 需 DevTools 肉眼确认（未做） |
 | 14 | 滚动后 still 帧内容与当前视口一致 | `BrowserScreencastPipelineTests`（still 单飞/降级/超时，不含画面内容） | `未执行` | 内容一致性只能肉眼或像素比对，需要 GUI |
-| 15 | 流重建（epoch）后画面继续更新 | `BrowserScreencastPipelineTests`（代次推进）；前端侧 Node 桩 | `已跑(自动)` + `已跑(桩)`：「epoch 变化后 seq=1 仍被接受」 | 真浏览器里拖面板触发重启未做 |
+| 15 | 流重建（epoch）后画面继续更新 | `BrowserScreencastPipelineTests.RestartingStream_ShouldIncreaseEpochAndKeepStateAndFrameHeaderInSync`；前端侧 Node 桩 | `已跑(自动)`：重建后 epoch 严格变大，`state.epoch` 与下一帧帧头一致（同源）；前端「epoch 变化后 seq=1 仍被接受」由桩覆盖 | 真浏览器里拖面板触发重启仍未做（mock CDP 帧） |
 | 16 | 拖拽面板无跳变/闪烁/黑帧 | — | `未执行` | 视觉判定，需要 GUI；代码层面「backing 只在变化时赋值」由第 13 条断言覆盖 |
 | 17 | 帧带宽下降 ≥25%；滚动 ≥25fps | `BrowserMultiWindowFrameRateTests`（帧率下限） | `部分`：帧率 ≥25fps 已通过；带宽未做新旧对比 | 结构性收益成立：base64 去掉（-25%）+ 每帧少一层 JSON 包装 |
 | 18 | still 失败 2s 内清在途，之后仍能请求 | 前端侧 Node 桩 | `已跑(桩)`：不回应静帧，2.2s 后自动补发一次（rev 更新） | |

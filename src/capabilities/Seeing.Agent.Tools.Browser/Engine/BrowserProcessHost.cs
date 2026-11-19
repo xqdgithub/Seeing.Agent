@@ -106,9 +106,9 @@ public sealed class BrowserProcessHost : IAsyncDisposable
     /// <param name="ct">取消令牌（仅用于启动前的检查；启动过程本身受 Puppeteer 超时约束）。</param>
     /// <param name="logger">日志（可空）。</param>
     /// <param name="hostAlreadyInJob">
-    /// 宿主进程是否已经在 <see cref="BrowserJobObject.AssignCurrentProcess"/> 的 job 里。
-    /// 为 <see langword="true"/> 时不再建嵌套 job（浏览器由祖先 job 天然覆盖），
-    /// 也避免在嵌套失败时打出误导性的「宿主被杀时浏览器可能残留」。
+    /// 宿主进程是否<b>已尝试</b>把自己放进 <see cref="BrowserJobObject.AssignCurrentProcess"/> 的 job 里。
+    /// 仅当内核也能证明（<see cref="BrowserJobObject.IsCurrentProcessInJob"/>）时才跳过嵌套 job；
+    /// 证明不了（self-assign 失败、受限容器）就回落到为浏览器进程单独建 job。
     /// </param>
     /// <exception cref="BrowserExecutableMissingException">没有可用的浏览器可执行文件。</exception>
     /// <exception cref="BrowserUnavailableException">启动失败，或 10 秒内拿不到 endpoint。</exception>
@@ -175,7 +175,15 @@ public sealed class BrowserProcessHost : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
 
             var browserProcess = browser.Process;
-            job = hostAlreadyInJob
+            var hostProvenInJob = BrowserJobObject.IsCurrentProcessInJob();
+            if (hostAlreadyInJob && !hostProvenInJob)
+            {
+                // 宿主 self-assign 失败时不能默默跳过嵌套 Job：那条路径上浏览器会完全失去兜底。
+                logger?.LogWarning(
+                    "宿主声称已在 Job 内，但内核证明不了（IsProcessInJob=false）；回落到为浏览器进程单独创建 Job");
+            }
+
+            job = ShouldSkipNestedJob(hostAlreadyInJob, hostProvenInJob)
                 ? SkipJobBecauseHostOwnsOne(browserProcess, logger)
                 : CreateJobFor(browserProcess, logger);
             var endpoint = await WaitForEndpointAsync(devToolsPortFile, browser, ct).ConfigureAwait(false);
@@ -369,6 +377,23 @@ public sealed class BrowserProcessHost : IAsyncDisposable
         Directory.CreateDirectory(temporary);
         return (temporary, temporary);
     }
+
+    /// <summary>
+    /// 是否跳过嵌套 Job：「调用方声称宿主已在 Job 里」<b>且</b>内核能证明这句话。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么不直接相信调用方</b>：<c>hostAlreadyInJob: true</c> 只表示宿主<b>尝试</b>
+    /// <see cref="BrowserJobObject.AssignCurrentProcess"/> 过。该调用失败（受限容器、
+    /// 外层 job 禁止 breakaway、权限不足）时宿主自身不在任何 Job 里，此时再跳过嵌套 Job
+    /// 就等于「完全没有兜底」——宿主被杀后浏览器残留，且日志里连一句警告都没有。
+    /// </para>
+    /// <para>
+    /// 抽成纯函数只为让这条判定能在无 Job 的测试环境里被钉住（自 assign 会杀掉测试进程）。
+    /// </para>
+    /// </remarks>
+    internal static bool ShouldSkipNestedJob(bool hostAlreadyInJob, bool hostProvenInJob)
+        => hostAlreadyInJob && hostProvenInJob;
 
     /// <summary>
     /// 宿主已自行 assign 时的分支：不建嵌套 job。

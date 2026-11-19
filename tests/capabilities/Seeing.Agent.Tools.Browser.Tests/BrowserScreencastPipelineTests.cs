@@ -218,6 +218,143 @@ public class BrowserScreencastPipelineTests
         stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5));
     }
 
+    [Fact]
+    public async Task RestartingStream_ShouldIncreaseEpochAndKeepStateAndFrameHeaderInSync()
+    {
+        // 验收 #15：「流重建（epoch）后画面继续更新」。
+        // 只断言「epoch 变了」不够——前端同时拿 state 与帧头做仲裁；
+        // 两者若不同源，重启后要么新帧被当成旧帧丢掉，要么画布按错误的代次重置。
+        var options = new BrowserOptions();
+        var optionsMonitor = new TestOptionsMonitor<BrowserOptions>(options);
+        var hub = new BrowserScreencastHub(optionsMonitor);
+
+        var session = new Mock<ICDPSession>();
+        var page = new Mock<IPage>();
+        page.Setup(p => p.CreateCDPSessionAsync()).ReturnsAsync(session.Object);
+
+        var handle = new BrowserPageHandle(
+            "session-epoch",
+            page.Object,
+            refEpoch: 1,
+            optionsMonitor,
+            NullLogger<BrowserPageHandle>.Instance);
+
+        var sink = new RecordingSink();
+        await using var subscription = await hub.SubscribeAsync(
+            "session-epoch", handle, sink, TestContext.Current.CancellationToken);
+
+        var firstEpoch = hub.EpochOf("session-epoch");
+        firstEpoch.Should().BeGreaterThan(0, "订阅成功后必须已有代次，前端不能拿到 0");
+
+        sink.LastState!.Epoch.Should().Be(firstEpoch, "订阅时推的 state 必须与当前代次一致");
+
+        RaiseScreencastFrame(session, "AA==");
+        var firstFrame = await sink.WaitNextFrameAsync(TimeSpan.FromSeconds(5));
+        firstFrame.Epoch.Should().Be(firstEpoch, "帧头必须与 state 同源");
+        firstFrame.Seq.Should().Be(1);
+
+        // 重建流（面板 resize / 页面重建走的是同一条路径）。
+        await hub.RestartAsync("session-epoch", TestContext.Current.CancellationToken);
+
+        var secondEpoch = hub.EpochOf("session-epoch");
+        secondEpoch.Should().BeGreaterThan(firstEpoch, "重建后代次必须严格变大，否则前端会继续按旧代次丢弃新帧");
+
+        // 推一次状态（端点在真实链路上每个发布点都会走 CreateState）。
+        hub.PublishState("session-epoch", handle);
+        sink.LastState!.Epoch.Should().Be(secondEpoch, "重建后的 state 必须报告新代次");
+
+        RaiseScreencastFrame(session, "AQ==");
+        var secondFrame = await sink.WaitNextFrameAsync(TimeSpan.FromSeconds(5));
+
+        // CDP 的帧序号在重启后会从头开始：靠 seq 已经无法区分新旧，
+        // 前端唯一能靠的就是代次 —— 因此帧头必须带新代次。
+        secondFrame.Epoch.Should().Be(secondEpoch, "重建后的帧头必须带新代次");
+        secondFrame.Epoch.Should().Be(sink.LastState!.Epoch, "state 与帧头必须逐字段一致");
+    }
+
+    private static void RaiseScreencastFrame(Mock<ICDPSession> session, string base64)
+    {
+        var json = JsonSerializer.Serialize(new
+        {
+            sessionId = 1,
+            data = base64,
+            metadata = new { deviceWidth = 100, deviceHeight = 50 },
+        });
+
+        using var document = JsonDocument.Parse(json);
+
+        // MessageEventArgs 的 setter 是 internal（PuppeteerSharp 不公开构造入口），
+        // 这里用反射设置：只在测试里模拟 CDP 推送，生产代码不依赖它。
+        var args = new MessageEventArgs();
+        SetProperty(args, nameof(MessageEventArgs.MessageID), "Page.screencastFrame");
+        SetProperty(args, nameof(MessageEventArgs.MessageData), document.RootElement.Clone());
+
+        session.Raise(s => s.MessageReceived += null, args);
+    }
+
+    private static void SetProperty(object target, string name, object value)
+    {
+        var property = target.GetType().GetProperty(name)
+                       ?? throw new InvalidOperationException($"PuppeteerSharp 的 {name} 属性不存在");
+
+        var setter = property.GetSetMethod(nonPublic: true)
+                     ?? throw new InvalidOperationException($"PuppeteerSharp 的 {name} 不可写");
+
+        setter.Invoke(target, [value]);
+    }
+
+    /// <summary>记录状态与帧的观看者；帧用完成信号通知，不做固定等待。</summary>
+    /// <remarks>
+    /// <b>必须先查积压队列再等</b>：帧泵在 <c>Task.Run</c> 上广播，第一帧可能在测试调用
+    /// <see cref="WaitNextFrameAsync"/> 之前就到。若实现成「每次等待换一个新 TCS」，
+    /// 已经到达的帧会被丢掉，表现为「明明在推帧却超时」。
+    /// </remarks>
+    private sealed class RecordingSink : IBrowserFrameSink
+    {
+        private readonly object _gate = new();
+        private readonly Queue<BrowserFrame> _frames = new();
+        private TaskCompletionSource<BrowserFrame>? _waiter;
+
+        public BrowserPageState? LastState { get; private set; }
+
+        public void OnFrame(BrowserFrame frame)
+        {
+            TaskCompletionSource<BrowserFrame>? waiter;
+            lock (_gate)
+            {
+                waiter = _waiter;
+                _waiter = null;
+
+                if (waiter is null)
+                    _frames.Enqueue(frame);
+            }
+
+            waiter?.TrySetResult(frame);
+        }
+
+        public void OnState(BrowserPageState state) => LastState = state;
+
+        public void OnError(string message)
+        {
+        }
+
+        public async Task<BrowserFrame> WaitNextFrameAsync(TimeSpan timeout)
+        {
+            Task<BrowserFrame> pending;
+            lock (_gate)
+            {
+                if (_frames.Count > 0)
+                    return _frames.Dequeue();
+
+                _waiter ??= new TaskCompletionSource<BrowserFrame>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                pending = _waiter.Task;
+            }
+
+            return await pending.WaitAsync(timeout).ConfigureAwait(false);
+        }
+    }
+
     private static JsonElement? Json(string json)
     {
         using var document = JsonDocument.Parse(json);

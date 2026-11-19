@@ -347,8 +347,14 @@ h2 收益有限；WebSocket 画面流是硬需求。若将来必须用 h2，需�
 | `browser_eval` | 单独工具 + 高危标注；执行环境无 Node/文件系统访问，受同源策略约束 |
 | 凭据 | 不注入任何 cookie/token；登录态由**持久 profile** 承载（见 §八之二）：在专用 profile 里登录一次，之后所有会话复用 |
 | WS 鉴权 | 与 `api/sessions/.../assets` 同一基线（会话存在 + 本机/局域网）。公网暴露需另行加固（已知边界） |
+| **CDP 端点（重要，不构成隔离）** | 共享宿主以 `--remote-debugging-port=0` 在 loopback 上暴露**无认证**的 CDP / HTTP 端点（`/json/version`、`/json/list`、WebSocket）。**同机的任意进程**都能通过它接管该浏览器并读取其中的全部 cookie（含已登录站点）。只有改用 `Pipe` 或把端口放在本地 token 代理之后才算隔离 —— 当前实现两者都没有，因此「浏览器 profile 只有本应用能读」这个说法**不成立**。 |
+| 重启端点 `/browser/host/restart` | 与 CDP 端点同一边界：本机、**无鉴权**。它能结束宿主进程（从而结束所有人的浏览器），但并不能扩大本机进程本已拥有的能力（同机进程可直接杀进程）。不要把它当成受保护的管理接口。 |
 
 **边界说明（重要）**：`BrowserUrlPolicy` 按**字面 IP 与 localhost 名**判定，不做 DNS 解析。解析后再校验存在 TOCTOU（校验后域名重新解析到内网），而浏览器导航无法固定连接目标。真正的强隔离应由宿主网络策略承担——这一点写在类型注释里，避免后来者误以为它是完整 SSRF 防护。
+
+**浏览器的进程内隔离不等于机器内隔离**：宿主与客户端之间只靠「谁持有 profile 锁」协调，CDP 端口本身没有认证
+（见上表）。因此不要把浏览器工作台部署在多租户/不可信用户共享的机器上，也不要在文档或 UI 里把它描述成
+「隔离运行」「有认证的浏览器」。可接受的部署边界是：这台机器上的所有进程同等可信。
 
 ## 八之二、持久登录态（`PersistLogin`）
 
@@ -373,28 +379,31 @@ h2 收益有限；WebSocket 画面流是硬需求。若将来必须用 h2，需�
 
 隔离上下文等同无痕窗口。所以**要持久登录态就必须放弃上下文隔离**，这是二选一，不存在两全方案。
 
-### 实现
+### 实现（as-built：共享宿主）
+
+宿主进程（`--browser-host`）**始终**把 Chromium 的 `user-data-dir` 指向固定 profile 目录
+（`BrowserHostLocator.ResolveHostProfileDirectory`，配置优先，否则 `~/.seeing/browser-profile`）。
 
 ```csharp
-// BrowserEngine.LaunchAsync
-_launchedProfileDirectory = options.PersistLogin ? ResolveProfileDirectory(options) : null;
-if (_launchedProfileDirectory is { } dir) { Directory.CreateDirectory(dir); launchOptions.UserDataDir = dir; }
+// BrowserProcessHost.StartAsync —— 宿主进程
+var (profileDirectory, _) = ResolveProfile(options);      // 持久目录（宿主始终使用固定目录）
+launchOptions.UserDataDir = profileDirectory;             // 与 PersistLogin 无关
 
-// BrowserSessionHost.GetPageAsync —— 上下文策略分叉
+// BrowserSessionHost.GetPageAsync —— 每个客户端
 if (options.PersistLogin)
-    page = await browser.NewPageAsync();                          // DefaultContext（cookie 写盘）
+    page = await BrowserPageFactory.CreateAsync(browser, context: null, ct);  // DefaultContext（cookie 写盘）
 else
-    context = await browser.CreateBrowserContextAsync(...);        // 隔离（cookie 不写盘）
+    context = await browser.CreateBrowserContextAsync(...);                  // 每会话隔离（cookie 不写盘）
 ```
 
 四个配套决定：
 
 | 问题 | 决定 | 理由 |
 |------|------|------|
-| 下载禁止怎么设 | 从 `BrowserContextOptions.DownloadBehavior` 移到 CDP `Browser.setDownloadBehavior(deny)` | 默认上下文拿不到 `BrowserContextOptions`；实测浏览器级 CDP 可用 |
-| profile 目录位置 | 默认 `{用户目录}/.seeing/browser-profile`，可配 `ProfileDirectory` | 允许覆盖是为了测试隔离与多实例；同目录被两个进程打开会直接拒绝启动 |
-| 配置热重载 | 比对 `_launchedProfileDirectory` 与期望值，不同则重启浏览器 | 否则「换了 profile 目录但登录态还是旧的」，看不出是没重启 |
-| profile 目录不可用 | 退回临时 profile + `LogWarning` | 「能用但每次重新登录」远好过「完全用不了」 |
+| 下载禁止怎么设 | 持久模式按页补 CDP `Page.setDownloadBehavior(deny)`，浏览器级另有 `Browser.setDownloadBehavior(deny)` | 默认上下文拿不到 `BrowserContextOptions.DownloadBehavior` |
+| profile 目录位置 | 默认 `{用户目录}/.seeing/browser-profile`，可配 `ProfileDirectory` | 它是宿主身份（发现文件 hash + 锁目录）与 `user-data-dir`，**与 `PersistLogin` 无关**；同目录被两个进程打开会直接拒绝启动 |
+| 配置热重载 | 进程级签名（`BrowserEngine.ComputeSignature`，字段对齐宿主 effective）变化 → 提示「需重启浏览器」 | `ProfileDirectory` 变化必须重启（宿主身份变了）；`PersistLogin` **不进签名**（运行期项，每次建页读取） |
+| profile 目录不可用 | 启动失败并给出原因；宿主被外部杀掉后客户端自动重连/重拉 | 「能用但每次重新登录」不属于当前设计 —— 宿主始终有固定目录 |
 
 ### 默认上下文实测可用的能力
 
@@ -429,9 +438,11 @@ agent 调 browser_open("https://github.com/login")
   "Browser": {
     "Headless": true,
     "ExecutablePath": null,
+    "HostIdleSeconds": 1800,
     "IdleSeconds": 600,
     "ViewportWidth": 1280,
     "ViewportHeight": 800,
+    "HighResStream": false,
     "AllowPrivateHosts": false,
     "DefaultTimeoutSeconds": 30,
     "PersistLogin": true,
@@ -442,11 +453,13 @@ agent 调 browser_open("https://github.com/login")
 
 | 项 | 说明 |
 |----|------|
-| `Headless` | 默认 true（无桌面环境也能跑）；需人工登录/观察时设 false |
+| `Headless` | 默认 true（无桌面环境也能跑）；需人工登录/观察时设 false。有头模式下**每个会话是一个独立 OS 窗口**（不是同一窗口的标签页：Chromium 只给可见标签页出 screencast 帧） |
 | `ExecutablePath` | null 时按平台探测，见 §九之二 |
+| `HostIdleSeconds` | 宿主空闲退出（0 = 常驻）；作为 `--idle-seconds` 传给宿主，改动需重启浏览器 |
 | `IdleSeconds` | 页面静默回收（只关页面与 context，不关进程）；0 = 不回收 |
-| `PersistLogin` | 默认 true：复用持久 profile 保留登录态，代价是 cookie 跨会话共享（见 §八之二） |
-| `ProfileDirectory` | null 时用 `{用户目录}/.seeing/browser-profile`；仅在 `PersistLogin=true` 时生效 |
+| `PersistLogin` | 默认 true：复用 DefaultContext 保留登录态，代价是 cookie 跨会话共享（见 §八之二）；它是**运行期**项，改动不需要重启浏览器 |
+| `ProfileDirectory` | null 时用 `{用户目录}/.seeing/browser-profile`；它是宿主固定身份与 Chromium `user-data-dir`，**与 `PersistLogin` 无关**；改动需重启浏览器 |
+| `HighResStream` | 超采样：视口 = 面板 × dpr、`deviceScaleFactor=1`、不抓静帧；不是「只抓一张全分辨率静帧」，见 §21.5 |
 | 视口/超时 | 有钳制（宽 320–4096、高 240–4096、超时 1–300 秒）：配置写坏不得让页面变 1px |
 
 ## 九之二、跨平台可执行文件探测（Linux / macOS）
@@ -578,7 +591,9 @@ Ubuntu 上「可执行文件找到了但起不来」有三个高频原因，原�
 | 项 | 说明 |
 |----|------|
 | 每会话一个页面 | 不做多标签；agent 无法并行处理两个网页（可开两个会话绕过） |
-| 每会话一个 BrowserContext 共享进程 | 一个页面 OOM 会带走同进程其它会话的页面；有崩溃自愈重建 |
+| 所有会话共享一个 Chromium 进程（`PersistLogin=true` 时还共享 DefaultContext） | 一个页面 OOM 会带走同进程其它会话的页面；连接断开后句柄由 `ConnectionLost` 作废、下次调用自动重建 |
+| **CDP 端点无认证** | 同机任意进程可通过 `/json/version` 接管该浏览器并读取全部 cookie；只有 Pipe 或本地 token 代理才算隔离（当前都没有） |
+| 重启端点无鉴权 | `POST /browser/host/restart` 与 CDP 同一边界：本机任意进程可调用；它只结束宿主，不扩大本机进程已有能力 |
 | screencast 是 JPEG 有损 | 不影响 agent（agent 走 snapshot / screenshot 独立路径） |
 | WS 无签名 | 与 assets 端点同基线；公网需加固 |
 | 无网络/console 录制、无 PDF、无下载 | 需要时用 `browser_eval` 或 `webfetch` |
@@ -934,11 +949,16 @@ public static string ComputeSignature(BrowserOptions options) => string.Join('\u
     options.ExecutablePath ?? string.Empty,
     options.UserAgent ?? string.Empty,
     extraArgsJoined,
-    profileOrTemp);
+    // 宿主身份：与 PersistLogin 无关（Ruling 7）
+    BrowserHostLocator.ResolveHostProfileDirectory(options.ProfileDirectory),
+    options.HostIdleSeconds);
 ```
 
 **为什么不逐项比较**：漏项是迟早的事（新增一个启动参数就容易忘）。拼成签名后，
 任何进入签名的配置变化都会触发重启，增删项只需改一处。
+
+**字段集合必须与宿主 `BrowserHostEffective` 对齐**：签名不是「我关心哪些项」，而是
+「宿主启动时读过哪些项」。两边字段一旦分叉，出现的正是本节开头那类静默失效。
 
 ### 哪些项进签名（实测确认的边界）
 
@@ -949,7 +969,9 @@ public static string ComputeSignature(BrowserOptions options) => string.Join('\u
 | `ExecutablePath` | ✅ | 启动哪个可执行文件 |
 | `UserAgent` | ✅ | 页面级设置，需重新应用 |
 | `ExtraArgs` | ✅ | 启动参数（**顺序也进签名**——后写覆盖前写） |
-| `PersistLogin` / `ProfileDirectory` | ✅ | profile 锁 |
+| `ProfileDirectory` | ✅ | 宿主身份（发现文件 hash + `user-data-dir` + 锁目录） |
+| `HostIdleSeconds` | ✅ | `--idle-seconds`，宿主启动时读取 |
+| `PersistLogin` | ❌ | **运行期项**：只切换页面上下文（DefaultContext vs 隔离上下文），每次建页读取。早期把它当进程级项，会让「关掉持久登录」被迫重启浏览器（见 Ruling 7） |
 | `IdleSeconds` | ❌ | 每次回收扫描实时读 |
 | `ViewportWidth/Height` | ❌ | 建页时读（影响新页面，不需重启） |
 | `DefaultTimeoutSeconds` | ❌ | 每次操作实时读 |
@@ -968,12 +990,12 @@ Headless true → false  → 签名变化 → 浏览器重启 → 新页面 UA �
 ExtraArgs 顺序对调      → 签名变化（正确，顺序影响行为）                  ✅
 ```
 
-新增 15 个测试（`BrowserRestartSignatureTests`）：
+新增 18 个测试（`BrowserRestartSignatureTests`）：
 
 | 用例 | 钉住什么 |
 |------|---------|
-| `ProcessLevelSetting_ShouldChangeSignature`（参数化 × 7） | 7 个进程级项改动必须改变签名 |
-| `RuntimeSetting_ShouldNotChangeSignature`（参数化 × 5） | 5 个运行期项改动不得改变签名 |
+| `ProcessLevelSetting_ShouldChangeSignature`（参数化 × 7） | 7 个进程级项改动必须改变签名（含 `ProfileDirectory` / `HostIdleSeconds`） |
+| `RuntimeSetting_ShouldNotChangeSignature`（参数化 × 6） | 6 个运行期项改动不得改变签名（含 `PersistLogin`） |
 | `Signature_ShouldBeStableForEquivalentConfigs` | 仅运行期项不同 → 签名相同 |
 | `Signature_ShouldDistinguishExtraArgsOrdering` | 参数顺序进签名 |
 | `Signature_NullOptions_ShouldThrow` | 空参数防御 |
@@ -1161,3 +1183,48 @@ canvas 尺寸清空。切回来是全新挂载，谈不上「保持」。
 本次前端改造另用 Node 桩驱动真实 `browser-workbench.js` 做了 22 项行为断言（二进制解析、坏帧拒收、epoch 重置、
 静帧仲裁、去抖/在途/超时恢复、highres 不请求、resize 只发面板尺寸）——这类断言不依赖真浏览器，
 适合放进未来的前端单测。
+
+## 二十二、共享宿主 as-built（进程 / 断连 / 回收）
+
+首版是「每个客户端自己 `LaunchAsync` 一份 Chromium」，同一 profile 会互相抢锁，且谁退出都可能带走别人的页面。
+现行结构改为**一个 profile 一个宿主进程**：宿主独占 Chromium，客户端只连同一个 CDP endpoint。
+
+### 22.1 进程与所有权
+
+| 关注点 | 实现 |
+|--------|------|
+| 宿主 | `--browser-host` 子命令（`BrowserHostRunner`），`BrowserProcessHost` 拥有 Chromium；`--remote-debugging-port=0`，端口从 `DevToolsActivePort` 读 |
+| 客户端 | `BrowserEngine`：发现文件 → TCP 探活 → `ConnectAsync`；失败则拉起宿主并重试（15s 预算，最多 3 次） |
+| 释放 | **只** `IBrowser.Disconnect()`（PuppeteerSharp 无 `DisconnectAsync`；`CloseAsync`/`DisposeAsync` 会关掉共享浏览器） |
+| 单例 | profile 目录决定发现文件 hash 与宿主锁；与 `PersistLogin` 无关（见 Ruling 7） |
+| 客户端存活 | `clients/<hash>/<pid>.lock` 文件锁，生命周期 = 持有页面期间（无页面不持锁，宿主才能空闲退出） |
+| 页面归属 | `clients/<hash>/<pid>.pages.json` 记录 targetId；客户端崩溃后宿主按它 `Target.closeTarget` |
+| 进程生死 | Windows：宿主先 `AssignCurrentProcess` 进带 `KILL_ON_JOB_CLOSE` 的 Job；`hostAlreadyInJob` 只是意图，必须经 `IsProcessInJob` 证明，证明不了回落嵌套 Job。POSIX：`--watchdog` 子进程 |
+
+### 22.2 连接丢失后页面必须失效（关键缺陷）
+
+`BrowserSessionHost.TryGetPage` 原先是「表里有就返回」。宿主崩溃/被杀后，
+`Page.IsClosed` **恒为 false**（PuppeteerSharp 只在收到 `Target.detachedFromTarget` 时置位，而断连收不到任何 target 事件），
+于是同一 sessionId 永远命中一个死连接上的页面 —— 该会话的浏览器被永久锁死，只能重启进程。
+
+修复：`BrowserEngine.ConnectionLost`（被动断连与主动 Disconnect 都触发）→ `BrowserSessionHost` 清空全部
+`SessionEntry`（Dispose 吞异常）+ 逐个 `ReleasePage` + 发 `PageClosed`（hub 按页面实例清流）→
+之后的 `GetPageAsync` 重建页面。守门：`BrowserConnectionLostTests`（真实宿主，杀进程 → 同 sessionId 重建成功）。
+
+### 22.3 死客户端页面回收
+
+`BrowserClientReclaimer`（能力包，非宿主运行器）扫描锁目录：死客户端 → 按 `pages.json` 关 target、删锁与清单；
+活客户端（文件锁被持有）→ 完全跳过。守门：`BrowserClientReclaimerTests`（真实宿主 + 手工造的 lock/pages.json）
+**双向**断言「死客户端页面被关」与「活客户端页面不被关」「活客户端锁文件不被删」。
+
+### 22.4 有头模式是多窗口，不是多标签
+
+每个会话一个页，建页统一走 `BrowserPageFactory` 的 `CreatePageType.Window`。
+原因：Chromium 只给**可见标签页**出 screencast 帧，后台标签页实测掉到 0 帧，
+同一窗口多标签会让没在前的会话永远黑屏。因此有头模式下桌面会看到多个独立 OS 窗口。
+
+### 22.5 安全边界（必须在 UI 与文档里直说）
+
+宿主在 loopback 上暴露**无认证**的 CDP/HTTP 端点（`/json/version` 等），同机任意进程可接管浏览器并读取全部 cookie；
+`POST /browser/host/restart` 同样无鉴权。**只有 Pipe 或本地 token 代理才算隔离**，
+当前实现两者都没有 —— UI（设置页「安全边界」卡）与本文 §八 都不允许写「已隔离 / 有认证」。

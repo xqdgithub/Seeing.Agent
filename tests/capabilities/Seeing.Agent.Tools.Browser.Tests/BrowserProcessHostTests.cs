@@ -83,6 +83,35 @@ public class BrowserProcessHostTests
     }
 
     [Fact]
+    public void ShouldSkipNestedJob_ShouldRequireKernelProof()
+    {
+        // 「宿主声称已在 Job 内」只是意图；self-assign 失败时（受限容器 / 外层 job 禁止
+        // breakaway）不能把浏览器也变成完全没有兜底。
+        BrowserProcessHost.ShouldSkipNestedJob(hostAlreadyInJob: true, hostProvenInJob: true)
+            .Should().BeTrue("内核证明宿主确实在 Job 内时，浏览器由祖先 Job 天然覆盖");
+
+        BrowserProcessHost.ShouldSkipNestedJob(hostAlreadyInJob: true, hostProvenInJob: false)
+            .Should().BeFalse("证明不了就必须回落到为浏览器进程单独建 Job");
+
+        BrowserProcessHost.ShouldSkipNestedJob(hostAlreadyInJob: false, hostProvenInJob: true)
+            .Should().BeFalse("调用方没声称在 Job 内时按常规建 Job");
+
+        BrowserProcessHost.ShouldSkipNestedJob(hostAlreadyInJob: false, hostProvenInJob: false)
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsCurrentProcessInJob_ShouldNotThrow()
+    {
+        // 这条判定跑在宿主启动路径上：P/Invoke 写错会让整个宿主起不来。
+        var act = () => BrowserJobObject.IsCurrentProcessInJob();
+        act.Should().NotThrow();
+
+        if (!OperatingSystem.IsWindows())
+            BrowserJobObject.IsCurrentProcessInJob().Should().BeFalse("Job 是 Windows 内核对象");
+    }
+
+    [Fact]
     [Trait("Category", "RequiresBrowser")]
     public async Task StartAsync_ShouldExposeLoopbackEndpointAndReapBrowserOnDispose()
     {

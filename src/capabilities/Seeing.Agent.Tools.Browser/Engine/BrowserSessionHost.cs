@@ -127,6 +127,11 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
         // 每 30 秒扫一次；回收动作本身很轻（只有超时会关页面）
         _reaper = _timeProvider.CreateTimer(_ => _ = ReapAsync(), null,
             TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+
+        // 连接丢失时页面句柄不会自动失效（PuppeteerSharp 的 Page.IsClosed 依赖
+        // Target.detachedFromTarget，而断连收不到）。不订阅它，宿主崩溃/被杀后
+        // 同一 sessionId 会一直命中指向死连接的页面，该会话的浏览器被永久锁死。
+        _engine.ConnectionLost += OnConnectionLostAsync;
     }
 
     /// <inheritdoc />
@@ -339,6 +344,70 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
         await RaisePageCreatedAsync(sessionId, handle).ConfigureAwait(false);
 
         return handle;
+    }
+
+    /// <summary>
+    /// 引擎到宿主的连接丢失：把所有页面句柄作废，并让画面流释放对应订阅。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么必须作废而不是等 <c>Page.IsClosed</c></b>：PuppeteerSharp 的
+    /// <c>Page.IsClosed</c> 只在收到 <c>Target.detachedFromTarget</c> 后变 true；
+    /// 宿主进程被杀时整条 CDP 连接直接消失，收不到任何 target 事件，于是
+    /// 句柄<b>永远</b>看起来是活的。<c>TryGetPage</c> 命中它之后，后续工具调用全部
+    /// 打在一个死连接上 —— 表现为「重启宿主后这个会话的浏览器再也用不了」。
+    /// </para>
+    /// <para>
+    /// <b>为什么清理期间不持 <see cref="_gate"/></b>：<c>DisposeAsync</c> 内部可能 await
+    /// CDP 操作（页面/上下文关闭），而 CDP 连接已经断了，这些调用可能很慢或抛异常。
+    /// 持锁等待会让「新建页面」一起被卡住。因此锁内只做字典交换与清表。
+    /// </para>
+    /// <para>
+    /// <b>为什么连 <c>PageClosed</c> 也发</b>：画面流持有指向旧页面的 CDP 会话；
+    /// 不通知它，Hub 里会留下一条「有观众、无采集」的死流（画布永远停在最后一帧）。
+    /// 集中器按页面实例比对，只清指向被作废页面的那条。
+    /// </para>
+    /// </remarks>
+    private async Task OnConnectionLostAsync()
+    {
+        SessionEntry[] entries;
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            lock (_sessions)
+            {
+                entries = _sessions.Values.ToArray();
+                _sessions.Clear();
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        if (entries.Length == 0)
+            return;
+
+        foreach (var entry in entries)
+        {
+            // 连接已死：Dispose 的每一次 CDP 调用都可能抛，且这里已经无法补救。
+            // 吞掉异常继续处理其余页面 —— 留下一个未清理的 entry 字符串没有价值。
+            try
+            {
+                await entry.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "连接丢失后回收页面失败（忽略）：{SessionId}", entry.Page.SessionId);
+            }
+
+            entry.ReleasePresence(_presence);
+            await RaisePageClosedAsync(entry.Page.SessionId, entry.Page).ConfigureAwait(false);
+        }
+
+        _logger.LogInformation(
+            "浏览器宿主连接已断开，已作废 {Count} 个会话页面；下次使用同一会话时会自动重建页面",
+            entries.Length);
     }
 
     /// <summary>通知订阅方：该会话有新页面可用（画面流应立即建立）。</summary>
@@ -570,6 +639,7 @@ public sealed class BrowserSessionHost : IBrowserSessionHost, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _reaper?.Dispose();
+        _engine.ConnectionLost -= OnConnectionLostAsync;
 
         SessionEntry[] entries;
         lock (_sessions)

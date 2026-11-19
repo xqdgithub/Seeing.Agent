@@ -118,6 +118,7 @@ public class BrowserEngineConnectTests
             AntiDetection = false,
             ExecutablePath = @"C:\Edge\msedge.exe",
             UserAgent = "Mozilla/5.0 custom",
+            HostIdleSeconds = 900,
             ExtraArgs = ["--proxy-server=http://127.0.0.1:7890", "--lang=zh-CN"]
         };
 
@@ -130,6 +131,8 @@ public class BrowserEngineConnectTests
         ValueAfter(args, "--browser-host").Should().BeNull("它是模式开关，没有值");
         args.Should().Contain("--browser-host");
         ValueAfter(args, "--profile").Should().Be(profile);
+        ValueAfter(args, "--idle-seconds").Should().Be("900",
+            "宿主空闲退出只在启动时读取，必须随启动命令传给宿主");
         ValueAfter(args, "--headless").Should().Be("false");
         ValueAfter(args, "--anti-detection").Should().Be("false");
         ValueAfter(args, "--executable").Should().Be(@"C:\Edge\msedge.exe");

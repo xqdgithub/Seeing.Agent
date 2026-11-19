@@ -35,17 +35,18 @@ public sealed class BrowserOptions
     public int ViewportHeight { get; set; } = 800;
 
     /// <summary>
-    /// 画面流是否走超采样（先按视口显示，静态时再抓一张全分辨率静帧）。默认 <see langword="false"/>。
+    /// 画面流是否走超采样。默认 <see langword="false"/>。
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>为什么需要这个开关</b>：持续推流必须是降采样的——每秒几十帧全分辨率会把 CPU 与带宽吃满；
-    /// 但降采样的文字在 125% DPI 屏上发虚。超采样模式让流继续便宜，只对「静止下来」的画面
-    /// 补一张原分辨率静帧。
+    /// <b>它实际做什么</b>：开启后视口 = 面板 CSS 尺寸 × <c>devicePixelRatio</c>、CDP 的
+    /// <c>deviceScaleFactor</c> 固定为 1、<c>frameScale = 1</c>，并且不再单独抓静帧
+    /// —— 流本身就是物理像素。
     /// </para>
     /// <para>
-    /// 开启后 <c>BrowserScreencastHub.TryCaptureStillAsync</c> 不再单独抓静帧
-    /// （流自己就是高清源，再抓一张没有增益），由前端按需请求。
+    /// <b>它不是「只抓一张全分辨率静帧」</b>：早期注释这样写是错的。超采样是持续推流，
+    /// 代价是网页会按放大后的 CSS 视口<b>重新排版</b>（不是位图放大），所以只是可选开关。
+    /// 下次重启浏览器生效。
     /// </para>
     /// </remarks>
     public bool HighResStream { get; set; }
@@ -82,15 +83,35 @@ public sealed class BrowserOptions
     public bool PersistLogin { get; set; } = true;
 
     /// <summary>
-    /// 持久 profile 目录。为 <see langword="null"/> 时用 <c>{用户目录}/.seeing/browser-profile</c>。
+    /// 持久 profile 目录（同时也是宿主进程的固定身份与 Chromium 的 <c>user-data-dir</c>）。
+    /// 为 <see langword="null"/> 时用 <c>{用户目录}/.seeing/browser-profile</c>。
     /// </summary>
     /// <remarks>
-    /// 仅在 <see cref="PersistLogin"/> 为 <see langword="true"/> 时生效。
+    /// <para>
+    /// <b>它决定宿主身份，与 <see cref="PersistLogin"/> 无关</b>：发现文件的 hash、宿主单例锁、
+    /// 客户端存活锁目录全部由它派生。宿主必须始终有一个稳定目录，否则同一台机器上的客户端
+    /// 会各自认出「另一个宿主」并重复拉起 Chromium。
+    /// </para>
+    /// <para>
+    /// <see cref="PersistLogin"/> 只决定<b>页面上下文</b>（复用 DefaultContext 的 cookie，
+    /// 还是每会话一个隔离 <c>BrowserContext</c>），不决定 <c>user-data-dir</c>。
+    /// </para>
+    /// <para>
     /// 允许覆盖是为了让测试与多实例部署能各自隔离 profile ——
     /// 同一 profile 目录同时被两个浏览器进程打开会被 Chromium 直接拒绝启动
-    /// （<c>The browser is already running for ...</c>）。
+    /// （<c>The browser is already running for ...</c>）。改动需重启浏览器才生效。
+    /// </para>
     /// </remarks>
     public string? ProfileDirectory { get; set; }
+
+    /// <summary>
+    /// 宿主空闲退出秒数：连续这么久没有任何存活客户端时，宿主进程自行退出。0 = 不自动退出。
+    /// </summary>
+    /// <remarks>
+    /// 客户端把它作为 <c>--idle-seconds</c> 传给宿主。它只在宿主启动时读取，
+    /// 因此改动需要重启浏览器（进进程级签名）。
+    /// </remarks>
+    public int HostIdleSeconds { get; set; } = 1800;
 
     /// <summary>单次浏览器操作超时上限（秒）。</summary>
     public int DefaultTimeoutSeconds { get; set; } = 30;

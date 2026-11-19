@@ -49,8 +49,15 @@ internal static class TestHost
     /// <summary>轮询间隔（E5：实现细节，命中即返回）。</summary>
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
 
-    /// <summary>已构建产物启动宿主的上限（启动浏览器本身约 1–10 秒）。</summary>
-    private static readonly TimeSpan NoBuildTimeout = TimeSpan.FromSeconds(30);
+    /// <summary>
+    /// 已构建产物启动宿主的上限（启动浏览器本身约 1–10 秒）。
+    /// </summary>
+    /// <remarks>
+    /// 取 90 秒而不是 30 秒：宿主要先做进程探测（按命令行找占用 profile 的浏览器）再拉起 Chromium，
+    /// 满载机器上这两步都可能被拖慢。30 秒在真实浏览器用例与其它负载并行时会出现
+    /// 「宿主未在超时内发布发现文件」的假失败，而宿主任一环节真卡住仍会失败，只是晚 60 秒。
+    /// </remarks>
+    private static readonly TimeSpan NoBuildTimeout = TimeSpan.FromSeconds(90);
 
     /// <summary>回落「带构建」启动时的上限（首次可能需要编译）。</summary>
     private static readonly TimeSpan BuildTimeout = TimeSpan.FromMinutes(3);
@@ -76,8 +83,8 @@ internal static class TestHost
     /// 不传 <see cref="BrowserOptions"/> 时宿主用自身默认值（headless / anti-detection 均为 true），
     /// 与 <c>--browser-host</c> 的默认行为完全一致 —— 需要验证「配置能传到宿主」的用例走下面的重载。
     /// </remarks>
-    public static Process Start(string profileDirectory, int idleSeconds = 300)
-        => StartCore(profileDirectory, idleSeconds, hostArguments: []);
+    public static Process Start(string profileDirectory, int idleSeconds = 300, TimeSpan? timeout = null)
+        => StartCore(profileDirectory, idleSeconds, hostArguments: [], timeout);
 
     /// <summary>
     /// 启动宿主，并把宿主级配置通过命令行原样传过去。
@@ -94,7 +101,7 @@ internal static class TestHost
     /// <b>为什么必须把配置传给宿主</b>：共享宿主模式下浏览器级设置只由宿主决定。
     /// 测试若不传，就会在「客户端配了 A、宿主实际跑 B」的状态下断言 —— 测的根本不是被测行为。
     /// </remarks>
-    public static Process Start(string profileDirectory, BrowserOptions options, int idleSeconds = 300)
+    public static Process Start(string profileDirectory, BrowserOptions options, int idleSeconds = 300, TimeSpan? timeout = null)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -127,12 +134,15 @@ internal static class TestHost
             }
         }
 
-        return StartCore(profileDirectory, idleSeconds, hostArguments);
+        return StartCore(profileDirectory, idleSeconds, hostArguments, timeout);
     }
 
     /// <summary>实际启动逻辑（两个公开入口共用，避免参数拼接漂移）。</summary>
     private static Process StartCore(
-        string profileDirectory, int idleSeconds, IReadOnlyList<string> hostArguments)
+        string profileDirectory,
+        int idleSeconds,
+        IReadOnlyList<string> hostArguments,
+        TimeSpan? timeout = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(profileDirectory);
 
@@ -152,7 +162,8 @@ internal static class TestHost
         var useNoBuild = CliIsBuilt();
         var launcher = StartLauncher(locator.ProfileDirectory, arguments, useNoBuild);
 
-        var info = WaitForDiscovery(locator, launcher, useNoBuild ? NoBuildTimeout : BuildTimeout);
+        var info = WaitForDiscovery(
+            locator, launcher, timeout ?? (useNoBuild ? NoBuildTimeout : BuildTimeout));
         if (info is null)
         {
             var output = ReadLauncherOutput(locator.ProfileDirectory);

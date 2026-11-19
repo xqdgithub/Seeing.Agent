@@ -140,6 +140,39 @@ public sealed class BrowserJobObject : IDisposable
         return null;
     }
 
+    /// <summary>
+    /// 当前进程是否真的在某个 Job 里（仅 Windows；非 Windows / 调用失败一律 <see langword="false"/>）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么需要这个证明</b>：宿主会先 <see cref="AssignCurrentProcess"/> 把自己放进
+    /// 带 <c>KILL_ON_JOB_CLOSE</c> 的 Job，再由 <c>BrowserProcessHost.StartAsync</c> 决定
+    /// 「浏览器是否已被祖先 Job 覆盖」。如果直接相信调用方传入的
+    /// <c>hostAlreadyInJob: true</c>，一旦 self-assign 失败（受限容器、外层 job 禁止 breakaway），
+    /// 就会既没有嵌套 Job、也没有祖先 Job —— 宿主被杀时浏览器永久残留，且没有任何警告。
+    /// </para>
+    /// <para>
+    /// <b>它证明的是「在某个 Job 里」，不是「在本类创建的 Job 里」</b>：宿主自 assign 成功时两者一致；
+    /// 宿主被外部 job（CI runner / 容器）包住时也会返回 true。那种情况下内核兜底语义仍然存在，
+    /// 但可能不带 <c>KILL_ON_JOB_CLOSE</c> —— 这是放弃嵌套 Job 的已知代价，比「完全没有兜底」好。
+    /// </para>
+    /// </remarks>
+    public static bool IsCurrentProcessInJob()
+    {
+        if (!OperatingSystem.IsWindows())
+            return false;
+
+        try
+        {
+            return IsProcessInJob(GetCurrentProcess(), IntPtr.Zero, out var inJob) && inJob;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            // 极老的 Windows / 非桌面内核：视为「证明不了」，交给嵌套 Job 兜底。
+            return false;
+        }
+    }
+
     /// <summary>关闭句柄。若进程在 job 内，它们会被内核立刻终止。</summary>
     public void Dispose()
     {
@@ -200,6 +233,16 @@ public sealed class BrowserJobObject : IDisposable
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr OpenProcess(uint dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, uint dwProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsProcessInJob(
+        IntPtr processHandle,
+        IntPtr jobHandle,
+        [MarshalAs(UnmanagedType.Bool)] out bool result);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentProcess();
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
