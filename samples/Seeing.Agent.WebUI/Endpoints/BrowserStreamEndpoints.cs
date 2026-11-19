@@ -607,6 +607,10 @@ public static class BrowserStreamEndpoints
                         || height != current.RequestedHeight
                         || Math.Abs(pixelRatio - current.PixelRatio) > 0.0001))
                 {
+                    logger.LogDebug(
+                        "画面视口变更：{SessionId} {W}×{H} dpr={Dpr}（原 {CW}×{CH} dpr={CDpr}）",
+                        sessionId, width, height, pixelRatio,
+                        current.RequestedWidth, current.RequestedHeight, current.PixelRatio);
                     await current.ResizeAsync(width, height, pixelRatio, ct).ConfigureAwait(false);
 
                     // screencast 的 maxWidth/maxHeight 只在启动时生效；视口变了必须重启
@@ -617,62 +621,19 @@ public static class BrowserStreamEndpoints
                     // 不推就会停在旧尺寸（E2E 实测：帧已变 800×600，state 仍 1280×800）。
                     PushState(hub, sink, current);
                 }
-                break;
-
-            case "hires":
-                // 静帧请求：用户滚动/操作后停下，前端要一张清晰图（超采样模式的补图）。
-                // 必须 fire-and-forget：抓一张最多要 800ms，而输入循环同时在处理
-                // mouse/wheel（拖动时每秒几十条）——在这里 await 会让画布拖动一顿一顿的。
-                QueueStillCapture(hub, sessionId, sink, logger, ct, (long)ReadDouble(root, "rev"));
+                else
+                {
+                    logger.LogDebug(
+                        "忽略重复 resize：{SessionId} {W}×{H} dpr={Dpr}（当前 {CW}×{CH} dpr={CDpr}）",
+                        sessionId, width, height, pixelRatio,
+                        current.RequestedWidth, current.RequestedHeight, current.PixelRatio);
+                }
                 break;
 
             case "ping":
                 // 保活：无需动作
                 break;
         }
-    }
-
-    /// <summary>
-    /// 把一次静帧请求投递到后台抓取，立即返回。
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>为什么不 await</b>：输入循环承载拖拽与滚轮的鼠标流（每秒几十条）。
-    /// 抓一张静帧最多 800ms，在循环里等它会让「拖动」变成一格一格的。
-    /// </para>
-    /// <para>
-    /// 并发由 <see cref="BrowserScreencastHub.TryCaptureStillAsync"/> 内部的单飞锁兜住：
-    /// 前一张还在抓时，新请求立刻拿到 <see langword="null"/>（过期图没意义），不会堆积。
-    /// </para>
-    /// <para>
-    /// 失败、超时、取消都只记 Debug：静帧是锦上添花，前端 2 秒后自会重请求。
-    /// </para>
-    /// </remarks>
-    private static void QueueStillCapture(
-        BrowserScreencastHub hub,
-        string sessionId,
-        WebSocketFrameSink sink,
-        ILogger logger,
-        CancellationToken ct,
-        long rev)
-    {
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var still = await hub.TryCaptureStillAsync(sessionId, rev, ct).ConfigureAwait(false);
-                if (still is not null)
-                    sink.OnFrame(still);
-            }
-            catch (OperationCanceledException)
-            {
-                // 连接已断 / 会话关闭：正常路径
-            }
-            catch (Exception ex)
-            {
-                logger.LogDebug(ex, "抓静帧失败（忽略）：{SessionId}", sessionId);
-            }
-        });
     }
 
     /// <summary>
@@ -968,8 +929,8 @@ public static class BrowserStreamEndpoints
                     // 坐标与画布 backing 的权威来源（实际 SetViewport 的 CSS 尺寸）
                     viewportWidth = state.ViewportWidth,
                     viewportHeight = state.ViewportHeight,
-                    frameScale = state.FrameScale,
-                    mode = state.Mode
+                    // 帧倍率：帧像素 = 视口 × frameScale（默认 dpr）。前端画布 backing 用同一值。
+                    frameScale = state.FrameScale
                 },
                 _ct);
         }

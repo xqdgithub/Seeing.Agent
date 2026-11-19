@@ -16,7 +16,6 @@ const FRAME_HEADER_BYTES = 18;
 
 /// 帧种类（与服务端 BrowserFrameKind 一致）。
 const FRAME_KIND_FLOW = 1;
-const FRAME_KIND_STILL = 2;
 
 const DEFAULTS = {
     minBackoffMs: 1000,
@@ -24,11 +23,6 @@ const DEFAULTS = {
     // 拖动面板时 ResizeObserver 连续触发；每次 resize 都要服务端重建 CDP screencast，
     // 所以必须去抖（150ms 足够让拖拽结束、又不影响手感）
     resizeDebounceMs: 150,
-    // 画面静止多久后请求一张静帧补清晰度（普通模式帧只有 CSS 分辨率）
-    stillDebounceMs: 200,
-    // 静帧在途超时：抓一张最多 800ms，这里给足余量；超时后清在途，否则
-    // 一次失败（或丢包）会让「永远不再请求静帧」，画面永久停在模糊帧
-    stillPendingTimeoutMs: 2000,
     // 画布内点击到 viewport 坐标的换算依赖这个状态（服务端 state 到达前的占位值）
     viewportWidth: 1280,
     viewportHeight: 800
@@ -53,7 +47,7 @@ function getState(host) {
             // ── 帧协议相关 ──
             // 画面代次（state 与帧头同源）：代次一变，帧序号从头开始，旧序号不能再参与比较
             epoch: 0,
-            // 流帧序号：仲裁流帧（seq <= lastFlowSeq 丢弃）与静帧（rev < lastFlowSeq 丢弃）
+            // 帧序号：seq <= lastFlowSeq 的重复/回退帧丢弃
             lastFlowSeq: 0,
             lastFrameSeq: 0,
             lastDrawnSeq: 0,
@@ -61,31 +55,17 @@ function getState(host) {
             // 坐标与画布 backing 的权威来源（服务端实际 SetViewport 的 CSS 尺寸）
             viewportWidth: DEFAULTS.viewportWidth,
             viewportHeight: DEFAULTS.viewportHeight,
-            // 帧像素 / 视口 CSS：普通模式 = dpr，超采样模式 = 1
+            // 帧像素 / 视口 CSS：默认 = dpr（帧与画布 backing 1:1，无需补图）
             frameScale: 1,
-            // normal | highres（超采样）；highres 下不请求静帧
-            mode: 'normal',
             frameWidth: 0,
             frameHeight: 0,
-            // 最近一帧的种类（2 = 静帧）：仅诊断/排查用
-            lastFrameKind: 0,
-            // ── 静帧请求 ──
-            stillTimer: null,
-            // 在途静帧的发起时刻（performance.now()）；0 = 没有请求在途
-            hiresPendingAt: 0,
-            hiresTimer: null,
-            // 已被静帧覆盖到的 rev：小于 lastFlowSeq 说明当前画面还缺一张清晰图
-            stillCoveredRev: 0,
-            // 静帧覆盖后「闩住」：内容没变的流帧不重绘，避免高清/低清反复闪。
-            // 用户输入、agent busy、或内容真的变化时才解除。
-            stillLatched: false,
-            stillHash: 0,
-            sampleCanvas: null,
             modifiers: { ctrl: false, alt: false, shift: false, meta: false },
             resizeTimer: null,
             lastSentResizeWidth: 0,
             lastSentResizeHeight: 0,
             lastSentDpr: 0,
+            // 是否已补发过「页面创建后才出现」的尺寸（只补一次，避免与其它观看者互踢）
+            viewportResynced: false,
             resizeObserver: null,
             // 拖动状态：拖动中 mousemove 需按帧合并，且坐标允许越界钳到边界。
             dragging: false,
@@ -95,6 +75,9 @@ function getState(host) {
         };
         states.set(host, state);
     }
+    // 把内部状态暴露给宿主页（E2E 用来断言 resize / 闩锁 / 视口实际值）。
+    // 只读用途：模块闭包里的 state 否则无法从测试侧观察。
+    try { window.__bw = state; } catch { }
     return state;
 }
 
@@ -157,59 +140,17 @@ function handleFrameBinary(state, buffer) {
         state.lastFlowSeq = 0;
         state.lastDrawnSeq = 0;
         state.lastFrameSeq = 0;
-        // 旧代次的静帧请求已经失效（rev 属于上一代次），别让「在途」挡着新请求
-        clearHiresPending(state);
-        state.stillCoveredRev = 0;
     }
 
-    if (kind === FRAME_KIND_FLOW) {
-        // 流帧：seq 单调递增，重复/回退的丢弃
-        if (seq <= state.lastFlowSeq) return;
-        state.lastFlowSeq = seq;
-        state.lastFrameSeq = seq;
-        // 注意：这里不做 markActivity。内容未变的流帧会在 drawFrame 里被丢弃，
-        // 若在这里重置去抖，静止画面就会反复请求静帧 → 高清/低清来回闪。
-    } else if (kind === FRAME_KIND_STILL) {
-        // 静帧：seq 承载 rev（发起请求时的 lastFlowSeq）。
-        // 收到即清在途 —— 无论这张图是否已过期，服务端都已回应过本次请求。
-        clearHiresPending(state);
-        if (seq < state.lastFlowSeq) {
-            // rev < lastFlowSeq 说明请求之后画面又动过：这张图比当前画面旧，丢弃；
-            // 且**不**推进 lastFlowSeq（静帧不是流的一环）。
-            // 但当前画面仍缺一张清晰图 → 重新去抖，静止后再要一张。
-            markActivity(state);
-            return;
-        }
-        state.stillCoveredRev = seq;
-    } else {
-        return;     // 未知种类：不猜，直接丢
-    }
+    if (kind !== FRAME_KIND_FLOW)
+        return;     // 未知种类：不猜，直接丢（服务端只有一种帧）
 
-    void drawFrame(state, new Uint8Array(dv.buffer, FRAME_HEADER_BYTES, len), w, h, seq, kind);
-}
+    // seq 单调递增，重复/回退的丢弃
+    if (seq <= state.lastFlowSeq) return;
+    state.lastFlowSeq = seq;
+    state.lastFrameSeq = seq;
 
-// 16×16 采样指纹：只用于判断「这一帧与静帧内容是否相同」，不追求密码学强度。
-// 成本是一次很小的 drawImage + getImageData；换来静止画面不会被低清流帧反复覆盖。
-function frameFingerprint(state, bitmap) {
-    let c = state.sampleCanvas;
-    if (!c) {
-        c = document.createElement('canvas');
-        c.width = 16;
-        c.height = 16;
-        state.sampleCanvas = c;
-    }
-    const ctx = c.getContext('2d', { willReadFrequently: true });
-    ctx.clearRect(0, 0, 16, 16);
-    ctx.drawImage(bitmap, 0, 0, 16, 16);
-    const d = ctx.getImageData(0, 0, 16, 16).data;
-    let h = 2166136261;
-    for (let i = 0; i < d.length; i += 4) {
-        h ^= d[i];
-        h = Math.imul(h, 16777619);
-        h ^= d[i + 1];
-        h = Math.imul(h, 16777619);
-    }
-    return h >>> 0;
+    drawFrame(state, new Uint8Array(dv.buffer, FRAME_HEADER_BYTES, len), w, h, seq, kind);
 }
 
 async function drawFrame(state, bytes, width, height, seq, kind) {
@@ -236,18 +177,9 @@ async function drawFrame(state, bytes, width, height, seq, kind) {
             return;
         }
 
-        const fingerprint = frameFingerprint(state, bitmap);
-
-        // 静帧覆盖后，内容未变的流帧不再重绘：否则画面会在「高清静帧 ↔ 低清流帧」
-        // 之间反复切换（用户报的「一下清楚一下不清楚」）。
-        if (kind === FRAME_KIND_FLOW && state.stillLatched && fingerprint === state.stillHash) {
-            bitmap.close?.();
-            return;
-        }
-
-        // backing（画布的位图尺寸）= round(视口 × 帧倍率)，即「物理像素」。
-        // 普通模式下帧只有 CSS 尺寸（frameScale = dpr），静帧才是物理像素：
-        // 只有 backing 按物理像素定，静帧才能 1:1 落地、文字才清晰。
+        // backing（画布的位图尺寸）= round(视口 × 帧倍率)。
+        // 帧倍率默认就是 dpr，服务端也按同一倍率编码 → 流帧与 backing 1:1 落地，
+        // 不需要任何「补一张清晰图」的第二来源。
         //
         // ⚠ 只在值变化时赋值：给 canvas.width 赋值会重置整个画布（清空内容 + 重置上下文状态），
         // 逐帧赋值就会逐帧闪黑。
@@ -284,78 +216,12 @@ async function drawFrame(state, bytes, width, height, seq, kind) {
 
         state.frameWidth = width || bmpW;
         state.frameHeight = height || bmpH;
-        state.lastFrameKind = kind;
-
-        // 静帧绘制后闩住，后续同内容流帧不再覆盖；真的变化（或用户/agent 操作）才解除。
-        if (kind === FRAME_KIND_STILL) {
-            state.stillHash = fingerprint;
-            state.stillLatched = true;
-        } else if (kind === FRAME_KIND_FLOW) {
-            state.stillLatched = false;
-            // 只有真正绘制了「变化后的流帧」才重置静帧去抖：
-            // 内容相同的重复帧不会再触发一轮 still 请求。
-            markActivity(state);
-        }
 
         // 坐标换算的权威来源是 state.viewportWidth/Height（服务端实际 SetViewport 的 CSS 尺寸），
-        // **不是**帧的位图像素：普通模式下帧是 CSS 尺寸、显示是物理像素（dpr），
-        // 超采样模式下视口本身已经乘过 dpr。拿帧像素当量程会让点击坐标系统性偏移。
+        // **不是**帧的位图像素：帧像素 = 视口 × frameScale，拿它当量程会让点击坐标系统性偏移。
     } catch {
         state.droppedFrames++;
     }
-}
-
-// ── 静帧请求（仅普通模式）──────────────────────────────────────────
-//
-// 普通模式下持续流只有 CSS 分辨率：在高 DPI 屏上把 backing 放大到物理像素后，
-// 流帧被拉伸 → 文字发虚。画面静止 200ms 后向服务端要一张物理像素的静帧补上。
-//
-// 超采样模式（mode === 'highres'）下滑本身已是物理像素，再抓静帧纯属浪费。
-
-/// 记录一次「画面在动」：重置静帧去抖窗口。
-function markActivity(state) {
-    if (state.mode !== 'normal') return;
-
-    if (state.stillTimer !== null) clearTimeout(state.stillTimer);
-
-    state.stillTimer = setTimeout(() => {
-        state.stillTimer = null;
-        requestStill(state);
-    }, DEFAULTS.stillDebounceMs);
-}
-
-function clearHiresPending(state) {
-    state.hiresPendingAt = 0;
-    if (state.hiresTimer !== null) {
-        clearTimeout(state.hiresTimer);
-        state.hiresTimer = null;
-    }
-}
-
-function requestStill(state) {
-    if (state.mode !== 'normal') return;
-    if (!state.socket || state.socket.readyState !== WebSocket.OPEN) return;
-    if (state.lastFlowSeq <= 0) return;     // 还没有画面，没有可对应的 rev
-
-    // 已有请求在途：不排队也不重发（服务端也是单飞，重发只会被丢掉）。
-    // 在途那张回来时若已过期（rev < lastFlowSeq），由 handleFrameBinary 重新去抖；
-    // 若超时没回来，由下面的超时分支重新去抖 —— 需求不会丢。
-    if (state.hiresPendingAt !== 0) return;
-
-    if (!sendRaw(state, { type: 'hires', rev: state.lastFlowSeq })) return;
-
-    state.hiresPendingAt = performance.now();
-
-    // 在途超时：抓图失败/消息丢失时不能让「在途」永久挂住，
-    // 否则之后再也不会有静帧（画面永久模糊，且无任何报错）。
-    if (state.hiresTimer !== null) clearTimeout(state.hiresTimer);
-    state.hiresTimer = setTimeout(() => {
-        state.hiresTimer = null;
-        state.hiresPendingAt = 0;
-
-        // 当前画面还没有被任何静帧覆盖 → 这次失败要补回来（重新去抖）
-        if (state.stillCoveredRev < state.lastFlowSeq) markActivity(state);
-    }, DEFAULTS.stillPendingTimeoutMs);
 }
 
 // ── WebSocket ────────────────────────────────────────────────────────
@@ -406,7 +272,13 @@ function connect(state) {
             state.closedReason = null;
             state.closedReasonKind = null;
             notifyStatus(state, 'connected', '已连接');
-            // 面板当前尺寸推给服务端，避免首帧按默认视口渲染后拉伸
+            // 面板当前尺寸推给服务端，避免首帧按默认视口渲染后拉伸。
+            // 清掉去重基准：重连意味着「现在是我在看」，要把视口要回自己的尺寸
+            // （另一个观看者改过的视口不该被继承，否则重连后一直按它的尺寸排版）。
+            // 补页面创建后丢掉的那次 resize 由 resyncPanelSize 负责。
+            state.lastSentResizeWidth = 0;
+            state.lastSentResizeHeight = 0;
+            state.lastSentDpr = 0;
             sendResize(state);
         };
 
@@ -427,9 +299,6 @@ function connect(state) {
 
             switch (message.type) {
                 case 'state':
-                    // agent 开始操作：解除静帧闩锁，允许低清流帧实时反映变化。
-                    // 操作结束（busy=false）后，静帧去抖会把高清图补回来。
-                    if (message.busy === true) state.stillLatched = false;
                     // 页面状态回来了（导航成功、操作完成）：把之前那条错误提示清掉。
                     // 否则「输入被拒」的红字会一直挂在状态栏，即使后续导航已经成功 ——
                     // 用户会以为工具栏坏了（实测症状）。
@@ -438,6 +307,10 @@ function connect(state) {
                         state.closedReasonKind = null;
                     }
                     applyStateMessage(state, message);
+                    // 页面可能是本客户端之后才创建的（工作台先开、agent 后 browser_open）：
+                    // 那次 resize 落在「还没有页面」的分支上被丢掉了，页面于是一直按默认视口排版。
+                    // 放在 notifyState 之前：宿主回调抛异常不该阻断这条自愈。
+                    resyncPanelSize(state, message);
                     notifyState(state, message);
                     // 只在「当前不是重连/断开」时恢复成已连接
                     if (state.socket && state.socket.readyState === WebSocket.OPEN) {
@@ -464,10 +337,6 @@ function connect(state) {
 
         socket.onclose = () => {
             state.socket = null;
-
-            // 在途的静帧请求永远不会回来了：立刻清掉，
-            // 否则重连后要等 2 秒超时才允许再次请求（这段时间画面一直是模糊的）。
-            clearHiresPending(state);
 
             // 一次都没连上就断开：说明握手阶段就失败了（不是连上后掉线）。
             // 注意 **不要**猜成「证书问题」——实测过：HTTPS 下真正的元凶是
@@ -554,11 +423,9 @@ function applyStateMessage(state, message) {
         state.lastFlowSeq = 0;
         state.lastDrawnSeq = 0;
         state.lastFrameSeq = 0;
-        clearHiresPending(state);
-        state.stillCoveredRev = 0;
     }
 
-    // 视口 = 服务端实际 SetViewport 的 CSS 尺寸（超采样模式下是面板 × dpr）。
+    // 视口 = 服务端实际 SetViewport 的 CSS 尺寸（= 面板尺寸）。
     // 坐标换算与画布 backing 都以它为准；0 是「未知」，保留上一次已知值。
     if (typeof message.viewportWidth === 'number' && message.viewportWidth > 0) {
         state.viewportWidth = message.viewportWidth;
@@ -568,18 +435,6 @@ function applyStateMessage(state, message) {
     }
     if (typeof message.frameScale === 'number' && message.frameScale > 0) {
         state.frameScale = message.frameScale;
-    }
-    if (typeof message.mode === 'string' && message.mode.length > 0) {
-        state.mode = message.mode;
-    }
-
-    // 超采样下流本身就是物理像素：没有「补一张清晰图」的需求，把待发的请求撤掉
-    if (state.mode !== 'normal') {
-        if (state.stillTimer !== null) {
-            clearTimeout(state.stillTimer);
-            state.stillTimer = null;
-        }
-        clearHiresPending(state);
     }
 }
 
@@ -619,22 +474,29 @@ function toViewportPoint(state, event, clampToEdge) {
     };
 }
 
-function sendResize(state) {
+/// 面板实际可用尺寸（CSS 像素）与像素比：resize 的唯一来源。
+///
+/// 用 stage 尺寸（不是 canvas 尺寸）：canvas 的 CSS 尺寸是按帧比例算出来的，
+/// 用它推视口会形成「帧 → 画布 → 视口 → 帧」的自激循环。
+///
+/// 服务端会把宽高各自钳制到 [320,4096]×[240,4096]。这里必须用同一组上下限，
+/// 否则前端「以为已经发了」而服务端再缩一次，坐标换算与帧尺寸就对不上（点击系统性偏移）。
+function panelSize(state) {
     const rect = stageRect(state);
-    if (!rect) return;
+    if (!rect) return null;
 
-    // 宽高取面板实际 **CSS 像素**：这一层是「网页按多大窗口排版」，
-    // 必须用 CSS 像素，否则网页会以为自己在 2 倍宽的屏幕上（排版变稀疏）。
-    //
-    // 用 stage 尺寸（不是 canvas 尺寸）：canvas 的 CSS 尺寸是按帧比例算出来的，
-    // 用它推视口会形成「帧 → 画布 → 视口 → 帧」的自激循环。
-    //
-    // 注意服务端会把宽高各自钳制到 [320,4096]×[240,4096]。
-    // 这里的上下限必须与 BrowserOptions.EffectiveWidth/Height 完全一致：
-    // 前端钳得更小会让面板被「人为缩小」；钳得更大则服务端再缩一次，
-    // 而坐标换算用的 viewportWidth 与实际帧尺寸不符 → 点击系统性偏移。
-    const width = Math.round(Math.max(320, Math.min(4096, rect.width)));
-    const height = Math.round(Math.max(240, Math.min(4096, rect.height)));
+    return {
+        width: Math.round(Math.max(320, Math.min(4096, rect.width))),
+        height: Math.round(Math.max(240, Math.min(4096, rect.height))),
+        dpr: Math.min(Math.max(window.devicePixelRatio || 1, 1), 2)
+    };
+}
+
+function sendResize(state) {
+    const panel = panelSize(state);
+    if (!panel) return;
+
+    const { width, height, dpr } = panel;
 
     // ⚠ 只发面板尺寸 + dpr，**不乘任何东西**。
     // 超采样（视口 = 面板 × dpr）是服务端的决定，前端不得预先乘：
@@ -646,9 +508,7 @@ function sendResize(state) {
     // 清晰度单独一层：告诉服务端「按几倍像素出图」。
     // 高 DPI 屏上 CSS 554px 占 1108 物理像素，若 screencast 仍按 554 编码，
     // 浏览器会把帧放大 2 倍显示 → 文字发虚（用户报的「分辨率很低」）。
-    // 夹在 1–2 与服务端 BrowserPageHandle.NormalizePixelRatio 一致：
-    // 两端夹的范围不同会让判重永久失配（每条 resize 都重建 screencast）。
-    const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+    // dpr 在 panelSize 里按 1–2 夹取，与服务端 BrowserPageHandle.NormalizePixelRatio 一致。
 
     // 拖动分隔条时 ResizeObserver 会连续触发（每秒数十次）。每一次 resize 在服务端都意味着
     // SetViewport + 重建 CDP screencast（stop/create/detach/start 四个往返），
@@ -667,13 +527,49 @@ function sendResize(state) {
         state.lastSentResizeHeight = height;
         state.lastSentDpr = dpr;
         sendRaw(state, { type: 'resize', width, height, pixelRatio: dpr });
-        // 视口变了：新尺寸下的画面要重新等一次「静止」才补静帧
-        markActivity(state);
     }, DEFAULTS.resizeDebounceMs);
 
     // 面板尺寸变了，画面的 contain 结果也要跟着变（帧比例不变，可用空间变了）。
     // 不等去抖：resize 会连续触发，这里立刻适配手感更好，且计算只是两次 getBoundingClientRect。
     applyCanvasFit(state);
+}
+
+/// 服务端视口仍是「页面刚创建时的默认值」而面板与之不同时，补发一次尺寸。
+///
+/// 场景：工作台先打开、agent 之后才 `browser_open`。第一次 resize 到达时服务端没有页面，
+/// 直接被丢掉；页面随后按默认视口（1280×800）创建，而面板可能只有 500px 宽 ——
+/// 网页按 1280 排版再被缩到 500 显示，字必然发虚，点击坐标也会偏。
+///
+/// ⚠ 只在「服务端还停在默认视口」时补一次：若按「视口 ≠ 面板」判定，多个观看者
+/// （面板尺寸不同）会各自把视口改回自己的尺寸，形成永久互踢。默认值之外一律不动 ——
+/// 那是另一个观看者的合法尺寸，不是丢消息。
+function resyncPanelSize(state, message) {
+    if (!state.opened || !state.socket || state.socket.readyState !== WebSocket.OPEN) return;
+    if (state.viewportResynced) return;
+
+    // 0 = 「本会话还没有页面」的状态推送（订阅时那一条）。此刻发送 resize 会被服务端丢掉
+    // —— 正是我们想补的那个丢消息场景，不能在这里把一次性机会用掉。
+    if (!(message.viewportWidth > 0) || !(message.viewportHeight > 0)) return;
+
+    // 服务端已按某个客户端设置过视口：不是「创建时丢消息」，不抢
+    if (message.viewportWidth !== DEFAULTS.viewportWidth
+        || message.viewportHeight !== DEFAULTS.viewportHeight)
+        return;
+
+    const panel = panelSize(state);
+    if (!panel) return;
+
+    // 视口永远 = 面板 CSS 尺寸（出图倍率只影响帧像素，不影响排版）
+    if (Math.abs(panel.width - message.viewportWidth) <= 8
+        && Math.abs(panel.height - message.viewportHeight) <= 8)
+        return;
+
+    state.viewportResynced = true;
+
+    // 面板尺寸本身没变 → sendResize 的「尺寸没变就不发」会挡住，先清掉去重基准
+    state.lastSentResizeWidth = 0;
+    state.lastSentResizeHeight = 0;
+    sendResize(state);
 }
 
 // ── 对外接口（Blazor 调用）────────────────────────────────────────────
@@ -695,15 +591,7 @@ export function attach(host, canvasElement, stageElement, dotnetRef, streamUrl) 
     state.viewportWidth = DEFAULTS.viewportWidth;
     state.viewportHeight = DEFAULTS.viewportHeight;
     state.frameScale = 1;
-    state.mode = 'normal';
-    if (state.stillTimer !== null) {
-        clearTimeout(state.stillTimer);
-        state.stillTimer = null;
-    }
-    clearHiresPending(state);
-    state.stillCoveredRev = 0;
-    state.stillLatched = false;
-    state.stillHash = 0;
+    state.viewportResynced = false;
     state.opened = false;
     state.closedReason = null;
     state.closedReasonKind = null;
@@ -735,13 +623,7 @@ export function detach(host) {
     state.resizeObserver?.disconnect();
     state.resizeObserver = null;
 
-    // 静帧的去抖与在途计时都要停：detach 之后没人收帧，
-    // 让定时器继续跑会在新连接上误发一次 hires（rev 属于旧连接）
-    if (state.stillTimer !== null) {
-        clearTimeout(state.stillTimer);
-        state.stillTimer = null;
-    }
-    clearHiresPending(state);
+    // resize 去抖要停：detach 之后没人收帧，让定时器继续跑会往已关闭的连接发消息
     if (state.resizeTimer !== null) {
         clearTimeout(state.resizeTimer);
         state.resizeTimer = null;
@@ -843,7 +725,6 @@ export function bindInput(host) {
     canvas.addEventListener('mousedown', (e) => {
         e.preventDefault();
         canvas.focus();
-        state.stillLatched = false;   // 用户操作：允许流帧接管
         state.dragging = true;
         const point = toViewportPoint(state, e, true);
         if (!point) return;
@@ -854,8 +735,6 @@ export function bindInput(host) {
             type: 'mouse', event: 'down', x: point.x, y: point.y,
             button: normalizeButton(e.button)
         });
-        // 人工操作会改变画面：重新开始静帧去抖（停下后要一张清晰图）
-        markActivity(state);
     });
 
     canvas.addEventListener('mouseup', (e) => {
@@ -870,7 +749,6 @@ export function bindInput(host) {
             type: 'mouse', event: 'up', x: point.x, y: point.y,
             button: normalizeButton(e.button)
         });
-        markActivity(state);
     });
 
     // 鼠标离开画布也要收尾：否则拖动中把指针拖出去再松开，
@@ -912,17 +790,13 @@ export function bindInput(host) {
     // 不 preventDefault 的话页面会同时滚动外层容器，画面与内容错位
     canvas.addEventListener('wheel', (e) => {
         e.preventDefault();
-        state.stillLatched = false;   // 用户滚动：允许流帧立即接管画面
         sendRaw(state, { type: 'wheel', deltaX: e.deltaX, deltaY: e.deltaY });
-        // 滚动是「画面在动」的最强信号：停下 200ms 后才值得补一张清晰图
-        markActivity(state);
     }, { passive: false });
 
     canvas.addEventListener('keydown', (e) => {
         if (isBrowserShortcut(e)) return;    // Ctrl+R / F5 等交回浏览器
 
         e.preventDefault();
-        state.stillLatched = false;          // 用户输入：允许流帧接管
         sendRaw(state, {
             type: 'key', event: 'down', key: e.key,
             ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey
@@ -950,7 +824,6 @@ export function bindInput(host) {
         const text = e.clipboardData?.getData('text');
         if (!text) return;
         e.preventDefault();
-        state.stillLatched = false;
         sendRaw(state, { type: 'text', text });
     });
 }

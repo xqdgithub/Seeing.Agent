@@ -99,13 +99,13 @@ e3 button "提交" (disabled)
 | 关注点 | 实现 |
 |--------|------|
 | 传输 | 独立 WebSocket `/api/browser/{sessionId}/stream`（不塞 Blazor circuit：JPEG 帧会让服务端渲染全面卡顿）。**下行帧是二进制**：18 字节头 + JPEG；控制消息（`state`/`error`/`takeover`）仍是 JSON 文本。见第二十一节 |
-| 采集 | CDP `Page.startScreencast`（jpeg, quality=80, everyNthFrame=1）；`maxWidth/maxHeight` = 页面**实际**视口（CSS 像素），否则 Chromium 先等比缩小再编码 |
+| 采集 | CDP `Page.startScreencast`（jpeg, quality=80, everyNthFrame=1）；`maxWidth/maxHeight` = 视口 × **帧倍率**（默认 = dpr，即物理像素）。**不能只给 CSS 视口**：那会让 Chromium 把物理像素表面降采样再编码，画布只能放大显示（见 §二十三） |
 | **必须 ack** | 每帧恰好一次 `Page.screencastFrameAck`（所有权转移给帧泵）。**不 ack 则只有第一帧**（探针已实测） |
 | 背压 | sink 队列容量 1（`DropOldest`）：慢客户端只拿最新帧，帧不会在内存里堆积 |
 | 多观看者 | 每 viewer 一条 WS；Hub 内一个 CDP screencast 广播（CDP screencast 是页级单例，重复 start 会互相顶掉） |
 | 生命周期 | 首个 viewer 连上启动；最后一个离开后**延迟 1 分钟**停止（避免刷新导致反复启停） |
 | 坐标 | 权威是 `state.viewportWidth/Height`（实际 SetViewport 的 CSS 尺寸）；前端按 canvas 显示矩形折算，服务端直接 `Mouse.*` |
-| 清晰度 | 普通模式由静帧（`Page.captureScreenshot`，物理像素）补；超采样模式（`Browser.HighResStream`）让流本身就是物理像素 |
+| 清晰度 | **单源**：流本身就是物理像素，画布 backing = 视口 × 帧倍率，帧 1:1 落地。没有「静帧补图」的第二来源（`Browser.StreamPixelRatio=1` 可退回 CSS 像素省带宽） |
 | 并发 | 人工输入与 agent 工具调用共用 `BrowserPageHandle` 的**会话级互斥**，鼠标状态机不会错乱 |
 
 ## 七、实测发现并修掉的六个缺陷
@@ -442,7 +442,7 @@ agent 调 browser_open("https://github.com/login")
     "IdleSeconds": 600,
     "ViewportWidth": 1280,
     "ViewportHeight": 800,
-    "HighResStream": false,
+    "StreamPixelRatio": 0,
     "AllowPrivateHosts": false,
     "DefaultTimeoutSeconds": 30,
     "PersistLogin": true,
@@ -459,7 +459,7 @@ agent 调 browser_open("https://github.com/login")
 | `IdleSeconds` | 页面静默回收（只关页面与 context，不关进程）；0 = 不回收 |
 | `PersistLogin` | 默认 true：复用 DefaultContext 保留登录态，代价是 cookie 跨会话共享（见 §八之二）；它是**运行期**项，改动不需要重启浏览器 |
 | `ProfileDirectory` | null 时用 `{用户目录}/.seeing/browser-profile`；它是宿主固定身份与 Chromium `user-data-dir`，**与 `PersistLogin` 无关**；改动需重启浏览器 |
-| `HighResStream` | 超采样：视口 = 面板 × dpr、`deviceScaleFactor=1`、不抓静帧；不是「只抓一张全分辨率静帧」，见 §21.5 |
+| `StreamPixelRatio` | 画面流出图倍率：`0`（默认）= 跟随 dpr（物理像素，最清晰）；`1` = CSS 像素（省带宽，HiDPI 上偏软）；1–2 = 固定倍率。**只影响帧像素数，不影响排版**（视口始终是面板 CSS 尺寸、`dsf`=dpr）。见 §21.5 |
 | 视口/超时 | 有钳制（宽 320–4096、高 240–4096、超时 1–300 秒）：配置写坏不得让页面变 1px |
 
 ## 九之二、跨平台可执行文件探测（Linux / macOS）
@@ -908,6 +908,9 @@ while (true)
 
 四张卡：运行模式 / 登录态 / 视口与超时 / 安全边界。
 
+「视口与超时」里另有**画面清晰度**开关（`StreamPixelRatio`）：关（默认）= 按设备像素比出图，开 = 按 CSS 像素出图省带宽。
+两者都是单源渲染，不存在「清楚/模糊来回切」；需要 1–2 之间的固定倍率直接改配置值。
+
 每个开关都带**代价说明**，例如：
 
 > 复用持久 profile：开启后所有会话共用同一个 profile……**代价是 cookie 跨会话共享**——
@@ -1146,68 +1149,64 @@ canvas 尺寸清空。切回来是全新挂载，谈不上「保持」。
 
 全量：458（WebUI）+ 90（Workbench）+ 185（Browser）+ 解决方案 0 错误。
 
-## 二十一、统一渲染管线：二进制帧 / 静帧 / 超采样
+## 二十一、统一渲染管线：单源物理像素
 
 「画面模糊」与「拖拽时画面抖」看起来是两个问题，实际上是同一条管线上三个决定各自为政：
 传输格式（JSON + base64）、帧来源（只有 screencast）、视口与像素比（前端随手写回）叠加出来的。
+
+**现行架构只有一种帧、一种清晰度**：screencast 按「视口 × 帧倍率」编码，画布 backing 用同一倍率，
+帧 1:1 落地。历史版本曾用「CSS 流帧 + 物理像素静帧」两套源，靠前端闩锁/容差抹平差异 ——
+那条路会周期性地复发闪烁，见 §二十三。
 
 ### 21.1 二进制协议：`kind u8 | version u8 | epoch u32 | seq u32 | width u16 | height u16 | length u32`
 
 全部小端，18 字节头 + JPEG 载荷（`BrowserFrameCodec`；编解码两侧都校验版本、种类与**载荷长度精确相等**）。
 去掉 base64 省掉 33% 膨胀 + 两端各一次编解码；`length` 不符一律不渲染（半张图比不画更糟）。
 
-帧分两种，前端按 `kind` 分流：
-
-| kind | `seq` 语义 | 前端仲裁 |
-|------|-----------|---------|
-| `1` flow（screencast） | 流帧序号，单调递增 | `seq <= lastFlowSeq` 丢弃并更新 |
-| `2` still（截图补帧） | **承载 `rev`**（发起请求时的 `lastFlowSeq`），不新增字段 | `rev < lastFlowSeq` 丢弃，**不**推进 `lastFlowSeq`；收到即清「在途」 |
+帧只有一种（`kind = 1`，flow）。未知 kind 整帧丢弃：那是协议版本不匹配，按它渲染只会得到错位画面。
 
 `epoch` 是画面代次（换页面 / 重建 screencast 递增）。前端在 `epoch` 变化时清空 `lastFlowSeq/lastDrawnSeq`，
 否则新代次的前若干帧会被当成过期帧丢掉（画面停在上一次）。`state.epoch = 0` 表示**未知**（本会话还没有画面流），
 前端保留上一次已知代次，不当权威值比较。
 
-### 21.2 为什么 `hires` 必须 fire-and-forget
+### 21.2 编码尺寸 = 视口 × 帧倍率
 
-静帧请求（`{type:'hires', rev}`）与鼠标/滚轮共用同一条输入循环。抓一张静帧最多 800ms，
-在循环里 `await` 会让拖拽变成一格一格。端点只做 `Task.Run` 投递，并发由 Hub 内部的单飞锁兜住
-（前一张还在抓时新请求立刻拿到 `null`——过期图没有意义）。
+`Page.startScreencast` 的 `maxWidth/maxHeight` 是**编码上限**，不是视口。Chromium 捕获的是合成器表面
+（物理像素），上限给 CSS 尺寸就会先降采样再编码：前端画布按物理像素显示时只能放大，文字发虚。
+实测（视口 519×410、dsf=1.25）：`maxWidth=649` → 帧 **649×512**，而 `innerWidth` 仍是 **519**。
+所以倍率可以独立于排版设置，不需要把 dpr 乘进视口。
 
 ### 21.3 前端：坐标权威与画布 backing
 
-- 坐标量程 = `state.viewportWidth/Height`（服务端**实际** SetViewport 的 CSS 尺寸）。前端不再从帧像素反写视口：
-  帧是编码尺寸，与视口不是一回事（超采样下视口已乘 dpr）。
+- 坐标量程 = `state.viewportWidth/Height`（服务端**实际** SetViewport 的 CSS 尺寸）= 面板尺寸。
+  不能拿帧像素当量程：帧像素 = 视口 × `frameScale`。
 - `sendResize` 只发**面板 CSS 尺寸 + `devicePixelRatio`**，不乘任何东西（乘 dpr 是服务端的事，两端都乘会平方放大）。
-- backing（`canvas.width/height`）= `round(viewportWidth × frameScale)`，即物理像素；
+- backing（`canvas.width/height`）= `round(viewportWidth × frameScale)`；
   **只在值变化时赋值** —— 给 `canvas.width` 赋值会重置画布（清空 + 重置上下文状态），逐帧赋值就是逐帧闪黑。
-- 帧像素 < backing（普通模式的流帧）时缩放铺满；静帧是物理像素，恰好 1:1 落地——这才是文字清晰的来源。
+- 帧与 backing 同尺寸时 1:1 落地；只有「宽带被钳到 4096」这类边界才会缩放（等比）。
 - `state` 消息**不动画布**：页面静止时改 backing 会留下空白，直到下一帧才重画。
 
-### 21.4 静帧请求的时序与失败恢复
+### 21.4 帧的时序与失败恢复
 
-| 时机 | 行为 |
+| 情形 | 行为 |
 |------|------|
-| 收到流帧 / 滚轮 / 按下抬起 / resize 已发出 | `markActivity`：重置 200ms 去抖 |
-| 去抖到点 | `mode === 'normal'` 且无在途且 WS 已连 → 发 `{type:'hires', rev: lastFlowSeq}`，记 `hiresPendingAt` |
-| 收到 still | 清在途；`rev < lastFlowSeq` 则丢弃并**重新去抖**（当前画面仍缺清晰图） |
-| 2s 内没等到 | 清在途；若 `stillCoveredRev < lastFlowSeq` 重新去抖 |
-| `mode === 'highres'` | 完全不请求（流本身已是物理像素） |
+| 帧到达 | `seq <= lastFlowSeq` 丢弃（重复/乱序），否则绘制并推进 |
+| `epoch` 变化 | 清空序号基准（代次变了，序号从头开始） |
+| 去抖 | 无。没有第二来源要请求，也就不存在「在途 / 超时 / 补图」这套状态机 |
+| 连接断开 | 重连后 `onopen` **清掉 resize 去重基准**再发一次尺寸（重连意味着「现在是我在看」） |
 
-没有这两条恢复路径的版本有一个静默故障：一次丢包后「在途」永久为真，之后**再也不发静帧**——画面永久模糊，
-而且没有任何报错。
+### 21.5 出图倍率（`Browser.StreamPixelRatio`，默认 0）
 
-### 21.5 超采样（`Browser.HighResStream`，默认关闭）
-
-开启后：视口 = 面板 × dpr、`dsf = 1`、`frameScale = 1`、不请求静帧。代价是网页按放大后的 CSS 视口**重新排版**
-（不是简单的位图放大），所以它只是可选开关，不是默认。下次重启浏览器生效。
+`0` = 跟随 dpr（物理像素，默认）；`1` = CSS 像素（省带宽，HiDPI 上偏软）；1–2 = 固定倍率。
+**只影响帧像素数，不影响排版**：视口始终是面板 CSS 尺寸、`dsf` = dpr。
+它是运行期项（下一次建页/尺寸变更生效），不需要重启浏览器进程。
 
 ### 21.6 验收
 
 19 条验收标准的「自动 / 手工」归属见
 [`docs/superpowers/plans/2026-11-19-browser-workbench-acceptance.md`](../superpowers/plans/2026-11-19-browser-workbench-acceptance.md)。
-本次前端改造另用 Node 桩驱动真实 `browser-workbench.js` 做了 22 项行为断言（二进制解析、坏帧拒收、epoch 重置、
-静帧仲裁、去抖/在途/超时恢复、highres 不请求、resize 只发面板尺寸）——这类断言不依赖真浏览器，
-适合放进未来的前端单测。
+编码尺寸契约由 `StartScreencast_ShouldEncodeAtViewportTimesFrameScale` 守门；
+E2E 另断言「画布 backing == 视口 × frameScale」与空闲画面稳定。
 
 ## 二十二、共享宿主 as-built（进程 / 断连 / 回收）
 
@@ -1253,3 +1252,73 @@ canvas 尺寸清空。切回来是全新挂载，谈不上「保持」。
 宿主在 loopback 上暴露**无认证**的 CDP/HTTP 端点（`/json/version` 等），同机任意进程可接管浏览器并读取全部 cookie；
 `POST /browser/host/restart` 同样无鉴权。**只有 Pipe 或本地 token 代理才算隔离**，
 当前实现两者都没有 —— UI（设置页「安全边界」卡）与本文 §八 都不允许写「已隔离 / 有认证」。
+
+## 二十三、画面闪烁：根因是双源架构，已按单源重构
+
+### 23.1 现象
+
+工作台画布与有头窗口**同步**闪：画布在「清楚 / 不清楚」之间反复切换，真实的 Edge 窗口内容也在跳。
+第一版在画布上打补丁（静帧闩锁），第二版补容差比较、再补时间窗 —— 每次都「好了几次运行」又复发。
+
+### 23.2 根因：同一画面有两个来源
+
+旧架构里画布的像素来自两处：
+
+| 来源 | 几何 | 编码 | 何时出现 |
+|------|------|------|---------|
+| 流帧 | CSS 视口（519×410） | JPEG q80 | `Page.startScreencast`，随内容变化 |
+| 静帧 | 物理像素（实际是显示器 dsf 再乘一层，如 779×615） | JPEG q90 | 前端在画面静止 200ms 后主动请求 |
+
+同一个画面用两种几何、两种质量编码，再靠前端状态机（`stillLatched` + 采样哈希）判断「是否同一画面」。
+这是一个**不可能稳定**的设计：采样值随分辨率/编码/DPI 变化，阈值只能覆盖当时实测的那台机器。
+
+三条实测把环路钉死：
+
+| # | 实测 | 结论 |
+|---|------|------|
+| ① | 静止页面上开着 screencast 计帧，然后抓一张静帧：raw `Page.captureScreenshot` 之后必有 **1 帧**，Puppeteer `ScreenshotDataAsync` 之后必有 **3 帧** | 抓静帧本身会让 Chromium 重绘 → 每次静帧都紧跟一帧「截图产生」的流帧 |
+| ② | 同一画面两种编码缩到 16×16 比对：`mean≈0.49–3.4`、`max=16–48`（随 dpi/内容而变） | 两种源**永远不可能**被精确判等；容差阈值只能碰运气 |
+| ③ | E2E 在静止页面连续请求 6 次静帧，画布签名出现 4 种值交替；空闲 10s 采样也周期性变化 | ①+② 构成自激：静帧 → 截图流帧 → 判成「变了」→ 重绘低清帧 → 再请求静帧 → … |
+
+有头窗口的「闪」是同一环路的另一面：每次抓图都会让真实窗口重绘一次。
+
+### 23.3 决定性事实：双源根本不必要
+
+旧代码把 `maxWidth/maxHeight` 设成**CSS 视口**，于是 Chromium 把已经是物理像素的合成器表面先降采样再编码。
+实测（视口 519×410、dsf=1.25）：
+
+```
+maxWidth=649（= 519 × 1.25）→ 帧 649×512，innerWidth 仍 519，body 宽仍 519
+```
+
+也就是说：**按「视口 × dpr」编码就能直接拿到物理像素帧，而且网页排版不变**。
+之前的「CSS 流 + 物理静帧」是在补偿一个由自己造成的降采样。
+
+### 23.4 重构（不是补丁）
+
+| 改动 | 位置 |
+|------|------|
+| screencast 编码尺寸 = `视口 × FrameScale`（默认 dpr） | `BrowserScreencastHub.StartCoreAsync` |
+| `ResolveViewport` 只算「视口 = 面板 CSS 尺寸 + 帧倍率」，不再有 highres 分支 | `BrowserPageHandle` |
+| 删除静帧整条链路：`hires` 消息、`QueueStillCapture`、`TryCaptureStillAsync`、`BrowserStillSource`、`BrowserFrameKind.Still` | 端点 / Hub / 协议 |
+| 删除前端静帧状态机：`markActivity` / `requestStill` / 采样哈希 / 闩锁 / 抑制窗口 / `mode` | `browser-workbench.js` |
+| `HighResStream`（放大视口换清晰度）→ `StreamPixelRatio`（只改编码倍率，不动排版） | `BrowserOptions` |
+| 保留并修正两处独立问题：`resyncPanelSize`（工作台先开、页面后建时那次 resize 被丢弃）与重连时重发尺寸 | 端点 / 前端 |
+
+现在画布只有一种清晰度：帧像素 = 画布 backing = 视口 × 倍率，1:1 落地，不存在切换。
+
+### 23.5 验收
+
+- 单元：`StartScreencast_ShouldEncodeAtViewportTimesFrameScale`（视口 800×600、dpr 1.25 → `maxWidth=1000/maxHeight=750`，state 仍报 800×600）。
+- 单元：`ResolveViewport_ShouldKeepLayoutAndScaleStream` / `EffectiveStreamRatio_ShouldNormalize`。
+- E2E（真实 WebUI + 真实有头 Edge）：空闲 10s 采样 `distinct=1`，画布 backing == 视口 × frameScale。
+
+```
+UI: idle-before-input samples=20 distinct=1 tailStable=True
+UI: idle-after-input  samples=12 distinct=1 tailStable=True
+UI: geometry = {"canvas":[519,411],"expected":[519,411],"frame":[800,600]}
+UI: backing == viewport × frameScale (1:1)
+```
+
+**遗留的取舍**：`StreamPixelRatio=0`（默认）在 dpr=2 的屏幕上帧面积是 CSS 的 4 倍（带宽/编码成本上升，
+按 ack 丢帧兜底）；要省带宽就设 `1`，代价是文字偏软 —— 但那是**一种稳定的偏软**，不是两套清晰度来回切。

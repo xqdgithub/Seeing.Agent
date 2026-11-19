@@ -128,7 +128,8 @@ try
     File.WriteAllBytes(Path.Combine(outDir, "flow1.jpg"), first.Bytes);
 
     await Send(new { type = "resize", width = 800, height = 600, pixelRatio = 1.25 });
-    var resized = await session.WaitFrameAsync(f => f.Kind == 1 && f.Width == 800 && f.Height == 600,
+    // 帧像素 = 视口 × 帧倍率（默认 dpr）：单源物理像素
+    var resized = await session.WaitFrameAsync(f => f.Kind == 1 && f.Width == 1000 && f.Height == 750,
         TimeSpan.FromSeconds(10));
     Console.WriteLine($"RESIZED frame={resized.Width}x{resized.Height} seq={resized.Seq}");
     session.DumpStates();
@@ -137,11 +138,6 @@ try
     await Send(new { type = "wheel", deltaX = 0, deltaY = 500 });
     var after = await session.WaitFrameAsync(f => f.Kind == 1 && f.Seq > before, TimeSpan.FromSeconds(10));
     Console.WriteLine($"FLOW2 seq={after.Seq} (before={before}) bytes={after.Bytes.Length}");
-
-    await Send(new { type = "hires", rev = session.LastFlowSeq });
-    var still = await session.WaitFrameAsync(f => f.Kind == 2, TimeSpan.FromSeconds(6));
-    Console.WriteLine($"STILL seq/rev={still.Seq} {still.Width}x{still.Height} bytes={still.Bytes.Length}");
-    File.WriteAllBytes(Path.Combine(outDir, "still.jpg"), still.Bytes);
 
     await Send(new { type = "mouse", action = "down", x = 400, y = 300, button = "left", clickCount = 1 });
     await Send(new { type = "mouse", action = "up", x = 400, y = 300, button = "left", clickCount = 1 });
@@ -166,7 +162,7 @@ sealed class Session(ClientWebSocket ws)
     public long LastFlowSeq { get { lock (_gate) return _frames.LastOrDefault(f => f.Kind == 1)?.Seq ?? 0; } }
 
     public Task RunAsync() => _loop ??= Task.Run(LoopAsync);
-    public void DumpStates() { lock (_gate) { foreach (var s in _states.TakeLast(5)) Console.WriteLine($"  state vw={s.ViewportWidth} vh={s.ViewportHeight} dpr={s.Dpr} fs={s.FrameScale} mode={s.Mode}"); } }
+    public void DumpStates() { lock (_gate) { foreach (var s in _states.TakeLast(5)) Console.WriteLine($"  state vw={s.ViewportWidth} vh={s.ViewportHeight} dpr={s.Dpr} fs={s.FrameScale}"); } }
 
     private async Task LoopAsync()
     {
@@ -205,8 +201,7 @@ sealed class Session(ClientWebSocket ws)
                         root.TryGetProperty("viewportWidth", out var vw) ? vw.GetInt32() : 0,
                         root.TryGetProperty("viewportHeight", out var vh) ? vh.GetInt32() : 0,
                         root.TryGetProperty("dpr", out var d) ? d.GetDouble() : 0,
-                        root.TryGetProperty("frameScale", out var fs) ? fs.GetDouble() : 0,
-                        root.TryGetProperty("mode", out var m) ? m.GetString() ?? "" : "");
+                        root.TryGetProperty("frameScale", out var fs) ? fs.GetDouble() : 0);
                     lock (_gate) _states.Add(s);
                 }
             }
@@ -245,7 +240,7 @@ sealed class Session(ClientWebSocket ws)
 }
 
 sealed record Frame(byte Kind, uint Seq, uint Epoch, int Width, int Height, byte[] Bytes);
-sealed record StateMsg(int ViewportWidth, int ViewportHeight, double Dpr, double FrameScale, string Mode);
+sealed record StateMsg(int ViewportWidth, int ViewportHeight, double Dpr, double FrameScale);
 
 
 

@@ -7,10 +7,7 @@ namespace Seeing.Agent.Tools.Browser;
 public enum BrowserFrameKind : byte
 {
     /// <summary>动态流帧（screencast 持续推流）。</summary>
-    Flow = 1,
-
-    /// <summary>静帧（单张截图、操作后的补帧）。</summary>
-    Still = 2
+    Flow = 1
 }
 
 /// <summary>
@@ -24,10 +21,10 @@ public enum BrowserFrameKind : byte
 /// <para>
 /// <b>头布局</b>（全部小端，共 18 字节）：
 /// <code>
-/// offset 0   kind    (u8)   1=Flow 2=Still
+/// offset 0   kind    (u8)   1=Flow
 /// offset 1   version (u8)   固定 1
 /// offset 2   epoch   (u32)  浏览器会话代次（换页面/重启后递增，用于丢弃旧代次的帧）
-/// offset 6   seq     (u32)  流帧序号；静帧时承载 rev（代次内的版本号，不额外加字段）
+/// offset 6   seq     (u32)  帧序号（同代次内单调递增）
 /// offset 10  width   (u16)  像素
 /// offset 12  height  (u16)  像素
 /// offset 14  length  (u32)  JPEG 载荷字节数（不含头）
@@ -59,7 +56,7 @@ public static class BrowserFrameCodec
         // 编码侧也校验种类：否则产出的长度/版本都合法、只有 kind 字节是垃圾，
         // 接收方要等到 TryDecode 才拒收——契约应当对称，越早失败越容易定位。
         if (!IsKnownKind(frame.Kind))
-            throw new ArgumentOutOfRangeException(nameof(frame), frame.Kind, "帧种类未知：只允许 Flow / Still");
+            throw new ArgumentOutOfRangeException(nameof(frame), frame.Kind, "帧种类未知：只允许 Flow");
 
         // 长度字段由 Data.Length 推出，因此「头里的 length 与真实载荷一致」在编码侧天然成立；
         // 解码侧再校验一次，防止截断帧被当成完整帧渲染（半张图比报错更糟）。
@@ -117,5 +114,5 @@ public static class BrowserFrameCodec
     }
 
     private static bool IsKnownKind(BrowserFrameKind kind)
-        => kind is BrowserFrameKind.Flow or BrowserFrameKind.Still;
+        => kind is BrowserFrameKind.Flow;
 }

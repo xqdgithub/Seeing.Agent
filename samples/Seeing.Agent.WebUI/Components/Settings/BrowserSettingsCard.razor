@@ -216,6 +216,20 @@
                 </div>
             </FormItem>
 
+            <FormItem Label="画面清晰度">
+                <Space>
+                    <Switch @bind-Value="@_model.CssPixelStream" />
+                    <span>按 CSS 像素出图（省带宽）</span>
+                </Space>
+                <div class="browser-settings-hint" style="color:#888;font-size:12px;margin-top:4px;line-height:1.6;">
+                    关闭（默认）= 按设备像素比出图，文字最清晰；开启 = 画面帧按 CSS 像素编码，
+                    <strong>带宽与 CPU 最省，但 HiDPI 屏上文字会偏软</strong>。
+                    <br />
+                    两种模式都是<strong>单一来源</strong>：画布只有一种清晰度，不存在「清楚/模糊来回切」。
+                    需要 1–2 之间的固定倍率请直接改配置里的 <code>StreamPixelRatio</code>。
+                </div>
+            </FormItem>
+
             <FormItem Label="空闲回收（秒，0 = 不回收）">
                 <AntDesign.InputNumber @bind-Value="@_model.IdleSeconds" Min="0" Max="86400" Style="width: 140px;" />
                 <div class="browser-settings-hint" style="color:#888;font-size:12px;margin-top:4px;line-height:1.6;">
@@ -353,6 +367,7 @@
             ProfileDirectory = o.ProfileDirectory ?? string.Empty,
             ViewportWidth = o.ViewportWidth,
             ViewportHeight = o.ViewportHeight,
+            StreamPixelRatio = o.StreamPixelRatio,
             IdleSeconds = o.IdleSeconds,
             HostIdleSeconds = o.HostIdleSeconds,
             DefaultTimeoutSeconds = o.DefaultTimeoutSeconds,
@@ -524,6 +539,7 @@
                 ProfileDirectory = Blank(_model.ProfileDirectory),
                 ViewportWidth = _model.ViewportWidth,
                 ViewportHeight = _model.ViewportHeight,
+                StreamPixelRatio = _model.StreamPixelRatio,
                 IdleSeconds = _model.IdleSeconds,
                 HostIdleSeconds = _model.HostIdleSeconds,
                 DefaultTimeoutSeconds = _model.DefaultTimeoutSeconds,
@@ -589,6 +605,21 @@
         public string ProfileDirectory { get; set; } = string.Empty;
         public int ViewportWidth { get; set; } = 1280;
         public int ViewportHeight { get; set; } = 800;
+
+        /// <summary>出图倍率（0 = 跟随设备像素比；1 = CSS 像素）。</summary>
+        public double StreamPixelRatio { get; set; }
+
+        /// <summary>
+        /// 开关视图：开启 = 1（CSS 像素，省带宽），关闭 = 0（跟随设备像素比）。
+        /// </summary>
+        /// <remarks>
+        /// 手写的 1–2 固定倍率在开关上是「关闭」状态；只要不动这个开关，保存时原值会被保留。
+        /// </remarks>
+        public bool CssPixelStream
+        {
+            get => StreamPixelRatio > 0 && StreamPixelRatio <= 1.0;
+            set => StreamPixelRatio = value ? 1.0 : 0.0;
+        }
         public int IdleSeconds { get; set; } = 600;
         public int HostIdleSeconds { get; set; } = 1800;
         public int DefaultTimeoutSeconds { get; set; } = 30;

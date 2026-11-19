@@ -35,21 +35,22 @@ public sealed class BrowserOptions
     public int ViewportHeight { get; set; } = 800;
 
     /// <summary>
-    /// 画面流是否走超采样。默认 <see langword="false"/>。
+    /// 画面流出图倍率。默认 <c>0</c>：跟随前端 <c>devicePixelRatio</c>（文字最清晰）。
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>它实际做什么</b>：开启后视口 = 面板 CSS 尺寸 × <c>devicePixelRatio</c>、CDP 的
-    /// <c>deviceScaleFactor</c> 固定为 1、<c>frameScale = 1</c>，并且不再单独抓静帧
-    /// —— 流本身就是物理像素。
+    /// <b>它只影响编码像素数，不影响网页排版</b>：视口始终是面板的 CSS 尺寸
+    /// （<c>deviceScaleFactor</c> = dpr），帧的像素数 = 面板尺寸 × 本倍率。
+    /// 默认倍率 = dpr，因此帧与画布 backing 1:1，流本身就是清晰的物理像素 ——
+    /// 不需要「补一张静帧」的第二来源（那个双源设计曾导致画面反复闪）。
     /// </para>
     /// <para>
-    /// <b>它不是「只抓一张全分辨率静帧」</b>：早期注释这样写是错的。超采样是持续推流，
-    /// 代价是网页会按放大后的 CSS 视口<b>重新排版</b>（不是位图放大），所以只是可选开关。
-    /// 下次重启浏览器生效。
+    /// 设为 <c>1</c> 可退回 CSS 像素出图：带宽与编码成本最省，但 HiDPI 屏上文字会偏软
+    /// （画布被浏览器放大显示）。1–2 之间的值按固定倍率出图。
+    /// 这是运行期项：下一次建页/尺寸变更生效，不需要重启浏览器进程。
     /// </para>
     /// </remarks>
-    public bool HighResStream { get; set; }
+    public double StreamPixelRatio { get; set; }
 
 
     /// <summary>
@@ -178,4 +179,16 @@ public sealed class BrowserOptions
     [System.Text.Json.Serialization.JsonIgnore]
     public TimeSpan? IdleTimeout
         => IdleSeconds > 0 ? TimeSpan.FromSeconds(IdleSeconds) : null;
+
+    /// <summary>
+    /// 取实际出图倍率：<c>0</c> = 跟随设备像素比（返回 <c>0</c>，由调用方代入 dpr）。
+    /// </summary>
+    /// <remarks>
+    /// 夹在 1–2：&lt;1 会让文字比 CSS 像素还糊，&gt;2 只徒增编码成本（前端 dpr 同样按 2 封顶）。
+    /// </remarks>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public double EffectiveStreamRatio
+        => double.IsFinite(StreamPixelRatio) && StreamPixelRatio > 0
+            ? Math.Clamp(StreamPixelRatio, 1d, 2d)
+            : 0d;
 }

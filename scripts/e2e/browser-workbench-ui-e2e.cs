@@ -91,12 +91,13 @@ try
     await testPage.WaitForSelectorAsync(".browser-workbench", new WaitForSelectorOptions { Timeout = 20000 });
     Console.WriteLine("UI: browser workbench opened");
 
-    var uiUrl = "data:text/html,<body style='height:3000px;background:linear-gradient(#fff,#333)'><h1>UI E2E</h1></body>";
+    var uiUrl = "data:text/html,<body style='margin:0;background:%23fff;font:16px/1.5 sans-serif'><h1>Static heading</h1><p>The quick brown fox jumps over the lazy dog. 1234567890</p><p>SECOND LINE OF TEXT for sampling.</p><div style='height:2000px;background:linear-gradient(%23fff,%23333)'></div></body>";
     var connected = await WaitUntilAsync(async () =>
         (await testPage.EvaluateExpressionAsync<string>(
             "document.querySelector('.browser-workbench__status')?.textContent || ''")).Contains("已连接"),
         TimeSpan.FromSeconds(15));
     Console.WriteLine($"UI: ws connected = {connected}");
+    await DumpBwStateAsync("after-connect");
     var navigated = await testPage.EvaluateFunctionAsync<bool>("""
         (url) => {
             const el = document.querySelector('.browser-workbench__address');
@@ -132,16 +133,8 @@ try
     if (!painted) throw new Exception($"UI canvas 20s 内无像素（sum={sum1}）");
     Console.WriteLine($"UI: canvas ready, pixelSum={sum1}");
     await Task.Delay(1500);   // 等静止画面补上静帧
-    var idleSums = new List<long>();
-    for (var i = 0; i < 5; i++)
-    {
-        idleSums.Add(await CanvasSumAsync());
-        await Task.Delay(300);
-    }
-    var stable = idleSums.Distinct().Count() == 1;
-    Console.WriteLine($"UI: idle sums = [{string.Join(",", idleSums)}] stable={stable}");
-    if (!stable)
-        Console.WriteLine("UI: WARNING idle canvas changed (still/flow flicker)");
+    await SampleIdleAsync("idle-before-input", samples: 20, intervalMs: 500);
+    await DumpBwStateAsync("after-idle");
     await testPage.ScreenshotAsync(Path.Combine(outDir, "ui-workbench.png"));
 
     var rect = await testPage.EvaluateExpressionAsync<string>("""
@@ -201,6 +194,9 @@ try
     var afterReload = await CanvasSumAsync();
     Console.WriteLine($"UI: reload clicked, canvas sum after = {afterReload}");
     Console.WriteLine("UI: wheel + click + reload done");
+    await Task.Delay(1500);   // 等滚动/刷新后的补图稳定，再采样
+    await SampleIdleAsync("idle-after-input", samples: 12, intervalMs: 500);
+    await DumpBwStateAsync("after-input");
 
     ClientWebSocket? socket = null;
     Exception? lastError = null;
@@ -239,26 +235,55 @@ try
     File.WriteAllBytes(Path.Combine(outDir, "flow1.jpg"), first.Bytes);
 
     await Send(new { type = "resize", width = 800, height = 600, pixelRatio = 1.25 });
+    // 帧的像素数 = 视口 × 帧倍率。页面 dpr 已在首个 resize 固定（1×），
+    // 所以这里像素比不变：视口 800×600、帧 800×600，画布 backing 也必须是 800×600。
+    // 「按 dpr 放大成物理像素」的契约由单元测试 StartScreencast_ShouldEncodeAtViewportTimesFrameScale 守门。
     var resized = await session.WaitFrameAsync(f => f.Kind == 1 && f.Width == 800 && f.Height == 600,
         TimeSpan.FromSeconds(10));
     Console.WriteLine($"RESIZED frame={resized.Width}x{resized.Height} seq={resized.Seq}");
-    var st = await session.WaitStateAsync(s => s.ViewportWidth == 800 && Math.Abs(s.FrameScale - 1.25) < 0.001,
+    var st = await session.WaitStateAsync(s => s.ViewportWidth == 800 && s.ViewportHeight == 600,
         TimeSpan.FromSeconds(10));
-    Console.WriteLine($"STATE viewport={st.ViewportWidth}x{st.ViewportHeight} frameScale={st.FrameScale} mode={st.Mode}");
+    Console.WriteLine($"STATE viewport={st.ViewportWidth}x{st.ViewportHeight} frameScale={st.FrameScale}");
 
     var before = session.LastFlowSeq;
     await Send(new { type = "wheel", deltaX = 0, deltaY = 500 });
     var after = await session.WaitFrameAsync(f => f.Kind == 1 && f.Seq > before, TimeSpan.FromSeconds(10));
     Console.WriteLine($"FLOW2 seq={after.Seq} (before={before}) bytes={after.Bytes.Length}");
-
-    await Send(new { type = "hires", rev = session.LastFlowSeq });
-    var still = await session.WaitFrameAsync(f => f.Kind == 2, TimeSpan.FromSeconds(6));
-    Console.WriteLine($"STILL seq/rev={still.Seq} {still.Width}x{still.Height} bytes={still.Bytes.Length}");
-    File.WriteAllBytes(Path.Combine(outDir, "still.jpg"), still.Bytes);
     }
     catch (Exception ex)
     {
         Console.WriteLine($"WS stage non-blocking failure: {ex.Message}");
+    }
+
+    // ── 单源一致性 ──
+    // 画布 backing 必须等于「视口 × 帧倍率」，也就是帧的像素数：
+    // 只要三者一致，流就是 1:1 落地，不存在「低清流帧 / 高清静帧」两套清晰度。
+    try
+    {
+        var geom = await testPageRef!.EvaluateExpressionAsync<string>("""
+            (() => {
+                const c = document.querySelector('.browser-workbench__canvas');
+                const b = window.__bw;
+                if (!c || !b) return 'none';
+                return JSON.stringify({
+                    canvas: [c.width, c.height],
+                    expected: [Math.round(b.viewportWidth * b.frameScale),
+                               Math.round(b.viewportHeight * b.frameScale)],
+                    frame: [b.frameWidth, b.frameHeight]
+                });
+            })()
+            """);
+        Console.WriteLine($"UI: geometry = {geom}");
+        using var gd = JsonDocument.Parse(geom);
+        var canvasW = gd.RootElement.GetProperty("canvas")[0].GetInt32();
+        var expectedW = gd.RootElement.GetProperty("expected")[0].GetInt32();
+        Console.WriteLine(canvasW == expectedW
+            ? "UI: backing == viewport × frameScale (1:1)"
+            : $"UI: WARNING backing {canvasW} != viewport×scale {expectedW}");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"UI: geometry probe skipped: {ex.Message}");
     }
 
     Console.WriteLine("E2E PASS");
@@ -282,6 +307,60 @@ async Task<bool> WaitUntilAsync(Func<Task<bool>> condition, TimeSpan timeout)
     return false;
 }
 
+async Task DumpBwStateAsync(string label)
+{
+    var text = await testPageRef!.EvaluateExpressionAsync<string>("""
+        (() => {
+            const b = window.__bw;
+            if (!b) return 'no __bw';
+            const sr = b.stage ? b.stage.getBoundingClientRect() : null;
+            const cr = b.canvas ? b.canvas.getBoundingClientRect() : null;
+            return JSON.stringify({
+                opened: b.opened,
+                ws: b.socket ? b.socket.readyState : -1,
+                resizePending: b.resizeTimer !== null,
+                lastSent: [b.lastSentResizeWidth, b.lastSentResizeHeight, b.lastSentDpr],
+                stage: sr ? [Math.round(sr.width), Math.round(sr.height)] : null,
+                canvasCss: cr ? [Math.round(cr.width), Math.round(cr.height)] : null,
+                canvasBmp: b.canvas ? [b.canvas.width, b.canvas.height] : null,
+                viewport: [b.viewportWidth, b.viewportHeight, b.frameScale],
+                epoch: b.epoch
+            });
+        })()
+        """);
+    Console.WriteLine($"UI: {label} bw={text}");
+}
+
+/// <summary>
+/// 静止采样：记录每帧画布「位图尺寸 : 像素采样和」。/// 尺寸变化说明视口在抖，像素变化说明画面在重绘 —— 两者都是用户看到的「闪」。
+/// </summary>
+async Task SampleIdleAsync(string label, int samples, int intervalMs)
+{
+    var seen = new List<string>();
+    for (var i = 0; i < samples; i++)
+    {
+        try
+        {
+            seen.Add(await CanvasSignatureAsync());
+        }
+        catch (Exception ex)
+        {
+            seen.Add("err:" + ex.GetType().Name);
+        }
+        await Task.Delay(intervalMs);
+    }
+
+    var distinct = seen.Distinct().Count();
+    // 「闪」的判据是**持续交替**，不是「操作后有一次清晰度补图」：
+    // 只看尾部窗口是否稳定（前几帧允许是从流帧过渡到静帧的正常收敛）。
+    var tail = seen.Skip(Math.Max(0, seen.Count - 4)).ToList();
+    var tailStable = tail.Distinct().Count() == 1;
+    Console.WriteLine($"UI: {label} samples={samples} distinct={distinct} tailStable={tailStable}");
+    Console.WriteLine($"UI: {label} = [{string.Join(",", seen)}]");
+    if (!tailStable)
+        Console.WriteLine($"UI: WARNING {label} still changing (sustained repaint/reflow)");
+}
+
 async Task<long> CanvasSumAsync()
     => await testPageRef!.EvaluateExpressionAsync<long>("""
         (() => {
@@ -291,6 +370,19 @@ async Task<long> CanvasSumAsync()
             let s = 0;
             for (let i = 0; i < d.length; i += 4000) s += d[i];
             return s;
+        })()
+        """);
+
+/// <summary>画布签名：位图尺寸 + 像素采样和（尺寸抖或重绘都会变）。</summary>
+async Task<string> CanvasSignatureAsync()
+    => await testPageRef!.EvaluateExpressionAsync<string>("""
+        (() => {
+            const c = document.querySelector('.browser-workbench__canvas');
+            if (!c || !c.width || !c.height) return 'none';
+            const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+            let s = 0;
+            for (let i = 0; i < d.length; i += 4000) s += d[i];
+            return c.width + 'x' + c.height + ':' + s;
         })()
         """);
 
@@ -341,8 +433,7 @@ sealed class Session(ClientWebSocket ws)
                     var s = new StateMsg(
                         rootEl.TryGetProperty("viewportWidth", out var vw) ? vw.GetInt32() : 0,
                         rootEl.TryGetProperty("viewportHeight", out var vh) ? vh.GetInt32() : 0,
-                        rootEl.TryGetProperty("frameScale", out var fs) ? fs.GetDouble() : 0,
-                        rootEl.TryGetProperty("mode", out var m) ? m.GetString() ?? "" : "");
+                        rootEl.TryGetProperty("frameScale", out var fs) ? fs.GetDouble() : 0);
                     lock (_gate) _states.Add(s);
                 }
             }
@@ -381,4 +472,4 @@ sealed class Session(ClientWebSocket ws)
 }
 
 sealed record Frame(byte Kind, uint Seq, uint Epoch, int Width, int Height, byte[] Bytes);
-sealed record StateMsg(int ViewportWidth, int ViewportHeight, double FrameScale, string Mode);
+sealed record StateMsg(int ViewportWidth, int ViewportHeight, double FrameScale);

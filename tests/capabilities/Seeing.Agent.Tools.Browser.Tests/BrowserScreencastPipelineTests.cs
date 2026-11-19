@@ -95,130 +95,6 @@ public class BrowserScreencastPipelineTests
     }
 
     [Fact]
-    public async Task TryCaptureStill_WhenHighResStream_ShouldReturnNull()
-    {
-        var hub = new BrowserScreencastHub(new TestOptionsMonitor<BrowserOptions>(
-            new BrowserOptions { HighResStream = true }));
-        (await hub.TryCaptureStillAsync("x", 1, CancellationToken.None)).Should().BeNull();
-    }
-
-    [Fact]
-    public async Task TryCaptureStill_WhenNoStream_ShouldReturnNull()
-    {
-        // 没人看画面（或会话不存在）时没有流，抓静帧既没意义也没页面可用。
-        var hub = new BrowserScreencastHub(new TestOptionsMonitor<BrowserOptions>(new BrowserOptions()));
-
-        (await hub.TryCaptureStillAsync("没有这条流", 1, CancellationToken.None)).Should().BeNull();
-    }
-
-    [Fact]
-    public async Task TryCaptureStill_WhenBlankSessionId_ShouldReturnNull()
-    {
-        var hub = new BrowserScreencastHub(new TestOptionsMonitor<BrowserOptions>(new BrowserOptions()));
-
-        (await hub.TryCaptureStillAsync("  ", 1, CancellationToken.None)).Should().BeNull();
-    }
-
-    [Fact]
-    public void ResolveSize_ShouldScaleByPixelRatio()
-    {
-        var page = NewPageHandle(new BrowserOptions { ViewportWidth = 800, ViewportHeight = 600 });
-
-        // 建页时还不知道前端 dpr，默认 1
-        var (width, height) = BrowserStillSource.ResolveSize(page);
-
-        width.Should().Be(800);
-        height.Should().Be(600);
-    }
-
-    [Fact]
-    public void ResolveSize_WhenViewportTooLarge_ShouldClampToHeaderLimits()
-    {
-        // 头里宽高是 u16，协议侧另外限制到 4096；配置写坏不能让帧头溢出。
-        var page = NewPageHandle(new BrowserOptions { ViewportWidth = 9999, ViewportHeight = 9999 });
-
-        var (width, height) = BrowserStillSource.ResolveSize(page);
-
-        width.Should().Be(4096);
-        height.Should().Be(4096);
-    }
-
-    [Fact]
-    public void ResolveSize_WhenViewportTooSmall_ShouldClampToMinimum()
-    {
-        // 下限与 BrowserPageHandle 的视口约束一致：宽 ≥ 320、高 ≥ 240
-        var page = NewPageHandle(new BrowserOptions { ViewportWidth = 1, ViewportHeight = 1 });
-
-        var (width, height) = BrowserStillSource.ResolveSize(page);
-
-        width.Should().Be(320);
-        height.Should().Be(240);
-    }
-
-    [Fact]
-    public async Task CaptureAsync_WhenScreenshotThrows_ShouldFallBackToCdp()
-    {
-        // 主路径（Puppeteer screenshot）失败时必须走 CDP 退路，而不是放弃整张静帧。
-        var jpeg = new byte[] { 0xFF, 0xD8, 0xFF, 0x01 };
-        var session = new Mock<ICDPSession>();
-
-        session.Setup(s => s.SendAsync(
-                It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<bool>(), It.IsAny<CommandOptions?>()))
-            .ReturnsAsync((string method, object? _, bool __, CommandOptions? ___) => method switch
-            {
-                "Page.getLayoutMetrics" => Json(
-                    """{"cssVisualViewport":{"pageX":0,"pageY":120,"clientWidth":800,"clientHeight":600}}"""),
-                "Page.captureScreenshot" => Json(
-                    $$"""{"data":"{{Convert.ToBase64String(jpeg)}}"}"""),
-                _ => null
-            });
-
-        var page = new Mock<IPage>();
-        page.Setup(p => p.ScreenshotDataAsync(It.IsAny<ScreenshotOptions>()))
-            .ThrowsAsync(new PuppeteerException("主路径截图失败"));
-        page.Setup(p => p.CreateCDPSessionAsync()).ReturnsAsync(session.Object);
-
-        var handle = NewPageHandle(new BrowserOptions { ViewportWidth = 800, ViewportHeight = 600 }, page.Object);
-
-        var frame = await BrowserStillSource.CaptureAsync(handle, epoch: 7, rev: 3, CancellationToken.None);
-
-        frame.Should().NotBeNull();
-        frame!.Data.Should().Equal(jpeg);
-        frame.Kind.Should().Be(BrowserFrameKind.Still);
-        frame.Seq.Should().Be(3);           // still 的 seq 承载 rev
-        frame.Epoch.Should().Be(7u);
-
-        session.Verify(
-            s => s.SendAsync("Page.captureScreenshot", It.IsAny<object?>(), It.IsAny<bool>(), It.IsAny<CommandOptions?>()),
-            Times.Once);
-        session.Verify(s => s.DetachAsync(), Times.Once);
-    }
-
-    [Fact]
-    public async Task CaptureAsync_WhenScreenshotHangs_ShouldReturnNullWithinBudget()
-    {
-        // 截图卡死（页面正在导航、有头窗口被系统挡住）时不能让调用方一起卡住：
-        // 800ms 预算到点就放弃，前端 2s 后自会重请求。
-        var never = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var page = new Mock<IPage>();
-        page.Setup(p => p.ScreenshotDataAsync(It.IsAny<ScreenshotOptions>())).Returns(never.Task);
-
-        var handle = NewPageHandle(new BrowserOptions(), page.Object);
-
-        var stopwatch = Stopwatch.StartNew();
-        var frame = await BrowserStillSource.CaptureAsync(handle, 1, 1, CancellationToken.None);
-        stopwatch.Stop();
-
-        frame.Should().BeNull();
-
-        // 这里断言的是「预算生效」这条规格：不能立刻返回 null（那说明根本没等主路径），
-        // 也不能一直挂着。上下界都留了余量，不是精度断言。
-        stopwatch.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(600));
-        stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5));
-    }
-
-    [Fact]
     public async Task RestartingStream_ShouldIncreaseEpochAndKeepStateAndFrameHeaderInSync()
     {
         // 验收 #15：「流重建（epoch）后画面继续更新」。
@@ -270,6 +146,50 @@ public class BrowserScreencastPipelineTests
         // 前端唯一能靠的就是代次 —— 因此帧头必须带新代次。
         secondFrame.Epoch.Should().Be(secondEpoch, "重建后的帧头必须带新代次");
         secondFrame.Epoch.Should().Be(sink.LastState!.Epoch, "state 与帧头必须逐字段一致");
+    }
+
+    [Fact]
+    public async Task StartScreencast_ShouldEncodeAtViewportTimesFrameScale()
+    {
+        // 单源架构的核心契约：编码尺寸 = 视口 × 帧倍率（默认 dpr）。
+        // 只给 CSS 视口尺寸会让 Chromium 把物理像素表面降采样后再编码，
+        // 前端画布只能放大显示 → 文字发虚 → 又诱使「再抓一张静帧」的第二来源。
+        var options = new BrowserOptions();
+        var monitor = new TestOptionsMonitor<BrowserOptions>(options);
+        var hub = new BrowserScreencastHub(monitor);
+
+        var cdp = new Mock<ICDPSession>();
+        Dictionary<string, object>? startArgs = null;
+        cdp.Setup(s => s.SendAsync(
+                "Page.startScreencast", It.IsAny<object?>(), It.IsAny<bool>(), It.IsAny<CommandOptions?>()))
+            .Callback<string, object?, bool, CommandOptions?>((_, payload, __, ___) =>
+                startArgs = payload as Dictionary<string, object>)
+            .ReturnsAsync((JsonElement?)null);
+
+        var page = new Mock<IPage>();
+        page.Setup(p => p.CreateCDPSessionAsync()).ReturnsAsync(cdp.Object);
+        page.Setup(p => p.GetTitleAsync()).ReturnsAsync("title");
+
+        var handle = new BrowserPageHandle(
+            "session-scale",
+            page.Object,
+            refEpoch: 1,
+            monitor,
+            NullLogger<BrowserPageHandle>.Instance);
+
+        // 面板 800×600、dpr 1.25 → 视口 800×600、倍率 1.25 → 编码 1000×750
+        await handle.ResizeAsync(800, 600, 1.25, TestContext.Current.CancellationToken);
+
+        var sink = new RecordingSink();
+        await using var subscription = await hub.SubscribeAsync(
+            "session-scale", handle, sink, TestContext.Current.CancellationToken);
+
+        startArgs.Should().NotBeNull();
+        startArgs!["maxWidth"].Should().Be(1000);
+        startArgs["maxHeight"].Should().Be(750);
+
+        sink.LastState!.ViewportWidth.Should().Be(800, "排版视口仍是面板 CSS 尺寸");
+        sink.LastState.FrameScale.Should().Be(1.25, "帧倍率与编码尺寸同源");
     }
 
     private static void RaiseScreencastFrame(Mock<ICDPSession> session, string base64)
@@ -359,17 +279,5 @@ public class BrowserScreencastPipelineTests
     {
         using var document = JsonDocument.Parse(json);
         return document.RootElement.Clone();    // Clone 后即使文档释放仍可安全读取
-    }
-
-    private static BrowserPageHandle NewPageHandle(BrowserOptions options, IPage? page = null)
-    {
-        // 尺寸用例只用到 ViewportWidth/Height/PixelRatio 这几个纯字段，页面本身不参与计算。
-        var target = page ?? new Mock<IPage>().Object;
-        return new BrowserPageHandle(
-            "session",
-            target,
-            1,
-            new TestOptionsMonitor<BrowserOptions>(options),
-            NullLogger<BrowserPageHandle>.Instance);
     }
 }

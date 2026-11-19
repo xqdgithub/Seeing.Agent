@@ -107,7 +107,7 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
     }
 
     /// <summary>
-    /// 按页面当前实际状态构造一条状态快照（视口/帧倍率/模式都取自实际页面，不读配置视口）。
+    /// 按页面当前实际状态构造一条状态快照（视口/帧倍率都取自实际页面，不读配置视口）。
     /// </summary>
     /// <remarks>
     /// <b>为什么集中在一处</b>：状态有多个发布点（订阅、忙碌、导航、接管、重建失败）。
@@ -127,8 +127,7 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
             EpochOf(page.SessionId),
             page.ViewportWidth,
             page.ViewportHeight,
-            page.FrameScale,
-            _options.CurrentValue.HighResStream ? "highres" : "normal");
+            page.FrameScale);
     }
 
     /// <summary>
@@ -164,39 +163,6 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
         => !string.IsNullOrWhiteSpace(sessionId) && _streams.TryGetValue(sessionId, out var stream)
             ? stream.Epoch
             : 0u;
-
-    /// <summary>
-    /// 抓一张当前视口静帧；不适合抓时返回 <see langword="null"/>。
-    /// </summary>
-    /// <param name="sessionId">会话 id。</param>
-    /// <param name="rev">代次内的版本号（原样写进帧头的 seq 字段）。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
-    /// <remarks>
-    /// <para>
-    /// <b>为什么返回帧而不是直接广播</b>：静帧是「谁请求谁需要」——只有发起请求的那个观看者
-    /// 正在滚动/静止，把一张 1~2 MB 的高清图推给同会话的其他观看者纯属浪费。
-    /// </para>
-    /// <para>
-    /// <b>为什么 <see cref="BrowserOptions.HighResStream"/> 开启时直接返回 null</b>：
-    /// 此时流本身就是全分辨率，再抓一张没有增益，只会多一次 CDP 往返。
-    /// </para>
-    /// </remarks>
-    public async Task<BrowserFrame?> TryCaptureStillAsync(
-        string sessionId,
-        long rev,
-        CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(sessionId))
-            return null;
-
-        if (_options.CurrentValue.HighResStream)
-            return null;
-
-        if (!_streams.TryGetValue(sessionId, out var stream))
-            return null;
-
-        return await stream.CaptureStillAsync(rev, cancellationToken).ConfigureAwait(false);
-    }
 
     /// <summary>
     /// 页面被关闭时清掉对应流（避免残留 screencast 会话）。
@@ -287,15 +253,6 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
         private long _seq;
 
         /// <summary>
-        /// 静帧单飞锁：同一会话同时只允许一张在抓。
-        /// </summary>
-        /// <remarks>
-        /// 用「拿不到就放弃」而不是排队：排队会让一次快速的连续滚动堆出十几张请求，
-        /// 前面几张抓回来时画面早就变了（前端按 rev 也会丢弃），纯属浪费 CPU。
-        /// </remarks>
-        private readonly SemaphoreSlim _stillGate = new(1, 1);
-
-        /// <summary>
         /// 本代次编号（全局递增）。
         /// </summary>
         /// <remarks>
@@ -378,6 +335,7 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
         /// </remarks>
         internal async Task RestartAsync(CancellationToken cancellationToken)
         {
+            _hub._logger.LogDebug("重建画面流：{SessionId}", _sessionId);
             await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
@@ -441,22 +399,30 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
 
             cdp.MessageReceived += OnMessageReceived;
 
-            // 用页面**实际**视口（CSS 像素）作上限。实测 screencast 永远按 CSS 视口出图
-            // （与 dsf 无关）：给一个比视口小的值，Chromium 会先等比缩小再编码；给配置值则
-            // 面板一拖宽就被降采样。两者都会让文字发虚，见 PixelRatio / FrameScale 的注释。
+            // 编码尺寸 = 视口 × 帧倍率（默认 = dpr，即物理像素）。
+            //
+            // ⚠ 这里**不能**只给 CSS 视口尺寸：screencast 捕获的是合成器表面（物理像素），
+            // maxWidth/maxHeight 是上限，给 CSS 尺寸会让它先把物理像素降采样再编码 ——
+            // 前端画布按物理像素显示时就只能放大，文字发虚（曾用「再抓一张静帧补清晰」补救，
+            // 两套清晰度叠加导致画面反复闪；见 docs/architecture/42 §二十三）。
+            //
+            // 实测：视口 519×410、dsf=1.25、maxWidth=649 → 帧 649×512，而 innerWidth 仍是 519。
+            var streamWidth = Math.Clamp((int)Math.Round(page.ViewportWidth * page.FrameScale), 320, 4096);
+            var streamHeight = Math.Clamp((int)Math.Round(page.ViewportHeight * page.FrameScale), 240, 4096);
+
             await cdp.SendAsync("Page.startScreencast", new Dictionary<string, object>
             {
                 ["format"] = "jpeg",
                 ["quality"] = JpegQuality,
-                ["maxWidth"] = page.ViewportWidth,
-                ["maxHeight"] = page.ViewportHeight,
+                ["maxWidth"] = streamWidth,
+                ["maxHeight"] = streamHeight,
                 ["everyNthFrame"] = 1
             }).ConfigureAwait(false);
 
             _hub._logger.LogDebug(
-                "已为会话 {SessionId} 启动画面流（视口 {VW}×{VH}, dpr={Dpr}, frameScale={Scale}）",
+                "已为会话 {SessionId} 启动画面流（视口 {VW}×{VH}, 出图 {SW}×{SH}, dsf={Dsf}）",
                 _sessionId, page.ViewportWidth, page.ViewportHeight,
-                page.PixelRatio, page.FrameScale);
+                streamWidth, streamHeight, page.PixelRatio);
         }
 
         private async Task StopCoreAsync()
@@ -487,45 +453,6 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
             _cdp = null;
             _page = null;
             _pump = null;
-        }
-
-        /// <summary>
-        /// 抓一张当前视口静帧（单飞；正在抓就放弃）。
-        /// </summary>
-        internal async Task<BrowserFrame?> CaptureStillAsync(long rev, CancellationToken cancellationToken)
-        {
-            var page = _page;
-            if (page is null)
-                return null;
-
-            bool acquired;
-
-            try
-            {
-                acquired = await _stillGate.WaitAsync(0, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                return null;
-            }
-
-            if (!acquired)
-                return null;
-
-            try
-            {
-                return await BrowserStillSource
-                    .CaptureAsync(page, Epoch, rev, cancellationToken, _hub._logger)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                return null;
-            }
-            finally
-            {
-                _stillGate.Release();
-            }
         }
 
         /// <summary>

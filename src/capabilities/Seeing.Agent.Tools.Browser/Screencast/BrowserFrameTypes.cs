@@ -8,10 +8,10 @@ namespace Seeing.Agent.Tools.Browser;
 
 /// <summary>一帧画面（JPEG）。</summary>
 /// <param name="Data">JPEG 字节。</param>
-/// <param name="Seq">流帧的单调递增帧序号；静帧（<see cref="BrowserFrameKind.Still"/>）时承载该代次内的 <c>rev</c>。协议头中按 u32 传输。</param>
+/// <param name="Seq">帧序号（同代次内单调递增）。协议头中按 u32 传输。</param>
 /// <param name="Width">画面宽（像素）。</param>
 /// <param name="Height">画面高（像素）。</param>
-/// <param name="Kind">帧种类（流帧 / 静帧）。</param>
+/// <param name="Kind">帧种类。</param>
 /// <param name="Epoch">浏览器会话代次：换页面或重启后递增，前端据此丢弃旧代次的帧。</param>
 public sealed record BrowserFrame(
     byte[] Data,
@@ -72,14 +72,13 @@ public interface IBrowserFrameSink
 /// </param>
 /// <param name="ViewportWidth">
 /// 实际 <c>Page.setViewport</c> 的视口宽（CSS 像素）。<b>这是坐标与画布 backing 的唯一权威</b>：
-/// 超采样模式下它等于面板宽 × dpr，不是面板宽本身。
+/// 它就是面板宽，与出图倍率无关。
 /// </param>
 /// <param name="ViewportHeight">实际视口高（CSS 像素）。</param>
 /// <param name="FrameScale">
-/// 帧像素 / 视口 CSS。前端 <c>canvas.width = round(ViewportWidth × FrameScale)</c>；
-/// 普通模式等于 dpr（帧按 CSS 出图、画布按物理像素），超采样模式为 1。
+/// 帧像素 / 视口 CSS。前端 <c>canvas.width = round(ViewportWidth × FrameScale)</c>。
+/// 默认 = dpr（帧是物理像素，与画布 backing 1:1）；<c>Browser.StreamPixelRatio</c> 可改。
 /// </param>
-/// <param name="Mode">渲染模式：<c>normal</c>（默认）/ <c>highres</c>（超采样）。</param>
 public sealed record BrowserPageState(
     string Url,
     string Title,
@@ -89,5 +88,4 @@ public sealed record BrowserPageState(
     uint Epoch = 0,
     int ViewportWidth = 0,
     int ViewportHeight = 0,
-    double FrameScale = 1,
-    string Mode = "normal");
+    double FrameScale = 1);

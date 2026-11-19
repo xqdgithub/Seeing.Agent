@@ -17,10 +17,10 @@ public class BrowserFrameProtocolTests
     [Fact]
     public void Encode_ShouldWriteLittleEndianHeader()
     {
-        var b = BrowserFrameCodec.Encode(new BrowserFrame([1, 2, 3], 7, 1000, 750, BrowserFrameKind.Still, 9));
+        var b = BrowserFrameCodec.Encode(new BrowserFrame([1, 2, 3], 7, 1000, 750, BrowserFrameKind.Flow, 9));
 
         b.Length.Should().Be(21);
-        b[0].Should().Be(2);
+        b[0].Should().Be(1);
         b[1].Should().Be(1);
 
         // 用 BinaryPrimitives 而不是 BitConverter：BitConverter 跟随机器字节序，
@@ -63,6 +63,18 @@ public class BrowserFrameProtocolTests
     {
         var payload = BrowserFrameCodec.Encode(new BrowserFrame([1], 1, 10, 20));
         payload[1] = 2;
+
+        BrowserFrameCodec.TryDecode(payload, out var frame).Should().BeFalse();
+
+        frame.Should().BeNull();
+    }
+
+    [Fact]
+    public void TryDecode_WhenKindUnknown_ShouldReturnFalseAndNullFrame()
+    {
+        // 现在只有一种帧（Flow=1）。kind=2（旧的静帧）表示对端版本不匹配，必须整帧丢弃。
+        var payload = BrowserFrameCodec.Encode(new BrowserFrame([1], 1, 10, 20));
+        payload[0] = 2;
 
         BrowserFrameCodec.TryDecode(payload, out var frame).Should().BeFalse();
 
