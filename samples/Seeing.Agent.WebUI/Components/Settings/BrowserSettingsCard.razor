@@ -33,7 +33,7 @@
     if (_pendingRestart)
     {
         <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 16px;"
-               Message="有浏览器设置已保存，但当前运行的浏览器还是旧设置。请点击下方「重启浏览器」；若浏览器没在运行，下次打开时会直接用新设置。" />
+               Message="有浏览器设置已保存，但当前运行的浏览器还是旧设置。请点击下方「关闭浏览器」；若浏览器没在运行，下次打开时会直接用新设置。" />
     }
 
     @* ── 浏览器进程（只读） ── *@
@@ -113,10 +113,10 @@
         }
 
         <div style="display:flex;align-items:center;gap:12px;margin-top:16px;flex-wrap:wrap;">
-            <Button Loading="@_restarting" OnClick="RestartBrowserAsync">重启浏览器</Button>
+            <Button Loading="@_closing" OnClick="CloseBrowserAsync">关闭浏览器</Button>
             <Button Type="@ButtonType.Link" Size="@ButtonSize.Small" OnClick="RefreshHostAndRender">刷新状态</Button>
             <span style="color:#888;font-size:12px;">
-                浏览器相关设置修改后需要重启才会生效。
+                浏览器相关设置修改后，关闭浏览器才会生效。
             </span>
         </div>
     </Card>
@@ -304,8 +304,8 @@
     /// <summary>发现文件描述的宿主进程是否仍然存活（PID 与启动时刻都要对上）。</summary>
     private bool _hostAlive;
 
-    /// <summary>「重启浏览器」请求进行中（防重复点击，同时驱动按钮 Loading）。</summary>
-    private bool _restarting;
+    /// <summary>「关闭浏览器」请求进行中（防重复点击，同时驱动按钮 Loading）。</summary>
+    private bool _closing;
 
     /// <summary>进入编辑时的进程级签名快照（保存后比对，判断是否真的需要重启）。</summary>
     private string _signatureBeforeSave = string.Empty;
@@ -432,7 +432,7 @@
             : "不自动退出（常驻后台）";
 
     /// <summary>
-    /// 请求结束当前浏览器进程（重启）。
+    /// 请求关闭当前浏览器进程（不自动重启）。
     /// </summary>
     /// <remarks>
     /// <para>
@@ -444,12 +444,12 @@
     /// 这里只结束旧进程，新进程由下一次打开浏览器时按当时的设置拉起。
     /// </para>
     /// </remarks>
-    private async Task RestartBrowserAsync()
+    private async Task CloseBrowserAsync()
     {
-        if (_restarting)
+        if (_closing)
             return;
 
-        _restarting = true;
+        _closing = true;
         try
         {
             var client = HttpClientFactory.CreateClient();
@@ -475,18 +475,18 @@
 
             if (ok)
             {
-                MessageService.Success("已结束浏览器进程；下次打开浏览器时会按当前设置重新启动");
+                MessageService.Success("已关闭浏览器；下次打开网页时会按当前配置自动启动。");
                 // 「需重启」到这里已经兑现（旧进程没了，新进程必然读新配置），不能再留着警告。
                 _pendingRestart = false;
                 _signatureBeforeSave = BrowserEngine.ComputeSignature(BrowserOptionsMonitor.CurrentValue);
             }
             else if (string.Equals(reason, "no host", StringComparison.Ordinal))
             {
-                MessageService.Warning("当前没有正在运行的浏览器，无需重启");
+                MessageService.Warning("当前没有正在运行的浏览器，无需关闭");
             }
             else
             {
-                MessageService.Error("重启浏览器失败，请查看浏览器宿主日志后重试");
+                MessageService.Error("关闭浏览器失败，请查看浏览器宿主日志后重试");
             }
         }
         catch (Exception ex)
@@ -495,7 +495,7 @@
         }
         finally
         {
-            _restarting = false;
+            _closing = false;
             RefreshHost();
         }
     }

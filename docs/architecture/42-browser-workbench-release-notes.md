@@ -348,7 +348,7 @@ h2 收益有限；WebSocket 画面流是硬需求。若将来必须用 h2，需�
 | 凭据 | 不注入任何 cookie/token；登录态由**持久 profile** 承载（见 §八之二）：在专用 profile 里登录一次，之后所有会话复用 |
 | WS 鉴权 | 与 `api/sessions/.../assets` 同一基线（会话存在 + 本机/局域网）。公网暴露需另行加固（已知边界） |
 | **CDP 端点（重要，不构成隔离）** | 共享宿主以 `--remote-debugging-port=0` 在 loopback 上暴露**无认证**的 CDP / HTTP 端点（`/json/version`、`/json/list`、WebSocket）。**同机的任意进程**都能通过它接管该浏览器并读取其中的全部 cookie（含已登录站点）。只有改用 `Pipe` 或把端口放在本地 token 代理之后才算隔离 —— 当前实现两者都没有，因此「浏览器 profile 只有本应用能读」这个说法**不成立**。 |
-| 重启端点 `/browser/host/restart` | 与 CDP 端点同一边界：本机、**无鉴权**。它能结束宿主进程（从而结束所有人的浏览器），但并不能扩大本机进程本已拥有的能力（同机进程可直接杀进程）。不要把它当成受保护的管理接口。 |
+| 关闭端点 `/browser/host/restart`（历史名） | 与 CDP 端点同一边界：本机、**无鉴权**。设置页的按钮现叫**「关闭浏览器」**，行为就是结束宿主进程（从而结束所有人的浏览器），**不会立即重启**——下次 `browser_open`/打开网页时才按当时配置拉起。端点名保留为历史名（改名会破坏既有快捷脚本）。它并不能扩大本机进程本已拥有的能力（同机进程可直接杀进程），不要把它当成受保护的管理接口。 |
 
 **边界说明（重要）**：`BrowserUrlPolicy` 按**字面 IP 与 localhost 名**判定，不做 DNS 解析。解析后再校验存在 TOCTOU（校验后域名重新解析到内网），而浏览器导航无法固定连接目标。真正的强隔离应由宿主网络策略承担——这一点写在类型注释里，避免后来者误以为它是完整 SSRF 防护。
 
@@ -402,7 +402,7 @@ else
 |------|------|------|
 | 下载禁止怎么设 | 持久模式按页补 CDP `Page.setDownloadBehavior(deny)`，浏览器级另有 `Browser.setDownloadBehavior(deny)` | 默认上下文拿不到 `BrowserContextOptions.DownloadBehavior` |
 | profile 目录位置 | 默认 `{用户目录}/.seeing/browser-profile`，可配 `ProfileDirectory` | 它是宿主身份（发现文件 hash + 锁目录）与 `user-data-dir`，**与 `PersistLogin` 无关**；同目录被两个进程打开会直接拒绝启动 |
-| 配置热重载 | 进程级签名（`BrowserEngine.ComputeSignature`，字段对齐宿主 effective）变化 → 提示「需重启浏览器」 | `ProfileDirectory` 变化必须重启（宿主身份变了）；`PersistLogin` **不进签名**（运行期项，每次建页读取） |
+| 配置热重载 | 进程级签名（`BrowserEngine.ComputeSignature`，字段对齐宿主 effective）变化 → 提示「需重启浏览器（设置页「关闭浏览器」后重新打开）」 | `ProfileDirectory` 变化必须重启（宿主身份变了）；`PersistLogin` **不进签名**（运行期项，每次建页读取） |
 | profile 目录不可用 | 启动失败并给出原因；宿主被外部杀掉后客户端自动重连/重拉 | 「能用但每次重新登录」不属于当前设计 —— 宿主始终有固定目录 |
 
 ### 默认上下文实测可用的能力
@@ -593,7 +593,7 @@ Ubuntu 上「可执行文件找到了但起不来」有三个高频原因，原�
 | 每会话一个页面 | 不做多标签；agent 无法并行处理两个网页（可开两个会话绕过） |
 | 所有会话共享一个 Chromium 进程（`PersistLogin=true` 时还共享 DefaultContext） | 一个页面 OOM 会带走同进程其它会话的页面；连接断开后句柄由 `ConnectionLost` 作废、下次调用自动重建 |
 | **CDP 端点无认证** | 同机任意进程可通过 `/json/version` 接管该浏览器并读取全部 cookie；只有 Pipe 或本地 token 代理才算隔离（当前都没有） |
-| 重启端点无鉴权 | `POST /browser/host/restart` 与 CDP 同一边界：本机任意进程可调用；它只结束宿主，不扩大本机进程已有能力 |
+| 关闭端点无鉴权 | `POST /browser/host/restart`（历史名，UI 按钮叫「关闭浏览器」）与 CDP 同一边界：本机任意进程可调用；它只结束宿主、不自动重启，不扩大本机进程已有能力 |
 | screencast 是 JPEG 有损 | 不影响 agent（agent 走 snapshot / screenshot 独立路径） |
 | WS 无签名 | 与 assets 端点同基线；公网需加固 |
 | 无网络/console 录制、无 PDF、无下载 | 需要时用 `browser_eval` 或 `webfetch` |
@@ -899,6 +899,11 @@ while (true)
 
 ```
 设置页 → 「浏览器」页签（order: 50，Requires: ["browser"]）
+
+卡片由 `BrowserModule.DescribeUi()` **自己声明**（`SettingsCardContribution`，`ViewKey = settings.browser`），
+宿主 `WebUiViews` 只登记 `ViewKey → BrowserSettingsCard`，`WebUiHostContributor` **不再代声明**。
+这样归属（`Requires = ["browser"]`）与能力一致：模块停用后卡片随工作台一起消失，
+宿主表也不会变成能力配置的堆放点（与复盘卡同一条规则）。
 ```
 
 四张卡：运行模式 / 登录态 / 视口与超时 / 安全边界。

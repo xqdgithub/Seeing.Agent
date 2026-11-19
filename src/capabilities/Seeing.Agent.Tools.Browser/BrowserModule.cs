@@ -214,8 +214,12 @@ public sealed class BrowserModule : ISeeingModule, IUiContributor
     }
 
     /// <summary>
-    /// 声明「浏览器」工作台。
+    /// 声明「浏览器」工作台与设置卡。
     /// </summary>
+    /// <remarks>
+    /// 设置卡由模块自己声明（与复盘一致），不走宿主代声明：能力配置应跟着能力走，
+    /// 宿主表只放壳层自身的卡片；模块停用后卡片由 <c>UiVisibility</c> 自动隐藏。
+    /// </remarks>
     public IReadOnlyList<UiContribution> DescribeUi() =>
     [
         new WorkbenchContribution
@@ -245,6 +249,18 @@ public sealed class BrowserModule : ISeeingModule, IUiContributor
             ProvidedTools = s_providedTools,
             // 「用户正在浏览哪个网页」对 agent 有用，且摘要由 UI 截断到 200 字
             ContributesContext = true
+        },
+
+        // 设置卡：模块自己声明（宿主只登记 ViewKey → 组件类型）。
+        // Requires = 自身 → 模块停用后卡片随工作台一起消失，不会留下点开就报错的空壳。
+        new SettingsCardContribution
+        {
+            Point = "shell.settings.card",
+            Id = "settings.browser",
+            Title = "浏览器",
+            ViewKey = "settings.browser",
+            Requires = [Id],
+            Order = 50,
         }
     ];
 

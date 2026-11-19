@@ -50,15 +50,15 @@ public sealed class WebUiHostContributor : IUiHostContributor
         Nav("page.settings", "/settings", "系统设置", "tool",
             NavGroups.Settings, NavGroups.SettingsIcon, SidebarProjectionService.GroupOrders.Settings, 90),
 
-        // ── 设置页卡片（宿主代模块声明）──
+        // ── 设置页卡片（壳层自身两张 + 宿主代 scheduler/memory 声明两张）──
         // 记忆设置不能当作 Nav 挂在 /memory 下：更短前缀规则会隐藏它的子路由。
         // 设置类内容统一走设置卡片。
-        // Order 决定页签顺序（注册表按 Order → Id 排序；都为 0 时会退化成字母序）。
+        // 能力包自己的配置卡由能力包声明（浏览器/复盘），宿主表只放壳层与两个历史遗留的
+        // 代声明卡；Order 决定页签顺序（注册表按 Order → Id 排序）。
         Card("settings.boot", "启动能力", order: 10),
         Card("settings.scenarios", "工作模式", order: 20),
         Card("settings.scheduler", "调度器", order: 30, Requires: ["scheduler"]),
         Card("settings.memory", "记忆", order: 40, Requires: ["memory"]),
-        Card("settings.browser", "浏览器", order: 50, Requires: ["browser"]),
     ];
 
     private static PageContribution Page(string id, string route, string title, string viewKey) => new()

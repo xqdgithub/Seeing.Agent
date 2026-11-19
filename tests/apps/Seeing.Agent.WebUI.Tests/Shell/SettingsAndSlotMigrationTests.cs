@@ -14,7 +14,7 @@ namespace Seeing.Agent.WebUI.Tests.Shell;
 /// 钉住四件事：
 /// </para>
 /// <list type="number">
-/// <item>设置页仍是 4 张卡，Tab key（<c>{OwnerId}.{Id}</c>）全进程唯一。</item>
+/// <item>设置页仍是 6 张卡，Tab key（<c>{OwnerId}.{Id}</c>）全进程唯一。</item>
 /// <item>4 个插槽点都有宿主声明，文件面板这条由 <c>files.workspace</c> 归属。</item>
 /// <item>插槽随会话工作模式收窄；设置卡（Process 作用域）不受影响。</item>
 /// <item>两个消费点都用 <c>ErrorBoundary</c> 隔离模块组件，且 <c>src/</c> 不再出现旧类型名。</item>
@@ -43,9 +43,14 @@ public class SettingsAndSlotMigrationTests
 
         cards.Should().HaveCount(6, "设置页固定 6 张模块卡片（启动能力 / 工作模式 / 调度器 / 记忆 / 浏览器 / 复盘）");
 
-        cards.Select(e => e.Contribution.Id).Should().Equal(
-            "settings.boot", "settings.scenarios", "settings.scheduler", "settings.memory",
-            "settings.browser", "settings.reflection");
+        // 注册表的枚举顺序按 OwnerId 排（browser < host.webui < reflection），
+        // 与页签显示顺序无关；显示顺序只由 Order 决定（Settings.razor 按 Order 排序）。
+        // 页签显示顺序必须仍是 启动能力 → 工作模式 → 调度器 → 记忆 → 浏览器 → 复盘
+        cards.OrderBy(e => ((SettingsCardContribution)e.Contribution).Order)
+            .Select(e => e.Contribution.Id)
+            .Should().Equal(
+                "settings.boot", "settings.scenarios", "settings.scheduler", "settings.memory",
+                "settings.browser", "settings.reflection");
 
         // Tab key = {OwnerId}.{Id}：不同创建方的同 id 不会撞 key
         var keys = cards.Select(e => $"{e.OwnerId}.{e.Contribution.Id}").ToList();
@@ -78,7 +83,9 @@ public class SettingsAndSlotMigrationTests
         cards["settings.scenarios"].Should().BeEmpty();
         cards["settings.scheduler"].Should().Equal("scheduler");
         cards["settings.memory"].Should().Equal("memory");
-        cards["settings.browser"].Should().Equal("browser");
+        cards["settings.browser"].Should().Equal(
+            new[] { "browser" },
+            "浏览器卡由模块自己声明：归属自身，模块停用后卡随工作台一起消失");
         cards["settings.reflection"].Should().Equal(
             new[] { "reflection" },
             "复盘卡由模块自己声明：归属自身，模块停用后卡随页面一起消失（不留点开即报错的空壳）");
@@ -300,8 +307,12 @@ public class SettingsAndSlotMigrationTests
         var files = new Seeing.Agent.Files.FileWorkspaceModule();
         registry.AddRange(files.Id, files.DescribeUi());
 
-        // 复盘模块自己声明设置卡（宿主不再代声明），因此这里必须把它算进注册表，
+        // 复盘与浏览器模块都自己声明设置卡（宿主不再代声明），因此这里必须把它们算进注册表，
         // 否则「设置页 6 张卡」的断言会把「卡片被静默漏收」误判为通过。
+        // 注册顺序即卡片枚举顺序（测试要按 Order 断言序列）：浏览器 50 在复盘 60 之前。
+        var browser = new Seeing.Agent.Tools.Browser.BrowserModule();
+        registry.AddRange(browser.Id, browser.DescribeUi());
+
         var reflection = new Seeing.Agent.Reflection.ReflectionModule();
         registry.AddRange(reflection.Id, reflection.DescribeUi());
 

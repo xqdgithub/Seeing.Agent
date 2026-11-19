@@ -137,9 +137,9 @@ public class PageChannelMigrationTests
             .Where(e => string.Equals(e.OwnerId, HostOwnerId, StringComparison.Ordinal))
             .ToList();
 
-        hostEntries.Should().HaveCount(18, "壳层是 13 条页面 + 5 张设置卡");
+        hostEntries.Should().HaveCount(17, "壳层是 13 条页面 + 4 张设置卡（浏览器卡已改由模块自己声明）");
 
-        // 设置卡「代模块声明」的三张必须带归属（scheduler / memory / browser）；
+        // 设置卡「代模块声明」的两张必须带归属（scheduler / memory）；
         // 其余壳层贡献是进程级（Requires 为空），否则用户在切换 Boot 能力集后会失去入口。
         hostEntries
             .Where(e => e.Contribution is not SettingsCardContribution)
@@ -313,6 +313,8 @@ public class PageChannelMigrationTests
     {
         var views = new WebUiViewResolver();
         WebUiViews.RegisterBuiltIns(views);
+        // 浏览器模块的 workbench 贡献也要过校验：工作台 ViewKey 在这里登记
+        WebUiWorkbenchViews.RegisterBuiltIns(new Seeing.Agent.WebUI.Workbench.WorkbenchViewRegistry(), views);
 
         var registry = new UiContributionRegistry(
             new UiPointCatalog(WebUiPoints.All),
@@ -321,6 +323,7 @@ public class PageChannelMigrationTests
         var host = new WebUiHostContributor();
         registry.AddRange(host.OwnerId, host.DescribeUi());
 
+        // 浏览器模块也自己声明设置卡，必须一并算进注册表，否则「设置页 6 张卡」会漏收。
         foreach (var module in AllUiModules())
             registry.AddRange(module.Id, ((IUiContributor)module).DescribeUi());
 
@@ -328,7 +331,7 @@ public class PageChannelMigrationTests
     }
 
     /// <summary>
-    /// 声明 UI 的 8 个能力模块（与迁移前 <c>KnownModuleRoutes</c> 的模块集合一致）。
+    /// 声明 UI 的 9 个能力模块（8 个页面模块 + 浏览器）。
     /// 全部走无依赖构造函数：<c>DescribeUi()</c> 是纯数据，不触达任何宿主依赖。
     /// </summary>
     private static IEnumerable<Seeing.Agent.Abstractions.Modules.ISeeingModule> AllUiModules()
@@ -341,5 +344,6 @@ public class PageChannelMigrationTests
         yield return new Seeing.Agent.Acp.AcpModule();
         yield return new Seeing.Agent.Reflection.ReflectionModule();
         yield return new Seeing.Agent.Gateway.GatewayModule();
+        yield return new Seeing.Agent.Tools.Browser.BrowserModule();
     }
 }
