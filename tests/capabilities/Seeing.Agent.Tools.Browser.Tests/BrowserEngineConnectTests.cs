@@ -27,6 +27,7 @@ namespace Seeing.Agent.Tools.Browser.Tests;
 /// 真实浏览器用例需要 <c>SEEING_BROWSER_TESTS=1</c>（见 <see cref="BrowserTestGate"/>）。
 /// </para>
 /// </remarks>
+[Collection(BrowserHostCollection.Name)]
 [Trait("Category", "RequiresBrowser")]
 public class BrowserEngineConnectTests
 {
@@ -277,7 +278,7 @@ public class BrowserEngineConnectTests
     {
         // 宿主刚被杀掉时 Chromium 子进程可能还短暂持有 profile 内文件句柄：
         // 条件轮询重试几次再放弃（清理失败不影响断言）。
-        for (var attempt = 0; attempt < 20; attempt++)
+        for (var attempt = 0; attempt < 40; attempt++)
         {
             try
             {
@@ -288,7 +289,7 @@ public class BrowserEngineConnectTests
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 // E5：轮询间隔（命中即返回）
-                await Task.Delay(150).ConfigureAwait(false);
+                await Task.Delay(250).ConfigureAwait(false);
             }
         }
     }

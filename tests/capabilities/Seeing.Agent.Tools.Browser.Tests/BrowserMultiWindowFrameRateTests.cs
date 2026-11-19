@@ -27,6 +27,7 @@ namespace Seeing.Agent.Tools.Browser.Tests;
 /// <b>默认跳过</b>：需要真实浏览器。本机跑：<c>$env:SEEING_BROWSER_TESTS=1</c>。
 /// </para>
 /// </remarks>
+[Collection(BrowserHostCollection.Name)]
 [Trait("Category", "RequiresBrowser")]
 public class BrowserMultiWindowFrameRateTests
 {
@@ -47,6 +48,8 @@ public class BrowserMultiWindowFrameRateTests
 
         var ct = TestContext.Current.CancellationToken;
         var profile = Path.Combine(Path.GetTempPath(), "multiwin-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(profile);
+
         var options = new TestOptionsMonitor<BrowserOptions>(new BrowserOptions
         {
             Headless = true,
@@ -58,7 +61,10 @@ public class BrowserMultiWindowFrameRateTests
             ViewportHeight = 600
         });
 
-        var engine = new BrowserEngine(options);
+        // 共享宿主：浏览器由宿主进程持有，客户端只连接（同一 profile 身份）。
+        TestHost.Start(profile, options.CurrentValue);
+
+        var engine = new BrowserEngine(options, logger: null, baseDirectoryOverride: profile);
         var host = new BrowserSessionHost(engine, options);
 
         try
@@ -104,6 +110,9 @@ public class BrowserMultiWindowFrameRateTests
         {
             await host.ShutdownAsync(CancellationToken.None);
             await engine.ShutdownAsync(CancellationToken.None);
+
+            // 宿主必须收掉：否则会在测试机留下一个占着 profile 的浏览器进程。
+            TestHost.Cleanup(profile);
             await TryDeleteAsync(profile);
         }
     }
@@ -137,7 +146,7 @@ public class BrowserMultiWindowFrameRateTests
 
     private static async Task TryDeleteAsync(string dir)
     {
-        for (var i = 0; i < 20; i++)
+        for (var i = 0; i < 40; i++)
         {
             try
             {
@@ -148,7 +157,7 @@ public class BrowserMultiWindowFrameRateTests
             catch
             {
                 // 浏览器进程可能仍在释放句柄：清理失败不影响断言
-                await Task.Delay(150);
+                await Task.Delay(250);
             }
         }
     }

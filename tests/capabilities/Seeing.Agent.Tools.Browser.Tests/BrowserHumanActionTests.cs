@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -25,6 +25,7 @@ namespace Seeing.Agent.Tools.Browser.Tests;
 /// <b>默认跳过</b>：需要真实浏览器。本机跑：<c>set SEEING_BROWSER_TESTS=1</c>。
 /// </para>
 /// </remarks>
+[Collection(BrowserHostCollection.Name)]
 [Trait("Category", "RequiresBrowser")]
 public class BrowserHumanActionTests
 {
@@ -159,6 +160,8 @@ public class BrowserHumanActionTests
         var site = await TestSite.StartAsync().ConfigureAwait(false);
 
         var profile = Path.Combine(Path.GetTempPath(), "human-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(profile);
+
         var options = new TestOptionsMonitor<BrowserOptions>(new BrowserOptions
         {
             Headless = true,
@@ -170,7 +173,10 @@ public class BrowserHumanActionTests
             ViewportHeight = 600
         });
 
-        var engine = new BrowserEngine(options);
+        // 共享宿主：浏览器由宿主进程持有，客户端只连接。
+        TestHost.Start(profile, options.CurrentValue);
+
+        var engine = new BrowserEngine(options, logger: null, baseDirectoryOverride: profile);
         var host = new BrowserSessionHost(engine, options);
         return (host, engine, profile, site);
     }
@@ -186,7 +192,9 @@ public class BrowserHumanActionTests
         // 先停站点再删 profile：否则后台泵可能仍在跑，与目录删除互相干扰
         await site.DisposeAsync().ConfigureAwait(false);
 
-        for (var i = 0; i < 20; i++)
+        TestHost.Cleanup(profile);
+
+        for (var i = 0; i < 40; i++)
         {
             try
             {
@@ -196,7 +204,7 @@ public class BrowserHumanActionTests
             }
             catch
             {
-                await Task.Delay(150).ConfigureAwait(false);
+                await Task.Delay(250).ConfigureAwait(false);
             }
         }
     }

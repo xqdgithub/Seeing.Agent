@@ -14,6 +14,7 @@ namespace Seeing.Agent.Tools.Browser.Tests;
 /// <remarks>
 /// 默认跳过；本机：<c>$env:SEEING_BROWSER_TESTS=1</c>。
 /// </remarks>
+[Collection(BrowserHostCollection.Name)]
 [Trait("Category", "RequiresBrowser")]
 public class BrowserEvidenceProbes
 {
@@ -39,7 +40,10 @@ public class BrowserEvidenceProbes
         if (!Enabled)
             return;
 
-        await using var provider = BuildProvider(out var options);
+        var profile = NewProfile();
+        var options = NewOptions(profile);
+        using var hostScope = new BrowserHostScope(profile, options.CurrentValue);
+        await using var provider = BuildProvider(options, profile);
         var host = provider.GetRequiredService<IBrowserSessionHost>();
         var hub = new BrowserScreencastHub(options);
 
@@ -69,42 +73,54 @@ public class BrowserEvidenceProbes
     }
 
     /// <summary>
-    /// 第二会话开页是否复用同一浏览器进程（不应二次 Launch）。
+    /// 第二会话开页是否复用同一浏览器（宿主进程）而不重拉。
     /// </summary>
+    /// <remarks>
+    /// <b>共享宿主下的等价断言</b>：客户端连上的是宿主进程的 CDP，<c>IBrowser.Process</c> 恒为
+    /// <see langword="null"/>（本进程没有 spawn 它），不能再拿它比 PID。真正要守的事实是
+    /// 「第二次开页没有触发重新拉起」—— 因此读发现文件里的 <c>browserPid</c> + <c>generation</c>：
+    /// 一次重拉必然换掉这两个值（Job/watchdog 会先杀掉旧 Chromium），而单纯开第二页不会。
+    /// </remarks>
     [Fact]
     public async Task SecondSession_ShouldReuseSameBrowserProcess_NotRelaunch()
     {
         if (!Enabled)
             return;
 
-        await using var provider = BuildProvider(out _);
+        var profile = NewProfile();
+        var options = NewOptions(profile);
+        using var hostScope = new BrowserHostScope(profile, options.CurrentValue);
+        await using var provider = BuildProvider(options, profile);
         var host = provider.GetRequiredService<IBrowserSessionHost>();
         var engine = provider.GetRequiredService<BrowserEngine>();
+        var locator = new BrowserHostLocator(profile, profile);
+
+        var initial = locator.Read();
+        initial.Should().NotBeNull("宿主必须在连接前就发布发现文件");
+        initial!.BrowserPid.Should().NotBeNull("宿主启动后必须记录 Chromium 的 PID");
+        var browserPid = initial.BrowserPid!.Value;
+        var generation = initial.Generation;
 
         var a = await host.GetPageAsync("probe_sess_a", cancellationToken: TestContext.Current.CancellationToken);
         await a.NavigateAsync(PageA, BrowserWaitUntil.DomContentLoaded, TestContext.Current.CancellationToken);
 
         engine.IsStarted.Should().BeTrue();
-        var pid = engine.GetType()
-            .GetField("_browser", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-            !.GetValue(engine);
-        pid.Should().NotBeNull();
-        var browser = (PuppeteerSharp.IBrowser)pid!;
-        var processId = browser.Process?.Id;
-        processId.Should().NotBeNull();
+        engine.CurrentEndpointForTest.Should().Be(initial.Endpoint,
+            "客户端必须连在发现文件公布的那个端点上");
 
         var b = await host.GetPageAsync("probe_sess_b", cancellationToken: TestContext.Current.CancellationToken);
         await b.NavigateAsync(PageB, BrowserWaitUntil.DomContentLoaded, TestContext.Current.CancellationToken);
 
         engine.IsStarted.Should().BeTrue();
-        var browser2 = (PuppeteerSharp.IBrowser)engine.GetType()
-            .GetField("_browser", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-            !.GetValue(engine)!;
 
-        ReferenceEquals(browser, browser2).Should().BeTrue(
-            "第二会话必须复用同一 IBrowser 实例；若换了实例，说明发生了二次 Launch");
-        browser2.Process?.Id.Should().Be(processId,
-            "进程 PID 变了 = 真的重新起了浏览器，切会话占用才可能来自这里");
+        var after = locator.Read();
+        after.Should().NotBeNull();
+        after!.BrowserPid.Should().Be(browserPid,
+            "第二次开页不得重拉浏览器：PID 变了说明发生了二次 Launch");
+        after.Generation.Should().Be(generation,
+            "generation 变了说明宿主被替换过（会话切页不应重启宿主）");
+        after.Endpoint.Should().Be(initial.Endpoint,
+            "endpoint 变了说明宿主换了，客户端会连到一个已失效的地址");
 
         await host.CloseAsync("probe_sess_a", TestContext.Current.CancellationToken);
         await host.CloseAsync("probe_sess_b", TestContext.Current.CancellationToken);
@@ -119,7 +135,10 @@ public class BrowserEvidenceProbes
         if (!Enabled)
             return;
 
-        await using var provider = BuildProvider(out _);
+        var profile = NewProfile();
+        var options = NewOptions(profile);
+        using var hostScope = new BrowserHostScope(profile, options.CurrentValue);
+        await using var provider = BuildProvider(options, profile);
         var host = provider.GetRequiredService<IBrowserSessionHost>();
 
         var page = await host.GetPageAsync("probe_nav_event", cancellationToken: TestContext.Current.CancellationToken);
@@ -162,7 +181,11 @@ public class BrowserEvidenceProbes
 
         // data: 页面再跳另一个 data: 会被浏览器拦住，测不出新标签。用本机 HTTP 页。
         using var site = new LoopbackSite();
-        await using var provider = BuildProvider(out _, allowPrivateHosts: true);
+
+        var profile = NewProfile();
+        var options = NewOptions(profile, allowPrivateHosts: true);
+        using var hostScope = new BrowserHostScope(profile, options.CurrentValue);
+        await using var provider = BuildProvider(options, profile);
         var host = provider.GetRequiredService<IBrowserSessionHost>();
         var ct = TestContext.Current.CancellationToken;
         var page = await host.GetPageAsync("probe_single_tab", cancellationToken: ct);
@@ -340,27 +363,36 @@ public class BrowserEvidenceProbes
         return string.Join(" || ", parts);
     }
 
-    private static ServiceProvider BuildProvider(
-        out TestOptionsMonitor<BrowserOptions> options,
-        bool allowPrivateHosts = false)
-    {
-        var services = new ServiceCollection();
-        services.AddLogging();
-        options = new TestOptionsMonitor<BrowserOptions>(new BrowserOptions
+    private static TestOptionsMonitor<BrowserOptions> NewOptions(
+        string profile, bool allowPrivateHosts = false)
+        => new(new BrowserOptions
         {
             Headless = true,
             IdleSeconds = 0,
             PersistLogin = false,
+            ProfileDirectory = profile,
             AllowPrivateHosts = allowPrivateHosts,
             ViewportWidth = 640,
             ViewportHeight = 480
         });
+
+    private static ServiceProvider BuildProvider(
+        TestOptionsMonitor<BrowserOptions> options,
+        string profile)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton<Microsoft.Extensions.Options.IOptionsMonitor<BrowserOptions>>(options);
-        services.AddSingleton<BrowserEngine>();
+
+        // 客户端只连接；发现文件 / 客户端锁根目录与宿主一致（同一个 profile）。
+        services.AddSingleton(_ => new BrowserEngine(options, null, profile));
         services.AddSingleton<BrowserSessionHost>();
         services.AddSingleton<IBrowserSessionHost>(sp => sp.GetRequiredService<BrowserSessionHost>());
         return services.BuildServiceProvider();
     }
+
+    private static string NewProfile()
+        => Path.Combine(Path.GetTempPath(), "probe-" + Guid.NewGuid().ToString("N")[..8]);
 
     private static Task PumpUntilAsync(BrowserPageHandle page, Func<bool> condition)
         => WaitUntilAsync(

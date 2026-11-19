@@ -72,18 +72,85 @@ internal static class TestHost
     /// <param name="profileDirectory">专用 profile 目录（同时作为发现文件根目录）。</param>
     /// <param name="idleSeconds">宿主空闲退出秒数（测试用较短值）。</param>
     /// <exception cref="InvalidOperationException">宿主在超时内没有发布发现文件。</exception>
+    /// <remarks>
+    /// 不传 <see cref="BrowserOptions"/> 时宿主用自身默认值（headless / anti-detection 均为 true），
+    /// 与 <c>--browser-host</c> 的默认行为完全一致 —— 需要验证「配置能传到宿主」的用例走下面的重载。
+    /// </remarks>
     public static Process Start(string profileDirectory, int idleSeconds = 300)
+        => StartCore(profileDirectory, idleSeconds, hostArguments: []);
+
+    /// <summary>
+    /// 启动宿主，并把宿主级配置通过命令行原样传过去。
+    /// </summary>
+    /// <param name="profileDirectory">专用 profile 目录（同时作为发现文件根目录）。</param>
+    /// <param name="options">
+    /// 客户端配置；只取宿主级字段（<see cref="BrowserOptions.Headless"/>、
+    /// <see cref="BrowserOptions.AntiDetection"/>、<see cref="BrowserOptions.ExecutablePath"/>、
+    /// <see cref="BrowserOptions.UserAgent"/>、<see cref="BrowserOptions.ExtraArgs"/>），
+    /// 与 <c>BrowserHostRunner.ParseHostStartup</c> 的 <c>--headless/--anti-detection/--executable/--user-agent/--extra-arg</c> 一一对应。
+    /// </param>
+    /// <param name="idleSeconds">宿主空闲退出秒数（测试用较短值）。</param>
+    /// <remarks>
+    /// <b>为什么必须把配置传给宿主</b>：共享宿主模式下浏览器级设置只由宿主决定。
+    /// 测试若不传，就会在「客户端配了 A、宿主实际跑 B」的状态下断言 —— 测的根本不是被测行为。
+    /// </remarks>
+    public static Process Start(string profileDirectory, BrowserOptions options, int idleSeconds = 300)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var hostArguments = new List<string>
+        {
+            "--headless",
+            options.Headless ? "true" : "false",
+            "--anti-detection",
+            options.AntiDetection ? "true" : "false",
+        };
+
+        if (!string.IsNullOrWhiteSpace(options.ExecutablePath))
+        {
+            hostArguments.Add("--executable");
+            hostArguments.Add(options.ExecutablePath);
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.UserAgent))
+        {
+            hostArguments.Add("--user-agent");
+            hostArguments.Add(options.UserAgent);
+        }
+
+        if (options.ExtraArgs is { Length: > 0 } extraArgs)
+        {
+            foreach (var arg in extraArgs)
+            {
+                hostArguments.Add("--extra-arg");
+                hostArguments.Add(arg);
+            }
+        }
+
+        return StartCore(profileDirectory, idleSeconds, hostArguments);
+    }
+
+    /// <summary>实际启动逻辑（两个公开入口共用，避免参数拼接漂移）。</summary>
+    private static Process StartCore(
+        string profileDirectory, int idleSeconds, IReadOnlyList<string> hostArguments)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(profileDirectory);
 
         Directory.CreateDirectory(profileDirectory);
         var locator = new BrowserHostLocator(profileDirectory, profileDirectory);
 
-        var useNoBuild = CliIsBuilt();
-        var launcher = StartLauncher(
+        var arguments = new List<string>
+        {
+            "--browser-host",
+            "--profile",
             locator.ProfileDirectory,
-            ["--browser-host", "--profile", locator.ProfileDirectory, "--idle-seconds", idleSeconds.ToString(CultureInfo.InvariantCulture)],
-            useNoBuild);
+            "--idle-seconds",
+            idleSeconds.ToString(CultureInfo.InvariantCulture),
+        };
+        arguments.AddRange(hostArguments);
+
+        var useNoBuild = CliIsBuilt();
+        var launcher = StartLauncher(locator.ProfileDirectory, arguments, useNoBuild);
 
         var info = WaitForDiscovery(locator, launcher, useNoBuild ? NoBuildTimeout : BuildTimeout);
         if (info is null)
@@ -223,7 +290,15 @@ internal static class TestHost
         }
 
         if (info is not null)
+        {
+            // 先等宿主真正消失，再等它带走的 Chromium：Job / watchdog 是异步完成这件事的。
+            // 不显式等浏览器退出，随后的 profile 目录删除会撞上仍被占用的文件
+            // （表现为残留大量临时 profile，且下一次运行更容易撞锁）。
             WaitUntilGone(info.HostPid, ExitTimeout);
+
+            if (info.BrowserPid is { } browserPid)
+                WaitUntilGone(browserPid, ExitTimeout);
+        }
 
         // 宿主被强杀时不会走 finally：留下的是过期发现文件，删掉避免污染下一次启动。
         if (info?.HostPid > 0 && !IsProcessAlive(info.HostPid))

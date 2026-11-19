@@ -25,6 +25,7 @@ namespace Seeing.Agent.Tools.Browser.Tests;
 /// <b>默认跳过</b>：需要真实浏览器。本机跑：<c>set SEEING_BROWSER_TESTS=1</c>。
 /// </para>
 /// </remarks>
+[Collection(BrowserHostCollection.Name)]
 [Trait("Category", "RequiresBrowser")]
 public class BrowserPersistLoginEndToEndTests
 {
@@ -243,7 +244,7 @@ public class BrowserPersistLoginEndToEndTests
     private static async Task TryDeleteAsync(string dir)
     {
         // 浏览器进程可能仍在释放句柄：重试几次再放弃（清理失败不影响断言）
-        for (var i = 0; i < 20; i++)
+        for (var i = 0; i < 40; i++)
         {
             try
             {
@@ -253,7 +254,7 @@ public class BrowserPersistLoginEndToEndTests
             }
             catch
             {
-                await Task.Delay(150).ConfigureAwait(false);
+                await Task.Delay(250).ConfigureAwait(false);
             }
         }
     }
