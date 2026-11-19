@@ -44,6 +44,9 @@ public sealed class BrowserProcessHost : IAsyncDisposable
     /// <summary>轮询间隔（实现细节，命中即返回）。</summary>
     private static readonly TimeSpan EndpointPollInterval = TimeSpan.FromMilliseconds(50);
 
+    /// <summary>等这么久还读不到文件，就改用 Puppeteer 已解析的 endpoint（避免白等满 10 秒）。</summary>
+    private static readonly TimeSpan EndpointFallbackDelay = TimeSpan.FromSeconds(1);
+
     /// <summary>等待 <c>CloseAsync</c> 优雅退出的宽限期。</summary>
     private static readonly TimeSpan CloseGrace = TimeSpan.FromSeconds(2);
 
@@ -358,11 +361,18 @@ public sealed class BrowserProcessHost : IAsyncDisposable
             if (endpoint is not null)
                 return endpoint;
 
+            // 文件迟迟不出现时尽早改用 Puppeteer 已解析出的同一个值：两边本来就是同一个来源
+            // （PuppeteerSharp 也是读这个文件），没必要为了「必须从文件读」白等满 10 秒。
+            if (stopwatch.Elapsed >= EndpointFallbackDelay
+                && browser.WebSocketEndpoint is { } early)
+            {
+                return early;
+            }
+
             await Task.Delay(EndpointPollInterval, ct).ConfigureAwait(false);
         }
 
-        // 兜底：PuppeteerSharp 自己就是读这个文件拿到 endpoint 的，它手里的值同样是权威值
-        // （某些版本读完会删掉文件，那时只有这个来源可用）。
+        // 兜底：某些版本读完会删掉该文件，那时只有这个来源可用。
         return browser.WebSocketEndpoint
             ?? throw new BrowserUnavailableException(
                 $"浏览器已启动，但 {EndpointWaitLimit.TotalSeconds:0} 秒内未读到 " +

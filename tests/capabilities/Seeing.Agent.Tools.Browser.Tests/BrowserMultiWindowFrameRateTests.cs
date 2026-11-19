@@ -76,7 +76,10 @@ public class BrowserMultiWindowFrameRateTests
 
             // 先等两路都真的出过帧（条件轮询），再开始计时窗口，
             // 否则统计窗口里会混进启动延迟，得出的帧率偏低。
-            await WaitUntilAsync(() => probe1.Frames > 0 && probe2.Frames > 0, ct);
+            var streaming = await TestWait.UntilAsync(
+                () => probe1.Frames > 0 && probe2.Frames > 0, TimeSpan.FromSeconds(10));
+
+            streaming.Should().BeTrue("两路画面流必须在 10 秒内都开始出帧");
 
             var baseline1 = probe1.Frames;
             var baseline2 = probe2.Frames;
@@ -130,20 +133,6 @@ public class BrowserMultiWindowFrameRateTests
             </script>
             </body></html>
             """);
-    }
-
-    /// <summary>条件轮询等某状态成立（不猜固定时长）。</summary>
-    private static async Task WaitUntilAsync(Func<bool> condition, CancellationToken ct)
-    {
-        var deadline = Stopwatch.StartNew();
-        while (!condition())
-        {
-            if (deadline.Elapsed > TimeSpan.FromSeconds(10))
-                throw new TimeoutException("两路画面流在 10 秒内没有同时出帧");
-
-            // 轮询间隔（AGENTS.md 例外表 E5）：命中即返回，不是固定等待。
-            await Task.Delay(50, ct);
-        }
     }
 
     private static async Task TryDeleteAsync(string dir)
