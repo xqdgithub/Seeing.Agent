@@ -38,17 +38,6 @@ public static class BrowserHostRunner
     /// <summary>默认空闲退出秒数（无存活客户端持续这么久才退出）。</summary>
     public const int DefaultHostIdleSeconds = 1800;
 
-    /// <summary>
-    /// 发现文件 / 客户端锁的根目录覆盖（仅测试用）。
-    /// </summary>
-    /// <remarks>
-    /// <b>为什么需要这个环境变量</b>：人手跑集成测试时绝不能往真实的
-    /// <c>~/.seeing/browser</c> 里写发现文件与锁 —— 那会让本机正在使用的托管浏览器
-    /// 被测试进程干扰。测试把根目录指到自己的临时 profile，宿主与测试读同一份。
-    /// 生产环境不设置它，走默认的用户级目录。
-    /// </remarks>
-    private const string BaseDirectoryVariable = "SEEING_BROWSER_BASE_DIR";
-
     /// <summary>旧版本（客户端直连模式）留下的 PID 文件名。</summary>
     private const string LegacyPidFileName = ".seeing-engine.pid";
 
@@ -92,6 +81,37 @@ public static class BrowserHostRunner
             // 停止信号：宿主已经在 finally 里关掉浏览器并删掉发现文件，正常退出。
             return 0;
         }
+    }
+
+    /// <summary>
+    /// 宿主自持有的 Job 句柄：<b>进程级常驻，绝不显式 Dispose</b>。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么不能 <c>using</c> / <c>Dispose</c></b>：Job 带
+    /// <c>JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE</c>，句柄一关内核立即终止 job 内所有进程 ——
+    /// 而宿主自己就在这个 job 里。方法返回或异常展开时关句柄，等于在<b>提交退出码之前</b>
+    /// 把自己杀掉：所有 <c>return 1</c> 都变成 exit 0，崩溃也不报错，日志尾部直接消失。
+    /// </para>
+    /// <para>
+    /// <b>正确的关闭时机</b>：进程真正终止时由内核统一关闭句柄 ——
+    /// 那一刻浏览器（如果还活着）被连带清掉，正是我们要的语义。
+    /// 因此这里只保留一个静态引用，全生命周期不解引用、不 Dispose。
+    /// </para>
+    /// </remarks>
+    private static BrowserJobObject? s_hostJob;
+
+    /// <summary>
+    /// 确保宿主进程已放入 Job（仅 Windows；失败只记 Warning，不阻止启动）。
+    /// </summary>
+    private static void EnsureHostJob(ILogger log)
+    {
+        if (!OperatingSystem.IsWindows() || Volatile.Read(ref s_hostJob) is not null)
+            return;
+
+        s_hostJob = BrowserJobObject.AssignCurrentProcess();
+        if (s_hostJob is null)
+            log.LogWarning("无法把宿主进程放进 Job；宿主被强杀时浏览器可能残留");
     }
 
     #region 看门狗
@@ -178,7 +198,7 @@ public static class BrowserHostRunner
             return 1;
         }
 
-        var locator = CreateLocator(profile);
+        var locator = new BrowserHostLocator(profile);
         try
         {
             Directory.CreateDirectory(locator.BaseDirectory);
@@ -213,11 +233,13 @@ public static class BrowserHostRunner
             startup.IdleSeconds);
 
         log.LogInformation(
-            "浏览器宿主启动（pid={Pid}，generation={Generation}，profile={Profile}，headless={Headless}）",
+            "浏览器宿主启动（pid={Pid}，generation={Generation}，profile={Profile}，" +
+            "headless={Headless}，antiDetection={AntiDetection}）",
             Environment.ProcessId,
             generation,
             profile,
-            effective.Headless);
+            effective.Headless,
+            effective.AntiDetection);
 
         // 发现文件的两个状态位：
         //   published —— 写过（成功或失败信息）；
@@ -262,11 +284,8 @@ public static class BrowserHostRunner
         }
 
         // Windows：先把自己放进 Job，再 spawn Chromium —— 只有之后的子进程才会自动入 job。
-        using var job = OperatingSystem.IsWindows() ? BrowserJobObject.AssignCurrentProcess() : null;
-        if (OperatingSystem.IsWindows() && job is null)
-        {
-            log.LogWarning("无法把宿主进程放进 Job；宿主被强杀时浏览器可能残留");
-        }
+        // 句柄故意常驻到进程终结（见 s_hostJob 注释）：提前 Dispose 会把宿主自己杀掉。
+        EnsureHostJob(log);
 
         var launched = await LaunchAsync(options, profile, log, ct).ConfigureAwait(false);
         if (launched.Host is not { } processHost)
@@ -296,6 +315,18 @@ public static class BrowserHostRunner
                 browserPid ?? 0,
                 processHost.Endpoint,
                 startup.IdleSeconds);
+
+            // 客户端拿自己的 BrowserOptions 与 effective 比较，不一致会提示「需重启浏览器」。
+            // 宿主侧日志必须留下同一份事实，否则用户只看到提示、看不到到底哪一项不同。
+            log.LogInformation(
+                "effective：headless={Headless}，executable={Executable}，userAgent={UserAgent}，" +
+                "antiDetection={AntiDetection}，extraArgs=[{ExtraArgs}]，hostIdleSeconds={IdleSeconds}",
+                effective.Headless,
+                effective.ExecutablePath ?? "(auto)",
+                effective.UserAgent ?? "(auto)",
+                effective.AntiDetection,
+                string.Join(" ", effective.ExtraArgs),
+                effective.HostIdleSeconds);
 
             if (!OperatingSystem.IsWindows())
                 watchdog = TryStartWatchdog(Environment.ProcessId, processHost.BrowserPid, log);
@@ -445,7 +476,7 @@ public static class BrowserHostRunner
             return (await BrowserProcessHost.StartAsync(options, ct, log, hostAlreadyInJob: true)
                 .ConfigureAwait(false), null);
         }
-        catch (ProcessException ex) when (IsProfileLockMessage(ex.Message))
+        catch (ProcessException ex) when (IsProfileLockMessage(ex))
         {
             log.LogWarning("profile 已被占用，尝试清理孤儿进程后重试：{Message}", ex.Message);
         }
@@ -507,9 +538,15 @@ public static class BrowserHostRunner
                 return (await BrowserProcessHost.StartAsync(options, ct, log, hostAlreadyInJob: true)
                     .ConfigureAwait(false), null);
             }
-            catch (ProcessException ex) when (IsProfileLockMessage(ex.Message))
+            catch (ProcessException ex) when (IsProfileLockMessage(ex))
             {
                 log.LogDebug("profile 锁尚未释放，继续重试");
+            }
+            catch (ProcessException ex)
+            {
+                // 重试阶段也可能出现「换了种说法」的启动失败：同样不能把原文透给用户。
+                log.LogError(ex, "启动浏览器失败（重试阶段）");
+                return (null, "浏览器启动失败（底层未给出可解释原因），详细输出见浏览器宿主日志。");
             }
             catch (BrowserUnavailableException ex)
             {
@@ -673,19 +710,22 @@ public static class BrowserHostRunner
         bool Headless,
         string? ExecutablePath,
         string? UserAgent,
+        bool AntiDetection,
         string[] ExtraArgs);
 
     private sealed record HostStartupParseResult(HostStartup? Options, string? Error);
 
     private const string UsageError =
         "用法：--browser-host --profile <dir> [--idle-seconds N] [--headless <true|false>] " +
-        "[--executable <path>] [--user-agent <ua>] [--extra-arg <arg>]...";
+        "[--anti-detection <true|false>] [--executable <path>] [--user-agent <ua>] " +
+        "[--extra-arg <arg>]...";
 
     private static HostStartupParseResult ParseHostStartup(string[] args)
     {
         string? profile = null;
         var idleSeconds = DefaultHostIdleSeconds;
         var headless = true;
+        var antiDetection = true;
         string? executablePath = null;
         string? userAgent = null;
         var extraArgs = new List<string>();
@@ -739,6 +779,15 @@ public static class BrowserHostRunner
 
                     break;
 
+                case "--anti-detection":
+                    if (!TryReadValue(args, ref i, inlineValue, out var antiDetectionValue))
+                        return new HostStartupParseResult(null, "缺少 --anti-detection 的值：" + UsageError);
+
+                    if (!bool.TryParse(antiDetectionValue, out antiDetection))
+                        return new HostStartupParseResult(null, "--anti-detection 需要 true 或 false");
+
+                    break;
+
                 case "--executable":
                     if (!TryReadValue(args, ref i, inlineValue, out executablePath))
                         return new HostStartupParseResult(null, "缺少 --executable 的值：" + UsageError);
@@ -769,7 +818,8 @@ public static class BrowserHostRunner
             return new HostStartupParseResult(null, "缺少 --profile <dir>。" + UsageError);
 
         return new HostStartupParseResult(
-            new HostStartup(profile, idleSeconds, headless, executablePath, userAgent, [.. extraArgs]),
+            new HostStartup(
+                profile, idleSeconds, headless, executablePath, userAgent, antiDetection, [.. extraArgs]),
             null);
     }
 
@@ -808,16 +858,10 @@ public static class BrowserHostRunner
             // 页面级空闲回收属于客户端会话；宿主只按「有没有存活客户端」决定退出。
             IdleSeconds = 0,
 
-            AntiDetection = true,
+            // 反检测是浏览器级设置（UA/启动参数），只能由宿主决定；
+            // 设置页改了它就必须重启宿主才生效（客户端会比对 effective）。
+            AntiDetection = startup.AntiDetection,
         };
-
-    private static BrowserHostLocator CreateLocator(string profile)
-    {
-        var baseDirectory = Environment.GetEnvironmentVariable(BaseDirectoryVariable);
-        return string.IsNullOrWhiteSpace(baseDirectory)
-            ? new BrowserHostLocator(profile)
-            : new BrowserHostLocator(profile, baseDirectory);
-    }
 
     #endregion
 
@@ -912,10 +956,25 @@ public static class BrowserHostRunner
         }
     }
 
-    private static bool IsProfileLockMessage(string? message)
-        => !string.IsNullOrEmpty(message)
-           && (message.Contains("already running", StringComparison.OrdinalIgnoreCase)
-               || message.Contains("ProcessSingleton", StringComparison.OrdinalIgnoreCase));
+    private static bool IsProfileLockMessage(Exception exception)
+    {
+        // PuppeteerSharp 有时把 Chromium 的 stderr 只放在 InnerException 里：
+        // 只看外层消息会漏判「profile 已被占用」，用户只能看到原始的 Failed to launch browser!
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            var message = current.Message;
+            if (string.IsNullOrEmpty(message))
+                continue;
+
+            if (message.Contains("already running", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("ProcessSingleton", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static bool IsProcessAlive(int processId)
     {

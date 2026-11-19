@@ -183,12 +183,33 @@ public sealed class BrowserHostLocator
         return Path.Combine(home, ".seeing", ProfileDirectoryName);
     }
 
-    /// <summary>默认根目录：<c>~/.seeing/browser</c>。</summary>
-    /// <param name="baseDirectory">显式根目录；空白视为默认。</param>
+    /// <summary>
+    /// 发现文件 / 客户端锁根目录的环境变量覆盖（仅集成测试使用）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么覆盖放在这里而不是各自的调用方</b>：发现文件、宿主日志、客户端锁、
+    /// 死客户端页面回收全部由同一个根目录派生。只要有一处（例如
+    /// <c>AliveClientPids(profile)</c>）绕过覆盖，测试里就会「宿主写 A、回收扫 B」，
+    /// 表现为回收静默 no-op —— 比直接失败更难查。
+    /// </para>
+    /// <para>
+    /// 生产不设置该变量，走默认用户级目录；显式传入的 <c>baseDirectory</c> 参数优先。
+    /// </para>
+    /// </remarks>
+    public const string BaseDirectoryVariable = "SEEING_BROWSER_BASE_DIR";
+
+    /// <summary>默认根目录：<c>~/.seeing/browser</c>（可被 <see cref="BaseDirectoryVariable"/> 覆盖）。</summary>
+    /// <param name="baseDirectory">显式根目录；空白视为未指定。</param>
     public static string ResolveBaseDirectory(string? baseDirectory = null)
     {
         if (!string.IsNullOrWhiteSpace(baseDirectory))
             return Path.GetFullPath(baseDirectory);
+
+        // 集成测试隔离：绝不能往真实 ~/.seeing/browser 写发现文件/日志/客户端锁。
+        var overridden = Environment.GetEnvironmentVariable(BaseDirectoryVariable);
+        if (!string.IsNullOrWhiteSpace(overridden))
+            return Path.GetFullPath(overridden);
 
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (string.IsNullOrWhiteSpace(home))
