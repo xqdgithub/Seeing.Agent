@@ -146,12 +146,50 @@ try
     var vp = await testPage.EvaluateExpressionAsync<string>("JSON.stringify({ w: innerWidth, h: innerHeight })");
     Console.WriteLine($"UI: canvas center=({cx:F0},{cy:F0}) viewport={vp}");
     await testPage.Mouse.MoveAsync((decimal)cx, (decimal)cy);
-    await testPage.Mouse.WheelAsync(0, 600);
+    var cdp = await testPage.CreateCDPSessionAsync();
+    await cdp.SendAsync("Input.dispatchMouseEvent", new Dictionary<string, object>
+    {
+        ["type"] = "mouseWheel",
+        ["x"] = cx,
+        ["y"] = cy,
+        ["deltaX"] = 0,
+        ["deltaY"] = 600
+    });
     var changed = await WaitUntilAsync(async () => await CanvasSumAsync() != sum1, TimeSpan.FromSeconds(10));
-    Console.WriteLine($"UI: wheel changed canvas = {changed}");
+    Console.WriteLine($"UI: cdp wheel changed canvas = {changed}");
+    if (!changed)
+    {
+        await testPage.Mouse.WheelAsync(0, 600);
+        changed = await WaitUntilAsync(async () => await CanvasSumAsync() != sum1, TimeSpan.FromSeconds(10));
+        Console.WriteLine($"UI: puppeteer wheel changed canvas = {changed}");
+    }
+    await cdp.DetachAsync();
+    var top = await testPage.EvaluateExpressionAsync<string>("""
+        (() => {
+            const e = document.elementFromPoint(524, 361);
+            return e ? (e.tagName + '.' + (e.className || '')) : 'null';
+        })()
+        """);
+    Console.WriteLine($"UI: elementAtCenter = {top}");
+    if (!changed)
+    {
+        await testPage.EvaluateExpressionAsync<string>("""
+            (() => {
+                const c = document.querySelector('.browser-workbench__canvas');
+                c.dispatchEvent(new WheelEvent('wheel', { deltaY: 600, bubbles: true, cancelable: true }));
+                return 'dispatched';
+            })()
+            """);
+        changed = await WaitUntilAsync(async () => await CanvasSumAsync() != sum1, TimeSpan.FromSeconds(10));
+        Console.WriteLine($"UI: synthetic canvas wheel changed canvas = {changed}");
+    }
     await testPage.Mouse.ClickAsync((decimal)cx, (decimal)cy);
     await Task.Delay(300);
-    Console.WriteLine("UI: wheel + click done");
+    await testPage.ClickAsync("button[title='重新加载']");
+    await Task.Delay(800);
+    var afterReload = await CanvasSumAsync();
+    Console.WriteLine($"UI: reload clicked, canvas sum after = {afterReload}");
+    Console.WriteLine("UI: wheel + click + reload done");
 
     ClientWebSocket? socket = null;
     Exception? lastError = null;
