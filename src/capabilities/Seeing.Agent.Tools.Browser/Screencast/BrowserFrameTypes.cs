@@ -66,10 +66,24 @@ public interface IBrowserFrameSink
 /// 画面代次。与帧头里的 <see cref="BrowserFrame.Epoch"/> 同源：换页面或重启 screencast 后递增，
 /// 前端据此丢弃旧代次的帧（否则重建后的第一帧会被上一代次的画面盖住）。
 /// </param>
+/// <param name="ViewportWidth">
+/// 实际 <c>Page.setViewport</c> 的视口宽（CSS 像素）。<b>这是坐标与画布 backing 的唯一权威</b>：
+/// 超采样模式下它等于面板宽 × dpr，不是面板宽本身。
+/// </param>
+/// <param name="ViewportHeight">实际视口高（CSS 像素）。</param>
+/// <param name="FrameScale">
+/// 帧像素 / 视口 CSS。前端 <c>canvas.width = round(ViewportWidth × FrameScale)</c>；
+/// 普通模式等于 dpr（帧按 CSS 出图、画布按物理像素），超采样模式为 1。
+/// </param>
+/// <param name="Mode">渲染模式：<c>normal</c>（默认）/ <c>highres</c>（超采样）。</param>
 public sealed record BrowserPageState(
     string Url,
     string Title,
     int RefEpoch,
     bool Busy,
     bool Running,
-    uint Epoch = 0);
+    uint Epoch = 0,
+    int ViewportWidth = 0,
+    int ViewportHeight = 0,
+    double FrameScale = 1,
+    string Mode = "normal");

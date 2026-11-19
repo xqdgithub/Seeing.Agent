@@ -107,6 +107,31 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
     }
 
     /// <summary>
+    /// 按页面当前实际状态构造一条状态快照（视口/帧倍率/模式都取自实际页面，不读配置视口）。
+    /// </summary>
+    /// <remarks>
+    /// <b>为什么集中在一处</b>：状态有多个发布点（订阅、忙碌、导航、接管、重建失败）。
+    /// 只要有一处漏填新字段，前端就会收到 <c>viewportWidth=0</c> 并把画布 backing 清成 0
+    /// （表现为「操作一下画面就没了」）。所有发布点都必须走这里。
+    /// </remarks>
+    public BrowserPageState CreateState(BrowserPageHandle page, bool running = true)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        return new BrowserPageState(
+            page.CurrentUrl,
+            page.CurrentTitle,
+            page.RefEpoch,
+            page.IsBusy,
+            running,
+            EpochOf(page.SessionId),
+            page.ViewportWidth,
+            page.ViewportHeight,
+            page.FrameScale,
+            _options.CurrentValue.HighResStream ? "highres" : "normal");
+    }
+
+    /// <summary>
     /// 向该会话的所有观看者广播一次页面状态（操作前后各调一次，前端遮罩才跟着开关）。
     /// </summary>
     /// <remarks>
@@ -114,6 +139,8 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
     /// </remarks>
     public void PublishState(string sessionId, BrowserPageHandle page)
     {
+        ArgumentNullException.ThrowIfNull(page);
+
         if (string.IsNullOrWhiteSpace(sessionId))
             return;
 
@@ -123,8 +150,7 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
         // Running 恒为 true：本方法只在「有页面且正在推状态」时被调用
         // （调用方都先确认过 page 存在）。页面关闭走的是 DropSessionAsync 那条路径，
         // 那里推的是 running=false。
-        stream.PublishState(new BrowserPageState(
-            page.CurrentUrl, page.CurrentTitle, page.RefEpoch, page.IsBusy, Running: true, stream.Epoch));
+        stream.PublishState(CreateState(page));
     }
 
     /// <summary>
@@ -334,8 +360,7 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
                     _sinks.Add(sink);
 
                 // 立刻推一次当前状态，前端状态条不用等第一次变化
-                sink.OnState(new BrowserPageState(
-                    page.CurrentUrl, page.CurrentTitle, page.RefEpoch, page.IsBusy, true, Epoch));
+                sink.OnState(_hub.CreateState(page));
 
                 return new Subscription(this, sink);
             }
@@ -372,8 +397,7 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
                     _hub._logger.LogWarning(ex, "重启画面流失败，流已停止：{SessionId}", _sessionId);
 
                     // 回滚 + 通知：保持 _cdp/_page 为 null，让下次订阅/输入重新建立
-                    PublishState(new BrowserPageState(
-                        page.CurrentUrl, page.CurrentTitle, page.RefEpoch, false, false, Epoch));
+                    PublishState(_hub.CreateState(page, running: false));
                     PublishError("画面流已中断，正在重建……");
                     throw;
                 }
@@ -417,22 +441,22 @@ public sealed class BrowserScreencastHub : IAsyncDisposable
 
             cdp.MessageReceived += OnMessageReceived;
 
-            // 用「视口 × 像素比」= 真实物理像素。
-            // 只用 CSS 视口会在高 DPI 屏上被放大显示（文字发虚）；
-            // 用配置值则面板一拖宽就被降采样。两者都不行，见 PixelRatio 的注释。
+            // 用页面**实际**视口（CSS 像素）作上限。实测 screencast 永远按 CSS 视口出图
+            // （与 dsf 无关）：给一个比视口小的值，Chromium 会先等比缩小再编码；给配置值则
+            // 面板一拖宽就被降采样。两者都会让文字发虚，见 PixelRatio / FrameScale 的注释。
             await cdp.SendAsync("Page.startScreencast", new Dictionary<string, object>
             {
                 ["format"] = "jpeg",
                 ["quality"] = JpegQuality,
-                ["maxWidth"] = page.RenderWidth,
-                ["maxHeight"] = page.RenderHeight,
+                ["maxWidth"] = page.ViewportWidth,
+                ["maxHeight"] = page.ViewportHeight,
                 ["everyNthFrame"] = 1
             }).ConfigureAwait(false);
 
             _hub._logger.LogDebug(
-                "已为会话 {SessionId} 启动画面流（视口 {VW}×{VH}, 出图 {RW}×{RH}, dpr={Dpr}）",
+                "已为会话 {SessionId} 启动画面流（视口 {VW}×{VH}, dpr={Dpr}, frameScale={Scale}）",
                 _sessionId, page.ViewportWidth, page.ViewportHeight,
-                page.RenderWidth, page.RenderHeight, page.PixelRatio);
+                page.PixelRatio, page.FrameScale);
         }
 
         private async Task StopCoreAsync()

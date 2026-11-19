@@ -417,7 +417,7 @@ public static class BrowserStreamEndpoints
 
             // 第一次导航后页面才存在：此刻补订阅，前端才会收到画面
             await ensureSubscribed().ConfigureAwait(false);
-            PushState(hub, sessionId, sink, page);
+            PushState(hub, sink, page);
             return;
         }
 
@@ -474,21 +474,23 @@ public static class BrowserStreamEndpoints
             case "resize":
                 var width = (int)ReadDouble(root, "width");
                 var height = (int)ReadDouble(root, "height");
-                var pixelRatio = (int)Math.Round(ReadDouble(root, "pixelRatio"));
-                if (pixelRatio < 1)
-                    pixelRatio = 1;
+                // dpr 不取整：125% 屏上是 1.25，取整会让 DeviceScaleFactor 与前端像素比不符。
+                // 合法范围与页面共用同一处判定，否则「服务端存 1、前端每条消息发 1.25」
+                // 会让下面的判重永远为真 → 每条 resize 都重建 screencast。
+                var pixelRatio = BrowserPageHandle.NormalizePixelRatio(ReadDouble(root, "pixelRatio"));
 
                 // 尺寸或像素比变了才动：每次 resize 都要重建 CDP screencast（四个往返），
                 // 前端去抖之外这里再挡一次，避免无意义的重建与画面闪烁。
+                // 比的是「面板尺寸」而不是 ViewportWidth：超采样下实际视口 = 面板 × dpr。
                 if (width >= 320 && height >= 240
-                    && (width != current.ViewportWidth
-                        || height != current.ViewportHeight
-                        || pixelRatio != current.PixelRatio))
+                    && (width != current.RequestedWidth
+                        || height != current.RequestedHeight
+                        || Math.Abs(pixelRatio - current.PixelRatio) > 0.0001))
                 {
                     await current.ResizeAsync(width, height, pixelRatio, ct).ConfigureAwait(false);
 
                     // screencast 的 maxWidth/maxHeight 只在启动时生效；视口变了必须重启
-                    // （RestartAsync 内部读的是页面**实际**视口 × 像素比）
+                    // （StartCoreAsync 读的是页面**实际**视口）
                     await hub.RestartAsync(sessionId, ct).ConfigureAwait(false);
                 }
                 break;
@@ -586,10 +588,10 @@ public static class BrowserStreamEndpoints
             sessionId, interrupted ? "成功" : "时无执行在跑", actions.Count);
 
         // 回一条状态给前端：让遮罩明确解除（而不是靠 busy 事件间接推断）
-        sink.OnState(new BrowserPageState(
-            host.TryGetPage(sessionId)?.CurrentUrl ?? string.Empty,
-            host.TryGetPage(sessionId)?.CurrentTitle ?? string.Empty,
-            0, false, true, hub.EpochOf(sessionId)));
+        var takeoverPage = host.TryGetPage(sessionId);
+        sink.OnState(takeoverPage is null
+            ? new BrowserPageState(string.Empty, string.Empty, 0, false, true, hub.EpochOf(sessionId))
+            : hub.CreateState(takeoverPage, running: true) with { Busy = false });
 
         sink.OnTakeoverResult(interrupted, actions.Count);
     }
@@ -652,20 +654,12 @@ public static class BrowserStreamEndpoints
             await page.KeyUpAsync(key, ct).ConfigureAwait(false);
     }
 
-    private static BrowserPageState StateOf(
-        BrowserScreencastHub hub,
-        string sessionId,
-        BrowserPageHandle page,
-        bool running = true)
-        => new(page.CurrentUrl, page.CurrentTitle, page.RefEpoch, page.IsBusy, running, hub.EpochOf(sessionId));
-
     /// <summary>把当前页面状态推给观看者（操作前后各推一次，遮罩才会跟着开关）。</summary>
     private static void PushState(
         BrowserScreencastHub hub,
-        string sessionId,
         WebSocketFrameSink sink,
         BrowserPageHandle page)
-        => sink.OnState(StateOf(hub, sessionId, page));
+        => sink.OnState(hub.CreateState(page));
 
     private static double ReadDouble(JsonElement element, string name)
         => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number
@@ -805,7 +799,12 @@ public static class BrowserStreamEndpoints
                     title = state.Title,
                     busy = state.Busy,
                     running = state.Running,
-                    epoch = state.Epoch
+                    epoch = state.Epoch,
+                    // 坐标与画布 backing 的权威来源（实际 SetViewport 的 CSS 尺寸）
+                    viewportWidth = state.ViewportWidth,
+                    viewportHeight = state.ViewportHeight,
+                    frameScale = state.FrameScale,
+                    mode = state.Mode
                 },
                 _ct);
         }

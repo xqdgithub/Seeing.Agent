@@ -199,7 +199,7 @@ internal static class BrowserStillSource
     }
 
     /// <summary>从 <c>getLayoutMetrics</c> 的结果构造「当前可见区域」裁剪参数。</summary>
-    private static bool TryBuildClip(JsonElement metrics, int pixelRatio, out Dictionary<string, object> clip)
+    private static bool TryBuildClip(JsonElement metrics, double pixelRatio, out Dictionary<string, object> clip)
     {
         clip = [];
 
