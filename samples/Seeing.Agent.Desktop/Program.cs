@@ -1,5 +1,6 @@
 using Photino.NET;
 using Seeing.Agent.Desktop.Services;
+using Seeing.Agent.HostComposition;
 using Seeing.Agent.WebUI.Hosting;
 using System.Diagnostics;
 using System.Drawing;
@@ -34,6 +35,19 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        // 宿主子模式：客户端会用「当前进程的可执行文件」拉起它。
+        // 必须在这里同步等待：Main 之后要靠 [STAThread] 开 Photino 窗口，
+        // 改成 async Main 会让 StartAsync 之后的续体跑到线程池上，窗口创建就不再是 STA。
+        if (args.Contains(BrowserHostRunner.BrowserHostSwitch, StringComparer.Ordinal)
+            || args.Contains(BrowserHostRunner.WatchdogSwitch, StringComparer.Ordinal))
+        {
+            return BrowserHostRunner
+                .RunAsync(args, CancellationToken.None)
+                .ConfigureAwait(false)
+                .GetAwaiter()
+                .GetResult();
+        }
+
         // 捕获用户真正的启动位置：Apply() 之后进程当前目录会变，
         // 而启动决议要用的正是「双击/终端里启动时」的目录。
         var captureStartupDirectory = Directory.GetCurrentDirectory();

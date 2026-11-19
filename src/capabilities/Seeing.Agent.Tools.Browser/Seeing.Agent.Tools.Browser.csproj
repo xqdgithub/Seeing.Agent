@@ -8,6 +8,19 @@
     <Description>浏览器工具模块：无头/有头 Chromium 驱动，提供 browser_* 工具与「浏览器」工作台</Description>
   </PropertyGroup>
 
+  <!--
+    进程探测（BrowserProcessProbe）在 Windows 上必须走 WMI 才能拿到完整命令行。
+    System.Management 只在该平台引用，代码里用 BROWSER_WMI 条件编译隔开 ——
+    否则 Linux/macOS 构建会因为缺少程序集而编译失败。
+  -->
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <DefineConstants>$(DefineConstants);BROWSER_WMI</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <PackageReference Include="System.Management" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
