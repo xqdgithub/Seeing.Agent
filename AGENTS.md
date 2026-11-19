@@ -341,6 +341,12 @@ await Task.Delay(Debounce * 2, ct);       // 等去抖窗口过去
 # 构建
 dotnet build Seeing.Agent.slnx
 
+# 开发启动 WebUI（会先停掉上一轮的浏览器宿主，避免它锁住 bin 下的 dll）
+pwsh scripts/dev/run-webui.ps1
+
+# 只停浏览器宿主（共享宿主是独立进程，会一直占用 bin/Debug 下的程序集）
+pwsh scripts/dev/stop-browser-host.ps1
+
 # 测试
 # 注意：测试项目启用了 UseMicrosoftTestingPlatformRunner（MTP），但 MTP 在此环境下
 # 无法发现测试（"Zero tests ran"）。一律改用 VSTest 直接运行已构建的程序集：
