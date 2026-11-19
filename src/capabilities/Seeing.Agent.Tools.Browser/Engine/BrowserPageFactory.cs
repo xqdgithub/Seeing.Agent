@@ -19,8 +19,13 @@ namespace Seeing.Agent.Tools.Browser;
 /// <b>语义代价（要承认）</b>：有头模式下每个会话会打开一个独立的 OS 窗口，不再是标签页。
 /// 默认无头时用户看不到这个差异。
 /// </para>
+/// <para>
+/// <b>为什么是 <see langword="internal"/></b>：建页策略只应由 <see cref="BrowserSessionHost"/>
+/// 这一个地方使用。公开出去后工具层可以绕过 host 自己建页面，得到一个「不属于任何会话」的页面 ——
+/// 画面流订阅、空闲回收、页面关闭事件全都接不上，症状是「页面在动但工作台永远黑屏」。
+/// </para>
 /// </remarks>
-public static class BrowserPageFactory
+internal static class BrowserPageFactory
 {
     /// <summary>
     /// 建页参数：强制窗口类型。
@@ -28,7 +33,7 @@ public static class BrowserPageFactory
     /// <remarks>
     /// 每次返回新实例：共享可变对象会让调用方的改动（例如将来补 <c>WindowBounds</c>）串场到其它页面。
     /// </remarks>
-    public static CreatePageOptions Options() => new() { Type = CreatePageType.Window };
+    internal static CreatePageOptions Options() => new() { Type = CreatePageType.Window };
 
     /// <summary>
     /// 建一个页面。
@@ -39,7 +44,7 @@ public static class BrowserPageFactory
     /// 见 <c>BrowserOptions.PersistLogin</c> 的注释）。
     /// </param>
     /// <param name="cancellationToken">取消令牌。</param>
-    public static Task<IPage> CreateAsync(
+    internal static Task<IPage> CreateAsync(
         IBrowser browser,
         IBrowserContext? context,
         CancellationToken cancellationToken)

@@ -8,7 +8,7 @@ using Xunit;
 namespace Seeing.Agent.Tools.Browser.Tests;
 
 /// <summary>
-/// 多路画面流验收：同一个浏览器里两个<b>窗口</b>页必须同时出帧。
+/// 多路画面流验收：同一个浏览器里两个会话的页面必须同时出帧。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -16,6 +16,12 @@ namespace Seeing.Agent.Tools.Browser.Tests;
 /// screencast 只为「可见」的页面出帧。默认标签页模式下，第二个页建出来就把第一个挤到后台，
 /// 后台那一路实测掉到 <b>0 帧</b>（切回前台又恢复）。假引擎只能测到「我们调用了建页方法」，
 /// 测不到「谁在出帧」。
+/// </para>
+/// <para>
+/// <b>为什么必须走 <see cref="BrowserSessionHost"/></b>：本用例要守的是「host 的两处建页都走
+/// <c>BrowserPageFactory</c>」。直接调工厂等于把被测链路换掉 —— 有人把 host 改回裸
+/// <c>NewPageAsync()</c> 时用例照样通过，守门就失效了。所以这里只调
+/// <see cref="IBrowserSessionHost.GetPageAsync"/>，页面怎么建是 host 的内部实现。
 /// </para>
 /// <para>
 /// <b>默认跳过</b>：需要真实浏览器。本机跑：<c>$env:SEEING_BROWSER_TESTS=1</c>。
@@ -34,7 +40,7 @@ public class BrowserMultiWindowFrameRateTests
         string.Equals(Environment.GetEnvironmentVariable("SEEING_BROWSER_TESTS"), "1", StringComparison.Ordinal);
 
     [Fact]
-    public async Task TwoWindowPages_ShouldBothKeepStreamingFrames()
+    public async Task TwoSessionPages_ShouldBothKeepStreamingFrames()
     {
         if (!Enabled)
             return;
@@ -44,7 +50,7 @@ public class BrowserMultiWindowFrameRateTests
         var options = new TestOptionsMonitor<BrowserOptions>(new BrowserOptions
         {
             Headless = true,
-            PersistLogin = true,
+            PersistLogin = true,          // 默认上下文：两个页面共享同一浏览器与 profile
             ProfileDirectory = profile,
             IdleSeconds = 0,
             AllowPrivateHosts = true,
@@ -53,21 +59,20 @@ public class BrowserMultiWindowFrameRateTests
         });
 
         var engine = new BrowserEngine(options);
+        var host = new BrowserSessionHost(engine, options);
 
         try
         {
-            var browser = await engine.GetBrowserAsync(ct);
-
-            // 两页都建成窗口：第二个窗口建立后第一个就处于「非焦点」状态——
+            // 两个会话的页面：第二个建出来就抢走焦点，第一个处于「非前台」——
             // 正是标签页模式下掉到 0 帧的那种情形。
-            var first = await BrowserPageFactory.CreateAsync(browser, context: null, ct);
-            var second = await BrowserPageFactory.CreateAsync(browser, context: null, ct);
+            var first = await host.GetPageAsync("s1", cancellationToken: ct);
+            var second = await host.GetPageAsync("s2", cancellationToken: ct);
 
-            await PrepareAsync(first, ct);
-            await PrepareAsync(second, ct);
+            await PrepareAsync(first.Page, ct);
+            await PrepareAsync(second.Page, ct);
 
-            await using var probe1 = await ScreencastProbe.StartAsync(first, ct);
-            await using var probe2 = await ScreencastProbe.StartAsync(second, ct);
+            await using var probe1 = await ScreencastProbe.StartAsync(first.Page, ct);
+            await using var probe2 = await ScreencastProbe.StartAsync(second.Page, ct);
 
             // 先等两路都真的出过帧（条件轮询），再开始计时窗口，
             // 否则统计窗口里会混进启动延迟，得出的帧率偏低。
@@ -87,16 +92,14 @@ public class BrowserMultiWindowFrameRateTests
             var fps2 = (probe2.Frames - baseline2) / seconds;
 
             fps1.Should().BeGreaterThanOrEqualTo(MinimumFps,
-                "第一个窗口（后建的窗口抢走焦点后处于后台）必须继续出帧；" +
+                "第一个会话的页面（后建页面抢走焦点后处于后台）必须继续出帧；" +
                 "掉到 0 说明页面被建成了标签页。实测: {0:F1}fps", fps1);
             fps2.Should().BeGreaterThanOrEqualTo(MinimumFps,
-                "第二个窗口必须继续出帧。实测: {0:F1}fps", fps2);
-
-            await first.CloseAsync();
-            await second.CloseAsync();
+                "第二个会话的页面必须继续出帧。实测: {0:F1}fps", fps2);
         }
         finally
         {
+            await host.ShutdownAsync(CancellationToken.None);
             await engine.ShutdownAsync(CancellationToken.None);
             await TryDeleteAsync(profile);
         }
@@ -107,7 +110,7 @@ public class BrowserMultiWindowFrameRateTests
     /// </summary>
     private static async Task PrepareAsync(IPage page, CancellationToken ct)
     {
-        await page.SetViewportAsync(new ViewPortOptions { Width = 800, Height = 600 });
+        ct.ThrowIfCancellationRequested();
         await page.SetContentAsync("""
             <html><body style="margin:0;background:#fff">
             <canvas id="c" width="800" height="600"></canvas>
