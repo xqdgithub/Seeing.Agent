@@ -35,6 +35,23 @@ public sealed class BrowserOptions
     public int ViewportHeight { get; set; } = 800;
 
     /// <summary>
+    /// 画面流是否走超采样（先按视口显示，静态时再抓一张全分辨率静帧）。默认 <see langword="false"/>。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么需要这个开关</b>：持续推流必须是降采样的——每秒几十帧全分辨率会把 CPU 与带宽吃满；
+    /// 但降采样的文字在 125% DPI 屏上发虚。超采样模式让流继续便宜，只对「静止下来」的画面
+    /// 补一张原分辨率静帧。
+    /// </para>
+    /// <para>
+    /// 开启后 <c>BrowserScreencastHub.TryCaptureStillAsync</c> 不再单独抓静帧
+    /// （流自己就是高清源，再抓一张没有增益），由前端按需请求。
+    /// </para>
+    /// </remarks>
+    public bool HighResStream { get; set; }
+
+
+    /// <summary>
     /// 是否允许导航到内网/回环地址。默认 <see langword="false"/>（与 <c>webfetch</c> 的 SSRF 策略同源）。
     /// </summary>
     public bool AllowPrivateHosts { get; set; }

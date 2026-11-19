@@ -1,6 +1,7 @@
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using Microsoft.AspNetCore.Mvc;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Runtime;
@@ -385,7 +386,7 @@ public static class BrowserStreamEndpoints
         // 接管：先于一切输入处理。它不是浏览器操作，而是「停 agent + 告知」。
         if (string.Equals(type, "takeover", StringComparison.Ordinal))
         {
-            await HandleTakeoverAsync(sessionId, host, runtime, sink, logger, ct).ConfigureAwait(false);
+            await HandleTakeoverAsync(sessionId, host, hub, runtime, sink, logger, ct).ConfigureAwait(false);
             return;
         }
 
@@ -416,7 +417,7 @@ public static class BrowserStreamEndpoints
 
             // 第一次导航后页面才存在：此刻补订阅，前端才会收到画面
             await ensureSubscribed().ConfigureAwait(false);
-            PushState(sink, page);
+            PushState(hub, sessionId, sink, page);
             return;
         }
 
@@ -492,6 +493,15 @@ public static class BrowserStreamEndpoints
                 }
                 break;
 
+            case "hires":
+                // 静帧请求：用户滚动/操作后停下，前端要一张清晰图（超采样模式的补图）。
+                // 抓不到就静默跳过——前端 2 秒后自会再请求，这里不该阻塞输入循环。
+                var stillRev = (long)ReadDouble(root, "rev");
+                var still = await hub.TryCaptureStillAsync(sessionId, stillRev, ct).ConfigureAwait(false);
+                if (still is not null)
+                    sink.OnFrame(still);
+                break;
+
             case "ping":
                 // 保活：无需动作
                 break;
@@ -522,6 +532,7 @@ public static class BrowserStreamEndpoints
     private static async Task HandleTakeoverAsync(
         string sessionId,
         IBrowserSessionHost host,
+        BrowserScreencastHub hub,
         ISessionRuntime? runtime,
         WebSocketFrameSink sink,
         ILogger logger,
@@ -578,7 +589,7 @@ public static class BrowserStreamEndpoints
         sink.OnState(new BrowserPageState(
             host.TryGetPage(sessionId)?.CurrentUrl ?? string.Empty,
             host.TryGetPage(sessionId)?.CurrentTitle ?? string.Empty,
-            0, false, true));
+            0, false, true, hub.EpochOf(sessionId)));
 
         sink.OnTakeoverResult(interrupted, actions.Count);
     }
@@ -641,12 +652,20 @@ public static class BrowserStreamEndpoints
             await page.KeyUpAsync(key, ct).ConfigureAwait(false);
     }
 
-    private static BrowserPageState StateOf(BrowserPageHandle page, bool running = true)
-        => new(page.CurrentUrl, page.CurrentTitle, page.RefEpoch, page.IsBusy, running);
+    private static BrowserPageState StateOf(
+        BrowserScreencastHub hub,
+        string sessionId,
+        BrowserPageHandle page,
+        bool running = true)
+        => new(page.CurrentUrl, page.CurrentTitle, page.RefEpoch, page.IsBusy, running, hub.EpochOf(sessionId));
 
     /// <summary>把当前页面状态推给观看者（操作前后各推一次，遮罩才会跟着开关）。</summary>
-    private static void PushState(WebSocketFrameSink sink, BrowserPageHandle page)
-        => sink.OnState(StateOf(page));
+    private static void PushState(
+        BrowserScreencastHub hub,
+        string sessionId,
+        WebSocketFrameSink sink,
+        BrowserPageHandle page)
+        => sink.OnState(StateOf(hub, sessionId, page));
 
     private static double ReadDouble(JsonElement element, string name)
         => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number
@@ -654,21 +673,41 @@ public static class BrowserStreamEndpoints
             : 0;
 
     /// <summary>
-    /// 把 screencast 帧写进 WebSocket。
+    /// 把 screencast 帧写进 WebSocket（二进制：18 字节头 + JPEG）。
     /// </summary>
     /// <remarks>
-    /// <b>背压</b>：写操作串行化，且「上一帧还没写完就丢弃新帧」。慢客户端（后台标签页）因此
-    /// 不会让帧在内存里堆积。丢帧是安全的：帧本身是幂等的画面快照，下一帧会覆盖。
+    /// <para>
+    /// <b>背压</b>：帧走容量为 1 的 <see cref="Channel"/>（<see cref="BoundedChannelFullMode.DropOldest"/>），
+    /// 由单消费者串行发送。慢客户端（后台标签页）因此不会让帧在内存里堆积——
+    /// 新帧直接顶掉还没发出去的旧帧。丢帧是安全的：帧本身是幂等的画面快照，下一帧会覆盖。
+    /// </para>
+    /// <para>
+    /// <b>为什么不用「正在写」标志位</b>：那个写法只能记住「有写在跑」，新帧到了只能丢，
+    /// 于是慢客户端永远只拿到某一帧、后面的全丢（直到某一帧恰好写完）。
+    /// Channel 的 DropOldest 语义是「保留最新的」，这才是画面流想要的。
+    /// </para>
+    /// <para>
+    /// <b>为什么是二进制</b>：一帧 JPEG 转 base64 会膨胀 33%，外面再包一层 JSON 字符串，
+    /// 宿主与前端各要做一次编解码。画面流对带宽和延迟都敏感。
+    /// </para>
     /// </remarks>
     private sealed class WebSocketFrameSink : IBrowserFrameSink
     {
         private readonly WebSocket _socket;
         private readonly ILogger _logger;
 
+        /// <summary>只保留最新一帧的发送队列（满时丢最旧的）。</summary>
+        private readonly Channel<BrowserFrame> _frames = Channel.CreateBounded<BrowserFrame>(
+            new BoundedChannelOptions(1)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = true,
+                SingleWriter = false
+            });
+
         private SemaphoreSlim? _sendGate;
-        private CancellationToken _ct;
-        private int _writing;
-        private long _dropped;
+        private CancellationToken _ct = CancellationToken.None;
+        private Task? _writer;
 
         public WebSocketFrameSink(WebSocket socket, ILogger logger)
         {
@@ -680,80 +719,94 @@ public static class BrowserStreamEndpoints
         {
             _sendGate = sendGate;
             _ct = ct;
+
+            // 单消费者：帧的顺序由这里保证；状态/错误消息仍走 SendAsync（同一把 sendGate 串行）
+            _writer ??= Task.Run(() => PumpAsync(ct));
         }
 
-        public void Detach() => _sendGate = null;
+        public void Detach()
+        {
+            _sendGate = null;
+
+            // 让消费者自然退出（不要在这里等：Detach 由请求收尾路径同步调用）
+            _frames.Writer.TryComplete();
+        }
 
         public void OnFrame(BrowserFrame frame)
         {
-            // 已有发送在进行：丢这一帧（下一帧是新画面，丢弃无损）
-            if (Interlocked.CompareExchange(ref _writing, 1, 0) != 0)
-            {
-                _dropped++;
-                return;
-            }
-
-            _ = SendFrameAsync(frame);
+            // 非阻塞：CDP 回调线程上绝不能被网络发送拖住
+            _frames.Writer.TryWrite(frame);
         }
 
-        private async Task SendFrameAsync(BrowserFrame frame)
+        private async Task PumpAsync(CancellationToken ct)
         {
             try
             {
-                var gate = _sendGate;
-                if (gate is null || _socket.State != WebSocketState.Open)
-                    return;
-
-                await gate.WaitAsync(_ct).ConfigureAwait(false);
-                try
+                await foreach (var frame in _frames.Reader.ReadAllAsync(ct).ConfigureAwait(false))
                 {
-                    if (_socket.State != WebSocketState.Open)
-                        return;
-
-                    var json = JsonSerializer.Serialize(new
+                    try
                     {
-                        type = "frame",
-                        seq = frame.Seq,
-                        mime = "image/jpeg",
-                        data = Convert.ToBase64String(frame.Data),
-                        width = frame.Width,
-                        height = frame.Height
-                    });
-
-                    var bytes = Encoding.UTF8.GetBytes(json);
-                    await _socket.SendAsync(
-                        new ArraySegment<byte>(bytes),
-                        WebSocketMessageType.Text,
-                        true,
-                        _ct).ConfigureAwait(false);
-                }
-                finally
-                {
-                    gate.Release();
+                        await WriteFrameAsync(frame, ct).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+                    catch (WebSocketException ex)
+                    {
+                        _logger.LogDebug(ex, "写画面帧失败；连接可能已断开");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "写画面帧失败（忽略）");
+                    }
                 }
             }
             catch (OperationCanceledException)
             {
-                // 连接关闭
+                // 连接关闭：正常路径
             }
-            catch (WebSocketException ex)
+        }
+
+        private async Task WriteFrameAsync(BrowserFrame frame, CancellationToken ct)
+        {
+            var gate = _sendGate;
+            if (gate is null || _socket.State != WebSocketState.Open)
+                return;
+
+            // 编码在锁外做：编一帧是纯 CPU，不该占着发送锁
+            var payload = BrowserFrameCodec.Encode(frame);
+
+            await gate.WaitAsync(ct).ConfigureAwait(false);
+            try
             {
-                _logger.LogDebug(ex, "写画面帧失败；连接可能已断开");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "写画面帧失败（忽略）");
+                if (_socket.State != WebSocketState.Open)
+                    return;
+
+                await _socket.SendAsync(
+                    new ArraySegment<byte>(payload),
+                    WebSocketMessageType.Binary,
+                    true,
+                    ct).ConfigureAwait(false);
             }
             finally
             {
-                Interlocked.Exchange(ref _writing, 0);
+                gate.Release();
             }
         }
 
         public void OnState(BrowserPageState state)
         {
             _ = SendAsync(
-                new { type = "state", url = state.Url, title = state.Title, busy = state.Busy, running = state.Running },
+                new
+                {
+                    type = "state",
+                    url = state.Url,
+                    title = state.Title,
+                    busy = state.Busy,
+                    running = state.Running,
+                    epoch = state.Epoch
+                },
                 _ct);
         }
 

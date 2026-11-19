@@ -62,4 +62,14 @@ public interface IBrowserFrameSink
 /// <param name="RefEpoch">导航代次。</param>
 /// <param name="Busy">是否有操作正在执行。</param>
 /// <param name="Running">浏览器页面是否存活。</param>
-public sealed record BrowserPageState(string Url, string Title, int RefEpoch, bool Busy, bool Running);
+/// <param name="Epoch">
+/// 画面代次。与帧头里的 <see cref="BrowserFrame.Epoch"/> 同源：换页面或重启 screencast 后递增，
+/// 前端据此丢弃旧代次的帧（否则重建后的第一帧会被上一代次的画面盖住）。
+/// </param>
+public sealed record BrowserPageState(
+    string Url,
+    string Title,
+    int RefEpoch,
+    bool Busy,
+    bool Running,
+    uint Epoch = 0);
