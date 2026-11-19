@@ -76,6 +76,11 @@ function getState(host) {
             hiresTimer: null,
             // 已被静帧覆盖到的 rev：小于 lastFlowSeq 说明当前画面还缺一张清晰图
             stillCoveredRev: 0,
+            // 静帧覆盖后「闩住」：内容没变的流帧不重绘，避免高清/低清反复闪。
+            // 用户输入、agent busy、或内容真的变化时才解除。
+            stillLatched: false,
+            stillHash: 0,
+            sampleCanvas: null,
             modifiers: { ctrl: false, alt: false, shift: false, meta: false },
             resizeTimer: null,
             lastSentResizeWidth: 0,
@@ -162,8 +167,8 @@ function handleFrameBinary(state, buffer) {
         if (seq <= state.lastFlowSeq) return;
         state.lastFlowSeq = seq;
         state.lastFrameSeq = seq;
-        // 画面在动：推迟静帧请求（静止 200ms 后才值得抓一张清晰图）
-        markActivity(state);
+        // 注意：这里不做 markActivity。内容未变的流帧会在 drawFrame 里被丢弃，
+        // 若在这里重置去抖，静止画面就会反复请求静帧 → 高清/低清来回闪。
     } else if (kind === FRAME_KIND_STILL) {
         // 静帧：seq 承载 rev（发起请求时的 lastFlowSeq）。
         // 收到即清在途 —— 无论这张图是否已过期，服务端都已回应过本次请求。
@@ -181,6 +186,30 @@ function handleFrameBinary(state, buffer) {
     }
 
     void drawFrame(state, new Uint8Array(dv.buffer, FRAME_HEADER_BYTES, len), w, h, seq, kind);
+}
+
+// 16×16 采样指纹：只用于判断「这一帧与静帧内容是否相同」，不追求密码学强度。
+// 成本是一次很小的 drawImage + getImageData；换来静止画面不会被低清流帧反复覆盖。
+function frameFingerprint(state, bitmap) {
+    let c = state.sampleCanvas;
+    if (!c) {
+        c = document.createElement('canvas');
+        c.width = 16;
+        c.height = 16;
+        state.sampleCanvas = c;
+    }
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.clearRect(0, 0, 16, 16);
+    ctx.drawImage(bitmap, 0, 0, 16, 16);
+    const d = ctx.getImageData(0, 0, 16, 16).data;
+    let h = 2166136261;
+    for (let i = 0; i < d.length; i += 4) {
+        h ^= d[i];
+        h = Math.imul(h, 16777619);
+        h ^= d[i + 1];
+        h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
 }
 
 async function drawFrame(state, bytes, width, height, seq, kind) {
@@ -203,6 +232,15 @@ async function drawFrame(state, bytes, width, height, seq, kind) {
         const bmpW = bitmap.width;
         const bmpH = bitmap.height;
         if (bmpW === 0 || bmpH === 0) {
+            bitmap.close?.();
+            return;
+        }
+
+        const fingerprint = frameFingerprint(state, bitmap);
+
+        // 静帧覆盖后，内容未变的流帧不再重绘：否则画面会在「高清静帧 ↔ 低清流帧」
+        // 之间反复切换（用户报的「一下清楚一下不清楚」）。
+        if (kind === FRAME_KIND_FLOW && state.stillLatched && fingerprint === state.stillHash) {
             bitmap.close?.();
             return;
         }
@@ -247,6 +285,17 @@ async function drawFrame(state, bytes, width, height, seq, kind) {
         state.frameWidth = width || bmpW;
         state.frameHeight = height || bmpH;
         state.lastFrameKind = kind;
+
+        // 静帧绘制后闩住，后续同内容流帧不再覆盖；真的变化（或用户/agent 操作）才解除。
+        if (kind === FRAME_KIND_STILL) {
+            state.stillHash = fingerprint;
+            state.stillLatched = true;
+        } else if (kind === FRAME_KIND_FLOW) {
+            state.stillLatched = false;
+            // 只有真正绘制了「变化后的流帧」才重置静帧去抖：
+            // 内容相同的重复帧不会再触发一轮 still 请求。
+            markActivity(state);
+        }
 
         // 坐标换算的权威来源是 state.viewportWidth/Height（服务端实际 SetViewport 的 CSS 尺寸），
         // **不是**帧的位图像素：普通模式下帧是 CSS 尺寸、显示是物理像素（dpr），
@@ -378,6 +427,9 @@ function connect(state) {
 
             switch (message.type) {
                 case 'state':
+                    // agent 开始操作：解除静帧闩锁，允许低清流帧实时反映变化。
+                    // 操作结束（busy=false）后，静帧去抖会把高清图补回来。
+                    if (message.busy === true) state.stillLatched = false;
                     // 页面状态回来了（导航成功、操作完成）：把之前那条错误提示清掉。
                     // 否则「输入被拒」的红字会一直挂在状态栏，即使后续导航已经成功 ——
                     // 用户会以为工具栏坏了（实测症状）。
@@ -650,6 +702,8 @@ export function attach(host, canvasElement, stageElement, dotnetRef, streamUrl) 
     }
     clearHiresPending(state);
     state.stillCoveredRev = 0;
+    state.stillLatched = false;
+    state.stillHash = 0;
     state.opened = false;
     state.closedReason = null;
     state.closedReasonKind = null;
@@ -789,6 +843,7 @@ export function bindInput(host) {
     canvas.addEventListener('mousedown', (e) => {
         e.preventDefault();
         canvas.focus();
+        state.stillLatched = false;   // 用户操作：允许流帧接管
         state.dragging = true;
         const point = toViewportPoint(state, e, true);
         if (!point) return;
@@ -857,6 +912,7 @@ export function bindInput(host) {
     // 不 preventDefault 的话页面会同时滚动外层容器，画面与内容错位
     canvas.addEventListener('wheel', (e) => {
         e.preventDefault();
+        state.stillLatched = false;   // 用户滚动：允许流帧立即接管画面
         sendRaw(state, { type: 'wheel', deltaX: e.deltaX, deltaY: e.deltaY });
         // 滚动是「画面在动」的最强信号：停下 200ms 后才值得补一张清晰图
         markActivity(state);
@@ -866,6 +922,7 @@ export function bindInput(host) {
         if (isBrowserShortcut(e)) return;    // Ctrl+R / F5 等交回浏览器
 
         e.preventDefault();
+        state.stillLatched = false;          // 用户输入：允许流帧接管
         sendRaw(state, {
             type: 'key', event: 'down', key: e.key,
             ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey
@@ -893,6 +950,7 @@ export function bindInput(host) {
         const text = e.clipboardData?.getData('text');
         if (!text) return;
         e.preventDefault();
+        state.stillLatched = false;
         sendRaw(state, { type: 'text', text });
     });
 }

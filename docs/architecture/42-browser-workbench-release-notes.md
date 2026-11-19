@@ -65,7 +65,7 @@ Task<string> SaveAsync(string sessionId, string name, ReadOnlyMemory<byte> conte
 | `browser_type` | 写 | 输入（可清空、可回车） |
 | `browser_press` | 写 | 按键与组合键 |
 | `browser_scroll` | 写 | 页面或元素内滚动 |
-| `browser_wait_for` | 读 | selector / ref / text / networkidle / timeout |
+| `browser_wait_for` | 读 | selector / ref / text / networkidle / timeout（`timeout`=上限；`duration` 仅 timeout 的固定等待） |
 | `browser_screenshot` | 读 | **截图交给模型看**（Phase 1 链路） |
 | `browser_eval` | **高危** | 页面上下文执行 JS |
 | `browser_back` / `browser_forward` | 写 | 历史 |
@@ -803,7 +803,7 @@ public sealed record BrowserHumanAction
 | `ClearHumanActions_ShouldEmptyTheList` | 清空接口有效 |
 | `AgentToolCalls_ShouldNotBeRecordedAsHumanActions` | agent 工具调用不混入人工记录 |
 
-## 十六、取消会话不中止等待（修复）
+## 十六、等待工具：取消、超时与预算语义（修正）
 
 ### 现象
 
@@ -825,6 +825,12 @@ await _page.WaitForSelectorAsync(selector, new WaitForSelectorOptions { Timeout 
 第一次尝试分片实现时，`default` 分支在 `Task.Delay(sliceMs, ct)` 之后 `return true`，
 于是第一片（200ms）就「成功」了 —— 30 秒等待变成 200ms，取消也无从生效。
 
+**③ `timeout` 参数双语义**
+
+`kind=timeout` 时它表示「固定等待多久」，其它 kind 表示「最多等多久」。
+同一个参数名两种含义，模型很容易把「最多等 5 秒」写成 `kind=timeout, timeout=5`，
+结果真的固定等 5 秒。
+
 ### 修复
 
 把等待切成 200ms 分片，片间检查取消令牌：
@@ -838,8 +844,8 @@ while (true)
 
     try
     {
-        if (await TryWaitOnceAsync(condition, sliceMs, ct)) return true;
-        if (isLastSlice) { /* timeout 类型算成功，其它类型抛 TimeoutException */ }
+        if (await TryWaitOnceAsync(condition, sliceMs, ct)) return BrowserWaitResult.Ready;
+        if (isLastSlice) { /* networkidle 按就绪；其它类型抛 TimeoutException */ }
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
     {
@@ -849,21 +855,35 @@ while (true)
 }
 ```
 
-**三个关键细节**：
+**五个关键点**：
 
-| 细节 | 原因 |
+| 点 | 原因 |
 |------|------|
 | `OperationCanceledException` 分支必须排在超时判定**之前** | `Task.Delay(slice, ct)` 取消时抛的也是 `OperationCanceledException`；先按超时吞掉就永远取消不了 |
 | `IsWaitTimeout` 要匹配类型名 | PuppeteerSharp 抛的是 `WaitTaskTimeoutException`，**不是** BCL `TimeoutException` 的子类 |
-| `kind=timeout` 在预算用尽时返回 `true` | 它的语义是「等够时长即成功」，不是「等不到条件则失败」 |
+| `timeout` 统一为上限，`kind=timeout` 改用 `duration` | `duration` 缺省等于 `timeout`，且不得超过；旧调用行为不变，但语义不再混用 |
+| `networkidle` 预算用尽返回 `ReadyAfterBudget` | 真实站点几乎不会网络空闲（埋点/心跳/广告），预算用尽应视为“DOM 通常已可用”，工具输出会注明 |
+| 工具声明 `timeout.skip` | 自身 `timeout`（1–300s）已保证有界，避免全局 `ToolExecutionTimeout` 抢先取消并伪装成“等待超时” |
+
+### 结果语义
+
+| 场景 | 结果 |
+|---|---|
+| selector / ref / text 条件成立 | `Satisfied=true` → 成功 |
+| `networkidle` 到预算仍未空闲 | `Satisfied=true, BudgetExhausted=true` → 成功 + “网络未完全空闲…按就绪处理” |
+| selector / ref / text 到预算 | `TimeoutException` → 失败“等待超时（N 秒）…可改用 browser_snapshot” |
+| `kind=timeout` 等够 `duration` | 成功“已就绪：等待 N 秒” |
+| 用户取消 / 工具被中止 | 失败“等待被取消（用户中止，或工具调用已超时）” |
 
 ### 实测
 
 ```
-kind=timeout，30 秒等待，1.5 秒后取消  → 取消后 2ms 脱离      ✅
-kind=selector（不存在元素），1.5 秒后取消 → 取消后 152ms 脱离  ✅
-正常完成（条件立刻满足）                → 仍正确             ✅
-真正超时（1 秒）                       → 1008ms 抛 TimeoutException ✅
+旧：kind=timeout，30 秒等待，1.5 秒后取消  → 取消后 2ms 脱离      ✅
+旧：kind=selector（不存在元素），1.5 秒后取消 → 取消后 152ms 脱离  ✅
+旧：正常完成（条件立刻满足）                → 仍正确             ✅
+旧：真正超时（1 秒）                       → 1008ms 抛 TimeoutException ✅
+新：BrowserWaitForToolTests                → 4/4（Schema 暴露 duration、描述含“上限”、timeout.skip、结果语义）
+新：Browser.Tests 全量                     → 291 通过 / 0 失败 / 11 跳过
 ```
 
 ## 十七、浏览器设置页（配置卡）

@@ -131,6 +131,17 @@ try
     var sum1 = await CanvasSumAsync();
     if (!painted) throw new Exception($"UI canvas 20s 内无像素（sum={sum1}）");
     Console.WriteLine($"UI: canvas ready, pixelSum={sum1}");
+    await Task.Delay(1500);   // 等静止画面补上静帧
+    var idleSums = new List<long>();
+    for (var i = 0; i < 5; i++)
+    {
+        idleSums.Add(await CanvasSumAsync());
+        await Task.Delay(300);
+    }
+    var stable = idleSums.Distinct().Count() == 1;
+    Console.WriteLine($"UI: idle sums = [{string.Join(",", idleSums)}] stable={stable}");
+    if (!stable)
+        Console.WriteLine("UI: WARNING idle canvas changed (still/flow flicker)");
     await testPage.ScreenshotAsync(Path.Combine(outDir, "ui-workbench.png"));
 
     var rect = await testPage.EvaluateExpressionAsync<string>("""
