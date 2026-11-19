@@ -38,6 +38,9 @@ public sealed class BrowserProcessHost : IAsyncDisposable
     /// <summary>Chromium 在 profile 目录里写下的端口/路径文件。</summary>
     private const string DevToolsActivePortFileName = "DevToolsActivePort";
 
+    /// <summary><c>DevToolsActivePort</c> 第二行的固定前缀（browser 级 CDP 路径）。</summary>
+    private const string DevToolsBrowserPathPrefix = "/devtools/browser/";
+
     /// <summary>轮询 endpoint 的上限。</summary>
     private static readonly TimeSpan EndpointWaitLimit = TimeSpan.FromSeconds(10);
 
@@ -102,10 +105,15 @@ public sealed class BrowserProcessHost : IAsyncDisposable
     /// <param name="options">配置（headless / 可执行文件 / 启动参数 / profile）。</param>
     /// <param name="ct">取消令牌（仅用于启动前的检查；启动过程本身受 Puppeteer 超时约束）。</param>
     /// <param name="logger">日志（可空）。</param>
+    /// <param name="hostAlreadyInJob">
+    /// 宿主进程是否已经在 <see cref="BrowserJobObject.AssignCurrentProcess"/> 的 job 里。
+    /// 为 <see langword="true"/> 时不再建嵌套 job（浏览器由祖先 job 天然覆盖），
+    /// 也避免在嵌套失败时打出误导性的「宿主被杀时浏览器可能残留」。
+    /// </param>
     /// <exception cref="BrowserExecutableMissingException">没有可用的浏览器可执行文件。</exception>
     /// <exception cref="BrowserUnavailableException">启动失败，或 10 秒内拿不到 endpoint。</exception>
     public static async Task<BrowserProcessHost> StartAsync(
-        BrowserOptions options, CancellationToken ct, ILogger? logger = null)
+        BrowserOptions options, CancellationToken ct, ILogger? logger = null, bool hostAlreadyInJob = false)
     {
         ArgumentNullException.ThrowIfNull(options);
         ct.ThrowIfCancellationRequested();
@@ -167,7 +175,9 @@ public sealed class BrowserProcessHost : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
 
             var browserProcess = browser.Process;
-            job = CreateJobFor(browserProcess, logger);
+            job = hostAlreadyInJob
+                ? SkipJobBecauseHostOwnsOne(browserProcess, logger)
+                : CreateJobFor(browserProcess, logger);
             var endpoint = await WaitForEndpointAsync(devToolsPortFile, browser, ct).ConfigureAwait(false);
 
             logger?.LogDebug(
@@ -215,9 +225,16 @@ public sealed class BrowserProcessHost : IAsyncDisposable
     /// </summary>
     /// <param name="fileContent">文件内容：第一行端口，第二行 browser 路径。</param>
     /// <remarks>
+    /// <para>
+    /// <b>两行都必须严格匹配</b>：第一行纯数字端口（1–65535），第二行以 <c>/devtools/browser/</c> 开头。
+    /// 只校验「像路径」会把 <c>/foo</c> 这类内容也放行，客户端拿到一个连不上的 endpoint，
+    /// 症状是「浏览器明明起来了却一直连不上」，比直接返回 null（重试/报错）难查得多。
+    /// </para>
+    /// <para>
     /// 固定用 <c>127.0.0.1</c> 而不是 <c>localhost</c>：Chromium 默认只监听 loopback，
     /// 而 <c>localhost</c> 在部分环境会先解析到 <c>::1</c>，那是个不会有人监听的地址，
     /// 表现为「连接被拒绝」但端口明明是对的。
+    /// </para>
     /// </remarks>
     internal static string? ParseDevToolsEndpoint(string fileContent)
     {
@@ -237,7 +254,7 @@ public sealed class BrowserProcessHost : IAsyncDisposable
             return null;
 
         var path = lines[1];
-        if (!path.StartsWith('/'))
+        if (!path.StartsWith(DevToolsBrowserPathPrefix, StringComparison.Ordinal))
             return null;
 
         return $"ws://127.0.0.1:{port}{path}";
@@ -249,7 +266,20 @@ public sealed class BrowserProcessHost : IAsyncDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
 
-        // 关停过程一律不抛：调用方是「宿主正在退出」这条路径，抛异常只会让后续清理被跳过。
+        // 最外层兜底：调用方是「宿主正在退出」这条路径，任何异常都不该让后续清理被跳过。
+        try
+        {
+            await DisposeCoreAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "关闭浏览器宿主时出现未预期的异常（忽略）");
+        }
+    }
+
+    /// <summary>关停三步：优雅关 → 强杀 → 释放 job；每步独立兜底，job/进程/临时目录走 finally。</summary>
+    private async ValueTask DisposeCoreAsync()
+    {
         try
         {
             await _browser.CloseAsync().WaitAsync(CloseGrace).ConfigureAwait(false);
@@ -259,18 +289,25 @@ public sealed class BrowserProcessHost : IAsyncDisposable
             _logger?.LogDebug(ex, "关闭浏览器超时或失败，转为强杀");
         }
 
-        if (_process is not null && !HasExited(_process))
+        try
         {
-            try
+            if (_process is not null && !HasExited(_process))
             {
-                _process.Kill(entireProcessTree: true);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogDebug(ex, "强杀浏览器进程失败（可能已自行退出）");
-            }
+                try
+                {
+                    _process.Kill(entireProcessTree: true);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "强杀浏览器进程失败（可能已自行退出）");
+                }
 
-            await WaitForExitAsync(_process, KillGrace).ConfigureAwait(false);
+                await WaitForExitAsync(_process, KillGrace).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "等待浏览器进程退出失败（忽略）");
         }
 
         try
@@ -281,13 +318,31 @@ public sealed class BrowserProcessHost : IAsyncDisposable
         {
             _logger?.LogDebug(ex, "释放浏览器连接失败（忽略）");
         }
+        finally
+        {
+            // 无论上面哪一步怎么失败，句柄与临时目录都必须收掉：Job 没有终结器，
+            // 泄漏即等于 KILL_ON_JOB_CLOSE 永不触发；临时 profile 不删则下次仍会撞锁。
+            try
+            {
+                _job?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "释放 Job 句柄失败（忽略）");
+            }
 
-        // Job 最后释放：即便 Kill 没杀干净，内核也会在这里收走（KILL_ON_JOB_CLOSE）。
-        _job?.Dispose();
-        _process?.Dispose();
+            try
+            {
+                _process?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "释放进程句柄失败（忽略）");
+            }
 
-        if (_temporaryProfileDirectory is not null)
-            TryDeleteDirectory(_temporaryProfileDirectory);
+            if (_temporaryProfileDirectory is not null)
+                TryDeleteDirectory(_temporaryProfileDirectory);
+        }
     }
 
     /// <summary>解析 profile 目录；<see cref="BrowserOptions.PersistLogin"/> 关闭时用临时目录（并记录以便删除）。</summary>
@@ -316,6 +371,22 @@ public sealed class BrowserProcessHost : IAsyncDisposable
     }
 
     /// <summary>
+    /// 宿主已自行 assign 时的分支：不建嵌套 job。
+    /// </summary>
+    /// <remarks>
+    /// <b>为什么不是「再建一个也无害」</b>：嵌套 job 在受限环境里可能失败，而失败只能落进
+    /// 那句「宿主被杀时浏览器可能残留」的警告里 —— 事实上浏览器已被祖先 job 覆盖，
+    /// 这条警告会把正常情况描述成故障，让排查方向直接跑偏。跳过并记 Debug 最诚实。
+    /// </remarks>
+    private static BrowserJobObject? SkipJobBecauseHostOwnsOne(Process? browserProcess, ILogger? logger)
+    {
+        logger?.LogDebug(
+            "宿主进程已自 assign Job，浏览器进程 {Pid} 由祖先 Job 覆盖，跳过嵌套 Job",
+            browserProcess?.Id ?? 0);
+        return null;
+    }
+
+    /// <summary>
     /// 为浏览器进程建 job 并 assign。
     /// </summary>
     /// <remarks>
@@ -340,7 +411,8 @@ public sealed class BrowserProcessHost : IAsyncDisposable
         if (!job.TryAssign(browserProcess.Id))
         {
             logger?.LogWarning(
-                "无法把浏览器进程 {Pid} 放进 Job，宿主被杀时浏览器可能残留", browserProcess.Id);
+                "无法把浏览器进程 {Pid} 放进 Job（没有祖先 Job 兜底时，宿主被杀浏览器可能残留）",
+                browserProcess.Id);
             job.Dispose();
             return null;
         }

@@ -33,6 +33,8 @@ public class BrowserProcessHostTests
     [InlineData("70000\n/devtools/browser/abc")]            // 越界端口
     [InlineData("52341\n")]                                 // 路径为空
     [InlineData("52341\ndevtools/browser/abc")]             // 路径不以 / 开头
+    [InlineData("52341\n/foo")]                             // 路径不是 browser 级 CDP 路径
+    [InlineData("52341\n/devtools/page/abc")]               // page 级路径不能作宿主 endpoint
     public void ParseDevToolsEndpoint_ShouldReturnNullForMalformedContent(string content)
         => BrowserProcessHost.ParseDevToolsEndpoint(content).Should().BeNull();
 
@@ -81,8 +83,13 @@ public class BrowserProcessHostTests
     }
 
     [Fact]
+    [Trait("Category", "RequiresBrowser")]
     public async Task StartAsync_ShouldExposeLoopbackEndpointAndReapBrowserOnDispose()
     {
+        // 双重门禁：trait 让 CI 能整类过滤掉；环境变量让默认 `dotnet vstest` 不白起一个浏览器。
+        if (Environment.GetEnvironmentVariable("SEEING_BROWSER_TESTS") != "1")
+            Assert.Skip("需要真实浏览器：设置 SEEING_BROWSER_TESTS=1 后运行");
+
         if (!BrowserEngine.ResolveExecutable(new BrowserOptions()).Found)
             Assert.Skip("本机没有可用 Chromium / Edge，跳过真实启动用例");
 
