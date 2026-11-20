@@ -41,10 +41,10 @@
         </div>
     </div>
 
-    @* bash 转后台（background=true）时，活动状态/进度跟随命令卡展示 *@
-    @if (ToolCall.BackgroundActivity is { } activity)
+    @* bash 转后台（background=true）时，活动状态行跟随命令卡头部展示；实时输出块放到命令之后（终端顺序）。 *@
+    @if (ToolCall.BackgroundActivity is { } activityHeader)
     {
-        <BackgroundActivityCard Activity="@activity" Compact="true" />
+        <BackgroundActivityCard Activity="@activityHeader" Compact="true" ShowOutput="false" />
     }
 
     @if (_isExpanded)
@@ -53,6 +53,12 @@
             <code class="bash-command" title="@(_card.Workdir ?? "")">
                 <span class="bash-prompt">$</span>@(_card.Command ?? "")
             </code>
+
+            @* 实时输出紧跟命令：与终端里「命令 → 输出」的直觉一致。 *@
+            @if (ToolCall.BackgroundActivity is { } activityOutput)
+            {
+                <BackgroundActivityCard Activity="@activityOutput" Compact="true" ShowHeader="false" />
+            }
 
             @if (!string.IsNullOrEmpty(_card.DisplayOutput))
             {

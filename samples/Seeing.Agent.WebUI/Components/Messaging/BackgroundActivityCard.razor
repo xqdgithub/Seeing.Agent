@@ -5,70 +5,75 @@
 
 @* 后台活动内联卡片（工具卡片内或独立时间线条目共用） *@
 
-@if (Activity is { } activity)
+@if (Activity is { } activity && (ShowHeader || ShowOutput))
 {
+    @* 分段渲染：调用方可以把「状态行」与「实时输出块」放到不同位置（命令卡：状态在头部、输出在命令之后）。
+       两段都不选时不渲染外层 div，避免留下一个只有 margin 的空壳。 *@
     <div class="bg-activity-card @(Compact ? "is-compact" : null)" data-activity-id="@activity.Id">
-        <div class="bg-activity-head">
-            <Icon Type="@activity.StatusIcon" Style="@StatusIconStyle" />
-
-            @* Compact 嵌在工具卡片内：外层已显示标题，再渲染一次会看起来像两条重复的条目。 *@
-            @if (!Compact)
-            {
-                <span class="bg-activity-title" title="@activity.Title">@activity.Title</span>
-            }
-
-            <Tag Color="@activity.StatusTagColor" Style="margin-left: 6px; font-size: 11px;">@activity.StatusText</Tag>
-
-            @if (activity.OutputSizeText is { } size)
-            {
-                <span class="bg-activity-meta"
-                      title="@(activity.OutputTruncated ? "已写输出大小（已达上限截断）" : "已写输出大小")">
-                    输出 @size@(activity.OutputTruncated ? "（已截断）" : null)
-                </span>
-            }
-            else if (activity.OutputLimitText is { } limit)
-            {
-                <span class="bg-activity-meta" title="输出上限（实际大小未上报）">输出 @limit</span>
-            }
-
-            @if (activity.ProgressText is { } progress)
-            {
-                <span class="bg-activity-meta" title="@progress">@progress</span>
-            }
-
-            @if (activity.CanCancel)
-            {
-                <Button Size="@ButtonSize.Small"
-                        Type="@ButtonType.Link"
-                        Icon="@IconType.Outline.Stop"
-                        Loading="@_cancelling"
-                        Disabled="@(_cancelling || !ActivityControl.IsAvailable)"
-                        OnClick="CancelAsync">取消</Button>
-            }
-        </div>
-
-        @if (activity.ProgressPercent is double percent)
+        @if (ShowHeader)
         {
-            <div class="bg-activity-bar" role="progressbar"
-                 aria-valuenow="@((int)percent)" aria-valuemin="0" aria-valuemax="100">
-                <div class="bg-activity-bar-fill" style="@($"width:{percent:F0}%")"></div>
+            <div class="bg-activity-head">
+                <Icon Type="@activity.StatusIcon" Style="@StatusIconStyle" />
+
+                @* Compact 嵌在工具卡片内：外层已显示标题，再渲染一次会看起来像两条重复的条目。 *@
+                @if (!Compact)
+                {
+                    <span class="bg-activity-title" title="@activity.Title">@activity.Title</span>
+                }
+
+                <Tag Color="@activity.StatusTagColor" Style="margin-left: 6px; font-size: 11px;">@activity.StatusText</Tag>
+
+                @if (activity.OutputSizeText is { } size)
+                {
+                    <span class="bg-activity-meta"
+                          title="@(activity.OutputTruncated ? "已写输出大小（已达上限截断）" : "已写输出大小")">
+                        输出 @size@(activity.OutputTruncated ? "（已截断）" : null)
+                    </span>
+                }
+                else if (activity.OutputLimitText is { } limit)
+                {
+                    <span class="bg-activity-meta" title="输出上限（实际大小未上报）">输出 @limit</span>
+                }
+
+                @if (activity.ProgressText is { } progress)
+                {
+                    <span class="bg-activity-meta" title="@progress">@progress</span>
+                }
+
+                @if (activity.CanCancel)
+                {
+                    <Button Size="@ButtonSize.Small"
+                            Type="@ButtonType.Link"
+                            Icon="@IconType.Outline.Stop"
+                            Loading="@_cancelling"
+                            Disabled="@(_cancelling || !ActivityControl.IsAvailable)"
+                            OnClick="CancelAsync">取消</Button>
+                }
             </div>
+
+            @if (activity.ProgressPercent is double percent)
+            {
+                <div class="bg-activity-bar" role="progressbar"
+                     aria-valuenow="@((int)percent)" aria-valuemin="0" aria-valuemax="100">
+                    <div class="bg-activity-bar-fill" style="@($"width:{percent:F0}%")"></div>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(activity.ErrorMessage))
+            {
+                <div class="bg-activity-error">@activity.ErrorMessage</div>
+            }
+
+            @if (_cancelFailed)
+            {
+                <div class="bg-activity-error">取消失败：活动可能已结束或不属于当前会话。</div>
+            }
         }
 
-        @if (!string.IsNullOrEmpty(activity.LiveOutputTail))
+        @if (ShowOutput && !string.IsNullOrEmpty(activity.LiveOutputTail))
         {
             @* 实时输出尾部（仅事件携带、不落盘）：只渲染最后 8 行，保证最新输出始终可见。 *@
             <pre class="bg-activity-output">@activity.LiveOutputTail</pre>
-        }
-
-        @if (!string.IsNullOrEmpty(activity.ErrorMessage))
-        {
-            <div class="bg-activity-error">@activity.ErrorMessage</div>
-        }
-
-        @if (_cancelFailed)
-        {
-            <div class="bg-activity-error">取消失败：活动可能已结束或不属于当前会话。</div>
         }
     </div>
 }
@@ -160,6 +165,14 @@
     /// <summary>紧凑模式（嵌在工具卡片内时使用）。</summary>
     [Parameter]
     public bool Compact { get; set; }
+
+    /// <summary>是否渲染状态行（图标/标题/状态/输出大小/进度/取消）。</summary>
+    [Parameter]
+    public bool ShowHeader { get; set; } = true;
+
+    /// <summary>是否渲染实时输出块。</summary>
+    [Parameter]
+    public bool ShowOutput { get; set; } = true;
 
     private bool _cancelling;
     private bool _cancelFailed;
