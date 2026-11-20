@@ -1,4 +1,5 @@
 @using Seeing.Agent.Abstractions.Files
+@using Seeing.Agent.Paths
 @using Seeing.Agent.WebUI.Files.Services
 @using Microsoft.JSInterop
 @inject FileTreeState TreeState
@@ -8,7 +9,7 @@
 <li class="file-tree-node">
     @if (Entry.IsDirectory)
     {
-        <div class="file-tree-dir @(Depth == 0 ? "file-tree-dir--root" : "")" style="@($"padding-left:{Depth * 12}px")" title="@Title" @onclick="ToggleAsync">
+        <div class="file-tree-dir @(Depth == 0 ? "file-tree-dir--root" : "") @RootClass" style="@($"padding-left:{Depth * 12}px")" title="@Title" @onclick="ToggleAsync">
             <span class="file-tree-arrow">@(_expanded ? "▾" : "▸")</span>
             <svg class="file-tree-icon file-tree-icon--dir" viewBox="0 0 1024 1024" width="14" height="14" aria-hidden="true">
                 <path fill="currentColor" d="M880 298.4H521L403.7 186.2a8.15 8.15 0 0 0-5.5-2.2H144c-17.7 0-32 14.3-32 32v592c0 17.7 14.3 32 32 32h736c17.7 0 32-14.3 32-32V330.4c0-17.7-14.3-32-32-32zM840 768H184V256h188.5l119.6 114.4H840V768z" />
@@ -72,6 +73,16 @@
     /// <summary>首次渲染即展开（顶层根节点用，避免打开面板只看到折叠的根）。</summary>
     [Parameter] public bool DefaultExpanded { get; set; }
 
+    /// <summary>根类别（仅顶层根节点有值，用于底色/图标区分）。</summary>
+    [Parameter] public FileWorkspaceRootKind? RootKind { get; set; }
+
+    private string RootClass => RootKind switch
+    {
+        FileWorkspaceRootKind.Project => "file-tree-dir--root-project",
+        FileWorkspaceRootKind.Collaboration => "file-tree-dir--root-collab",
+        _ => ""
+    };
+
     private bool _expanded;
     private bool _loading;
     private List<FileEntry> _children = [];
@@ -125,10 +136,17 @@
     {
         if (!_expanded) return;
 
+        // 多根：事件是全局广播，先按根过滤（跨根事件与本节点无关）
+        if (!string.Equals(evt.Id.RootId, Workspace.RootId, StringComparison.Ordinal))
+            return;
+
         // 变更项是本目录直接子级 → 重列；或改名涉及本目录下条目
         var affected = FileTreeState.IsDirectChildOf(evt.Id, Entry.Id);
-        if (!affected && evt.Kind == FileChangeKind.Renamed && evt.OldPath is { } old)
+        if (!affected && evt.Kind == FileChangeKind.Renamed && evt.OldPath is { } old
+            && PathBoundary.IsWithin(old, Workspace.RootPath))
+        {
             affected = FileTreeState.IsDirectChildOf(Workspace.GetResourceId(old), Entry.Id);
+        }
 
         if (affected)
             _ = InvokeAsync(ReloadAndRenderAsync);

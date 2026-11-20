@@ -1,4 +1,5 @@
 using Seeing.Agent.Abstractions.Files;
+using Seeing.Agent.Paths;
 
 namespace Seeing.Agent.WebUI.Files.Services;
 
@@ -44,10 +45,13 @@ public sealed class FileViewerCoordinator : IDisposable
     {
         if (evt.Kind == FileChangeKind.Renamed && evt.OldPath is { } oldPath)
         {
-            var newId = evt.Id;
-            var oldId = _workspace.GetResourceId(oldPath);
-            _tabs.ApplyRename(oldId, newId);
-            return ApplyOutcome.Renamed;
+            // 旧路径不属于本根（跨根/越界）：不当作改名，继续走普通刷新
+            if (PathBoundary.IsWithin(oldPath, _workspace.RootPath))
+            {
+                var oldId = _workspace.GetResourceId(oldPath);
+                _tabs.ApplyRename(oldId, evt.Id);
+                return ApplyOutcome.Renamed;
+            }
         }
         if (evt.Kind == FileChangeKind.Deleted)
         {

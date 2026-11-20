@@ -27,7 +27,12 @@
 .file-tree-file.selected { background: rgba(22, 119, 255, 0.12); color: #1677ff; }
 .file-tree-file.selected:hover { background: rgba(22, 119, 255, 0.18); }
 .file-tree-arrow { width: 12px; display: inline-block; color: #999; flex-shrink: 0; }
-.file-tree-dir--root { font-weight: 600; margin-top: 4px; }
+.file-tree-dir--root { font-weight: 600; margin: 4px 6px 2px; border-radius: 6px; }
+.file-tree-dir--root .file-tree-name { overflow: hidden; text-overflow: ellipsis; }
+.file-tree-dir--root-project { background: rgba(22, 119, 255, 0.09); }
+.file-tree-dir--root-project .file-tree-icon--dir { color: #1677ff; }
+.file-tree-dir--root-collab { background: rgba(212, 107, 8, 0.12); }
+.file-tree-dir--root-collab .file-tree-icon--dir { color: #d46b08; }
 .file-tree-badge { margin-left: auto; font-size: 10px; line-height: 15px; padding: 0 5px; border-radius: 8px; border: 1px solid currentColor; flex-shrink: 0; }
 .file-tree-badge--project { color: #1677ff; }
 .file-tree-badge--collab { color: #d46b08; }

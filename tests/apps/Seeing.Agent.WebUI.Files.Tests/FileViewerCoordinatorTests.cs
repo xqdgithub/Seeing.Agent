@@ -68,18 +68,45 @@ public class FileViewerCoordinatorTests
     [Fact]
     public async Task ApplyAsync_Renamed_ShouldRewriteTab()
     {
+        var root = Path.GetTempPath();
+        var oldPath = Path.Combine(root, "old-" + Guid.NewGuid().ToString("N"));
         var oldId = new FileResourceId("root", "dir/a.txt");
         var newDirId = new FileResourceId("root", "renamed");
         var tabs = new FileTabsState();
         tabs.Open(File(oldId, "A", FileReadMode.Full));
 
         var ws = new Mock<IFileWorkspace>();
-        ws.Setup(w => w.GetResourceId("old")).Returns(new FileResourceId("root", "dir"));
+        ws.SetupGet(w => w.RootPath).Returns(root);
+        ws.Setup(w => w.GetResourceId(oldPath)).Returns(new FileResourceId("root", "dir"));
 
         var coord = new FileViewerCoordinator(ws.Object, tabs);
-        var outcome = await coord.ApplyAsync(new FileChangeEvent(newDirId, FileChangeKind.Renamed, null, "old", DateTime.UtcNow));
+        var outcome = await coord.ApplyAsync(new FileChangeEvent(newDirId, FileChangeKind.Renamed, null, oldPath, DateTime.UtcNow));
         outcome.Should().Be(ApplyOutcome.Renamed);
         tabs.OpenFiles[0].Id.RelativePath.Should().Be("renamed/a.txt");
+    }
+
+    [Fact]
+    public async Task ApplyAsync_Renamed_OldPathOutsideRoot_ShouldNotThrow()
+    {
+        // 多根下事件是全局广播；旧路径不属于本根时不能拿它去 GetResourceId（会抛越界）
+        var root = Path.GetTempPath();
+        var outside = Path.GetFullPath(Path.Combine(root, "..", "outside-" + Guid.NewGuid().ToString("N")));
+        var id = new FileResourceId("root", "a.txt");
+        var tabs = new FileTabsState();
+        tabs.Open(File(id, "A", FileReadMode.Full));
+
+        var ws = new Mock<IFileWorkspace>();
+        ws.SetupGet(w => w.RootPath).Returns(root);
+        ws.Setup(w => w.GetAbsolutePath(It.IsAny<FileResourceId>())).Returns("x");
+        ws.Setup(w => w.ReadAsync(It.IsAny<string>(), It.IsAny<FileReadMode>(), It.IsAny<CancellationToken>()))
+          .ThrowsAsync(new FileNotFoundException("文件不存在"));
+
+        var coord = new FileViewerCoordinator(ws.Object, tabs);
+        var act = async () => await coord.ApplyAsync(
+            new FileChangeEvent(id, FileChangeKind.Renamed, null, outside, DateTime.UtcNow));
+
+        await act.Should().NotThrowAsync();
+        ws.Verify(w => w.GetResourceId(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]

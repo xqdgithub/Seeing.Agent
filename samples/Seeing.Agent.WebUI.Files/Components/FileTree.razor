@@ -11,13 +11,14 @@
         <ul class="file-tree-list">
             @foreach (var root in Roots)
             {
-                <FileTreeNode Entry="FileTreeRoots.Entry(root)"
-                              Workspace="root"
-                              OnOpen="OnOpen"
+                <FileTreeNode Entry="@FileTreeRoots.Entry(root)"
+                              Workspace="@root"
+                              OnOpen="@OnOpen"
                               Depth="0"
-                              Badge="FileTreeRoots.Badge(root.Root.Kind)"
-                              BadgeClass="FileTreeRoots.BadgeClass(root.Root.Kind)"
-                              Title="root.RootPath"
+                              Badge="@FileTreeRoots.Badge(root.Root.Kind)"
+                              BadgeClass="@FileTreeRoots.BadgeClass(root.Root.Kind)"
+                              Title="@root.RootPath"
+                              RootKind="@root.Root.Kind"
                               DefaultExpanded="true" />
             }
         </ul>
