@@ -10,7 +10,7 @@ using Xunit;
 namespace Seeing.Agent.Tests.Context;
 
 /// <summary>
-/// 协同目录上下文源：空列表必须建立基线并渲染"（无）"；成员/存在性/备注变化各产生一条增量；
+/// 协同目录上下文源：空列表必须建立基线并渲染"未授权"；成员/存在性/备注变化各产生一条增量；
 /// 无变化返回 null；不渲染 cwd（由 Environment 分节每请求实时渲染）。
 /// </summary>
 public class CollaborationDirectoriesContextSourceTests : IDisposable
@@ -30,8 +30,9 @@ public class CollaborationDirectoriesContextSourceTests : IDisposable
         value.Canonical!.Value.GetProperty("directories").GetArrayLength().Should().Be(0);
 
         var text = source.RenderInitial(value);
-        text.Should().Contain("（无）");
-        text.Should().Contain("协同工作目录");
+        text.Should().StartWith("## 协同工作目录");
+        text.Should().Contain("未授权任何协同目录");
+        text.Should().NotContain("（无）");
     }
 
     [Fact]
@@ -46,9 +47,33 @@ public class CollaborationDirectoriesContextSourceTests : IDisposable
         var text = source.RenderInitial(await source.ReadAsync(TestContext.Current.CancellationToken));
 
         text.Should().Contain(collaboration);
-        // 只声明"以 Environment 分节为基准"，不重复渲染 cwd（系统基线是快照，会与实时分节矛盾）
+        // 只声明"与工作目录平级、访问用绝对路径"，不重复渲染 cwd（系统基线是快照，会与实时分节矛盾）
+        text.Should().StartWith("## 协同工作目录");
+        text.Should().Contain("绝对路径");
+        text.Should().Contain("workdir");
         text.Should().Contain("Environment");
+        text.Should().NotContain("以 Environment 分节的工作目录为基准");
         text.Should().NotContain(cwd);
+    }
+
+    [Fact]
+    public async Task RenderInitial_WithDirectory_ShouldListOneEntryPerLine()
+    {
+        var directory = CreateDirectory();
+        var spaced = Path.Combine(directory, "报表 输出");
+        Directory.CreateDirectory(spaced);
+
+        var directories = new FakeDirectories();
+        directories.Entries.Add(new CollaborationDirectory(directory, "报表\n输出"));
+        directories.Entries.Add(new CollaborationDirectory(spaced));
+        var source = CreateSource(directories);
+
+        var text = source.RenderInitial(await source.ReadAsync(TestContext.Current.CancellationToken));
+
+        text.Should().StartWith("## 协同工作目录");
+        text.Should().Contain($"\n- {directory}（报表 输出）");
+        text.Should().Contain($"\n- {spaced}");
+        text.Split('\n').Count(line => line.StartsWith("- ", StringComparison.Ordinal)).Should().Be(2);
     }
 
     [Fact]
@@ -90,6 +115,7 @@ public class CollaborationDirectoriesContextSourceTests : IDisposable
         removedText.Should().Contain($"协同目录已移除：{first}");
 
         // 增量叙述不是初始渲染：不得重复整份列表
+        removedText.Should().NotContain("## 协同工作目录");
         removedText.Should().NotContain("（无）");
     }
 

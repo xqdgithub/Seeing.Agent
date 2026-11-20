@@ -20,7 +20,7 @@ namespace Seeing.Agent.Core.Context;
 /// <para>
 /// <b>不渲染 cwd</b>：<c>## Environment</c> 分节已由 <c>EnvironmentPromptSectionContributor</c>
 /// 每请求实时渲染 <c>Working directory</c>。系统基线是快照、切换工作区不会重写，
-/// 这里再渲染一次会产生两个互相矛盾的 cwd，所以标题只声明"以 Environment 分节为基准"。
+/// 这里再渲染一次会产生两个互相矛盾的 cwd，所以分节只声明"与工作目录平级"并给出绝对路径约定。
 /// </para>
 /// <para>
 /// <b>空列表返回 <see cref="ContextValueState.Value"/> 而不是 Removed</b>：空列表是"这个会话没有协同目录"
@@ -37,10 +37,17 @@ public sealed class CollaborationDirectoriesContextSource : IContextSource
     /// </summary>
     private static readonly TimeSpan ExistsProbeTimeout = TimeSpan.FromMilliseconds(250);
 
-    private const string Title =
-        "协同工作目录（可读写；相对路径以 Environment 分节的工作目录为基准）:";
+    private const string Heading = "## 协同工作目录";
 
-    private const string EmptyLine = "- （无）";
+    private const string EmptyText = "本会话未授权任何协同目录；可访问范围只有工作目录。";
+
+    /// <summary>
+    /// 使用说明。必须讲清真实约定：协同目录与工作目录平级，相对路径不相对它们解析
+    /// （见 <c>2026-11-19-single-cwd-source-design.md</c> 非目标一节）。
+    /// </summary>
+    private const string Guidance =
+        "这些是本会话额外授权的可读写目录，与 `## Environment` 中的工作目录平级，不是它的子目录。\n" +
+        "访问时使用下面列出的绝对路径，或在命令中用 workdir 参数指定；相对路径只相对工作目录解析，不相对这些目录解析。";
 
     private const string TruncatedSuffix = "\n…（协同目录列表已按上下文基线上限截断）";
 
@@ -115,23 +122,21 @@ public sealed class CollaborationDirectoriesContextSource : IContextSource
     {
         var entries = EntriesFrom(value);
 
-        var builder = new StringBuilder();
-        builder.Append(Title);
-
         if (entries.Count == 0)
-        {
-            builder.Append('\n').Append(EmptyLine);
-            return Truncate(builder.ToString());
-        }
+            return Truncate($"{Heading}\n\n{EmptyText}");
+
+        var builder = new StringBuilder();
+        builder.Append(Heading).Append('\n').Append('\n').Append(Guidance).Append('\n').Append('\n');
 
         foreach (var entry in entries)
         {
-            builder.Append('\n').Append("- ").Append(entry.Path);
+            builder.Append("- ").Append(entry.Path);
             if (!string.IsNullOrEmpty(entry.Note))
                 builder.Append('（').Append(entry.Note).Append('）');
+            builder.Append('\n');
         }
 
-        return Truncate(builder.ToString());
+        return Truncate(builder.ToString().TrimEnd('\n'));
     }
 
     /// <inheritdoc />
