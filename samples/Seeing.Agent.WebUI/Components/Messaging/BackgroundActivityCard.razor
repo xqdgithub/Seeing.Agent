@@ -55,10 +55,10 @@
             </div>
         }
 
-        @if (!string.IsNullOrEmpty(activity.LiveOutput))
+        @if (!string.IsNullOrEmpty(activity.LiveOutputTail))
         {
-            @* 实时输出尾部（仅事件携带、不落盘）：终态后保留最后一段。 *@
-            <pre class="bg-activity-output">@activity.LiveOutput</pre>
+            @* 实时输出尾部（仅事件携带、不落盘）：只渲染最后 8 行，保证最新输出始终可见。 *@
+            <pre class="bg-activity-output">@activity.LiveOutputTail</pre>
         }
 
         @if (!string.IsNullOrEmpty(activity.ErrorMessage))
@@ -93,17 +93,24 @@
         border-left: 0;
     }
     .bg-activity-output {
-        max-height: 160px;
+        /* 固定高度 + 只渲染尾部 8 行：最新输出始终在可视区内，无需滚动到底。 */
+        max-height: 168px;
         overflow: auto;
         white-space: pre-wrap;
         word-break: break-all;
         font-family: monospace;
         font-size: 12px;
+        line-height: 1.5;
         margin: 4px 0 0;
-        padding: 4px 6px;
+        padding: 4px 8px;
         border-radius: 4px;
+        border-left: 2px solid var(--color-primary, #1677ff);
         background: var(--color-fill-quaternary, #f5f5f5);
         color: var(--color-text, #262626);
+    }
+    .is-compact .bg-activity-output {
+        /* 紧凑模式外层无框：给输出块自己的底色，与命令块区分。 */
+        background: var(--color-fill-secondary, #fafafa);
     }
     .bg-activity-head {
         display: flex;
