@@ -20,6 +20,7 @@ internal sealed class FileWorkspace : IFileWorkspace
     private readonly IWorkspacePathGate _gate;
     private readonly FileWatcherPool _watchers;
     private readonly IPathWriteLock _locks;
+    private FileWorkspaceRoot _root;
 
     /// <summary>构造会话工作区。</summary>
     public FileWorkspace(
@@ -35,7 +36,7 @@ internal sealed class FileWorkspace : IFileWorkspace
         SessionId = sessionId;
         var fullRoot = Path.GetFullPath(rootPath);
         var rootId = ComputeRootId(fullRoot);
-        Root = new FileWorkspaceRoot(
+        _root = new FileWorkspaceRoot(
             rootId,
             fullRoot,
             string.IsNullOrWhiteSpace(label) ? Path.GetFileName(fullRoot.TrimEnd(Path.DirectorySeparatorChar)) : label!,
@@ -51,13 +52,26 @@ internal sealed class FileWorkspace : IFileWorkspace
     public string SessionId { get; }
 
     /// <inheritdoc />
-    public FileWorkspaceRoot Root { get; }
+    public FileWorkspaceRoot Root => _root;
 
     /// <inheritdoc />
-    public string RootId => Root.RootId;
+    public string RootId => _root.RootId;
 
     /// <inheritdoc />
-    public string RootPath => Root.RootPath;
+    public string RootPath => _root.RootPath;
+
+    /// <summary>
+    /// 用最新投影刷新根元信息（标签/类别/存在性）；根身份（RootId/RootPath）不变。
+    /// <para>缓存命中时也必须调用：目录被删除/恢复后「不可用」标记才会更新。</para>
+    /// </summary>
+    internal void SyncRoot(FileWorkspaceRootKind kind, string? label, bool exists)
+    {
+        var name = string.IsNullOrWhiteSpace(label)
+            ? Path.GetFileName(_root.RootPath.TrimEnd(Path.DirectorySeparatorChar))
+            : label!;
+
+        _root = _root with { Label = name, Kind = kind, Exists = exists };
+    }
 
     private static string ComputeRootId(string root)
     {

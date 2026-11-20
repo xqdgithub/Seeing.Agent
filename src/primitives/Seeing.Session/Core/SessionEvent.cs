@@ -28,6 +28,9 @@ namespace Seeing.Session.Core
         Saved,
         Loaded,
         Destroyed,
-        MessageAdded
+        MessageAdded,
+
+        /// <summary>会话的协同目录集合发生变化（增删）；UI 据此重载文件根列表。</summary>
+        CollaborationDirectoriesChanged
     }
 }

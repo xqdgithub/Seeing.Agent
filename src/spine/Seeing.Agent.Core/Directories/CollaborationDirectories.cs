@@ -3,7 +3,6 @@ using Seeing.Agent.Abstractions.Directories;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Paths;
 using Seeing.Session.Core;
-
 namespace Seeing.Agent.Core.Directories;
 
 /// <summary>
@@ -22,16 +21,19 @@ public sealed class CollaborationDirectories : ICollaborationDirectories
 {
     private readonly ISessionManager _sessions;
     private readonly IWorkspaceProvider _workspace;
+    private readonly ISessionEventPublisher _events;
     private readonly ILogger<CollaborationDirectories> _logger;
 
-    /// <summary>注入会话管理器、工作区提供者与日志。</summary>
+    /// <summary>注入会话管理器、工作区提供者、事件发布器与日志。</summary>
     public CollaborationDirectories(
         ISessionManager sessions,
         IWorkspaceProvider workspace,
+        ISessionEventPublisher events,
         ILogger<CollaborationDirectories> logger)
     {
         _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
         _workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
+        _events = events ?? throw new ArgumentNullException(nameof(events));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -127,12 +129,20 @@ public sealed class CollaborationDirectories : ICollaborationDirectories
         if (cached is null && await _sessions.TryGetOrLoadAsync(sessionId, ct).ConfigureAwait(false) is null)
             throw new InvalidOperationException($"Session not found: {sessionId}");
 
-        await _sessions.UpdateSessionAsync(sessionId, data =>
+        var session = await _sessions.UpdateSessionAsync(sessionId, data =>
         {
             var directories = Normalize(data.CollaborationDirectories).ToList();
             mutate(directories);
             data.CollaborationDirectories = directories;
         }, ct).ConfigureAwait(false);
+
+        // 配置已落盘：通知 UI 重载文件根列表（这是唯一需要实时刷新的消费方）
+        _events.Publish(new SessionEvent
+        {
+            SessionId = sessionId,
+            Type = SessionEventType.CollaborationDirectoriesChanged,
+            Data = session
+        });
     }
 
     /// <summary>

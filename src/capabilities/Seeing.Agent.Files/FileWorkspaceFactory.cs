@@ -90,6 +90,10 @@ public sealed class FileWorkspaceFactory : IFileWorkspaceFactory, IDisposable
                 var rootId = ComputeRootId(root.Path);
                 live.Add(rootId);
 
+                var kind = root.Kind == SessionRootKind.Collaboration
+                    ? FileWorkspaceRootKind.Collaboration
+                    : FileWorkspaceRootKind.Project;
+
                 if (!entry.Workspaces.TryGetValue(rootId, out var workspace))
                 {
                     workspace = new FileWorkspace(
@@ -99,11 +103,14 @@ public sealed class FileWorkspaceFactory : IFileWorkspaceFactory, IDisposable
                         _gate,
                         _watchers,
                         _writeLock,
-                        root.Kind == SessionRootKind.Collaboration
-                            ? FileWorkspaceRootKind.Collaboration
-                            : FileWorkspaceRootKind.Project,
+                        kind,
                         root.Label);
                     entry.Workspaces[rootId] = workspace;
+                }
+                else if (workspace is FileWorkspace concrete)
+                {
+                    // 缓存命中也要刷新投影事实：目录被删除/恢复后 UI 的「不可用」标记依赖它
+                    concrete.SyncRoot(kind, root.Label, root.Exists);
                 }
 
                 ordered.Add(workspace);
@@ -136,6 +143,9 @@ public sealed class FileWorkspaceFactory : IFileWorkspaceFactory, IDisposable
     public async Task<IFileWorkspace?> ResolveAsync(
         string sessionId, string absolutePath, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(absolutePath) || !Path.IsPathFullyQualified(absolutePath))
+            return null;
+
         var all = await ListAsync(sessionId, ct).ConfigureAwait(false);
 
         // 最长前缀优先：避免 D:\a 命中 D:\ab

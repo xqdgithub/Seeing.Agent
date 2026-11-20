@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
     <RootNamespace>Seeing.Agent.WebUI.Files</RootNamespace>
-    <Description>可复用文件浏览器 UI 组件库（被动消费 IFileWorkspace，不感知会话事件）</Description>
+    <Description>可复用文件浏览器 UI 组件库（消费 IFileWorkspace 与只读根列表；仅订阅会话的协同目录变更事件）</Description>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="AntDesign" Version="1.6.2" />
@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\abstractions\Seeing.Agent.Abstractions\Seeing.Agent.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\primitives\Seeing.Markdown\Seeing.Markdown.csproj" />
+    <ProjectReference Include="..\..\src\primitives\Seeing.Session\Seeing.Session.csproj" />
     <ProjectReference Include="..\Seeing.Agent.WebUI.Workbench\Seeing.Agent.WebUI.Workbench.csproj" />
   </ItemGroup>
   <ItemGroup>

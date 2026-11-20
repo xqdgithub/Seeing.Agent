@@ -63,6 +63,44 @@ public class FileWorkspaceFactoryTests
     }
 
     [Fact]
+    public async Task ResolveAsync_RelativePath_ShouldReturnNull()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "fwf-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var factory = CreateMulti([root], out _);
+            var ws = await factory.ResolveAsync("s1", "a.txt");
+            ws.Should().BeNull("相对路径不得按进程 CWD 路由");
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ListAsync_CachedRootDeleted_ShouldRefreshExists()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "fwf-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var factory = CreateMulti([root], out _);
+
+            var first = await factory.ListAsync("s1");
+            first[0].Root.Exists.Should().BeTrue();
+
+            Directory.Delete(root, true);
+
+            var second = await factory.ListAsync("s1");
+            second[0].Should().BeSameAs(first[0], "根身份不变，应复用同一 facade");
+            second[0].Root.Exists.Should().BeFalse("缓存命中也要刷新存在性");
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task ListAsync_ColdSession_ShouldLoadBeforeReadingRoots()
     {
         var loaded = false;

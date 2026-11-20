@@ -1,8 +1,10 @@
 @using Seeing.Agent.Abstractions.Files
 @using Seeing.Agent.WebUI.Files.Services
+@using Seeing.Session.Core
 @inject IFileWorkspaceFactory WorkspaceFactory
 @inject FilePanelState PanelState
 @inject FileTreeState TreeState
+@inject ISessionEventPublisher SessionEvents
 @implements IDisposable
 
 <div class="file-panel-host">
@@ -75,10 +77,13 @@
     private FileTabsState _tabs = null!;
     private FileEditor? _editor;
     private string? _error;
+    private IDisposable? _sessionEventSubscription;
 
     protected override async Task OnInitializedAsync()
     {
         if (string.IsNullOrEmpty(SessionId)) return;
+        // 协同目录增删 → 重载根列表（会话层写入后发布，避免定时轮询）
+        _sessionEventSubscription = SessionEvents.Events.Subscribe(new SessionEventObserver(OnSessionEvent));
         // 标签状态按会话缓存在 Scoped 的 PanelState 上，页面导航往返不丢失
         _tabs = PanelState.GetTabs(SessionId);
         _tabs.Changed += OnTabsChanged;
@@ -86,6 +91,42 @@
         // 树重建时（页面往返/重新展开）节点初始化会读取该值沿路径展开定位
         SyncTreeSelection();
         await TryInitWorkspaceAsync();
+    }
+
+    private void OnSessionEvent(SessionEvent evt)
+    {
+        if (evt.Type != SessionEventType.CollaborationDirectoriesChanged)
+            return;
+        if (!string.Equals(evt.SessionId, SessionId, StringComparison.Ordinal))
+            return;
+
+        _ = InvokeAsync(RefreshRootsAsync);
+    }
+
+    /// <summary>协同目录变更后重载根集合：移除已删根的标签、重建协调器。</summary>
+    private async Task RefreshRootsAsync()
+    {
+        if (string.IsNullOrEmpty(SessionId) || _workspaces is null)
+            return;
+
+        try
+        {
+            var roots = await WorkspaceFactory.ListAsync(SessionId);
+            var next = new FileWorkspaceSet(roots);
+
+            // 根被移除：属于它的标签立即失效（继续编辑会写不回任何根）
+            foreach (var tab in _tabs.OpenFiles.Where(f => next.Find(f.Id) is null).ToArray())
+                _tabs.Close(tab.Id);
+
+            _roots = roots;
+            _workspaces = next;
+            WireCoordinators();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            SetError(FileErrorPresenter.Describe(ex));
+        }
     }
 
     /// <summary>解析会话的全部文件根并接线变更订阅；失败时展示错误条而非冒泡崩溃。</summary>
@@ -374,8 +415,29 @@
     private async Task<FileResourceId?> ResolveIdAsync(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return null;
-        var workspace = await WorkspaceFactory.ResolveAsync(SessionId!, path);
-        return workspace?.GetResourceId(path);
+
+        var absolute = path;
+        if (!Path.IsPathFullyQualified(absolute))
+        {
+            // 相对路径按项目根解析（不使用进程 CWD）
+            var projectRoot = _workspaces?.Roots
+                .FirstOrDefault(r => r.Root.Kind == FileWorkspaceRootKind.Project)?.RootPath;
+            if (projectRoot is null) return null;
+            absolute = Path.GetFullPath(absolute, projectRoot);
+        }
+
+        // 先用已加载的根做纯计算；未命中再问工厂（可处理尚未预热的会话）
+        var workspace = _workspaces?.FindByPath(absolute)
+            ?? await WorkspaceFactory.ResolveAsync(SessionId!, absolute);
+        return workspace?.GetResourceId(absolute);
+    }
+
+    /// <summary>把 <see cref="IObservable{T}"/> 的 OnNext 转成回调（不引入 System.Reactive）。</summary>
+    private sealed class SessionEventObserver(Action<SessionEvent> onNext) : IObserver<SessionEvent>
+    {
+        public void OnCompleted() { }
+        public void OnError(Exception error) { }
+        public void OnNext(SessionEvent value) => onNext(value);
     }
 
     /// <summary>
@@ -388,8 +450,18 @@
     /// <param name="preview">是否预览（null = 用标签默认值）。</param>
     public async Task OpenPathAsync(string path, int? line = null, int? column = null, bool? preview = null)
     {
-        if (_workspaces is null || string.IsNullOrWhiteSpace(path))
+        if (string.IsNullOrWhiteSpace(path))
             return;
+
+        // 打开载荷可能在根列表就绪前到达（工作台挂载与首帧渲染竞争）
+        if (_workspaces is null)
+            await TryInitWorkspaceAsync();
+
+        if (_workspaces is null)
+        {
+            SetError("文件工作区尚未就绪");
+            return;
+        }
 
         var id = await ResolveIdAsync(path);
         if (id is null)
@@ -425,6 +497,7 @@
 
     public void Dispose()
     {
+        _sessionEventSubscription?.Dispose();
         _tabs.Changed -= OnTabsChanged;
         PanelState.Changed -= OnPanelChanged;
         DisposeCoordinators();
