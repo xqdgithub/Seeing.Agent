@@ -105,14 +105,14 @@ public sealed class InProcessSessionClientTests
     {
         var runtime = new Mock<ISessionRuntime>();
         runtime
-            .Setup(r => r.InterruptAsync("ses", It.IsAny<CancellationToken>()))
+            .Setup(r => r.InterruptAsync("ses", It.IsAny<CancellationToken>(), true))
             .ReturnsAsync(true);
 
         var client = CreateClient(runtime.Object);
         var cancelled = await client.CancelAsync("ses", TestContext.Current.CancellationToken);
 
         cancelled.Should().BeTrue();
-        runtime.Verify(r => r.InterruptAsync("ses", It.IsAny<CancellationToken>()), Times.Once);
+        runtime.Verify(r => r.InterruptAsync("ses", It.IsAny<CancellationToken>(), true), Times.Once);
     }
 
     [Fact]

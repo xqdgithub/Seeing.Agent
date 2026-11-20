@@ -199,7 +199,8 @@ internal sealed class StubSessionRuntime : ISessionRuntime
         return _result;
     }
 
-    public Task<bool> InterruptAsync(string sessionId, CancellationToken ct = default) =>
+    public Task<bool> InterruptAsync(
+        string sessionId, CancellationToken ct = default, bool cancelBackgroundActivities = false) =>
         Task.FromResult(true);
 
     public Task<int> StopAsync(string sessionId, CancellationToken ct = default)

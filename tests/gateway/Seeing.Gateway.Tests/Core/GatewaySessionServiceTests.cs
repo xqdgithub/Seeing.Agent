@@ -77,7 +77,7 @@ public class GatewaySessionServiceTests
         var order = new List<string>();
         var sessionRuntime = new Mock<ISessionRuntime>();
         sessionRuntime
-            .Setup(r => r.InterruptAsync(session.Id, It.IsAny<CancellationToken>()))
+            .Setup(r => r.InterruptAsync(session.Id, It.IsAny<CancellationToken>(), true))
             .Callback(() => order.Add("interrupt"))
             .ReturnsAsync(true);
         sessionRuntime

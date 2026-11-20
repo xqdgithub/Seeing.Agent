@@ -77,8 +77,20 @@ public interface ISessionRuntime
         => throw new NotSupportedException(
             $"{nameof(ISessionRuntime)} 的实现未支持 {nameof(DeliverAndAwaitAsync)}。");
 
-    /// <summary>硬停当前轮：取消当前执行体；consumed 不回退，循环继续消费剩余未读。</summary>
-    Task<bool> InterruptAsync(string sessionId, CancellationToken ct = default);
+    /// <summary>
+    /// 硬停当前轮：取消当前执行体；consumed 不回退，循环继续消费剩余未读。
+    /// </summary>
+    /// <param name="sessionId">目标会话。</param>
+    /// <param name="ct">取消令牌。</param>
+    /// <param name="cancelBackgroundActivities">
+    /// 是否级联取消当前轮派生的后台活动（经 <c>IBackgroundActivityControl</c>，宿主未注册时跳过）。
+    /// 默认 <c>false</c>：「中断并发送」这类入口只停当前轮，不打断仍在跑的后台工作。
+    /// 放到参数末尾以保证既有 <c>InterruptAsync(sessionId, ct)</c> 调用仍可编译。
+    /// </param>
+    Task<bool> InterruptAsync(
+        string sessionId,
+        CancellationToken ct = default,
+        bool cancelBackgroundActivities = false);
 
     /// <summary>
     /// 丢弃未消费入站：与消费循环同一把会话锁内<b>从会话删除</b>这些消息并保存，返回条数。

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Background;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Events;
@@ -1137,14 +1138,18 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         }
     }
 
-    public Task<bool> InterruptAsync(string sessionId, CancellationToken ct = default)
+    public async Task<bool> InterruptAsync(
+        string sessionId,
+        CancellationToken ct = default,
+        bool cancelBackgroundActivities = false)
     {
         // 停当前轮：取消当前执行体；consumed 不回退，循环继续消费剩余未读。
         // 不触碰 _stoppedSessions（Stop 与 Interrupt 的唯一区别在循环去向）。
         Touch(sessionId);
-        var cts = _states.TryGetValue(sessionId, out var state) ? state.CurrentExecution?.Cts : null;
+        var current = _states.TryGetValue(sessionId, out var state) ? state.CurrentExecution : null;
+        var cts = current?.Cts;
         if (cts is null)
-            return Task.FromResult(false);
+            return false;
 
         try
         {
@@ -1153,10 +1158,41 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         catch (ObjectDisposedException)
         {
             // 执行体已进入终态并释放令牌：视为无可中断目标。
-            return Task.FromResult(false);
+            return false;
         }
 
-        return Task.FromResult(true);
+        // 级联取消后台活动是**可选**能力：宿主未注册实现时静默跳过，不影响中断本身。
+        if (cancelBackgroundActivities && !string.IsNullOrEmpty(current!.ExecutionId))
+            await CancelBackgroundActivitiesAsync(current.ExecutionId).ConfigureAwait(false);
+
+        return true;
+    }
+
+    /// <summary>
+    /// 尽力取消当前执行派生的后台活动。
+    /// <para>
+    /// 刻意吞掉异常：中断是控制面动作，后台取消失败不得让「中断」表现为失败，
+    /// 否则调用方会误判当前轮没停下。调用发生在 <c>cts.Cancel()</c> 之后，
+    /// 因此即便这里耗时，当前轮也已经在停下。
+    /// </para>
+    /// </summary>
+    private async Task CancelBackgroundActivitiesAsync(string executionId)
+    {
+        try
+        {
+            var control = _services.GetService(typeof(IBackgroundActivityControl))
+                as IBackgroundActivityControl;
+            if (control is null)
+                return;
+
+            await control.CancelByExecutionAsync(
+                    executionId, BackgroundActivityCancelReason.User, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "级联取消后台活动失败：ExecutionId={ExecutionId}", executionId);
+        }
     }
 
     /// <inheritdoc />
@@ -1280,7 +1316,7 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         }
 
         if (needInterrupt)
-            await InterruptAsync(sessionId, ct).ConfigureAwait(false);
+            await InterruptAsync(sessionId, ct, cancelBackgroundActivities: false).ConfigureAwait(false);
 
         return true;
     }

@@ -123,7 +123,9 @@ public sealed class GatewayOrchestratorV2
         }
         else
         {
-            stopped = await runtime.InterruptAsync(sessionId, cancellationToken).ConfigureAwait(false);
+            stopped = await runtime
+                .InterruptAsync(sessionId, cancellationToken, cancelBackgroundActivities: true)
+                .ConfigureAwait(false);
         }
 
         _runTracker.CancelRun(sessionId);

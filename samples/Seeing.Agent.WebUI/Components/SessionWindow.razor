@@ -2047,7 +2047,7 @@
 
         try
         {
-            await SessionRuntime.InterruptAsync(sessionId);
+            await SessionRuntime.InterruptAsync(sessionId, cancelBackgroundActivities: false);
         }
         catch (Exception ex)
         {

@@ -676,7 +676,9 @@ public static class BrowserStreamEndpoints
         bool interrupted;
         try
         {
-            interrupted = await runtime.InterruptAsync(sessionId, ct).ConfigureAwait(false);
+            interrupted = await runtime
+                .InterruptAsync(sessionId, ct, cancelBackgroundActivities: false)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {

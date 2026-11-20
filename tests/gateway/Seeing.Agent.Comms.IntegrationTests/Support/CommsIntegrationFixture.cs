@@ -82,7 +82,9 @@ internal sealed class RecordingRuntime : ISessionRuntime
         return Task.FromResult(InboxResult.Ok());
     }
 
-    public Task<bool> InterruptAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(false);
+    public Task<bool> InterruptAsync(
+        string sessionId, CancellationToken ct = default, bool cancelBackgroundActivities = false)
+        => Task.FromResult(false);
     public Task<int> StopAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(0);
     public Task<int> CancelAllInFlightAsync(CancellationToken ct = default) => Task.FromResult(0);
     public Task WaitForIdleAsync(string sessionId, CancellationToken ct = default) => Task.CompletedTask;

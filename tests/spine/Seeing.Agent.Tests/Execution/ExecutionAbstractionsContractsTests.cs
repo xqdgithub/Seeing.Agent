@@ -18,7 +18,9 @@ public class ExecutionAbstractionsContractsTests
         deliver!.ReturnType.Should().Be(typeof(Task<InboxResult>));
         deliver.GetParameters()[0].ParameterType.Should().Be(typeof(InboxMessage));
 
-        type.GetMethod(nameof(ISessionRuntime.InterruptAsync), [typeof(string), typeof(CancellationToken)])
+        type.GetMethod(
+                nameof(ISessionRuntime.InterruptAsync),
+                [typeof(string), typeof(CancellationToken), typeof(bool)])
             !.ReturnType.Should().Be(typeof(Task<bool>));
         type.GetMethod(nameof(ISessionRuntime.StopAsync), [typeof(string), typeof(CancellationToken)])
             !.ReturnType.Should().Be(typeof(Task<int>));
