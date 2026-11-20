@@ -70,22 +70,44 @@
                 </button>
             }
             <div class="file-panel-main">
-                <FileTabs Tabs="_tabs" Workspaces="_workspaces" OnSave="SaveActiveAsync" />
+                <FileTabs Tabs="_tabs" Workspaces="_workspaces" />
                 @if (ActiveTab is { } activeTab)
                 {
                     <div class="file-crumbs">
-                        @if (_workspaces?.Find(activeTab.Id) is { } activeRoot)
-                        {
-                            <span class="file-crumb-root @(activeRoot.Root.Kind == FileWorkspaceRootKind.Collaboration ? "is-collab" : "is-project")">
-                                @(activeRoot.Root.Kind == FileWorkspaceRootKind.Collaboration ? "协同" : "项目")
-                                · @activeRoot.Root.Label
-                            </span>
-                        }
-                        @foreach (var segment in CrumbSegments(activeTab.Id.RelativePath))
-                        {
-                            <span class="file-crumb-sep">›</span>
-                            <span class="file-crumb">@segment</span>
-                        }
+                        <div class="file-crumbs-path">
+                            @if (_workspaces?.Find(activeTab.Id) is { } activeRoot)
+                            {
+                                <span class="file-crumb-root @(activeRoot.Root.Kind == FileWorkspaceRootKind.Collaboration ? "is-collab" : "is-project")">
+                                    @(activeRoot.Root.Kind == FileWorkspaceRootKind.Collaboration ? "协同" : "项目")
+                                    · @activeRoot.Root.Label
+                                </span>
+                            }
+                            @foreach (var segment in CrumbSegments(activeTab.Id.RelativePath))
+                            {
+                                <span class="file-crumb-sep">›</span>
+                                <span class="file-crumb">@segment</span>
+                            }
+                        </div>
+                        <div class="file-crumbs-actions">
+                            @if (CanTogglePreview)
+                            {
+                                <button type="button" class="file-crumb-action"
+                                        title="@(activeTab.PreviewMode ? "切换到编辑" : "切换到预览")"
+                                        @onclick="TogglePreview">
+                                    @(activeTab.PreviewMode ? "编辑" : "预览")
+                                </button>
+                            }
+                            @if (HasActiveEditable)
+                            {
+                                <button type="button" class="file-crumb-action @(IsDirty ? "is-dirty" : "")"
+                                        title="保存 (Ctrl+S)" @onclick="SaveActiveAsync">保存</button>
+                            }
+                            @if (CanReveal)
+                            {
+                                <button type="button" class="file-crumb-action"
+                                        title="在资源管理器中显示" @onclick="RevealActiveAsync">资源管理器</button>
+                            }
+                        </div>
                     </div>
                 }
                 <FileEditor Tabs="_tabs" Workspaces="_workspaces" @ref="_editor" />
@@ -348,6 +370,37 @@
 
     private OpenFile? ActiveTab =>
         _tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == _tabs.ActiveKey);
+
+    private bool CanTogglePreview =>
+        ActiveTab is { Kind: FileContentKind.Markdown, IsDeleted: false };
+
+    private bool HasActiveEditable => ActiveTab is { IsReadOnly: false, IsDeleted: false };
+
+    private bool IsDirty => ActiveTab?.HasUnsavedChanges == true;
+
+    private void TogglePreview()
+    {
+        if (ActiveTab is { } active)
+            _tabs.TogglePreview(active.Id);
+    }
+
+    private async Task RevealActiveAsync()
+    {
+        if (_reveal is not { CanReveal: true } || ActiveTab is not { } active)
+            return;
+
+        var workspace = _workspaces?.Find(active.Id);
+        if (workspace is null) return;
+
+        try
+        {
+            await _reveal.RevealAsync(workspace.GetAbsolutePath(active.Id));
+        }
+        catch (Exception ex)
+        {
+            SetError(FileErrorPresenter.Describe(ex));
+        }
+    }
 
     private static IEnumerable<string> CrumbSegments(string relativePath)
         => relativePath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);

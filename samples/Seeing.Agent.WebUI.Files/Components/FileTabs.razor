@@ -9,8 +9,7 @@
         @foreach (var f in Tabs.OpenFiles)
         {
             var active = Tabs.ActiveKey == f.Id.ToString();
-            var root = RootKindOf(f);
-            <div class="file-tab @(active ? "active" : "") @RootClass(root)"
+            <div class="file-tab @(active ? "active" : "") @RootClass(RootKindOf(f))"
                  title="@TooltipFor(f)"
                  @onclick="() => Tabs.Activate(f.Id)"
                  @oncontextmenu="e => OpenMenu(e, f.Id)"
@@ -20,9 +19,6 @@
                 {
                     <span class="file-tab-dirty" title="未保存"></span>
                 }
-                <button type="button" class="file-tab-close"
-                        @onclick:stopPropagation="true"
-                        @onclick="() => Tabs.Close(f.Id)">×</button>
             </div>
         }
     </div>
@@ -31,31 +27,6 @@
     {
         <button type="button" class="file-tabs-more" title="全部打开的文件"
                 @onclick="() => _showAll = !_showAll">»</button>
-    }
-
-    @if (CanTogglePreview)
-    {
-        <button type="button"
-                class="file-tab-preview"
-                title="@(Active!.PreviewMode ? "切换到编辑" : "切换到预览")"
-                @onclick="TogglePreviewClicked">
-            @(Active!.PreviewMode ? "编辑" : "预览")
-        </button>
-    }
-    @if (HasActiveEditable)
-    {
-        <button type="button"
-                class="file-tab-save @(IsDirty ? "dirty" : "")"
-                title="保存 (Ctrl+S)"
-                @onclick="SaveClicked">
-            <svg class="file-tab-save-icon" viewBox="0 0 1024 1024" width="13" height="13" aria-hidden="true">
-                <path fill="currentColor" d="M853.3 298.7L725.3 170.7c-8-8-18.6-12.4-29.9-12.4H213.3c-23.5 0-42.7 19.1-42.7 42.7v597.3c0 23.5 19.1 42.7 42.7 42.7h597.3c23.5 0 42.7-19.1 42.7-42.7V328.5c0-11.3-4.4-21.9-12.4-29.8zM512 810.7c-47.1 0-85.3-38.2-85.3-85.3s38.2-85.3 85.3-85.3 85.3 38.2 85.3 85.3-38.2 85.3-85.3 85.3zM682.7 384H256V213.3h426.7V384z" />
-            </svg>
-            @if (IsDirty)
-            {
-                <span class="file-tab-save-dot"></span>
-            }
-        </button>
     }
 </div>
 
@@ -100,29 +71,8 @@
     /// <summary>多根集合（用于根标识与完整路径）；未就绪时只显示相对路径。</summary>
     [Parameter] public FileWorkspaceSet? Workspaces { get; set; }
 
-    /// <summary>保存当前标签回调。</summary>
-    [Parameter] public EventCallback OnSave { get; set; }
-
     private bool _showAll;
     private MenuState? _menu;
-
-    private OpenFile? Active =>
-        Tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == Tabs.ActiveKey);
-
-    private bool HasActiveEditable => Active is { IsReadOnly: false, IsDeleted: false };
-
-    /// <summary>仅 Markdown 可切换；图片/二进制/已删除文件无预览形态。</summary>
-    private bool CanTogglePreview =>
-        Active is { Kind: FileContentKind.Markdown, IsDeleted: false };
-
-    private void TogglePreviewClicked()
-    {
-        var f = Active;
-        if (f is null) return;
-        Tabs.TogglePreview(f.Id);
-    }
-
-    private bool IsDirty => Active?.HasUnsavedChanges == true;
 
     private FileTabsState? _subscribed;
 
@@ -135,12 +85,6 @@
     }
 
     private void OnChanged() => _ = InvokeAsync(StateHasChanged);
-
-    private async Task SaveClicked()
-    {
-        Tabs.SetNotice("正在保存…");
-        await OnSave.InvokeAsync();
-    }
 
     // ===== 展示 =====
 
@@ -177,7 +121,7 @@
         return $"{parentName}/{name}";
     }
 
-    private string Relative(FileResourceId id) => id.RelativePath.Replace('\\', '/');
+    private static string Relative(FileResourceId id) => id.RelativePath.Replace('\\', '/');
 
     private string Absolute(FileResourceId id)
     {
