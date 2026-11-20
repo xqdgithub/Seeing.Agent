@@ -7,14 +7,20 @@ namespace Seeing.Agent.Tests;
 /// <para>
 /// <c>SessionRuntime</c> 现在把 <see cref="IBackgroundActivityControl"/> 当必需依赖解析，
 /// 所以用裸 <c>ServiceCollection</c> 构造运行时的用例都必须先注册一个实现。
-/// 本替身只关心「按执行取消」，其余成员保持不参与（被调用即说明测试走错了路径）。
+/// 本替身记录「按执行取消」与「按会话取消」两类调用，其余成员保持不参与
+/// （被调用即说明测试走错了路径）。
 /// </para>
 /// </summary>
 internal sealed class RecordingBackgroundActivityControl : IBackgroundActivityControl
 {
     public sealed record CancelCall(string ExecutionId, BackgroundActivityCancelReason Reason);
 
+    public sealed record SessionCancelCall(string SessionId, BackgroundActivityCancelReason Reason);
+
     public List<CancelCall> Calls { get; } = new();
+
+    /// <summary>按会话取消的调用记录（<c>StopAsync</c> 级联走这条路径）。</summary>
+    public List<SessionCancelCall> SessionCalls { get; } = new();
 
     public Task<int> CancelByExecutionAsync(
         string executionId,
@@ -45,7 +51,12 @@ internal sealed class RecordingBackgroundActivityControl : IBackgroundActivityCo
         string sessionId,
         BackgroundActivityCancelReason reason,
         CancellationToken ct = default)
-        => throw new NotSupportedException();
+    {
+        lock (SessionCalls)
+            SessionCalls.Add(new SessionCancelCall(sessionId, reason));
+
+        return Task.FromResult(0);
+    }
 
     public Task<int> CancelAllAsync(
         BackgroundActivityCancelReason reason,
