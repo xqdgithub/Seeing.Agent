@@ -44,4 +44,13 @@ public record BackgroundActivityEvent : IMessageEvent
 
     /// <summary>事件发生时的活动快照。</summary>
     public required BackgroundActivitySnapshot Activity { get; init; }
+
+    /// <summary>
+    /// 输出尾部（仅 <c>activity.progress</c> 携带）。
+    /// <para>
+    /// <b>仅供 UI 实时展示</b>：有界（最后 4096 字符），<b>不落盘</b>、不进快照、不参与任何框架判定。
+    /// 读者不得把它当作权威输出；权威内容只能经 <c>ReadOutputAsync</c> 读取输出文件。
+    /// </para>
+    /// </summary>
+    public string? OutputTail { get; init; }
 }

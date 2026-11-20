@@ -51,6 +51,15 @@ public sealed class BackgroundActivityViewModel
     /// <summary>输出是否已因达到上限被截断。</summary>
     public bool OutputTruncated { get; init; }
 
+    /// <summary>
+    /// 实时输出尾部（仅 <c>activity.progress</c> 事件携带，<b>不落盘</b>、不参与任何判定）。
+    /// <para>
+    /// 只用于运行期间展示最近一段输出；终态后保留最后一次收到的内容（不清空）。
+    /// 首屏重建时为空：快照不含输出正文。
+    /// </para>
+    /// </summary>
+    public string? LiveOutput { get; init; }
+
     /// <summary>kind 专属展示信息（只展示，不参与判定）。</summary>
     public IReadOnlyDictionary<string, string> Attributes { get; init; }
         = new Dictionary<string, string>();
@@ -166,8 +175,16 @@ public sealed class BackgroundActivityViewModel
         ? Result?.ErrorMessage
         : null;
 
-    /// <summary>从快照创建视图模型。</summary>
-    public static BackgroundActivityViewModel FromSnapshot(BackgroundActivitySnapshot snapshot)
+    /// <summary>
+    /// 从快照创建视图模型。
+    /// <para>
+    /// <b>快照本身不填 <see cref="LiveOutput"/></b>：快照不含输出正文，首屏重建不得凭空出现旧输出。
+    /// 实时内容只在 <c>activity.progress</c> 事件里由调用方经 <paramref name="liveOutput"/> 传入。
+    /// </para>
+    /// </summary>
+    public static BackgroundActivityViewModel FromSnapshot(
+        BackgroundActivitySnapshot snapshot,
+        string? liveOutput = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -186,6 +203,7 @@ public sealed class BackgroundActivityViewModel
             OutputLimitBytes = snapshot.OutputLimitBytes,
             OutputBytes = snapshot.OutputBytes,
             OutputTruncated = snapshot.OutputTruncated,
+            LiveOutput = liveOutput,
             Attributes = snapshot.Attributes ?? new Dictionary<string, string>(),
             CreatedAt = snapshot.CreatedAt,
             CompletedAt = snapshot.CompletedAt

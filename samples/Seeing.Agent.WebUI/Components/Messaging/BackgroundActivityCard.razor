@@ -10,7 +10,13 @@
     <div class="bg-activity-card @(Compact ? "is-compact" : null)" data-activity-id="@activity.Id">
         <div class="bg-activity-head">
             <Icon Type="@activity.StatusIcon" Style="@StatusIconStyle" />
-            <span class="bg-activity-title" title="@activity.Title">@activity.Title</span>
+
+            @* Compact 嵌在工具卡片内：外层已显示标题，再渲染一次会看起来像两条重复的条目。 *@
+            @if (!Compact)
+            {
+                <span class="bg-activity-title" title="@activity.Title">@activity.Title</span>
+            }
+
             <Tag Color="@activity.StatusTagColor" Style="margin-left: 6px; font-size: 11px;">@activity.StatusText</Tag>
 
             @if (activity.OutputSizeText is { } size)
@@ -49,6 +55,12 @@
             </div>
         }
 
+        @if (!string.IsNullOrEmpty(activity.LiveOutput))
+        {
+            @* 实时输出尾部（仅事件携带、不落盘）：终态后保留最后一段。 *@
+            <pre class="bg-activity-output">@activity.LiveOutput</pre>
+        }
+
         @if (!string.IsNullOrEmpty(activity.ErrorMessage))
         {
             <div class="bg-activity-error">@activity.ErrorMessage</div>
@@ -73,8 +85,25 @@
         color: var(--color-text-secondary, #595959);
     }
     .bg-activity-card.is-compact {
-        margin: 0 0 4px;
-        padding: 4px 8px;
+        /* 外层工具卡片已有标题与边框：这里只作为它内部的一行状态，不再画第二个框。 */
+        margin: 0;
+        padding: 4px 0;
+        border: 0;
+        background: transparent;
+        border-left: 0;
+    }
+    .bg-activity-output {
+        max-height: 160px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+        font-family: monospace;
+        font-size: 12px;
+        margin: 4px 0 0;
+        padding: 4px 6px;
+        border-radius: 4px;
+        background: var(--color-fill-quaternary, #f5f5f5);
+        color: var(--color-text, #262626);
     }
     .bg-activity-head {
         display: flex;

@@ -594,23 +594,54 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         if (!_activities.TryGetValue(activityId, out var record) || IsTerminalCommitted(record))
             return;
 
-        var appended = await _outputStore.AppendAsync(activityId, chunk, ct).ConfigureAwait(false);
+        ActivityOutputAppendResult appended;
+        try
+        {
+            appended = await _outputStore.AppendAsync(activityId, chunk, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // 输出写盘失败只影响这一段输出：活动主流程（进程/终态）不受牵连。
+            _logger.LogWarning(ex, "后台活动输出追加失败 ActivityId={ActivityId}", activityId);
+            return;
+        }
 
+        BackgroundActivitySnapshot snapshot;
+        string? outputTail = null;
         lock (_sync)
         {
             // 写入期间可能已提交终态：终态快照是权威事实，不再回填统计（也绝不改 Seq）。
             if (record.TerminalCommitted)
                 return;
 
+            // 只把真正落盘的字节喂给实时尾部（截断后溢出部分不在文件里，也不该出现在 UI）。
+            var previousBytes = record.Snapshot.OutputBytes ?? 0;
+            var written = (int)Math.Clamp(appended.TotalBytes - previousBytes, 0, chunk.Length);
+            if (written > 0)
+                record.AppendOutputTail(chunk.Span[..written]);
+
             // 统计来自存储的实际落盘结果（截断后不再按传入字节累计）；不额外落盘——
             // 下一次状态迁移（含终态）会把这两个字段一并写出。
-            record.Snapshot = record.Snapshot with
+            snapshot = record.Snapshot with
             {
                 Seq = record.Snapshot.Seq + 1,
                 OutputBytes = appended.TotalBytes,
                 OutputTruncated = appended.Truncated
             };
+            record.Snapshot = snapshot;
+
+            // 节流：与 ReportProgress 共用同一时钟，同一活动 ≥1s 才发一次 progress。
+            // progress 不落盘、不新增历史，只带实时输出尾部。
+            var now = _timeProvider.GetUtcNow();
+            if (record.LastProgressEventAt is null || now - record.LastProgressEventAt >= s_progressEventInterval)
+            {
+                record.LastProgressEventAt = now;
+                outputTail = record.OutputTail;
+            }
         }
+
+        if (outputTail is not null)
+            Publish(snapshot, ActivityEventTypes.Progress, outputTail);
     }
 
     internal async Task CompleteAsync(
@@ -1403,7 +1434,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         return persisted;
     }
 
-    private void Publish(BackgroundActivitySnapshot snapshot, string eventType)
+    private void Publish(BackgroundActivitySnapshot snapshot, string eventType, string? outputTail = null)
     {
         try
         {
@@ -1414,6 +1445,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
                     SessionId = snapshot.OwnerSessionId,
                     Type = eventType,
                     Activity = snapshot,
+                    OutputTail = outputTail,
                     Timestamp = _timeProvider.GetLocalNow().DateTime
                 });
         }

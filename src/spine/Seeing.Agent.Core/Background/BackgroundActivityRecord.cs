@@ -1,3 +1,4 @@
+using System.Text;
 using Seeing.Agent.Abstractions.Background;
 
 namespace Seeing.Agent.Core.Background;
@@ -58,4 +59,82 @@ internal sealed class BackgroundActivityRecord
 
     /// <summary>上一次发出 <c>activity.progress</c> 事件的时刻（节流用，不落盘）。</summary>
     public DateTimeOffset? LastProgressEventAt { get; set; }
+
+    /// <summary>
+    /// 实时输出尾部容量（字符）。只供 UI 增量展示：有界、<b>不落盘</b>、不进快照。
+    /// </summary>
+    internal const int OutputTailCapacity = 4096;
+
+    private readonly Decoder _outputTailDecoder = Encoding.UTF8.GetDecoder();
+
+    private readonly StringBuilder _outputTail = new(OutputTailCapacity);
+
+    /// <summary>尾部缓冲的写锁（与 manager 的 <c>_sync</c> 独立：读尾部不要求持有状态机锁）。</summary>
+    private readonly object _outputTailSync = new();
+
+    /// <summary>当前输出尾部（最后 ≤ <see cref="OutputTailCapacity"/> 个字符）。不落盘。</summary>
+    public string OutputTail
+    {
+        get
+        {
+            lock (_outputTailSync)
+                return _outputTail.ToString();
+        }
+    }
+
+    /// <summary>
+    /// 把一段已落盘的 UTF-8 输出追加进尾部缓冲，超出容量时从头部裁剪。
+    /// <para>解码跨块保存状态：多字节字符被切在两个 chunk 之间时不会被拆成替换符。</para>
+    /// </summary>
+    public void AppendOutputTail(ReadOnlySpan<byte> utf8)
+    {
+        if (utf8.IsEmpty)
+            return;
+
+        Span<char> buffer = utf8.Length <= 256
+            ? stackalloc char[utf8.Length]
+            : new char[utf8.Length];
+
+        int written;
+        lock (_outputTailSync)
+        {
+            // 状态推进与缓冲写入同锁：并发追加不会交叉解码。
+            written = _outputTailDecoder.GetChars(utf8, buffer, flush: false);
+            if (written == 0)
+                return;
+
+            _outputTail.Append(buffer[..written]);
+            TrimLocked();
+        }
+    }
+
+    /// <summary>超出容量时从头部裁剪；优先裁到整行边界，避免把最后一行切成半截。</summary>
+    private void TrimLocked()
+    {
+        if (_outputTail.Length <= OutputTailCapacity)
+            return;
+
+        var overflow = _outputTail.Length - OutputTailCapacity;
+
+        // 优先按行裁剪：从溢出点向后找第一个换行，整行丢弃。
+        var cut = overflow;
+        var newline = -1;
+        for (var i = overflow; i < _outputTail.Length; i++)
+        {
+            if (_outputTail[i] != '\n')
+                continue;
+
+            newline = i;
+            break;
+        }
+
+        if (newline >= 0 && newline + 1 < _outputTail.Length)
+            cut = newline + 1;
+
+        // 不切碎代理对（emoji 等）：落在低位代理上时后移一位。
+        if (cut < _outputTail.Length && char.IsLowSurrogate(_outputTail[cut]))
+            cut++;
+
+        _outputTail.Remove(0, Math.Min(cut, _outputTail.Length));
+    }
 }

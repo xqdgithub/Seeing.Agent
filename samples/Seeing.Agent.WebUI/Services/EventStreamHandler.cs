@@ -626,22 +626,25 @@ namespace Seeing.Agent.WebUI.Services
             if (snapshot is null || string.IsNullOrEmpty(snapshot.Id))
                 return;
 
-            var incoming = BackgroundActivityViewModel.FromSnapshot(snapshot);
-
-            if (_backgroundActivityById.TryGetValue(incoming.Id, out var existing))
+            if (!_backgroundActivityById.TryGetValue(snapshot.Id, out var existing))
             {
-                // 旧快照（回放/乱序）不得覆盖更新状态。
-                if (existing.Seq > incoming.Seq)
-                    return;
+                var created = BackgroundActivityViewModel.FromSnapshot(snapshot, evt.OutputTail);
+                _backgroundActivities.Add(created);
+                _backgroundActivityById[created.Id] = created;
+                return;
+            }
 
-                var index = _backgroundActivities.IndexOf(existing);
-                if (index >= 0)
-                    _backgroundActivities[index] = incoming;
-            }
-            else
-            {
-                _backgroundActivities.Add(incoming);
-            }
+            // 旧快照（回放/乱序）不得覆盖更新状态。
+            if (existing.Seq > snapshot.Seq)
+                return;
+
+            // 新事件不带尾部时沿用上一次收到的实时输出（终态事件不携带正文，不能把手上的输出来路清掉）。
+            var liveOutput = string.IsNullOrEmpty(evt.OutputTail) ? existing.LiveOutput : evt.OutputTail;
+            var incoming = BackgroundActivityViewModel.FromSnapshot(snapshot, liveOutput);
+
+            var index = _backgroundActivities.IndexOf(existing);
+            if (index >= 0)
+                _backgroundActivities[index] = incoming;
 
             _backgroundActivityById[incoming.Id] = incoming;
         }

@@ -84,6 +84,8 @@ public static class BackgroundActivityProjection
             if (toolCall.BackgroundActivity is { } current && current.Seq > activity.Seq)
                 return true;
 
+            // 整份视图替换（不是逐字段拷贝）：LiveOutput 等仅展示字段随活动一起带过去，
+            // Seq 守卫只决定「是否采用」，不丢弃任何字段。
             toolCall.BackgroundActivity = activity;
             toolCall.BackgroundActivityId ??= activity.Id;
             message.Touch();

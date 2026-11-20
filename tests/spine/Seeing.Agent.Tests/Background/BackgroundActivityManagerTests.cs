@@ -672,6 +672,84 @@ public class BackgroundActivityManagerTests
         terminal.OutputTruncated.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task AppendOutput_ShouldThrottleProgressEvents_ToOnePerSecond()
+    {
+        var time = new FakeTimeProvider();
+        var harness = CreateHarness(timeProvider: time);
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+        await harness.Manager.WaitForPersistenceAsync(handle.ActivityId);
+
+        // 第一次追加没有历史时刻可参照，直接发一条 progress。
+        await handle.Reporter.AppendOutputAsync(Encoding.UTF8.GetBytes("a\n"));
+        harness.Publisher.ActivityEvents.Count(e => e.Type == ActivityEventTypes.Progress).Should().Be(1);
+
+        // 1 秒内的后续追加一律合并（不额外发事件）。
+        await handle.Reporter.AppendOutputAsync(Encoding.UTF8.GetBytes("b\n"));
+        await handle.Reporter.AppendOutputAsync(Encoding.UTF8.GetBytes("c\n"));
+        harness.Publisher.ActivityEvents.Count(e => e.Type == ActivityEventTypes.Progress).Should().Be(1);
+
+        time.Advance(TimeSpan.FromMilliseconds(500));
+        await handle.Reporter.AppendOutputAsync(Encoding.UTF8.GetBytes("d\n"));
+        harness.Publisher.ActivityEvents.Count(e => e.Type == ActivityEventTypes.Progress).Should().Be(1);
+
+        // 跨过 1 秒窗口后恢复发事件：这次的事件带上累积后的完整尾部。
+        time.Advance(TimeSpan.FromMilliseconds(500));
+        await handle.Reporter.AppendOutputAsync(Encoding.UTF8.GetBytes("e\n"));
+
+        var progressEvents = harness.Publisher.ActivityEvents
+            .Where(e => e.Type == ActivityEventTypes.Progress)
+            .ToList();
+        progressEvents.Should().HaveCount(2);
+        progressEvents[^1].OutputTail.Should().Be("a\nb\nc\nd\ne\n");
+    }
+
+    [Fact]
+    public async Task AppendOutput_ShouldCarryBoundedTail()
+    {
+        var harness = CreateHarness();
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+        await harness.Manager.WaitForPersistenceAsync(handle.ActivityId);
+
+        // 每行 50 字符、共 200 行（10000 字符），一次性追加时必然超过 4096 字符上限。
+        var lines = Enumerable.Range(0, 200)
+            .Select(i => $"line-{i:D3}-{new string('x', 40)}\n")
+            .ToArray();
+        var fullText = string.Concat(lines);
+
+        await handle.Reporter.AppendOutputAsync(Encoding.UTF8.GetBytes(fullText));
+
+        var tail = harness.Publisher.ActivityEvents
+            .Single(e => e.Type == ActivityEventTypes.Progress)
+            .OutputTail;
+
+        tail.Should().NotBeNull();
+        tail!.Length.Should().BeLessThanOrEqualTo(4096);
+
+        // 是「尾部」而不是头部：最后一行必须还在，开头部分必须已经被裁掉。
+        fullText.Should().EndWith(tail);
+        tail.Should().StartWith("line-", "按行裁剪，不能从某一行中间切开");
+    }
+
+    [Fact]
+    public async Task AppendOutput_ShouldNotEmitAfterTerminal()
+    {
+        var time = new FakeTimeProvider();
+        var harness = CreateHarness(timeProvider: time);
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+        await handle.Reporter.AppendOutputAsync(Encoding.UTF8.GetBytes("before\n"));
+        await handle.Reporter.CompleteAsync(NoResult());
+
+        var eventsBefore = harness.Publisher.ActivityEvents.Count;
+
+        await handle.Reporter.AppendOutputAsync(Encoding.UTF8.GetBytes("after-1\n"));
+        time.Advance(TimeSpan.FromSeconds(2));
+        await handle.Reporter.AppendOutputAsync(Encoding.UTF8.GetBytes("after-2\n"));
+
+        harness.Publisher.ActivityEvents.Count.Should().Be(eventsBefore, "终态后不再发任何活动事件");
+        harness.Publisher.ActivityEvents.Should().NotContain(e => e.OutputTail != null && e.OutputTail.Contains("after"));
+    }
+
     // ─── 保留期回收 ───────────────────────────────────────────────────────────
 
     [Fact]

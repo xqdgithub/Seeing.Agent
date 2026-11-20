@@ -165,4 +165,80 @@ public class BackgroundActivityEventHandlingTests
         BackgroundActivityProjection.Apply(timeline, activity, allowAppend: false).Should().BeFalse();
         timeline.Items.Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task ProgressEvent_ShouldUpdateLiveOutput()
+    {
+        var handler = CreateHandler();
+        var timeline = CreateTimelineWithToolCall("tc1");
+
+        var progress = Event(
+            ActivityEventTypes.Progress,
+            Snapshot(2, BackgroundActivityStatus.Running, "tc1")) with
+        {
+            OutputTail = "line-1\nline-2\n"
+        };
+
+        await handler.ProcessEventAsync(progress);
+
+        handler.TryGetBackgroundActivity("act1", out var activity).Should().BeTrue();
+        activity.LiveOutput.Should().Be("line-1\nline-2\n");
+
+        // 实时输出必须随活动一起附着到工具卡片（整份视图替换，不能只带状态字段）。
+        BackgroundActivityProjection.Apply(timeline, activity).Should().BeTrue();
+        var toolCall = timeline.Items
+            .SelectMany(i => i.Turn?.Messages ?? Enumerable.Empty<Seeing.Agent.WebUI.Models.MessageViewModel>())
+            .SelectMany(m => m.ToolCalls)
+            .Single(tc => tc.Id == "tc1");
+        toolCall.BackgroundActivity!.LiveOutput.Should().Be("line-1\nline-2\n");
+
+        // 终态事件不携带输出正文：上一次的实时输出必须保留（终态后仍显示最后一段）。
+        await handler.ProcessEventAsync(Event(
+            ActivityEventTypes.Completed,
+            Snapshot(3, BackgroundActivityStatus.Succeeded, "tc1")));
+
+        handler.TryGetBackgroundActivity("act1", out var completed).Should().BeTrue();
+        completed.Status.Should().Be(BackgroundActivityStatus.Succeeded);
+        completed.LiveOutput.Should().Be("line-1\nline-2\n");
+    }
+
+    [Fact]
+    public void SnapshotSeed_ShouldNotCarryLiveOutput()
+    {
+        var handler = CreateHandler();
+
+        handler.SeedBackgroundActivities(new[]
+        {
+            Snapshot(4, BackgroundActivityStatus.Running, "tc1")
+        });
+
+        handler.TryGetBackgroundActivity("act1", out var activity).Should().BeTrue();
+
+        // 快照不含输出正文：首屏重建不得凭空出现旧输出。
+        activity.LiveOutput.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ProgressEvent_WithOlderSeq_ShouldNotOverwriteLiveOutput()
+    {
+        var handler = CreateHandler();
+
+        await handler.ProcessEventAsync(Event(
+            ActivityEventTypes.Completed,
+            Snapshot(5, BackgroundActivityStatus.Succeeded, "tc1")) with
+        {
+            OutputTail = "final\n"
+        });
+
+        await handler.ProcessEventAsync(Event(
+            ActivityEventTypes.Progress,
+            Snapshot(3, BackgroundActivityStatus.Running, "tc1")) with
+        {
+            OutputTail = "stale\n"
+        });
+
+        handler.TryGetBackgroundActivity("act1", out var activity).Should().BeTrue();
+        activity.Seq.Should().Be(5);
+        activity.LiveOutput.Should().Be("final\n");
+    }
 }
