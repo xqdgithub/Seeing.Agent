@@ -8,32 +8,16 @@ namespace Seeing.Agent.Tools.Support;
 /// </summary>
 public abstract class BuiltInToolBase : ToolBase
 {
-    protected readonly string _workingDirectory;
-
-    protected BuiltInToolBase(ILogger logger, string? workingDirectory = null)
+    protected BuiltInToolBase(ILogger logger)
         : base(logger)
     {
-        _workingDirectory = workingDirectory ?? Directory.GetCurrentDirectory();
+        // 禁止在构造期捕获任何随执行/工作区变化的值（工具是 Singleton）。
     }
 
     /// <summary>
     /// 工具标签
     /// </summary>
     public override IReadOnlyList<string> Tags => new[] { "built-in" };
-
-    /// <summary>
-    /// 解析文件路径（支持相对路径转绝对路径）
-    /// </summary>
-    protected string ResolvePath(string? filePath)
-    {
-        if (string.IsNullOrEmpty(filePath))
-            return _workingDirectory;
-
-        if (Path.IsPathRooted(filePath))
-            return filePath;
-
-        return Path.GetFullPath(Path.Combine(_workingDirectory, filePath));
-    }
 
     /// <summary>
     /// 构建标准 JSON Schema
