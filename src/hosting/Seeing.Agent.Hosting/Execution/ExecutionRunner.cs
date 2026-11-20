@@ -114,7 +114,6 @@ internal sealed class ExecutionRunner : IExecutionRunner
         var agentSelectionResolver = scope.ServiceProvider.GetRequiredService<AgentSelectionResolver>();
         var modelManager = scope.ServiceProvider.GetRequiredService<IModelManager>();
         var workspaceProvider = scope.ServiceProvider.GetRequiredService<IWorkspaceProvider>();
-        var executionWorld = scope.ServiceProvider.GetRequiredService<IExecutionWorld>();
         var commandRegistry = scope.ServiceProvider.GetRequiredService<ICommandRegistry>();
 
         // === 本轮终态事实的承接变量（只能在真正发生的位置写入，禁止提前填「将要执行」的推测值） ===
@@ -133,6 +132,13 @@ internal sealed class ExecutionRunner : IExecutionRunner
                 record.SessionId,
                 scenario: scope.ServiceProvider.GetService<IDefaultWorkModeProvider>()?.GetDefaultScenario());
 
+            // cwd 的唯一计算点（session 已就绪）：请求级/会话级任何偏离都收敛到工作区根。
+            var cwdResolution = ExecutionCwdResolver.Resolve(
+                record.Options?.WorkingDirectory, session.WorkingDirectory, workspaceProvider);
+            var cwd = cwdResolution.Path;
+            if (cwdResolution.Warning is not null)
+                _logger.LogWarning("{Warning}", cwdResolution.Warning);
+
             try
             {
                 // === 执行前职责（原 SubmitAsync）：出站回填、模型/模式/思考强度落盘、cwd、指令注入 ===
@@ -148,10 +154,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
                     session.UpdatedAt = DateTime.Now;
                 }
 
-                var cwd = record.Options?.WorkingDirectory
-                    ?? session.WorkingDirectory
-                    ?? executionWorld.Cwd;
-                if (!string.Equals(session.WorkingDirectory, cwd, StringComparison.Ordinal))
+                if (cwdResolution.NeedsSessionWriteBack)
                 {
                     session.WorkingDirectory = cwd;
                 }
@@ -197,8 +200,8 @@ internal sealed class ExecutionRunner : IExecutionRunner
             // Build execution context with background permission channel
             // 会话级结算 + schema 在此快照；本轮中途改 session.Scenario 不影响已算结果
             var context = await BuildExecutionContextAsync(
-                session, record, agentRegistry, agentSelectionResolver, modelManager, workspaceProvider, executionWorld,
-                scope.ServiceProvider);
+                session, record, agentRegistry, agentSelectionResolver, modelManager, workspaceProvider,
+                cwd, scope.ServiceProvider);
 
             // 旁路生成标题（不阻塞主对话；命令不生成标题）
             // 标题门控按「本批含 Presentation=User 输入」：纯系统/子会话通知批次不生成标题。
@@ -231,15 +234,19 @@ internal sealed class ExecutionRunner : IExecutionRunner
             // /skill 与 /<技能名> 按名解析技能，必须与随后的系统提示词清单、skill 工具看到同一份快照，
             // 否则同一次执行内会出现「清单/工具一个版本、命令另一个版本」的两个真相。
             var executionScope = scope.ServiceProvider.GetRequiredService<IContextExecutionScope>();
-            executionScope.SessionId = record.SessionId;
-            executionScope.Cwd = context.WorkingDirectory ?? context.WorkspaceRoot ?? executionWorld.Cwd;
-            executionScope.WorkspaceRoot = context.WorkspaceRoot ?? workspaceProvider.GetProjectRoot();
-            executionScope.SkillSnapshot = await ResolveSkillSnapshotAsync(
+            var skillSnapshot = await ResolveSkillSnapshotAsync(
                 scope.ServiceProvider, record.ExecutionId, executionToken);
-            // 本轮用户查询（本批最后一条用户输入）：供「查询依赖」的上下文源（如记忆召回）使用。
-            // 取 record.Input（= 本批最后一条），不是 batch.FirstUserText（= 本批第一条）。
-            executionScope.UserQuery = record.Input?.Text;
-            executionScope.ToolSettlement = context.ToolSettlement;
+            // 一处填充：主链与 Scheduler 旁路共用，避免"某条链路漏填"。
+            ExecutionScopeInitializer.Initialize(
+                executionScope,
+                record.SessionId,
+                cwd,
+                context.WorkspaceRoot ?? workspaceProvider.GetProjectRoot(),
+                skillSnapshot,
+                // 本轮用户查询（本批最后一条用户输入）：供「查询依赖」的上下文源使用。
+                record.Input?.Text,
+                context.ToolSettlement,
+                context.Collaborations);
 
             if (IsCommandInput(inputText))
             {
@@ -706,7 +713,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
         AgentSelectionResolver agentSelectionResolver,
         IModelManager modelManager,
         IWorkspaceProvider workspaceProvider,
-        IExecutionWorld executionWorld,
+        string cwd,
         IServiceProvider services)
     {
         var agentId = await agentSelectionResolver.ResolveAgentIdAsync(
@@ -737,9 +744,6 @@ internal sealed class ExecutionRunner : IExecutionRunner
             session.SelectedAcpMode);
 
         var projectRoot = workspaceProvider.GetProjectRoot();
-        var cwd = record.Options?.WorkingDirectory
-            ?? session.WorkingDirectory
-            ?? executionWorld.Cwd;
 
         // 工具视图唯一出口：轮首先把上一轮登记的发现提升为生效，再结算本轮视图，
         // 最后把结算增量提交回会话（发现集裁剪、升级粘滞位、每轮度量）。
@@ -773,7 +777,9 @@ internal sealed class ExecutionRunner : IExecutionRunner
             RequestModelId = requestModelId,
             RequestThinkingEffort = requestThinkingEffort,
             ToolSettlement = schemaSettlement,
-            SectionIds = sectionIds
+            SectionIds = sectionIds,
+            Collaborations = session.CollaborationDirectories?.ToArray()
+                ?? Array.Empty<Seeing.Session.Core.CollaborationDirectory>()
         };
     }
 
@@ -1013,7 +1019,8 @@ internal sealed class ExecutionRunner : IExecutionRunner
             CancellationToken = cancellationToken,
             ToolSettlement = context.ToolSettlement,
             ContextBaseline = context.ContextBaseline,
-            SkillSnapshot = context.SkillSnapshot
+            SkillSnapshot = context.SkillSnapshot,
+            Collaborations = context.Collaborations
         };
 
         // 传递请求级模型选择到 Metadata（适用于 Native Agent 和 ACP Passthrough）

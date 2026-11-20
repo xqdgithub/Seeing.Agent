@@ -67,6 +67,7 @@ public sealed class ToolExposureConfigResolver
         "delete",
         "open_file",
         "add_workspace_path",
+        "add_collaboration_directory",
         "question",
         "skill",
         "task",

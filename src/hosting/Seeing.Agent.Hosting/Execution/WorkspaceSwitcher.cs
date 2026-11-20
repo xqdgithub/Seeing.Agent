@@ -49,6 +49,20 @@ public interface IWorkspaceReloadInvoker
 }
 
 /// <summary>
+/// 切换流程用的自动重载抑制器（可选能力：仅真正持有编排器的实现才提供）。
+/// <para>
+/// 作用域覆盖整个 <c>ApplyAsync</c>（改根、配置重读、显式两轮、参与者回调）。
+/// 抑制期间收到的真实信号不会被丢弃：编排器记账，作用域释放时补一次去抖全量轮；
+/// 已被显式两轮覆盖的信号不重复补跑。
+/// </para>
+/// </summary>
+public interface IWorkspaceReloadSuppressor
+{
+    /// <summary>进入抑制；Dispose 退出抑制（最外层退出时补跑记账信号）。</summary>
+    IDisposable SuppressAutoReload();
+}
+
+/// <summary>
 /// 唯一的工作区切换实现：首次选定与再次切换共用。
 /// <para>
 /// 顺序不可调换：先拒绝未决审批，再取消并 <b>等到空闲</b>，然后才改根。
@@ -61,6 +75,7 @@ public sealed class WorkspaceSwitcher : IWorkspaceSwitcher
     private readonly IWorkspaceConfigReloader _configReloader;
     private readonly IWorkspaceHistoryStore _history;
     private readonly IWorkspaceReloadInvoker _reloader;
+    private readonly IWorkspaceReloadSuppressor? _suppressor;
     private readonly IExecutionInFlightBoundary? _inFlight;
     private readonly IPermissionRequestManager? _permissions;
     private readonly IReadOnlyList<IWorkspaceApplyParticipant> _participants;
@@ -84,6 +99,8 @@ public sealed class WorkspaceSwitcher : IWorkspaceSwitcher
         _configReloader = configReloader;
         _history = history;
         _reloader = reloader;
+        // 抑制器是可选能力：只有真正持有编排器的重载器才提供；替身等价于不抑制。
+        _suppressor = reloader as IWorkspaceReloadSuppressor;
         _inFlight = inFlight;
         _permissions = permissions;
         _participants = participants.ToArray();
@@ -104,8 +121,15 @@ public sealed class WorkspaceSwitcher : IWorkspaceSwitcher
         if (!await _gate.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false))
             return WorkspaceApplyResult.Failed("上一次工作区切换尚未完成");
 
+        IDisposable? suppression = null;
         try
         {
+            // 整个切换流程都在抑制域内：SetWorkspaceRoot 排入的 WorkspaceRootChanged、
+            // 配置重读排入的 ConfigChanged 与下面显式两轮是同一变更，不能再去抖后各跑一轮
+            // （否则显式重载之后还会多出第三轮）。抑制期内的真实外部信号由编排器记账，
+            // 作用域释放时补跑。
+            suppression = _suppressor?.SuppressAutoReload();
+
             var newRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(request.NewRoot));
             var oldRoot = _workspace.ResolvedRoot;
 
@@ -194,6 +218,7 @@ public sealed class WorkspaceSwitcher : IWorkspaceSwitcher
         }
         finally
         {
+            suppression?.Dispose();
             _progress?.End();
             _gate.Release();
         }

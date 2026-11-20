@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Configuration;
+using Seeing.Agent.Configuration;
 using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Core;
 using Seeing.Agent.Llm;
@@ -23,6 +24,7 @@ public sealed class SessionDirectory : ISessionDirectory
     private readonly ISessionRuntime _runtime;
     private readonly ILogger<SessionDirectory> _logger;
     private readonly IDefaultWorkModeProvider? _defaultWorkMode;
+    private readonly IWorkspaceProvider? _workspace;
 
     public SessionDirectory(
         ISessionManager sessionManager,
@@ -31,8 +33,10 @@ public sealed class SessionDirectory : ISessionDirectory
         IModelManager modelManager,
         ISessionRuntime runtime,
         ILogger<SessionDirectory> logger,
-        IDefaultWorkModeProvider? defaultWorkMode = null)
+        IDefaultWorkModeProvider? defaultWorkMode = null,
+        IWorkspaceProvider? workspace = null)
     {
+        _workspace = workspace;
         _sessionManager = sessionManager;
         _groupManager = groupManager;
         _agentSelectionResolver = agentSelectionResolver;
@@ -72,7 +76,6 @@ public sealed class SessionDirectory : ISessionDirectory
     public async Task<SessionData> CreateAsync(
         string? title = null,
         string? agentId = null,
-        string? workingDirectory = null,
         CancellationToken ct = default)
     {
         var resolvedAgentId = await _agentSelectionResolver.ResolveAgentIdAsync(
@@ -85,7 +88,8 @@ public sealed class SessionDirectory : ISessionDirectory
             agent: resolvedAgentId,
             scenario: _defaultWorkMode?.GetDefaultScenario(),
             title: string.IsNullOrEmpty(title) ? "新会话" : title,
-            workingDirectory: workingDirectory,
+            // 工作目录不可由调用方指定：会话创建即钉到工作区根（执行期再校验）。
+            workingDirectory: _workspace?.GetProjectRoot(),
             ct: ct).ConfigureAwait(false);
 
         ct.ThrowIfCancellationRequested();
