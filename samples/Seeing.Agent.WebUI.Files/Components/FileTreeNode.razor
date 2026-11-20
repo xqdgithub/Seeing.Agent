@@ -31,7 +31,8 @@
                 {
                     @foreach (var child in _children)
                     {
-                        <FileTreeNode Entry="child" Workspace="Workspace" OnOpen="OnOpen" Depth="Depth + 1" />
+                        <FileTreeNode @key="child.Id"
+                                      Entry="child" Workspace="Workspace" OnOpen="OnOpen" Depth="Depth + 1" />
                     }
                 }
             </ul>

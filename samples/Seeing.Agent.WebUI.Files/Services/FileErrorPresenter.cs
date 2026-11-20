@@ -13,7 +13,8 @@ public static class FileErrorPresenter
     public static string Describe(Exception ex) => ex switch
     {
         UnauthorizedAccessException => "路径不在工作区",
-        FileNotFoundException => "文件不存在",
+        // 带路径：多根下"同一相对路径属于哪个根"是最高频的定位信息
+        FileNotFoundException notFound => WithPath("文件不存在", notFound.FileName),
         DirectoryNotFoundException => "文件不存在",
         FileTooLargeException => "文件过大，仅预览",
         FileNotEditableException => "该文件编码不支持编辑",
@@ -21,4 +22,9 @@ public static class FileErrorPresenter
         OperationCanceledException => "操作已取消",
         _ => "无法打开该文件",
     };
+
+    private static string WithPath(string message, string? path)
+        => string.IsNullOrWhiteSpace(path)
+            ? message
+            : $"{message}：{path}";
 }

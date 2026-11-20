@@ -11,7 +11,8 @@
         <ul class="file-tree-list">
             @foreach (var root in Roots)
             {
-                <FileTreeNode Entry="@FileTreeRoots.Entry(root)"
+                <FileTreeNode @key="root.RootId"
+                              Entry="@FileTreeRoots.Entry(root)"
                               Workspace="@root"
                               OnOpen="@OnOpen"
                               Depth="0"
