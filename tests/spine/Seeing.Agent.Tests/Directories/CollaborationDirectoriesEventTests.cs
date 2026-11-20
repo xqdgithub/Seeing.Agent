@@ -13,6 +13,78 @@ namespace Seeing.Agent.Tests.Directories;
 /// </summary>
 public class CollaborationDirectoriesEventTests
 {
+    [Fact]
+    public async Task Add_NonExistentDirectory_ShouldThrow()
+    {
+        using var fixture = new Fixture();
+        var missing = Path.Combine(Path.GetTempPath(), "cd_missing_" + Guid.NewGuid().ToString("N"));
+
+        var act = async () => await fixture.Directories.AddAsync("s1", missing);
+
+        await act.Should().ThrowAsync<DirectoryNotFoundException>();
+    }
+
+    [Fact]
+    public async Task Add_ProjectRoot_ShouldThrow()
+    {
+        using var fixture = new Fixture();
+
+        var act = async () => await fixture.Directories.AddAsync("s1", fixture.ProjectRoot);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*工作区根*");
+    }
+
+    [Fact]
+    public async Task Add_ChildOfExisting_ShouldThrow()
+    {
+        using var fixture = new Fixture();
+        var parent = NewDirectory();
+        var child = Path.Combine(parent, "sub");
+        Directory.CreateDirectory(child);
+
+        await fixture.Directories.AddAsync("s1", parent);
+        var act = async () => await fixture.Directories.AddAsync("s1", child);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*重叠*");
+    }
+
+    [Fact]
+    public async Task Add_ParentOfExisting_ShouldThrow()
+    {
+        using var fixture = new Fixture();
+        var parent = NewDirectory();
+        var child = Path.Combine(parent, "sub");
+        Directory.CreateDirectory(child);
+
+        await fixture.Directories.AddAsync("s1", child);
+        var act = async () => await fixture.Directories.AddAsync("s1", parent);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*重叠*");
+    }
+
+    [Fact]
+    public async Task Add_SameDirectory_ShouldUpdateNoteWithoutThrowing()
+    {
+        using var fixture = new Fixture();
+        var dir = NewDirectory();
+
+        await fixture.Directories.AddAsync("s1", dir, note: "旧");
+        await fixture.Directories.AddAsync("s1", dir, note: "新");
+
+        fixture.Session.CollaborationDirectories.Should().ContainSingle()
+            .Which.Note.Should().Be("新");
+    }
+
+    private static string NewDirectory()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "cd_dir_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
     private sealed class Collector : IObserver<SessionEvent>
     {
         public List<SessionEvent> Events { get; } = [];
@@ -30,6 +102,7 @@ public class CollaborationDirectoriesEventTests
         {
             var root = Path.Combine(Path.GetTempPath(), "cd_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
+            ProjectRoot = root;
 
             Session = SessionData.Create("p1", "build");
             Session.Id = "s1";
@@ -57,6 +130,7 @@ public class CollaborationDirectoriesEventTests
         public SessionData Session { get; }
         public CollaborationDirectories Directories { get; }
         public Collector Collector { get; } = new();
+        public string ProjectRoot { get; }
 
         public void Dispose() => _subscription.Dispose();
     }
@@ -65,7 +139,7 @@ public class CollaborationDirectoriesEventTests
     public async Task Add_ShouldPublishCollaborationDirectoriesChanged()
     {
         using var fixture = new Fixture();
-        var target = Path.Combine(Path.GetTempPath(), "cd_add_" + Guid.NewGuid().ToString("N"));
+        var target = NewDirectory();
 
         await fixture.Directories.AddAsync("s1", target);
 

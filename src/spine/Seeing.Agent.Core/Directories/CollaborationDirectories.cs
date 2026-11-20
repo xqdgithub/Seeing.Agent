@@ -70,6 +70,15 @@ public sealed class CollaborationDirectories : ICollaborationDirectories
 
         var normalized = NormalizePath(absolutePath);
 
+        if (!Directory.Exists(normalized))
+            throw new DirectoryNotFoundException($"协同目录不存在：{normalized}");
+
+        // 与工作区根重叠：子目录已被项目根覆盖，父目录会反过来覆盖项目根
+        var projectRoot = TryGetProjectRoot();
+        if (projectRoot is not null && IsOverlapping(normalized, projectRoot))
+            throw new InvalidOperationException(
+                $"协同目录与工作区根重叠（{projectRoot}）：请登记工作区之外的目录。");
+
         await MutateAsync(sessionId, directories =>
         {
             var index = IndexOf(directories, normalized);
@@ -80,6 +89,14 @@ public sealed class CollaborationDirectories : ICollaborationDirectories
                 if (note is not null && !string.Equals(existing.Note, note, StringComparison.Ordinal))
                     directories[index] = new CollaborationDirectory(existing.Path, note);
                 return;
+            }
+
+            // 与已登记目录重叠：父子关系会让同一文件拥有两个根，破坏「根」的唯一性
+            foreach (var existing in directories)
+            {
+                if (IsOverlapping(normalized, existing.Path))
+                    throw new InvalidOperationException(
+                        $"协同目录与已登记目录重叠（{existing.Path}）：请登记互不包含的目录。");
             }
 
             directories.Add(new CollaborationDirectory(normalized, note));
@@ -182,8 +199,7 @@ public sealed class CollaborationDirectories : ICollaborationDirectories
     }
 
     /// <summary>绝对化（相对路径按项目根）+ <see cref="PathBoundary.Canonicalize"/>（realpath + 去尾分隔符）。</summary>
-    private string NormalizePath(string path)
-    {
+    private string NormalizePath(string path)    {
         var candidate = path.Trim();
         string absolute;
 
@@ -220,5 +236,23 @@ public sealed class CollaborationDirectories : ICollaborationDirectories
         }
 
         return -1;
+    }
+
+    /// <summary>两个目录是否包含或相等（父子关系都不允许作为两个独立根）。</summary>
+    private static bool IsOverlapping(string left, string right)
+        => PathBoundary.IsWithin(left, right) || PathBoundary.IsWithin(right, left);
+
+    /// <summary>项目根：工作区未决议时返回 null（此时无法做重叠校验）。</summary>
+    private string? TryGetProjectRoot()
+    {
+        try
+        {
+            var root = _workspace.GetProjectRoot();
+            return string.IsNullOrWhiteSpace(root) ? null : root;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
     }
 }

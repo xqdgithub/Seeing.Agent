@@ -111,7 +111,16 @@ public class AddCollaborationDirectoryTool : BuiltInToolBase
         if (resolution.Scope == PermissionGrantScope.Once)
             return Failure("一次性批准不会持久化协同目录；请选择本会话或目录级授权。");
 
-        await _collaboration.AddAsync(context.SessionId, absolutePath, note, context.CancellationToken);
+        try
+        {
+            await _collaboration.AddAsync(context.SessionId, absolutePath, note, context.CancellationToken);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ArgumentException)
+        {
+            // 存在性 / 与工作区根或已登记目录重叠：把原因原样交给模型，不要包装成"执行失败"
+            return Failure(ex.Message);
+        }
+
         return Success(
             "协同目录已添加",
             absolutePath + "\n本轮后续工具调用已可读写；上下文列表将在下一轮同步。");
