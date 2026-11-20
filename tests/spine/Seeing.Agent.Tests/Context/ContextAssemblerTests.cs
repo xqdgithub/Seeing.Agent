@@ -65,6 +65,67 @@ public sealed class ContextAssemblerTests
     }
 
     [Fact]
+    public async Task SystemBaseline_ShouldKeepSectionsOrderedAndSeparated()
+    {
+        var skills = new FakeSource
+        {
+            Key = new("skills"),
+            Scope = ContextSourceScope.Project,
+            RenderInitialBehavior = _ => "## Skills\n\n- s"
+        };
+        var directories = new FakeSource
+        {
+            Key = new("collab"),
+            Scope = ContextSourceScope.Session,
+            RenderInitialBehavior = _ => "## 协同工作目录\n\n- d"
+        };
+        var tools = new FakeSource
+        {
+            Key = new("tools"),
+            Scope = ContextSourceScope.Session,
+            RenderInitialBehavior = _ => "## 工具清单\n\n### 通用 (1 tools, 1 shown)"
+        };
+        var session = new SessionData { Id = "s-order" };
+        var assembler = CreateAssembler(session, tools, directories, skills);
+
+        var result = await AssembleAsync(assembler, session);
+
+        var skillsIndex = result.SystemBaseline.IndexOf("## Skills", StringComparison.Ordinal);
+        var directoriesIndex = result.SystemBaseline.IndexOf("## 协同工作目录", StringComparison.Ordinal);
+        var toolsIndex = result.SystemBaseline.IndexOf("## 工具清单", StringComparison.Ordinal);
+
+        skillsIndex.Should().BeGreaterThanOrEqualTo(0);
+        directoriesIndex.Should().BeGreaterThan(skillsIndex);
+        toolsIndex.Should().BeGreaterThan(directoriesIndex);
+        result.SystemBaseline.Should().Contain("## Skills\n\n- s\n\n## 协同工作目录");
+        result.SystemBaseline.Should().Contain("## 协同工作目录\n\n- d\n\n## 工具清单");
+    }
+
+    [Fact]
+    public async Task RebuildAndReanchor_ShouldRunSectionGuard()
+    {
+        var source = new FakeSource { RenderInitialBehavior = _ => "bare body" };
+        var session = new SessionData { Id = "s-guard-wiring" };
+        var assembler = CreateAssembler(session, source);
+
+        await AssembleAsync(assembler, session);
+
+        // 值结构版本变化 → RebuildBaseline 接线
+        source.ValueSchemaVersion = 2;
+        var rebuilt = await AssembleAsync(assembler, session);
+        rebuilt.Issues.Should().Contain(issue => issue.Contains("分节", StringComparison.Ordinal));
+
+        // 压缩重置位 → TryReanchorBaseline 接线
+        var store = new ContextBaselineStore(NullLogger<ContextBaselineStore>.Instance);
+        var state = store.Load(session);
+        state.Pending = PendingBaselineReset.Compaction;
+        store.Save(session, state);
+
+        var reanchored = await AssembleAsync(assembler, session);
+        reanchored.Issues.Should().Contain(issue => issue.Contains("分节", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task EmptySystemSource_ShouldNotReportSectionIssue()
     {
         var source = new FakeSource { RenderInitialBehavior = _ => string.Empty };
@@ -86,6 +147,36 @@ public sealed class ContextAssemblerTests
         var result = await AssembleAsync(assembler, session);
 
         result.Issues.Should().NotContain(issue => issue.Contains("分节", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ValueSchemaVersionBump_ShouldRebuildBaselineWithoutWarnings()
+    {
+        var renders = 0;
+        var source = new FakeSource
+        {
+            // 第一轮落库旧文本，升级后重渲染出新文本
+            RenderInitialBehavior = _ => renders++ == 0 ? "## Old" : "## New"
+        };
+        var session = new SessionData { Id = "s-schema-bump" };
+        var assembler = CreateAssembler(session, source);
+
+        var first = await AssembleAsync(assembler, session);
+        first.SystemBaseline.Should().Contain("## Old");
+
+        // 部署升级：源的值结构版本提升，旧状态仍是版本 1 → 走重建，一次性采纳新文本
+        source.ValueSchemaVersion = 2;
+        var rebuilt = await AssembleAsync(assembler, session);
+
+        rebuilt.SystemBaseline.Should().Contain("## New");
+        rebuilt.SystemBaseline.Should().NotContain("## Old");
+        rebuilt.Issues.Should().NotContain(issue => issue.Contains("不确定", StringComparison.Ordinal));
+        rebuilt.ChangedSourceKeys.Should().Contain("fake");
+
+        // 重建后稳定：下一轮不再变化、不再告警
+        var stable = await AssembleAsync(assembler, session);
+        stable.Issues.Should().BeEmpty();
+        stable.ChangedSourceKeys.Should().BeEmpty();
     }
 
     [Fact]

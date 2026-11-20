@@ -66,7 +66,7 @@ public class ToolExposureEngineTests
             Input(tools, Config(ToolExposurePolicyMode.Tiered)), Counter);
 
         result.CatalogText.Should().NotBeNull();
-        result.CatalogText!.Should().StartWith("## 工具目录");
+        result.CatalogText!.Should().StartWith("## 工具清单");
         result.CatalogText.Should().Contain("### 通用");
     }
 

@@ -57,7 +57,11 @@ public sealed class ToolCatalogContextSource : IContextSource, IContextSourceMes
     public ContextSourceScope Scope => ContextSourceScope.Session;
 
     /// <inheritdoc />
-    public int ValueSchemaVersion => 1;
+    /// <remarks>
+    /// 版本 2：目录正文增加「## 工具清单」分节标题。提升版本让旧会话一次性重建基线，
+    /// 否则旧文本会在「同值不同文本」检查里每轮告警。
+    /// </remarks>
+    public int ValueSchemaVersion => 2;
 
     /// <inheritdoc />
     /// <remarks>
@@ -117,6 +121,11 @@ public sealed class ToolCatalogContextSource : IContextSource, IContextSourceMes
     /// <inheritdoc />
     public string? Render(ContextSourceValue previous, ContextSourceValue current)
     {
+        // 没有上一份目录（首次建立 / 值结构版本升级）：全量由初始渲染负责，
+        // 这里再叙述一次会把整个目录重复成「新增」。与协同目录源同语义。
+        if (previous.Canonical is null)
+            return null;
+
         var currentCanonical = current.State == ContextValueState.Removed
             ? (JsonElement?)null
             : current.Canonical;

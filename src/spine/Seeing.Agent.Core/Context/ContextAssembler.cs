@@ -671,7 +671,7 @@ public sealed class ContextAssembler : IContextAssembler
         else
         {
             WarnIfBaselineTooLong(session, source, baselineText, issues);
-        WarnIfSystemBaselineNotSectioned(session.Id, source, baselineText, issues);
+            WarnIfSystemBaselineNotSectioned(session.Id, source, baselineText, issues);
         }
 
         sourceState.ValueSchemaVersion = source.ValueSchemaVersion;

@@ -53,7 +53,7 @@ internal static class ToolExposureEngine
     private const int LineOverhead = 3;
 
     /// <summary>目录正文的 H2 分节标题（系统提示词中的边界，与技能清单/协同目录同构）。</summary>
-    private const string CatalogHeading = "## 工具目录";
+    private const string CatalogHeading = "## 工具清单";
 
     public static ToolExposureResult Compute(ToolExposureInput input, ITokenCounter counter)
     {

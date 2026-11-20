@@ -24,7 +24,7 @@ namespace Seeing.Agent.Core.Context;
 /// </para>
 /// <para>
 /// <b>空列表返回 <see cref="ContextValueState.Value"/> 而不是 Removed</b>：空列表是"这个会话没有协同目录"
-/// 这一确定事实，首轮必须建立基线并渲染"（无）"；<c>Removed</c> 会在首次装配被直接跳过。
+/// 这一确定事实，首轮必须建立基线并渲染"未授权任何协同目录"；<c>Removed</c> 会在首次装配被直接跳过。
 /// </para>
 /// </summary>
 public sealed class CollaborationDirectoriesContextSource : IContextSource
@@ -77,7 +77,11 @@ public sealed class CollaborationDirectoriesContextSource : IContextSource
     public ContextSourceScope Scope => ContextSourceScope.Session;
 
     /// <inheritdoc />
-    public int ValueSchemaVersion => 1;
+    /// <remarks>
+    /// 版本 2：分节标题与文案改为「## 协同工作目录 + 绝对路径约定」。提升版本让旧会话一次性重建基线，
+    /// 否则旧文本会在「同值不同文本」检查里每轮告警，且新分节永远不生效。
+    /// </remarks>
+    public int ValueSchemaVersion => 2;
 
     /// <inheritdoc />
     public ContextSourceTarget Target => ContextSourceTarget.System;

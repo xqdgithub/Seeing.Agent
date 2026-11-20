@@ -158,7 +158,7 @@ git commit -m "feat(prompt): give collaboration directories an H2 section"
 
 **Interfaces:**
 - Consumes: `ToolExposureEngine.Compute` 既有签名与 `CatalogText`
-- Produces: `CatalogText` 以 `## 工具目录` 开头（分层布局且存在延迟工具时）
+- Produces: `CatalogText` 以 `## 工具清单` 开头（分层布局且存在延迟工具时）
 
 - [ ] **Step 1: 写失败测试**
 
@@ -174,7 +174,7 @@ public void TieredCatalog_ShouldStartWithToolCatalogHeading()
         Input(tools, Config(ToolExposurePolicyMode.Tiered)), Counter);
 
     result.CatalogText.Should().NotBeNull();
-    result.CatalogText!.Should().StartWith("## 工具目录");
+    result.CatalogText!.Should().StartWith("## 工具清单");
     result.CatalogText.Should().Contain("### 通用");
 }
 ```
@@ -193,7 +193,7 @@ Expected: FAIL（`CatalogText` 以「以下工具当前未内联…」开头）
 在 `BuildCatalog` 中新增常量：
 
 ```csharp
-private const string CatalogHeading = "## 工具目录";
+private const string CatalogHeading = "## 工具清单";
 ```
 
 预算计算改为（标题行 + 空行也计入）：
@@ -369,7 +369,7 @@ git commit -m "feat(prompt): warn when a system context baseline has no section 
 - 每个 `ContextSourceTarget.System` 源的初始渲染必须以 `## 标题` 开头，或以 XML 信封包裹整体内容。
 - 装配器在建立 / 重建 / 重锚定基线时校验该约定；不满足时记入 `Issues` 并输出 warning，不自动补标题、不抛异常。
 - 新文本只对新建会话或重锚定生效；已落库基线按字节稳定原则不重写。
-- 现有分节顺序：`## Skills` → `## 协同工作目录` → `## 工具目录`（System 源按 Scope → Key 排序）。
+- 现有分节顺序：`## Skills` → `## 协同工作目录` → `## 工具清单`（System 源按 Scope → Key 排序）。
 ```
 
 - [ ] **Step 2: 跑全量相关测试**

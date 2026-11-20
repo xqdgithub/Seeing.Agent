@@ -76,10 +76,10 @@
 
 ### 5.2 工具目录（`src/hosting/Seeing.Agent.Hosting/Execution/ToolExposure/ToolExposureEngine.cs`）
 
-`BuildCatalog` 在开场白之前加 `## 工具目录` 标题与一个空行：
+`BuildCatalog` 在开场白之前加 `## 工具清单` 标题与一个空行（用「清单」而非「目录」，避免与工作目录 / 协同工作目录混淆）：
 
 ```
-## 工具目录
+## 工具清单
 
 以下工具当前未内联进本次请求的 schema…
 ### 通用 (66 tools, 51 shown)
@@ -111,13 +111,14 @@ private void WarnIfSystemBaselineNotSectioned(
 ### 5.4 测试
 
 - `CollaborationDirectoriesContextSourceTests`：首行断言 `## 协同工作目录`；含「绝对路径」；空列表含「未授权」。
-- `ToolExposureEngineTests`：`CatalogText` 以 `## 工具目录` 开头；预算断言保持通过。
-- 新增 `ContextAssembler` 用例：无标题的 System 源 → `Issues` 含告警；带 `## ` 的源 → 不含该告警。
+- `ToolExposureEngineTests`：`CatalogText` 以 `## 工具清单` 开头；预算断言保持通过。
+- 新增 `ContextAssembler` 用例：无标题的 System 源 → `Issues` 含告警；带 `## ` 的源 → 不含该告警；空白与 XML 信封不告警；版本提升后一次性重建且下一轮无告警；三源拼接顺序与空行分隔。
+- 两个改了文本的源把 `ValueSchemaVersion` 1 → 2，旧会话下次装配走 `RebuildBaseline` 采纳新文本（否则每轮「同值不同文本」告警）。
 - 全部相关测试用 VSTest 运行（MTP 在本环境发现不到用例）。
 
 ## 6. 验收
 
-1. 新建会话的系统提示词尾部结构为：`## Skills` → `## 协同工作目录` → `## 工具目录`，每块之间空行分隔，无裸段落。
+1. 新建会话的系统提示词尾部结构为：`## Skills` → `## 协同工作目录` → `## 工具清单`，每块之间空行分隔，无裸段落。
 2. 协同目录分节明确写出绝对路径约定，模型不再把相对路径当协同目录相对路径。
 3. 注册一个不带标题的 System 源时，装配结果 `Issues` 出现可诊断告警，且提示词仍可正常构建。
 4. 既有测试全绿。
@@ -126,8 +127,10 @@ private void WarnIfSystemBaselineNotSectioned(
 
 基线文本建立后按设计**字节稳定**并落库，`BuildSystemBaseline` 只读存库文本。因此：
 
-- 新标题只对**新建会话**或**触发基线重锚定**（会话压缩、切换工作区）的会话生效。
-- 已有会话不会自动重写，看到旧结构属预期，不是缺陷。
+- 两个改了文本的源把 `ValueSchemaVersion` 1 → 2：已有会话在升级后的**下一次装配**走 `RebuildBaseline`，一次性采纳新分节，之后重新字节稳定。
+- 不提升版本的源仍保持「旧基线不重写」；这是框架对 System 源的既有语义。
+- 必须提升版本的原因：若只改渲染文本而不改版本，旧基线文本会在「同值不同文本」检查里**每轮**触发 `Issues` 与 `LogWarning`（值不变、文本永不重写），并让新分节永远不生效。
+- `ToolCatalogContextSource.Render` 在 `previous.Canonical` 为空时返回 `null`：版本重建会以 `Initial` 语义调用 `Render`，不短路会把整份目录重复叙述成「新增」。
 
 ## 8. 留给实现者的决定
 

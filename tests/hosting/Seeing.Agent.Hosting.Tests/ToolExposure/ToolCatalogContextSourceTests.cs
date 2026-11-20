@@ -123,6 +123,21 @@ public class ToolCatalogContextSourceTests
         source.Render(value, value).Should().BeNull();
     }
 
+    [Fact]
+    public async Task 增量渲染_无上一份目录时应返回null()
+    {
+        var scope = new FakeScope
+        {
+            ToolSettlement = BuildSettlement(("通用", "read", "读取文件"))
+        };
+        var source = new ToolCatalogContextSource(scope);
+        var current = await source.ReadAsync();
+
+        // 首次建立 / 值结构版本升级：全量由初始渲染负责，不得把整份目录叙述成「新增」
+        var previous = new ContextSourceValue(ContextValueState.Initial, null, null);
+        source.Render(previous, current).Should().BeNull();
+    }
+
     // ===== 脚手架 =====
 
     private static SessionToolSchemaResolution BuildSettlement(
