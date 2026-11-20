@@ -252,6 +252,20 @@ public class SchedulerEngineTests
         await manager.StopAsync(TestContext.Current.CancellationToken);
     }
 
+    [Fact]
+    public async Task QuartzSchedulerEngine_DisposeTwice_ShouldNotThrow()
+    {
+        // 宿主关停时 hosted service 与 DI 容器可能各释放一次；
+        // 第二次不得因已释放的 SemaphoreSlim 抛 ObjectDisposedException。
+        var engine = CreateEngine();
+        await engine.StartAsync(TestContext.Current.CancellationToken);
+
+        await engine.DisposeAsync();
+
+        Func<Task> second = async () => await engine.DisposeAsync();
+        await second.Should().NotThrowAsync();
+    }
+
     private static QuartzSchedulerEngine CreateEngine()
     {
         var factory = new StdSchedulerFactory();

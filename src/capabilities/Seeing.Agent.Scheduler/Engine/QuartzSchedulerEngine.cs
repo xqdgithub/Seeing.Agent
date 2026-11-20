@@ -13,6 +13,7 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable, IQuartzSchedulerLi
     private readonly ISchedulerFactory _schedulerFactory;
     private IScheduler? _scheduler;
     private readonly SemaphoreSlim _lock = new(1, 1);
+    private int _disposed;
 
     public QuartzSchedulerEngine(
         ISchedulerFactory schedulerFactory,
@@ -751,7 +752,21 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable, IQuartzSchedulerLi
 
     public async ValueTask DisposeAsync()
     {
-        await _lock.WaitAsync();
+        // 幂等：宿主关停时可能先经 hosted service、再由 DI 容器各释放一次。
+        // 第二次进入时 _lock 已被首次释放，若继续 WaitAsync 会抛 ObjectDisposedException，
+        // 以未处理异常形式冒到宿主退出路径（退出码 1）。
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
+        try
+        {
+            await _lock.WaitAsync();
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+
         try
         {
             if (_scheduler != null)
@@ -759,9 +774,22 @@ public sealed class QuartzSchedulerEngine : IAsyncDisposable, IQuartzSchedulerLi
                 await _scheduler.Shutdown(true);
             }
         }
+        catch (Exception ex)
+        {
+            // 关停失败不得让宿主 Dispose 抛未处理异常。
+            _logger.LogWarning(ex, "Quartz 调度器关停失败");
+        }
         finally
         {
-            _lock.Release();
+            try
+            {
+                _lock.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+                // 已被并发释放：忽略。
+            }
+
             _lock.Dispose();
         }
     }
