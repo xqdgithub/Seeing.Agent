@@ -1,0 +1,1214 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Background;
+using Seeing.Agent.Abstractions.Events;
+using Seeing.Agent.Configuration;
+
+namespace Seeing.Agent.Core.Background;
+
+/// <summary>
+/// 后台活动会话面与管理面的唯一实现（同一个类实现
+/// <see cref="IBackgroundActivityManager"/> 与 <see cref="IBackgroundActivityControl"/>）。
+/// <para>
+/// 不变量：
+/// <list type="number">
+/// <item>状态只在本类内变化；<c>Running</c> 迁移要求当前为 <c>Pending</c>。</item>
+/// <item>终态只能提交一次（CAS），提交后 reporter 全部 no-op。</item>
+/// <item>终态先落盘（<see cref="IBackgroundActivityStore.SaveAsync"/>）再发事件。</item>
+/// <item>分支只看 <see cref="BackgroundActivitySnapshot.Capabilities"/>，不读 <c>Kind</c> / <c>Attributes</c>。</item>
+/// </list>
+/// </para>
+/// <para>
+/// 类型为 internal：构造参数含 internal 的存储端口；宿主只经两个公共接口解析（Core 内部注册）。
+/// </para>
+/// </summary>
+internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IBackgroundActivityControl
+{
+    private const string ActivityIdPrefix = "act_";
+
+    /// <summary><c>activity.progress</c> 的最小事件间隔（spec §12.1：≥1s）。</summary>
+    private static readonly TimeSpan s_progressEventInterval = TimeSpan.FromSeconds(1);
+
+    private static readonly string s_hostInstanceId = BuildHostInstanceId();
+
+    private readonly ConcurrentDictionary<string, BackgroundActivityRecord> _activities = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, LauncherRegistration> _launchers = new(StringComparer.Ordinal);
+
+    /// <summary>所有状态变更与快照读取的唯一临界区；临界区内不得 <c>await</c>。</summary>
+    private readonly object _sync = new();
+
+    private readonly IExecutionEventPublisher _eventPublisher;
+    private readonly IServiceProvider _services;
+    private readonly IOptionsMonitor<BackgroundActivityOptions> _options;
+    private readonly TimeProvider _timeProvider;
+    private readonly IBackgroundActivityStore _store;
+    private readonly IActivityOutputStore _outputStore;
+    private readonly ILogger<BackgroundActivityManager> _logger;
+    private readonly CancellationToken _hostStoppingToken;
+
+    public BackgroundActivityManager(
+        IExecutionEventPublisher eventPublisher,
+        IServiceProvider services,
+        IOptionsMonitor<BackgroundActivityOptions> options,
+        TimeProvider timeProvider,
+        IBackgroundActivityStore store,
+        IActivityOutputStore outputStore,
+        ILogger<BackgroundActivityManager> logger)
+    {
+        _eventPublisher = eventPublisher ?? throw new ArgumentNullException(nameof(eventPublisher));
+        _services = services ?? throw new ArgumentNullException(nameof(services));
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _outputStore = outputStore ?? throw new ArgumentNullException(nameof(outputStore));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        // 宿主停止 token 是可选接缝：独立单测/嵌入场景取不到时为 None（只链超时）。
+        _hostStoppingToken = _services.GetService<IHostApplicationLifetime>()?.ApplicationStopping
+            ?? CancellationToken.None;
+    }
+
+    // ─── 会话面 ───────────────────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public Task<BackgroundActivityHandle> StartAsync(
+        BackgroundActivityStartRequest request,
+        string requesterSessionId,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(requesterSessionId);
+
+        if (!string.Equals(request.OwnerSessionId, requesterSessionId, StringComparison.Ordinal))
+        {
+            throw new UnauthorizedAccessException(
+                $"会话 '{requesterSessionId}' 不能为会话 '{request.OwnerSessionId}' 启动后台活动。");
+        }
+
+        return StartCoreAsync(request, ct);
+    }
+
+    /// <inheritdoc />
+    public BackgroundActivitySnapshot? Get(string activityId, string requesterSessionId)
+    {
+        if (!TryGetAccessible(activityId, requesterSessionId, out var record))
+            return null;
+
+        lock (_sync)
+        {
+            return record.Snapshot;
+        }
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<BackgroundActivitySnapshot> List(BackgroundActivityQuery query, string requesterSessionId)
+    {
+        query ??= new BackgroundActivityQuery();
+        ArgumentException.ThrowIfNullOrWhiteSpace(requesterSessionId);
+
+        var result = new List<BackgroundActivitySnapshot>();
+        lock (_sync)
+        {
+            foreach (var record in _activities.Values)
+            {
+                var snapshot = record.Snapshot;
+
+                // List 不提供跨会话视图：他人活动既不返回也不报错。
+                if (!string.Equals(snapshot.OwnerSessionId, requesterSessionId, StringComparison.Ordinal))
+                    continue;
+
+                if (query.Status is { } status && snapshot.Status != status)
+                    continue;
+
+                if (!string.IsNullOrEmpty(query.Kind) && !string.Equals(query.Kind, snapshot.Kind, StringComparison.Ordinal))
+                    continue;
+
+                if (!query.IncludeCompleted && IsTerminal(snapshot.Status))
+                    continue;
+
+                result.Add(snapshot);
+            }
+        }
+
+        result.Sort(static (left, right) => left.CreatedAt.CompareTo(right.CreatedAt));
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> CancelAsync(
+        string activityId,
+        BackgroundActivityCancelReason reason,
+        string requesterSessionId,
+        CancellationToken ct = default)
+    {
+        if (!TryGetAccessible(activityId, requesterSessionId, out var root))
+            return false;
+
+        var cancelled = false;
+        foreach (var record in CollectSubtree(root))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            // 根用调用方给的原因，子孙一律 CascadeFromParent（取消树语义）。
+            var effectiveReason = ReferenceEquals(record, root)
+                ? reason
+                : BackgroundActivityCancelReason.CascadeFromParent;
+
+            if (await CancelCoreAsync(record, effectiveReason).ConfigureAwait(false))
+                cancelled = true;
+        }
+
+        return cancelled;
+    }
+
+    /// <inheritdoc />
+    public async Task<BackgroundActivityWaitResult> WaitAsync(
+        string activityId,
+        TimeSpan timeout,
+        string requesterSessionId,
+        CancellationToken ct = default)
+    {
+        if (!TryGetAccessible(activityId, requesterSessionId, out var record))
+            return new BackgroundActivityWaitResult(BackgroundActivityWaitOutcome.TimedOut, null);
+
+        if (TryGetTerminalSnapshot(record, out var terminal))
+            return new BackgroundActivityWaitResult(BackgroundActivityWaitOutcome.Completed, terminal);
+
+        try
+        {
+            var snapshot = await record.TerminalSignal.Task.WaitAsync(timeout, ct).ConfigureAwait(false);
+            return new BackgroundActivityWaitResult(BackgroundActivityWaitOutcome.Completed, snapshot);
+        }
+        catch (TimeoutException)
+        {
+            return new BackgroundActivityWaitResult(BackgroundActivityWaitOutcome.TimedOut, CurrentSnapshot(record));
+        }
+        catch (OperationCanceledException)
+        {
+            return new BackgroundActivityWaitResult(BackgroundActivityWaitOutcome.CallerCancelled, CurrentSnapshot(record));
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<BackgroundActivityOutputPage> ReadOutputAsync(
+        string activityId,
+        long offset,
+        int maxBytes,
+        string requesterSessionId,
+        CancellationToken ct = default)
+    {
+        if (!TryGetAccessible(activityId, requesterSessionId, out _))
+            return new BackgroundActivityOutputPage(string.Empty, offset, EndOfStream: true, Truncated: false);
+
+        return await _outputStore.ReadAsync(activityId, offset, maxBytes, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public void MarkResultObserved(string activityId, string requesterSessionId)
+    {
+        if (!TryGetAccessible(activityId, requesterSessionId, out var record))
+            return;
+
+        BackgroundActivitySnapshot snapshot;
+        lock (_sync)
+        {
+            if (record.Snapshot.ResultObservedAt is not null)
+                return;
+
+            snapshot = record.Snapshot with
+            {
+                Seq = record.Snapshot.Seq + 1,
+                ResultObservedAt = _timeProvider.GetLocalNow()
+            };
+            record.Snapshot = snapshot;
+        }
+
+        EnqueuePersist(record, snapshot, eventType: null);
+    }
+
+    // ─── 系统面 ───────────────────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public Task<BackgroundActivityHandle> StartAsSystemAsync(
+        BackgroundActivityStartRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.OwnerSessionId);
+
+        return StartCoreAsync(request, ct);
+    }
+
+    /// <inheritdoc />
+    public Task<BackgroundActivityHandle> TrackAsync(
+        BackgroundActivityTrackRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.OwnerSessionId);
+
+        var snapshot = new BackgroundActivitySnapshot
+        {
+            Id = NewActivityId(),
+            Kind = request.Kind,
+            Title = request.Title,
+            Origin = request.Origin,
+            WorkspaceRoot = ResolveWorkspaceRoot(),
+            HostInstanceId = s_hostInstanceId,
+            CreatedAt = _timeProvider.GetLocalNow(),
+            OwnerSessionId = request.OwnerSessionId,
+            OwnerExecutionId = request.OwnerExecutionId,
+            ParentActivityId = request.ParentActivityId,
+            TargetSessionId = request.TargetSessionId,
+            Status = BackgroundActivityStatus.Pending,
+            Seq = 0,
+            Capabilities = request.Capabilities,
+            NotifyPolicy = request.NotifyPolicy,
+            Timeout = null,
+            OutputLimitBytes = _options.CurrentValue.DefaultOutputLimitBytes,
+            Visibility = BackgroundActivityVisibility.Session,
+            Lifetime = BackgroundActivityLifetime.Host,
+            Attributes = CopyAttributes(request.Attributes)
+        };
+
+        var record = CreateRecord(snapshot, launcherKind: null, dedupeKey: null, timeout: null);
+
+        lock (_sync)
+        {
+            _activities[record.Handle.ActivityId] = record;
+        }
+
+        // 登记型活动由宿主直接提供完成信号或自行上报终态，manager 只置 Running 并观察完成。
+        TryCommitRunning(record);
+
+        if (request.Completion is { } completion)
+            _ = ObserveCompletionAsync(record, completion);
+
+        if (_hostStoppingToken.IsCancellationRequested)
+            OnHostStopping(record);
+
+        return Task.FromResult(record.Handle);
+    }
+
+    /// <inheritdoc />
+    public void RegisterLauncher(string moduleId, IBackgroundActivityLauncher launcher)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(moduleId);
+        ArgumentNullException.ThrowIfNull(launcher);
+        ArgumentException.ThrowIfNullOrWhiteSpace(launcher.Kind);
+
+        var registration = new LauncherRegistration(moduleId, launcher);
+        if (!_launchers.TryAdd(launcher.Kind, registration))
+        {
+            var existing = _launchers.TryGetValue(launcher.Kind, out var current) ? current.ModuleId : "?";
+            throw new InvalidOperationException(
+                $"后台活动 kind '{launcher.Kind}' 已由模块 '{existing}' 登记，不能重复登记。");
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<int> UnregisterLauncherAsync(string kind, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+
+        // 先摘登记，后续新的 Start 立即失败（Fail-fast，不吞请求）。
+        _launchers.TryRemove(kind, out _);
+
+        var targets = new List<BackgroundActivityRecord>();
+        lock (_sync)
+        {
+            foreach (var record in _activities.Values)
+            {
+                if (record.TerminalCommitted)
+                    continue;
+
+                if (string.Equals(record.LauncherKind, kind, StringComparison.Ordinal))
+                    targets.Add(record);
+            }
+        }
+
+        var cancelled = 0;
+        foreach (var record in targets)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (await CancelCoreAsync(record, BackgroundActivityCancelReason.ModuleDeactivated).ConfigureAwait(false))
+                cancelled++;
+        }
+
+        // 必须在返回前等到终态（spec §9.5：模块停用不得留活口）。
+        var terminalWaits = targets.Select(static record => (Task)record.TerminalSignal.Task).ToArray();
+        if (terminalWaits.Length > 0)
+            await Task.WhenAll(terminalWaits).WaitAsync(ct).ConfigureAwait(false);
+
+        return cancelled;
+    }
+
+    /// <inheritdoc />
+    public Task<int> CancelBySessionAsync(
+        string sessionId,
+        BackgroundActivityCancelReason reason,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        return CancelMatchingAsync(
+            snapshot => string.Equals(snapshot.OwnerSessionId, sessionId, StringComparison.Ordinal),
+            reason,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public Task<int> CancelByExecutionAsync(
+        string executionId,
+        BackgroundActivityCancelReason reason,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(executionId);
+        return CancelMatchingAsync(
+            snapshot => string.Equals(snapshot.OwnerExecutionId, executionId, StringComparison.Ordinal),
+            reason,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public Task<int> CancelAllAsync(BackgroundActivityCancelReason reason, CancellationToken ct = default)
+        => CancelMatchingAsync(static _ => true, reason, ct);
+
+    /// <inheritdoc />
+    public Task<int> ReconcileOrphanedActivitiesAsync(CancellationToken ct = default)
+    {
+        // TODO(Task 10)：读 IBackgroundActivityStore.LoadAllAsync()，
+        // 对 HostInstanceId 非本进程且仍为 Running 的记录改写 Interrupted 并写 outbox。
+        // 本任务（Task 8）只负责内存状态机，存储实现尚未接入。
+        return Task.FromResult(0);
+    }
+
+    // ─── reporter 回写（internal：只被 BackgroundActivityReporter 调用） ────────
+
+    internal void ReportStarted(string activityId)
+    {
+        if (!_activities.TryGetValue(activityId, out var record))
+            return;
+
+        TryCommitRunning(record);
+    }
+
+    internal void ReportProgress(string activityId, BackgroundActivityProgress progress)
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+
+        BackgroundActivitySnapshot snapshot;
+        bool publish;
+        lock (_sync)
+        {
+            if (!_activities.TryGetValue(activityId, out var record) || record.TerminalCommitted)
+                return;
+
+            var now = _timeProvider.GetUtcNow();
+            snapshot = record.Snapshot with
+            {
+                Seq = record.Snapshot.Seq + 1,
+                Progress = progress,
+                LastHeartbeatAt = now
+            };
+            record.Snapshot = snapshot;
+
+            // Progress 不落盘，只发节流事件（≥1s）。
+            publish = record.LastProgressEventAt is null || now - record.LastProgressEventAt >= s_progressEventInterval;
+            if (publish)
+                record.LastProgressEventAt = now;
+        }
+
+        if (publish)
+            Publish(snapshot, ActivityEventTypes.Progress);
+    }
+
+    internal void Heartbeat(string activityId)
+    {
+        lock (_sync)
+        {
+            if (!_activities.TryGetValue(activityId, out var record) || record.TerminalCommitted)
+                return;
+
+            record.Snapshot = record.Snapshot with
+            {
+                Seq = record.Snapshot.Seq + 1,
+                LastHeartbeatAt = _timeProvider.GetUtcNow()
+            };
+        }
+    }
+
+    internal async Task AppendOutputAsync(string activityId, ReadOnlyMemory<byte> chunk, CancellationToken ct)
+    {
+        if (!_activities.TryGetValue(activityId, out var record) || IsTerminalCommitted(record))
+            return;
+
+        await _outputStore.AppendAsync(activityId, chunk, ct).ConfigureAwait(false);
+    }
+
+    internal void Complete(string activityId, BackgroundActivityResult result)
+    {
+        if (!_activities.TryGetValue(activityId, out var record))
+            return;
+
+        TryCommitTerminal(record, BackgroundActivityStatus.Succeeded, cancelReason: null, result);
+    }
+
+    internal void Fail(string activityId, string errorCode, string errorMessage)
+    {
+        if (!_activities.TryGetValue(activityId, out var record))
+            return;
+
+        TryCommitTerminal(
+            record,
+            BackgroundActivityStatus.Failed,
+            cancelReason: null,
+            new BackgroundActivityResult(
+                BackgroundActivityResultKind.None,
+                ArtifactPath: null,
+                ResultSessionId: null,
+                ExitCode: null,
+                errorCode,
+                errorMessage));
+    }
+
+    // ─── 启动 ─────────────────────────────────────────────────────────────────
+
+    private async Task<BackgroundActivityHandle> StartCoreAsync(
+        BackgroundActivityStartRequest request,
+        CancellationToken ct)
+    {
+        if (!_launchers.TryGetValue(request.Kind, out var registration))
+            throw new InvalidOperationException($"未登记的后台活动 kind '{request.Kind}'。");
+
+        if (!string.IsNullOrEmpty(request.DedupeKey))
+        {
+            var existing = FindDedupeCandidate(request);
+            if (existing is not null)
+            {
+                if (request.DedupeStrategy == BackgroundActivityDedupeStrategy.Reject)
+                {
+                    // 契约无法表达「返回已有活动 + 告知去重命中」，按 spec 采用「返回已有 handle」语义。
+                    _logger.LogDebug(
+                        "后台活动命中去重，返回已有活动 DedupeKey={DedupeKey} ActivityId={ActivityId}",
+                        request.DedupeKey,
+                        existing.Handle.ActivityId);
+                    return existing.Handle;
+                }
+
+                await CancelCoreAsync(existing, BackgroundActivityCancelReason.Superseded).ConfigureAwait(false);
+            }
+        }
+
+        var options = _options.CurrentValue;
+        var effectiveTimeout = ResolveTimeout(request.Timeout, options);
+        var snapshot = new BackgroundActivitySnapshot
+        {
+            Id = NewActivityId(),
+            Kind = request.Kind,
+            Title = request.Title,
+            OriginToolCallId = request.OriginToolCallId,
+            Origin = request.Origin,
+            WorkspaceRoot = ResolveWorkspaceRoot(),
+            HostInstanceId = s_hostInstanceId,
+            CreatedAt = _timeProvider.GetLocalNow(),
+            OwnerSessionId = request.OwnerSessionId,
+            OwnerExecutionId = request.OwnerExecutionId,
+            ParentActivityId = request.ParentActivityId,
+            TargetSessionId = request.TargetSessionId,
+            Status = BackgroundActivityStatus.Pending,
+            Seq = 0,
+            Capabilities = registration.Launcher.Capabilities,
+            NotifyPolicy = request.NotifyPolicy,
+            Timeout = effectiveTimeout,
+            OutputLimitBytes = request.OutputLimitBytes ?? options.DefaultOutputLimitBytes,
+            Visibility = request.Visibility,
+            Lifetime = request.Lifetime,
+            Attributes = CopyAttributes(request.Attributes)
+        };
+
+        var record = CreateRecord(snapshot, registration.Launcher.Kind, request.DedupeKey, effectiveTimeout);
+
+        var admitted = false;
+        lock (_sync)
+        {
+            var runningInSession = 0;
+            foreach (var candidate in _activities.Values)
+            {
+                if (candidate.TerminalCommitted)
+                    continue;
+
+                if (string.Equals(candidate.Snapshot.OwnerSessionId, request.OwnerSessionId, StringComparison.Ordinal))
+                    runningInSession++;
+            }
+
+            if (runningInSession >= Math.Max(1, options.MaxConcurrentPerSession))
+            {
+                _logger.LogWarning(
+                    "会话后台活动并发已达上限 SessionId={SessionId} Limit={Limit} Kind={Kind}",
+                    request.OwnerSessionId,
+                    options.MaxConcurrentPerSession,
+                    request.Kind);
+            }
+            else
+            {
+                _activities[record.Handle.ActivityId] = record;
+                admitted = true;
+            }
+        }
+
+        if (!admitted)
+        {
+            record.TimeoutTimer?.Dispose();
+            record.Cts.Dispose();
+            throw new InvalidOperationException(
+                $"会话后台活动并发已达上限 {options.MaxConcurrentPerSession}（SessionId={request.OwnerSessionId}）。");
+        }
+
+        // 宿主已在停止过程中：不启动 launcher，直接落 Interrupted（不留 Pending 僵尸）。
+        if (_hostStoppingToken.IsCancellationRequested)
+        {
+            OnHostStopping(record);
+            return record.Handle;
+        }
+
+        try
+        {
+            using var launchCts = CancellationTokenSource.CreateLinkedTokenSource(record.Cts.Token, ct);
+            var launchResult = await registration.Launcher
+                .LaunchAsync(
+                    new BackgroundActivityLaunchContext(record.Handle, request, request.WorkingDirectory),
+                    launchCts.Token)
+                .ConfigureAwait(false);
+
+            // Running 由 manager 置：launcher 已先上报终态时这里丢弃。
+            TryCommitRunning(record);
+            ObserveExecution(record, launchResult.Execution);
+        }
+        catch (OperationCanceledException)
+        {
+            // 启动期被取消（宿主停止 / 超时 / 调用方 ct）：不留 Pending 僵尸。
+            TryCommitTerminal(record, BackgroundActivityStatus.Cancelled, BackgroundActivityCancelReason.User, result: null);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "后台活动启动失败 ActivityId={ActivityId} Kind={Kind}", record.Handle.ActivityId, request.Kind);
+            TryCommitTerminal(
+                record,
+                BackgroundActivityStatus.Failed,
+                cancelReason: null,
+                new BackgroundActivityResult(
+                    BackgroundActivityResultKind.None,
+                    ArtifactPath: null,
+                    ResultSessionId: null,
+                    ExitCode: null,
+                    "launch_failed",
+                    ex.Message));
+            throw;
+        }
+
+        if (_hostStoppingToken.IsCancellationRequested)
+            OnHostStopping(record);
+
+        return record.Handle;
+    }
+
+    // ─── 状态迁移 ─────────────────────────────────────────────────────────────
+
+    /// <summary>Pending → Running；终态已提交或当前非 Pending 时丢弃。</summary>
+    private bool TryCommitRunning(BackgroundActivityRecord record)
+    {
+        BackgroundActivitySnapshot snapshot;
+        lock (_sync)
+        {
+            if (record.TerminalCommitted || record.Snapshot.Status != BackgroundActivityStatus.Pending)
+                return false;
+
+            snapshot = record.Snapshot with
+            {
+                Status = BackgroundActivityStatus.Running,
+                Seq = record.Snapshot.Seq + 1,
+                StartedAt = record.Snapshot.StartedAt ?? _timeProvider.GetLocalNow()
+            };
+            record.Snapshot = snapshot;
+        }
+
+        EnqueuePersist(record, snapshot, ActivityEventTypes.Started);
+        return true;
+    }
+
+    /// <summary>
+    /// 终态 CAS：先到先得，只提交一次。返回 <see langword="true"/> 表示本次调用赢得终态。
+    /// <para>提交顺序：内存 CAS → 取消 token → 唤醒等待方 → 落盘 → 发事件。</para>
+    /// </summary>
+    private bool TryCommitTerminal(
+        BackgroundActivityRecord record,
+        BackgroundActivityStatus status,
+        BackgroundActivityCancelReason? cancelReason,
+        BackgroundActivityResult? result)
+    {
+        BackgroundActivitySnapshot snapshot;
+        ITimer? timer;
+        CancellationTokenRegistration hostRegistration;
+        lock (_sync)
+        {
+            if (record.TerminalCommitted)
+                return false;
+
+            record.TerminalCommitted = true;
+            snapshot = record.Snapshot with
+            {
+                Status = status,
+                Seq = record.Snapshot.Seq + 1,
+                CompletedAt = _timeProvider.GetLocalNow(),
+                CancelReason = cancelReason,
+                Result = result ?? record.Snapshot.Result
+            };
+            record.Snapshot = snapshot;
+
+            timer = record.TimeoutTimer;
+            record.TimeoutTimer = null;
+            hostRegistration = record.HostRegistration;
+            record.HostRegistration = default;
+        }
+
+        timer?.Dispose();
+
+        try
+        {
+            hostRegistration.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 宿主 token 已释放：无副作用。
+        }
+
+        SafeCancel(record.Cts);
+        record.TerminalSignal.TrySetResult(snapshot);
+        EnqueuePersist(record, snapshot, ResolveEventType(status));
+        return true;
+    }
+
+    /// <summary>提交取消终态并通知 launcher（先写状态再通知，spec §7.4）。</summary>
+    private async Task<bool> CancelCoreAsync(
+        BackgroundActivityRecord record,
+        BackgroundActivityCancelReason reason)
+    {
+        var status = reason == BackgroundActivityCancelReason.HostShutdown
+            ? BackgroundActivityStatus.Interrupted
+            : BackgroundActivityStatus.Cancelled;
+
+        if (!TryCommitTerminal(record, status, reason, result: null))
+            return false;
+
+        await NotifyLauncherCancelledAsync(record, reason).ConfigureAwait(false);
+        return true;
+    }
+
+    private void OnTimeout(string activityId)
+    {
+        if (!_activities.TryGetValue(activityId, out var record))
+            return;
+
+        if (!TryCommitTerminal(record, BackgroundActivityStatus.Cancelled, BackgroundActivityCancelReason.Timeout, result: null))
+            return;
+
+        _ = NotifyLauncherCancelledAsync(record, BackgroundActivityCancelReason.Timeout);
+    }
+
+    private void OnHostStopping(BackgroundActivityRecord record)
+    {
+        if (!TryCommitTerminal(record, BackgroundActivityStatus.Interrupted, BackgroundActivityCancelReason.HostShutdown, result: null))
+            return;
+
+        _ = NotifyLauncherCancelledAsync(record, BackgroundActivityCancelReason.HostShutdown);
+    }
+
+    private async Task NotifyLauncherCancelledAsync(
+        BackgroundActivityRecord record,
+        BackgroundActivityCancelReason reason)
+    {
+        if (record.LauncherKind is null)
+            return;
+
+        if (!_launchers.TryGetValue(record.LauncherKind, out var registration))
+            return;
+
+        try
+        {
+            await registration.Launcher.CancelAsync(record.Handle, reason).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "通知 launcher 取消失败 ActivityId={ActivityId} Kind={Kind} Reason={Reason}",
+                record.Handle.ActivityId,
+                record.LauncherKind,
+                reason);
+        }
+    }
+
+    // ─── 执行观察 ─────────────────────────────────────────────────────────────
+
+    private void ObserveExecution(BackgroundActivityRecord record, Task? execution)
+    {
+        if (execution is null)
+        {
+            TryCommitTerminal(
+                record,
+                BackgroundActivityStatus.Failed,
+                cancelReason: null,
+                NoTerminalStateResult("launcher 未返回 Execution。"));
+            return;
+        }
+
+        _ = ObserveExecutionAsync(record, execution);
+    }
+
+    private async Task ObserveExecutionAsync(BackgroundActivityRecord record, Task execution)
+    {
+        try
+        {
+            await execution.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // 执行被取消（多为 manager 已提交 Cancelled）：只在尚无终态时兜底。
+            TryCommitTerminal(record, BackgroundActivityStatus.Cancelled, cancelReason: null, result: null);
+            return;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "后台活动执行异常 ActivityId={ActivityId}", record.Handle.ActivityId);
+            TryCommitTerminal(
+                record,
+                BackgroundActivityStatus.Failed,
+                cancelReason: null,
+                new BackgroundActivityResult(
+                    BackgroundActivityResultKind.None,
+                    ArtifactPath: null,
+                    ResultSessionId: null,
+                    ExitCode: null,
+                    "execution_faulted",
+                    ex.Message));
+            return;
+        }
+
+        // 正常结束但从未上报终态：不得当成成功（spec §7.4 / §8）。
+        TryCommitTerminal(record, BackgroundActivityStatus.Failed, cancelReason: null, NoTerminalStateResult(null));
+    }
+
+    private async Task ObserveCompletionAsync(BackgroundActivityRecord record, Task completion)
+    {
+        try
+        {
+            await completion.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            TryCommitTerminal(record, BackgroundActivityStatus.Cancelled, cancelReason: null, result: null);
+            return;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "登记型后台活动完成信号异常 ActivityId={ActivityId}", record.Handle.ActivityId);
+            TryCommitTerminal(
+                record,
+                BackgroundActivityStatus.Failed,
+                cancelReason: null,
+                new BackgroundActivityResult(
+                    BackgroundActivityResultKind.None,
+                    ArtifactPath: null,
+                    ResultSessionId: null,
+                    ExitCode: null,
+                    "completion_faulted",
+                    ex.Message));
+            return;
+        }
+
+        // 宿主只给了「完成」信号、没给结果：按无结果成功落终态（供 outbox 通知，不伪造结果内容）。
+        TryCommitTerminal(
+            record,
+            BackgroundActivityStatus.Succeeded,
+            cancelReason: null,
+            new BackgroundActivityResult(
+                BackgroundActivityResultKind.None,
+                ArtifactPath: null,
+                ResultSessionId: null,
+                ExitCode: null,
+                ErrorCode: null,
+                ErrorMessage: null));
+    }
+
+    // ─── 辅助 ─────────────────────────────────────────────────────────────────
+
+    private BackgroundActivityRecord CreateRecord(
+        BackgroundActivitySnapshot snapshot,
+        string? launcherKind,
+        string? dedupeKey,
+        TimeSpan? timeout)
+    {
+        var cts = _hostStoppingToken.CanBeCanceled
+            ? CancellationTokenSource.CreateLinkedTokenSource(_hostStoppingToken)
+            : new CancellationTokenSource();
+
+        var reporter = new BackgroundActivityReporter(this, snapshot.Id);
+        var handle = new BackgroundActivityHandle(snapshot.Id, reporter, cts.Token);
+        var record = new BackgroundActivityRecord(snapshot, cts, handle, launcherKind, dedupeKey);
+
+        if (timeout is { } effective && effective > TimeSpan.Zero)
+        {
+            record.TimeoutTimer = _timeProvider.CreateTimer(
+                static state =>
+                {
+                    var (manager, activityId) = ((BackgroundActivityManager, string))state!;
+                    try
+                    {
+                        manager.OnTimeout(activityId);
+                    }
+                    catch (Exception ex)
+                    {
+                        manager._logger.LogWarning(ex, "后台活动超时处理失败 ActivityId={ActivityId}", activityId);
+                    }
+                },
+                (this, snapshot.Id),
+                effective,
+                Timeout.InfiniteTimeSpan);
+        }
+
+        if (_hostStoppingToken.CanBeCanceled)
+        {
+            var activityId = snapshot.Id;
+            record.HostRegistration = _hostStoppingToken.Register(
+                () =>
+                {
+                    if (_activities.TryGetValue(activityId, out var live))
+                        OnHostStopping(live);
+                });
+        }
+
+        return record;
+    }
+
+    private BackgroundActivityRecord? FindDedupeCandidate(BackgroundActivityStartRequest request)
+    {
+        lock (_sync)
+        {
+            foreach (var record in _activities.Values)
+            {
+                if (record.TerminalCommitted)
+                    continue;
+
+                if (!string.Equals(record.DedupeKey, request.DedupeKey, StringComparison.Ordinal))
+                    continue;
+
+                if (!string.Equals(record.Snapshot.Kind, request.Kind, StringComparison.Ordinal))
+                    continue;
+
+                if (!string.Equals(record.Snapshot.OwnerSessionId, request.OwnerSessionId, StringComparison.Ordinal))
+                    continue;
+
+                return record;
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<int> CancelMatchingAsync(
+        Func<BackgroundActivitySnapshot, bool> predicate,
+        BackgroundActivityCancelReason reason,
+        CancellationToken ct)
+    {
+        var targets = new List<BackgroundActivityRecord>();
+        lock (_sync)
+        {
+            foreach (var record in _activities.Values)
+            {
+                if (record.TerminalCommitted)
+                    continue;
+
+                if (predicate(record.Snapshot))
+                    targets.Add(record);
+            }
+        }
+
+        var cancelled = 0;
+        foreach (var record in targets)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (await CancelCoreAsync(record, reason).ConfigureAwait(false))
+                cancelled++;
+        }
+
+        return cancelled;
+    }
+
+    private List<BackgroundActivityRecord> CollectSubtree(BackgroundActivityRecord root)
+    {
+        List<BackgroundActivityRecord> all;
+        lock (_sync)
+        {
+            all = _activities.Values.ToList();
+        }
+
+        var children = new Dictionary<string, List<BackgroundActivityRecord>>(StringComparer.Ordinal);
+        foreach (var record in all)
+        {
+            var parentId = record.Snapshot.ParentActivityId;
+            if (string.IsNullOrEmpty(parentId))
+                continue;
+
+            if (!children.TryGetValue(parentId, out var siblings))
+            {
+                siblings = new List<BackgroundActivityRecord>();
+                children[parentId] = siblings;
+            }
+
+            siblings.Add(record);
+        }
+
+        var result = new List<BackgroundActivityRecord>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var queue = new Queue<BackgroundActivityRecord>();
+        queue.Enqueue(root);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            var id = current.Handle.ActivityId;
+            if (!seen.Add(id))
+                continue;
+
+            result.Add(current);
+
+            if (children.TryGetValue(id, out var descendants))
+            {
+                foreach (var descendant in descendants)
+                    queue.Enqueue(descendant);
+            }
+        }
+
+        return result;
+    }
+
+    private bool TryGetAccessible(
+        string activityId,
+        string requesterSessionId,
+        out BackgroundActivityRecord record)
+    {
+        record = null!;
+        if (string.IsNullOrEmpty(activityId) || string.IsNullOrEmpty(requesterSessionId))
+            return false;
+
+        if (!_activities.TryGetValue(activityId, out var candidate))
+            return false;
+
+        BackgroundActivitySnapshot snapshot;
+        lock (_sync)
+        {
+            snapshot = candidate.Snapshot;
+        }
+
+        // 越权只对 Session 可见性生效；Project / System 放行。
+        var allowed = string.Equals(snapshot.OwnerSessionId, requesterSessionId, StringComparison.Ordinal)
+            || snapshot.Visibility != BackgroundActivityVisibility.Session;
+
+        if (!allowed)
+            return false;
+
+        record = candidate;
+        return true;
+    }
+
+    private bool TryGetTerminalSnapshot(BackgroundActivityRecord record, out BackgroundActivitySnapshot snapshot)
+    {
+        lock (_sync)
+        {
+            snapshot = record.Snapshot;
+            return record.TerminalCommitted;
+        }
+    }
+
+    private BackgroundActivitySnapshot? CurrentSnapshot(BackgroundActivityRecord record)
+    {
+        lock (_sync)
+        {
+            return record.Snapshot;
+        }
+    }
+
+    private bool IsTerminalCommitted(BackgroundActivityRecord record)
+    {
+        lock (_sync)
+        {
+            return record.TerminalCommitted;
+        }
+    }
+
+    private void EnqueuePersist(
+        BackgroundActivityRecord record,
+        BackgroundActivitySnapshot snapshot,
+        string? eventType)
+    {
+        // 链式串行：落盘 → 发事件，保证「终态先落盘再发事件」；不阻塞调用方（reporter 是同步 API）。
+        lock (_sync)
+        {
+            record.PersistChain = ChainPersistAsync(record.PersistChain, snapshot, eventType);
+        }
+    }
+
+    private async Task ChainPersistAsync(
+        Task previous,
+        BackgroundActivitySnapshot snapshot,
+        string? eventType)
+    {
+        // 先让出，避免在 _sync 临界区内进入存储实现（链式赋值在同一把锁内完成）。
+        await Task.Yield();
+
+        try
+        {
+            await previous.ConfigureAwait(false);
+        }
+        catch
+        {
+            // 前一环已记录，链路继续。
+        }
+
+        try
+        {
+            await _store.SaveAsync(snapshot).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "后台活动快照落盘失败 ActivityId={ActivityId} Status={Status}",
+                snapshot.Id,
+                snapshot.Status);
+        }
+
+        if (eventType is not null)
+            Publish(snapshot, eventType);
+    }
+
+    private void Publish(BackgroundActivitySnapshot snapshot, string eventType)
+    {
+        try
+        {
+            _eventPublisher.Publish(
+                snapshot.OwnerSessionId,
+                new BackgroundActivityEvent
+                {
+                    SessionId = snapshot.OwnerSessionId,
+                    Type = eventType,
+                    Activity = snapshot,
+                    Timestamp = _timeProvider.GetLocalNow().DateTime
+                });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "后台活动事件发布失败 ActivityId={ActivityId} Type={Type}",
+                snapshot.Id,
+                eventType);
+        }
+    }
+
+    /// <summary>等待某活动所有已排队的落盘/事件完成（测试与停机路径用）。</summary>
+    internal async Task WaitForPersistenceAsync(string activityId, CancellationToken ct = default)
+    {
+        Task chain;
+        lock (_sync)
+        {
+            if (!_activities.TryGetValue(activityId, out var record))
+                return;
+
+            chain = record.PersistChain;
+        }
+
+        await chain.WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    // ─── 静态辅助 ─────────────────────────────────────────────────────────────
+
+    private static string NewActivityId() => ActivityIdPrefix + Guid.NewGuid().ToString("N");
+
+    private static bool IsTerminal(BackgroundActivityStatus status) => status
+        is BackgroundActivityStatus.Succeeded
+        or BackgroundActivityStatus.Failed
+        or BackgroundActivityStatus.Cancelled
+        or BackgroundActivityStatus.Interrupted;
+
+    private static string ResolveEventType(BackgroundActivityStatus status) => status switch
+    {
+        BackgroundActivityStatus.Succeeded => ActivityEventTypes.Completed,
+        BackgroundActivityStatus.Failed => ActivityEventTypes.Failed,
+        BackgroundActivityStatus.Cancelled => ActivityEventTypes.Cancelled,
+        BackgroundActivityStatus.Interrupted => ActivityEventTypes.Cancelled,
+        _ => ActivityEventTypes.Progress
+    };
+
+    private static BackgroundActivityResult NoTerminalStateResult(string? message) => new(
+        BackgroundActivityResultKind.None,
+        ArtifactPath: null,
+        ResultSessionId: null,
+        ExitCode: null,
+        "no_terminal_state",
+        message ?? "执行已结束但未上报终态。");
+
+    private static IReadOnlyDictionary<string, string> CopyAttributes(IReadOnlyDictionary<string, string>? attributes)
+        => attributes is null || attributes.Count == 0
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string>(attributes);
+
+    private static void SafeCancel(CancellationTokenSource cts)
+    {
+        try
+        {
+            cts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 已释放：取消语义已由终态提交表达。
+        }
+        catch (AggregateException)
+        {
+            // 个别回调抛异常不影响取消语义。
+        }
+    }
+
+    private TimeSpan ResolveTimeout(TimeSpan? requested, BackgroundActivityOptions options)
+    {
+        var value = requested ?? options.DefaultTimeout;
+        if (value <= TimeSpan.Zero)
+            value = options.DefaultTimeout;
+
+        return value > options.MaxTimeout ? options.MaxTimeout : value;
+    }
+
+    private string ResolveWorkspaceRoot()
+        => _services.GetService<IWorkspaceProvider>()?.ResolvedRoot ?? string.Empty;
+
+    private static string BuildHostInstanceId()
+    {
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            return $"{process.Id}:{process.StartTime.ToUniversalTime().Ticks}";
+        }
+        catch (Exception)
+        {
+            // 受限环境拿不到进程启动时间：退化为 pid-only（仍可区分同机不同进程）。
+            return $"{Environment.ProcessId}:0";
+        }
+    }
+
+    private sealed record LauncherRegistration(string ModuleId, IBackgroundActivityLauncher Launcher);
+}
