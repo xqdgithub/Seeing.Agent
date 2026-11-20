@@ -1,11 +1,14 @@
 @using AntDesign
 @using Microsoft.JSInterop
+@using Seeing.Agent.Abstractions.Background
 @using Seeing.Agent.WebUI.Helpers
 @using Seeing.Agent.WebUI.Models
 @using Seeing.Agent.WebUI.Models.Messaging
 @using Seeing.Agent.WebUI.Rendering.Abstractions
+@using Seeing.Agent.WebUI.Services
 @inject IJSRuntime JSRuntime
 @inject MessageService MessageService
+@inject BackgroundActivityUiService ActivityControl
 
 @* bash 专用命令卡（只读，无 stdin）：命令/输出靠颜色区分，浅色紧凑 *@
 
@@ -41,30 +44,26 @@
         </div>
     </div>
 
-    @* bash 转后台（background=true）时，活动状态行跟随命令卡头部展示；实时输出块放到命令之后（终端顺序）。 *@
-    @if (ToolCall.BackgroundActivity is { } activityHeader)
-    {
-        <BackgroundActivityCard Activity="@activityHeader" Compact="true" ShowOutput="false" />
-    }
+    @* bash 转后台（background=true）时不再另起状态行：命令与输出复用前台终端样式，
+       活动状态/输出大小/取消入口压到展开区底部一行（见 body 末尾）。 *@
 
     @if (_isExpanded)
     {
+        var bg = ToolCall.BackgroundActivity;
+
+        @* 后台优先取活动实时输出：工具结果此时只是一段「已转交」回执，不是命令输出。 *@
+        var outputText = bg is not null ? bg.LiveOutputTail : _card.DisplayOutput;
+
         <div class="bash-terminal-body">
             <code class="bash-command" title="@(_card.Workdir ?? "")">
                 <span class="bash-prompt">$</span>@(_card.Command ?? "")
             </code>
 
-            @* 实时输出紧跟命令：与终端里「命令 → 输出」的直觉一致。 *@
-            @if (ToolCall.BackgroundActivity is { } activityOutput)
-            {
-                <BackgroundActivityCard Activity="@activityOutput" Compact="true" ShowHeader="false" />
-            }
-
-            @if (!string.IsNullOrEmpty(_card.DisplayOutput))
+            @if (!string.IsNullOrEmpty(outputText))
             {
                 <pre @ref="_outputRef"
                      class="bash-terminal-pre @(_outputExpanded ? null : "is-collapsed")"
-                     @onscroll="OnOutputScroll">@_card.DisplayOutput</pre>
+                     @onscroll="OnOutputScroll">@outputText</pre>
             }
 
             @if (!string.IsNullOrEmpty(ToolCall.Error))
@@ -73,14 +72,31 @@
             }
 
             <div class="bash-output-actions">
-                @if (BashToolDisplayHelper.ShouldCollapseByDefault(_card.DisplayOutput, false))
+                @if (BashToolDisplayHelper.ShouldCollapseByDefault(outputText, false))
                 {
                     <button type="button" class="bash-text-action" @onclick="ToggleOutputExpanded">
                         @(_outputExpanded ? "收起" : "展开全部")
                     </button>
                 }
-                <button type="button" class="bash-text-action is-muted" @onclick="CopyAsync">复制</button>
+                <button type="button" class="bash-text-action is-muted" @onclick="@(() => CopyAsync(outputText))">复制</button>
             </div>
+
+            @if (bg is not null)
+            {
+                @* 后台活动的全部说明压成一行小字：多行回执（activity_id / 跟踪工具提示）不再占正文。 *@
+                <div class="bash-background-hint">
+                    <span class="bash-background-status">@bg.StatusText</span>
+                    @if (bg.OutputSizeText is { } size)
+                    {
+                        <span>输出 @size</span>
+                    }
+                    <code class="bash-background-id" title="@bg.Id">@bg.Id</code>
+                    @if (bg.CanCancel)
+                    {
+                        <button type="button" class="bash-text-action" disabled="@_cancelling" @onclick="CancelBackgroundAsync">取消</button>
+                    }
+                </div>
+            }
         </div>
     }
 </div>
@@ -100,6 +116,18 @@
     private string? _lastToolCallId;
     private string? _lastStatus;
     private ElementReference _outputRef;
+    private bool _cancelling;
+
+    /// <summary>
+    /// 是否有可渲染的输出正文（前台取结果、后台取活动实时尾部）。
+    /// <para>
+    /// 输出为空时 <c>pre</c> 不存在，<see cref="_outputRef"/> 是空引用：此时调 JS 会抛
+    /// <see cref="JSException"/> 并把 <c>_stickToBottom</c> 永久置 false（后台活动首帧常常还没有输出）。
+    /// </para>
+    /// </summary>
+    private bool HasOutputText => ToolCall.BackgroundActivity is { } bg
+        ? !string.IsNullOrEmpty(bg.LiveOutputTail)
+        : !string.IsNullOrEmpty(_card.DisplayOutput);
 
     protected override void OnParametersSet()
     {
@@ -140,7 +168,10 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!_isExpanded || !_stickToBottom || !ToolCall.IsRunning)
+        // 转后台后工具调用已返回（IsRunning=false），但活动仍在跑、输出仍在长：两者都算「活」。
+        var live = ToolCall.IsRunning
+            || ToolCall.BackgroundActivity?.Status == BackgroundActivityStatus.Running;
+        if (!_isExpanded || !_stickToBottom || !live || !HasOutputText)
             return;
 
         try
@@ -180,10 +211,10 @@
         }
     }
 
-    private async Task CopyAsync()
+    private async Task CopyAsync(string? outputText)
     {
-        var text = !string.IsNullOrEmpty(_card.DisplayOutput)
-            ? _card.DisplayOutput
+        var text = !string.IsNullOrEmpty(outputText)
+            ? outputText!
             : (_card.Command ?? "");
         if (string.IsNullOrEmpty(text) && string.IsNullOrEmpty(ToolCall.Error))
             return;
@@ -198,6 +229,26 @@
         catch
         {
             MessageService.Error("复制失败");
+        }
+    }
+
+    /// <summary>
+    /// 取消后台活动（用户显式操作）。
+    /// <para>成功与否不由本地改状态：终态以 activity 事件为准（事件是唯一真相）。</para>
+    /// </summary>
+    private async Task CancelBackgroundAsync()
+    {
+        if (ToolCall.BackgroundActivity is not { } activity || _cancelling)
+            return;
+
+        _cancelling = true;
+        try
+        {
+            await ActivityControl.CancelAsync(activity.Id, activity.SessionId);
+        }
+        finally
+        {
+            _cancelling = false;
         }
     }
 }

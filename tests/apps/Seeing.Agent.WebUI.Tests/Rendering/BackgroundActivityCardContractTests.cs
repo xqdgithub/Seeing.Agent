@@ -77,30 +77,8 @@ public class BackgroundActivityCardContractTests
     }
 
     /// <summary>
-    /// bash 命令卡的渲染顺序契约：状态行在头部、实时输出在命令之后。
-    /// <para>
-    /// 拆分前输出块渲染在整卡最上方（命令还没出现就先看到输出），用户读到的顺序与终端直觉相反。
-    /// </para>
+    /// 通用工具卡的渲染顺序契约：状态行 → 实时输出块 → 结果段。
     /// </summary>
-    [Fact]
-    public void BashCard_ShouldRenderStatusHeaderBeforeCommand_AndOutputAfterCommand()
-    {
-        var source = ReadWebUiSource("Components/Messaging/BashMessageComponent.razor");
-
-        var headerOnlyIndex = source.IndexOf("ShowOutput=\"false\"", StringComparison.Ordinal);
-        var commandIndex = source.IndexOf("bash-command", StringComparison.Ordinal);
-        var outputOnlyIndex = source.IndexOf("ShowHeader=\"false\"", StringComparison.Ordinal);
-
-        headerOnlyIndex.Should().BeGreaterThan(0, "命令卡要用只出状态行的实例");
-        commandIndex.Should().BeGreaterThan(0);
-        outputOnlyIndex.Should().BeGreaterThan(0, "命令卡要用只出输出块的实例");
-
-        headerOnlyIndex.Should().BeLessThan(commandIndex,
-            "状态行（执行中/输出大小/取消）必须留在卡片头部、命令之前");
-        outputOnlyIndex.Should().BeGreaterThan(commandIndex,
-            "实时输出块必须紧跟命令之后，不能再渲染到命令上方");
-    }
-
     [Fact]
     public void ToolCallCard_ShouldRenderStatusHeaderBeforeOutput_AndOutputBeforeResult()
     {
@@ -118,6 +96,67 @@ public class BackgroundActivityCardContractTests
             "通用工具卡同样先出状态行、后出输出块");
         outputOnlyIndex.Should().BeLessThan(resultSectionIndex,
             "实时输出要排在「结果」段之前：结果终态在输出之后到达");
+    }
+
+    /// <summary>
+    /// 后台 bash 卡片的输出必须复用前台终端 <c>pre</c> 样式，内容取活动实时输出。
+    /// <para>
+    /// 后台模式此前把 <c>BackgroundActivityCard</c> 的输出块嵌进来（另一套底色/边框/固定高度），
+    /// 与前台命令卡看起来像两种东西；现在统一成前台的 <c>bash-terminal-pre</c>。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void BashBackground_ShouldUseTerminalPreForOutput()
+    {
+        var source = ReadWebUiSource("Components/Messaging/BashMessageComponent.razor");
+
+        source.Should().Contain("bg is not null ? bg.LiveOutputTail : _card.DisplayOutput",
+            "后台模式要优先取活动实时输出；工具结果只是一段「已转交」回执，不是命令输出");
+
+        source.Should().Contain("class=\"bash-terminal-pre @(_outputExpanded ? null : \"is-collapsed\")\"",
+            "后台输出必须落在前台同款终端 pre 上，颜色/字体/滚动行为才与前台一致");
+
+        source.Should().NotContain("bg-activity-output",
+            "后台卡片不再复用活动卡的输出块样式，否则又是两套外观");
+    }
+
+    /// <summary>
+    /// 后台 bash 的结果说明（已转交 / activity_id / 跟踪工具提示）压成底部一行小字，
+    /// 不能整段出现在输出区。
+    /// </summary>
+    [Fact]
+    public void BashBackground_ShouldRenderHintRowInsteadOfFullResult()
+    {
+        var source = ReadWebUiSource("Components/Messaging/BashMessageComponent.razor");
+
+        source.Should().Contain("class=\"bash-background-hint\"",
+            "活动状态 / 输出大小 / 活动 id / 取消要收口成一行");
+
+        var hintIndex = source.IndexOf("class=\"bash-background-hint\"", StringComparison.Ordinal);
+        var hintEnd = source.IndexOf("</div>", hintIndex, StringComparison.Ordinal);
+        hintEnd.Should().BeGreaterThan(hintIndex, "小字行必须是一个闭合的 div");
+
+        var hintRegion = source[hintIndex..hintEnd];
+
+        hintRegion.Should().Contain("bg.StatusText", "状态行改用一行文本，不再占一整块");
+        hintRegion.Should().Contain("bash-background-id", "活动 id 仍要可见（便于对照 activity_status）");
+        hintRegion.Should().Contain("CancelBackgroundAsync", "取消入口随小字行一起下沉");
+
+        source.Should().NotContain("@_card.DisplayOutput</pre>",
+            "后台模式的整段回执不得作为输出正文渲染");
+    }
+
+    /// <summary>
+    /// 后台 bash 卡片不再嵌入活动卡：状态行与输出块都内联，出现两个实例就是重复渲染。
+    /// </summary>
+    [Fact]
+    public void BashBackground_ShouldNotRenderDuplicateActivityCard()
+    {
+        var source = ReadWebUiSource("Components/Messaging/BashMessageComponent.razor");
+
+        var instances = source.Split("BackgroundActivityCard").Length - 1;
+        instances.Should().Be(0,
+            "命令卡自己渲染命令/输出/状态行；再嵌活动卡就会出现两条重复的状态或输出");
     }
 
     /// <summary>截出某个 CSS 选择器的声明块（以 <c>{</c> 到配对的 <c>}</c> 为界）。</summary>
