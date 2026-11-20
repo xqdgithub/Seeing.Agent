@@ -348,8 +348,9 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
     /// <summary>
     /// 由幂等键推出其时间戳键（<c>inbox.idem:&lt;key&gt;</c> → <c>inbox.idem.at:&lt;key&gt;</c>）。
     /// <para>
-    /// 注意时间戳键本身也以 <c>inbox.idem:</c> 开头，遍历时必须以
-    /// <see cref="IdempotencyTimestampPrefix"/> 先排除，否则会二次套前缀。
+    /// 注意时间戳键的字面前缀是 <c>inbox.idem.at:</c>，而它<b>同样以幂等键前缀 <c>inbox.idem:</c> 开头</b>；
+    /// 遍历时必须以 <see cref="IdempotencyTimestampPrefix"/> 先排除，否则会把时间戳键当成幂等键，
+    /// 再套一次前缀算出不存在的时间戳键。
     /// </para>
     /// </summary>
     private static string TimestampKeyFor(string idemKey)
@@ -367,14 +368,17 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         var nowSeconds = _time.GetUtcNow().ToUnixTimeSeconds();
         var retentionSeconds = (long)IdempotencyRetention.TotalSeconds;
 
-        // 快照键集合后再删，避免边遍历边改动。
+        // 快照键集合后再删/查，避免在普通 Dictionary 上边遍历边改动
+        // （删除会推进版本号，正在进行的枚举直接抛 InvalidOperationException）。
         var entries = new List<(string Key, long At)>();
         var expired = new List<string>();
 
-        foreach (var key in session.Metadata.Keys.ToList())
+        foreach (var key in session.Metadata.Keys.ToArray())
         {
             if (!key.StartsWith(IdempotencyKeyPrefix, StringComparison.Ordinal))
                 continue;
+
+            // 时间戳键（inbox.idem.at:<key>）也匹配上面的前缀，必须先排除。
             if (key.StartsWith(IdempotencyTimestampPrefix, StringComparison.Ordinal))
                 continue;
 

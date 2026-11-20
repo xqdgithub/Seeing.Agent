@@ -386,6 +386,71 @@ public class BackgroundActivityOutboxTests : IDisposable
         harness.Queue.Enqueued.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task CancelledActivity_ShouldNotEnqueueNotification()
+    {
+        var harness = CreateManagerHarness(BackgroundActivityCapabilities.SignalsCompletion);
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+
+        (await harness.Manager.CancelAsync(handle.ActivityId, BackgroundActivityCancelReason.User, "s1"))
+            .Should().BeTrue();
+        harness.Manager.Get(handle.ActivityId, "s1")!.Status
+            .Should().Be(BackgroundActivityStatus.Cancelled);
+
+        // 取消不是「完成」：写 outbox 就会在合并窗口后唤醒会话，用户显式取消反而触发一轮产出。
+        harness.Queue.Enqueued.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task FailedActivity_ShouldStillEnqueueNotification()
+    {
+        var harness = CreateManagerHarness(BackgroundActivityCapabilities.SignalsCompletion);
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+
+        await handle.Reporter.FailAsync("boom", "失败了");
+
+        harness.Manager.Get(handle.ActivityId, "s1")!.Status
+            .Should().Be(BackgroundActivityStatus.Failed);
+
+        var queued = harness.Queue.Enqueued.Should().ContainSingle().Subject;
+        queued.OwnerSessionId.Should().Be("s1");
+        queued.ActivityIds.Should().Equal(handle.ActivityId);
+    }
+
+    [Fact]
+    public async Task StopSession_ShouldNotWakeSession()
+    {
+        var store = new FakeActivityStore();
+        var notifier = new RecordingNotifier();
+        var time = new FakeTimeProvider();
+        var outbox = CreateOutbox(notifier, time, store);
+        var manager = new BackgroundActivityManager(
+            new NullPublisher(),
+            new ServiceCollection().BuildServiceProvider(),
+            new FixedOptionsMonitor<BackgroundActivityOptions>(new BackgroundActivityOptions()),
+            time,
+            store,
+            new NullOutputStore(),
+            outbox,
+            NullLogger<BackgroundActivityManager>.Instance);
+
+        manager.RegisterLauncher("test-module", new FakeLauncher(BackgroundActivityCapabilities.SignalsCompletion));
+
+        var handle = await manager.StartAsync(Request("s1"), "s1");
+
+        (await manager.CancelBySessionAsync("s1", BackgroundActivityCancelReason.SessionStopped))
+            .Should().Be(1);
+        manager.Get(handle.ActivityId, "s1")!.Status
+            .Should().Be(BackgroundActivityStatus.Cancelled);
+        manager.Get(handle.ActivityId, "s1")!.CancelReason
+            .Should().Be(BackgroundActivityCancelReason.SessionStopped);
+
+        // 合并窗口过去后泵取：outbox 里根本没有这条取消终态，因此不会唤醒已停止的会话。
+        time.Advance(Window);
+        (await outbox.PumpOnceAsync()).Should().Be(0);
+        notifier.Calls.Should().Be(0);
+    }
+
     // ─── 工具 ─────────────────────────────────────────────────────────────────
 
     private static readonly TimeSpan Window = BackgroundActivityOutbox.DefaultMergeWindow;

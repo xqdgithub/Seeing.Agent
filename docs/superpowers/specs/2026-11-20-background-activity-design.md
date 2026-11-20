@@ -782,6 +782,7 @@ public record BackgroundActivityEvent : IMessageEvent
 - **子进程生命周期**：`SubprocessSpec` 新增 `SubprocessLifecycle { HostBound, Detached }`（默认 `HostBound`）；`LocalSubprocessFactory` 对 `HostBound` 在 Windows assign **每进程独立** Job Object（`KILL_ON_JOB_CLOSE`），`Detached` 不 assign。`ISubprocess` 不变。
   - 已知语义变化：`bash -c "npm run dev &"` 这类前台命令遗留的后台子进程，会在宿主关闭时被回收。这是期望行为。
   - 实现前提：每进程一个 job（共享 job 会互相误杀）；assign 与 `Process.Start` 之间有竞态，失败降级为记录 pid；Unix 用 process group / `setsid`，不用 Job Object。
+  - **非 Windows 平台（已知边界）**：`HostBound` 暂与 `Detached` 等效（不回收）。POSIX 实现需 `setsid()` / `setpgid()` 建独立进程组并在宿主退出时 `kill -- -pgid`；当前环境仅 Windows，不写未验证的 POSIX 代码，代码内以 `TODO(POSIX)` 标注。
   - 现有 `SubprocessSpec` 使用点：`BashTool`、`DefaultShellService`（where/which）、`GitService`、`RipgrepSearch`、`WorkspaceGitExcluder`——全是短命进程，默认 `HostBound` 无副作用。hooks node / channel host / ACP / Browser 走的是裸 `Process.Start`，不受影响。
 - `ReconcileIncompleteTasksAsync` 保持现状；活动整理由 `IBackgroundActivityControl.ReconcileOrphanedActivitiesAsync` 负责。
 

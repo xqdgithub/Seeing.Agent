@@ -1538,12 +1538,19 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
     /// <c>Interrupted</c>（宿主关闭/孤儿收敛）一律不投递。
     /// </para>
     /// <para>
+    /// <b>只有 <see cref="BackgroundActivityStatus.Succeeded"/> / <see cref="BackgroundActivityStatus.Failed"/>
+    /// 才入队</b>：<see cref="BackgroundActivityStatus.Cancelled"/> 是取消类终态（用户取消、会话 Stop、
+    /// 超时、模块注销），它不是「完成」。若为它写 outbox，合并窗口后就会唤醒已经停止的会话再跑一轮，
+    /// 「停止后不再产出」随即失效；用户显式 <c>activity_cancel</c> 后也不该被唤醒。
+    /// </para>
+    /// <para>
     /// 写 outbox 失败不得反向破坏终态：只记日志，快照已经是权威事实。
     /// </para>
     /// </summary>
     private async Task TryEnqueueCompletionNotificationAsync(BackgroundActivitySnapshot snapshot)
     {
-        if (snapshot.Status == BackgroundActivityStatus.Interrupted)
+        // 取消类终态一律不产生「完成」唤醒：Cancelled 覆盖用户取消 / 会话 Stop / 超时 / 模块注销。
+        if (snapshot.Status is not (BackgroundActivityStatus.Succeeded or BackgroundActivityStatus.Failed))
             return;
 
         if (snapshot.NotifyPolicy != BackgroundActivityNotifyPolicy.OnComplete)
