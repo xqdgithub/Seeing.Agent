@@ -89,11 +89,52 @@ namespace Seeing.Agent.Core.Configuration
         }
 
         /// <summary>
-        /// 重新发现并应用 Agent MD 配置（工作区切换后调用）
+        /// 重新发现并应用 Agent MD 配置（工作区切换的既有入口）
         /// </summary>
-        public async Task ReloadMdOverridesAsync(CancellationToken ct = default)
+        /// <remarks>
+        /// 直接转发到 <see cref="ResetProjectOverridesAsync"/>：只「重新应用」不清理会留下旧工作区的
+        /// 项目级覆盖（纯 MD 创建的 agent 会一直存在）。保留本方法只为兼容既有调用方。
+        /// </remarks>
+        public Task ReloadMdOverridesAsync(CancellationToken ct = default)
+            => ResetProjectOverridesAsync(ct);
+
+        /// <summary>
+        /// 工作区切换：清掉旧的**项目级** MD 覆盖后从零重建（用户级 + 项目级）。
+        /// <para>
+        /// 不新增记账字段——旧工作区的项目级 Agent 名本来就记在 <see cref="_configCache"/> 的
+        /// <c>Project:&lt;name&gt;</c> 键里，反向取出来即可精确回收：
+        /// 只清这些键对应的 Store 覆盖，不误删用户级同名覆盖（它随后会被重新应用）。
+        /// </para>
+        /// </summary>
+        public async Task ResetProjectOverridesAsync(CancellationToken ct = default)
         {
+            ct.ThrowIfCancellationRequested();
+
+            var projectPrefix = $"{ConfigLevel.Project}:";
+            var projectKeys = _configCache.Keys
+                .Where(key => key.StartsWith(projectPrefix, StringComparison.Ordinal))
+                .ToList();
+
+            // 先按缓存键回收集群里的项目级覆盖，再清缓存，最后按新工作区的磁盘文件重新应用。
+            // 顺序保证「旧项目级 agent 不残留」且「用户级同名覆盖不丢失」。
+            foreach (var key in projectKeys)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var name = key[projectPrefix.Length..];
+                if (string.IsNullOrEmpty(name))
+                    continue;
+
+                await RemoveMdConfigFromStoreAsync(name);
+
+                // 同名可能同时存在用户级覆盖：那一条由下面的 ApplyMdOverridesAsync 重新应用，
+                // 这里只移除项目级键，避免用户级键被一并丢掉。
+                _configCache.TryRemove(key, out _);
+            }
+
             await ApplyMdOverridesAsync();
+
+            _logger.LogInformation("工作区切换：已清理 {Count} 个项目级 Agent 覆盖并按当前工作区重建", projectKeys.Count);
         }
 
         /// <summary>

@@ -17,6 +17,15 @@ public class WorkspaceProvider : IWorkspaceProvider
 {
     private volatile string? _workspaceRoot;
     private readonly string _startupDirectory;
+
+    /// <summary>
+    /// 切换工作区时是否同步进程当前目录。
+    /// <para>
+    /// 默认 <see langword="false"/>：进程 CWD 不是业务基准，只有 CLI/TUI 这类单工作区宿主
+    /// 才需要它作为子进程默认目录；WebUI/Desktop 必须保持 false，避免多会话基准漂移。
+    /// </para>
+    /// </summary>
+    public bool MutatesProcessCwd { get; set; }
     private string? _globalWorkspaceRoot;
     private WorkspaceResolutionSource _resolutionSource;
     private WorkspaceOptions _workspaceOptions = new();
@@ -229,14 +238,18 @@ public class WorkspaceProvider : IWorkspaceProvider
         _workspaceRoot = normalized;
         _resolutionSource = source;
 
-        // 同步进程 cwd，使 LocalExecutionWorld.Cwd 跟随工作区切换
-        try
+        // 仅单工作区宿主需要把进程 CWD 跟着切（作为子进程默认目录）；
+        // 多会话宿主禁止改进程 CWD，否则会改写其它会话的兜底基准。
+        if (MutatesProcessCwd)
         {
-            Directory.SetCurrentDirectory(normalized);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "无法将进程当前目录切换到工作区: {Path}", normalized);
+            try
+            {
+                Directory.SetCurrentDirectory(normalized);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "无法将进程当前目录切换到工作区: {Path}", normalized);
+            }
         }
 
         _logger?.LogDebug("工作区已更新: {OldPath} -> {NewPath}, 来源: {OldSource} -> {NewSource}",

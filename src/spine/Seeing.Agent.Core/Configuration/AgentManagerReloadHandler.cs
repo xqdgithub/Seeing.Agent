@@ -3,7 +3,7 @@ using Seeing.Agent.Abstractions.Configuration;
 namespace Seeing.Agent.Core.Configuration;
 
 /// <summary>
-/// 工作区切换重载处理器：重新发现并应用 Agent MD 配置
+/// 工作区切换重载处理器：清掉旧工作区的项目级 Agent 覆盖后按新工作区重建
 /// </summary>
 public sealed class AgentManagerReloadHandler : ReloadHandlerBase<WorkspaceChange>
 {
@@ -15,7 +15,7 @@ public sealed class AgentManagerReloadHandler : ReloadHandlerBase<WorkspaceChang
     /// <summary>组件标识，用于按 agent-md 注册该重载处理器。</summary>
     public override string ComponentId => "agent-md";
 
-    /// <summary>执行重载：重新发现并应用 Agent MD 配置。</summary>
+    /// <summary>执行重载：按新工作区的项目级配置从零重建（旧项目级覆盖先回收）。</summary>
     protected override Task ReloadAsync(WorkspaceChange change, CancellationToken ct)
-        => _manager.ReloadMdOverridesAsync(ct);
+        => _manager.ResetProjectOverridesAsync(ct);
 }

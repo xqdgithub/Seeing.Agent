@@ -1,6 +1,7 @@
 using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Skills;
+using Seeing.Session.Core;
 
 namespace Seeing.Agent.Core.Context;
 
@@ -34,4 +35,8 @@ public sealed class ContextExecutionScope : IContextExecutionScope
 
     /// <inheritdoc />
     public SessionToolSchemaResolution? ToolSettlement { get; set; }
+
+    /// <inheritdoc />
+    public IReadOnlyList<CollaborationDirectory> CollaborationDirectories { get; set; } =
+        Array.Empty<CollaborationDirectory>();
 }

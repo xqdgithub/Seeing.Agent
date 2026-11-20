@@ -103,9 +103,17 @@ internal sealed class ToolCallInvoker
         // 此处仅处理取消：Loop 取消令牌贯通工具执行，工具抛 OCE 时统一报告"已取消"。
         try
         {
-            result = await _tools.ExecuteAsync(
-                tc, context.SessionId, cancellationToken, emitAsync, permissionAuthorizer, agent, toolScope,
-                context.SkillSnapshot)
+            var invocation = new ToolInvocation(
+                context.SessionId,
+                context.WorkingDirectory ?? string.Empty,
+                agent,
+                permissionAuthorizer,
+                toolScope,
+                context.SkillSnapshot,
+                context.Collaborations,
+                emitAsync);
+
+            result = await _tools.ExecuteAsync(tc, invocation, cancellationToken)
                 .ConfigureAwait(false);
 
             // 工具声明的"本执行内已加载"由执行器统一应用（能力键门控 + 审计）。

@@ -609,6 +609,29 @@ namespace Seeing.Agent.Core.Tools
         }
 
         /// <summary>
+        /// 把 filesystem.* 的相对资源按执行 cwd 绝对化；其他 kind（如 shell 命令串）原样返回。
+        /// </summary>
+        private static string? ResolvePermissionResource(string permissionKind, string? resource, string? cwd)
+        {
+            if (string.IsNullOrWhiteSpace(resource))
+                return resource;
+
+            if (!permissionKind.StartsWith("filesystem.", StringComparison.OrdinalIgnoreCase))
+                return resource;
+
+            try
+            {
+                return string.IsNullOrWhiteSpace(cwd)
+                    ? Path.GetFullPath(resource)
+                    : Path.GetFullPath(resource, cwd);
+            }
+            catch
+            {
+                return resource;
+            }
+        }
+
+        /// <summary>
         /// 执行工具调用（带重试支持）。
         /// <paramref name="agent"/> 为当前执行所属 Agent，用于资源门 Agent 规则（spec §5.1 步骤 3）
         /// 及 <see cref="ToolContext.Agent"/> 透传。
@@ -617,16 +640,17 @@ namespace Seeing.Agent.Core.Tools
         /// </summary>
         public async Task<ToolResult> ExecuteAsync(
             ToolCall toolCall,
-            string sessionId = "",
-            CancellationToken cancellationToken = default,
-            Func<Seeing.Agent.Abstractions.Events.IMessageEvent, ValueTask>? emitAsync = null,
-            IPermissionAuthorizer? permissionAuthorizer = null,
-            AgentDefinition? agent = null,
-            IExecutionToolScope? toolScope = null,
-            Seeing.Agent.Abstractions.Skills.SkillCatalogSnapshot? skillSnapshot = null)
+            ToolInvocation invocation,
+            CancellationToken cancellationToken = default)
         {
             var toolId = toolCall.Name;
-            var agentName = agent?.Name;
+            var sessionId = invocation.SessionId;
+            var agentName = invocation.Agent?.Name;
+            var emitAsync = invocation.Emit;
+            var permissionAuthorizer = invocation.Authorizer;
+            var agent = invocation.Agent;
+            var toolScope = invocation.ToolScope;
+            var skillSnapshot = invocation.SkillSnapshot;
 
             // 检查工具是否启用
             if (!IsToolEnabled(toolId))
@@ -694,13 +718,17 @@ namespace Seeing.Agent.Core.Tools
                 var check = _permissionPolicy.Evaluate(toolId, resolvedArgs);
                 if (check != null)
                 {
+                    // 审批与工具必须用同一个基准：filesystem.* 的相对 Resource 先按执行 cwd 绝对化，
+                    // 否则卡片/授权记忆指向的目录与实际写入目录可能不同。
+                    var resource = ResolvePermissionResource(check.PermissionKind, check.Resource, invocation.Cwd);
                     var resolution = await permissionAuthorizer.AuthorizeAsync(new PermissionRequest
                     {
                         SessionId = string.IsNullOrEmpty(sessionId) ? permissionAuthorizer.SessionId : sessionId,
                         CallId = toolCall.Id,
                         AgentName = agentName,
                         PermissionKind = check.PermissionKind,
-                        Resource = check.Resource,
+                        Resource = resource,
+                        WorkingDirectory = invocation.Cwd,
                         Patterns = check.Patterns ?? new List<string>(),
                         Metadata = check.Metadata ?? new Dictionary<string, object>()
                     }, cancellationToken).ConfigureAwait(false);
@@ -737,7 +765,8 @@ namespace Seeing.Agent.Core.Tools
                     Services = _serviceProvider,
                     PermissionAuthorizer = permissionAuthorizer,
                     ToolScope = toolScope,
-                    SkillSnapshot = skillSnapshot
+                    SkillSnapshot = skillSnapshot,
+                    WorkingDirectory = invocation.Cwd
                 };
 
                 var toolResult = await tool.ExecuteAsync(resolvedArgs, context).ConfigureAwait(false);

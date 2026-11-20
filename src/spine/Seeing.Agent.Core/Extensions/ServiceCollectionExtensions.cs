@@ -11,6 +11,7 @@ using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Compression;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Context;
+using Seeing.Agent.Abstractions.Directories;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
@@ -30,6 +31,7 @@ using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Context;
 using Seeing.Agent.Core.Context.Sources;
 using Seeing.Agent.Core.Decorators;
+using Seeing.Agent.Core.Directories;
 using Seeing.Agent.Core.Execution;
 using Seeing.Agent.Core.Hooks;
 using Seeing.Agent.Core.Host;
@@ -654,6 +656,11 @@ namespace Seeing.Agent.Core.Extensions
             services.AddSingleton<IWorkspacePathGate, WorkspacePathGate>();
             services.AddSingleton<WorkspaceBoundaryLifecycle>();
 
+            // 会话协同目录：唯一写入口（持久化配置）与目录判定唯一权威（根投影 / 授权）。
+            // 二者都是无状态读为主的单例；会话数据实时读内存，冷会话由调用方预热（spec §5.9）。
+            services.TryAddSingleton<ICollaborationDirectories, CollaborationDirectories>();
+            services.TryAddSingleton<ISessionRootSet, SessionRootSet>();
+
             // Agent 执行器（统一执行引擎）
             services.AddSingleton<AgentExecutor>();
 
@@ -760,6 +767,8 @@ namespace Seeing.Agent.Core.Extensions
             services.AddSingleton<IReloadHandler, AgentManagerReloadHandler>();
             services.AddSingleton<IReloadHandler, SessionReloadHandler>();
             services.AddSingleton<IReloadHandler, SessionGroupReloadHandler>();
+            // 工作区切换后按新项目重建工具禁用集（LoadToolStateAsync 整体替换，旧集合自然丢弃）
+            services.AddSingleton<IReloadHandler, Seeing.Agent.Core.Tools.ToolStateReloadHandler>();
             services.AddSingleton<IReloadHandler>(sp => sp.GetRequiredService<ComponentManager>());
             // 进程级模块结算热重载（在途边界；IExecutionInFlightBoundary 由 Hosting 可选登记）
             services.AddSingleton<ModuleSettlementReloadHandler>(sp =>
@@ -799,6 +808,10 @@ namespace Seeing.Agent.Core.Extensions
 
             services.TryAddEnumerable(
                 ServiceDescriptor.Scoped<IContextSource, ProjectInstructionsContextSource>());
+            // 协同目录源必须 scoped：构造注入 scoped 的 IContextExecutionScope，
+            // 单例注册会在 ValidateScopes 下解析即抛，或泄漏某次执行的钉住事实。
+            services.TryAddEnumerable(
+                ServiceDescriptor.Scoped<IContextSource, CollaborationDirectoriesContextSource>());
             services.TryAddScoped<IContextAssembler>(sp => new ContextAssembler(
                 sp.GetServices<IContextSource>(),
                 sp.GetRequiredService<ISessionManager>(),

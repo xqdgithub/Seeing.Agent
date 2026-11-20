@@ -122,75 +122,61 @@ public class PermissionService : IPermissionService
         var isFilesystem = IsFilesystemKind(normalized.PermissionKind);
         var restrict = _options?.CurrentValue.Workspace.RestrictToWorkspace == true;
 
-        // 1. 工作区边界预检（与 WorkspacePathGate.EnsureAllowed 同源）
-        if (isFilesystem && restrict)
-        {
-            if (string.IsNullOrEmpty(sessionId))
-            {
-                return Result(normalized, PermissionEffect.Deny, PermissionResolvedBy.Policy,
-                    "缺少会话 ID，无法在硬边界模式下访问文件");
-            }
+        // 1. 否决：Agent 规则先算，Deny 优先于任何自动放行（门闸、授权记忆、开关、通道）。
+        PermissionRuleEntry? matchedRule = null;
+        var ruleEffect = PermissionEffect.Ask;
+        string? ruleReason = null;
 
-            if (_workspaceGate is not null)
-            {
-                var gateError = _workspaceGate.EnsureAllowed(sessionId, normalized.Resource ?? string.Empty);
-                // RequireInteraction=true 时不被工作区内/白名单静默放行，落入后续询问（spec §5.1 契约）。
-                if (gateError is null && !normalized.RequireInteraction)
-                {
-                    return Result(normalized, PermissionEffect.Allow, PermissionResolvedBy.Policy,
-                        "路径在工作区内或会话白名单内");
-                }
-            }
-            // 越界（含 filesystem.workspace_extend）→ 继续 2/3/5（可经审批扩权）
-        }
-
-        // 2. 授权记忆
-        var grant = MatchGrant(normalized);
-        if (grant is not null)
-        {
-            return Result(normalized, grant.Effect, PermissionResolvedBy.Policy,
-                $"命中授权记忆（{grant.Scope}）");
-        }
-
-        // 3. Agent 规则（kind 经 PermissionKindMapper 映射）
         var policy = await ResolveAgentPolicyAsync(normalized, ct).ConfigureAwait(false);
         if (policy is not null)
         {
-            var (matchedRule, ruleEffect, ruleReason) = await EvaluateRulesAsync(
+            (matchedRule, ruleEffect, ruleReason) = await EvaluateRulesAsync(
                 new ResourceIdentifier(PermissionKindMapper.Map(normalized.PermissionKind), normalized.Resource ?? string.Empty),
                 BuildPolicyContext(normalized, policy),
                 ct).ConfigureAwait(false);
 
-            // 3a. Deny 对所有 kind 生效（fail-safe；激活 explore/plan 的 Deny(Shell,"*") 等）。
-            //     注意：仅"匹配到的 Deny 规则"硬拒；策略默认效果（无匹配规则）Deny 不短路资源类 kind，
-            //     否则子代理（如 explore 默认 Deny）的文件/shell 访问会被秒拒而永远走不到审批
-            //     （release notes §3.5「资源门仅应用 Deny 规则」；§5 要求资源门进入询问）。
+            // 仅"匹配到的 Deny 规则"硬拒；策略默认 Deny 不短路资源类 kind，
+            // 否则子代理（如 explore 默认 Deny）的文件/shell 访问永远走不到审批。
             if (ruleEffect == PermissionEffect.Deny &&
                 (matchedRule is not null || !IsResourceKind(normalized.PermissionKind)))
                 return Result(normalized, PermissionEffect.Deny, PermissionResolvedBy.Policy, ruleReason);
-
-            // 3b. Allow 仅对非资源类 kind 短路（tool.execute / skill.execute / mcp.* / agent.*）。
-            //     资源类 kind（filesystem.* / shell.* / network.*）忽略 Agent 规则的 Allow：
-            //     旧系统中 EvaluateFileAsync/EvaluateMcpToolAsync/EvaluateAgentAsync 无生产调用者（死代码），
-            //     资源门（ToolManager）从不套用 Agent 规则；工作区内已由步骤 1b 放行，
-            //     越界必须走 4/5/6 审批，不得被 build 的 Allow(File/Shell/Network,"*") 绕过。
-            if (ruleEffect == PermissionEffect.Allow && !normalized.RequireInteraction
-                && !IsResourceKind(normalized.PermissionKind))
-                return Result(normalized, PermissionEffect.Allow, PermissionResolvedBy.Policy, ruleReason);
         }
 
-        // 4. 生效开关（实时）
+        // 2. 自动放行块：RequireInteraction 或 Disabled(Ask) 时整体跳过，直接进入询问。
+        //    Deny 规则已在步骤 1 处理，所以这里不存在"自动放行覆盖策略"。
         var toggle = _effectivePolicy?.Resolve(normalized);
-        if (toggle == PermissionEffect.Allow)
-            return Result(normalized, PermissionEffect.Allow, PermissionResolvedBy.Policy, "生效开关自动批准");
+        var autoApproveAllowed = !normalized.RequireInteraction && toggle != PermissionEffect.Ask;
 
-        // 强制交互：会话/覆盖 Disabled（Ask）或 RequireInteraction=true 时短路宿主通道自动批准，直接进入询问
-        // （spec §5.1「RequireInteraction=true → 跳过以上 Allow 分支」；§5.3 Resolve 恒 null 只解决步骤 4）。
-        var forceInteraction = toggle == PermissionEffect.Ask || normalized.RequireInteraction;
-
-        // 5. 宿主通道策略（任一 TryAutoApprove=Allow 即放行）
-        if (!forceInteraction)
+        if (autoApproveAllowed)
         {
+            // 2a. 工作区边界（含会话白名单）
+            if (isFilesystem && restrict)
+            {
+                if (string.IsNullOrEmpty(sessionId))
+                    return Result(normalized, PermissionEffect.Deny, PermissionResolvedBy.Policy,
+                        "缺少会话 ID，无法在硬边界模式下访问文件");
+
+                if (_workspaceGate is not null &&
+                    _workspaceGate.EnsureAllowed(sessionId, normalized.Resource ?? string.Empty) is null)
+                    return Result(normalized, PermissionEffect.Allow, PermissionResolvedBy.Policy,
+                        "路径在工作区内或会话白名单内");
+            }
+
+            // 2b. 授权记忆
+            var grant = MatchGrant(normalized);
+            if (grant is not null)
+                return Result(normalized, grant.Effect, PermissionResolvedBy.Policy,
+                    $"命中授权记忆（{grant.Scope}）");
+
+            // 2c. Agent 规则 Allow（仅非资源类；资源类必须走审批）
+            if (ruleEffect == PermissionEffect.Allow && !IsResourceKind(normalized.PermissionKind))
+                return Result(normalized, PermissionEffect.Allow, PermissionResolvedBy.Policy, ruleReason);
+
+            // 2d. 生效开关
+            if (toggle == PermissionEffect.Allow)
+                return Result(normalized, PermissionEffect.Allow, PermissionResolvedBy.Policy, "生效开关自动批准");
+
+            // 2e. 宿主通道
             foreach (var channel in _channels)
             {
                 PermissionEffect? autoApprove;
@@ -209,7 +195,7 @@ public class PermissionService : IPermissionService
             }
         }
 
-        // 6. 询问
+        // 3. 询问
         if (_presentation is null || !_presentation.CanSurface(sessionId))
             return Result(normalized, PermissionEffect.Deny, PermissionResolvedBy.NoChannel, "无交互通道");
 
@@ -229,7 +215,7 @@ public class PermissionService : IPermissionService
             //     正确的目录级记忆语义由 7b 以 kind 精确 + 目录前缀覆盖。
             if (resolution.Scope != PermissionGrantScope.Once)
             {
-                var directory = ResolveResourceDirectory(normalized.Resource!);
+                var directory = ResolveResourceDirectory(normalized);
                 if (!string.IsNullOrEmpty(directory) && _grantStore is not null)
                     _grantStore.AddSessionDirectory(sessionId, directory);
             }
@@ -244,7 +230,7 @@ public class PermissionService : IPermissionService
                 isFilesystem &&
                 !string.IsNullOrWhiteSpace(normalized.Resource))
             {
-                var directory = ResolveResourceDirectory(normalized.Resource!);
+                var directory = ResolveResourceDirectory(normalized);
                 if (!string.IsNullOrEmpty(directory))
                     memoryResource = directory;
             }
@@ -291,7 +277,7 @@ public class PermissionService : IPermissionService
         SessionId = request.SessionId,
         AgentName = request.AgentName ?? string.Empty,
         Policy = policy,
-        WorkingDirectory = Directory.GetCurrentDirectory()
+        WorkingDirectory = request.WorkingDirectory ?? string.Empty
     };
 
     private async Task PresentAsync(PermissionRequest request, CancellationToken ct)
@@ -325,17 +311,24 @@ public class PermissionService : IPermissionService
         permissionKind?.StartsWith("network.", StringComparison.OrdinalIgnoreCase) == true ||
         permissionKind?.StartsWith("mcp.", StringComparison.OrdinalIgnoreCase) == true;
 
-    /// <summary>取资源所在目录（<c>Path.GetFullPath</c> → <c>GetDirectoryName</c>）；失败返回 null。</summary>
-    private string? ResolveResourceDirectory(string resource)
+    /// <summary>取资源所在目录（按请求 cwd 绝对化 → <c>GetDirectoryName</c>）；失败返回 null。</summary>
+    private string? ResolveResourceDirectory(PermissionRequest request)
     {
         try
         {
-            var directory = Path.GetDirectoryName(Path.GetFullPath(resource));
+            var resource = request.Resource;
+            if (string.IsNullOrWhiteSpace(resource))
+                return null;
+
+            var full = string.IsNullOrWhiteSpace(request.WorkingDirectory)
+                ? Path.GetFullPath(resource)
+                : Path.GetFullPath(resource, request.WorkingDirectory);
+            var directory = Path.GetDirectoryName(full);
             return string.IsNullOrEmpty(directory) ? null : directory;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "解析资源目录失败: {Resource}", resource);
+            _logger.LogWarning(ex, "解析资源目录失败: {Resource}", request.Resource);
             return null;
         }
     }

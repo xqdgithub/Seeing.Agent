@@ -35,10 +35,24 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
     private bool _disposed;
     private int _suppressDepth;
 
+    /// <summary>抑制期间收到过真实信号（记账；作用域释放时补跑，不是丢弃）</summary>
+    private bool _suppressedSignal;
+
+    /// <summary>抑制期信号版本：显式全量轮据此判断「这一轮开始之后有没有新信号」</summary>
+    private int _suppressSignalVersion;
+
+    /// <summary>最近一次工作区变更的旧根：跨去抖传给 <see cref="WorkspaceChange"/></summary>
+    private string? _pendingOldWorkspace;
+
     /// <summary>
-    /// 抑制自动重载的作用域。切换工作区时由 <c>WorkspaceSwitcher</c> 使用：
-    /// <c>SetWorkspaceRoot</c> 会触发 <c>WorkspaceRootChanged</c>，若同时再由调用方显式重载，
+    /// 抑制自动重载的作用域。切换工作区时由 <c>WorkspaceSwitcher</c> 覆盖整个
+    /// <c>ApplyAsync</c> 使用：<c>SetWorkspaceRoot</c> 会触发 <c>WorkspaceRootChanged</c>，
+    /// 配置重读会触发 <c>ConfigChanged</c>，若同时再由调用方显式重载，
     /// 同一变更会跑两轮，而模块生命周期与结算不是按可重入设计的。
+    /// <para>
+    /// 抑制不丢信号：期间的触发只记账，作用域（最外层）释放时补一次去抖全量轮；
+    /// 已被显式全量轮覆盖的信号不重复补跑。
+    /// </para>
     /// </summary>
     public IDisposable SuppressAutoReload()
     {
@@ -57,8 +71,11 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
         public void Dispose()
         {
             var owner = Interlocked.Exchange(ref _owner, null);
-            if (owner is not null)
-                Interlocked.Decrement(ref owner._suppressDepth);
+            if (owner is null)
+                return;
+
+            Interlocked.Decrement(ref owner._suppressDepth);
+            owner.OnSuppressionReleased();
         }
     }
 
@@ -140,6 +157,12 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
     {
         var results = new List<ReloadResult>();
 
+        // 抑制期内由切换流程主导的显式全量轮：这一轮覆盖的信号无需再补跑。
+        // 轮次开始之后才到的新信号保持记账，由抑制作用域释放时补跑（不丢信号）。
+        var suppressedVersion = IsSuppressed && CoversAllSignals(change)
+            ? Volatile.Read(ref _suppressSignalVersion)
+            : -1;
+
         IReloadHandler[]? snapshot;
         lock (_stateLock)
         {
@@ -157,6 +180,7 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
         if (snapshot is null)
         {
             _logger.LogWarning("无组件响应变更类型: {ChangeType}", change.GetType().Name);
+            ReleaseSuppressedSignal(suppressedVersion);
             return results;
         }
 
@@ -186,6 +210,7 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
             _gate.Release();
         }
 
+        ReleaseSuppressedSignal(suppressedVersion);
         return results;
     }
 
@@ -237,7 +262,7 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
     {
         if (IsSuppressed)
         {
-            _logger.LogDebug("自动重载已抑制（手动切换进行中），跳过配置触发");
+            RecordSuppressedSignal("配置");
             return;
         }
 
@@ -256,14 +281,83 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
 
     private void OnWorkspaceChanged(object? sender, WorkspaceChangedEventArgs e)
     {
+        // 事件自带旧根，是唯一可信来源：去抖回合可能晚于切换完成，
+        // 此时读 StartupDirectory 会把「启动目录」误报成旧工作区。
+        // 即使当前被抑制也先暂存，补跑回合要用它构造 WorkspaceChange。
+        lock (_stateLock)
+            _pendingOldWorkspace = e.OldWorkspace ?? string.Empty;
+
         if (IsSuppressed)
         {
-            _logger.LogDebug("自动重载已抑制（手动切换进行中），跳过工作区触发");
+            RecordSuppressedSignal("工作区");
             return;
         }
 
         EnqueueFullReload();
     }
+
+    /// <summary>
+    /// 抑制期间不丢弃信号：记账，由抑制结束（最外层作用域释放）后的补跑覆盖。
+    /// </summary>
+    private void RecordSuppressedSignal(string source)
+    {
+        lock (_stateLock)
+        {
+            _suppressedSignal = true;
+            _suppressSignalVersion++;
+        }
+        _logger.LogDebug("自动重载已抑制（手动切换进行中），{Source} 触发已记账，抑制结束后补跑", source);
+    }
+
+    /// <summary>
+    /// 抑制期结束：仍有嵌套作用域则不处理；否则若抑制期间有信号未被显式全量轮覆盖，
+    /// 补一次去抖全量轮（WorkspaceChange + ConfigChange），而不是把信号丢掉。
+    /// </summary>
+    private void OnSuppressionReleased()
+    {
+        if (Volatile.Read(ref _suppressDepth) > 0)
+            return;
+
+        bool compensate;
+        lock (_stateLock)
+        {
+            if (_disposed)
+                return;
+
+            compensate = _suppressedSignal;
+            _suppressedSignal = false;
+        }
+
+        if (!compensate)
+            return;
+
+        _logger.LogInformation("切换抑制期间收到未被显式重载覆盖的信号，补跑一轮全量重载");
+        EnqueueFullReload();
+    }
+
+    /// <summary>
+    /// 显式全量轮结束：只有「这一轮开始之后没有新信号」时才清除记账，
+    /// 避免把轮次进行中到达的真实信号一起吞掉。
+    /// </summary>
+    private void ReleaseSuppressedSignal(int suppressedVersion)
+    {
+        if (suppressedVersion < 0)
+            return;
+
+        lock (_stateLock)
+        {
+            if (_suppressSignalVersion == suppressedVersion)
+                _suppressedSignal = false;
+        }
+    }
+
+    /// <summary>该信号是否覆盖「全部处理器」：只有这类轮次才能消掉抑制期的记账。</summary>
+    private static bool CoversAllSignals(IReloadSignal change) => change switch
+    {
+        WorkspaceChange => true,
+        ConfigChange cfg => cfg.ChangedSections.Count == 0,
+        _ => false
+    };
 
     /// <summary>全量变更去抖 + 执行期间重入合并</summary>
     private void EnqueueFullReload()
@@ -297,16 +391,33 @@ public sealed class ReloadOrchestrator : IReloadSignalBus, IReloadHandlerRegistr
             {
                 await Task.Delay(DebounceWindow);   // 去抖窗口：合并连续全量触发
 
+                if (IsSuppressed)
+                {
+                    // 去抖窗口内又开始了一次切换：交回抑制记账，由该作用域释放时补跑，
+                    // 避免与正在进行的切换互相踩踏。
+                    RecordSuppressedSignal("去抖窗口");
+                    lock (_stateLock)
+                    {
+                        _pendingFullReload = false;
+                        _debouncePending = false;
+                        _startedRound = false;
+                    }
+                    return;
+                }
+
+                string oldWorkspace;
                 lock (_stateLock)
                 {
                     _running = true;
                     _startedRound = true;
+                    oldWorkspace = _pendingOldWorkspace ?? string.Empty;
+                    _pendingOldWorkspace = null;
                 }
                 try
                 {
                     await ReloadAsync(new WorkspaceChange
                     {
-                        OldWorkspace = _workspace.StartupDirectory,
+                        OldWorkspace = oldWorkspace,
                         NewWorkspace = _workspace.GetProjectRoot()
                     });
 
