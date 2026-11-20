@@ -251,7 +251,7 @@ body.file-panel-resizing * { cursor: col-resize !important; }
 .file-tree-tool { border: none; background: transparent; color: #4e5969; font-size: 12px; padding: 2px 6px; border-radius: 5px; cursor: pointer; }
 .file-tree-tool:hover { background: #f2f3f5; }
 .file-ctx-menu .item.danger { color: #cb2634; }
-.file-dialog-native { border: none; padding: 0; background: transparent; max-width: none; max-height: none; overflow: visible; }
+.file-dialog-native { position: fixed; inset: 0; margin: auto; width: fit-content; height: fit-content; border: none; padding: 0; background: transparent; max-width: none; max-height: none; overflow: visible; }
 .file-dialog-native::backdrop { background: rgba(0, 0, 0, 0.28); }
 .file-dialog { width: 360px; background: #fff; border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2); overflow: hidden; }
 .file-dialog-title { padding: 12px 16px; font-weight: 600; font-size: 14px; border-bottom: 1px solid var(--color-border, #eee); }
@@ -262,5 +262,5 @@ body.file-panel-resizing * { cursor: col-resize !important; }
 .file-dialog-btn.primary { background: #1677ff; border-color: #1677ff; color: #fff; }
 .file-dialog-btn.danger { background: #cb2634; border-color: #cb2634; color: #fff; }
 
-.file-tree-dir.is-selected-dir { background: rgba(22, 119, 255, 0.10); border-radius: 4px; }
+.file-tree-dir.is-selected-dir { background: rgba(22, 119, 255, 0.14); box-shadow: inset 3px 0 0 #1677ff; border-radius: 4px; }
 .file-dialog-hint { margin-bottom: 8px; color: #86909c; font-size: 12px; }

@@ -477,13 +477,15 @@
         }
 
         _dialogValue = string.Empty;
-        var relative = target.Id.RelativePath.Replace('\\', '/');
+        var workspace = _workspaces?.Find(target.Id);
+        var targetPath = workspace?.GetAbsolutePath(target.Id)
+            ?? target.Id.RelativePath.Replace('\\', '/');
         _dialog = new DialogState
         {
             Kind = isFile ? DialogKind.NewFile : DialogKind.NewDirectory,
             Parent = target,
             Title = isFile ? "新建文件" : "新建文件夹",
-            TargetPath = string.IsNullOrEmpty(relative) ? "（根）" : relative,
+            TargetPath = targetPath,
             Placeholder = isFile ? "文件名（如 notes.md）" : "文件夹名",
             OkText = "创建"
         };
