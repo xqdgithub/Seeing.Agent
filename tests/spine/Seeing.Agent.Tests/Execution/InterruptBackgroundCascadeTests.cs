@@ -22,7 +22,7 @@ public class InterruptBackgroundCascadeTests
 {
     private sealed record CancelCall(string ExecutionId, BackgroundActivityCancelReason Reason);
 
-    /// <summary>记录调用的后台活动控制端口替身。</summary>
+    /// <summary>记录调用的后台活动控制端口替身（只关心按执行取消，其余成员不参与本测试）。</summary>
     private sealed class RecordingBackgroundControl : IBackgroundActivityControl
     {
         public List<CancelCall> Calls { get; } = new();
@@ -37,6 +37,34 @@ public class InterruptBackgroundCascadeTests
 
             return Task.FromResult(0);
         }
+
+        public Task<BackgroundActivityHandle> StartAsSystemAsync(
+            BackgroundActivityStartRequest request, CancellationToken ct = default)
+            => throw new NotSupportedException();
+
+        public Task<BackgroundActivityHandle> TrackAsync(
+            BackgroundActivityTrackRequest request, CancellationToken ct = default)
+            => throw new NotSupportedException();
+
+        public void RegisterLauncher(string moduleId, IBackgroundActivityLauncher launcher)
+            => throw new NotSupportedException();
+
+        public Task<int> UnregisterLauncherAsync(string kind, CancellationToken ct = default)
+            => throw new NotSupportedException();
+
+        public Task<int> CancelBySessionAsync(
+            string sessionId,
+            BackgroundActivityCancelReason reason,
+            CancellationToken ct = default)
+            => throw new NotSupportedException();
+
+        public Task<int> CancelAllAsync(
+            BackgroundActivityCancelReason reason,
+            CancellationToken ct = default)
+            => throw new NotSupportedException();
+
+        public Task<int> ReconcileOrphanedActivitiesAsync(CancellationToken ct = default)
+            => throw new NotSupportedException();
     }
 
     /// <summary>可阻塞的假执行体：让「当前执行」稳定存在，供中断命中。</summary>
