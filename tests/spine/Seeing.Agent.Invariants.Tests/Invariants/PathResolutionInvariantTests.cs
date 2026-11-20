@@ -59,6 +59,27 @@ public class PathResolutionInvariantTests
             "执行链不得消费进程 CWD；命中: {0}", string.Join("; ", hits));
     }
 
+    [Fact]
+    public void FileWorkbench_ShouldNotDependOnCollaborationWritePort()
+    {
+        // 协同目录是会话功能：管理入口在会话工具栏，文件工作台只消费只读根列表。
+        var dir = Path.Combine(FindRepoRoot(), "samples", "Seeing.Agent.WebUI.Files");
+        Directory.Exists(dir).Should().BeTrue();
+
+        var hits = Directory
+            .EnumerateFiles(dir, "*.*", SearchOption.AllDirectories)
+            .Where(file => file.EndsWith(".razor", StringComparison.OrdinalIgnoreCase)
+                        || file.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                        && !file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
+            .Where(file => File.ReadAllText(file).Contains("ICollaborationDirectories", StringComparison.Ordinal))
+            .Select(file => Path.GetRelativePath(dir, file))
+            .ToArray();
+
+        hits.Should().BeEmpty(
+            "文件工作台不得持有协同目录写端口；命中: {0}", string.Join("; ", hits));
+    }
+
     private static string[] ScanSrcIn(string relativeDir, string token)
     {
         var dir = Path.Combine(FindRepoRoot(), relativeDir);
