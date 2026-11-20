@@ -19,6 +19,10 @@
                 {
                     <span class="file-tab-dirty" title="未保存"></span>
                 }
+                <button type="button" class="file-tab-close"
+                        title="关闭"
+                        @onclick:stopPropagation="true"
+                        @onclick="() => Tabs.Close(f.Id)">×</button>
             </div>
         }
     </div>
