@@ -11,6 +11,13 @@ public sealed class FileTreeState
     /// <summary>选中文件变化事件（树节点据此高亮文件/展开祖先目录）。</summary>
     public event Action? SelectionChanged;
 
+    /// <summary>节点右键请求（条目 + 视口坐标）；由面板统一渲染上下文菜单。</summary>
+    public event Action<FileEntry, double, double>? ContextRequested;
+
+    /// <summary>请求面板打开某节点的上下文菜单。</summary>
+    public void RequestContext(FileEntry entry, double x, double y)
+        => ContextRequested?.Invoke(entry, x, y);
+
     /// <summary>当前激活文件（含根标识；null = 无选中）。</summary>
     public FileResourceId? SelectedId { get; private set; }
 

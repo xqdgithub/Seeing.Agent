@@ -90,6 +90,54 @@ public class FileWorkspaceTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateDirectory_ShouldCreateNestedPath()
+    {
+        var dir = Path.Combine(_root, "a", "b");
+
+        await _ws.CreateDirectoryAsync(dir);
+
+        Directory.Exists(dir).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Move_SameRoot_ShouldRenameFile()
+    {
+        var file = Path.Combine(_root, "a.txt");
+        var moved = Path.Combine(_root, "b.txt");
+        await _ws.WriteAsync(file, "hello");
+
+        await _ws.MoveAsync(file, moved);
+
+        File.Exists(file).Should().BeFalse();
+        File.Exists(moved).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Move_TargetExists_ShouldThrow()
+    {
+        var source = Path.Combine(_root, "a.txt");
+        var target = Path.Combine(_root, "b.txt");
+        await _ws.WriteAsync(source, "a");
+        await _ws.WriteAsync(target, "b");
+
+        var act = async () => await _ws.MoveAsync(source, target);
+
+        await act.Should().ThrowAsync<IOException>();
+    }
+
+    [Fact]
+    public async Task Move_AcrossRoots_ShouldThrow()
+    {
+        var file = Path.Combine(_root, "a.txt");
+        await _ws.WriteAsync(file, "hello");
+        var outside = Path.Combine(Path.GetTempPath(), "files-out-" + Guid.NewGuid().ToString("N"), "a.txt");
+
+        var act = async () => await _ws.MoveAsync(file, outside);
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
     public async Task Edit_ShouldApply_AndAdvanceRevision()
     {
         var file = Path.Combine(_root, "edit.txt");

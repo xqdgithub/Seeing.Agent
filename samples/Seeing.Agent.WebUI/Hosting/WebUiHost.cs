@@ -180,6 +180,9 @@ public static class WebUiHost
         builder.Services.AddScoped<Seeing.Agent.WebUI.Services.AgentFileChangeBridge>();
         builder.Services.AddScoped<Seeing.Agent.WebUI.Files.Services.FilePanelState>();
         builder.Services.AddScoped<Seeing.Agent.WebUI.Files.Services.FileTreeState>();
+        // 在系统文件管理器中定位文件（仅本机部署；远程宿主应替换为不支持实现）
+        builder.Services.AddSingleton<Seeing.Agent.Abstractions.Files.IFileRevealService,
+            Seeing.Agent.WebUI.Services.LocalFileRevealService>();
 
         // 宿主请求（Host Request）：全局收件箱（Singleton 投影）+ 活跃面板登记（Singleton）+ 派发器（Scoped，circuit 维度）
         builder.Services.AddSingleton<Seeing.Agent.WebUI.Services.HostRequestInbox>();

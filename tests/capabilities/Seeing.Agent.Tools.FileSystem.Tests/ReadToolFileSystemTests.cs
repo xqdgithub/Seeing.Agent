@@ -286,6 +286,22 @@ public class ReadToolFileSystemTests
             _timestamps.Remove(normalized);
         }
 
+        public void Move(string source, string destination)
+        {
+            var from = Normalize(source);
+            var to = Normalize(destination);
+            if (_files.Remove(from, out var content))
+            {
+                _files[to] = content;
+                if (_timestamps.Remove(from, out var ts))
+                    _timestamps[to] = ts;
+                return;
+            }
+
+            if (_directories.Remove(from))
+                _directories.Add(to);
+        }
+
         public DateTime GetLastWriteTimeUtc(string path) =>
             _timestamps.TryGetValue(Normalize(path), out var ts) ? ts : DateTime.UtcNow;
 

@@ -45,6 +45,8 @@ internal sealed class GhostEntryFileSystem : IFileSystem
     /// <inheritdoc />
     public void Delete(string path) => _inner.Delete(path);
     /// <inheritdoc />
+    public void Move(string source, string destination) => _inner.Move(source, destination);
+    /// <inheritdoc />
     public DateTime GetLastWriteTimeUtc(string path) => _inner.GetLastWriteTimeUtc(path);
     /// <inheritdoc />
     public IEnumerable<string> EnumerateDirectories(string directory, string pattern, bool recursive) => _inner.EnumerateDirectories(directory, pattern, recursive);

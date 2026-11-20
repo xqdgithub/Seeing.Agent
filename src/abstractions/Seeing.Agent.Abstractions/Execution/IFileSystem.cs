@@ -41,6 +41,9 @@ public interface IFileSystem
     /// <summary>删除文件或目录。</summary>
     void Delete(string path);
 
+    /// <summary>移动文件或目录（目标不得已存在；跨卷移动目录由底层实现决定是否支持）。</summary>
+    void Move(string source, string destination);
+
     /// <summary>文件最后写入时间（UTC）。</summary>
     DateTime GetLastWriteTimeUtc(string path);
 

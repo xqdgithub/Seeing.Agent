@@ -1,10 +1,13 @@
 @using Seeing.Agent.Abstractions.Files
 @using Seeing.Agent.WebUI.Files.Services
 @using Seeing.Session.Core
+@using Microsoft.AspNetCore.Components.Web
 @inject IFileWorkspaceFactory WorkspaceFactory
 @inject FilePanelState PanelState
 @inject FileTreeState TreeState
 @inject ISessionEventPublisher SessionEvents
+@inject IServiceProvider Services
+@inject Microsoft.JSInterop.IJSRuntime JS
 @implements IDisposable
 
 <div class="file-panel-host">
@@ -46,7 +49,16 @@
                     <button type="button" class="file-tree-collapse" title="隐藏目录树" @onclick="HideTree">
                         <span>◀</span>
                     </button>
-                    <FileTree Roots="_roots" OnOpen="OnOpenFileAsync" />
+                    <div class="file-tree-pane">
+                        <div class="file-tree-toolbar">
+                            <button type="button" class="file-tree-tool" title="新建文件"
+                                    @onclick="() => BeginNew(isFile: true)">＋文件</button>
+                            <button type="button" class="file-tree-tool" title="新建文件夹"
+                                    @onclick="() => BeginNew(isFile: false)">＋目录</button>
+                            <button type="button" class="file-tree-tool" title="刷新" @onclick="RefreshTree">⟳</button>
+                        </div>
+                        <FileTree Roots="_roots" OnOpen="OnOpenFileAsync" />
+                    </div>
                 </div>
                 <ResizeHandle CssVariable="--file-tree-width" Vertical="true" Min="140" Max="600"
                               Default="220" StorageKey="seeing-files-tree-width" />
@@ -58,8 +70,82 @@
                 </button>
             }
             <div class="file-panel-main">
-                <FileTabs Tabs="_tabs" OnSave="SaveActiveAsync" />
+                <FileTabs Tabs="_tabs" Workspaces="_workspaces" OnSave="SaveActiveAsync" />
+                @if (ActiveTab is { } activeTab)
+                {
+                    <div class="file-crumbs">
+                        @if (_workspaces?.Find(activeTab.Id) is { } activeRoot)
+                        {
+                            <span class="file-crumb-root @(activeRoot.Root.Kind == FileWorkspaceRootKind.Collaboration ? "is-collab" : "is-project")">
+                                @(activeRoot.Root.Kind == FileWorkspaceRootKind.Collaboration ? "协同" : "项目")
+                                · @activeRoot.Root.Label
+                            </span>
+                        }
+                        @foreach (var segment in CrumbSegments(activeTab.Id.RelativePath))
+                        {
+                            <span class="file-crumb-sep">›</span>
+                            <span class="file-crumb">@segment</span>
+                        }
+                    </div>
+                }
                 <FileEditor Tabs="_tabs" Workspaces="_workspaces" @ref="_editor" />
+            </div>
+        </div>
+    }
+
+    @if (_contextMenu is { } menu)
+    {
+        <div class="file-ctx-backdrop" @onclick="CloseContextMenu"></div>
+        <div class="file-ctx-menu" style="left:@(menu.X)px; top:@(menu.Y)px">
+            @if (!menu.Entry.IsDirectory)
+            {
+                <button type="button" class="item" @onclick="() => OpenFromMenuAsync(menu.Entry)">打开</button>
+                <div class="divider"></div>
+            }
+            @if (menu.Entry.IsDirectory && !IsRoot(menu.Entry))
+            {
+                <button type="button" class="item" @onclick="() => BeginNew(isFile: true, menu.Entry)">新建文件</button>
+                <button type="button" class="item" @onclick="() => BeginNew(isFile: false, menu.Entry)">新建文件夹</button>
+                <div class="divider"></div>
+            }
+            <button type="button" class="item" @onclick="() => CopyAsync(FileName(menu.Entry))">复制文件名</button>
+            <button type="button" class="item" @onclick="() => CopyAsync(RelativePath(menu.Entry))">复制相对路径</button>
+            <button type="button" class="item" @onclick="() => CopyAsync(AbsolutePath(menu.Entry))">复制完整路径</button>
+            @if (!IsRoot(menu.Entry))
+            {
+                <div class="divider"></div>
+                <button type="button" class="item" @onclick="() => BeginRename(menu.Entry)">重命名</button>
+                <button type="button" class="item danger" @onclick="() => BeginDelete(menu.Entry)">删除</button>
+            }
+            @if (CanReveal)
+            {
+                <div class="divider"></div>
+                <button type="button" class="item" @onclick="() => RevealAsync(menu.Entry)">在资源管理器中显示</button>
+            }
+        </div>
+    }
+
+    @if (_dialog is { } dialog)
+    {
+        <div class="file-dialog-backdrop">
+            <div class="file-dialog">
+                <div class="file-dialog-title">@dialog.Title</div>
+                <div class="file-dialog-body">
+                    @if (dialog.Kind == DialogKind.Delete)
+                    {
+                        <span>将删除 <code>@RelativePath(dialog.Entry!)</code>。此操作不可撤销。</span>
+                    }
+                    else
+                    {
+                        <input class="file-dialog-input" @bind="_dialogValue" @bind:event="oninput"
+                               placeholder="@dialog.Placeholder" />
+                    }
+                </div>
+                <div class="file-dialog-actions">
+                    <button type="button" class="file-dialog-btn" @onclick="CloseDialog">取消</button>
+                    <button type="button" class="file-dialog-btn @(dialog.Kind == DialogKind.Delete ? "danger" : "primary")"
+                            @onclick="ConfirmDialogAsync">@dialog.OkText</button>
+                </div>
             </div>
         </div>
     }
@@ -78,10 +164,16 @@
     private FileEditor? _editor;
     private string? _error;
     private IDisposable? _sessionEventSubscription;
+    private IFileRevealService? _reveal;
+    private ContextMenuState? _contextMenu;
+    private DialogState? _dialog;
+    private string _dialogValue = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
         if (string.IsNullOrEmpty(SessionId)) return;
+        _reveal = Services.GetService(typeof(IFileRevealService)) as IFileRevealService;
+        TreeState.ContextRequested += OnContextRequested;
         // 协同目录增删 → 重载根列表（会话层写入后发布，避免定时轮询）
         _sessionEventSubscription = SessionEvents.Events.Subscribe(new SessionEventObserver(OnSessionEvent));
         // 标签状态按会话缓存在 Scoped 的 PanelState 上，页面导航往返不丢失
@@ -254,6 +346,234 @@
         TreeState.SetSelected(active?.Id);
     }
 
+    private OpenFile? ActiveTab =>
+        _tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == _tabs.ActiveKey);
+
+    private static IEnumerable<string> CrumbSegments(string relativePath)
+        => relativePath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+    // ===== 节点操作（右键菜单 / 新建 / 重命名 / 删除 / 资源管理器） =====
+
+    private bool CanReveal => _reveal?.CanReveal == true;
+
+    private void OnContextRequested(FileEntry entry, double x, double y)
+    {
+        _contextMenu = new ContextMenuState(entry, x, y);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void CloseContextMenu()
+    {
+        _contextMenu = null;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private static bool IsRoot(FileEntry entry) => string.IsNullOrEmpty(entry.Id.RelativePath);
+
+    private static string FileName(FileEntry entry)
+        => Path.GetFileName(entry.Id.RelativePath.Replace('\\', '/'));
+
+    private static string RelativePath(FileEntry entry)
+        => entry.Id.RelativePath.Replace('\\', '/');
+
+    private string AbsolutePath(FileEntry entry)
+        => _workspaces?.Find(entry.Id)?.GetAbsolutePath(entry.Id) ?? RelativePath(entry);
+
+    private async Task OpenFromMenuAsync(FileEntry entry)
+    {
+        CloseContextMenu();
+        if (!entry.IsDirectory)
+            await OpenOrActivateAsync(entry.Id, refreshIfActive: false);
+    }
+
+    private async Task CopyAsync(string text)
+    {
+        CloseContextMenu();
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+        }
+        catch
+        {
+            // 剪贴板不可用（非安全上下文/权限拒绝）：不打断用户操作
+        }
+    }
+
+    private void BeginNew(bool isFile, FileEntry? parent = null)
+    {
+        CloseContextMenu();
+        var target = parent ?? DefaultDirectory();
+        if (target is null)
+        {
+            SetError("没有可用的目录");
+            return;
+        }
+
+        _dialogValue = string.Empty;
+        _dialog = new DialogState
+        {
+            Kind = isFile ? DialogKind.NewFile : DialogKind.NewDirectory,
+            Parent = target,
+            Title = isFile ? "新建文件" : "新建文件夹",
+            Placeholder = isFile ? "文件名（如 notes.md）" : "文件夹名",
+            OkText = "创建"
+        };
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private FileEntry? DefaultDirectory()
+    {
+        var root = _roots.FirstOrDefault(r => r.Root.Kind == FileWorkspaceRootKind.Project)
+            ?? _roots.FirstOrDefault();
+        return root is null
+            ? null
+            : new FileEntry(new FileResourceId(root.RootId, ""), root.Root.Label, true, null, null);
+    }
+
+    private void BeginRename(FileEntry entry)
+    {
+        CloseContextMenu();
+        if (IsRoot(entry)) return;
+
+        _dialogValue = FileName(entry);
+        _dialog = new DialogState
+        {
+            Kind = DialogKind.Rename,
+            Entry = entry,
+            Title = "重命名",
+            Placeholder = "新名称",
+            OkText = "确定"
+        };
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void BeginDelete(FileEntry entry)
+    {
+        CloseContextMenu();
+        if (IsRoot(entry)) return;
+
+        _dialog = new DialogState
+        {
+            Kind = DialogKind.Delete,
+            Entry = entry,
+            Title = entry.IsDirectory ? "删除文件夹？" : "删除文件？",
+            OkText = "删除"
+        };
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ConfirmDialogAsync()
+    {
+        var dialog = _dialog;
+        if (dialog is null || _workspaces is null) return;
+
+        try
+        {
+            switch (dialog.Kind)
+            {
+                case DialogKind.Delete:
+                {
+                    var entry = dialog.Entry!;
+                    var workspace = _workspaces.Find(entry.Id);
+                    if (workspace is null) { SetError("文件所属目录已不在本会话中"); return; }
+
+                    await workspace.DeleteAsync(workspace.GetAbsolutePath(entry.Id));
+                    _tabs.Close(entry.Id);
+                    NotifyTree(FileChangeKind.Deleted, entry.Id);
+                    break;
+                }
+
+                case DialogKind.NewFile:
+                case DialogKind.NewDirectory:
+                {
+                    var name = NameFromInput(_dialogValue);
+                    if (name is null) { SetError("名称不合法"); return; }
+
+                    var parent = dialog.Parent!;
+                    var workspace = _workspaces.Find(parent.Id);
+                    if (workspace is null) { SetError("目录所属根已不在本会话中"); return; }
+
+                    var absolute = Path.Combine(workspace.GetAbsolutePath(parent.Id), name);
+                    if (dialog.Kind == DialogKind.NewFile)
+                        await workspace.WriteAsync(absolute, string.Empty);
+                    else
+                        await workspace.CreateDirectoryAsync(absolute);
+
+                    NotifyTree(FileChangeKind.Created, workspace.GetResourceId(absolute));
+                    break;
+                }
+
+                case DialogKind.Rename:
+                {
+                    var entry = dialog.Entry!;
+                    var name = NameFromInput(_dialogValue);
+                    if (name is null) { SetError("名称不合法"); return; }
+
+                    var workspace = _workspaces.Find(entry.Id);
+                    if (workspace is null) { SetError("文件所属目录已不在本会话中"); return; }
+
+                    var oldAbsolute = workspace.GetAbsolutePath(entry.Id);
+                    var parentAbsolute = Path.GetDirectoryName(oldAbsolute) ?? workspace.RootPath;
+                    var newAbsolute = Path.Combine(parentAbsolute, name);
+
+                    await workspace.MoveAsync(oldAbsolute, newAbsolute);
+
+                    var newId = workspace.GetResourceId(newAbsolute);
+                    _tabs.ApplyRename(entry.Id, newId);
+                    NotifyTree(FileChangeKind.Renamed, newId, oldAbsolute);
+                    break;
+                }
+            }
+
+            CloseDialog();
+        }
+        catch (Exception ex)
+        {
+            SetError(FileErrorPresenter.Describe(ex));
+        }
+    }
+
+    private static string? NameFromInput(string value)
+    {
+        var name = value.Trim();
+        if (string.IsNullOrEmpty(name)) return null;
+        if (name.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]) >= 0) return null;
+        if (name is "." or "..") return null;
+        return name;
+    }
+
+    private void CloseDialog()
+    {
+        _dialog = null;
+        _dialogValue = string.Empty;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void NotifyTree(FileChangeKind kind, FileResourceId id, string? oldPath = null)
+        => TreeState.Notify(new FileChangeEvent(id, kind, null, oldPath, DateTime.UtcNow));
+
+    private void RefreshTree()
+    {
+        if (_workspaces is null) return;
+        foreach (var root in _workspaces.Roots)
+            NotifyTree(FileChangeKind.Modified, new FileResourceId(root.RootId, ""));
+    }
+
+    private async Task RevealAsync(FileEntry entry)
+    {
+        CloseContextMenu();
+        if (_reveal is not { CanReveal: true }) return;
+
+        try
+        {
+            await _reveal.RevealAsync(AbsolutePath(entry));
+        }
+        catch (Exception ex)
+        {
+            SetError(FileErrorPresenter.Describe(ex));
+        }
+    }
+
     private void HideTree()
     {
         PanelState.SetTreeVisible(false);
@@ -302,10 +622,12 @@
     public async Task NotifyAgentChangeAsync(FileResourceId id, FileDiffData? diff)
     {
         if (_workspaces is null) return;
-        var (file, error) = await TryReadAsync(id);
+        var (file, _) = await TryReadAsync(id);
         if (file is null)
         {
-            SetError(error);
+            // 后台事件（agent 写/删/改名）不是用户动作：文件不在了只标记标签失效，
+            // 不能把「文件不存在」盖在用户正在看的另一个文件上。
+            _tabs.MarkDeleted(id);
             return;
         }
         var binary = await ReadBinaryIfNeededAsync(file);
@@ -419,11 +741,12 @@
         var absolute = path;
         if (!Path.IsPathFullyQualified(absolute))
         {
-            // 相对路径按项目根解析（不使用进程 CWD）
+            // 相对路径的唯一基准是执行 cwd（= 项目根）。协同目录是额外根，相对路径表达不了
+            // 「哪个根」，所以跨根打开必须由调用方给绝对路径——不做跨根猜测。
             var projectRoot = _workspaces?.Roots
-                .FirstOrDefault(r => r.Root.Kind == FileWorkspaceRootKind.Project)?.RootPath;
+                .FirstOrDefault(root => root.Root.Kind == FileWorkspaceRootKind.Project)?.RootPath;
             if (projectRoot is null) return null;
-            absolute = Path.GetFullPath(absolute, projectRoot);
+            absolute = Path.GetFullPath(path, projectRoot);
         }
 
         // 先用已加载的根做纯计算；未命中再问工厂（可处理尚未预热的会话）
@@ -438,6 +761,20 @@
         public void OnCompleted() { }
         public void OnError(Exception error) { }
         public void OnNext(SessionEvent value) => onNext(value);
+    }
+
+    private sealed record ContextMenuState(FileEntry Entry, double X, double Y);
+
+    private enum DialogKind { NewFile, NewDirectory, Rename, Delete }
+
+    private sealed class DialogState
+    {
+        public required DialogKind Kind { get; init; }
+        public FileEntry? Entry { get; init; }
+        public FileEntry? Parent { get; init; }
+        public required string Title { get; init; }
+        public string Placeholder { get; init; } = string.Empty;
+        public required string OkText { get; init; }
     }
 
     /// <summary>
@@ -498,6 +835,7 @@
     public void Dispose()
     {
         _sessionEventSubscription?.Dispose();
+        TreeState.ContextRequested -= OnContextRequested;
         _tabs.Changed -= OnTabsChanged;
         PanelState.Changed -= OnPanelChanged;
         DisposeCoordinators();

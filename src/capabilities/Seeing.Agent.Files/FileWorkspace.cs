@@ -325,6 +325,41 @@ internal sealed class FileWorkspace : IFileWorkspace
     }
 
     /// <inheritdoc />
+    public async Task CreateDirectoryAsync(string path, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        var full = ToFull(path);
+        EnsureAllowed(full);
+        using var _ = await _locks.AcquireAsync(full, ct).ConfigureAwait(false);
+        _fs.CreateDirectory(full);
+    }
+
+    /// <inheritdoc />
+    public async Task MoveAsync(string sourcePath, string destinationPath, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        var source = ToFull(sourcePath);
+        var destination = ToFull(destinationPath);
+        EnsureAllowed(source);
+        EnsureAllowed(destination);
+
+        if (!PathBoundary.IsWithin(source, RootPath) || !PathBoundary.IsWithin(destination, RootPath))
+            throw new ArgumentException("重命名/移动只能在同一根内进行。", nameof(destinationPath));
+
+        if (_fs.Exists(destination))
+            throw new IOException($"目标已存在：{destination}");
+
+        // 两把锁按稳定顺序获取，避免 A→B 与 B→A 并发互相等待
+        var first = string.CompareOrdinal(source, destination) < 0 ? source : destination;
+        var second = first == source ? destination : source;
+        using var lock1 = await _locks.AcquireAsync(first, ct).ConfigureAwait(false);
+        using var lock2 = await _locks.AcquireAsync(second, ct).ConfigureAwait(false);
+
+        _fs.Move(source, destination);
+    }
+
+    /// <inheritdoc />
     public async Task<string> GetDiffAsync(string path, string baselineContent, CancellationToken ct = default)
     {
         var full = ToFull(path);

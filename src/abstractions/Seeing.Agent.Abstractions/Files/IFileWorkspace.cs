@@ -45,6 +45,12 @@ public interface IFileWorkspace
     /// <summary>删除文件或目录。</summary>
     Task DeleteAsync(string path, CancellationToken ct = default);
 
+    /// <summary>创建目录（含中间路径）。</summary>
+    Task CreateDirectoryAsync(string path, CancellationToken ct = default);
+
+    /// <summary>在同一根内移动/重命名文件或目录；跨根抛 <see cref="ArgumentException"/>。</summary>
+    Task MoveAsync(string sourcePath, string destinationPath, CancellationToken ct = default);
+
     /// <summary>按需生成统一行 diff（LCS + hunk header）：baselineContent → 当前磁盘。</summary>
     Task<string> GetDiffAsync(string path, string baselineContent, CancellationToken ct = default);
 

@@ -68,6 +68,18 @@ public sealed class LocalFileSystem : IFileSystem
     }
 
     /// <inheritdoc />
+    public void Move(string source, string destination)
+    {
+        if (Directory.Exists(source))
+        {
+            Directory.Move(source, destination);
+            return;
+        }
+
+        File.Move(source, destination);
+    }
+
+    /// <inheritdoc />
     public DateTime GetLastWriteTimeUtc(string path) => File.GetLastWriteTimeUtc(path);
 
     /// <inheritdoc />

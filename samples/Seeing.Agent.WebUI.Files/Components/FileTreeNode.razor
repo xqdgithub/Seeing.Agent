@@ -9,7 +9,10 @@
 <li class="file-tree-node">
     @if (Entry.IsDirectory)
     {
-        <div class="file-tree-dir @(Depth == 0 ? "file-tree-dir--root" : "") @RootClass" style="@($"padding-left:{Depth * 12}px")" title="@Title" @onclick="ToggleAsync">
+        <div class="file-tree-dir @(Depth == 0 ? "file-tree-dir--root" : "") @RootClass" style="@($"padding-left:{Depth * 12}px")" title="@Title"
+             @onclick="ToggleAsync"
+             @oncontextmenu="e => TreeState.RequestContext(Entry, e.ClientX, e.ClientY)"
+             @oncontextmenu:preventDefault="true">
             <span class="file-tree-arrow">@(_expanded ? "▾" : "▸")</span>
             <svg class="file-tree-icon file-tree-icon--dir" viewBox="0 0 1024 1024" width="14" height="14" aria-hidden="true">
                 <path fill="currentColor" d="M880 298.4H521L403.7 186.2a8.15 8.15 0 0 0-5.5-2.2H144c-17.7 0-32 14.3-32 32v592c0 17.7 14.3 32 32 32h736c17.7 0 32-14.3 32-32V330.4c0-17.7-14.3-32-32-32zM840 768H184V256h188.5l119.6 114.4H840V768z" />
@@ -40,7 +43,10 @@
     }
     else
     {
-        <div class="file-tree-file @(IsSelected ? "selected" : "")" style="@($"padding-left:{Depth * 12 + 12}px")" @ref="_fileEl" @onclick="() => OnOpen.InvokeAsync(Entry.Id)">
+        <div class="file-tree-file @(IsSelected ? "selected" : "")" style="@($"padding-left:{Depth * 12 + 12}px")" @ref="_fileEl"
+             @onclick="() => OnOpen.InvokeAsync(Entry.Id)"
+             @oncontextmenu="e => TreeState.RequestContext(Entry, e.ClientX, e.ClientY)"
+             @oncontextmenu:preventDefault="true">
             <svg class="file-tree-icon file-tree-icon--file @FileIconClass(Entry.Name)" viewBox="0 0 1024 1024" width="14" height="14" aria-hidden="true">
                 <path fill="currentColor" d="M854.6 288.6L639.4 73.4c-6-6-14.1-9.4-22.6-9.4H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V311.3c0-8.5-3.4-16.7-9.4-22.7zM790.2 326H602V137.8L790.2 326zm1.8 562H232V136h302v216a42 42 0 0 0 42 42h216v494z" />
             </svg>
