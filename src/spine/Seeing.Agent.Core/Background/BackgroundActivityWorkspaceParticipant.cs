@@ -19,13 +19,16 @@ namespace Seeing.Agent.Core.Background;
 internal sealed class BackgroundActivityWorkspaceParticipant : IWorkspaceApplyParticipant
 {
     private readonly IBackgroundActivityControl _control;
+    private readonly IBackgroundActivityNotificationQueue _outbox;
     private readonly ILogger<BackgroundActivityWorkspaceParticipant> _logger;
 
     public BackgroundActivityWorkspaceParticipant(
         IBackgroundActivityControl control,
+        IBackgroundActivityNotificationQueue outbox,
         ILogger<BackgroundActivityWorkspaceParticipant> logger)
     {
         _control = control ?? throw new ArgumentNullException(nameof(control));
+        _outbox = outbox ?? throw new ArgumentNullException(nameof(outbox));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -47,8 +50,30 @@ internal sealed class BackgroundActivityWorkspaceParticipant : IWorkspaceApplyPa
                 context.OldRoot);
         }
 
-        // TODO(Task 11)：outbox 落地后，把旧根 outbox 中本实例的 pending 批次标 dropped
-        // （LastError="workspace_switched"）。旧根路径取 context.OldRoot，绝不能读切换后的工作区提供者。
+        // 旧根里本实例的待投递批次随切根失去意义：显式传旧根标记 dropped。
+        // 绝不能在这里读工作区提供者——回滚/竞态下它可能已指向新根。
+        try
+        {
+            var dropped = await _outbox
+                .MarkDroppedAsync(
+                    BackgroundActivityHostInstance.Current,
+                    context.OldRoot,
+                    reason: "workspace_switched")
+                .ConfigureAwait(false);
+
+            if (dropped > 0)
+            {
+                _logger.LogInformation(
+                    "工作区切换：旧根待投递通知已丢弃 Count={Count} OldRoot={OldRoot}",
+                    dropped,
+                    context.OldRoot);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // 丢弃失败不影响切换：批次留在旧根，最多是「切回旧工作区时补投一次」。
+            _logger.LogWarning(ex, "工作区切换：旧根待投递通知清理失败 OldRoot={OldRoot}", context.OldRoot);
+        }
     }
 
     /// <inheritdoc />

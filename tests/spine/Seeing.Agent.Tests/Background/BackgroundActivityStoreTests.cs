@@ -243,6 +243,7 @@ public class BackgroundActivityStoreTests : IDisposable
             TimeProvider.System,
             store,
             output ?? new FakeOutputStore(),
+            new NoopNotificationQueue(),
             NullLogger<BackgroundActivityManager>.Instance);
 
     private static BackgroundActivitySnapshot Snapshot(
@@ -362,9 +363,16 @@ public class BackgroundActivityStoreTests : IDisposable
         public IDisposable? OnChange(Action<T, string?> listener) => null;
     }
 
-    private sealed class FakeOutputStore : IActivityOutputStore
+    private sealed class NoopNotificationQueue : IBackgroundActivityNotificationQueue
     {
-        public ConcurrentDictionary<string, long> Limits { get; } = new(StringComparer.Ordinal);
+        public Task EnqueueAsync(BackgroundActivityNotification notification) => Task.CompletedTask;
+
+        public Task<int> MarkDroppedAsync(string hostInstanceId, string? projectRoot = null, string? reason = null)
+            => Task.FromResult(0);
+    }
+
+    private sealed class FakeOutputStore : IActivityOutputStore
+    {        public ConcurrentDictionary<string, long> Limits { get; } = new(StringComparer.Ordinal);
 
         public void Configure(string activityId, long limitBytes) => Limits[activityId] = limitBytes;
 

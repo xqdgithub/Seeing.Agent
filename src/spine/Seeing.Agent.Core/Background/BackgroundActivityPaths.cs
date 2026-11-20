@@ -20,6 +20,9 @@ internal static class BackgroundActivityPaths
     /// <summary>输出文件后缀。</summary>
     internal const string OutputFileSuffix = ".output.log";
 
+    /// <summary>outbox 子目录名（位于活动根下）。</summary>
+    internal const string OutboxDirectoryName = "outbox";
+
     private const string ActivityIdPrefix = "act_";
     private const int ActivityIdHexLength = 32;
 
@@ -35,7 +38,7 @@ internal static class BackgroundActivityPaths
         {
             var projectRoot = workspace.GetProjectRoot();
             if (!string.IsNullOrWhiteSpace(projectRoot))
-                return Path.Combine(projectRoot, ".seeing", DirectoryName);
+                return FromProjectRoot(projectRoot);
         }
         catch (InvalidOperationException)
         {
@@ -44,6 +47,15 @@ internal static class BackgroundActivityPaths
 
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return Path.Combine(home, ".seeing", DirectoryName);
+    }
+
+    /// <summary>
+    /// 由项目根拼出活动根（工作区切换参与者要在<b>改根之前</b>定位旧根，不能读提供者）。
+    /// </summary>
+    internal static string FromProjectRoot(string projectRoot)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectRoot);
+        return Path.Combine(projectRoot, ".seeing", DirectoryName);
     }
 
     /// <summary>活动 id 形如 <c>act_</c> + 32 位小写十六进制（与 manager 的 <c>NewActivityId</c> 对齐）。</summary>

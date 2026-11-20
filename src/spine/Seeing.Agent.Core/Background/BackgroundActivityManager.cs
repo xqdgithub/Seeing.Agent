@@ -33,7 +33,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
     /// <summary><c>activity.progress</c> 的最小事件间隔（spec §12.1：≥1s）。</summary>
     private static readonly TimeSpan s_progressEventInterval = TimeSpan.FromSeconds(1);
 
-    private static readonly string s_hostInstanceId = BuildHostInstanceId();
+    private static readonly string s_hostInstanceId = BackgroundActivityHostInstance.Current;
 
     private readonly ConcurrentDictionary<string, BackgroundActivityRecord> _activities = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, LauncherRegistration> _launchers = new(StringComparer.Ordinal);
@@ -50,6 +50,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
     private readonly TimeProvider _timeProvider;
     private readonly IBackgroundActivityStore _store;
     private readonly IActivityOutputStore _outputStore;
+    private readonly IBackgroundActivityNotificationQueue _notifications;
     private readonly ILogger<BackgroundActivityManager> _logger;
     private readonly CancellationToken _hostStoppingToken;
 
@@ -60,6 +61,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         TimeProvider timeProvider,
         IBackgroundActivityStore store,
         IActivityOutputStore outputStore,
+        IBackgroundActivityNotificationQueue notifications,
         ILogger<BackgroundActivityManager> logger)
     {
         _eventPublisher = eventPublisher ?? throw new ArgumentNullException(nameof(eventPublisher));
@@ -68,6 +70,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _outputStore = outputStore ?? throw new ArgumentNullException(nameof(outputStore));
+        _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         // 宿主停止 token 是可选接缝：独立单测/嵌入场景取不到时为 None（只链超时）。
@@ -839,10 +842,13 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         CancellationToken ct = default)
     {
         // ct 只表达调用方放弃等待：终态记录必须落盘，因此不传给存储（存储接口本身也无 ct）。
-        if (!TryCommitTerminalState(record, status, cancelReason, result, out _, out var persistence))
+        if (!TryCommitTerminalState(record, status, cancelReason, result, out var snapshot, out var persistence))
             return;
 
         await persistence.ConfigureAwait(false);
+
+        // 先落盘再投递（spec §19 红线 6）：只有终态记录已写出后才允许写 outbox。
+        await TryEnqueueCompletionNotificationAsync(snapshot).ConfigureAwait(false);
     }
 
     /// <summary>提交取消终态、落盘发事件，然后通知 launcher（先写状态再通知，spec §7.4）。</summary>
@@ -855,10 +861,14 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
             ? BackgroundActivityStatus.Interrupted
             : BackgroundActivityStatus.Cancelled;
 
-        if (!TryCommitTerminalState(record, status, reason, result: null, out _, out var persistence))
+        if (!TryCommitTerminalState(record, status, reason, result: null, out var snapshot, out var persistence))
             return false;
 
         await persistence.ConfigureAwait(false);
+
+        // 取消同样是终态：落盘之后再决定是否唤醒（Interrupted / NotifyPolicy=None 会自行跳过）。
+        await TryEnqueueCompletionNotificationAsync(snapshot).ConfigureAwait(false);
+
         await NotifyLauncherCancelledAsync(record, reason, launcherOverride).ConfigureAwait(false);
         return true;
     }
@@ -1413,17 +1423,49 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
     private string ResolveWorkspaceRoot()
         => _services.GetService<IWorkspaceProvider>()?.ResolvedRoot ?? string.Empty;
 
-    private static string BuildHostInstanceId()
+    /// <summary>
+    /// 终态落盘成功后写 outbox（spec §10.1 第 2 步）。
+    /// <para>
+    /// 条件全部来自<b>契约字段</b>：<see cref="BackgroundActivityNotifyPolicy.OnComplete"/> +
+    /// <see cref="BackgroundActivityCapabilities.SignalsCompletion"/> + 结果未被观察。
+    /// <c>Interrupted</c>（宿主关闭/孤儿收敛）一律不投递。
+    /// </para>
+    /// <para>
+    /// 写 outbox 失败不得反向破坏终态：只记日志，快照已经是权威事实。
+    /// </para>
+    /// </summary>
+    private async Task TryEnqueueCompletionNotificationAsync(BackgroundActivitySnapshot snapshot)
     {
+        if (snapshot.Status == BackgroundActivityStatus.Interrupted)
+            return;
+
+        if (snapshot.NotifyPolicy != BackgroundActivityNotifyPolicy.OnComplete)
+            return;
+
+        if ((snapshot.Capabilities & BackgroundActivityCapabilities.SignalsCompletion) == 0)
+            return;
+
+        if (snapshot.ResultObservedAt is not null)
+            return;
+
         try
         {
-            using var process = Process.GetCurrentProcess();
-            return $"{process.Id}:{process.StartTime.ToUniversalTime().Ticks}";
+            await _notifications.EnqueueAsync(new BackgroundActivityNotification
+            {
+                // 批次身份由 outbox 分配：这里只声明「哪个会话的哪个活动完成了」。
+                DigestId = string.Empty,
+                HostInstanceId = snapshot.HostInstanceId,
+                OwnerSessionId = snapshot.OwnerSessionId,
+                ActivityIds = new[] { snapshot.Id }
+            }).ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // 受限环境拿不到进程启动时间：退化为 pid-only（仍可区分同机不同进程）。
-            return $"{Environment.ProcessId}:0";
+            _logger.LogWarning(
+                ex,
+                "后台活动完成通知入队失败 ActivityId={ActivityId} SessionId={SessionId}",
+                snapshot.Id,
+                snapshot.OwnerSessionId);
         }
     }
 

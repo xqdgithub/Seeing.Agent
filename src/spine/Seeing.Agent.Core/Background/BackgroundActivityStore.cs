@@ -79,6 +79,33 @@ internal sealed class BackgroundActivityStore : IBackgroundActivityStore
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<BackgroundActivitySnapshot>> LoadManyAsync(
+        IReadOnlyCollection<string> activityIds)
+    {
+        if (activityIds is null || activityIds.Count == 0)
+            return Array.Empty<BackgroundActivitySnapshot>();
+
+        var result = new List<BackgroundActivitySnapshot>(activityIds.Count);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var activityId in activityIds)
+        {
+            // 同一批次里重复 id 只读一次；非法 id 不参与读取（也不抛异常打断整批）。
+            if (string.IsNullOrEmpty(activityId)
+                || !seen.Add(activityId)
+                || !BackgroundActivityPaths.IsValidActivityId(activityId))
+            {
+                continue;
+            }
+
+            var snapshot = await ReadSnapshotAsync(ResolveSnapshotPath(activityId)).ConfigureAwait(false);
+            if (snapshot is not null)
+                result.Add(snapshot);
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<BackgroundActivitySnapshot>> LoadAllAsync()
     {
         var root = BackgroundActivityPaths.ResolveActivityRoot(_workspace);

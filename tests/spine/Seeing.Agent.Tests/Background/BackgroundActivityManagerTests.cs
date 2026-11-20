@@ -628,6 +628,7 @@ public class BackgroundActivityManagerTests
             timeProvider ?? new FakeTimeProvider(),
             store,
             output,
+            new FakeNotificationQueue(),
             NullLogger<BackgroundActivityManager>.Instance);
 
         manager.RegisterLauncher("test-module", launcher);
@@ -669,9 +670,34 @@ public class BackgroundActivityManagerTests
         public IDisposable? OnChange(Action<T, string?> listener) => null;
     }
 
-    private sealed class FakeLauncher : IBackgroundActivityLauncher
+    private sealed class FakeNotificationQueue : IBackgroundActivityNotificationQueue
     {
-        public FakeLauncher(string kind) => Kind = kind;
+        private readonly List<BackgroundActivityNotification> _enqueued = new();
+        private readonly object _gate = new();
+
+        public IReadOnlyList<BackgroundActivityNotification> Enqueued
+        {
+            get
+            {
+                lock (_gate)
+                    return _enqueued.ToList();
+            }
+        }
+
+        public Task EnqueueAsync(BackgroundActivityNotification notification)
+        {
+            lock (_gate)
+                _enqueued.Add(notification);
+
+            return Task.CompletedTask;
+        }
+
+        public Task<int> MarkDroppedAsync(string hostInstanceId, string? projectRoot = null, string? reason = null)
+            => Task.FromResult(0);
+    }
+
+    private sealed class FakeLauncher : IBackgroundActivityLauncher
+    {        public FakeLauncher(string kind) => Kind = kind;
 
         public TaskCompletionSource ExecutionSource { get; }
             = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -803,6 +829,16 @@ public class BackgroundActivityManagerTests
         {
             lock (_gate)
                 return Task.FromResult(_saved.LastOrDefault(s => s.Id == activityId));
+        }
+
+        public Task<IReadOnlyList<BackgroundActivitySnapshot>> LoadManyAsync(
+            IReadOnlyCollection<string> activityIds)
+        {
+            lock (_gate)
+            {
+                return Task.FromResult<IReadOnlyList<BackgroundActivitySnapshot>>(
+                    _saved.Where(s => activityIds.Contains(s.Id)).ToList());
+            }
         }
 
         public Task<IReadOnlyList<BackgroundActivitySnapshot>> LoadAllAsync()

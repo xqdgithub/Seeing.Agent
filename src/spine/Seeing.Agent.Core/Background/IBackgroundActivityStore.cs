@@ -16,6 +16,12 @@ internal interface IBackgroundActivityStore
     /// <summary>读取单个活动快照；不存在返回 <see langword="null"/>。</summary>
     Task<BackgroundActivitySnapshot?> LoadAsync(string activityId);
 
+    /// <summary>
+    /// 批量读取活动快照（outbox 投递前一次性取齐本批次所需的展示信息，避免逐条调用）。
+    /// 不存在的 id 直接跳过；空集合短路返回。
+    /// </summary>
+    Task<IReadOnlyList<BackgroundActivitySnapshot>> LoadManyAsync(IReadOnlyCollection<string> activityIds);
+
     /// <summary>读取全部活动快照（孤儿扫描用）。</summary>
     Task<IReadOnlyList<BackgroundActivitySnapshot>> LoadAllAsync();
 
