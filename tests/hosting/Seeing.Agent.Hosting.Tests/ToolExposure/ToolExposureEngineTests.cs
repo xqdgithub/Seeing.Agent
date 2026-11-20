@@ -58,6 +58,19 @@ public class ToolExposureEngineTests
     }
 
     [Fact]
+    public void TieredCatalog_ShouldStartWithToolCatalogHeading()
+    {
+        var tools = new[] { Schema("a"), Schema("b"), Schema("tool_search") };
+
+        var result = ToolExposureEngine.Compute(
+            Input(tools, Config(ToolExposurePolicyMode.Tiered)), Counter);
+
+        result.CatalogText.Should().NotBeNull();
+        result.CatalogText!.Should().StartWith("## 工具目录");
+        result.CatalogText.Should().Contain("### 通用");
+    }
+
+    [Fact]
     public void ExposureDefaults_ShouldMatchDesignedValues()
     {
         var options = new ToolExposureOptions();

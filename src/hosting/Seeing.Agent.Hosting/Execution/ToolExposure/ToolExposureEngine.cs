@@ -52,6 +52,9 @@ internal static class ToolExposureEngine
     /// <summary>目录每条列表项的前缀开销（"- " 与换行）。</summary>
     private const int LineOverhead = 3;
 
+    /// <summary>目录正文的 H2 分节标题（系统提示词中的边界，与技能清单/协同目录同构）。</summary>
+    private const string CatalogHeading = "## 工具目录";
+
     public static ToolExposureResult Compute(ToolExposureInput input, ITokenCounter counter)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -301,11 +304,11 @@ internal static class ToolExposureEngine
             ? "以下工具当前未内联进本次请求的 schema，但可以直接调用——已给出参数名与必填标记（? 为可选），按签名传参即可。若参数不符，错误信息会附带完整定义供你修正。需要提前查看完整定义时用 tool_search（可按 namespace、关键词与 detail 收窄）。目录只展示部分条目，未展示的工具同样存在、同样可检索，不代表缺失。"
             : "以下工具当前未内联进本次请求的 schema，但可以直接调用——已给出参数名与必填标记（? 为可选），按签名传参即可。若参数不符，错误信息会附带完整定义供你修正。目录只展示部分条目，未展示的工具同样存在，不代表缺失。";
 
-        // 预算从开场白与各分组标题开始累计，标题恒保留。
+        // 预算从分节标题、开场白与各分组标题开始累计，标题恒保留。
         var headers = groups
             .Select(g => $"### {DisplayName(g[0].Namespace)} ({g.Count} tools)")
             .ToList();
-        var used = intro.Length + headers.Sum(h => h.Length + 1);
+        var used = CatalogHeading.Length + 2 + intro.Length + headers.Sum(h => h.Length + 1);
 
         var shownCounts = new int[groups.Count];
         var remaining = budgetChars - used;
@@ -339,6 +342,7 @@ internal static class ToolExposureEngine
         }
 
         var builder = new StringBuilder();
+        builder.Append(CatalogHeading).AppendLine().AppendLine();
         builder.Append(intro).AppendLine().AppendLine();
         for (var i = 0; i < groups.Count; i++)
         {
