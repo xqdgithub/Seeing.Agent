@@ -56,4 +56,14 @@ public interface IBackgroundActivityControl
     /// 收敛孤儿活动（宿主已死仍为 <c>Running</c>）：只落记录为 <c>Interrupted</c>，不入 outbox、不发事件。
     /// </summary>
     Task<int> ReconcileOrphanedActivitiesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// 回收终态且 <see cref="BackgroundActivitySnapshot.CompletedAt"/> 早于 <paramref name="cutoff"/> 的活动：
+    /// 从内存表移除，并删除其输出文件与落盘快照。
+    /// <para>
+    /// <b>只删终态</b>：<c>Running</c> / <c>Pending</c> 永远保留（删掉在跑的活动等于丢掉唯一的控制入口）。
+    /// </para>
+    /// <para>单个活动删除失败只记日志并保留记录，下次清理重试；返回实际移除条数。</para>
+    /// </summary>
+    Task<int> PruneAsync(DateTimeOffset cutoff, CancellationToken ct = default);
 }

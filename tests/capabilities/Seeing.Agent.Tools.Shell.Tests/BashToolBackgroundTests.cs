@@ -92,13 +92,13 @@ public class BashToolBackgroundTests
     }
 
     [Fact]
-    public async Task BackgroundTrue_WithSameDedupeKey_ShouldRejectSecond()
+    public async Task BackgroundTrue_WithSameDedupeKey_ShouldReuseExistingActivity()
     {
-        // Arrange
+        // Arrange：第二次启动命中去重，manager 返回同一活动并标记 IsExisting
         var manager = new FakeBackgroundManager();
         manager.StartHandler = (ordinal, _) => ordinal == 1
             ? Task.FromResult(NewHandle("act-first"))
-            : throw new InvalidOperationException("去重命中：已有活动 act-first 正在执行同一命令。");
+            : Task.FromResult(NewHandle("act-first") with { IsExisting = true });
 
         var (tool, context, _) = CreateTool(manager, moduleEnabled: true);
         var arguments = BuildArgs(new()
@@ -112,13 +112,16 @@ public class BashToolBackgroundTests
         var first = await tool.ExecuteAsync(arguments, context);
         var second = await tool.ExecuteAsync(arguments, context);
 
-        // Assert
+        // Assert：复用不是失败，但回执必须说清「没有重新执行」
         first.Success.Should().BeTrue();
         first.BackgroundActivityId.Should().Be("act-first");
+        first.Output.Should().Contain("命令已转交后台活动执行");
 
-        second.Success.Should().BeFalse();
-        second.BackgroundActivityId.Should().BeNull();
-        second.Error.Should().Contain("act-first", "拒绝提示必须指向在途活动，便于调用方改用 activity_wait");
+        second.Success.Should().BeTrue();
+        second.BackgroundActivityId.Should().Be("act-first");
+        second.Output.Should().Contain("复用");
+        second.Output.Should().Contain("act-first");
+        second.Output.Should().NotContain("命令已转交后台活动执行");
 
         manager.Requests.Should().HaveCount(2);
         manager.Requests[0].DedupeKey.Should().Be(manager.Requests[1].DedupeKey);

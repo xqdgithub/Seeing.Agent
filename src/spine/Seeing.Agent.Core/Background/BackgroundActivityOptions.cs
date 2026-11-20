@@ -22,4 +22,19 @@ public sealed class BackgroundActivityOptions
 
     /// <summary>请求未指定输出上限时的默认值（字节）。默认 5 MiB。</summary>
     public long DefaultOutputLimitBytes { get; set; } = 5 * 1024 * 1024;
+
+    /// <summary>
+    /// 终态活动的保留期：<see cref="BackgroundActivitySnapshot.CompletedAt"/> 早于
+    /// <c>now - Retention</c> 的记录会被回收。默认 7 天。
+    /// </summary>
+    public TimeSpan Retention { get; set; } = TimeSpan.FromDays(7);
+
+    /// <summary>保留期回收的扫描间隔。默认 1 小时。</summary>
+    public TimeSpan CleanupInterval { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// 会话面 <c>List</c> 单次返回的最大条数（按创建时间倒序截断）。
+    /// <para>非正值表示不截断；默认 200。</para>
+    /// </summary>
+    public int ListLimit { get; set; } = 200;
 }

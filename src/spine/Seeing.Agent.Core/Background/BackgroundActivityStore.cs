@@ -220,6 +220,38 @@ internal sealed class BackgroundActivityStore : IBackgroundActivityStore
         }
     }
 
+    /// <inheritdoc />
+    public async Task DeleteAsync(string activityId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(activityId);
+
+        var path = ResolveSnapshotPath(activityId);
+        var gate = AtomicFileWrite.GetLock(path);
+        await gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            if (!File.Exists(path))
+                return;
+
+            try
+            {
+                File.Delete(path);
+            }
+            catch (FileNotFoundException)
+            {
+                // 已被并发回收：删除语义已达成。
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // 根目录已被清理：同上。
+            }
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     // ─── 读 ───────────────────────────────────────────────────────────────────
 
     /// <summary>读取一个快照文件；不存在返回 <see langword="null"/>，损坏则记 Warning 并返回 <see langword="null"/>。</summary>

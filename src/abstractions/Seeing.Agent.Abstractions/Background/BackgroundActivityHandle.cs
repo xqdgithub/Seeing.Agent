@@ -7,10 +7,18 @@ namespace Seeing.Agent.Abstractions.Background;
 /// 不得自建 CTS 或 reporter，也不得自行构造本记录。
 /// </para>
 /// </summary>
+/// <param name="IsExisting">
+/// 本次 <c>StartAsync</c> 是否命中去重并复用了已有活动。
+/// <para>
+/// <see langword="true"/> 表示没有新建活动、返回的是在途活动；调用方（工具）据此如实告诉模型
+/// 「命令没有重新执行」，避免把复用回执讲成新启动。
+/// </para>
+/// </param>
 public sealed record BackgroundActivityHandle(
     string ActivityId,
     IBackgroundActivityReporter Reporter,
-    CancellationToken CancellationToken);
+    CancellationToken CancellationToken,
+    bool IsExisting = false);
 
 /// <summary>launcher 启动上下文。</summary>
 public sealed record BackgroundActivityLaunchContext(

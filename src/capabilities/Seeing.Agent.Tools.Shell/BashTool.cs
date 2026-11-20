@@ -173,14 +173,21 @@ public class BashTool : ToolBase
         try
         {
             var handle = await _background.StartAsync(request, context.SessionId, context.CancellationToken);
+
+            // 去重命中：命令没有重新执行，回执不能讲成「已转交执行」。
+            var output = handle.IsExisting
+                ? $"已存在同命令后台活动，复用活动 {handle.ActivityId}（本次未重复执行命令）。\n" +
+                  $"activity_id: {handle.ActivityId}\n" +
+                  "后续用 activity_status / activity_output / activity_wait / activity_cancel 跟踪或取消该活动。"
+                : $"命令已转交后台活动执行（不等待退出）。\n" +
+                  $"activity_id: {handle.ActivityId}\n" +
+                  "后续用 activity_status / activity_output / activity_wait / activity_cancel 跟踪或取消该活动。";
+
             return new ToolResult
             {
                 Success = true,
                 Title = description,
-                Output =
-                    $"命令已转交后台活动执行（不等待退出）。\n" +
-                    $"activity_id: {handle.ActivityId}\n" +
-                    "后续用 activity_status / activity_output / activity_wait / activity_cancel 跟踪或取消该活动。",
+                Output = output,
                 BackgroundActivityId = handle.ActivityId
             };
         }

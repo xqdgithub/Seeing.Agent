@@ -43,6 +43,12 @@ internal interface IBackgroundActivityStore
         BackgroundActivityStatus expectedStatus,
         string expectedHostInstanceId,
         Func<BackgroundActivitySnapshot, BackgroundActivitySnapshot> replacement);
+
+    /// <summary>
+    /// 删除该活动的落盘快照（保留期回收用）。记录不存在视为成功。
+    /// <para>删除与写入共用同一条路径锁，避免与在途落盘交错。</para>
+    /// </summary>
+    Task DeleteAsync(string activityId);
 }
 
 /// <summary>

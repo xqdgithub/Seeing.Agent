@@ -65,4 +65,7 @@ internal sealed class RecordingBackgroundActivityControl : IBackgroundActivityCo
 
     public Task<int> ReconcileOrphanedActivitiesAsync(CancellationToken ct = default)
         => throw new NotSupportedException();
+
+    public Task<int> PruneAsync(DateTimeOffset cutoff, CancellationToken ct = default)
+        => throw new NotSupportedException();
 }

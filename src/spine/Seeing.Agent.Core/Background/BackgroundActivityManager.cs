@@ -140,7 +140,13 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
             }
         }
 
-        result.Sort(static (left, right) => left.CreatedAt.CompareTo(right.CreatedAt));
+        // 最新在前，再按配置截断：无上限的历史记录不得把一次 List 变成全量回放。
+        result.Sort(static (left, right) => right.CreatedAt.CompareTo(left.CreatedAt));
+
+        var limit = _options.CurrentValue.ListLimit;
+        if (limit > 0 && result.Count > limit)
+            result.RemoveRange(limit, result.Count - limit);
+
         return result;
     }
 
@@ -469,6 +475,62 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         return reconciled;
     }
 
+    /// <inheritdoc />
+    public async Task<int> PruneAsync(DateTimeOffset cutoff, CancellationToken ct = default)
+    {
+        var targets = new List<BackgroundActivityRecord>();
+        lock (_sync)
+        {
+            foreach (var record in _activities.Values)
+            {
+                if (!record.TerminalCommitted)
+                    continue;
+
+                // 只回收终态：CompletedAt 缺失的终态记录（异常路径）视为不可判龄，保留。
+                if (record.Snapshot.CompletedAt is not { } completedAt || completedAt >= cutoff)
+                    continue;
+
+                targets.Add(record);
+            }
+        }
+
+        var pruned = 0;
+        foreach (var record in targets)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var activityId = record.Handle.ActivityId;
+            try
+            {
+                // 先删落盘（输出 + 快照），最后才从内存摘除：
+                // 删除失败时记录仍在表里，下一轮扫描还能重试（反过来会变成看不见的孤儿文件）。
+                await _outputStore.DeleteAsync(activityId).ConfigureAwait(false);
+                await _store.DeleteAsync(activityId).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "后台活动回收失败，保留待下次重试 ActivityId={ActivityId} CompletedAt={CompletedAt}",
+                    activityId,
+                    record.Snapshot.CompletedAt);
+                continue;
+            }
+
+            lock (_sync)
+            {
+                _activities.TryRemove(activityId, out _);
+            }
+
+            pruned++;
+        }
+
+        if (pruned > 0)
+            _logger.LogInformation("后台活动回收完成 Count={Count} Cutoff={Cutoff}", pruned, cutoff);
+
+        return pruned;
+    }
+
     // ─── reporter 回写（internal：只被 BackgroundActivityReporter 调用） ────────
 
     internal void ReportStarted(string activityId)
@@ -603,12 +665,13 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
             {
                 if (request.DedupeStrategy == BackgroundActivityDedupeStrategy.Reject)
                 {
-                    // 契约无法表达「返回已有活动 + 告知去重命中」，按 spec 采用「返回已有 handle」语义。
+                    // 复用语义：返回在途活动的 handle，并显式标记「没有新建」，
+                    // 让工具能如实告诉模型「命令没有重新执行」。
                     _logger.LogDebug(
                         "后台活动命中去重，返回已有活动 DedupeKey={DedupeKey} ActivityId={ActivityId}",
                         request.DedupeKey,
                         existing.Handle.ActivityId);
-                    return existing.Handle;
+                    return existing.Handle with { IsExisting = true };
                 }
 
                 await CancelCoreAsync(existing, BackgroundActivityCancelReason.Superseded).ConfigureAwait(false);

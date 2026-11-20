@@ -93,6 +93,17 @@ public class BackgroundCapabilityRegistrationTests
             && IsImplementationOf(d, "BackgroundActivityNotificationDispatcher"));
     }
 
+    /// <summary>保留期回收必须由宿主挂载，否则活动根与 outbox 只会单调增长。</summary>
+    [Fact]
+    public void RetentionService_ShouldBeRegisteredAsHostedService()
+    {
+        var services = BuildServices();
+
+        services.Should().Contain(d =>
+            d.ServiceType == typeof(IHostedService)
+            && IsImplementationOf(d, "BackgroundActivityRetentionService"));
+    }
+
     /// <summary>工作区切换参与者必须登记：改根前取消旧根活动、改根后收敛新根孤儿。</summary>
     [Fact]
     public void WorkspaceParticipant_ShouldBeRegistered()

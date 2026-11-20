@@ -769,6 +769,9 @@ namespace Seeing.Agent.Core.Extensions
             services.AddHostedService<BackgroundActivityRecoveryService>();
             services.AddHostedService<BackgroundActivityNotificationDispatcher>();
 
+            // 保留期回收：定时清理过期终态活动与已结束的 outbox 批次（运行期唯一会缩小存储的角色）
+            services.AddHostedService<BackgroundActivityRetentionService>();
+
             // 工作区切换：改根前取消旧根活动并丢弃旧根 pending，改根后收敛新根孤儿
             services.TryAddEnumerable(
                 ServiceDescriptor.Singleton<IWorkspaceApplyParticipant, BackgroundActivityWorkspaceParticipant>());

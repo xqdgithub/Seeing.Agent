@@ -317,6 +317,36 @@ public class BackgroundActivityOutboxTests : IDisposable
         message.Body.Should().Contain("输出 2 KB");
     }
 
+    // ─── 保留期回收 ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task OutboxPrune_ShouldRemoveFinishedBatches()
+    {
+        var harness = CreateHarness();
+
+        var deliveredId = NewActivityId();
+        harness.Store.Add(Snapshot(deliveredId, "s1"));
+        await harness.Outbox.EnqueueAsync(Notification("s1", deliveredId));
+
+        harness.Time.Advance(Window);
+        (await harness.Outbox.PumpOnceAsync()).Should().Be(1);
+
+        // 未投递的 pending 批次：过期也不得回收，否则就是丢通知。
+        var pendingId = NewActivityId();
+        harness.Store.Add(Snapshot(pendingId, "s2"));
+        await harness.Outbox.EnqueueAsync(Notification("s2", pendingId));
+
+        harness.Time.Advance(TimeSpan.FromDays(8));
+        var removed = await harness.Outbox.PruneAsync(harness.Time.GetLocalNow() - TimeSpan.FromDays(7));
+
+        // digest + 已被并入的源批次都已是 Delivered，两条都应删除。
+        removed.Should().Be(2);
+        var remaining = ReadNotifications().Should().ContainSingle().Subject;
+        remaining.Status.Should().Be(BackgroundActivityOutboxStatus.Pending);
+        remaining.OwnerSessionId.Should().Be("s2");
+        harness.Outbox.PendingCount.Should().Be(1);
+    }
+
     // ─── manager 接线 ─────────────────────────────────────────────────────────
 
     [Fact]
@@ -573,6 +603,12 @@ public class BackgroundActivityOutboxTests : IDisposable
             string expectedHostInstanceId,
             Func<BackgroundActivitySnapshot, BackgroundActivitySnapshot> replacement)
             => Task.FromResult(false);
+
+        public Task DeleteAsync(string activityId)
+        {
+            _snapshots.TryRemove(activityId, out _);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class RecordingNotifier : IBackgroundActivityNotifier

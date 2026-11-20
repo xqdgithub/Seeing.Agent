@@ -25,4 +25,13 @@ public interface IBackgroundActivityOutbox
     /// </para>
     /// </summary>
     Task<int> ReconcileDeadHostsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// 删除已结束（<c>Delivered</c> / <c>Dropped</c>）且 <c>CreatedAt</c> 早于
+    /// <paramref name="cutoff"/> 的批次文件，返回删除条数。
+    /// <para>
+    /// <c>Pending</c> 批次永不清除：它们还等着被投递。
+    /// </para>
+    /// </summary>
+    Task<int> PruneAsync(DateTimeOffset cutoff, CancellationToken ct = default);
 }

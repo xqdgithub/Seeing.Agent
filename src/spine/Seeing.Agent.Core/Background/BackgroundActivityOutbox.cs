@@ -521,8 +521,81 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
         }
     }
 
-    // ─── 消息构造（摘要，不含输出正文） ───────────────────────────────────────
+    // ─── 保留期回收 ───────────────────────────────────────────────────────────
 
+    /// <inheritdoc />
+    public async Task<int> PruneAsync(DateTimeOffset cutoff, CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            // 与泵取同根：本轮读与删都落在同一个 outbox 目录。
+            var outboxDirectory = OutboxDirectory();
+            var all = await LoadAllAsync(outboxDirectory).ConfigureAwait(false);
+
+            var removed = 0;
+            foreach (var notification in all)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                // Pending 还没投递：删了就是丢通知。
+                if (notification.Status == BackgroundActivityOutboxStatus.Pending)
+                    continue;
+
+                if (notification.CreatedAt >= cutoff)
+                    continue;
+
+                if (!await TryDeleteAsync(notification.DigestId, outboxDirectory).ConfigureAwait(false))
+                    continue;
+
+                removed++;
+            }
+
+            if (removed > 0)
+            {
+                _logger.LogInformation(
+                    "后台活动 outbox 保留期回收完成 Removed={Removed} Cutoff={Cutoff} Directory={Directory}",
+                    removed,
+                    cutoff,
+                    outboxDirectory);
+            }
+
+            return removed;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>删除一个批次文件；与写入共用路径锁，失败只记日志并保留（下次再删）。</summary>
+    private async Task<bool> TryDeleteAsync(string digestId, string directory)
+    {
+        try
+        {
+            var path = ResolveNotificationPath(digestId, directory);
+            var gate = AtomicFileWrite.GetLock(path);
+            await gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            try
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+            finally
+            {
+                gate.Release();
+            }
+
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "后台活动 outbox 批次回收失败，保留待下次重试 DigestId={DigestId}", digestId);
+            return false;
+        }
+    }
+
+    // ─── 消息构造（摘要，不含输出正文） ───────────────────────────────────────
     /// <summary>
     /// 构造唤醒消息：只会携带标题 / kind / 状态 / 输出**大小**，绝不内联输出正文（spec §19 红线 3）。
     /// </summary>

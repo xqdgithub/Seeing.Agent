@@ -90,6 +90,10 @@ public class BackgroundActivityManagerTests
 
         second.ActivityId.Should().Be(first.ActivityId);
         harness.Launcher.LaunchCount.Should().Be(1);
+
+        // 去重命中必须可区分：调用方据此说明「命令没有重新执行」。
+        first.IsExisting.Should().BeFalse("首次启动是新建活动");
+        second.IsExisting.Should().BeTrue("命中在途活动只是复用，没有新建");
     }
 
     // ─── 终态 CAS ─────────────────────────────────────────────────────────────
@@ -337,6 +341,28 @@ public class BackgroundActivityManagerTests
             .Should().ContainSingle().Which.Id.Should().Be(done.ActivityId);
 
         harness.Manager.List(new BackgroundActivityQuery(Kind: "other"), "s1").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task List_ShouldBeLimitedToConfiguredLimit()
+    {
+        var time = new FakeTimeProvider();
+        var harness = CreateHarness(
+            timeProvider: time,
+            options: new BackgroundActivityOptions { ListLimit = 2 });
+
+        var oldest = await harness.Manager.StartAsync(Request("s1", title: "oldest"), "s1");
+        time.Advance(TimeSpan.FromSeconds(1));
+        var middle = await harness.Manager.StartAsync(Request("s1", title: "middle"), "s1");
+        time.Advance(TimeSpan.FromSeconds(1));
+        var newest = await harness.Manager.StartAsync(Request("s1", title: "newest"), "s1");
+
+        var list = harness.Manager.List(new BackgroundActivityQuery(), "s1");
+
+        // 截断必须发生在「最新在前」排序之后：保留的是最新两条，不是字典枚举顺序。
+        list.Should().HaveCount(2);
+        list.Select(s => s.Id).Should().Equal(newest.ActivityId, middle.ActivityId);
+        list.Should().NotContain(s => s.Id == oldest.ActivityId);
     }
 
     [Fact]
@@ -646,6 +672,40 @@ public class BackgroundActivityManagerTests
         terminal.OutputTruncated.Should().BeTrue();
     }
 
+    // ─── 保留期回收 ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Prune_ShouldRemoveTerminalActivitiesOlderThanCutoff()
+    {
+        var harness = CreateHarness();
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+        await handle.Reporter.CompleteAsync(NoResult());
+
+        var completedAt = harness.Manager.Get(handle.ActivityId, "s1")!.CompletedAt!.Value;
+
+        var pruned = await harness.Manager.PruneAsync(completedAt.AddSeconds(1));
+
+        pruned.Should().Be(1);
+        harness.Manager.Get(handle.ActivityId, "s1").Should().BeNull("回收后内存表里不再有该活动");
+        harness.Store.Deleted.Should().Contain(handle.ActivityId, "落盘快照必须一并删除");
+        harness.Output.Deleted.Should().Contain(handle.ActivityId, "输出文件必须一并删除");
+    }
+
+    [Fact]
+    public async Task Prune_ShouldKeepRunningActivities()
+    {
+        var harness = CreateHarness();
+        var running = await harness.Manager.StartAsync(Request("s1"), "s1");
+
+        // 截止时刻放到最远：任何「终态」都算过期，唯一能活下来的是非终态。
+        var pruned = await harness.Manager.PruneAsync(DateTimeOffset.MaxValue);
+
+        pruned.Should().Be(0);
+        harness.Manager.Get(running.ActivityId, "s1").Should().NotBeNull("删掉在跑的活动等于丢掉唯一的控制入口");
+        harness.Store.Deleted.Should().BeEmpty();
+        harness.Output.Deleted.Should().BeEmpty();
+    }
+
     // ─── 测试替身与工具 ───────────────────────────────────────────────────────
 
     private sealed class Harness
@@ -704,6 +764,14 @@ public class BackgroundActivityManagerTests
             OwnerSessionId = ownerSessionId,
             OwnerExecutionId = "exec-1"
         };
+
+    private static BackgroundActivityResult NoResult() => new(
+        BackgroundActivityResultKind.None,
+        ArtifactPath: null,
+        ResultSessionId: null,
+        ExitCode: null,
+        ErrorCode: null,
+        ErrorMessage: null);
 
     private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000)
     {
@@ -926,6 +994,20 @@ public class BackgroundActivityManagerTests
                 return Task.FromResult(true);
             }
         }
+
+        /// <summary>已删除的活动 id（保留期回收断言用）。</summary>
+        public List<string> Deleted { get; } = new();
+
+        public Task DeleteAsync(string activityId)
+        {
+            lock (_gate)
+            {
+                Deleted.Add(activityId);
+                _saved.RemoveAll(s => string.Equals(s.Id, activityId, StringComparison.Ordinal));
+            }
+
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeOutputStore : IActivityOutputStore
@@ -973,6 +1055,15 @@ public class BackgroundActivityManagerTests
             CancellationToken ct)
             => Task.FromResult(new BackgroundActivityOutputPage("out", offset + maxBytes, EndOfStream: false, Truncated: false));
 
-        public Task DeleteAsync(string activityId) => Task.CompletedTask;
+        public Task DeleteAsync(string activityId)
+        {
+            lock (Deleted)
+                Deleted.Add(activityId);
+
+            return Task.CompletedTask;
+        }
+
+        /// <summary>已删除输出文件的活动 id（保留期回收断言用）。</summary>
+        public List<string> Deleted { get; } = new();
     }
 }

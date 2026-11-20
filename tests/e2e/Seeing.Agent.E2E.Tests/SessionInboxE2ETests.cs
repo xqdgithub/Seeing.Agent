@@ -63,6 +63,9 @@ public class SessionInboxE2ETests
 
         public Task<int> ReconcileOrphanedActivitiesAsync(CancellationToken ct = default)
             => Task.FromResult(0);
+
+        public Task<int> PruneAsync(DateTimeOffset cutoff, CancellationToken ct = default)
+            => Task.FromResult(0);
     }
 
     /// <summary>假执行体：记录调用次数、会话与批次，并可阻塞以制造在途窗口。</summary>
