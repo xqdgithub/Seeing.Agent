@@ -69,6 +69,9 @@
     /// <summary>悬浮提示（根节点显示完整路径）。</summary>
     [Parameter] public string? Title { get; set; }
 
+    /// <summary>首次渲染即展开（顶层根节点用，避免打开面板只看到折叠的根）。</summary>
+    [Parameter] public bool DefaultExpanded { get; set; }
+
     private bool _expanded;
     private bool _loading;
     private List<FileEntry> _children = [];
@@ -101,7 +104,7 @@
         TreeState.Changed += OnTreeChanged;
         TreeState.SelectionChanged += OnSelectionChanged;
         // 树（重新）构建时选中路径已存在（如树收起后再展开/页面往返）：初始化即沿路径展开
-        if (SelectionInDir)
+        if (DefaultExpanded || SelectionInDir)
             await ExpandAsync();
     }
 
