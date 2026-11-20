@@ -55,9 +55,6 @@ internal class ChatExecutionContext
     /// <summary>是否为顶层调用（Hook 触发控制）</summary>
     public bool IsTopLevel { get; init; } = true;
 
-    /// <summary>是否为后台执行</summary>
-    public bool IsBackground { get; init; }
-
     // ========== Gateway 相关 ==========
 
     /// <summary>入站对话路由（与 ChatOptions.ChannelRoute 同源）。</summary>
@@ -125,7 +122,6 @@ internal class ChatExecutionContext
             ParentSessionId = SessionId,
             ParentAgentName = parentAgentName,
             IsTopLevel = false,
-            IsBackground = true,
             ToolSettlement = ToolSettlement,
             SectionIds = SectionIds,
             Metadata = new Dictionary<string, object>(Metadata)

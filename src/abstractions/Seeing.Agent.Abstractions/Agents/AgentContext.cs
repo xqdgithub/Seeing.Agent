@@ -56,11 +56,6 @@ public class AgentContext
     /// </summary>
     public string? ParentSessionId { get; set; }
 
-    /// <summary>
-    /// 是否为后台任务
-    /// </summary>
-    public bool IsBackground { get; set; }
-
     /// <summary>元数据</summary>
     public Dictionary<string, object> Metadata { get; set; } = new();
 

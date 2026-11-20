@@ -385,7 +385,6 @@ public class AgentJob : IJob
             Services = _services,
             WorkingDirectory = cwd,
             WorkspaceRoot = projectRoot,
-            IsBackground = true,
             ToolSettlement = resolution,
             ContextBaseline = AppendCatalogToBaseline(assembly.SystemBaseline, resolution),
             SkillSnapshot = assembly.SkillSnapshot,
