@@ -176,3 +176,14 @@
 - `dotnet build Seeing.Agent.slnx`：0 error。
 - 全量测试按程序集 `dotnet vstest <dll>` 运行（本环境 MTP 发现不到测试）。
 - 唯一失败为既有 WebUI CSS 契约断言 `SidebarShutdown_ShouldReserveCollapseTriggerSpace`（`tests/apps/Seeing.Agent.WebUI.Tests/Infrastructure/WebUiScriptInteropContractTests.cs`），与本变更无关。
+
+---
+
+## 10. 系统落点分节约定（2026-11-20）
+
+- 每个 `ContextSourceTarget.System` 源的初始渲染必须以 `## 标题` 开头，或以 XML 信封包裹整体内容。
+- 装配器在建立 / 重建 / 重锚定基线时校验该约定（`ContextAssembler.WarnIfSystemBaselineNotSectioned`）；不满足时记入 `Issues` 并输出 warning，不自动补标题、不抛异常。
+- 新文本只对新建会话或重锚定（压缩 / 切换工作区）生效；已落库基线按字节稳定原则不重写。
+- 现有分节顺序：`## Skills` → `## 协同工作目录` → `## 工具目录`（System 源按 `Scope → Key` 排序）。
+- 协同目录分节明确「与工作目录平级、不是子目录；访问用绝对路径或命令级 `workdir`；相对路径只相对工作目录解析」。
+
