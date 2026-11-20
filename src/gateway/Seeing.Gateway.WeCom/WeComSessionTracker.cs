@@ -45,23 +45,8 @@ public sealed class WeComSessionTracker
     /// </summary>
     private string StateFilePath => ResolveStateFilePath(_options.SessionStateFile);
 
-    /// <summary>
-    /// 对齐到当前工作区：清空内存映射后按新路径重新加载。
-    /// <para>
-    /// 由工作区切换参与者调用（切换后 <c>.seeing</c> 指向新根）。
-    /// 不清空的话，下一次 <see cref="PersistLocked"/> 会把旧工作区的映射写进新工作区的文件。
-    /// </para>
-    /// </summary>
-    public void AlignToWorkspace()
-    {
-        lock (_lock)
-        {
-            _entries.Clear();
-        }
-
-        LoadFromDisk();
-        _logger.LogInformation("WeCom 会话状态已按当前工作区对齐: {Path}", StateFilePath);
-    }
+    // 工作区切换：本 tracker 运行在 ChannelHost 子进程内，切工作区时由 GatewayWorkspaceParticipant
+    // 停掉并按新根重启，路径天然重算；同进程宿主下不提供对齐入口（避免留下死代码）。
 
     /// <summary>解析当前应使用的 sessionId（必要时因 idle 自动轮换）</summary>
     public string ResolveSessionId(ParsedWeComMessage message)

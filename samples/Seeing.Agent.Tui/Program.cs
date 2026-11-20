@@ -42,6 +42,18 @@ builder.Services.AddSingleton<IConfigSectionRegistry>(registry);
 // Tui 不监听 Gateway 端口，但仍登记 gateway/comms 模块以保持 Full 一致。
 builder.Services.AddSeeingFullCapabilities(registry, builder.Configuration, includeGatewayServer: false);
 
+// TUI 是单工作区宿主：允许切换时同步进程 CWD（作为子进程默认目录）。
+builder.Services.AddSingleton(_ =>
+{
+    var provider = Seeing.Agent.Core.Configuration.WorkspaceProvider.CreateUnresolved();
+    provider.MutatesProcessCwd = true;
+    return provider;
+});
+builder.Services.AddSingleton<Seeing.Agent.Configuration.IWorkspaceProvider>(
+    sp => sp.GetRequiredService<Seeing.Agent.Core.Configuration.WorkspaceProvider>());
+builder.Services.AddSingleton<Seeing.Agent.Abstractions.Configuration.ISeeingDirectories>(
+    sp => sp.GetRequiredService<Seeing.Agent.Core.Configuration.WorkspaceProvider>());
+
 builder.Services.AddSeeingCore(registry);
 
 builder.Services.AddSeeingHostingTui(o =>

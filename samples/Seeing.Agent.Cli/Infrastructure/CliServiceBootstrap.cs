@@ -55,6 +55,18 @@ public static class CliServiceBootstrap
         builder.Services.AddSeeingFullCapabilities(registry, builder.Configuration, includeGatewayServer: true);
         builder.Services.AddTokenBudgetHooks();
 
+        // CLI 是单工作区宿主：允许切换时同步进程 CWD（作为子进程默认目录）。
+        builder.Services.AddSingleton(_ =>
+        {
+            var provider = Seeing.Agent.Core.Configuration.WorkspaceProvider.CreateUnresolved();
+            provider.MutatesProcessCwd = true;
+            return provider;
+        });
+        builder.Services.AddSingleton<Seeing.Agent.Configuration.IWorkspaceProvider>(
+            sp => sp.GetRequiredService<Seeing.Agent.Core.Configuration.WorkspaceProvider>());
+        builder.Services.AddSingleton<Seeing.Agent.Abstractions.Configuration.ISeeingDirectories>(
+            sp => sp.GetRequiredService<Seeing.Agent.Core.Configuration.WorkspaceProvider>());
+
         builder.Services.AddSeeingCore(registry);
         builder.Services.AddSeeingHostingHeadless();
         BootOverrideSource.ApplyToServices(builder.Services, args);
