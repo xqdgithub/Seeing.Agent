@@ -16,8 +16,11 @@ internal interface IActivityOutputStore
     /// </summary>
     void Configure(string activityId, long limitBytes);
 
-    /// <summary>追加一段输出字节。</summary>
-    Task AppendAsync(string activityId, ReadOnlyMemory<byte> chunk, CancellationToken ct);
+    /// <summary>
+    /// 追加一段输出字节；返回写入后的累计统计（实际落盘字节与是否已截断）。
+    /// <para>返回值是快照 <c>OutputBytes</c> / <c>OutputTruncated</c> 的唯一来源：截断时实际写入少于传入字节，调用方不得自行累计。</para>
+    /// </summary>
+    Task<ActivityOutputAppendResult> AppendAsync(string activityId, ReadOnlyMemory<byte> chunk, CancellationToken ct);
 
     /// <summary>按偏移分页读取输出。</summary>
     Task<BackgroundActivityOutputPage> ReadAsync(string activityId, long offset, int maxBytes, CancellationToken ct);
@@ -25,3 +28,10 @@ internal interface IActivityOutputStore
     /// <summary>删除该活动的输出文件。</summary>
     Task DeleteAsync(string activityId);
 }
+
+/// <summary>
+/// 一次输出追加的累计统计（internal：只在 Core 与测试替身之间传递）。
+/// </summary>
+/// <param name="TotalBytes">已实际落盘的输出字节数（不含截断标记）。</param>
+/// <param name="Truncated">输出是否已因达到上限被截断。</param>
+internal readonly record struct ActivityOutputAppendResult(long TotalBytes, bool Truncated);

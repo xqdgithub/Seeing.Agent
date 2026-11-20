@@ -45,6 +45,12 @@ public sealed class BackgroundActivityViewModel
     /// <summary>输出上限（字节）。</summary>
     public long OutputLimitBytes { get; init; }
 
+    /// <summary>已写入输出的字节数（快照权威字段，不含截断标记）；未上报时为 null。</summary>
+    public long? OutputBytes { get; init; }
+
+    /// <summary>输出是否已因达到上限被截断。</summary>
+    public bool OutputTruncated { get; init; }
+
     /// <summary>kind 专属展示信息（只展示，不参与判定）。</summary>
     public IReadOnlyDictionary<string, string> Attributes { get; init; }
         = new Dictionary<string, string>();
@@ -142,30 +148,12 @@ public sealed class BackgroundActivityViewModel
 
     /// <summary>
     /// 输出大小文本。
-    /// <para>
-    /// 快照契约没有「已写字节数」字段（只有 <see cref="OutputLimitBytes"/>），因此只读取发起方
-    /// 在 <see cref="Attributes"/> 里声明的展示键；没有时再看进度单位是否为字节。
-    /// 都没有则返回 null（宁可不显示，也不猜）。
-    /// </para>
+    /// <para>只读快照的强类型字段 <see cref="OutputBytes"/>；不再从 <see cref="Attributes"/> 猜约定键。</para>
     /// </summary>
-    public string? OutputSizeText
-    {
-        get
-        {
-            foreach (var key in s_outputSizeKeys)
-            {
-                if (!Attributes.TryGetValue(key, out var raw) || string.IsNullOrWhiteSpace(raw))
-                    continue;
-                if (long.TryParse(raw, out var bytes) && bytes >= 0)
-                    return FormatBytes(bytes);
-            }
+    public string? OutputSizeText => OutputBytes is long bytes ? FormatBytes(bytes) : null;
 
-            if (Progress is { UnitsDone: long done, UnitsName: { } units } && IsByteUnit(units))
-                return FormatBytes(done);
-
-            return null;
-        }
-    }
+    /// <summary>截断提示文本（未截断时为 null）。</summary>
+    public string? OutputTruncatedText => OutputTruncated ? "已截断" : null;
 
     /// <summary>输出上限文本（仅在拿不到实际大小时作为兜底展示）。</summary>
     public string? OutputLimitText => OutputSizeText is null && OutputLimitBytes > 0
@@ -177,14 +165,6 @@ public sealed class BackgroundActivityViewModel
         or BackgroundActivityStatus.Interrupted
         ? Result?.ErrorMessage
         : null;
-
-    private static readonly string[] s_outputSizeKeys =
-    [
-        "output_bytes",
-        "output.size",
-        "bytes_written",
-        "size_bytes"
-    ];
 
     /// <summary>从快照创建视图模型。</summary>
     public static BackgroundActivityViewModel FromSnapshot(BackgroundActivitySnapshot snapshot)
@@ -204,14 +184,13 @@ public sealed class BackgroundActivityViewModel
             Progress = snapshot.Progress,
             Result = snapshot.Result,
             OutputLimitBytes = snapshot.OutputLimitBytes,
+            OutputBytes = snapshot.OutputBytes,
+            OutputTruncated = snapshot.OutputTruncated,
             Attributes = snapshot.Attributes ?? new Dictionary<string, string>(),
             CreatedAt = snapshot.CreatedAt,
             CompletedAt = snapshot.CompletedAt
         };
     }
-
-    private static bool IsByteUnit(string units) => units.Trim().ToLowerInvariant() is
-        "b" or "byte" or "bytes" or "kb" or "mb" or "gb";
 
     private static string FormatBytes(long bytes)
     {

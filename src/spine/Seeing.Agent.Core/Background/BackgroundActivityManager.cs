@@ -526,10 +526,29 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
 
     internal async Task AppendOutputAsync(string activityId, ReadOnlyMemory<byte> chunk, CancellationToken ct)
     {
+        if (chunk.IsEmpty)
+            return;
+
         if (!_activities.TryGetValue(activityId, out var record) || IsTerminalCommitted(record))
             return;
 
-        await _outputStore.AppendAsync(activityId, chunk, ct).ConfigureAwait(false);
+        var appended = await _outputStore.AppendAsync(activityId, chunk, ct).ConfigureAwait(false);
+
+        lock (_sync)
+        {
+            // 写入期间可能已提交终态：终态快照是权威事实，不再回填统计（也绝不改 Seq）。
+            if (record.TerminalCommitted)
+                return;
+
+            // 统计来自存储的实际落盘结果（截断后不再按传入字节累计）；不额外落盘——
+            // 下一次状态迁移（含终态）会把这两个字段一并写出。
+            record.Snapshot = record.Snapshot with
+            {
+                Seq = record.Snapshot.Seq + 1,
+                OutputBytes = appended.TotalBytes,
+                OutputTruncated = appended.Truncated
+            };
+        }
     }
 
     internal async Task CompleteAsync(

@@ -656,8 +656,11 @@ public class BackgroundActivityOutboxTests : IDisposable
         {
         }
 
-        public Task AppendAsync(string activityId, ReadOnlyMemory<byte> chunk, CancellationToken ct)
-            => Task.CompletedTask;
+        public Task<ActivityOutputAppendResult> AppendAsync(
+            string activityId,
+            ReadOnlyMemory<byte> chunk,
+            CancellationToken ct)
+            => Task.FromResult(new ActivityOutputAppendResult(0, Truncated: false));
 
         public Task<BackgroundActivityOutputPage> ReadAsync(
             string activityId,

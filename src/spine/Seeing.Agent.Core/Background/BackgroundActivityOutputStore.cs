@@ -73,11 +73,14 @@ internal sealed class BackgroundActivityOutputStore : IActivityOutputStore
     }
 
     /// <inheritdoc />
-    public async Task AppendAsync(string activityId, ReadOnlyMemory<byte> chunk, CancellationToken ct)
+    public async Task<ActivityOutputAppendResult> AppendAsync(
+        string activityId,
+        ReadOnlyMemory<byte> chunk,
+        CancellationToken ct)
     {
         var path = ResolveOutputPath(activityId);
         if (chunk.IsEmpty)
-            return;
+            return CurrentStats(activityId);
 
         using var lease = await _writeLock.AcquireAsync(path, ct).ConfigureAwait(false);
 
@@ -86,7 +89,7 @@ internal sealed class BackgroundActivityOutputStore : IActivityOutputStore
 
         // 已截断：后续输出直接丢弃（标记只写一次，绝不重复追加）。
         if (state.Truncated)
-            return;
+            return new ActivityOutputAppendResult(state.TotalBytes, Truncated: true);
 
         var limit = ResolveOutputLimit(activityId);
         var remaining = limit - state.TotalBytes;
@@ -119,6 +122,9 @@ internal sealed class BackgroundActivityOutputStore : IActivityOutputStore
 
         if (appendMarker)
             state.MarkTruncated();
+
+        // 统计与文件在同一次锁内完成：返回值就是「已落盘字节」的权威值（截断后的溢出字节不计）。
+        return new ActivityOutputAppendResult(state.TotalBytes, state.Truncated);
     }
 
     /// <inheritdoc />
@@ -210,6 +216,15 @@ internal sealed class BackgroundActivityOutputStore : IActivityOutputStore
             return null;
 
         return new ActivityOutputStats(state.TotalBytes, state.LineCount, state.Truncated, state.TailText());
+    }
+
+    /// <summary>只取累计统计（不构造尾部文本）；尚无内存状态时按 0 / 未截断返回。</summary>
+    private ActivityOutputAppendResult CurrentStats(string activityId)
+    {
+        if (string.IsNullOrEmpty(activityId) || !_states.TryGetValue(activityId, out var state) || !state.Initialized)
+            return new ActivityOutputAppendResult(0, Truncated: false);
+
+        return new ActivityOutputAppendResult(state.TotalBytes, state.Truncated);
     }
 
     // ─── 路径 ─────────────────────────────────────────────────────────────────

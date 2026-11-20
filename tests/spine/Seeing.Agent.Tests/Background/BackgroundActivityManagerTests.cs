@@ -1,3 +1,4 @@
+using System.Text;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -601,6 +602,50 @@ public class BackgroundActivityManagerTests
         await WaitUntilAsync(() => harness.Manager.Get(handle.ActivityId, "s1")!.Status == BackgroundActivityStatus.Succeeded);
     }
 
+    // ─── 输出统计 ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Snapshot_ShouldCarryOutputBytes_OnCompletion()
+    {
+        var harness = CreateHarness();
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+
+        await handle.Reporter.AppendOutputAsync(Encoding.UTF8.GetBytes("hello"));
+        await handle.Reporter.CompleteAsync(new BackgroundActivityResult(
+            BackgroundActivityResultKind.Text, null, null, null, null, null));
+
+        var snapshot = harness.Manager.Get(handle.ActivityId, "s1")!;
+        snapshot.Status.Should().Be(BackgroundActivityStatus.Succeeded);
+        snapshot.OutputBytes.Should().Be(5);
+        snapshot.OutputTruncated.Should().BeFalse();
+
+        // 统计不额外落盘：随终态记录一并写出。
+        await harness.Manager.WaitForPersistenceAsync(handle.ActivityId);
+        harness.Store.Saved.Last(s => s.Id == handle.ActivityId).OutputBytes.Should().Be(5);
+    }
+
+    [Fact]
+    public async Task Snapshot_ShouldCarryTruncatedFlag_WhenLimitHit()
+    {
+        var harness = CreateHarness();
+        var handle = await harness.Manager.StartAsync(Request("s1") with { OutputLimitBytes = 4 }, "s1");
+
+        await handle.Reporter.AppendOutputAsync(Encoding.UTF8.GetBytes("0123456789"));
+        await handle.Reporter.AppendOutputAsync(Encoding.UTF8.GetBytes("late"));
+
+        // 截断后的实际落盘字节是上限值，而不是传入长度之和。
+        var running = harness.Manager.Get(handle.ActivityId, "s1")!;
+        running.OutputBytes.Should().Be(4);
+        running.OutputTruncated.Should().BeTrue();
+
+        await handle.Reporter.CompleteAsync(new BackgroundActivityResult(
+            BackgroundActivityResultKind.Text, null, null, null, null, null));
+
+        var terminal = harness.Manager.Get(handle.ActivityId, "s1")!;
+        terminal.OutputBytes.Should().Be(4);
+        terminal.OutputTruncated.Should().BeTrue();
+    }
+
     // ─── 测试替身与工具 ───────────────────────────────────────────────────────
 
     private sealed class Harness
@@ -885,6 +930,9 @@ public class BackgroundActivityManagerTests
 
     private sealed class FakeOutputStore : IActivityOutputStore
     {
+        private readonly Dictionary<string, long> _totals = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _truncated = new(StringComparer.Ordinal);
+
         public List<(string ActivityId, byte[] Chunk)> Appends { get; } = new();
 
         public Dictionary<string, long> Limits { get; } = new(StringComparer.Ordinal);
@@ -895,12 +943,27 @@ public class BackgroundActivityManagerTests
                 Limits[activityId] = limitBytes;
         }
 
-        public Task AppendAsync(string activityId, ReadOnlyMemory<byte> chunk, CancellationToken ct)
+        public Task<ActivityOutputAppendResult> AppendAsync(
+            string activityId,
+            ReadOnlyMemory<byte> chunk,
+            CancellationToken ct)
         {
             lock (Appends)
+            {
                 Appends.Add((activityId, chunk.ToArray()));
 
-            return Task.CompletedTask;
+                // 与真实存储同口径：超出上限的字节不落盘，并在越限点标记截断。
+                var limit = Limits.TryGetValue(activityId, out var configured) ? configured : long.MaxValue;
+                _totals.TryGetValue(activityId, out var total);
+                var writable = Math.Min(chunk.Length, Math.Max(0, limit - total));
+                total += writable;
+                _totals[activityId] = total;
+
+                if (writable < chunk.Length)
+                    _truncated.Add(activityId);
+
+                return Task.FromResult(new ActivityOutputAppendResult(total, _truncated.Contains(activityId)));
+            }
         }
 
         public Task<BackgroundActivityOutputPage> ReadAsync(

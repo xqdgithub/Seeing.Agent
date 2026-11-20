@@ -15,7 +15,10 @@
 
             @if (activity.OutputSizeText is { } size)
             {
-                <span class="bg-activity-meta" title="已写输出大小">输出 @size</span>
+                <span class="bg-activity-meta"
+                      title="@(activity.OutputTruncated ? "已写输出大小（已达上限截断）" : "已写输出大小")">
+                    输出 @size@(activity.OutputTruncated ? "（已截断）" : null)
+                </span>
             }
             else if (activity.OutputLimitText is { } limit)
             {

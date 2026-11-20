@@ -76,6 +76,12 @@ public sealed record BackgroundActivitySnapshot
     /// <summary>进度（不落盘，仅事件）。</summary>
     public BackgroundActivityProgress? Progress { get; init; }
 
+    /// <summary>已写入输出的字节数（实际落盘值，不含截断标记）；尚未写入任何输出时为 <see langword="null"/>。</summary>
+    public long? OutputBytes { get; init; }
+
+    /// <summary>输出是否已因达到 <see cref="OutputLimitBytes"/> 被截断。</summary>
+    public bool OutputTruncated { get; init; }
+
     /// <summary>取消原因（仅 <see cref="BackgroundActivityStatus.Cancelled"/> 时有值）。</summary>
     public BackgroundActivityCancelReason? CancelReason { get; init; }
 
