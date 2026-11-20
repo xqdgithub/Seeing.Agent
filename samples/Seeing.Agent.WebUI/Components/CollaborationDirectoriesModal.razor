@@ -1,0 +1,213 @@
+@using AntDesign
+@using Seeing.Agent.Abstractions.Directories
+@using Seeing.Agent.Configuration
+@using Seeing.Session.Core
+@inject ICollaborationDirectories Directories
+@inject IWorkspaceProvider Workspace
+@inject IMessageService MessageService
+
+<Modal Title="协同目录"
+       Visible="@Visible"
+       OnCancel="@OnCancel"
+       Footer="@null"
+       Width="620">
+    <div class="collab-dirs">
+        <div class="collab-dirs-hint">
+            协同目录是本会话可以读写的外部目录；移除只收回本会话的访问，不删除磁盘文件。
+        </div>
+
+        @if (_loading)
+        {
+            <div class="collab-dirs-loading">加载中…</div>
+        }
+        else
+        {
+            @if (_projectRoot is not null)
+            {
+                <div class="collab-dir-row collab-dir-row--project">
+                    <span class="collab-dir-kind collab-dir-kind--project">项目</span>
+                    <div class="collab-dir-main">
+                        <div class="collab-dir-name">@ProjectName</div>
+                        <div class="collab-dir-path" title="@_projectRoot">@_projectRoot</div>
+                    </div>
+                    <span class="collab-dir-lock">工作区根</span>
+                </div>
+            }
+
+            @if (_entries.Count == 0)
+            {
+                <div class="collab-dirs-empty">还没有协同目录</div>
+            }
+            else
+            {
+                @foreach (var entry in _entries)
+                {
+                    <div class="collab-dir-row">
+                        <span class="collab-dir-kind collab-dir-kind--collab">协同</span>
+                        <div class="collab-dir-main">
+                            <div class="collab-dir-name">
+                                @DisplayName(entry)
+                                @if (!Exists(entry))
+                                {
+                                    <span class="collab-dir-missing">不可用</span>
+                                }
+                            </div>
+                            <div class="collab-dir-path" title="@entry.Path">@entry.Path</div>
+                        </div>
+                        <Button Type="@ButtonType.Text"
+                                Danger="true"
+                                Size="@ButtonSize.Small"
+                                OnClick="@(() => RemoveAsync(entry.Path))">
+                            移除
+                        </Button>
+                    </div>
+                }
+            }
+
+            <div class="collab-dir-add">
+                <Input @bind-Value="_newPath"
+                       Placeholder="输入协同目录的绝对路径，如 D:\Shared\data"
+                       OnPressEnter="@AddAsync" />
+                <Button Type="@ButtonType.Primary" OnClick="@AddAsync">添加</Button>
+            </div>
+        }
+    </div>
+</Modal>
+
+@code {
+    /// <summary>是否显示。</summary>
+    [Parameter] public bool Visible { get; set; }
+
+    /// <summary>目标会话。</summary>
+    [Parameter] public string? SessionId { get; set; }
+
+    /// <summary>关闭请求。</summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private IReadOnlyList<CollaborationDirectory> _entries = Array.Empty<CollaborationDirectory>();
+    private string? _projectRoot;
+    private string _newPath = string.Empty;
+    private bool _loading;
+    private bool _wasVisible;
+    private string? _loadedSessionId;
+
+    private string ProjectName => string.IsNullOrWhiteSpace(_projectRoot)
+        ? "工作区"
+        : Path.GetFileName(Path.TrimEndingDirectorySeparator(_projectRoot));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Visible)
+        {
+            _wasVisible = false;
+            return;
+        }
+
+        // 每次打开（或切换会话）都重新读一遍：目录可能被其他入口改过
+        if (!_wasVisible || !string.Equals(_loadedSessionId, SessionId, StringComparison.Ordinal))
+        {
+            _wasVisible = true;
+            _loadedSessionId = SessionId;
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrEmpty(SessionId))
+        {
+            _entries = Array.Empty<CollaborationDirectory>();
+            return;
+        }
+
+        _loading = true;
+        try
+        {
+            _projectRoot = TryGetProjectRoot();
+            _entries = await Directories.GetAsync(SessionId);
+        }
+        catch (Exception ex)
+        {
+            MessageService.Warning("读取协同目录失败：" + ex.Message);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        if (string.IsNullOrEmpty(SessionId) || string.IsNullOrWhiteSpace(_newPath))
+            return;
+
+        try
+        {
+            await Directories.AddAsync(SessionId, _newPath.Trim());
+            _newPath = string.Empty;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Warning("添加失败：" + ex.Message);
+        }
+    }
+
+    private async Task RemoveAsync(string path)
+    {
+        if (string.IsNullOrEmpty(SessionId))
+            return;
+
+        try
+        {
+            await Directories.RemoveAsync(SessionId, path);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageService.Warning("移除失败：" + ex.Message);
+        }
+    }
+
+    private string? TryGetProjectRoot()
+    {
+        try
+        {
+            return Workspace.GetProjectRoot();
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private static string DisplayName(CollaborationDirectory entry)
+    {
+        if (!string.IsNullOrWhiteSpace(entry.Note))
+            return entry.Note;
+
+        try
+        {
+            var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(entry.Path));
+            return string.IsNullOrEmpty(name) ? entry.Path : name;
+        }
+        catch (ArgumentException)
+        {
+            return entry.Path;
+        }
+    }
+
+    private static bool Exists(CollaborationDirectory entry)
+    {
+        try
+        {
+            return Directory.Exists(entry.Path);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private Task OnCancel() => OnClose.InvokeAsync();
+}

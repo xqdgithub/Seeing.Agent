@@ -122,6 +122,17 @@
             }
         </div>
         <div class="session-toolbar-right">
+            @if (!string.IsNullOrEmpty(Context.SessionId))
+            {
+                <Tooltip Title="协同目录">
+                    <Button Type="@ButtonType.Text"
+                            Size="@ButtonSize.Small"
+                            Icon="@IconType.Outline.Folder"
+                            OnClick="@OpenCollaborationDirectories">
+                        协同目录
+                    </Button>
+                </Tooltip>
+            }
             <SlotHost SlotName="session_toolbar_actions" />
             @if (Context.ShowReturnToParent)
             {
@@ -304,6 +315,10 @@
     </Modal>
 }
 
+<CollaborationDirectoriesModal Visible="_collaborationVisible"
+                               SessionId="@Context.SessionId"
+                               OnClose="@CloseCollaborationDirectories" />
+
 @code {
     [Parameter, EditorRequired] public Services.SessionWindowContext Context { get; set; } = new();
     [Parameter] public Services.SessionWindowMode Mode { get; set; } = Services.SessionWindowMode.Full;
@@ -322,6 +337,7 @@
     private ScenarioForm ScenarioFormModel { get; set; } = new();
     private bool OutboundModalVisible;
     private OutboundEditForm OutboundForm { get; set; } = new();
+    private bool _collaborationVisible;
 
     private bool _infoModalVisible;
     private string _infoSessionId = "";
@@ -708,6 +724,10 @@
     {
         OutboundModalVisible = false;
     }
+
+    private void OpenCollaborationDirectories() => _collaborationVisible = true;
+
+    private void CloseCollaborationDirectories() => _collaborationVisible = false;
 
     public void Dispose()
     {
