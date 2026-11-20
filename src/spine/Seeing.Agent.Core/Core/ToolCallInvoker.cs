@@ -174,7 +174,8 @@ internal sealed class ToolCallInvoker
                     Error = result.Error ?? "已取消",
                     Duration = DateTime.Now - startTime,
                     Metadata = CopyMetadata(result.Metadata),
-                    Parts = result.Parts
+                    Parts = result.Parts,
+                    BackgroundActivityId = result.BackgroundActivityId
                 };
             }
 
@@ -201,7 +202,8 @@ internal sealed class ToolCallInvoker
                 TurnDirective = result.TurnDirective,
                 TurnDirectiveReason = result.TurnDirectiveReason,
                 ToolDefinition = definition,
-                Parts = result.Parts
+                Parts = result.Parts,
+                BackgroundActivityId = result.BackgroundActivityId
             };
         }
 
@@ -221,7 +223,8 @@ internal sealed class ToolCallInvoker
             Metadata = CopyMetadata(result.Metadata),
             TurnDirective = result.TurnDirective,
             TurnDirectiveReason = result.TurnDirectiveReason,
-            Parts = result.Parts
+            Parts = result.Parts,
+            BackgroundActivityId = result.BackgroundActivityId
         };
     }
 

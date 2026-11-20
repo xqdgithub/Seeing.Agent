@@ -46,6 +46,8 @@ public sealed class TuiToolState
     public string? TaskId { get; set; }
     public string? TaskAgent { get; set; }
     public string? TaskDescription { get; set; }
+    /// <summary>本调用转交的后台活动 id（如 bash background=true）。</summary>
+    public string? BackgroundActivityId { get; set; }
     public List<TuiTaskStep> Steps { get; } = [];
     public bool IsExpanded { get; set; }
 }

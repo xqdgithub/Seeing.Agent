@@ -87,6 +87,15 @@ public class ToolResult
     /// </summary>
     public IReadOnlyList<string>? LoadedToolIds { get; set; }
 
+    /// <summary>
+    /// 本调用转交的后台活动 id（如 <c>bash background=true</c>）。
+    /// <para>
+    /// 仅当工具把执行转交后台活动时填充；调用本身仍按原语义返回终态（不新增状态）。
+    /// 这是强类型投影，禁止改用 <see cref="Metadata"/> 字符串约定传递。
+    /// </para>
+    /// </summary>
+    public string? BackgroundActivityId { get; set; }
+
     /// <summary>执行耗时</summary>
     public TimeSpan? Duration { get; set; }
 

@@ -319,6 +319,14 @@ public record ToolCallEvent : IMessageEvent
     /// <summary>执行耗时</summary>
     public TimeSpan? Duration { get; init; }
 
+    /// <summary>
+    /// 本调用转交的后台活动 id（透传 <see cref="ToolResult.BackgroundActivityId"/>）。
+    /// <para>
+    /// 走强类型字段而非 <see cref="Metadata"/>，UI / 回放 / TUI / Gateway 需在编译期识别。
+    /// </para>
+    /// </summary>
+    public string? BackgroundActivityId { get; init; }
+
     /// <summary>工具结果元数据（如 bash 的 exit / timedOut / aborted）</summary>
     public IReadOnlyDictionary<string, object>? Metadata { get; init; }
 

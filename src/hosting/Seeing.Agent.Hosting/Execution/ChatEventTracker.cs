@@ -29,7 +29,7 @@ internal class ChatEventTracker
     /// <returns>
     /// 本事件是否改变了「需要落盘的状态」。只有「同状态的重复 <see cref="ToolCallEvent"/>」返回 false：
     /// 如 bash 每 100ms 的 Running 进度快照不应触发全量落盘；新建卡片、状态迁移
-    /// （pending→running）、TaskId 首次回填仍需写盘。其余事件保持原落盘语义（返回 true）。
+    /// （pending→running）、TaskId / BackgroundActivityId 首次回填仍需写盘。其余事件保持原落盘语义（返回 true）。
     /// </returns>
     public bool ApplyEvent(SessionData session, IMessageEvent evt)
     {
@@ -127,7 +127,8 @@ internal class ChatEventTracker
                     {
                         Id = toolCallId,
                         Name = toolCall.ToolName ?? string.Empty,
-                        Arguments = FormatArguments(toolCall.Arguments)
+                        Arguments = FormatArguments(toolCall.Arguments),
+                        BackgroundActivityId = toolCall.BackgroundActivityId
                     };
                     // publish-on-write：整体替换不可变列表引用，读者持旧快照不受影响。
                     _currentAssistantMessage.ToolCalls = currentToolCalls.Add(existing);
@@ -163,15 +164,23 @@ internal class ChatEventTracker
                         .ToImmutableList();
                 }
 
+                // 后台活动 id 同样是执行级事实：只在有值时写入（Running 进度快照不带）。
+                var previousBackgroundActivityId = existing.BackgroundActivityId;
+                if (!string.IsNullOrEmpty(toolCall.BackgroundActivityId))
+                    existing.BackgroundActivityId = toolCall.BackgroundActivityId;
+
                 // task 工具：Task* 权威来源为 TaskTool 结果 Metadata；Running 态无 Metadata 时从 Arguments 回填展示字段。
                 var previousTaskId = existing.TaskId;
                 ApplyTaskFields(existing, toolCall);
 
-                // 仅状态迁移（或 TaskId 首次回填）需要落盘：
+                // 仅状态迁移（或 TaskId/后台活动 id 首次回填）需要落盘：
                 // 同状态的重复进度快照（bash 每 100ms 的 Running 输出）不得触发全量会话写。
                 var statusChanged = !string.Equals(previousStatus, existing.Status, StringComparison.OrdinalIgnoreCase);
                 var taskIdFilled = string.IsNullOrEmpty(previousTaskId) && !string.IsNullOrEmpty(existing.TaskId);
-                return isNewToolCall || statusChanged || taskIdFilled;
+                var backgroundActivityFilled =
+                    string.IsNullOrEmpty(previousBackgroundActivityId)
+                    && !string.IsNullOrEmpty(existing.BackgroundActivityId);
+                return isNewToolCall || statusChanged || taskIdFilled || backgroundActivityFilled;
 
             case ErrorEvent:
                 // 运行时观测，不进对话消息/LLM 历史；由 ErrorEvent 事件驱动 UI 与执行记录

@@ -375,6 +375,7 @@ public sealed class TuiViewState
             TaskId = call.TaskId,
             TaskAgent = call.TaskAgent,
             TaskDescription = call.TaskDescription,
+            BackgroundActivityId = call.BackgroundActivityId,
         };
 
         if (call.TaskSteps is { Count: > 0 })

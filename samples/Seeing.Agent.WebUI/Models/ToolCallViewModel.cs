@@ -132,6 +132,11 @@ public class ToolCallViewModel
     public List<SessionTaskStep> TaskSteps { get; set; } = new();
 
     /// <summary>
+    /// 本调用转交的后台活动 id（如 <c>bash background=true</c>）。
+    /// </summary>
+    public string? BackgroundActivityId { get; set; }
+
+    /// <summary>
     /// 是否为 Task 子代理工具卡片（仅 Name==task 或显式 TaskId；禁止扫 Output 文本）
     /// </summary>
     public bool IsTaskTool =>
@@ -167,7 +172,8 @@ public class ToolCallViewModel
             TaskAgent = tc.TaskAgent,
             TaskDescription = tc.TaskDescription,
             TaskBackground = tc.TaskBackground,
-            TaskSteps = tc.TaskSteps?.ToList() ?? new List<SessionTaskStep>()
+            TaskSteps = tc.TaskSteps?.ToList() ?? new List<SessionTaskStep>(),
+            BackgroundActivityId = tc.BackgroundActivityId
         };
 
         // 工具产出的内容段（图片等）：此前完全不读，导致工具截图无渲染入口
