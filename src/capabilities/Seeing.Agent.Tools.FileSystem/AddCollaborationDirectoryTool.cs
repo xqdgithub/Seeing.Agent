@@ -112,6 +112,8 @@ public class AddCollaborationDirectoryTool : BuiltInToolBase
             return Failure("一次性批准不会持久化协同目录；请选择本会话或目录级授权。");
 
         await _collaboration.AddAsync(context.SessionId, absolutePath, note, context.CancellationToken);
-        return Success("协同目录已添加", absolutePath);
+        return Success(
+            "协同目录已添加",
+            absolutePath + "\n本轮后续工具调用已可读写；上下文列表将在下一轮同步。");
     }
 }

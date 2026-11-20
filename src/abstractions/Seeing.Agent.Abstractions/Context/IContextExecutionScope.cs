@@ -1,6 +1,5 @@
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Skills;
-using Seeing.Session.Core;
 
 namespace Seeing.Agent.Abstractions.Context;
 
@@ -47,10 +46,4 @@ public interface IContextExecutionScope
     /// </para>
     /// </summary>
     SessionToolSchemaResolution? ToolSettlement { get; set; }
-
-    /// <summary>
-    /// 本轮执行钉住的协同目录快照（成员集合钉住；存在性由源在读取时探针，不存字段）。
-    /// 宿主未组合协同目录能力时为空列表。
-    /// </summary>
-    IReadOnlyList<CollaborationDirectory> CollaborationDirectories { get; set; }
 }

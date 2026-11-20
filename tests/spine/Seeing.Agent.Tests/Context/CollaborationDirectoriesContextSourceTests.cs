@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Seeing.Agent.Abstractions.Context;
+using Seeing.Agent.Abstractions.Directories;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Core.Context;
@@ -19,7 +20,7 @@ public class CollaborationDirectoriesContextSourceTests : IDisposable
     [Fact]
     public async Task ReadAsync_EmptyList_ShouldReturnValueAndRenderNone()
     {
-        var source = new CollaborationDirectoriesContextSource(new FakeExecutionScope([]));
+        var source = CreateSource(new FakeDirectories());
 
         var value = await source.ReadAsync(TestContext.Current.CancellationToken);
 
@@ -34,32 +35,13 @@ public class CollaborationDirectoriesContextSourceTests : IDisposable
     }
 
     [Fact]
-    public async Task ReadAsync_PinnedSnapshotNull_ShouldReturnUnavailable()
-    {
-        var scope = new FakeExecutionScope([])
-        {
-            CollaborationDirectories = null!
-        };
-        var source = new CollaborationDirectoriesContextSource(scope);
-
-        var value = await source.ReadAsync(TestContext.Current.CancellationToken);
-
-        // 宿主接线缺失：Unavailable（不参与 diff，保留上次已叙述内容）
-        value.State.Should().Be(ContextValueState.Unavailable);
-        value.Canonical.Should().BeNull();
-    }
-
-    [Fact]
     public async Task RenderInitial_ShouldNotRenderWorkingDirectory()
     {
         var collaboration = CreateDirectory();
         var cwd = CreateDirectory();
-        var scope = new FakeExecutionScope([new CollaborationDirectory(collaboration, "报表输出")])
-        {
-            Cwd = cwd,
-            WorkspaceRoot = cwd
-        };
-        var source = new CollaborationDirectoriesContextSource(scope);
+        var directories = new FakeDirectories();
+        directories.Entries.Add(new CollaborationDirectory(collaboration, "报表输出"));
+        var source = CreateSource(directories, cwd);
 
         var text = source.RenderInitial(await source.ReadAsync(TestContext.Current.CancellationToken));
 
@@ -73,8 +55,9 @@ public class CollaborationDirectoriesContextSourceTests : IDisposable
     public async Task Render_NoChange_ShouldReturnNull()
     {
         var directory = CreateDirectory();
-        var source = new CollaborationDirectoriesContextSource(
-            new FakeExecutionScope([new CollaborationDirectory(directory, "备注")]));
+        var directories = new FakeDirectories();
+        directories.Entries.Add(new CollaborationDirectory(directory, "备注"));
+        var source = CreateSource(directories);
 
         var previous = await source.ReadAsync(TestContext.Current.CancellationToken);
         var current = await source.ReadAsync(TestContext.Current.CancellationToken);
@@ -87,23 +70,20 @@ public class CollaborationDirectoriesContextSourceTests : IDisposable
     {
         var first = CreateDirectory();
         var second = CreateDirectory();
-        var scope = new FakeExecutionScope([new CollaborationDirectory(first, "报表输出")]);
-        var source = new CollaborationDirectoriesContextSource(scope);
+        var directories = new FakeDirectories();
+        directories.Entries.Add(new CollaborationDirectory(first, "报表输出"));
+        var source = CreateSource(directories);
 
         var before = await source.ReadAsync(TestContext.Current.CancellationToken);
 
-        scope.CollaborationDirectories =
-        [
-            new CollaborationDirectory(first, "报表输出"),
-            new CollaborationDirectory(second)
-        ];
+        directories.Entries.Add(new CollaborationDirectory(second));
         var added = await source.ReadAsync(TestContext.Current.CancellationToken);
 
         var addedText = source.Render(before, added);
         addedText.Should().Contain($"协同目录已添加：{second}");
 
         // 再移除第一个
-        scope.CollaborationDirectories = [new CollaborationDirectory(second)];
+        directories.Entries.RemoveAll(d => d.Path == first);
         var removed = await source.ReadAsync(TestContext.Current.CancellationToken);
 
         var removedText = source.Render(added, removed);
@@ -117,8 +97,9 @@ public class CollaborationDirectoriesContextSourceTests : IDisposable
     public async Task Render_UnavailableThenRestored_ShouldNarrateBothTransitions()
     {
         var directory = CreateDirectory();
-        var source = new CollaborationDirectoriesContextSource(
-            new FakeExecutionScope([new CollaborationDirectory(directory)]));
+        var directories = new FakeDirectories();
+        directories.Entries.Add(new CollaborationDirectory(directory));
+        var source = CreateSource(directories);
 
         var available = await source.ReadAsync(TestContext.Current.CancellationToken);
         available.State.Should().Be(ContextValueState.Value);
@@ -137,21 +118,43 @@ public class CollaborationDirectoriesContextSourceTests : IDisposable
     public async Task Render_NoteChanged_ShouldNarrateUpdate()
     {
         var directory = CreateDirectory();
-        var scope = new FakeExecutionScope([new CollaborationDirectory(directory, "旧备注")]);
-        var source = new CollaborationDirectoriesContextSource(scope);
+        var directories = new FakeDirectories();
+        directories.Entries.Add(new CollaborationDirectory(directory, "旧备注"));
+        var source = CreateSource(directories);
 
         var before = await source.ReadAsync(TestContext.Current.CancellationToken);
 
-        scope.CollaborationDirectories = [new CollaborationDirectory(directory, "新备注")];
+        directories.Entries[0] = new CollaborationDirectory(directory, "新备注");
         var after = await source.ReadAsync(TestContext.Current.CancellationToken);
 
         source.Render(before, after).Should().Contain($"协同目录备注已更新：{directory}（新备注）");
 
-        scope.CollaborationDirectories = [new CollaborationDirectory(directory, null)];
+        directories.Entries[0] = new CollaborationDirectory(directory, null);
         var cleared = await source.ReadAsync(TestContext.Current.CancellationToken);
 
         source.Render(after, cleared).Should().Contain($"协同目录备注已清空：{directory}");
     }
+
+    [Fact]
+    public async Task ReadAsync_ShouldReflectLatestDirectoryState()
+    {
+        // 源每次读端口取当前值：上一轮之后的新增，下一轮装配必须看到
+        var first = CreateDirectory();
+        var second = CreateDirectory();
+        var directories = new FakeDirectories();
+        directories.Entries.Add(new CollaborationDirectory(first));
+        var source = CreateSource(directories);
+
+        var before = await source.ReadAsync(TestContext.Current.CancellationToken);
+        directories.Entries.Add(new CollaborationDirectory(second));
+        var after = await source.ReadAsync(TestContext.Current.CancellationToken);
+
+        after.Canonical!.Value.GetProperty("directories").GetArrayLength().Should().Be(2);
+        source.Render(before, after).Should().Contain(second);
+    }
+
+    private CollaborationDirectoriesContextSource CreateSource(FakeDirectories directories, string cwd = "")
+        => new(new FakeExecutionScope { Cwd = cwd, WorkspaceRoot = cwd }, directories);
 
     /// <summary>创建本次测试独占的临时目录（Dispose 统一清理）。</summary>
     private string CreateDirectory()
@@ -172,9 +175,8 @@ public class CollaborationDirectoriesContextSourceTests : IDisposable
         }
     }
 
-    /// <summary>测试用执行作用域：协同目录快照即构造时给定的事实。</summary>
-    private sealed class FakeExecutionScope(IReadOnlyList<CollaborationDirectory> directories)
-        : IContextExecutionScope
+    /// <summary>测试用执行作用域：只提供会话 id / cwd，目录内容走端口。</summary>
+    private sealed class FakeExecutionScope : IContextExecutionScope
     {
         public string SessionId { get; set; } = "s1";
 
@@ -187,7 +189,27 @@ public class CollaborationDirectoriesContextSourceTests : IDisposable
         public string? UserQuery { get; set; }
 
         public SessionToolSchemaResolution? ToolSettlement { get; set; }
+    }
 
-        public IReadOnlyList<CollaborationDirectory> CollaborationDirectories { get; set; } = directories;
+    private sealed class FakeDirectories : ICollaborationDirectories
+    {
+        public List<CollaborationDirectory> Entries { get; } = [];
+
+        public Task<IReadOnlyList<CollaborationDirectory>> GetAsync(
+            string sessionId, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<CollaborationDirectory>>(Entries.ToArray());
+
+        public Task AddAsync(
+            string sessionId, string absolutePath, string? note = null, CancellationToken ct = default)
+        {
+            Entries.Add(new CollaborationDirectory(absolutePath, note));
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveAsync(string sessionId, string absolutePath, CancellationToken ct = default)
+        {
+            Entries.RemoveAll(entry => entry.Path == absolutePath);
+            return Task.CompletedTask;
+        }
     }
 }

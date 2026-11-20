@@ -1,7 +1,6 @@
 using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Skills;
-using Seeing.Session.Core;
 
 namespace Seeing.Agent.Hosting.Execution;
 
@@ -21,8 +20,7 @@ internal static class ExecutionScopeInitializer
         string workspaceRoot,
         SkillCatalogSnapshot? skillSnapshot,
         string? userQuery,
-        SessionToolSchemaResolution? toolSettlement,
-        IReadOnlyList<CollaborationDirectory> collaborations)
+        SessionToolSchemaResolution? toolSettlement)
     {
         scope.SessionId = sessionId;
         scope.Cwd = cwd;
@@ -30,6 +28,5 @@ internal static class ExecutionScopeInitializer
         scope.SkillSnapshot = skillSnapshot;
         scope.UserQuery = userQuery;
         scope.ToolSettlement = toolSettlement;
-        scope.CollaborationDirectories = collaborations;
     }
 }

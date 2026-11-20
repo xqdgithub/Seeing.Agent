@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Context;
+using Seeing.Agent.Abstractions.Directories;
 using Seeing.Agent.Paths;
 using Seeing.Session.Core;
 using System.Text;
@@ -12,10 +13,9 @@ namespace Seeing.Agent.Core.Context;
 /// <summary>
 /// 协同目录上下文源：把「本会话有哪些协同目录、是否可用」讲给模型听。
 /// <para>
-/// <b>成员集合钉住、存在性实时探针</b>：路径列表来自执行级快照
-/// （<see cref="IContextExecutionScope.CollaborationDirectories"/>，由宿主在执行装配前钉住），
-/// 执行期内不漂移；<c>exists</c> 在 <see cref="ReadAsync"/> 时按路径实时探测，
-/// 因此"目录被删/恢复"能产生增量叙述，而不会把成员集合说成变了。
+/// <b>读取实时、成员稳定排序、存在性探针</b>：每轮装配时经 <see cref="ICollaborationDirectories"/>
+/// 读会话当前配置（与权限判定、文件工作台同源）；执行中发生的变更本轮不追溯，
+/// 下一轮装配按增量叙述。条目按 path 排序，初始渲染字节稳定。
 /// </para>
 /// <para>
 /// <b>不渲染 cwd</b>：<c>## Environment</c> 分节已由 <c>EnvironmentPromptSectionContributor</c>
@@ -25,7 +25,6 @@ namespace Seeing.Agent.Core.Context;
 /// <para>
 /// <b>空列表返回 <see cref="ContextValueState.Value"/> 而不是 Removed</b>：空列表是"这个会话没有协同目录"
 /// 这一确定事实，首轮必须建立基线并渲染"（无）"；<c>Removed</c> 会在首次装配被直接跳过。
-/// <c>Unavailable</c> 只用于"钉住快照为 null"（宿主接线缺失）。
 /// </para>
 /// </summary>
 public sealed class CollaborationDirectoriesContextSource : IContextSource
@@ -50,14 +49,17 @@ public sealed class CollaborationDirectoriesContextSource : IContextSource
         new(typeof(CollaborationDirectoriesContextSource).FullName!);
 
     private readonly IContextExecutionScope _executionScope;
+    private readonly ICollaborationDirectories _directories;
     private readonly ILogger<CollaborationDirectoriesContextSource> _logger;
 
-    /// <summary>创建源；执行作用域由宿主在装配前填充。</summary>
+    /// <summary>创建源：会话 id 来自执行作用域，目录内容每轮经读端口取当前值。</summary>
     public CollaborationDirectoriesContextSource(
         IContextExecutionScope executionScope,
+        ICollaborationDirectories directories,
         ILogger<CollaborationDirectoriesContextSource>? logger = null)
     {
         _executionScope = executionScope ?? throw new ArgumentNullException(nameof(executionScope));
+        _directories = directories ?? throw new ArgumentNullException(nameof(directories));
         _logger = logger ?? NullLogger<CollaborationDirectoriesContextSource>.Instance;
     }
 
@@ -81,18 +83,12 @@ public sealed class CollaborationDirectoriesContextSource : IContextSource
     {
         ct.ThrowIfCancellationRequested();
 
-        var pinned = _executionScope.CollaborationDirectories;
-        if (pinned is null)
-        {
-            // 宿主接线缺失（未填执行级快照）：不参与 diff，保留上次已叙述内容
-            _logger.LogDebug(
-                "协同目录快照未填充，按不可用处理：SessionId={SessionId}",
-                _executionScope.SessionId);
-            return new ContextSourceValue(ContextValueState.Unavailable, null, null);
-        }
+        var directories = await _directories
+            .GetAsync(_executionScope.SessionId, ct)
+            .ConfigureAwait(false);
 
-        var entries = new List<DirectoryEntry>(pinned.Count);
-        foreach (var directory in pinned)
+        var entries = new List<DirectoryEntry>(directories.Count);
+        foreach (var directory in directories)
         {
             if (directory is null || string.IsNullOrWhiteSpace(directory.Path))
                 continue;

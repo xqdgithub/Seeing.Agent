@@ -50,8 +50,7 @@ public class ToolManagerAgentContextTests
         await manager.ExecuteAsync(
             toolCall,
             new ToolInvocation(
-                "s1", string.Empty, agent, null, null, null,
-                Array.Empty<Seeing.Session.Core.CollaborationDirectory>(), null),
+                "s1", string.Empty, agent, null, null, null, null),
             TestContext.Current.CancellationToken);
 
         tool.Captured.Should().NotBeNull();

@@ -96,11 +96,6 @@ internal class ChatExecutionContext
     /// </summary>
     public Seeing.Agent.Abstractions.Skills.SkillCatalogSnapshot? SkillSnapshot { get; set; }
 
-    /// <summary>
-    /// 本轮执行钉住的协同目录快照（与装配器读到的同一对象；透传到 <see cref="AgentContext.Collaborations"/>）。
-    /// </summary>
-    public IReadOnlyList<CollaborationDirectory> Collaborations { get; init; } = Array.Empty<CollaborationDirectory>();
-
     // ========== 元数据 ==========
 
     /// <summary>附加元数据</summary>
@@ -129,7 +124,6 @@ internal class ChatExecutionContext
             IsBackground = true,
             ToolSettlement = ToolSettlement,
             SectionIds = SectionIds,
-            Collaborations = Collaborations,
             Metadata = new Dictionary<string, object>(Metadata)
         };
     }

@@ -3,7 +3,6 @@ using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Skills;
-using Seeing.Session.Core;
 
 namespace Seeing.Agent.Abstractions.Tools;
 
@@ -21,7 +20,6 @@ namespace Seeing.Agent.Abstractions.Tools;
 /// <param name="Authorizer">执行级授权器（可空；为空表示无审批通道）。</param>
 /// <param name="ToolScope">执行级工具可见性作用域（可空）。</param>
 /// <param name="SkillSnapshot">本轮钉住的技能快照（可空）。</param>
-/// <param name="Collaborations">会话协同目录（执行级钉住的只读快照）。</param>
 /// <param name="Emit">事件出口（可空）。</param>
 public sealed record ToolInvocation(
     string SessionId,
@@ -30,5 +28,4 @@ public sealed record ToolInvocation(
     IPermissionAuthorizer? Authorizer,
     IExecutionToolScope? ToolScope,
     SkillCatalogSnapshot? SkillSnapshot,
-    IReadOnlyList<CollaborationDirectory> Collaborations,
     Func<IMessageEvent, ValueTask>? Emit);

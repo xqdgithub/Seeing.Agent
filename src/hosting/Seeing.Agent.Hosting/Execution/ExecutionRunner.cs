@@ -245,8 +245,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
                 skillSnapshot,
                 // 本轮用户查询（本批最后一条用户输入）：供「查询依赖」的上下文源使用。
                 record.Input?.Text,
-                context.ToolSettlement,
-                context.Collaborations);
+                context.ToolSettlement);
 
             if (IsCommandInput(inputText))
             {
@@ -777,9 +776,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
             RequestModelId = requestModelId,
             RequestThinkingEffort = requestThinkingEffort,
             ToolSettlement = schemaSettlement,
-            SectionIds = sectionIds,
-            Collaborations = session.CollaborationDirectories?.ToArray()
-                ?? Array.Empty<Seeing.Session.Core.CollaborationDirectory>()
+            SectionIds = sectionIds
         };
     }
 
@@ -1019,8 +1016,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
             CancellationToken = cancellationToken,
             ToolSettlement = context.ToolSettlement,
             ContextBaseline = context.ContextBaseline,
-            SkillSnapshot = context.SkillSnapshot,
-            Collaborations = context.Collaborations
+            SkillSnapshot = context.SkillSnapshot
         };
 
         // 传递请求级模型选择到 Metadata（适用于 Native Agent 和 ACP Passthrough）

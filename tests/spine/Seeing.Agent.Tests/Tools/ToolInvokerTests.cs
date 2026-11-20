@@ -62,7 +62,6 @@ namespace Seeing.Agent.Tests.Tools
                 authorizer,
                 null,
                 null,
-                Array.Empty<Seeing.Session.Core.CollaborationDirectory>(),
                 null);
 
         [Fact]

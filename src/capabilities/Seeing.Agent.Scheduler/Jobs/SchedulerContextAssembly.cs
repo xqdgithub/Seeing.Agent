@@ -82,10 +82,6 @@ internal static class SchedulerContextAssembly
             executionScope.Cwd = cwd;
             executionScope.WorkspaceRoot = workspaceRoot;
             executionScope.SkillSnapshot = snapshot;
-            // 与主链同一事实：不填会让上下文源把"有协同目录"叙述成"（无）"（假事实，不会自愈）
-            executionScope.CollaborationDirectories =
-                (IReadOnlyList<Seeing.Session.Core.CollaborationDirectory>?)session.CollaborationDirectories
-                ?? Array.Empty<Seeing.Session.Core.CollaborationDirectory>();
         }
 
         try
