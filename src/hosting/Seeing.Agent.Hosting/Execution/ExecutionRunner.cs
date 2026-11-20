@@ -389,7 +389,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
                 await foreach (var evt in executionRouter.ExecuteAsync(
                     context.Agent,
                     messages,
-                    BuildAgentContext(context, executionToken),
+                    BuildAgentContext(context, record.ExecutionId, executionToken),
                     executionToken))
                 {
                     // 事件流语义：LLM/Agent 失败以 ErrorEvent + LoopCompleteEvent(Success=false) 表达（不抛异常）
@@ -766,6 +766,7 @@ internal sealed class ExecutionRunner : IExecutionRunner
         return new ChatExecutionContext
         {
             SessionId = record.SessionId,
+            ExecutionId = record.ExecutionId,
             Agent = agentDef,
             History = new List<ChatMessage>(),
             WorkingDirectory = cwd,
@@ -1005,11 +1006,15 @@ internal sealed class ExecutionRunner : IExecutionRunner
     /// <summary>
     /// Builds agent context from execution context.
     /// </summary>
-    private static AgentContext BuildAgentContext(ChatExecutionContext context, CancellationToken cancellationToken)
+    private static AgentContext BuildAgentContext(
+        ChatExecutionContext context,
+        string? executionId,
+        CancellationToken cancellationToken)
     {
         var agentContext = new AgentContext
         {
             SessionId = context.SessionId,
+            ExecutionId = executionId,
             WorkingDirectory = context.WorkingDirectory ?? context.WorkspaceRoot ?? "",
             WorkspaceRoot = context.WorkspaceRoot ?? "",
             PermissionAuthorizer = context.PermissionAuthorizer,

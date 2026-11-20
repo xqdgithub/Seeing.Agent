@@ -17,6 +17,16 @@ public class AgentContext
     /// <summary>消息 ID</summary>
     public string MessageId { get; set; } = string.Empty;
 
+    /// <summary>
+    /// 本轮执行 ID（与 <see cref="Abstractions.Execution.ExecutionRecord.ExecutionId"/> 同源）。
+    /// <para>
+    /// 主链由宿主填入记录 ID；调度/心跳旁路填入 run-scoped 的自生成 ID。
+    /// 工具层经 <see cref="Tools.ToolInvocation"/> 投影到 <see cref="Tools.ToolContext.ExecutionId"/>，
+    /// 用于把后台活动归属到具体这一轮执行。
+    /// </para>
+    /// </summary>
+    public string? ExecutionId { get; set; }
+
     /// <summary>取消令牌</summary>
     public CancellationToken CancellationToken { get; set; }
 

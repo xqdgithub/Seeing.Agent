@@ -12,6 +12,12 @@ namespace Seeing.Agent.Abstractions.Tools
         public string SessionId { get; set; } = string.Empty;
         public string MessageId { get; set; } = string.Empty;
         public string? CallId { get; set; }
+
+        /// <summary>
+        /// 本轮执行 ID（由 <c>ToolInvocation</c> 投影；可空表示调用方未提供执行事实）。
+        /// 后台活动据此归属到具体这一轮执行。
+        /// </summary>
+        public string? ExecutionId { get; set; }
         public AgentDefinition? Agent { get; set; }
         public CancellationToken CancellationToken { get; set; }
 

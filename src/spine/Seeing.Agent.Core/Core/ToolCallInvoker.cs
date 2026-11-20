@@ -110,7 +110,8 @@ internal sealed class ToolCallInvoker
                 permissionAuthorizer,
                 toolScope,
                 context.SkillSnapshot,
-                emitAsync);
+                emitAsync,
+                context.ExecutionId);
 
             result = await _tools.ExecuteAsync(tc, invocation, cancellationToken)
                 .ConfigureAwait(false);

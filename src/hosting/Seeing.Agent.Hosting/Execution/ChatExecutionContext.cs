@@ -19,6 +19,9 @@ internal class ChatExecutionContext
     /// <summary>会话 ID</summary>
     public required string SessionId { get; init; }
 
+    /// <summary>本轮执行 ID（透传到 <see cref="AgentContext.ExecutionId"/>；可空）。</summary>
+    public string? ExecutionId { get; init; }
+
     /// <summary>对话历史</summary>
     public required List<ChatMessage> History { get; set; }
 
@@ -112,6 +115,7 @@ internal class ChatExecutionContext
         return new ChatExecutionContext
         {
             SessionId = subSessionId,
+            // 子代理是另一次执行，不继承父执行 ID（由子执行自己的记录填入）。
             Agent = subAgent,
             History = new List<ChatMessage>(),
             WorkingDirectory = WorkingDirectory,

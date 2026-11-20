@@ -218,6 +218,7 @@ public sealed class AcpTool : ToolBase
             ParentContext = new AgentContext
             {
                 SessionId = context.SessionId,
+                ExecutionId = context.ExecutionId,
                 Metadata = new Dictionary<string, object>
                 {
                     [AgentContextKeys.ParentSessionIdKey] = context.SessionId,

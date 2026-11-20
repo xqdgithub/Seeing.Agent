@@ -378,6 +378,9 @@ public class AgentJob : IJob
         var context = new AgentContext
         {
             SessionId = sessionId,
+            // 旁路执行不经过会话运行时，没有 ExecutionRecord；此处生成 run-scoped ID，
+            // 只用于把本轮工具活动归属到同一次调度执行（不与主链记录 ID 空间混用）。
+            ExecutionId = $"sched:{Guid.NewGuid():N}",
             CancellationToken = ct,
             Services = _services,
             WorkingDirectory = cwd,
