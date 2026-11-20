@@ -37,6 +37,20 @@
                 <button type="button" class="file-panel-error-dismiss" title="关闭提示" @onclick="DismissError">×</button>
             </div>
         }
+        @if (_roots.Count > 1)
+        {
+            <div class="file-root-bar">
+                <span class="file-root-label">根</span>
+                <select class="file-root-select" value="@_activeRootId" @onchange="SwitchRootAsync">
+                    @foreach (var root in _roots)
+                    {
+                        <option value="@root.Root.RootId">
+                            @RootLabel(root.Root)
+                        </option>
+                    }
+                </select>
+            </div>
+        }
         <div class="file-panel-body @(PanelState.TreeVisible ? "" : "file-panel-body--no-tree")">
             @if (PanelState.TreeVisible)
             {
@@ -70,6 +84,8 @@
     [Parameter] public EventCallback OnRequestClose { get; set; }
 
     private IFileWorkspace? _workspace;
+    private IReadOnlyList<IFileWorkspace> _roots = Array.Empty<IFileWorkspace>();
+    private string? _activeRootId;
     private FileTabsState _tabs = null!;
     private FileViewerCoordinator? _coordinator;
     private FileEditor? _editor;
@@ -93,16 +109,50 @@
         if (string.IsNullOrEmpty(SessionId) || _workspace is not null) return;
         try
         {
-            _workspace = await WorkspaceFactory.ResolveAsync(SessionId);
+            // 多根：项目根 + 会话协同目录；默认主根 = 项目根。
+            _roots = await WorkspaceFactory.ListAsync(SessionId);
+            _workspace = _roots.FirstOrDefault(w => w.Root.Kind == FileWorkspaceRootKind.Project)
+                ?? _roots.FirstOrDefault();
+            _activeRootId = _workspace?.RootId;
         }
         catch (Exception ex)
         {
             _workspace = null;
+            _roots = Array.Empty<IFileWorkspace>();
             _error = FileErrorPresenter.Describe(ex);
             return;
         }
 
+        WireCoordinator();
+    }
+
+    private static string RootLabel(FileWorkspaceRoot root)
+        => root.Exists ? $"{root.Label}" : $"{root.Label}（不可用）";
+
+    /// <summary>切换当前根：重建变更订阅；标签状态保持不变（跨根共享）。</summary>
+    private async Task SwitchRootAsync(ChangeEventArgs e)
+    {
+        var rootId = e.Value?.ToString();
+        if (string.IsNullOrEmpty(rootId) || string.Equals(rootId, _activeRootId, StringComparison.Ordinal))
+            return;
+
+        var next = _roots.FirstOrDefault(w => string.Equals(w.RootId, rootId, StringComparison.Ordinal));
+        if (next is null)
+            return;
+
+        _workspace = next;
+        _activeRootId = rootId;
+        _error = null;
+        WireCoordinator();
+        await Task.CompletedTask;
+    }
+
+    private void WireCoordinator()
+    {
         _coordinator?.Dispose();
+        if (_workspace is null)
+            return;
+
         _coordinator = new FileViewerCoordinator(_workspace, _tabs);
         _coordinator.Start(async evt => await InvokeAsync(async () =>
         {

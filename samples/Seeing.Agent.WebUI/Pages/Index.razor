@@ -692,8 +692,7 @@
             var defaultAgent = await RuntimeManager.GetDefaultAgentNameAsync();
             var session = await SessionDirectory.CreateAsync(
                 "新会话",
-                defaultAgent,
-                WorkspaceProvider.GetProjectRoot());
+                defaultAgent);
 
             Navigation.NavigateTo($"/session/{session.Id}");
         }

@@ -655,8 +655,7 @@
     {
         try
         {
-            var session = await SessionDirectory.CreateAsync(
-                workingDirectory: WorkspaceProvider.GetProjectRoot());
+            var session = await SessionDirectory.CreateAsync();
             MessageService.Success("会话已创建");
             NavigationManager.NavigateTo(string.Format("/session/{0}", session.Id));
         }

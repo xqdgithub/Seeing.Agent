@@ -102,7 +102,9 @@ public sealed class AgentFileChangeBridge : IStreamConsumer, IDisposable
         if (handler is null) return;
         try
         {
-            var ws = await GetWorkspaceAsync(sessionId).ConfigureAwait(false);
+            // 多根：按绝对路径路由到所属根；不属于任何根则忽略（不再一律用主根）
+            var ws = await _factory.ResolveAsync(sessionId, path).ConfigureAwait(false);
+            if (ws is null) return;
             var id = ws.GetResourceId(path);
             await handler(id, diff).ConfigureAwait(false);
         }
@@ -118,7 +120,8 @@ public sealed class AgentFileChangeBridge : IStreamConsumer, IDisposable
         if (handler is null) return;
         try
         {
-            var ws = await GetWorkspaceAsync(sessionId).ConfigureAwait(false);
+            var ws = await _factory.ResolveAsync(sessionId, path).ConfigureAwait(false);
+            if (ws is null) return;
             var id = ws.GetResourceId(path);
             await handler(id, line, column).ConfigureAwait(false);
         }

@@ -35,7 +35,7 @@ public sealed class TuiSessionController
 
     public async Task<TuiViewState> NewAsync(string? title, CancellationToken ct = default)
     {
-        var session = await _directory.CreateAsync(title, null, null, ct);
+        var session = await _directory.CreateAsync(title, agentId: null, ct: ct);
         await ActivateAsync(session, ct);
         return Current!;
     }

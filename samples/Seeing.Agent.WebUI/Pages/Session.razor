@@ -723,8 +723,7 @@
     {
         try
         {
-            var session = await SessionDirectory.CreateAsync(
-                workingDirectory: WorkspaceProvider.GetProjectRoot());
+            var session = await SessionDirectory.CreateAsync();
             NavigationManager.NavigateTo(string.Format("/session/{0}", session.Id));
         }
         catch (Exception ex)

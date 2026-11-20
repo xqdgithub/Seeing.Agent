@@ -202,3 +202,8 @@ body.file-panel-resizing * { cursor: col-resize !important; }
     color: var(--color-primary, #1890ff);
     border-color: currentColor;
 }
+
+/* 多根文件工作台：根切换条（项目根 + 协同目录） */
+.file-root-bar { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-bottom: 1px solid var(--color-border, #eee); flex-shrink: 0; font-size: 12px; }
+.file-root-label { color: var(--color-text-secondary, #666); }
+.file-root-select { flex: 1; min-width: 0; font-size: 12px; padding: 1px 4px; }

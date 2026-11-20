@@ -1905,8 +1905,8 @@
         {
             AgentId = SessionState.SelectedAgent,
             ModelId = SessionState.SelectedModel,
-            ModeId = SessionState.SelectedAcpMode,
-            WorkingDirectory = SessionState.CurrentSession?.WorkingDirectory ?? WorkspaceProvider.GetProjectRoot()
+            ModeId = SessionState.SelectedAcpMode
+            // 请求级 cwd 不再由 UI 上送：执行链按工作区根收敛（spec §5.3）
         };
 
         var wasBusy = false;
@@ -2284,8 +2284,7 @@
     {
         try
         {
-            var session = await SessionDirectory.CreateAsync(
-                workingDirectory: WorkspaceProvider.GetProjectRoot());
+            var session = await SessionDirectory.CreateAsync();
             NavigationManager.NavigateTo($"/session/{session.Id}");
         }
         catch (Exception ex)
