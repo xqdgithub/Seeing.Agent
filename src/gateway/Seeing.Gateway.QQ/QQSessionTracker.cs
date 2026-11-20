@@ -55,6 +55,21 @@ public sealed class QQSessionTracker
         }
         return rotated;
     }
+
+    /// <summary>
+    /// 清空 conversation → sessionId 映射。供工作区切换参与者在 <c>OnApplied</c> 调用。
+    /// <para>
+    /// 映射里的 sessionId 属于切换前的工作区；继续使用会命中旧工作区里已归档的会话。
+    /// 清空后下一次消息按原始 key 重新建会话（等价于首次见到该对话）。
+    /// </para>
+    /// </summary>
+    public void Reset()
+    {
+        lock (_lock)
+        {
+            _map.Clear();
+        }
+    }
 }
 
 public sealed class QQCommandInterceptor

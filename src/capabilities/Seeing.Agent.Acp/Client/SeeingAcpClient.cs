@@ -1,4 +1,4 @@
-using Acp.Messages;
+﻿using Acp.Messages;
 using Acp.Transport;
 using Acp.Types;
 using Microsoft.Extensions.Logging;
@@ -25,7 +25,7 @@ public sealed class SeeingAcpClient : SubprocessClient
 
     private IAcpUpdateSink? _updateSink;
     private AcpPermissionContext? _permissionContext;
-    private string _workingDirectory;
+    private string _currentRequestCwd;
 
     public SeeingAcpClient(
         AcpBackendDescriptor backend,
@@ -46,8 +46,9 @@ public sealed class SeeingAcpClient : SubprocessClient
         _fileSystemBridge = fileSystemBridge;
         _terminalBridge = terminalBridge;
         _clientLogger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SeeingAcpClient>.Instance;
-        _defaultWorkingDirectory = workingDirectory ?? backend.WorkingDirectory ?? Environment.CurrentDirectory;
-        _workingDirectory = _defaultWorkingDirectory;
+        // 不回落到进程 CWD：宿主必须显式给出执行级 cwd（或由后端配置提供）。
+        _defaultWorkingDirectory = workingDirectory ?? backend.WorkingDirectory ?? string.Empty;
+        _currentRequestCwd = _defaultWorkingDirectory;
         _updateSink = updateSink;
         _permissionContext = permissionContext;
     }
@@ -62,7 +63,7 @@ public sealed class SeeingAcpClient : SubprocessClient
     {
         _updateSink = updateSink;
         _permissionContext = permissionContext;
-        _workingDirectory = string.IsNullOrWhiteSpace(workingDirectory)
+        _currentRequestCwd = string.IsNullOrWhiteSpace(workingDirectory)
             ? _defaultWorkingDirectory
             : workingDirectory;
     }
@@ -102,7 +103,7 @@ public sealed class SeeingAcpClient : SubprocessClient
         int? line = null,
         CancellationToken cancellationToken = default)
     {
-        return _fileSystemBridge.ReadTextFileAsync(path, sessionId, _workingDirectory, limit, line, cancellationToken);
+        return _fileSystemBridge.ReadTextFileAsync(path, sessionId, _currentRequestCwd, limit, line, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -112,7 +113,7 @@ public sealed class SeeingAcpClient : SubprocessClient
         string sessionId,
         CancellationToken cancellationToken = default)
     {
-        return _fileSystemBridge.WriteTextFileAsync(content, path, sessionId, _workingDirectory, cancellationToken);
+        return _fileSystemBridge.WriteTextFileAsync(content, path, sessionId, _currentRequestCwd, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -128,7 +129,7 @@ public sealed class SeeingAcpClient : SubprocessClient
         return _terminalBridge.CreateTerminalAsync(
             command,
             sessionId,
-            cwd ?? _workingDirectory,
+            cwd ?? _currentRequestCwd,
             args,
             env,
             cancellationToken);

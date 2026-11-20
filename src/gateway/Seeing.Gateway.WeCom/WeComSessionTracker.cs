@@ -16,7 +16,6 @@ public sealed class WeComSessionTracker
     private readonly WeComOptions _options;
     private readonly ILogger<WeComSessionTracker> _logger;
     private readonly IWorkspaceProvider _workspace;
-    private readonly string _stateFilePath;
     private readonly Dictionary<string, WeComSessionEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly JsonSerializerOptions JsonOptions = SeeingJson.Create(indented: true, o =>
@@ -33,8 +32,35 @@ public sealed class WeComSessionTracker
         _options = options.Value;
         _logger = logger;
         _workspace = workspace;
-        _stateFilePath = ResolveStateFilePath(_options.SessionStateFile);
         LoadFromDisk();
+    }
+
+    /// <summary>
+    /// 当前状态文件路径。
+    /// <para>
+    /// <b>每次读取时现算</b>，不在构造期快照：默认路径落在项目的 <c>.seeing</c> 下，
+    /// 构造期快照会让切换工作区后仍读写旧工作区的文件（只能靠重启子进程兜底）。
+    /// 显式配置的 <c>SessionStateFile</c> 不受工作区影响。
+    /// </para>
+    /// </summary>
+    private string StateFilePath => ResolveStateFilePath(_options.SessionStateFile);
+
+    /// <summary>
+    /// 对齐到当前工作区：清空内存映射后按新路径重新加载。
+    /// <para>
+    /// 由工作区切换参与者调用（切换后 <c>.seeing</c> 指向新根）。
+    /// 不清空的话，下一次 <see cref="PersistLocked"/> 会把旧工作区的映射写进新工作区的文件。
+    /// </para>
+    /// </summary>
+    public void AlignToWorkspace()
+    {
+        lock (_lock)
+        {
+            _entries.Clear();
+        }
+
+        LoadFromDisk();
+        _logger.LogInformation("WeCom 会话状态已按当前工作区对齐: {Path}", StateFilePath);
     }
 
     /// <summary>解析当前应使用的 sessionId（必要时因 idle 自动轮换）</summary>
@@ -138,12 +164,13 @@ public sealed class WeComSessionTracker
 
     private void LoadFromDisk()
     {
+        var stateFilePath = StateFilePath;
         try
         {
-            if (!File.Exists(_stateFilePath))
+            if (!File.Exists(stateFilePath))
                 return;
 
-            var json = File.ReadAllText(_stateFilePath);
+            var json = File.ReadAllText(stateFilePath);
             var state = JsonSerializer.Deserialize<WeComSessionStateFile>(json, JsonOptions);
             if (state?.Entries == null)
                 return;
@@ -162,15 +189,16 @@ public sealed class WeComSessionTracker
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "加载 WeCom 会话状态失败: {Path}", _stateFilePath);
+            _logger.LogWarning(ex, "加载 WeCom 会话状态失败: {Path}", stateFilePath);
         }
     }
 
     private void PersistLocked()
     {
+        var stateFilePath = StateFilePath;
         try
         {
-            var directory = Path.GetDirectoryName(_stateFilePath);
+            var directory = Path.GetDirectoryName(stateFilePath);
             if (!string.IsNullOrEmpty(directory))
                 Directory.CreateDirectory(directory);
 
@@ -179,11 +207,11 @@ public sealed class WeComSessionTracker
                 Entries = _entries.Values.ToList()
             };
 
-            File.WriteAllText(_stateFilePath, JsonSerializer.Serialize(state, JsonOptions));
+            File.WriteAllText(stateFilePath, JsonSerializer.Serialize(state, JsonOptions));
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "保存 WeCom 会话状态失败: {Path}", _stateFilePath);
+            _logger.LogWarning(ex, "保存 WeCom 会话状态失败: {Path}", stateFilePath);
         }
     }
 

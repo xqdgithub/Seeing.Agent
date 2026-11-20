@@ -147,6 +147,72 @@ public sealed class ScheduleManager : IScheduleManager, IJobExecutionListener
         }
     }
 
+    /// <summary>
+    /// 工作区切换：清掉当前工作区的任务（Quartz 触发器 + 内存快照 + 启动标记），
+    /// 等待按新工作区重新加载。
+    /// <para>
+    /// <b>必须趁调度器还在运行时调用</b>（即参与者先 reset、后停引擎）：<c>quartz.db</c> 现在是
+    /// 用户级固定库，不清掉旧任务就会留下旧工作区的持久触发器按原 cron 继续触发；
+    /// 而引擎一旦 <c>Shutdown</c>，<c>DeleteJob</c> 就无法再作用到旧实例上。
+    /// </para>
+    /// <para>
+    /// 单个任务清除失败只记 Warning：切换不能因为一个坏触发器而失败，随后还会重建触发器。
+    /// 幂等：重复调用、「未启动」状态调用都安全。
+    /// </para>
+    /// </summary>
+    public async Task ResetForWorkspaceAsync(CancellationToken ct = default)
+    {
+        var lockTaken = false;
+        try
+        {
+            await _lifecycleLock.WaitAsync(ct);
+            lockTaken = true;
+
+            // 先清 Quartz 持久库里的旧任务（含心跳槽位），再清内存。
+            // 没有已知任务时**不**触碰引擎：此时任何一次 RemoveJobAsync 都会经工厂新建
+            // scheduler 实例（首次启动时工作区还没决议），既浪费也可能把实例提前钉死在旧配置上。
+            var staleJobIds = EnumerateResetJobIds().ToList();
+            foreach (var jobId in staleJobIds)
+            {
+                try
+                {
+                    await _engine.RemoveJobAsync(jobId, ct).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(ex, "工作区切换：清除旧任务的 Quartz 触发器失败，继续: JobId={JobId}", jobId);
+                }
+            }
+
+            _jobsFile = new JobsFile();
+            _runningJobs.Clear();
+            _started = false;
+
+            _logger.LogInformation("工作区切换：调度状态已重置（任务将按新工作区重新加载）");
+        }
+        finally
+        {
+            if (lockTaken)
+                _lifecycleLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// reset 时要清掉的任务 id：用户任务 + 心跳槽位（心跳不在 <c>Jobs</c> 里）。
+    /// 空序列表示「本工作区没有已知任务」，调用方据此跳过引擎调用。
+    /// </summary>
+    private IEnumerable<string> EnumerateResetJobIds()
+    {
+        foreach (var job in _jobsFile.Jobs)
+        {
+            if (!string.IsNullOrWhiteSpace(job.Id))
+                yield return job.Id;
+        }
+
+        if (_jobsFile.Heartbeat is not null)
+            yield return SchedulerConstants.HeartbeatJobId;
+    }
+
     /// <inheritdoc/>
     public async Task<SchedulerStatus> GetStatusAsync(CancellationToken ct = default)
     {

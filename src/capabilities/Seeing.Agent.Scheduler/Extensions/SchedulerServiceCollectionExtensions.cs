@@ -170,7 +170,13 @@ public static class SchedulerServiceCollectionExtensions
                 var dbPath = schedulerOptions.Persistence.ConnectionString;
                 if (string.IsNullOrEmpty(dbPath))
                 {
-                    dbPath = $"Data Source={workspaceProvider.ProjectSeeingDirectory}/quartz.db";
+                    // 用户级固定路径：Quartz 里的持久触发器等价于「宿主级缓存」，不随工作区漂移；
+                    // 任务真相仍是每个工作区自己的 jobs.json（cwd / session 都放在 job data 里）。
+                    // 旧实现把库放在 {项目}/.seeing 下，切换工作区就得重建整个 factory；
+                    // 现在库固定，切换只需「清旧任务 → 按新 jobs.json 重建触发器」。
+                    var schedulerDirectory = Path.Combine(workspaceProvider.UserSeeingDirectory, "scheduler");
+                    Directory.CreateDirectory(schedulerDirectory);
+                    dbPath = $"Data Source={Path.Combine(schedulerDirectory, "quartz.db")}";
                 }
 
                 // 自动初始化 SQLite 数据库表结构（同步配置委托内无法 await，使用同步初始化）

@@ -6,10 +6,17 @@ namespace Seeing.Agent.Tools.Git;
 public interface IGitService
 {
     /// <summary>获取仓库状态</summary>
-    Task<GitStatus> GetStatusAsync(string? path = null, CancellationToken cancellationToken = default);
+    Task<GitStatus> GetStatusAsync(
+        string? path = null,
+        CancellationToken cancellationToken = default,
+        string? workingDirectory = null);
 
     /// <summary>获取差异</summary>
-    Task<GitDiff> GetDiffAsync(string? path = null, bool staged = false, CancellationToken cancellationToken = default);
+    Task<GitDiff> GetDiffAsync(
+        string? path = null,
+        bool staged = false,
+        CancellationToken cancellationToken = default,
+        string? workingDirectory = null);
 
     /// <summary>获取提交历史</summary>
     Task<IReadOnlyList<GitCommit>> GetLogAsync(
@@ -17,20 +24,23 @@ public interface IGitService
         int maxCount = 50,
         string? since = null,
         string? until = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? workingDirectory = null);
 
     /// <summary>暂存文件</summary>
     Task<GitResult> AddAsync(
         IEnumerable<string>? paths = null,
         bool all = false,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? workingDirectory = null);
 
     /// <summary>提交更改</summary>
     Task<GitResult> CommitAsync(
         string message,
         bool allowEmpty = false,
         string? author = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? workingDirectory = null);
 
     /// <summary>推送到远程</summary>
     Task<GitResult> PushAsync(
@@ -64,10 +74,12 @@ public interface IGitService
     Task<IReadOnlyList<GitBranch>> GetBranchesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>执行任意 git 命令</summary>
+    /// <param name="workingDirectory">显式工作目录；缺省按配置 → 工作区根 → 进程 CWD（仅启动期兜底）。</param>
     Task<GitResult> ExecuteAsync(
         string command,
         IEnumerable<string>? args = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? workingDirectory = null);
 
     /// <summary>检查是否在 Git 仓库中</summary>
     Task<bool> IsInRepositoryAsync(string? path = null, CancellationToken cancellationToken = default);

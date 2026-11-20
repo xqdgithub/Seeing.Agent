@@ -104,7 +104,7 @@ public sealed class BrowserHostLocator
 
     /// <summary>
     /// 写盘：可读缩进 + camelCase（设计文档里的字段名）。
-    /// <para>统一走 <see cref="SeeingJson"/>，禁止裸写 <c>new JsonSerializerOptions</c>。</para>
+    /// <para>统一走 <see cref="SeeingJson"/>，禁止在业务代码里自行构造 <see cref="JsonSerializerOptions"/>。</para>
     /// </summary>
     private static readonly JsonSerializerOptions s_writeOptions = SeeingJson.Create(
         indented: true,

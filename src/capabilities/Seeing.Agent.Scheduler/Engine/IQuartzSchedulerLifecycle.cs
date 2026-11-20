@@ -3,9 +3,10 @@ namespace Seeing.Agent.Scheduler.Engine;
 /// <summary>
 /// 调度器生命周期（供工作区切换停/重建）。
 /// <para>
-/// 为什么需要「重建」：Quartz 的 SQLite 连接串在注册时写死为
-/// <c>{ProjectSeeingDirectory}/quartz.db</c>，仅停再启仍会回到旧库。
-/// 工作区切换必须丢弃已构造的 scheduler 实例，让下次启动按新根重新解析。
+/// Quartz 的 SQLite 库固定为**用户级**路径 <c>~/.seeing/scheduler/quartz.db</c>
+/// （<c>Scheduler.Persistence.ConnectionString</c> 显式给时覆盖），不再随工作区变化。
+/// 工作区切换时仍需丢弃已构造的 scheduler 实例：持久触发器表要按新工作区的
+/// <c>jobs.json</c> 重新对账，避免旧工作区触发器在新调度器里复活。
 /// </para>
 /// </summary>
 public interface IQuartzSchedulerLifecycle

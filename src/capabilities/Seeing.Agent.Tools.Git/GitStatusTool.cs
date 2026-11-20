@@ -48,7 +48,8 @@ public class GitStatusTool : ITool
 
         try
         {
-            var status = await _gitService.GetStatusAsync(path, context.CancellationToken);
+            var status = await _gitService.GetStatusAsync(
+                path, context.CancellationToken, context.WorkingDirectory);
 
             var output = $"Branch: {status.Branch}\n";
             output += $"Clean: {status.IsClean}\n";

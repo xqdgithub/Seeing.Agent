@@ -60,8 +60,13 @@ public class AddWorkspacePathTool : BuiltInToolBase
         if (string.IsNullOrEmpty(path))
             return Task.FromResult(Failure("参数 path 不能为空"));
 
+        // 扩权工具本身就是授权入口：只做解析，不做边界判定（越界正是它要申请扩权的场景）。
         if (!Path.IsPathRooted(path))
-            path = _fileSystem.GetFullPath(Path.Combine(_workingDirectory, path));
+        {
+            if (string.IsNullOrWhiteSpace(context.WorkingDirectory))
+                return Task.FromResult(Failure("缺少执行工作目录，无法解析相对路径"));
+            path = _fileSystem.GetFullPath(path, context.WorkingDirectory);
+        }
 
         if (!_fileSystem.Exists(path) || !FileSystemHelper.IsDirectory(_fileSystem, path))
             return Task.FromResult(Failure($"目录不存在: {path}"));

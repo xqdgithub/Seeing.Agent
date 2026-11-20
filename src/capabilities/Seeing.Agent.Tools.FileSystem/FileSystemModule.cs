@@ -18,6 +18,7 @@ public sealed class FileSystemModule : ISeeingModule
         "grep",
         "delete",
         "add_workspace_path",
+        "add_collaboration_directory",
         "open_file",
     ];
 
@@ -44,6 +45,7 @@ public sealed class FileSystemModule : ISeeingModule
         services.AddSingleton<GlobTool>();
         services.AddSingleton<GrepTool>();
         services.AddSingleton<AddWorkspacePathTool>();
+        services.AddSingleton<AddCollaborationDirectoryTool>();
         services.AddSingleton<DeleteTool>();
         services.AddSingleton<OpenFileTool>();
     }
@@ -59,6 +61,7 @@ public sealed class FileSystemModule : ISeeingModule
         await tm.RegisterToolAsync(services.GetRequiredService<GlobTool>(), cancellationToken).ConfigureAwait(false);
         await tm.RegisterToolAsync(services.GetRequiredService<GrepTool>(), cancellationToken).ConfigureAwait(false);
         await tm.RegisterToolAsync(services.GetRequiredService<AddWorkspacePathTool>(), cancellationToken).ConfigureAwait(false);
+        await tm.RegisterToolAsync(services.GetRequiredService<AddCollaborationDirectoryTool>(), cancellationToken).ConfigureAwait(false);
         await tm.RegisterToolAsync(services.GetRequiredService<DeleteTool>(), cancellationToken).ConfigureAwait(false);
         await tm.RegisterToolAsync(services.GetRequiredService<OpenFileTool>(), cancellationToken).ConfigureAwait(false);
     }

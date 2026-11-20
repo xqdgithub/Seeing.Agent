@@ -334,8 +334,12 @@ public class AgentJob : IJob
         var agentDefinition = await _agentRegistry.GetAgentAsync(resolvedAgentId)
             ?? throw new InvalidOperationException($"Agent '{resolvedAgentId}' not found");
 
-        var cwd = _world.Cwd;
+        // 旁路 cwd 必须与主链同源：会话 cwd → 工作区根；进程 CWD 不参与。
         var projectRoot = _workspace.GetProjectRoot();
+        var sessionForCwd = _services.GetService<Seeing.Session.Core.ISessionManager>()?.Get(sessionId);
+        var cwd = string.IsNullOrWhiteSpace(sessionForCwd?.WorkingDirectory)
+            ? projectRoot
+            : sessionForCwd!.WorkingDirectory!;
 
         var model = data.GetStringValue(JobDataKeys.Model);
         var mode = data.GetStringValue(JobDataKeys.Mode);

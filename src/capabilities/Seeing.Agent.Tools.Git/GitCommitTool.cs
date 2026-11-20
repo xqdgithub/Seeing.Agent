@@ -75,7 +75,8 @@ public class GitCommitTool : ITool
             // Stage files
             if (all || files.Count > 0)
             {
-                var addResult = await _gitService.AddAsync(files.Count > 0 ? files : null, all, context.CancellationToken);
+                var addResult = await _gitService.AddAsync(
+                    files.Count > 0 ? files : null, all, context.CancellationToken, context.WorkingDirectory);
                 if (!addResult.Success)
                 {
                     return new ToolResult
@@ -89,7 +90,10 @@ public class GitCommitTool : ITool
             }
 
             // Commit
-            var commitResult = await _gitService.CommitAsync(message!, cancellationToken: context.CancellationToken);
+            var commitResult = await _gitService.CommitAsync(
+                message!,
+                cancellationToken: context.CancellationToken,
+                workingDirectory: context.WorkingDirectory);
             if (!commitResult.Success)
             {
                 return new ToolResult

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Configuration;
 using System.Text.RegularExpressions;
 
 namespace Seeing.Agent.Tools.Git;
@@ -13,24 +14,31 @@ public class GitService : IGitService
     private readonly ILogger<GitService> _logger;
     private readonly IExecutionWorld _world;
     private readonly IOptionsMonitor<GitOptions>? _optionsMonitor;
+    private readonly IWorkspaceProvider? _workspace;
     private readonly GitOptions _defaultOptions = new();
 
     public GitService(
         ILogger<GitService> logger,
         IExecutionWorld world,
-        IOptionsMonitor<GitOptions>? options = null)
+        IOptionsMonitor<GitOptions>? options = null,
+        IWorkspaceProvider? workspace = null)
     {
         _logger = logger;
         _world = world;
         _optionsMonitor = options;
+        _workspace = workspace;
     }
 
     /// <summary>实时读取 Git 配置（支持热重载）；无 monitor 时回退默认值。</summary>
     private GitOptions Options => _optionsMonitor?.CurrentValue ?? _defaultOptions;
 
-    public async Task<GitStatus> GetStatusAsync(string? path = null, CancellationToken cancellationToken = default)
+    public async Task<GitStatus> GetStatusAsync(
+        string? path = null,
+        CancellationToken cancellationToken = default,
+        string? workingDirectory = null)
     {
-        var result = await ExecuteAsync("status", new[] { "--porcelain=v2", "--branch" }, cancellationToken);
+        var result = await ExecuteAsync(
+            "status", new[] { "--porcelain=v2", "--branch" }, cancellationToken, workingDirectory);
         EnsureSuccess(result, "status");
 
         var status = new GitStatus();
@@ -69,14 +77,18 @@ public class GitService : IGitService
         return status;
     }
 
-    public async Task<GitDiff> GetDiffAsync(string? path = null, bool staged = false, CancellationToken cancellationToken = default)
+    public async Task<GitDiff> GetDiffAsync(
+        string? path = null,
+        bool staged = false,
+        CancellationToken cancellationToken = default,
+        string? workingDirectory = null)
     {
         var args = new List<string> { "--no-color" };
         if (staged) args.Add("--staged");
         if (path != null) args.Add("--");
         if (path != null) args.Add(path);
 
-        var result = await ExecuteAsync("diff", args, cancellationToken);
+        var result = await ExecuteAsync("diff", args, cancellationToken, workingDirectory);
         EnsureSuccess(result, "diff");
 
         return ParseDiff(result.StdOut);
@@ -87,7 +99,8 @@ public class GitService : IGitService
         int maxCount = 50,
         string? since = null,
         string? until = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? workingDirectory = null)
     {
         var args = new List<string>
         {
@@ -103,13 +116,17 @@ public class GitService : IGitService
             args.Add(path);
         }
 
-        var result = await ExecuteAsync("log", args, cancellationToken);
+        var result = await ExecuteAsync("log", args, cancellationToken, workingDirectory);
         EnsureSuccess(result, "log");
 
         return ParseCommits(result.StdOut);
     }
 
-    public async Task<GitResult> AddAsync(IEnumerable<string>? paths = null, bool all = false, CancellationToken cancellationToken = default)
+    public async Task<GitResult> AddAsync(
+        IEnumerable<string>? paths = null,
+        bool all = false,
+        CancellationToken cancellationToken = default,
+        string? workingDirectory = null)
     {
         var args = new List<string>();
         if (all) args.Add("-A");
@@ -119,16 +136,21 @@ public class GitService : IGitService
             args.AddRange(paths);
         }
 
-        return await ExecuteAsync("add", args, cancellationToken);
+        return await ExecuteAsync("add", args, cancellationToken, workingDirectory);
     }
 
-    public async Task<GitResult> CommitAsync(string message, bool allowEmpty = false, string? author = null, CancellationToken cancellationToken = default)
+    public async Task<GitResult> CommitAsync(
+        string message,
+        bool allowEmpty = false,
+        string? author = null,
+        CancellationToken cancellationToken = default,
+        string? workingDirectory = null)
     {
         var args = new List<string> { "-m", message };
         if (allowEmpty) args.Add("--allow-empty");
         if (author != null) args.AddRange(new[] { "--author", author });
 
-        return await ExecuteAsync("commit", args, cancellationToken);
+        return await ExecuteAsync("commit", args, cancellationToken, workingDirectory);
     }
 
     public async Task<GitResult> PushAsync(string? remote = null, string? branch = null, bool force = false, CancellationToken cancellationToken = default)
@@ -191,7 +213,11 @@ public class GitService : IGitService
         return branches;
     }
 
-    public async Task<GitResult> ExecuteAsync(string command, IEnumerable<string>? args = null, CancellationToken cancellationToken = default)
+    public async Task<GitResult> ExecuteAsync(
+        string command,
+        IEnumerable<string>? args = null,
+        CancellationToken cancellationToken = default,
+        string? workingDirectory = null)
     {
         var fullArgs = new List<string> { command };
         if (args != null) fullArgs.AddRange(args);
@@ -206,7 +232,11 @@ public class GitService : IGitService
             {
                 FileName = Options.GitPath,
                 Arguments = string.Join(" ", fullArgs.Select(EscapeArg)),
-                WorkingDirectory = Options.WorkingDirectory ?? _world.Cwd,
+                // 优先级：显式调用 > 配置 > 工作区根；进程 CWD 仅作最后兜底（启动期场景）。
+                WorkingDirectory = workingDirectory
+                    ?? Options.WorkingDirectory
+                    ?? _workspace?.GetProjectRoot()
+                    ?? _world.Cwd,
                 CancellationToken = token,
             };
 

@@ -62,14 +62,10 @@ public class DeleteTool : BuiltInToolBase
         if (string.IsNullOrEmpty(path))
             return Failure("缺少必需参数: path");
 
-        if (!Path.IsPathRooted(path))
-            path = _fileSystem.GetFullPath(path);
-        else
-            path = ResolvePath(path);
-
-        var denied = PathGateHelper.RejectIfDenied(_pathGate, context, path, Failure);
+        var denied = PathGateHelper.Resolve(_pathGate, context, path, Failure, out var fullPath);
         if (denied != null)
             return denied;
+        path = fullPath;
 
         _logger.LogInformation("删除路径: {Path}", path);
 

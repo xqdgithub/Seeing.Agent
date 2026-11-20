@@ -54,7 +54,8 @@ public class GitDiffTool : ITool
 
         try
         {
-            var diff = await _gitService.GetDiffAsync(path, staged, context.CancellationToken);
+            var diff = await _gitService.GetDiffAsync(
+                path, staged, context.CancellationToken, context.WorkingDirectory);
 
             var output = $"Files: {diff.Files.Count}\n";
             output += $"+{diff.TotalAddedLines} -{diff.TotalDeletedLines}\n\n";

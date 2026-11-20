@@ -72,7 +72,7 @@ namespace Seeing.Agent.Tools.FileSystem
         public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
         {
             var pattern = GetStringArgument(arguments, "pattern");
-            var searchPath = GetStringArgument(arguments, "path") ?? _world.Cwd;
+            var searchPath = GetStringArgument(arguments, "path") ?? context.WorkingDirectory ?? string.Empty;
             var includePattern = GetStringArgument(arguments, "include");
             var includeHidden = GetBoolArgument(arguments, "hidden") ?? false;
 
@@ -81,14 +81,10 @@ namespace Seeing.Agent.Tools.FileSystem
                 return Failure("pattern 参数是必需的");
             }
 
-            if (!Path.IsPathRooted(searchPath))
-            {
-                searchPath = _world.FileSystem.GetFullPath(searchPath);
-            }
-
-            var denied = PathGateHelper.RejectIfDenied(_pathGate, context, searchPath, Failure);
+            var denied = PathGateHelper.Resolve(_pathGate, context, searchPath, Failure, out var fullSearchPath);
             if (denied != null)
                 return denied;
+            searchPath = fullSearchPath;
 
             _logger.LogInformation("Grep 搜索: pattern={Pattern}, path={Path}, include={Include}",
                 pattern, searchPath, includePattern);

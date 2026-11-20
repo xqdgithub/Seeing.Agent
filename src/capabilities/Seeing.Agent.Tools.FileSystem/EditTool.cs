@@ -113,15 +113,10 @@ namespace Seeing.Agent.Tools.FileSystem
                 return Failure("没有需要应用的更改: oldString 和 newString 相同。");
             }
 
-            // 确保路径是绝对路径
-            if (!Path.IsPathRooted(filePath))
-            {
-                filePath = _fileSystem.GetFullPath(filePath);
-            }
-
-            var denied = PathGateHelper.RejectIfDenied(_pathGate, context, filePath, Failure);
+            var denied = PathGateHelper.Resolve(_pathGate, context, filePath, Failure, out var fullPath);
             if (denied != null)
                 return denied;
+            filePath = fullPath;
 
             _logger.LogInformation("编辑文件: {FilePath}", filePath);
 

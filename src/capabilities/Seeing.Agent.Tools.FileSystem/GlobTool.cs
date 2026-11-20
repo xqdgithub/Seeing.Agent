@@ -92,19 +92,14 @@ namespace Seeing.Agent.Tools.FileSystem
             var includeHidden = GetBoolArgument(arguments, "hidden") ?? false;
             if (string.IsNullOrEmpty(searchPath))
             {
-                // 使用执行世界当前工作目录
-                searchPath = _world.Cwd;
+                // 默认搜索根 = 本次执行的 cwd（不是进程当前目录）
+                searchPath = context.WorkingDirectory ?? string.Empty;
             }
 
-            // 确保路径是绝对路径
-            if (!Path.IsPathRooted(searchPath))
-            {
-                searchPath = _world.FileSystem.GetFullPath(searchPath);
-            }
-
-            var denied = PathGateHelper.RejectIfDenied(_pathGate, context, searchPath, Failure);
+            var denied = PathGateHelper.Resolve(_pathGate, context, searchPath, Failure, out var fullSearchPath);
             if (denied != null)
                 return denied;
+            searchPath = fullSearchPath;
 
             // 检查目录是否存在
             if (!_world.FileSystem.Exists(searchPath))

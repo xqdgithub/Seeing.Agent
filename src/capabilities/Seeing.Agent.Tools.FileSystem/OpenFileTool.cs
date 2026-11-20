@@ -80,14 +80,10 @@ public class OpenFileTool : BuiltInToolBase
         if (string.IsNullOrEmpty(filePath))
             return Task.FromResult(Failure("缺少必需参数: path"));
 
-        if (!Path.IsPathRooted(filePath))
-            filePath = _fileSystem.GetFullPath(filePath);
-        else
-            filePath = ResolvePath(filePath);
-
-        var denied = PathGateHelper.RejectIfDenied(_pathGate, context, filePath, Failure);
+        var denied = PathGateHelper.Resolve(_pathGate, context, filePath, Failure, out var fullPath);
         if (denied != null)
             return Task.FromResult(denied);
+        filePath = fullPath;
 
         _logger.LogInformation("请求打开文件: {FilePath}", filePath);
 

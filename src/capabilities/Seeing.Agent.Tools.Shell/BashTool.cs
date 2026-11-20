@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.Support;
 using System.Runtime.InteropServices;
@@ -25,6 +26,7 @@ public class BashTool : ToolBase
     private readonly IShellService _shellService;
     private readonly IShellEnvironmentService _shellEnvService;
     private readonly IOptionsMonitor<ShellOptions> _options;
+    private readonly IWorkspacePathGate _pathGate;
 
     public override string Id => "bash";
 
@@ -55,13 +57,15 @@ public class BashTool : ToolBase
         IExecutionWorld world,
         IShellService shellService,
         IShellEnvironmentService shellEnvService,
-        IOptionsMonitor<ShellOptions> options)
+        IOptionsMonitor<ShellOptions> options,
+        IWorkspacePathGate pathGate)
         : base(logger)
     {
         _world = world;
         _shellService = shellService;
         _shellEnvService = shellEnvService;
         _options = options;
+        _pathGate = pathGate;
     }
 
     public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
@@ -69,11 +73,20 @@ public class BashTool : ToolBase
         var command = GetStringArgument(arguments, "command");
         var description = GetStringArgument(arguments, "description");
         var timeout = GetIntArgument(arguments, "timeout") ?? DefaultTimeoutMs;
-        var workdir = GetStringArgument(arguments, "workdir") ?? _world.Cwd;
+        var workdir = GetStringArgument(arguments, "workdir") ?? context.WorkingDirectory;
 
         if (string.IsNullOrEmpty(command)) return Failure("command 参数是必需的");
+        if (string.IsNullOrWhiteSpace(workdir))
+            return Failure("缺少执行工作目录，无法确定命令工作目录。");
         if (string.IsNullOrEmpty(description)) description = command.Length > 50 ? command[..50] + "..." : command;
         if (timeout <= 0) return Failure($"无效的超时值: {timeout}。超时必须是正整数毫秒（timeout=0 无意义）。");
+
+        // 工作目录必须在授权根内：shell 不能靠"命令级审批"绕过路径边界。
+        var gateError = _pathGate.ResolveAllowed(
+            context.SessionId ?? string.Empty, workdir, context.WorkingDirectory, out var fullWorkdir);
+        if (gateError is not null)
+            return Failure($"工作目录不可用: {gateError}");
+        workdir = fullWorkdir;
 
         try { return await ExecuteCommandAsync(command, description, workdir, timeout, context); }
         catch (OperationCanceledException) { return Failure($"命令被取消: {command}"); }

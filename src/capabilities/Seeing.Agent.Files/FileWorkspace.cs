@@ -2,6 +2,7 @@ using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Files;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Files.Watching;
+using Seeing.Agent.Paths;
 using Seeing.Agent.Tools.Support;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -21,11 +22,25 @@ internal sealed class FileWorkspace : IFileWorkspace
     private readonly IPathWriteLock _locks;
 
     /// <summary>构造会话工作区。</summary>
-    public FileWorkspace(string sessionId, string rootPath, IFileSystem fs, IWorkspacePathGate gate, FileWatcherPool watchers, IPathWriteLock locks)
+    public FileWorkspace(
+        string sessionId,
+        string rootPath,
+        IFileSystem fs,
+        IWorkspacePathGate gate,
+        FileWatcherPool watchers,
+        IPathWriteLock locks,
+        FileWorkspaceRootKind kind = FileWorkspaceRootKind.Project,
+        string? label = null)
     {
         SessionId = sessionId;
-        RootPath = Path.GetFullPath(rootPath);
-        RootId = ComputeRootId(RootPath);
+        var fullRoot = Path.GetFullPath(rootPath);
+        var rootId = ComputeRootId(fullRoot);
+        Root = new FileWorkspaceRoot(
+            rootId,
+            fullRoot,
+            string.IsNullOrWhiteSpace(label) ? Path.GetFileName(fullRoot.TrimEnd(Path.DirectorySeparatorChar)) : label!,
+            kind,
+            Directory.Exists(fullRoot));
         _fs = fs;
         _gate = gate;
         _watchers = watchers;
@@ -36,10 +51,13 @@ internal sealed class FileWorkspace : IFileWorkspace
     public string SessionId { get; }
 
     /// <inheritdoc />
-    public string RootId { get; }
+    public FileWorkspaceRoot Root { get; }
 
     /// <inheritdoc />
-    public string RootPath { get; }
+    public string RootId => Root.RootId;
+
+    /// <inheritdoc />
+    public string RootPath => Root.RootPath;
 
     private static string ComputeRootId(string root)
     {
@@ -51,6 +69,10 @@ internal sealed class FileWorkspace : IFileWorkspace
             Encoding.UTF8.GetBytes(normalized))).ToLowerInvariant()[..16];
     }
 
+    /// <summary>相对路径以本根为基准（绝不用进程 CWD）。</summary>
+    private string ToFull(string path)
+        => Path.IsPathRooted(path) ? Path.GetFullPath(path) : Path.GetFullPath(path, RootPath);
+
     private void EnsureAllowed(string path)
     {
         var reason = _gate.EnsureAllowed(SessionId, path);
@@ -61,19 +83,34 @@ internal sealed class FileWorkspace : IFileWorkspace
     /// <inheritdoc />
     public FileResourceId GetResourceId(string path)
     {
-        var full = Path.GetFullPath(path);
+        // 相对路径按本根解析（不能用进程 CWD），越界直接拒绝——否则会产出 "../.." 的跨根标识。
+        var full = Path.IsPathRooted(path) ? Path.GetFullPath(path) : Path.GetFullPath(path, RootPath);
+        if (!PathBoundary.IsWithin(full, RootPath))
+            throw new ArgumentException($"路径不在根内: {full}", nameof(path));
+
         var rel = Path.GetRelativePath(RootPath, full).Replace('\\', '/');
         return new FileResourceId(RootId, rel);
     }
 
     /// <inheritdoc />
-    public string GetAbsolutePath(FileResourceId id) =>
-        Path.GetFullPath(Path.Combine(RootPath, id.RelativePath.Replace('/', Path.DirectorySeparatorChar)));
+    public string GetAbsolutePath(FileResourceId id)
+    {
+        if (!string.Equals(id.RootId, RootId, StringComparison.Ordinal))
+            throw new ArgumentException($"资源属于其它根: {id.RootId}", nameof(id));
+
+        var full = Path.GetFullPath(
+            Path.Combine(RootPath, id.RelativePath.Replace('/', Path.DirectorySeparatorChar)));
+
+        if (!PathBoundary.IsWithin(full, RootPath))
+            throw new ArgumentException($"资源路径越界: {id.RelativePath}", nameof(id));
+
+        return full;
+    }
 
     /// <inheritdoc />
     public Task<FileEntry> StatAsync(string path, CancellationToken ct = default)
     {
-        var full = Path.GetFullPath(path);
+        var full = ToFull(path);
         EnsureAllowed(full);
         var isDir = Directory.Exists(full);
         if (!isDir && !File.Exists(full))
@@ -86,7 +123,7 @@ internal sealed class FileWorkspace : IFileWorkspace
     /// <inheritdoc />
     public Task<IReadOnlyList<FileEntry>> ListAsync(string path, CancellationToken ct = default)
     {
-        var full = Path.GetFullPath(path);
+        var full = ToFull(path);
         EnsureAllowed(full);
         if (!Directory.Exists(full))
             throw new FileNotFoundException("目录不存在", full);
@@ -110,7 +147,7 @@ internal sealed class FileWorkspace : IFileWorkspace
     /// <inheritdoc />
     public async Task<FileReadResult> ReadAsync(string path, FileReadMode mode = FileReadMode.Display, CancellationToken ct = default)
     {
-        var full = Path.GetFullPath(path);
+        var full = ToFull(path);
         EnsureAllowed(full);
         var info = new FileInfo(full);
         if (!info.Exists) throw new FileNotFoundException("文件不存在", full);
@@ -182,7 +219,7 @@ internal sealed class FileWorkspace : IFileWorkspace
     /// <inheritdoc />
     public async Task<byte[]> ReadBytesAsync(string path, CancellationToken ct = default)
     {
-        var full = Path.GetFullPath(path);
+        var full = ToFull(path);
         EnsureAllowed(full);
         if (!File.Exists(full)) throw new FileNotFoundException("文件不存在", full);
         var info = new FileInfo(full);
@@ -195,7 +232,7 @@ internal sealed class FileWorkspace : IFileWorkspace
     /// <inheritdoc />
     public async Task<FileWriteResult> WriteAsync(string path, string content, FileRevision? expectedRevision = null, CancellationToken ct = default)
     {
-        var full = Path.GetFullPath(path);
+        var full = ToFull(path);
         EnsureAllowed(full);
 
         using var _ = await _locks.AcquireAsync(full, ct).ConfigureAwait(false);
@@ -205,7 +242,7 @@ internal sealed class FileWorkspace : IFileWorkspace
     /// <inheritdoc />
     public async Task WriteBytesAsync(string path, ReadOnlyMemory<byte> content, CancellationToken ct = default)
     {
-        var full = Path.GetFullPath(path);
+        var full = ToFull(path);
         EnsureAllowed(full);
 
         var directory = Path.GetDirectoryName(full);
@@ -244,7 +281,7 @@ internal sealed class FileWorkspace : IFileWorkspace
     /// <inheritdoc />
     public async Task<FileWriteResult> EditAsync(string path, string oldString, string newString, bool replaceAll = false, FileRevision? expectedRevision = null, CancellationToken ct = default)
     {
-        var full = Path.GetFullPath(path);
+        var full = ToFull(path);
         EnsureAllowed(full);
 
         // 读-改-写全程持锁（消除与工具/UI 并发写的 lost-update）
@@ -267,7 +304,7 @@ internal sealed class FileWorkspace : IFileWorkspace
     /// <inheritdoc />
     public async Task DeleteAsync(string path, CancellationToken ct = default)
     {
-        var full = Path.GetFullPath(path);
+        var full = ToFull(path);
         EnsureAllowed(full);
         using var _ = await _locks.AcquireAsync(full, ct).ConfigureAwait(false);
         _fs.Delete(full);
@@ -276,7 +313,7 @@ internal sealed class FileWorkspace : IFileWorkspace
     /// <inheritdoc />
     public async Task<string> GetDiffAsync(string path, string baselineContent, CancellationToken ct = default)
     {
-        var full = Path.GetFullPath(path);
+        var full = ToFull(path);
         EnsureAllowed(full);
         var bytes = await _fs.ReadAllBytesAsync(full, ct).ConfigureAwait(false);
         var current = new UTF8Encoding(false).GetString(bytes);
@@ -287,11 +324,11 @@ internal sealed class FileWorkspace : IFileWorkspace
     public async IAsyncEnumerable<FileChangeEvent> SubscribeChangesAsync([EnumeratorCancellation] CancellationToken ct = default)
     {
         using var sub = _watchers.Subscribe(RootPath);
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         await foreach (var raw in sub.Reader.ReadAllAsync(ct).ConfigureAwait(false))
         {
-            var full = Path.GetFullPath(raw.Path);
-            if (!full.StartsWith(RootPath, comparison))
+            var full = ToFull(raw.Path);
+            // 边界判定只用 PathBoundary（避免 D:\a 命中 D:\ab）
+            if (!PathBoundary.IsWithin(full, RootPath))
                 continue;
             FileRevision? rev = null;
             if (raw.Kind is FileChangeKind.Modified or FileChangeKind.Created && File.Exists(full))

@@ -101,14 +101,11 @@ public sealed class TranscribeAudioTool : BuiltInToolBase
         if (string.IsNullOrWhiteSpace(filePath))
             return Failure("缺少必需参数: path");
 
-        if (!Path.IsPathRooted(filePath))
-            filePath = _fileSystem.GetFullPath(filePath);
-        else
-            filePath = ResolvePath(filePath);
-
-        var denied = _pathGate.EnsureAllowed(context.SessionId ?? string.Empty, filePath);
+        var denied = _pathGate.ResolveAllowed(
+            context.SessionId ?? string.Empty, filePath, context.WorkingDirectory, out var fullPath);
         if (denied is not null)
             return Failure(denied);
+        filePath = fullPath;
 
         if (!_fileSystem.Exists(filePath) || _fileSystem.IsDirectory(filePath))
             return Failure($"文件不存在: {filePath}");

@@ -72,7 +72,8 @@ public class GitLogTool : ITool
 
         try
         {
-            var commits = await _gitService.GetLogAsync(path, maxCount, since, null, context.CancellationToken);
+            var commits = await _gitService.GetLogAsync(
+                path, maxCount, since, null, context.CancellationToken, context.WorkingDirectory);
 
             var output = new StringBuilder();
             output.AppendLine($"Commits: {commits.Count}");

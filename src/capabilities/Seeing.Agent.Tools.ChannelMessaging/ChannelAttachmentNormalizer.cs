@@ -83,23 +83,14 @@ internal sealed class ChannelAttachmentNormalizer
         if (!TryResolveKind(attachment, path, out var kind, out var kindError))
             return NormalizedAttachment.Invalid(kindError);
 
-        string candidate;
-        if (Path.IsPathRooted(path))
-        {
-            // 绝对路径不需要基准目录。
-            candidate = path;
-        }
-        else
-        {
-            // 基准目录 = 会话 cwd ?? 项目根。
-            var baseDirectory = _sessionWorkspace.ResolveWorkingDirectory(sessionId)
-                ?? _workspace.GetProjectRoot();
-            if (string.IsNullOrWhiteSpace(baseDirectory))
-                return NormalizedAttachment.Invalid("缺少工作区，请提供绝对路径");
-            candidate = Path.Combine(baseDirectory, path);
-        }
+        // 基准目录 = 会话 cwd ?? 项目根（显式给出，不走进程 CWD）。
+        var baseDirectory = _sessionWorkspace.ResolveWorkingDirectory(sessionId)
+            ?? _workspace.GetProjectRoot();
+        if (string.IsNullOrWhiteSpace(baseDirectory))
+            return NormalizedAttachment.Invalid("缺少工作区，请提供绝对路径");
 
-        var fullPath = _fileSystem.GetFullPath(candidate);
+        var candidate = Path.IsPathRooted(path) ? path : Path.Combine(baseDirectory, path);
+        var fullPath = _fileSystem.GetFullPath(candidate, baseDirectory);
 
         // 严格工作区包含（无条件，不受 RestrictToWorkspace / 授权扩权影响）。
         var gateFailure = _pathGate.EnsureWithinWorkspace(sessionId, fullPath);

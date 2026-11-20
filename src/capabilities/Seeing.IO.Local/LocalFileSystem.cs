@@ -121,5 +121,9 @@ public sealed class LocalFileSystem : IFileSystem
     }
 
     /// <inheritdoc />
+    public string GetFullPath(string path, string baseDirectory) => Path.GetFullPath(path, baseDirectory);
+
+    /// <inheritdoc />
+    [Obsolete("业务路径解析必须显式给出基准目录；进程 CWD 不是业务基准。", error: true)]
     public string GetFullPath(string path) => Path.GetFullPath(path);
 }
