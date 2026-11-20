@@ -4,6 +4,7 @@ using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Files.Watching;
 using Seeing.IO.Local;
+using Seeing.Session.Core;
 using Xunit;
 
 namespace Seeing.Agent.Files.Tests;
@@ -12,26 +13,39 @@ public class FileWorkspaceFactoryTests
 {
     private sealed class TestRootSet(params string[] roots) : Seeing.Agent.Abstractions.Directories.ISessionRootSet
     {
+        /// <summary>读取根集合时触发（用于断言「先预热、后读根」的顺序）。</summary>
+        public Action? OnRoots { get; init; }
+
         public IReadOnlyList<Seeing.Agent.Abstractions.Directories.SessionRoot> Roots(string sessionId)
-            => roots.Select((root, index) => new Seeing.Agent.Abstractions.Directories.SessionRoot(
+        {
+            OnRoots?.Invoke();
+            return roots.Select((root, index) => new Seeing.Agent.Abstractions.Directories.SessionRoot(
                 Path.GetFullPath(root),
                 index == 0
                     ? Seeing.Agent.Abstractions.Directories.SessionRootKind.Project
                     : Seeing.Agent.Abstractions.Directories.SessionRootKind.Collaboration,
                 $"root{index}",
                 Directory.Exists(root))).ToArray();
+        }
 
         public bool IsAuthorized(string sessionId, string absolutePath) => true;
         public bool IsTrusted(string sessionId, string absolutePath) => true;
     }
 
+    private static ISessionManager NoSessions()
+        => new Mock<ISessionManager>().Object;
+
     private static FileWorkspaceFactory CreateMulti(string[] roots, out FileWatcherPool pool)
+        => CreateMulti(roots, NoSessions(), out pool);
+
+    private static FileWorkspaceFactory CreateMulti(
+        string[] roots, ISessionManager sessions, out FileWatcherPool pool)
     {
         var gate = new Mock<IWorkspacePathGate>();
         gate.Setup(g => g.EnsureAllowed(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)null);
         pool = new FileWatcherPool();
         return new FileWorkspaceFactory(
-            new TestRootSet(roots), new LocalFileSystem(), gate.Object, pool, new ProcessPathWriteLock());
+            new TestRootSet(roots), sessions, new LocalFileSystem(), gate.Object, pool, new ProcessPathWriteLock());
     }
 
     private static FileWorkspaceFactory Create(string? cwd, string projectRoot, out FileWatcherPool pool)
@@ -41,10 +55,33 @@ public class FileWorkspaceFactoryTests
         pool = new FileWatcherPool();
         return new FileWorkspaceFactory(
             new TestRootSet(cwd ?? projectRoot),
+            NoSessions(),
             new LocalFileSystem(),
             gate.Object,
             pool,
             new ProcessPathWriteLock());
+    }
+
+    [Fact]
+    public async Task ListAsync_ColdSession_ShouldLoadBeforeReadingRoots()
+    {
+        var loaded = false;
+        var observedBeforeLoad = true;
+        var rootSet = new TestRootSet(Path.GetTempPath()) { OnRoots = () => observedBeforeLoad = !loaded };
+
+        var sessions = new Mock<ISessionManager>();
+        sessions.Setup(s => s.TryGetOrLoadAsync("s1", It.IsAny<CancellationToken>()))
+                .Callback(() => loaded = true)
+                .ReturnsAsync((SessionData?)null);
+
+        var factory = new FileWorkspaceFactory(
+            rootSet, sessions.Object, new LocalFileSystem(),
+            new Mock<IWorkspacePathGate>().Object, new FileWatcherPool(), new ProcessPathWriteLock());
+
+        await factory.ListAsync("s1");
+
+        loaded.Should().BeTrue();
+        observedBeforeLoad.Should().BeFalse("读根集合之前必须先预热会话");
     }
 
     [Fact]

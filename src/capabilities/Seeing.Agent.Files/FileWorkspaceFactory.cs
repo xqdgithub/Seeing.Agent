@@ -4,6 +4,7 @@ using Seeing.Agent.Abstractions.Files;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Files.Watching;
 using Seeing.Agent.Paths;
+using Seeing.Session.Core;
 using System.Collections.Concurrent;
 
 namespace Seeing.Agent.Files;
@@ -19,6 +20,7 @@ namespace Seeing.Agent.Files;
 public sealed class FileWorkspaceFactory : IFileWorkspaceFactory, IDisposable
 {
     private readonly ISessionRootSet _roots;
+    private readonly ISessionManager _sessions;
     private readonly IFileSystem _fileSystem;
     private readonly IWorkspacePathGate _gate;
     private readonly FileWatcherPool _watchers;
@@ -31,12 +33,14 @@ public sealed class FileWorkspaceFactory : IFileWorkspaceFactory, IDisposable
     /// <summary>注入依赖。</summary>
     public FileWorkspaceFactory(
         ISessionRootSet roots,
+        ISessionManager sessions,
         IFileSystem fileSystem,
         IWorkspacePathGate gate,
         FileWatcherPool watchers,
         IPathWriteLock writeLock)
     {
         _roots = roots ?? throw new ArgumentNullException(nameof(roots));
+        _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _gate = gate ?? throw new ArgumentNullException(nameof(gate));
         _watchers = watchers ?? throw new ArgumentNullException(nameof(watchers));
@@ -59,13 +63,17 @@ public sealed class FileWorkspaceFactory : IFileWorkspaceFactory, IDisposable
     }
 
     /// <inheritdoc />
-    public Task<IReadOnlyList<IFileWorkspace>> ListAsync(string sessionId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<IFileWorkspace>> ListAsync(string sessionId, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
 
+        // 根集合是同步只读内存投影：冷会话必须先预热，否则协同目录会被当成"没有"
+        // （典型场景：进程重启后直接打开旧会话）。
+        await _sessions.TryGetOrLoadAsync(sessionId, ct).ConfigureAwait(false);
+
         var declared = _roots.Roots(sessionId);
         if (declared.Count == 0)
-            return Task.FromResult<IReadOnlyList<IFileWorkspace>>(Array.Empty<IFileWorkspace>());
+            return Array.Empty<IFileWorkspace>();
 
         lock (_sync)
         {
@@ -105,7 +113,7 @@ public sealed class FileWorkspaceFactory : IFileWorkspaceFactory, IDisposable
                 entry.Workspaces.Remove(stale);
 
             _cache[sessionId] = entry;
-            return Task.FromResult<IReadOnlyList<IFileWorkspace>>(ordered);
+            return ordered;
         }
     }
 
