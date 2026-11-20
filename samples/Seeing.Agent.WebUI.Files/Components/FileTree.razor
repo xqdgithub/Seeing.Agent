@@ -1,83 +1,32 @@
 @using Seeing.Agent.Abstractions.Files
 @using Seeing.Agent.WebUI.Files.Services
-@inject FileTreeState TreeState
-@implements IDisposable
 
 <div class="file-tree">
-    @if (_loading)
-    {
-        <div class="file-tree-loading">加载中…</div>
-    }
-    else if (_roots.Count == 0)
+    @if (Roots.Count == 0)
     {
         <div class="file-tree-empty">空目录</div>
     }
     else
     {
         <ul class="file-tree-list">
-            @foreach (var e in _roots)
+            @foreach (var root in Roots)
             {
-                <FileTreeNode Entry="e" Workspace="Workspace" OnOpen="OnOpen" Depth="0" />
+                <FileTreeNode Entry="FileTreeRoots.Entry(root)"
+                              Workspace="root"
+                              OnOpen="OnOpen"
+                              Depth="0"
+                              Badge="FileTreeRoots.Badge(root.Root.Kind)"
+                              BadgeClass="FileTreeRoots.BadgeClass(root.Root.Kind)"
+                              Title="root.RootPath" />
             }
         </ul>
     }
 </div>
 
 @code {
-    /// <summary>目标文件工作区。</summary>
-    [Parameter, EditorRequired] public IFileWorkspace Workspace { get; set; } = default!;
+    /// <summary>全部文件根（项目根在前，协同目录随后）。</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<IFileWorkspace> Roots { get; set; } = Array.Empty<IFileWorkspace>();
 
     /// <summary>点击文件回调。</summary>
     [Parameter] public EventCallback<FileResourceId> OnOpen { get; set; }
-
-    private List<FileEntry> _roots = [];
-    private bool _loading = true;
-
-    protected override async Task OnInitializedAsync()
-    {
-        TreeState.Changed += OnTreeChanged;
-        await ReloadAsync();
-    }
-
-    private void OnTreeChanged(FileChangeEvent evt)
-    {
-        // 仅根目录直接子级的增删/改名需要重列
-        if (evt.Kind is FileChangeKind.Renamed && evt.OldPath is { } old)
-        {
-            var oldId = Workspace.GetResourceId(old);
-            if (FileTreeState.IsDirectChildOf(oldId, "") || FileTreeState.IsDirectChildOf(evt.Id, ""))
-                _ = InvokeAsync(ReloadAndRenderAsync);
-            return;
-        }
-        if (FileTreeState.IsDirectChildOf(evt.Id, ""))
-            _ = InvokeAsync(ReloadAndRenderAsync);
-    }
-
-    private async Task ReloadAndRenderAsync()
-    {
-        await ReloadAsync();
-        StateHasChanged();
-    }
-
-    private async Task ReloadAsync()
-    {
-        try
-        {
-            var entries = await Workspace.ListAsync(Workspace.RootPath);
-            _roots = entries
-                .OrderByDescending(e => e.IsDirectory)
-                .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-        catch
-        {
-            // 根目录被删除/占用等竞态：保留现有子项，避免异常冒泡到渲染器
-        }
-        finally
-        {
-            _loading = false;
-        }
-    }
-
-    public void Dispose() => TreeState.Changed -= OnTreeChanged;
 }

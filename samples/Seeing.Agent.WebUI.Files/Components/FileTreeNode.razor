@@ -8,12 +8,16 @@
 <li class="file-tree-node">
     @if (Entry.IsDirectory)
     {
-        <div class="file-tree-dir" style="@($"padding-left:{Depth * 12}px")" @onclick="ToggleAsync">
+        <div class="file-tree-dir @(Depth == 0 ? "file-tree-dir--root" : "")" style="@($"padding-left:{Depth * 12}px")" title="@Title" @onclick="ToggleAsync">
             <span class="file-tree-arrow">@(_expanded ? "▾" : "▸")</span>
             <svg class="file-tree-icon file-tree-icon--dir" viewBox="0 0 1024 1024" width="14" height="14" aria-hidden="true">
                 <path fill="currentColor" d="M880 298.4H521L403.7 186.2a8.15 8.15 0 0 0-5.5-2.2H144c-17.7 0-32 14.3-32 32v592c0 17.7 14.3 32 32 32h736c17.7 0 32-14.3 32-32V330.4c0-17.7-14.3-32-32-32zM840 768H184V256h188.5l119.6 114.4H840V768z" />
             </svg>
             <span class="file-tree-name">@Entry.Name</span>
+            @if (!string.IsNullOrEmpty(Badge))
+            {
+                <span class="file-tree-badge @BadgeClass">@Badge</span>
+            }
         </div>
         @if (_expanded)
         {
@@ -56,6 +60,15 @@
     /// <summary>缩进层级。</summary>
     [Parameter] public int Depth { get; set; }
 
+    /// <summary>根类别徽标文案（仅顶层根节点有值）。</summary>
+    [Parameter] public string? Badge { get; set; }
+
+    /// <summary>根类别徽标样式类。</summary>
+    [Parameter] public string? BadgeClass { get; set; }
+
+    /// <summary>悬浮提示（根节点显示完整路径）。</summary>
+    [Parameter] public string? Title { get; set; }
+
     private bool _expanded;
     private bool _loading;
     private List<FileEntry> _children = [];
@@ -70,13 +83,18 @@
 
     /// <summary>本节点是否为当前激活文件（选中高亮）。</summary>
     private bool IsSelected => !Entry.IsDirectory
-        && string.Equals(TreeState.SelectedFile, RelPath, StringComparison.OrdinalIgnoreCase);
+        && TreeState.SelectedId is { } sel
+        && string.Equals(sel.RootId, Entry.Id.RootId, StringComparison.Ordinal)
+        && string.Equals(sel.RelativePath, RelPath, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>选中文件是否位于本目录之下（驱动祖先目录自动展开）。</summary>
     private bool SelectionInDir => Entry.IsDirectory
-        && TreeState.SelectedFile is { } sel
-        && sel.Length > DirRelative.Length + 1
-        && sel.StartsWith(DirRelative + "/", StringComparison.OrdinalIgnoreCase);
+        && TreeState.SelectedId is { } sel
+        && string.Equals(sel.RootId, Workspace.RootId, StringComparison.Ordinal)
+        && (DirRelative.Length == 0
+            ? sel.RelativePath.Length > 0
+            : sel.RelativePath.Length > DirRelative.Length + 1
+              && sel.RelativePath.StartsWith(DirRelative + "/", StringComparison.OrdinalIgnoreCase));
 
     protected override async Task OnInitializedAsync()
     {
@@ -105,9 +123,9 @@
         if (!_expanded) return;
 
         // 变更项是本目录直接子级 → 重列；或改名涉及本目录下条目
-        var affected = FileTreeState.IsDirectChildOf(evt.Id, DirRelative);
+        var affected = FileTreeState.IsDirectChildOf(evt.Id, Entry.Id);
         if (!affected && evt.Kind == FileChangeKind.Renamed && evt.OldPath is { } old)
-            affected = FileTreeState.IsDirectChildOf(Workspace.GetResourceId(old), DirRelative);
+            affected = FileTreeState.IsDirectChildOf(Workspace.GetResourceId(old), Entry.Id);
 
         if (affected)
             _ = InvokeAsync(ReloadAndRenderAsync);

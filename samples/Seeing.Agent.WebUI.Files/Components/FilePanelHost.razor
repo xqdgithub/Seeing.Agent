@@ -72,7 +72,7 @@
                     <button type="button" class="file-tree-collapse" title="隐藏目录树" @onclick="HideTree">
                         <span>◀</span>
                     </button>
-                    <FileTree Workspace="_workspace" OnOpen="OnOpenFileAsync" />
+                    <FileTree Roots="_roots" OnOpen="OnOpenFileAsync" />
                 </div>
                 <ResizeHandle CssVariable="--file-tree-width" Vertical="true" Min="140" Max="600"
                               Default="220" StorageKey="seeing-files-tree-width" />
@@ -301,7 +301,7 @@
     private void SyncTreeSelection()
     {
         var active = _tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == _tabs.ActiveKey);
-        TreeState.SetSelected(active?.Id.RelativePath);
+        TreeState.SetSelected(active?.Id);
     }
 
     private void HideTree()
