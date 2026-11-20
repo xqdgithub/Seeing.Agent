@@ -124,7 +124,7 @@
                 <button type="button" class="item" @onclick="() => OpenFromMenuAsync(menu.Entry)">打开</button>
                 <div class="divider"></div>
             }
-            @if (menu.Entry.IsDirectory && !IsRoot(menu.Entry))
+            @if (menu.Entry.IsDirectory)
             {
                 <button type="button" class="item" @onclick="() => BeginNew(isFile: true, menu.Entry)">新建文件</button>
                 <button type="button" class="item" @onclick="() => BeginNew(isFile: false, menu.Entry)">新建文件夹</button>
