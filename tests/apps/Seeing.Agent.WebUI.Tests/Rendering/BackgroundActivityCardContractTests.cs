@@ -113,8 +113,8 @@ public class BackgroundActivityCardContractTests
         source.Should().Contain("bg is not null ? bg.LiveOutputTail : _card.DisplayOutput",
             "后台模式要优先取活动实时输出；工具结果只是一段「已转交」回执，不是命令输出");
 
-        source.Should().Contain("class=\"bash-terminal-pre @(_outputExpanded ? null : \"is-collapsed\")\"",
-            "后台输出必须落在前台同款终端 pre 上，颜色/字体/滚动行为才与前台一致");
+        source.Should().Contain("class=\"bash-terminal-pre @((bg is null && !_outputExpanded) ? \"is-collapsed\" : null)\"",
+            "后台输出必须落在前台同款终端 pre 上；折叠只对前台生效（后台改用「展开全部」加载全量）");
 
         source.Should().NotContain("bg-activity-output",
             "后台卡片不再复用活动卡的输出块样式，否则又是两套外观");

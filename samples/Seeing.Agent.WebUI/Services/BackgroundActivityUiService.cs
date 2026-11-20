@@ -69,6 +69,55 @@ public sealed class BackgroundActivityUiService
         }
     }
 
+    /// <summary>
+    /// 读取活动输出（分页拼接，最多约 256KB）。
+    /// <para>供后台卡片"展开全部"使用；失败按空串处理，不阻断渲染。</para>
+    /// </summary>
+    public async Task<string> ReadOutputAsync(
+        string activityId,
+        string sessionId,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(activityId) || string.IsNullOrEmpty(sessionId))
+            return string.Empty;
+
+        var manager = Resolve();
+        if (manager is null)
+            return string.Empty;
+
+        const int pageSize = 32 * 1024;
+        const int hardLimit = 256 * 1024;
+
+        var builder = new System.Text.StringBuilder();
+        long offset = 0;
+
+        try
+        {
+            while (builder.Length < hardLimit)
+            {
+                var page = await manager
+                    .ReadOutputAsync(activityId, offset, pageSize, sessionId, ct)
+                    .ConfigureAwait(false);
+
+                if (page.Content.Length == 0)
+                    break;
+
+                builder.Append(page.Content);
+
+                if (page.EndOfStream || page.NextOffset <= offset)
+                    break;
+
+                offset = page.NextOffset;
+            }
+        }
+        catch
+        {
+            return builder.ToString();
+        }
+
+        return builder.ToString();
+    }
+
     private IBackgroundActivityManager? Resolve()
         => _services.GetService(typeof(IBackgroundActivityManager)) as IBackgroundActivityManager;
 }

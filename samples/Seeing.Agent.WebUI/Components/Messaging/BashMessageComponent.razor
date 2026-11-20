@@ -50,9 +50,11 @@
     @if (_isExpanded)
     {
         var bg = ToolCall.BackgroundActivity;
-
-        @* 后台优先取活动实时输出：工具结果此时只是一段「已转交」回执，不是命令输出。 *@
-        var outputText = bg is not null ? bg.LiveOutputTail : _card.DisplayOutput;
+        var liveTail = bg is not null ? bg.LiveOutputTail : _card.DisplayOutput;
+        var outputText = _showFullOutput && _fullOutput is not null ? _fullOutput : liveTail;
+        var hasMoreOutput = bg is not null
+            ? (bg.OutputBytes ?? 0) > 4096
+            : BashToolDisplayHelper.ShouldCollapseByDefault(liveTail, false);
 
         <div class="bash-terminal-body">
             <code class="bash-command" title="@(_card.Workdir ?? "")">
@@ -62,7 +64,7 @@
             @if (!string.IsNullOrEmpty(outputText))
             {
                 <pre @ref="_outputRef"
-                     class="bash-terminal-pre @(_outputExpanded ? null : "is-collapsed")"
+                     class="bash-terminal-pre @((bg is null && !_outputExpanded) ? "is-collapsed" : null)"
                      @onscroll="OnOutputScroll">@outputText</pre>
             }
 
@@ -72,10 +74,21 @@
             }
 
             <div class="bash-output-actions">
-                @if (BashToolDisplayHelper.ShouldCollapseByDefault(outputText, false))
+                @if (bg is null)
                 {
-                    <button type="button" class="bash-text-action" @onclick="ToggleOutputExpanded">
-                        @(_outputExpanded ? "收起" : "展开全部")
+                    @* 前台：按长度折叠（与既有行为一致）。 *@
+                    @if (BashToolDisplayHelper.ShouldCollapseByDefault(outputText, false))
+                    {
+                        <button type="button" class="bash-text-action" @onclick="ToggleOutputExpanded">
+                            @(_outputExpanded ? "收起" : "展开全部")
+                        </button>
+                    }
+                }
+                else if (hasMoreOutput || _fullOutput is not null)
+                {
+                    @* 后台：事件只带尾部，按需从活动输出读全量。 *@
+                    <button type="button" class="bash-text-action" @onclick="ToggleFullOutputAsync">
+                        @(_showFullOutput ? "收起" : "展开全部")
                     </button>
                 }
                 <button type="button" class="bash-text-action is-muted" @onclick="@(() => CopyAsync(outputText))">复制</button>
@@ -93,7 +106,9 @@
                     <code class="bash-background-id" title="@bg.Id">@bg.Id</code>
                     @if (bg.CanCancel)
                     {
-                        <button type="button" class="bash-text-action" disabled="@_cancelling" @onclick="CancelBackgroundAsync">取消</button>
+                        <button type="button" class="bash-text-action"
+                                disabled="@(_cancelling || !ActivityControl.IsAvailable)"
+                                @onclick="CancelBackgroundAsync">取消</button>
                     }
                 </div>
             }
@@ -117,6 +132,8 @@
     private string? _lastStatus;
     private ElementReference _outputRef;
     private bool _cancelling;
+    private string? _fullOutput;
+    private bool _showFullOutput;
 
     /// <summary>
     /// 是否有可渲染的输出正文（前台取结果、后台取活动实时尾部）。
@@ -125,9 +142,18 @@
     /// <see cref="JSException"/> 并把 <c>_stickToBottom</c> 永久置 false（后台活动首帧常常还没有输出）。
     /// </para>
     /// </summary>
-    private bool HasOutputText => ToolCall.BackgroundActivity is { } bg
-        ? !string.IsNullOrEmpty(bg.LiveOutputTail)
-        : !string.IsNullOrEmpty(_card.DisplayOutput);
+    private bool HasOutputText
+    {
+        get
+        {
+            if (_showFullOutput && !string.IsNullOrEmpty(_fullOutput))
+                return true;
+
+            return ToolCall.BackgroundActivity is { } bg
+                ? !string.IsNullOrEmpty(bg.LiveOutputTail)
+                : !string.IsNullOrEmpty(_card.DisplayOutput);
+        }
+    }
 
     protected override void OnParametersSet()
     {
@@ -141,14 +167,18 @@
             _userToggledCard = false;
             _userToggledOutput = false;
             _stickToBottom = true;
-            // 执行中默认展开；历史已完成默认折叠（头栏样式与现网一致）
-            _isExpanded = ToolCall.IsRunning;
+            _fullOutput = null;
+            _showFullOutput = false;
+            // 执行中、或后台活动仍在跑时默认展开；历史已完成默认折叠。
+            _isExpanded = ToolCall.IsRunning
+                || ToolCall.BackgroundActivity?.Status == BackgroundActivityStatus.Running;
             _outputExpanded = !BashToolDisplayHelper.ShouldCollapseByDefault(_card.DisplayOutput, ToolCall.IsRunning);
         }
         else if (!_userToggledCard)
         {
-            // 执行中展开；执行结束后保持展开，避免折叠卸载 body 造成闪屏
-            if (ToolCall.IsRunning)
+            // 执行中/后台活动进行中保持展开；结束后保持展开，避免折叠卸载 body 造成闪屏
+            if (ToolCall.IsRunning
+                || ToolCall.BackgroundActivity?.Status == BackgroundActivityStatus.Running)
             {
                 _isExpanded = true;
             }
@@ -197,6 +227,23 @@
     {
         _userToggledOutput = true;
         _outputExpanded = !_outputExpanded;
+    }
+
+    /// <summary>
+    /// 后台活动：事件只带尾部，展开时从活动输出分页读全量（最多约 256KB）。
+    /// </summary>
+    private async Task ToggleFullOutputAsync()
+    {
+        if (_showFullOutput)
+        {
+            _showFullOutput = false;
+            return;
+        }
+
+        if (_fullOutput is null && ToolCall.BackgroundActivity is { } bg)
+            _fullOutput = await ActivityControl.ReadOutputAsync(bg.Id, bg.SessionId);
+
+        _showFullOutput = !string.IsNullOrEmpty(_fullOutput);
     }
 
     private async Task OnOutputScroll()
