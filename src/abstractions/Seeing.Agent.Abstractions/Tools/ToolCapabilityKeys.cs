@@ -34,6 +34,15 @@ namespace Seeing.Agent.Abstractions.Tools
         /// </summary>
         public const string ExposureLoad = "exposure.load";
 
+        /// <summary>
+        /// 豁免 Doom Loop 检测（"true"/"false"，默认 false）。
+        /// <para>
+        /// 轮询类工具（如等待状态轮询）会被模型以同一参数反复调用，属正常用法；
+        /// 声明后执行器完全跳过该次调用的记录与判定（不累计连续计数）。
+        /// </para>
+        /// </summary>
+        public const string LoopSkip = "loop.skip";
+
         // === 输出限制能力键（ToolOutputLimiterDecorator 消费）===
 
         /// <summary>豁免工具输出限制（"true"/"false"，默认 false）。工具自身已控制输出（如内置分页工具）时声明。</summary>

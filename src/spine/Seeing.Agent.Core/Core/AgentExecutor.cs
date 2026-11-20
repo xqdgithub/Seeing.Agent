@@ -12,6 +12,7 @@ using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Detection;
 using Seeing.Agent.Core.Execution;
+using Seeing.Agent.Core.Helpers;
 using Seeing.Agent.Core.Llm;
 using Seeing.Agent.Core.Permission;
 using Seeing.Agent.Core.Prompts;
@@ -678,9 +679,20 @@ public class AgentExecutor : IAgentExecutor
     {
         // ========== Doom Loop 检测（单一入口：Check 同时记录并返回判定）==========
         // 以 (toolId, SHA256(参数 JSON)) 为键，连续 3 次警告、≥5 次终止本 Loop。
+        // 声明 loop.skip 的工具（轮询类）完全跳过：既不记录也不判定，避免正常轮询被误杀。
         foreach (var tc in toolCalls)
         {
             var detectedName = tc.Function?.Name ?? "";
+
+            // 能力读取必须用结算归一化后的 canonical 名：模型可能写大小写变体（Read / read），
+            // 直接用原始名查注册表会漏掉声明了 loop.skip 的工具。
+            var canonicalName = context.ToolSettlement?.ResolveCanonicalId(detectedName);
+            if (ToolCapabilityReader.GetBool(
+                    _tools.GetTool(canonicalName ?? detectedName), ToolCapabilityKeys.LoopSkip))
+            {
+                continue;
+            }
+
             var argumentsHash = LoopDetector.ComputeArgumentsHash(tc.Function?.Arguments ?? string.Empty);
             var detection = state.LoopDetector.Check(detectedName, argumentsHash);
 
