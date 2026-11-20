@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 using Seeing.Agent.Abstractions.Background;
 using Seeing.Agent.Abstractions.Execution;
@@ -53,6 +54,70 @@ public class ProcessBackgroundActivityLauncherTests
         launch.Execution.IsCompletedSuccessfully.Should().BeTrue("取消后执行任务必须自然收尾");
         reporter.Completed.Should().BeNull("终态由 manager 裁决，launcher 不得重复上报");
         reporter.Failure.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Cancel_ShouldReturn_WhenProcessDoesNotExit()
+    {
+        // Kill 成功但进程就是不退出（僵尸进程 / 句柄被占）：取消必须受超时约束，不能永久挂住。
+        var time = new FakeTimeProvider();
+        var process = new FakeSubprocess(exitOnKill: false);
+        var reporter = new FakeReporter();
+        var launcher = CreateLauncher(process, timeProvider: time, exitWaitTimeout: TimeSpan.FromSeconds(5));
+        using var handleCts = new CancellationTokenSource();
+        var handle = CreateHandle(reporter, handleCts.Token);
+
+        var launch = await launcher.LaunchAsync(CreateContext(handle), TestContext.Current.CancellationToken)
+            .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        await handleCts.CancelAsync();
+
+        var cancel = launcher.CancelAsync(handle, BackgroundActivityCancelReason.User);
+        cancel.IsCompleted.Should().BeFalse("进程未退出，执行任务仍在等，取消不该立即返回");
+
+        // 用假时钟把「等退出」的超时推过去（不真实等待）。
+        time.Advance(TimeSpan.FromSeconds(5));
+
+        await cancel.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        process.KillCount.Should().Be(1);
+        reporter.Completed.Should().BeNull("终态由 manager 裁决");
+        reporter.Failure.Should().BeNull();
+
+        // 收尾路径自身也已放弃等待：执行任务不得继续挂住。
+        await launch.Execution.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task LongRunning_ShouldEmitHeartbeat()
+    {
+        var time = new FakeTimeProvider();
+        var process = new FakeSubprocess();
+        var reporter = new FakeReporter();
+        var launcher = CreateLauncher(process, timeProvider: time);
+        var handle = CreateHandle(reporter);
+
+        var launch = await launcher.LaunchAsync(CreateContext(handle), TestContext.Current.CancellationToken)
+            .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // 每次推进 30 秒并等心跳落地后再推进下一次：时钟是假的，不真实等待。
+        for (var i = 1; i <= 2; i++)
+        {
+            time.Advance(TimeSpan.FromSeconds(30));
+            var expected = i;
+            await WaitUntilAsync(
+                () => reporter.HeartbeatCount >= expected,
+                $"第 {expected} 次心跳应在 30 秒 × {expected} 后上报");
+        }
+
+        reporter.HeartbeatCount.Should().BeGreaterThanOrEqualTo(2);
+
+        process.Exit(0);
+        await launch.Execution.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        var afterExit = reporter.HeartbeatCount;
+        time.Advance(TimeSpan.FromMinutes(5));
+        reporter.HeartbeatCount.Should().Be(afterExit, "进程退出后必须停止心跳");
     }
 
     [Fact]
@@ -149,7 +214,9 @@ public class ProcessBackgroundActivityLauncherTests
 
     private static ProcessBackgroundActivityLauncher CreateLauncher(
         FakeSubprocess process,
-        Action<SubprocessSpec>? onStart = null)
+        Action<SubprocessSpec>? onStart = null,
+        TimeProvider? timeProvider = null,
+        TimeSpan? exitWaitTimeout = null)
     {
         var factory = new Mock<ISubprocessFactory>();
         factory.Setup(f => f.Start(It.IsAny<SubprocessSpec>()))
@@ -163,7 +230,9 @@ public class ProcessBackgroundActivityLauncherTests
             CreateWorld(factory.Object),
             CreateShellService(),
             CreateShellEnvironment(),
-            NullLogger<ProcessBackgroundActivityLauncher>.Instance);
+            NullLogger<ProcessBackgroundActivityLauncher>.Instance,
+            timeProvider,
+            exitWaitTimeout);
     }
 
     private static ProcessBackgroundActivityLauncher CreateFailingLauncher()
@@ -235,15 +304,35 @@ public class ProcessBackgroundActivityLauncherTests
         return new BackgroundActivityLaunchContext(handle, request, Workdir);
     }
 
+    /// <summary>
+    /// 条件轮询：命中即返回，上限兜底。轮询间隔属 E5（等待实现细节），不是「等状态就绪」的固定等待断言。
+    /// </summary>
+    private static async Task WaitUntilAsync(Func<bool> condition, string because)
+    {
+        const int maxAttempts = 500;
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            if (condition())
+                return;
+
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
+
+        throw new TimeoutException($"等待条件超时：{because}");
+    }
+
     // ─── fake ────────────────────────────────────────────────────────────────
 
     /// <summary>可控子进程：<see cref="WaitForExitAsync"/> 挂起到 <see cref="Exit"/> / <see cref="Kill"/> 为止。</summary>
     private sealed class FakeSubprocess : ISubprocess
     {
         private readonly TaskCompletionSource _exit = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly bool _exitOnKill;
 
-        public FakeSubprocess(string[]? stdout = null, string[]? stderr = null)
+        /// <param name="exitOnKill">为 <see langword="false"/> 时模拟「Kill 成功但进程就是不退出」。</param>
+        public FakeSubprocess(string[]? stdout = null, string[]? stderr = null, bool exitOnKill = true)
         {
+            _exitOnKill = exitOnKill;
             StandardOutput = new LineReader(stdout ?? []);
             StandardError = new LineReader(stderr ?? []);
         }
@@ -269,7 +358,8 @@ public class ProcessBackgroundActivityLauncherTests
         {
             KillCount++;
             KilledEntireTree = entireTree;
-            _exit.TrySetResult();
+            if (_exitOnKill)
+                _exit.TrySetResult();
         }
 
         public void Exit(int exitCode)
@@ -304,10 +394,13 @@ public class ProcessBackgroundActivityLauncherTests
     {
         private readonly object _gate = new();
         private readonly List<byte> _output = [];
+        private int _heartbeatCount;
 
         public BackgroundActivityResult? Completed { get; private set; }
 
         public (string Code, string Message)? Failure { get; private set; }
+
+        public int HeartbeatCount => Volatile.Read(ref _heartbeatCount);
 
         public string OutputText
         {
@@ -324,7 +417,7 @@ public class ProcessBackgroundActivityLauncherTests
 
         public void ReportProgress(BackgroundActivityProgress progress) { }
 
-        public void Heartbeat() { }
+        public void Heartbeat() => Interlocked.Increment(ref _heartbeatCount);
 
         public Task AppendOutputAsync(ReadOnlyMemory<byte> chunk, CancellationToken ct = default)
         {

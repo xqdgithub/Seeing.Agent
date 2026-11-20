@@ -36,6 +36,14 @@ namespace Seeing.Agent.Tools.Shell;
 /// <para>
 /// <b>进程生命周期</b>：<see cref="SubprocessLifecycle.HostBound"/>——宿主退出（含崩溃）时由内核回收整棵进程树。
 /// </para>
+/// <para>
+/// <b>心跳</b>：运行期每 <see cref="DefaultHeartbeatInterval"/> 调一次
+/// <see cref="IBackgroundActivityReporter.Heartbeat"/>，进程退出即停；由注入的 <see cref="TimeProvider"/> 驱动。
+/// </para>
+/// <para>
+/// <b>等待上限</b>：等执行任务收尾（<see cref="CancelAsync"/>）与等进程退出收尾（<see cref="RunAsync"/>）
+/// 都受 <see cref="DefaultExitWaitTimeout"/> 约束——<c>Kill</c> 失败时不得把工作区切换/模块停用永久挂住。
+/// </para>
 /// </summary>
 public sealed class ProcessBackgroundActivityLauncher : IBackgroundActivityLauncher
 {
@@ -51,24 +59,44 @@ public sealed class ProcessBackgroundActivityLauncher : IBackgroundActivityLaunc
     /// <summary><see cref="CancellationTokenSource.CancelAfter(TimeSpan)"/> 可接受的最大延时（约 49.7 天）。</summary>
     private static readonly TimeSpan s_maxTimerDelay = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
 
+    /// <summary>等执行任务 / 等进程退出的默认上限：超过即放弃等待，绝不永久挂住调用方。</summary>
+    public static readonly TimeSpan DefaultExitWaitTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>运行期心跳的默认间隔（契约要求至少每 30 秒一次）。</summary>
+    public static readonly TimeSpan DefaultHeartbeatInterval = TimeSpan.FromSeconds(30);
+
     private readonly IExecutionWorld _world;
     private readonly IShellService _shellService;
     private readonly IShellEnvironmentService _shellEnvironment;
     private readonly ILogger<ProcessBackgroundActivityLauncher> _logger;
+    private readonly TimeProvider _timeProvider;
+    private readonly TimeSpan _exitWaitTimeout;
+    private readonly TimeSpan _heartbeatInterval;
 
     /// <summary>activityId → 在途进程（取消时按句柄找到进程与执行任务）。</summary>
     private readonly ConcurrentDictionary<string, ProcessEntry> _running = new(StringComparer.Ordinal);
 
+    /// <param name="timeProvider">心跳与等待上限的时钟；缺省 <see cref="TimeProvider.System"/>。</param>
+    /// <param name="exitWaitTimeout">等执行任务 / 等进程退出的上限；缺省 <see cref="DefaultExitWaitTimeout"/>。</param>
+    /// <param name="heartbeatInterval">运行期心跳间隔；缺省 <see cref="DefaultHeartbeatInterval"/>。</param>
     public ProcessBackgroundActivityLauncher(
         IExecutionWorld world,
         IShellService shellService,
         IShellEnvironmentService shellEnvironment,
-        ILogger<ProcessBackgroundActivityLauncher> logger)
+        ILogger<ProcessBackgroundActivityLauncher> logger,
+        TimeProvider? timeProvider = null,
+        TimeSpan? exitWaitTimeout = null,
+        TimeSpan? heartbeatInterval = null)
     {
         _world = world ?? throw new ArgumentNullException(nameof(world));
         _shellService = shellService ?? throw new ArgumentNullException(nameof(shellService));
         _shellEnvironment = shellEnvironment ?? throw new ArgumentNullException(nameof(shellEnvironment));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _exitWaitTimeout = exitWaitTimeout is { } wait && wait > TimeSpan.Zero ? wait : DefaultExitWaitTimeout;
+        _heartbeatInterval = heartbeatInterval is { } interval && interval > TimeSpan.Zero
+            ? interval
+            : DefaultHeartbeatInterval;
     }
 
     /// <inheritdoc />
@@ -191,11 +219,22 @@ public sealed class ProcessBackgroundActivityLauncher : IBackgroundActivityLaunc
         }
 
         // 等执行任务自然结束：模块停用/宿主关闭不得留下仍在跑的收尾逻辑。
+        // 但必须设上限——Kill 失败时执行任务可能永远等不到进程退出，无上限会把工作区切换/停用挂死。
         if (entry.Execution is { } execution)
         {
             try
             {
-                await execution.ConfigureAwait(false);
+                await execution
+                    .WaitAsync(_exitWaitTimeout, _timeProvider, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning(
+                    "取消后台进程时等待执行任务收尾超时，放弃等待 ActivityId={ActivityId} Reason={Reason} TimeoutMs={TimeoutMs}",
+                    handle.ActivityId,
+                    reason,
+                    _exitWaitTimeout.TotalMilliseconds);
             }
             catch (Exception ex)
             {
@@ -205,12 +244,15 @@ public sealed class ProcessBackgroundActivityLauncher : IBackgroundActivityLaunc
     }
 
     /// <summary>
-    /// 执行面：泵输出 → 等退出 → 上报终态。
+    /// 执行面：泵输出 → 等退出 → 上报终态；运行期按 <see cref="DefaultHeartbeatInterval"/> 上报心跳。
     /// </summary>
     private async Task RunAsync(ProcessEntry entry, BackgroundActivityLaunchContext ctx)
     {
         var handle = ctx.Handle;
         var cancellation = handle.CancellationToken;
+
+        CancellationTokenSource? heartbeatCts = null;
+        Task? heartbeatLoop = null;
 
         try
         {
@@ -219,7 +261,7 @@ public sealed class ProcessBackgroundActivityLauncher : IBackgroundActivityLaunc
             if (cancellation.IsCancellationRequested)
             {
                 KillQuietly(entry.Process, handle.ActivityId);
-                await WaitForExitQuietlyAsync(entry.Process).ConfigureAwait(false);
+                await WaitForExitQuietlyAsync(entry.Process, handle.ActivityId).ConfigureAwait(false);
                 return;
             }
 
@@ -229,6 +271,10 @@ public sealed class ProcessBackgroundActivityLauncher : IBackgroundActivityLaunc
 
             using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(cancellation, timeoutCts.Token);
             var waitToken = waitCts.Token;
+
+            // 运行期心跳：契约要求至少每 30 秒一次，否则 UI 会把长任务标成「疑似卡死」。
+            heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(waitToken);
+            heartbeatLoop = RunHeartbeatLoopAsync(entry, handle, heartbeatCts.Token);
 
             var stdout = PumpAsync(entry, handle, entry.Process.StandardOutput, waitToken);
             var stderr = PumpAsync(entry, handle, entry.Process.StandardError, waitToken);
@@ -245,8 +291,14 @@ public sealed class ProcessBackgroundActivityLauncher : IBackgroundActivityLaunc
                 if (timedOut)
                     KillQuietly(entry.Process, handle.ActivityId);
 
-                await WaitForExitQuietlyAsync(entry.Process).ConfigureAwait(false);
+                await WaitForExitQuietlyAsync(entry.Process, handle.ActivityId).ConfigureAwait(false);
             }
+
+            // 进程已退出（含被杀）：先停心跳再做收尾，别把已退出的进程继续标成「活着」。
+            await StopHeartbeatLoopAsync(heartbeatCts, heartbeatLoop).ConfigureAwait(false);
+            heartbeatCts.Dispose();
+            heartbeatCts = null;
+            heartbeatLoop = null;
 
             await DrainAsync(stdout, stderr).ConfigureAwait(false);
 
@@ -282,8 +334,88 @@ public sealed class ProcessBackgroundActivityLauncher : IBackgroundActivityLaunc
         }
         finally
         {
+            await StopHeartbeatLoopAsync(heartbeatCts, heartbeatLoop).ConfigureAwait(false);
+            heartbeatCts?.Dispose();
             _running.TryRemove(handle.ActivityId, out _);
             entry.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// 运行期心跳：每 <see cref="DefaultHeartbeatInterval"/> 报一次，取消（进程退出 / 活动取消 / 超时）即停。
+    /// 心跳失败只丢这一次上报，绝不影响进程与终态。
+    /// </summary>
+    private async Task RunHeartbeatLoopAsync(
+        ProcessEntry entry,
+        BackgroundActivityHandle handle,
+        CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(_heartbeatInterval, _timeProvider, ct).ConfigureAwait(false);
+
+                if (ct.IsCancellationRequested)
+                    return;
+
+                try
+                {
+                    handle.Reporter.Heartbeat();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "上报后台进程心跳失败 ActivityId={ActivityId}", handle.ActivityId);
+                }
+
+                // 进程退出后不再心跳：终态上报不认心跳，继续打点会让已结束的活动看起来还在跑。
+                if (HasExitedQuietly(entry.Process))
+                    return;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 进程退出 / 活动取消：心跳到此结束。
+        }
+    }
+
+    /// <summary>停心跳并等它退出；只做收尾，失败不影响终态裁决。</summary>
+    private static async Task StopHeartbeatLoopAsync(CancellationTokenSource? cts, Task? loop)
+    {
+        if (cts is null)
+            return;
+
+        try
+        {
+            await cts.CancelAsync().ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // CTS 已释放：心跳早已结束。
+        }
+
+        if (loop is null)
+            return;
+
+        try
+        {
+            await loop.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // 心跳循环自身的异常不该冒到执行面。
+        }
+    }
+
+    private static bool HasExitedQuietly(ISubprocess process)
+    {
+        try
+        {
+            return process.HasExited;
+        }
+        catch (Exception)
+        {
+            return true;
         }
     }
 
@@ -344,15 +476,30 @@ public sealed class ProcessBackgroundActivityLauncher : IBackgroundActivityLaunc
         }
     }
 
-    private static async Task WaitForExitQuietlyAsync(ISubprocess process)
+    /// <summary>
+    /// 收尾等待进程退出，受退出等待上限（默认 <see cref="DefaultExitWaitTimeout"/>）约束：<c>Kill</c> 失败时
+    /// 宁可放弃等待（记 Warning），也不能把执行任务（进而把取消/停用/工作区切换）永久挂住。
+    /// </summary>
+    private async Task WaitForExitQuietlyAsync(ISubprocess process, string activityId)
     {
         try
         {
-            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            await process
+                .WaitForExitAsync(CancellationToken.None)
+                .WaitAsync(_exitWaitTimeout, _timeProvider, CancellationToken.None)
+                .ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (TimeoutException)
+        {
+            _logger.LogWarning(
+                "等待后台进程退出超时，放弃收尾等待 ActivityId={ActivityId} TimeoutMs={TimeoutMs}",
+                activityId,
+                _exitWaitTimeout.TotalMilliseconds);
+        }
+        catch (Exception ex)
         {
             // 只为把进程收尾干净；失败不影响终态裁决。
+            _logger.LogDebug(ex, "等待后台进程退出失败 ActivityId={ActivityId}", activityId);
         }
     }
 
