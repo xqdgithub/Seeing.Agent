@@ -149,7 +149,7 @@
 
     @if (_dialog is { } dialog)
     {
-        <div class="file-dialog-backdrop">
+        <dialog class="file-dialog-native" @ref="_dialogEl" @onclose="OnDialogClosed">
             <div class="file-dialog">
                 <div class="file-dialog-title">@dialog.Title</div>
                 <div class="file-dialog-body">
@@ -164,12 +164,12 @@
                     }
                 </div>
                 <div class="file-dialog-actions">
-                    <button type="button" class="file-dialog-btn" @onclick="CloseDialog">取消</button>
+                    <button type="button" class="file-dialog-btn" @onclick="CloseDialogAsync">取消</button>
                     <button type="button" class="file-dialog-btn @(dialog.Kind == DialogKind.Delete ? "danger" : "primary")"
                             @onclick="ConfirmDialogAsync">@dialog.OkText</button>
                 </div>
             </div>
-        </div>
+        </dialog>
     }
 </div>
 
@@ -190,6 +190,7 @@
     private ContextMenuState? _contextMenu;
     private DialogState? _dialog;
     private string _dialogValue = string.Empty;
+    private Microsoft.AspNetCore.Components.ElementReference _dialogEl;
 
     protected override async Task OnInitializedAsync()
     {
@@ -332,6 +333,13 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // 原生 <dialog> 必须经 showModal 才能进入 top layer（遮罩覆盖整个视口）
+        if (_dialog is not null && _dialogEl.Context is not null)
+        {
+            try { await JS.InvokeVoidAsync("seeingFilesPanel.showModal", _dialogEl); }
+            catch { /* JS 未就绪：下次渲染重试 */ }
+        }
+
         // 消费 agent 待处理打开请求（面板刚打开时宿主尚未就绪，故在渲染后处理）
         await ConsumePendingOpenAsync();
         await base.OnAfterRenderAsync(firstRender);
@@ -578,7 +586,7 @@
                 }
             }
 
-            CloseDialog();
+            await CloseDialogAsync();
         }
         catch (Exception ex)
         {
@@ -595,7 +603,21 @@
         return name;
     }
 
-    private void CloseDialog()
+    private async Task CloseDialogAsync()
+    {
+        if (_dialogEl.Context is not null)
+        {
+            try { await JS.InvokeVoidAsync("seeingFilesPanel.closeModal", _dialogEl); }
+            catch { /* 元素已销毁 */ }
+        }
+
+        _dialog = null;
+        _dialogValue = string.Empty;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>原生 dialog 被 Esc/浏览器关闭时同步组件状态。</summary>
+    private void OnDialogClosed()
     {
         _dialog = null;
         _dialogValue = string.Empty;

@@ -151,6 +151,16 @@
         }
     };
 
+    // 原生 <dialog> 的 showModal 会把元素提升到 top layer：
+    // 遮罩（::backdrop）永远覆盖视口，不受祖先 transform / overflow 影响。
+    window.seeingFilesPanel.showModal = function (el) {
+        if (el && !el.open) el.showModal();
+    };
+
+    window.seeingFilesPanel.closeModal = function (el) {
+        if (el && el.open) el.close();
+    };
+
     // ===== 编辑器命令枚举（BlazorMonaco 未暴露 getSupportedActions 的 C# API）=====
     window.seeingEditor = window.seeingEditor || {};
     // 按 id 读当前缓冲；id 对不上时退回文件面板里真正获得焦点的那一个编辑器。

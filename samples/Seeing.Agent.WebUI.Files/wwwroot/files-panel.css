@@ -73,8 +73,8 @@
 .file-root-bar { width: 3px; height: 13px; border-radius: 2px; flex-shrink: 0; background: #d9d9d9; }
 .file-root-bar.is-project { background: #1677ff; }
 .file-root-bar.is-collab { background: #d46b08; }
-.file-ctx-backdrop { position: fixed; inset: 0; z-index: 40; }
-.file-ctx-menu { position: fixed; z-index: 41; width: 200px; padding: 5px; background: #fff; border: 1px solid var(--color-border, #eee); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); }
+.file-ctx-backdrop { position: fixed; inset: 0; z-index: 3000; }
+.file-ctx-menu { position: fixed; z-index: 3001; width: 200px; padding: 5px; background: #fff; border: 1px solid var(--color-border, #eee); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); }
 .file-ctx-menu .item { display: block; width: 100%; padding: 6px 9px; border: none; background: transparent; border-radius: 5px; text-align: left; font-size: 12.5px; color: #1d2129; cursor: pointer; }
 .file-ctx-menu .item:hover { background: #f2f3f5; }
 .file-ctx-menu .divider { height: 1px; background: var(--color-border, #eee); margin: 4px 2px; }
@@ -251,7 +251,8 @@ body.file-panel-resizing * { cursor: col-resize !important; }
 .file-tree-tool { border: none; background: transparent; color: #4e5969; font-size: 12px; padding: 2px 6px; border-radius: 5px; cursor: pointer; }
 .file-tree-tool:hover { background: #f2f3f5; }
 .file-ctx-menu .item.danger { color: #cb2634; }
-.file-dialog-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.28); display: flex; align-items: center; justify-content: center; }
+.file-dialog-native { border: none; padding: 0; background: transparent; max-width: none; max-height: none; overflow: visible; }
+.file-dialog-native::backdrop { background: rgba(0, 0, 0, 0.28); }
 .file-dialog { width: 360px; background: #fff; border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2); overflow: hidden; }
 .file-dialog-title { padding: 12px 16px; font-weight: 600; font-size: 14px; border-bottom: 1px solid var(--color-border, #eee); }
 .file-dialog-body { padding: 14px 16px; font-size: 13px; color: #4e5969; }
