@@ -33,7 +33,7 @@ public class OneShotRunnerTests
 
         public Fixture()
         {
-            Directory.Setup(d => d.CreateAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            Directory.Setup(d => d.CreateAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => NewSession("ses_test"));
 
             SessionManager

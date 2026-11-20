@@ -8,6 +8,7 @@ using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Skills.Catalog;
 using Seeing.Agent.Skills.Commands;
 using Seeing.Agent.Skills.Sources;
+using Seeing.Session.Core;
 using System.Text.Json;
 using Xunit;
 
@@ -329,6 +330,9 @@ public sealed class SkillsContextSourceTests : IDisposable
         public string? UserQuery { get; set; }
 
         public Seeing.Agent.Abstractions.Execution.SessionToolSchemaResolution? ToolSettlement { get; set; }
+
+        public IReadOnlyList<CollaborationDirectory> CollaborationDirectories { get; set; } =
+            Array.Empty<CollaborationDirectory>();
     }
 
 }

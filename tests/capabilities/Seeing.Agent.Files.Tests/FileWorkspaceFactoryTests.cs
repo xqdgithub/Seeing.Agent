@@ -10,16 +10,30 @@ namespace Seeing.Agent.Files.Tests;
 
 public class FileWorkspaceFactoryTests
 {
+    private sealed class TestRootSet(string root) : Seeing.Agent.Abstractions.Directories.ISessionRootSet
+    {
+        public IReadOnlyList<Seeing.Agent.Abstractions.Directories.SessionRoot> Roots(string sessionId)
+            => [new Seeing.Agent.Abstractions.Directories.SessionRoot(
+                Path.GetFullPath(root),
+                Seeing.Agent.Abstractions.Directories.SessionRootKind.Project,
+                "project",
+                Directory.Exists(root))];
+
+        public bool IsAuthorized(string sessionId, string absolutePath) => true;
+        public bool IsTrusted(string sessionId, string absolutePath) => true;
+    }
+
     private static FileWorkspaceFactory Create(string? cwd, string projectRoot, out FileWatcherPool pool)
     {
-        var sessions = new Mock<ISessionWorkspaceResolver>();
-        sessions.Setup(s => s.ResolveWorkingDirectory(It.IsAny<string>())).Returns(cwd);
-        var ws = new Mock<IWorkspaceProvider>();
-        ws.SetupGet(w => w.ProjectSeeingDirectory).Returns(Path.Combine(projectRoot, ".seeing"));
         var gate = new Mock<IWorkspacePathGate>();
         gate.Setup(g => g.EnsureAllowed(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)null);
         pool = new FileWatcherPool();
-        return new FileWorkspaceFactory(sessions.Object, ws.Object, new LocalFileSystem(), gate.Object, pool, new ProcessPathWriteLock());
+        return new FileWorkspaceFactory(
+            new TestRootSet(cwd ?? projectRoot),
+            new LocalFileSystem(),
+            gate.Object,
+            pool,
+            new ProcessPathWriteLock());
     }
 
     [Fact]

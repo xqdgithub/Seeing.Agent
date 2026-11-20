@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -39,7 +39,7 @@ public class GrepGlobSubprocessTests
         var tool = new GrepTool(NullLogger<GrepTool>.Instance, world, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "hello", path = @"C:\repo" }),
-            new ToolContext { SessionId = "s", CallId = "c" });
+            new ToolContext { SessionId = "s", CallId = "c", WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         lastSpec!.FileName.Should().Be("rg");
@@ -69,7 +69,7 @@ public class GrepGlobSubprocessTests
         var tool = new GrepTool(NullLogger<GrepTool>.Instance, world, AllowAllPathGate.Instance);
         await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "招考 简章", path = @"/repo with space", include = "*.md" }),
-            new ToolContext { SessionId = "s", CallId = "c" });
+            new ToolContext { SessionId = "s", CallId = "c", WorkingDirectory = Path.GetTempPath() });
 
         searchSpec!.ArgumentList.Should().NotBeNull();
         searchSpec.Arguments.Should().BeEmpty();
@@ -93,7 +93,7 @@ public class GrepGlobSubprocessTests
         var tool = new GrepTool(NullLogger<GrepTool>.Instance, world, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "needle", path = @"C:\repo" }),
-            new ToolContext { SessionId = "s", CallId = "c" });
+            new ToolContext { SessionId = "s", CallId = "c", WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("未找到匹配的文件");
@@ -121,7 +121,7 @@ public class GrepGlobSubprocessTests
         var tool = new GrepTool(NullLogger<GrepTool>.Instance, world, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "hit", path = @"C:\repo" }),
-            new ToolContext { SessionId = "s", CallId = "c" });
+            new ToolContext { SessionId = "s", CallId = "c", WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         stderr.WasRead.Should().BeTrue("stderr 必须被并发排空以释放管道");
@@ -147,7 +147,7 @@ public class GrepGlobSubprocessTests
         var tool = new GrepTool(logger, world, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "needle", path = @"C:\repo" }),
-            new ToolContext { SessionId = "s", CallId = "c" });
+            new ToolContext { SessionId = "s", CallId = "c", WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("needle");
@@ -175,7 +175,7 @@ public class GrepGlobSubprocessTests
         var tool = new GrepTool(NullLogger<GrepTool>.Instance, world, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "hit", path = @"C:\repo" }),
-            new ToolContext { SessionId = "s", CallId = "c" });
+            new ToolContext { SessionId = "s", CallId = "c", WorkingDirectory = Path.GetTempPath() });
 
         result.Output.Should().Contain("中文.cs");
         result.Output.Should().Contain(":3:");
@@ -193,7 +193,7 @@ public class GrepGlobSubprocessTests
         var tool = new GrepTool(NullLogger<GrepTool>.Instance, world, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "needle", path = @"C:\repo" }),
-            new ToolContext { SessionId = "s", CallId = "c" });
+            new ToolContext { SessionId = "s", CallId = "c", WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("needle");
@@ -216,7 +216,7 @@ public class GrepGlobSubprocessTests
         var tool = new GlobTool(NullLogger<GlobTool>.Instance, world, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "**/*.cs", path = @"C:\repo" }),
-            new ToolContext { SessionId = "s", CallId = "c" });
+            new ToolContext { SessionId = "s", CallId = "c", WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         searchSpec!.ArgumentList.Should().Contain("--files");
@@ -241,7 +241,7 @@ public class GrepGlobSubprocessTests
         var tool = new GlobTool(NullLogger<GlobTool>.Instance, world, AllowAllPathGate.Instance);
         await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "*.yml", path = @"C:\repo", hidden = true }),
-            new ToolContext { SessionId = "s", CallId = "c" });
+            new ToolContext { SessionId = "s", CallId = "c", WorkingDirectory = Path.GetTempPath() });
 
         searchSpec!.ArgumentList.Should().Contain("--hidden");
     }
@@ -263,7 +263,7 @@ public class GrepGlobSubprocessTests
         var tool = new GlobTool(NullLogger<GlobTool>.Instance, world, AllowAllPathGate.Instance);
         await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "*.cs", path = @"C:\repo" }),
-            new ToolContext { SessionId = "s", CallId = "c" });
+            new ToolContext { SessionId = "s", CallId = "c", WorkingDirectory = Path.GetTempPath() });
 
         searchSpec!.ArgumentList.Should().NotContain("--hidden");
     }
@@ -285,7 +285,7 @@ public class GrepGlobSubprocessTests
         var tool = new GrepTool(NullLogger<GrepTool>.Instance, world, AllowAllPathGate.Instance);
         await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "x", path = @"C:\repo", hidden = true }),
-            new ToolContext { SessionId = "s", CallId = "c" });
+            new ToolContext { SessionId = "s", CallId = "c", WorkingDirectory = Path.GetTempPath() });
 
         searchSpec!.ArgumentList.Should().Contain("--hidden");
     }
@@ -307,7 +307,7 @@ public class GrepGlobSubprocessTests
         var tool = new GlobTool(NullLogger<GlobTool>.Instance, world, AllowAllPathGate.Instance);
         await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "*.cs", path = @"C:\repo" }),
-            new ToolContext { SessionId = "s", CallId = "c" });
+            new ToolContext { SessionId = "s", CallId = "c", WorkingDirectory = Path.GetTempPath() });
 
         searchSpec!.ArgumentList.Should().NotContain("--max-count");
         searchSpec.ArgumentList.Should().Contain("--sortr=modified");
@@ -327,7 +327,7 @@ public class GrepGlobSubprocessTests
         var tool = new GlobTool(NullLogger<GlobTool>.Instance, world, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "*.cs", path = @"C:\repo" }),
-            new ToolContext { SessionId = "s", CallId = "c" });
+            new ToolContext { SessionId = "s", CallId = "c", WorkingDirectory = Path.GetTempPath() });
 
         result.Metadata["truncated"].Should().Be(false);
     }
@@ -346,7 +346,7 @@ public class GrepGlobSubprocessTests
         var tool = new GlobTool(NullLogger<GlobTool>.Instance, world, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "*.cs", path = @"C:\repo" }),
-            new ToolContext { SessionId = "s", CallId = "c" });
+            new ToolContext { SessionId = "s", CallId = "c", WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("未找到匹配文件");
@@ -401,7 +401,7 @@ public class GrepGlobSubprocessTests
         using var cts = new CancellationTokenSource();
         var fs = new Mock<IFileSystem>();
         fs.Setup(f => f.Exists(It.IsAny<string>())).Returns(true);
-        fs.Setup(f => f.GetFullPath(It.IsAny<string>())).Returns((string p) => p);
+        fs.Setup(f => f.GetFullPath(It.IsAny<string>(), It.IsAny<string>())).Returns((string p, string _) => p);
         fs.Setup(f => f.EnumerateFiles(It.IsAny<string>(), "*", It.IsAny<bool>()))
             .Returns(() =>
             {
@@ -425,7 +425,7 @@ public class GrepGlobSubprocessTests
 
         var act = async () => await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { pattern = "**/*.cs", path = @"C:\repo" }),
-            new ToolContext { SessionId = "s", CallId = "c", CancellationToken = cts.Token });
+            new ToolContext { SessionId = "s", CallId = "c", CancellationToken = cts.Token, WorkingDirectory = Path.GetTempPath() });
 
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
@@ -439,7 +439,7 @@ public class GrepGlobSubprocessTests
     {
         var fs = new Mock<IFileSystem>();
         fs.Setup(f => f.Exists(It.IsAny<string>())).Returns(fsExists);
-        fs.Setup(f => f.GetFullPath(It.IsAny<string>())).Returns((string p) => p);
+        fs.Setup(f => f.GetFullPath(It.IsAny<string>(), It.IsAny<string>())).Returns((string p, string _) => p);
         fs.Setup(f => f.EnumerateFiles(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>()))
             .Returns(() =>
             {

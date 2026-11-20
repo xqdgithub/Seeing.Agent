@@ -193,11 +193,12 @@ public class ToolMetadataTests
         // 2) id 集合仍按产品事实锁定（SystemOneTool 一个类型 → 4 个 id）。
         var ids = BuiltInToolCatalog.All().Select(t => t.Id).ToArray();
 
-        ids.Should().HaveCount(68);
+        ids.Should().HaveCount(69);
         ids.Should().OnlyHaveUniqueItems();
         ids.Should().BeEquivalentTo(new[]
         {
-            "read", "write", "edit", "delete", "grep", "glob", "open_file", "add_workspace_path", "bash",
+            "read", "write", "edit", "delete", "grep", "glob", "open_file", "add_workspace_path",
+            "add_collaboration_directory", "bash",
             "task", "task_status", "todowrite",
             "session_list", "session_read", "session_search", "session_trim", "session_handoff",
             "session_inbox_send", "session_takeover", "session_release",

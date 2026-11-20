@@ -18,12 +18,28 @@ public class TranscribeAudioToolTests
     {
         public string? EnsureAllowed(string sessionId, string path) => null;
         public string? EnsureWithinWorkspace(string sessionId, string path) => null;
+
+        public string? ResolveAllowed(string sessionId, string path, string? baseDirectory, out string fullPath)
+        {
+            fullPath = Path.IsPathRooted(path) || string.IsNullOrWhiteSpace(baseDirectory)
+                ? path
+                : Path.GetFullPath(path, baseDirectory);
+            return null;
+        }
     }
 
     private sealed class DenyAllPathGate : IWorkspacePathGate
     {
         public string? EnsureAllowed(string sessionId, string path) => "路径不在工作区允许集内";
         public string? EnsureWithinWorkspace(string sessionId, string path) => "路径不在工作区允许集内";
+
+        public string? ResolveAllowed(string sessionId, string path, string? baseDirectory, out string fullPath)
+        {
+            fullPath = Path.IsPathRooted(path) || string.IsNullOrWhiteSpace(baseDirectory)
+                ? path
+                : Path.GetFullPath(path, baseDirectory);
+            return "路径不在工作区允许集内";
+        }
     }
 
     private static TranscribeAudioTool CreateTool(IWorkspacePathGate? gate = null) =>

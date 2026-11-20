@@ -49,11 +49,10 @@ public class ToolManagerAgentContextTests
 
         await manager.ExecuteAsync(
             toolCall,
-            "s1",
-            TestContext.Current.CancellationToken,
-            emitAsync: null,
-            permissionAuthorizer: null,
-            agent: agent);
+            new ToolInvocation(
+                "s1", string.Empty, agent, null, null, null,
+                Array.Empty<Seeing.Session.Core.CollaborationDirectory>(), null),
+            TestContext.Current.CancellationToken);
 
         tool.Captured.Should().NotBeNull();
         tool.Captured!.Agent.Should().BeSameAs(agent);

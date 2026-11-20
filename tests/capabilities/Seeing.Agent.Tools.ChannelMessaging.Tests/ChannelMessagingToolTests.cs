@@ -507,7 +507,7 @@ public class ChannelAttachmentNormalizerTests
     {
         var h = new ToolHarness();
         const string full = "/ws/report.pdf";
-        h.FileSystem.Setup(f => f.GetFullPath(It.IsAny<string>())).Returns(full);
+        h.FileSystem.Setup(f => f.GetFullPath(It.IsAny<string>(), It.IsAny<string>())).Returns(full);
         h.FileSystem.Setup(f => f.Exists(full)).Returns(exists);
         h.FileSystem.Setup(f => f.IsDirectory(full)).Returns(isDirectory);
         h.FileSystem.Setup(f => f.GetFileLength(full)).Returns(length);
@@ -568,7 +568,7 @@ public class ChannelAttachmentNormalizerTests
         normalized.Attachment.Should().BeNull();
         normalized.IsParameterError.Should().BeTrue();
         normalized.Error.Should().Contain("缺少工作区");
-        h.FileSystem.Verify(f => f.GetFullPath(It.IsAny<string>()), Times.Never);
+        h.FileSystem.Verify(f => f.GetFullPath(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 }
 
@@ -606,7 +606,7 @@ internal sealed class ToolHarness
 
     public void SetupFile(string fullPath, long size)
     {
-        FileSystem.Setup(f => f.GetFullPath(It.IsAny<string>())).Returns(fullPath);
+        FileSystem.Setup(f => f.GetFullPath(It.IsAny<string>(), It.IsAny<string>())).Returns(fullPath);
         FileSystem.Setup(f => f.Exists(fullPath)).Returns(true);
         FileSystem.Setup(f => f.IsDirectory(fullPath)).Returns(false);
         FileSystem.Setup(f => f.GetFileLength(fullPath)).Returns(size);

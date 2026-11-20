@@ -18,13 +18,13 @@ public class BashToolSubprocessTests
     private const string WorldCwd = @"C:\fake\world\cwd";
 
     [Fact]
-    public async Task ExecuteAsync_WithoutWorkdir_ShouldUseWorldCwd()
+    public async Task ExecuteAsync_WithoutWorkdir_ShouldUseContextWorkingDirectory()
     {
         SubprocessSpec? capturedSpec = null;
         var (bash, ctx) = CreateBashTool(spec => capturedSpec = spec, worldCwd: WorldCwd);
         var result = await bash.ExecuteAsync(BuildArgs("echo hi"), ctx);
         result.Success.Should().BeTrue();
-        capturedSpec!.WorkingDirectory.Should().Be(WorldCwd);
+        capturedSpec!.WorkingDirectory.Should().Be(ctx.WorkingDirectory);
     }
 
     [Fact]
@@ -178,12 +178,13 @@ public class BashToolSubprocessTests
         }
 
         var tool = new BashTool(NullLogger<BashTool>.Instance, world.Object, shellService.Object,
-            shellEnv.Object, options.Object);
+            shellEnv.Object, options.Object, AllowAllWorkspacePathGate.Instance);
         var context = new ToolContext
         {
             SessionId = "s",
             CallId = "c",
-            EventSink = sink
+            EventSink = sink,
+            WorkingDirectory = Path.GetTempPath()
         };
         return (tool, context);
     }

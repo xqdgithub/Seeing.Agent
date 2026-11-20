@@ -47,6 +47,7 @@ internal static class BuiltInToolCatalog
         typeof(GlobTool),
         typeof(OpenFileTool),
         typeof(AddWorkspacePathTool),
+        typeof(AddCollaborationDirectoryTool),
         typeof(BashTool),
         typeof(TaskTool),
         typeof(TaskStatusTool),

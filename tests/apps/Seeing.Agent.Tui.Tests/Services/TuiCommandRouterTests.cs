@@ -112,7 +112,7 @@ public sealed class TuiCommandRouterTests
         result.ForwardText.Should().BeNull();
         result.Output.Should().NotBeNull();
         directory.Verify(
-            o => o.CreateAsync("My Title", null, null, It.IsAny<CancellationToken>()),
+            o => o.CreateAsync("My Title", null, It.IsAny<CancellationToken>()),
             Times.Once);
         controller.Current.Should().NotBeNull();
     }
@@ -579,7 +579,7 @@ public sealed class TuiCommandRouterTests
     {
         var directory = new Mock<ISessionDirectory>();
         directory
-            .Setup(o => o.CreateAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Setup(o => o.CreateAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => SessionData.Create());
         directory
             .Setup(o => o.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))

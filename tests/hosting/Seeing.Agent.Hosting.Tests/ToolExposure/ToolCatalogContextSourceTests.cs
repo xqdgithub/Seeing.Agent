@@ -6,6 +6,7 @@ using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Hosting.Execution.ToolExposure;
+using Seeing.Session.Core;
 using Xunit;
 
 namespace Seeing.Agent.Hosting.Tests.ToolExposure;
@@ -162,5 +163,7 @@ public class ToolCatalogContextSourceTests
         public SkillCatalogSnapshot? SkillSnapshot { get; set; }
         public string? UserQuery { get; set; }
         public SessionToolSchemaResolution? ToolSettlement { get; set; }
+        public IReadOnlyList<CollaborationDirectory> CollaborationDirectories { get; set; } =
+            Array.Empty<CollaborationDirectory>();
     }
 }

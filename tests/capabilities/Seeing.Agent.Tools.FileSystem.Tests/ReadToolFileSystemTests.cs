@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Tools;
@@ -22,7 +22,7 @@ public class ReadToolFileSystemTests
         var tool = new ReadTool(NullLogger<ReadTool>.Instance, fileSystem, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { path = virtualPath }),
-            new ToolContext());
+            new ToolContext { WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("line one");
@@ -46,7 +46,7 @@ public class ReadToolFileSystemTests
         var tool = new ReadTool(NullLogger<ReadTool>.Instance, fileSystem, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { path = dirPath }),
-            new ToolContext());
+            new ToolContext { WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("类型: directory");
@@ -65,7 +65,7 @@ public class ReadToolFileSystemTests
 
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { path = "/workspace/missing.txt" }),
-            new ToolContext());
+            new ToolContext { WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeFalse();
         result.Error.Should().Contain("文件不存在");
@@ -81,7 +81,7 @@ public class ReadToolFileSystemTests
         var tool = new ReadTool(NullLogger<ReadTool>.Instance, fileSystem, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { path = virtualPath, offset = 2, limit = 2 }),
-            new ToolContext());
+            new ToolContext { WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("2: two");
@@ -105,7 +105,7 @@ public class ReadToolFileSystemTests
         var tool = new ReadTool(NullLogger<ReadTool>.Instance, fileSystem, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { path = virtualPath }),
-            new ToolContext());
+            new ToolContext { WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         result.Metadata.Should().ContainKey("type").WhoseValue.Should().Be("binary");
@@ -132,7 +132,7 @@ public class ReadToolFileSystemTests
         var tool = new ReadTool(NullLogger<ReadTool>.Instance, fileSystem, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { path = virtualPath }),
-            new ToolContext());
+            new ToolContext { WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         result.Metadata.Should().ContainKey("size").WhoseValue.Should().Be((long)pngBytes.Length);
@@ -151,7 +151,7 @@ public class ReadToolFileSystemTests
         var tool = new ReadTool(NullLogger<ReadTool>.Instance, fileSystem, AllowAllPathGate.Instance);
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { path = virtualPath }),
-            new ToolContext());
+            new ToolContext { WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         result.Output.Should().Contain("输出限制在");
@@ -168,7 +168,7 @@ public class ReadToolFileSystemTests
         var tool = new WriteTool(NullLogger<WriteTool>.Instance, fileSystem, AllowAllPathGate.Instance, new Seeing.IO.Local.ProcessPathWriteLock());
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { path = virtualPath, content = "hello seam" }),
-            new ToolContext());
+            new ToolContext { WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         fileSystem.ReadAllText(virtualPath).Should().Be("hello seam");
@@ -184,7 +184,7 @@ public class ReadToolFileSystemTests
         var tool = new DeleteTool(NullLogger<DeleteTool>.Instance, fileSystem, AllowAllPathGate.Instance, new Seeing.IO.Local.ProcessPathWriteLock());
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { path = virtualPath }),
-            new ToolContext());
+            new ToolContext { WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         fileSystem.Exists(virtualPath).Should().BeFalse();
@@ -338,6 +338,9 @@ public class ReadToolFileSystemTests
         public bool IsDirectory(string path) => _directories.Contains(Normalize(path));
 
         public bool IsHidden(string path) => Path.GetFileName(Normalize(path)).StartsWith('.');
+
+        public string GetFullPath(string path, string baseDirectory) =>
+            Normalize(Path.IsPathRooted(path) ? path : Path.Combine(baseDirectory, path));
 
         public string GetFullPath(string path) => Normalize(path);
 

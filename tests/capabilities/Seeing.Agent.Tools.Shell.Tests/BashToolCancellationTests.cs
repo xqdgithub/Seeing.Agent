@@ -26,10 +26,17 @@ public class BashToolCancellationTests
         var shellEnv = new Mock<IShellEnvironmentService>();
         shellEnv.Setup(s => s.GetEnvironmentAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<string, string>());
-        return new BashTool(NullLogger<BashTool>.Instance, world, shellService, shellEnv.Object, options.Object);
+        return new BashTool(NullLogger<BashTool>.Instance, world, shellService, shellEnv.Object, options.Object,
+            AllowAllWorkspacePathGate.Instance);
     }
 
-    private static ToolContext CreateContext(CancellationToken ct = default) => new() { SessionId = "s", CallId = "c", CancellationToken = ct };
+    private static ToolContext CreateContext(CancellationToken ct = default) => new()
+    {
+        SessionId = "s",
+        CallId = "c",
+        CancellationToken = ct,
+        WorkingDirectory = Path.GetTempPath()
+    };
 
     private static JsonElement BuildArgs(string command, int? timeout = null)
     {

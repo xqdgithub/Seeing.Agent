@@ -55,12 +55,13 @@ public sealed class ModelCatalogAggregationTests : IDisposable
             config,
             registry,
             NullLogger<ModelConfigManager>.Instance);
-        var refreshed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        catalog.ModelConfigChanged += (_, _) => refreshed.TrySetResult();
-
         registry.Register(new ProviderRegistration(new TestProvider("extension", [new() { Id = "dynamic-model" }]), ProviderOrigin.Extension, OwnerId: "sample-extension"));
 
-        await refreshed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        // 不能等"任意一次 ModelConfigChanged"：首次刷新可能在新 provider 注册前就发出事件，
+        // 那样会提前满足并断言到旧集合（顺序依赖的偶发失败）。等目标模型真正出现。
+        await WaitUntilAsync(
+            () => catalog.GetCatalogModels().ContainsKey("extension/dynamic-model"),
+            TimeSpan.FromSeconds(5));
 
         catalog.GetCatalogModels().Keys.Should().BeEquivalentTo(
             "openai/configured",

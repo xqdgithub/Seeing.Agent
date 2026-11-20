@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.FileSystem;
@@ -20,7 +20,7 @@ public class OpenFileToolTests
 
         var tool = CreateTool();
         var result = await tool.ExecuteAsync(
-            JsonSerializer.SerializeToElement(new { path = file }), new ToolContext());
+            JsonSerializer.SerializeToElement(new { path = file }), new ToolContext { WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         result.Metadata.Should().ContainKey("path");
@@ -34,7 +34,7 @@ public class OpenFileToolTests
 
         var tool = CreateTool();
         var result = await tool.ExecuteAsync(
-            JsonSerializer.SerializeToElement(new { path = file, line = 12, column = 4 }), new ToolContext());
+            JsonSerializer.SerializeToElement(new { path = file, line = 12, column = 4 }), new ToolContext { WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         result.Metadata["line"].Should().Be(12);
@@ -46,7 +46,7 @@ public class OpenFileToolTests
     {
         var tool = CreateTool();
         var result = await tool.ExecuteAsync(
-            JsonSerializer.SerializeToElement(new { }), new ToolContext());
+            JsonSerializer.SerializeToElement(new { }), new ToolContext { WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeFalse();
     }
@@ -59,7 +59,7 @@ public class OpenFileToolTests
 
         var tool = CreateTool();
         var result = await tool.ExecuteAsync(
-            JsonSerializer.SerializeToElement(new { path = file }), new ToolContext());
+            JsonSerializer.SerializeToElement(new { path = file }), new ToolContext { WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         File.Exists(file).Should().BeFalse();

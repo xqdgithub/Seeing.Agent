@@ -51,6 +51,20 @@ namespace Seeing.Agent.Tests.Tools
             invoker.HasTool("greet").Should().BeTrue();
         }
 
+        private static ToolInvocation Inv(
+            string sessionId = "",
+            IPermissionAuthorizer? authorizer = null,
+            Seeing.Agent.Abstractions.Agents.AgentDefinition? agent = null)
+            => new(
+                sessionId,
+                string.Empty,
+                agent,
+                authorizer,
+                null,
+                null,
+                Array.Empty<Seeing.Session.Core.CollaborationDirectory>(),
+                null);
+
         [Fact]
         public async Task ExecuteAsync_ShouldCallToolAndReturnResult()
         {
@@ -67,7 +81,7 @@ namespace Seeing.Agent.Tests.Tools
                 }
             };
 
-            var result = await invoker.ExecuteAsync(toolCall, cancellationToken: TestContext.Current.CancellationToken);
+            var result = await invoker.ExecuteAsync(toolCall, Inv(), TestContext.Current.CancellationToken);
 
             result.Success.Should().BeTrue();
             result.Output.Should().Be("8");
@@ -88,7 +102,7 @@ namespace Seeing.Agent.Tests.Tools
                 }
             };
 
-            var result = await invoker.ExecuteAsync(toolCall, cancellationToken: TestContext.Current.CancellationToken);
+            var result = await invoker.ExecuteAsync(toolCall, Inv(), TestContext.Current.CancellationToken);
 
             result.Success.Should().BeFalse();
             result.Error?.Should().Contain("工具不存在");
@@ -110,7 +124,8 @@ namespace Seeing.Agent.Tests.Tools
                         Arguments = """{"a":10,"b":20}"""
                     }
                 },
-                cancellationToken: TestContext.Current.CancellationToken);
+                Inv(),
+                TestContext.Current.CancellationToken);
 
             result.Success.Should().BeTrue(result.Error);
         }
@@ -202,8 +217,8 @@ namespace Seeing.Agent.Tests.Tools
             };
 
             // Act
-            var result = await invoker.ExecuteAsync(toolCall, "session-1",
-                CancellationToken.None, null, permissionAuthorizer.Object);
+            var result = await invoker.ExecuteAsync(toolCall,
+                Inv("session-1", permissionAuthorizer.Object), CancellationToken.None);
 
             // Assert
             result.Success.Should().BeFalse();
@@ -242,8 +257,8 @@ namespace Seeing.Agent.Tests.Tools
             };
 
             // Act
-            var result = await invoker.ExecuteAsync(toolCall, "session-1",
-                CancellationToken.None, null, permissionAuthorizer.Object);
+            var result = await invoker.ExecuteAsync(toolCall,
+                Inv("session-1", permissionAuthorizer.Object), CancellationToken.None);
 
             // Assert
             result.Success.Should().BeTrue();
@@ -289,8 +304,10 @@ namespace Seeing.Agent.Tests.Tools
             };
 
             // Act
-            var result = await invoker.ExecuteAsync(toolCall, "session-1",
-                CancellationToken.None, null, permissionAuthorizer.Object, new Seeing.Agent.Abstractions.Agents.AgentDefinition { Name = "build" });
+            var result = await invoker.ExecuteAsync(toolCall,
+                Inv("session-1", permissionAuthorizer.Object,
+                    new Seeing.Agent.Abstractions.Agents.AgentDefinition { Name = "build" }),
+                CancellationToken.None);
 
             // Assert
             result.Success.Should().BeTrue();
@@ -321,8 +338,8 @@ namespace Seeing.Agent.Tests.Tools
             };
 
             // Act
-            var result = await invoker.ExecuteAsync(toolCall, "session-1",
-                CancellationToken.None, null, permissionAuthorizer.Object);
+            var result = await invoker.ExecuteAsync(toolCall,
+                Inv("session-1", permissionAuthorizer.Object), CancellationToken.None);
 
             // Assert
             result.Success.Should().BeTrue();
@@ -346,7 +363,7 @@ namespace Seeing.Agent.Tests.Tools
             };
 
             // Act
-            var result = await invoker.ExecuteAsync(toolCall, cancellationToken: TestContext.Current.CancellationToken);
+            var result = await invoker.ExecuteAsync(toolCall, Inv(), TestContext.Current.CancellationToken);
 
             // Assert
             result.Success.Should().BeTrue();

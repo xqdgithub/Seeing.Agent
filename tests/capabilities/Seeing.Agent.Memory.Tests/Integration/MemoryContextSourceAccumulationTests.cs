@@ -169,5 +169,8 @@ public class MemoryContextSourceAccumulationTests
         public string? UserQuery { get; set; }
 
         public Seeing.Agent.Abstractions.Execution.SessionToolSchemaResolution? ToolSettlement { get; set; }
+
+        public IReadOnlyList<CollaborationDirectory> CollaborationDirectories { get; set; } =
+            Array.Empty<CollaborationDirectory>();
     }
 }

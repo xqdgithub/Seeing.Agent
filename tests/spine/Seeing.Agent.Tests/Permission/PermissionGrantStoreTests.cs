@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Seeing.Agent.Abstractions.Directories;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
@@ -176,17 +177,27 @@ public class PermissionGrantStoreTests
         PermissionKindMapper.Map(kind).Should().Be(expected);
     }
 
+    private sealed class TestRootSet(string projectRoot, IPermissionGrantStore store) : ISessionRootSet
+    {
+        public IReadOnlyList<SessionRoot> Roots(string sessionId)
+            => [new SessionRoot(projectRoot, SessionRootKind.Project, null, true)];
+
+        public bool IsAuthorized(string sessionId, string absolutePath)
+            => Seeing.Agent.Paths.PathBoundary.IsWithin(absolutePath, projectRoot)
+               || store.ContainsSessionPath(sessionId, absolutePath);
+
+        public bool IsTrusted(string sessionId, string absolutePath)
+            => Seeing.Agent.Paths.PathBoundary.IsWithin(absolutePath, projectRoot);
+    }
+
     private static WorkspacePathGate CreateGate(IPermissionGrantStore store, bool restrict)
     {
-        var workspace = new Mock<IWorkspaceProvider>();
-        workspace.SetupGet(w => w.ProjectSeeingDirectory).Returns(Path.Combine(WorkspaceRoot, ".seeing"));
-
         var options = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
         options.SetupGet(o => o.CurrentValue).Returns(new SeeingAgentOptions
         {
             Workspace = new WorkspaceOptions { RestrictToWorkspace = restrict }
         });
 
-        return new WorkspacePathGate(workspace.Object, store, options.Object);
+        return new WorkspacePathGate(new TestRootSet(WorkspaceRoot, store), options.Object);
     }
 }

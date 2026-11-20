@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Directories;
 using Seeing.Agent.Abstractions.Interactions;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Configuration;
@@ -159,8 +160,10 @@ public class PermissionAuthorizationTests
     }
 
     [Fact]
-    public async Task AuthorizeAsync_BoundaryAllow_ShouldBeatRuleDeny()
+    public async Task AuthorizeAsync_RuleDeny_ShouldBeatBoundaryAllow()
     {
+        // 安全语义（spec §5.11.5）：Agent 规则 Deny 先于"工作区内放行"，
+        // 否则 explore/plan 等 Deny 文件的子代理在协同目录/工作区内会获得豁免。
         var h = new Harness();
         h.Options.Workspace.RestrictToWorkspace = true;
         h.SetAgentPolicy("agent", PermissionRuleEntry.Deny(PermissionKind.File, "*"));
@@ -168,7 +171,7 @@ public class PermissionAuthorizationTests
         var resolution = await h.Service.AuthorizeAsync(
             h.Request("filesystem.read", InsidePath, agentName: "agent"), TestContext.Current.CancellationToken);
 
-        resolution.Decision.Should().Be(PermissionEffect.Allow);
+        resolution.Decision.Should().Be(PermissionEffect.Deny);
         h.AssertNoAsk();
     }
 
@@ -775,10 +778,8 @@ public class PermissionAuthorizationTests
             Presentation.Setup(p => p.CanSurface(It.IsAny<string>())).Returns(true);
 
             var options = OptionsMonitor(Options);
-            var workspace = new Mock<IWorkspaceProvider>();
-            workspace.SetupGet(w => w.ProjectSeeingDirectory).Returns(Path.Combine(Root, ".seeing"));
 
-            Gate = new WorkspacePathGate(workspace.Object, Store, options);
+            Gate = new WorkspacePathGate(new HarnessRootSet(Root, Store), options);
             var effective = new EffectivePermissionPolicy(Sessions.Object, options);
             Service = new PermissionService(
                 NullLogger<PermissionService>.Instance,
@@ -790,6 +791,19 @@ public class PermissionAuthorizationTests
                 Presentation.Object,
                 Channels,
                 Registry.Object);
+        }
+
+        private sealed class HarnessRootSet(string root, IPermissionGrantStore store) : ISessionRootSet
+        {
+            public IReadOnlyList<SessionRoot> Roots(string sessionId)
+                => [new SessionRoot(root, SessionRootKind.Project, null, true)];
+
+            public bool IsAuthorized(string sessionId, string absolutePath)
+                => Seeing.Agent.Paths.PathBoundary.IsWithin(absolutePath, root)
+                   || store.ContainsSessionPath(sessionId, absolutePath);
+
+            public bool IsTrusted(string sessionId, string absolutePath)
+                => Seeing.Agent.Paths.PathBoundary.IsWithin(absolutePath, root);
         }
 
         public PermissionRequest Request(

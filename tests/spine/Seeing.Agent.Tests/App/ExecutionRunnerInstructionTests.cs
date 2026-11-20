@@ -53,13 +53,15 @@ public class ExecutionRunnerInstructionTests
             TestContext.Current.CancellationToken);
 
         record.Status.Should().BeOneOf(ExecutionStatus.Completed, ExecutionStatus.Failed);
-        session.WorkingDirectory.Should().Be("resolved-cwd");
+        // 本期语义：请求级 cwd 一律收敛到工作区根（不再接受任意目录）
+        var expectedCwd = Path.GetFullPath("workspace-root");
+        session.WorkingDirectory.Should().Be(expectedCwd);
         session.Messages.Select(message => message.Content)
             .Should().Contain("injected instructions");
 
         assembler.Calls.Should().ContainSingle();
         assembler.Calls[0].Mode.Should().Be(ContextAssemblyMode.Persist);
-        assembler.ObservedCwd.Should().Be("resolved-cwd", "装配器必须看到本轮执行的会话 cwd");
+        assembler.ObservedCwd.Should().Be(expectedCwd, "装配器必须看到本轮执行收敛后的 cwd");
         assembler.ObservedWorkspaceRoot.Should().Be("workspace-root");
     }
 

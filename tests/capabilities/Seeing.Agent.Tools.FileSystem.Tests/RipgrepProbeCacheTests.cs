@@ -131,7 +131,8 @@ public class RipgrepProbeCacheTests
     {
         var fs = new Moq.Mock<IFileSystem>();
         fs.Setup(f => f.Exists(Moq.It.IsAny<string>())).Returns(fsExists);
-        fs.Setup(f => f.GetFullPath(Moq.It.IsAny<string>())).Returns((string p) => p);
+        fs.Setup(f => f.GetFullPath(Moq.It.IsAny<string>(), Moq.It.IsAny<string>()))
+            .Returns((string p, string _) => p);
         fs.Setup(f => f.EnumerateFiles(Moq.It.IsAny<string>(), Moq.It.IsAny<string>(), Moq.It.IsAny<bool>()))
             .Returns(Array.Empty<string>());
         fs.Setup(f => f.EnumerateDirectories(Moq.It.IsAny<string>(), Moq.It.IsAny<string>(), Moq.It.IsAny<bool>()))

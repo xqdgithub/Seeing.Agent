@@ -55,5 +55,8 @@ internal sealed class GhostEntryFileSystem : IFileSystem
     /// <inheritdoc />
     public bool IsHidden(string path) => _inner.IsHidden(path);
     /// <inheritdoc />
-    public string GetFullPath(string path) => _inner.GetFullPath(path);
+    public string GetFullPath(string path, string baseDirectory) => _inner.GetFullPath(path, baseDirectory);
+
+    /// <inheritdoc />
+    public string GetFullPath(string path) => Path.GetFullPath(path);
 }

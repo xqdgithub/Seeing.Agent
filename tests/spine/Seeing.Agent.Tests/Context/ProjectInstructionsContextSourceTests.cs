@@ -4,6 +4,7 @@ using Seeing.Agent.Abstractions.Context;
 using Seeing.Agent.Abstractions.Skills;
 using Seeing.Agent.Core.Context.Sources;
 using Seeing.Agent.Core.Instructions;
+using Seeing.Session.Core;
 using System.Security.Cryptography;
 using System.Text;
 using Xunit;
@@ -377,5 +378,8 @@ public sealed class ProjectInstructionsContextSourceTests
         public string? UserQuery { get; set; }
 
         public Seeing.Agent.Abstractions.Execution.SessionToolSchemaResolution? ToolSettlement { get; set; }
+
+        public IReadOnlyList<CollaborationDirectory> CollaborationDirectories { get; set; } =
+            Array.Empty<CollaborationDirectory>();
     }
 }

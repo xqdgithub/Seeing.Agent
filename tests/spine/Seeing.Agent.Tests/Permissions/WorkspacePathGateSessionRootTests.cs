@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Moq;
-using Seeing.Agent.Abstractions.Permissions;
+using Seeing.Agent.Abstractions.Directories;
 using Seeing.Agent.Configuration;
 using Seeing.Agent.Core.Configuration;
 using Seeing.Agent.Core.Permission;
@@ -9,112 +9,88 @@ using Xunit;
 
 namespace Seeing.Agent.Tests.Permissions;
 
+/// <summary>
+/// 门闸只保留开关与文案，判定委托 <see cref="ISessionRootSet"/>。
+/// 旧语义「会话 cwd 自动作为合法根」已移除。
+/// </summary>
 public class WorkspacePathGateSessionRootTests
 {
-    private static IOptionsMonitor<SeeingAgentOptions> RestrictOn()
+    private static IOptionsMonitor<SeeingAgentOptions> Monitor(bool restrict)
     {
         var m = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
         m.Setup(o => o.CurrentValue).Returns(new SeeingAgentOptions
         {
-            Workspace = new WorkspaceOptions { RestrictToWorkspace = true }
+            Workspace = new WorkspaceOptions { RestrictToWorkspace = restrict }
         });
         return m.Object;
     }
 
-    private static IOptionsMonitor<SeeingAgentOptions> RestrictOff()
+    [Fact]
+    public void EnsureAllowed_ShouldDelegateToIsAuthorized()
     {
-        var m = new Mock<IOptionsMonitor<SeeingAgentOptions>>();
-        m.Setup(o => o.CurrentValue).Returns(new SeeingAgentOptions
-        {
-            Workspace = new WorkspaceOptions { RestrictToWorkspace = false }
-        });
-        return m.Object;
-    }
+        var rootSet = new Mock<ISessionRootSet>();
+        rootSet.Setup(r => r.IsAuthorized("s1", It.IsAny<string>())).Returns(true);
+        var gate = new WorkspacePathGate(rootSet.Object, Monitor(restrict: true));
 
-    private static IWorkspaceProvider WorkspaceAt(string root)
-    {
-        var w = new Mock<IWorkspaceProvider>();
-        w.SetupGet(x => x.ProjectSeeingDirectory).Returns(Path.Combine(root, ".seeing"));
-        return w.Object;
+        gate.EnsureAllowed("s1", "/x/a.txt").Should().BeNull();
+        rootSet.Verify(r => r.IsAuthorized("s1", "/x/a.txt"), Times.Once);
     }
 
     [Fact]
-    public void SessionRoot_InsideSessionCwd_ShouldAllow()
+    public void EnsureAllowed_WhenRestrictOff_ShouldPassWithoutConsultingRootSet()
     {
-        var global = Path.Combine(Path.GetTempPath(), "ws-global-" + Guid.NewGuid().ToString("N"));
-        var sessionCwd = Path.Combine(Path.GetTempPath(), "ws-session-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(global);
-        Directory.CreateDirectory(sessionCwd);
-        try
-        {
-            var resolver = new Mock<ISessionWorkspaceResolver>();
-            resolver.Setup(r => r.ResolveWorkingDirectory("s1")).Returns(sessionCwd);
-            var gate = new WorkspacePathGate(WorkspaceAt(global), new Mock<IPermissionGrantStore>().Object, RestrictOn(), resolver.Object);
-            gate.EnsureAllowed("s1", Path.Combine(sessionCwd, "a.txt")).Should().BeNull();
-        }
-        finally { Directory.Delete(global, true); Directory.Delete(sessionCwd, true); }
+        var rootSet = new Mock<ISessionRootSet>();
+        var gate = new WorkspacePathGate(rootSet.Object, Monitor(restrict: false));
+
+        gate.EnsureAllowed("s1", "/x/a.txt").Should().BeNull();
+        rootSet.Verify(r => r.IsAuthorized(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
-    public void OutsideBothRoots_NotWhitelisted_ShouldReject()
+    public void EnsureWithinWorkspace_ShouldUseIsTrusted_NotIsAuthorized()
     {
-        var global = Path.Combine(Path.GetTempPath(), "ws-global-" + Guid.NewGuid().ToString("N"));
-        var sessionCwd = Path.Combine(Path.GetTempPath(), "ws-session-" + Guid.NewGuid().ToString("N"));
-        var other = Path.Combine(Path.GetTempPath(), "ws-other-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(global); Directory.CreateDirectory(sessionCwd); Directory.CreateDirectory(other);
-        try
-        {
-            var resolver = new Mock<ISessionWorkspaceResolver>();
-            resolver.Setup(r => r.ResolveWorkingDirectory("s1")).Returns(sessionCwd);
-            var gate = new WorkspacePathGate(WorkspaceAt(global), new Mock<IPermissionGrantStore>().Object, RestrictOn(), resolver.Object);
-            gate.EnsureAllowed("s1", Path.Combine(other, "a.txt")).Should().NotBeNull();
-        }
-        finally { Directory.Delete(global, true); Directory.Delete(sessionCwd, true); Directory.Delete(other, true); }
+        var rootSet = new Mock<ISessionRootSet>();
+        rootSet.Setup(r => r.IsTrusted("s1", It.IsAny<string>())).Returns(false);
+        var gate = new WorkspacePathGate(rootSet.Object, Monitor(restrict: false));
+
+        gate.EnsureWithinWorkspace("s1", "/x/a.txt").Should().NotBeNull();
+        rootSet.Verify(r => r.IsAuthorized(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
-    public void EnsureWithinWorkspace_OutsideWorkspace_WhenRestrictOff_ShouldStillReject()
+    public void EnsureWithinWorkspace_WhitelistedPath_ShouldStillReject()
     {
-        var global = Path.Combine(Path.GetTempPath(), "ws-global-" + Guid.NewGuid().ToString("N"));
-        var sessionCwd = Path.Combine(Path.GetTempPath(), "ws-session-" + Guid.NewGuid().ToString("N"));
-        var other = Path.Combine(Path.GetTempPath(), "ws-other-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(global); Directory.CreateDirectory(sessionCwd); Directory.CreateDirectory(other);
-        try
-        {
-            var resolver = new Mock<ISessionWorkspaceResolver>();
-            resolver.Setup(r => r.ResolveWorkingDirectory("s1")).Returns(sessionCwd);
-            var gate = new WorkspacePathGate(
-                WorkspaceAt(global), new Mock<IPermissionGrantStore>().Object, RestrictOff(), resolver.Object);
-            var outside = Path.Combine(other, "a.txt");
+        // IsTrusted 不含临时白名单：附件准入不受 add_workspace_path 影响。
+        var rootSet = new Mock<ISessionRootSet>();
+        rootSet.Setup(r => r.IsAuthorized("s1", It.IsAny<string>())).Returns(true);
+        rootSet.Setup(r => r.IsTrusted("s1", It.IsAny<string>())).Returns(false);
+        var gate = new WorkspacePathGate(rootSet.Object, Monitor(restrict: true));
 
-            // Restrict=false 时 EnsureAllowed 一律放行，但严格工作区边界不回退
-            gate.EnsureAllowed("s1", outside).Should().BeNull();
-            gate.EnsureWithinWorkspace("s1", outside).Should().NotBeNull();
-        }
-        finally { Directory.Delete(global, true); Directory.Delete(sessionCwd, true); Directory.Delete(other, true); }
+        gate.EnsureAllowed("s1", "/outside/a.txt").Should().BeNull();
+        gate.EnsureWithinWorkspace("s1", "/outside/a.txt").Should().NotBeNull();
     }
 
     [Fact]
-    public void EnsureWithinWorkspace_WhitelistedOutsidePath_ShouldStillReject_WhileEnsureAllowedPasses()
+    public void ResolveAllowed_RelativePath_ShouldUseBase()
     {
-        var global = Path.Combine(Path.GetTempPath(), "ws-global-" + Guid.NewGuid().ToString("N"));
-        var sessionCwd = Path.Combine(Path.GetTempPath(), "ws-session-" + Guid.NewGuid().ToString("N"));
-        var other = Path.Combine(Path.GetTempPath(), "ws-other-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(global); Directory.CreateDirectory(sessionCwd); Directory.CreateDirectory(other);
-        try
-        {
-            var resolver = new Mock<ISessionWorkspaceResolver>();
-            resolver.Setup(r => r.ResolveWorkingDirectory("s1")).Returns(sessionCwd);
-            var grants = new PermissionGrantStore();
-            var outside = Path.Combine(other, "a.txt");
-            // 把越界目录写入会话白名单：扩权只影响 EnsureAllowed
-            grants.AddSessionDirectory("s1", other);
+        var rootSet = new Mock<ISessionRootSet>();
+        rootSet.Setup(r => r.IsAuthorized("s1", It.IsAny<string>())).Returns(true);
+        var gate = new WorkspacePathGate(rootSet.Object, Monitor(restrict: true));
+        var baseDir = Path.Combine(Path.GetTempPath(), "gate-" + Guid.NewGuid().ToString("N"));
 
-            var gate = new WorkspacePathGate(WorkspaceAt(global), grants, RestrictOn(), resolver.Object);
+        var error = gate.ResolveAllowed("s1", "a.txt", baseDir, out var full);
 
-            gate.EnsureAllowed("s1", outside).Should().BeNull();
-            gate.EnsureWithinWorkspace("s1", outside).Should().NotBeNull();
-        }
-        finally { Directory.Delete(global, true); Directory.Delete(sessionCwd, true); Directory.Delete(other, true); }
+        error.Should().BeNull();
+        full.Should().Be(Path.GetFullPath(Path.Combine(baseDir, "a.txt")));
+    }
+
+    [Fact]
+    public void ResolveAllowed_MissingBaseForRelativePath_ShouldFail()
+    {
+        var gate = new WorkspacePathGate(new Mock<ISessionRootSet>().Object, Monitor(restrict: true));
+
+        var error = gate.ResolveAllowed("s1", "a.txt", baseDirectory: null, out _);
+
+        error.Should().NotBeNull();
     }
 }

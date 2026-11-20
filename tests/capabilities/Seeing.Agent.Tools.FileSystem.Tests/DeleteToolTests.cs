@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.FileSystem;
@@ -21,7 +21,7 @@ public class DeleteToolTests
         await File.WriteAllTextAsync(file, "x", TestContext.Current.CancellationToken);
 
         var tool = CreateTool();
-        var result = await tool.ExecuteAsync(JsonSerializer.SerializeToElement(new { path = file }), new ToolContext());
+        var result = await tool.ExecuteAsync(JsonSerializer.SerializeToElement(new { path = file }), new ToolContext { WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         File.Exists(file).Should().BeFalse();
@@ -36,7 +36,7 @@ public class DeleteToolTests
             Path.Combine(dir, "sub", "a.txt"), "x", TestContext.Current.CancellationToken);
 
         var tool = CreateTool();
-        var result = await tool.ExecuteAsync(JsonSerializer.SerializeToElement(new { path = dir }), new ToolContext());
+        var result = await tool.ExecuteAsync(JsonSerializer.SerializeToElement(new { path = dir }), new ToolContext { WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeTrue();
         Directory.Exists(dir).Should().BeFalse();
@@ -48,7 +48,7 @@ public class DeleteToolTests
         var tool = CreateTool();
         var result = await tool.ExecuteAsync(
             JsonSerializer.SerializeToElement(new { path = Path.Combine(Path.GetTempPath(), "no_such_" + Guid.NewGuid().ToString("N")) }),
-            new ToolContext());
+            new ToolContext { WorkingDirectory = Path.GetTempPath() });
 
         result.Success.Should().BeFalse();
     }

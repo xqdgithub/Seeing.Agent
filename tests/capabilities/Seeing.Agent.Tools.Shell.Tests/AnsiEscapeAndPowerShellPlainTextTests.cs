@@ -91,10 +91,15 @@ public class AnsiEscapeAndPowerShellPlainTextTests
         world.Setup(w => w.Subprocess).Returns(subprocessFactory.Object);
 
         return new BashTool(NullLogger<BashTool>.Instance, world.Object, shellService.Object,
-            shellEnv.Object, options.Object);
+            shellEnv.Object, options.Object, AllowAllWorkspacePathGate.Instance);
     }
 
-    private static ToolContext CreateContext() => new() { SessionId = "s", CallId = "c" };
+    private static ToolContext CreateContext() => new()
+    {
+        SessionId = "s",
+        CallId = "c",
+        WorkingDirectory = Path.GetTempPath()
+    };
 
     private static JsonElement BuildArgs(string command) =>
         JsonSerializer.SerializeToElement(new { command, description = "test" });
