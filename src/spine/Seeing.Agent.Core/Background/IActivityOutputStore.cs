@@ -10,6 +10,12 @@ namespace Seeing.Agent.Core.Background;
 /// </summary>
 internal interface IActivityOutputStore
 {
+    /// <summary>
+    /// 为某活动设定输出上限（字节），覆盖配置默认值。
+    /// <para>由 manager 在活动创建时调用；未设定的活动回落到配置默认值。</para>
+    /// </summary>
+    void Configure(string activityId, long limitBytes);
+
     /// <summary>追加一段输出字节。</summary>
     Task AppendAsync(string activityId, ReadOnlyMemory<byte> chunk, CancellationToken ct);
 

@@ -30,10 +30,10 @@ namespace Seeing.Agent.Core.Background;
 internal sealed class BackgroundActivityOutputStore : IActivityOutputStore
 {
     /// <summary>输出文件后缀。</summary>
-    internal const string FileSuffix = ".output.log";
+    internal const string FileSuffix = BackgroundActivityPaths.OutputFileSuffix;
 
     /// <summary>活动根目录名（位于项目 <c>.seeing</c> 或用户 <c>~/.seeing</c> 下）。</summary>
-    internal const string DirectoryName = "background-activities";
+    internal const string DirectoryName = BackgroundActivityPaths.DirectoryName;
 
     /// <summary>单页读取硬上限（32KB；<c>ToolOutputLimiter</c> 阈值 50KB，留出余量）。</summary>
     internal const int MaxPageBytes = 32 * 1024;
@@ -56,6 +56,9 @@ internal sealed class BackgroundActivityOutputStore : IActivityOutputStore
 
     /// <summary>每活动内存状态（尾部 64KB + 总字节/行数 + 截断标记）。进程级、按活动 id 隔离。</summary>
     private readonly ConcurrentDictionary<string, ActivityOutputState> _states = new(StringComparer.Ordinal);
+
+    /// <summary>每活动输出上限（字节）：活动自身声明优先于配置默认值。</summary>
+    private readonly ConcurrentDictionary<string, long> _limits = new(StringComparer.Ordinal);
 
     public BackgroundActivityOutputStore(
         IPathWriteLock writeLock,
@@ -85,7 +88,7 @@ internal sealed class BackgroundActivityOutputStore : IActivityOutputStore
         if (state.Truncated)
             return;
 
-        var limit = ResolveOutputLimit();
+        var limit = ResolveOutputLimit(activityId);
         var remaining = limit - state.TotalBytes;
         var writable = remaining <= 0 ? 0 : (int)Math.Min(chunk.Length, remaining);
 
@@ -173,6 +176,7 @@ internal sealed class BackgroundActivityOutputStore : IActivityOutputStore
         using var lease = await _writeLock.AcquireAsync(path, CancellationToken.None).ConfigureAwait(false);
 
         _states.TryRemove(activityId, out _);
+        _limits.TryRemove(activityId, out _);
 
         try
         {
@@ -184,6 +188,19 @@ internal sealed class BackgroundActivityOutputStore : IActivityOutputStore
             // 删除失败不外抛：活动记录已不再引用该文件，残留只占磁盘。
             _logger?.LogWarning(ex, "删除后台活动输出失败 ActivityId={ActivityId} Path={Path}", activityId, path);
         }
+    }
+
+    /// <inheritdoc />
+    public void Configure(string activityId, long limitBytes)
+    {
+        if (!IsValidActivityId(activityId))
+        {
+            throw new ArgumentException(
+                $"非法后台活动 id（要求 ^act_[0-9a-f]{{32}}$）：'{activityId}'。",
+                nameof(activityId));
+        }
+
+        _limits[activityId] = limitBytes;
     }
 
     /// <summary>取某活动的输出统计（诊断/测试用；接口契约不暴露）。尚未见过该活动时返回 <see langword="null"/>。</summary>
@@ -198,22 +215,7 @@ internal sealed class BackgroundActivityOutputStore : IActivityOutputStore
     // ─── 路径 ─────────────────────────────────────────────────────────────────
 
     /// <summary>活动根：工作区已决议 → <c>{项目根}/.seeing/background-activities</c>；否则 <c>~/.seeing/background-activities</c>。</summary>
-    private string ResolveActivityRoot()
-    {
-        try
-        {
-            var projectRoot = _workspace.GetProjectRoot();
-            if (!string.IsNullOrWhiteSpace(projectRoot))
-                return Path.Combine(projectRoot, ".seeing", DirectoryName);
-        }
-        catch (InvalidOperationException)
-        {
-            // 工作区尚未决议：占位目录绝不能当工作区，回落到用户级目录（spec §11.1）。
-        }
-
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, ".seeing", DirectoryName);
-    }
+    private string ResolveActivityRoot() => BackgroundActivityPaths.ResolveActivityRoot(_workspace);
 
     /// <summary>解析并校验输出文件路径；非法活动 id 与越界路径一律抛异常。</summary>
     private string ResolveOutputPath(string activityId)
@@ -236,33 +238,18 @@ internal sealed class BackgroundActivityOutputStore : IActivityOutputStore
     }
 
     /// <summary>活动 id 形如 <c>act_</c> + 32 位小写十六进制（与 manager 的 <c>NewActivityId</c> 对齐）。</summary>
-    private static bool IsValidActivityId(string? activityId)
+    private static bool IsValidActivityId(string? activityId) => BackgroundActivityPaths.IsValidActivityId(activityId);
+
+    /// <summary>
+    /// 每活动输出上限：优先用活动自身声明（<c>OutputLimitBytes</c>），否则回落配置默认值。
+    /// <para>非正值按 0 处理（立即截断），不静默回落到 5 MiB——配置写错时行为必须可预测。</para>
+    /// </summary>
+    private long ResolveOutputLimit(string activityId)
     {
-        const string prefix = "act_";
-        const int hexLength = 32;
+        var configured = _limits.TryGetValue(activityId, out var perActivity)
+            ? perActivity
+            : _options.CurrentValue.DefaultOutputLimitBytes;
 
-        if (activityId is null || activityId.Length != prefix.Length + hexLength)
-            return false;
-
-        if (!activityId.StartsWith(prefix, StringComparison.Ordinal))
-            return false;
-
-        for (var i = prefix.Length; i < activityId.Length; i++)
-        {
-            var c = activityId[i];
-            var isHex = c is >= '0' and <= '9' or >= 'a' and <= 'f';
-            if (!isHex)
-                return false;
-        }
-
-        return true;
-    }
-
-    private long ResolveOutputLimit()
-    {
-        var configured = _options.CurrentValue.DefaultOutputLimitBytes;
-
-        // 非正值按 0 处理（立即截断），不静默回落到 5 MiB——配置写错时行为必须可预测。
         return configured > 0 ? configured : 0;
     }
 

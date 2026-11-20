@@ -403,12 +403,67 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         => CancelMatchingAsync(static _ => true, reason, ct);
 
     /// <inheritdoc />
-    public Task<int> ReconcileOrphanedActivitiesAsync(CancellationToken ct = default)
+    public async Task<int> ReconcileOrphanedActivitiesAsync(CancellationToken ct = default)
     {
-        // TODO(Task 10)：读 IBackgroundActivityStore.LoadAllAsync()，
-        // 对 HostInstanceId 非本进程且仍为 Running 的记录改写 Interrupted 并写 outbox。
-        // 本任务（Task 8）只负责内存状态机，存储实现尚未接入。
-        return Task.FromResult(0);
+        IReadOnlyList<BackgroundActivitySnapshot> candidates;
+        try
+        {
+            candidates = await _store.LoadAllAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // 扫描失败不阻断宿主启动 / 工作区切换：下次触发点再试。
+            _logger.LogWarning(ex, "后台活动孤儿扫描读取失败，本次跳过");
+            return 0;
+        }
+
+        var reconciled = 0;
+        foreach (var candidate in candidates)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            // 只收敛本轮仍记为 Running 的活动；终态记录是权威事实，绝不改写。
+            if (candidate.Status != BackgroundActivityStatus.Running)
+                continue;
+
+            if (IsHostInstanceAlive(candidate.HostInstanceId))
+                continue;
+
+            var completedAt = _timeProvider.GetLocalNow();
+            try
+            {
+                // 重读校验在存储的路径锁内完成：别的实例刚提交的终态不会被旧快照盖回去。
+                var replaced = await _store.ReplaceIfUnchangedAsync(
+                        candidate.Id,
+                        BackgroundActivityStatus.Running,
+                        candidate.HostInstanceId,
+                        current => current with
+                        {
+                            Status = BackgroundActivityStatus.Interrupted,
+                            Seq = current.Seq + 1,
+                            CompletedAt = completedAt,
+                            CancelReason = BackgroundActivityCancelReason.HostShutdown
+                        })
+                    .ConfigureAwait(false);
+
+                if (replaced)
+                    reconciled++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "后台活动孤儿收敛失败 ActivityId={ActivityId} HostInstanceId={HostInstanceId}",
+                    candidate.Id,
+                    candidate.HostInstanceId);
+            }
+        }
+
+        if (reconciled > 0)
+            _logger.LogInformation("后台活动孤儿收敛完成 Count={Count}", reconciled);
+
+        // 只落记录：不入 outbox、不发事件（spec §16）。
+        return reconciled;
     }
 
     // ─── reporter 回写（internal：只被 BackgroundActivityReporter 调用） ────────
@@ -613,6 +668,9 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
                 : new InvalidOperationException(
                     $"会话后台活动并发已达上限 {options.MaxConcurrentPerSession}（SessionId={request.OwnerSessionId}）。");
         }
+
+        // 每个活动自带输出上限（请求值优先，否则配置默认值）：截断口径与快照里声明的一致。
+        _outputStore.Configure(record.Handle.ActivityId, snapshot.OutputLimitBytes);
 
         // 宿主已在停止过程中：不启动 launcher，直接落 Interrupted（不留 Pending 僵尸）。
         if (_hostStoppingToken.IsCancellationRequested)
@@ -1366,6 +1424,61 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         {
             // 受限环境拿不到进程启动时间：退化为 pid-only（仍可区分同机不同进程）。
             return $"{Environment.ProcessId}:0";
+        }
+    }
+
+    /// <summary>
+    /// 判定 <paramref name="hostInstanceId"/>（<c>pid:startTicks</c>）对应的宿主是否仍存活。
+    /// <para>
+    /// 同 pid 但启动时间不同 → 视为已死：Windows 会复用 pid，只看 pid 会把新进程
+    /// 当成那个已经崩溃的旧宿主。
+    /// </para>
+    /// </summary>
+    private static bool IsHostInstanceAlive(string hostInstanceId)
+    {
+        if (string.IsNullOrEmpty(hostInstanceId))
+            return false;
+
+        // 本实例不需要探测（自己的 pid 不可能被复用），也避免受限环境下 GetProcessById 异常反转判定。
+        if (string.Equals(hostInstanceId, s_hostInstanceId, StringComparison.Ordinal))
+            return true;
+
+        var separator = hostInstanceId.IndexOf(':');
+        if (separator <= 0)
+            return false;
+
+        if (!int.TryParse(hostInstanceId.AsSpan(0, separator), out var pid) || pid <= 0)
+            return false;
+
+        if (!long.TryParse(hostInstanceId.AsSpan(separator + 1), out var startTicks))
+            return false;
+
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            if (process.HasExited)
+                return false;
+
+            // pid-only 退化记录（启用时拿不到启动时间）：只能按 pid 判定，宁可漏收敛也不误杀。
+            if (startTicks == 0)
+                return true;
+
+            return process.StartTime.ToUniversalTime().Ticks == startTicks;
+        }
+        catch (ArgumentException)
+        {
+            // 该 pid 不存在：宿主已死。
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            // 进程在探测窗口内退出。
+            return false;
+        }
+        catch (Exception)
+        {
+            // 访问受限等无法判定：保守视为存活，避免把在跑的活动改写为 Interrupted。
+            return true;
         }
     }
 

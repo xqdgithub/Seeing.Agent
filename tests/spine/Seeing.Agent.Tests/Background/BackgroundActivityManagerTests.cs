@@ -810,11 +810,40 @@ public class BackgroundActivityManagerTests
             lock (_gate)
                 return Task.FromResult<IReadOnlyList<BackgroundActivitySnapshot>>(_saved.ToList());
         }
+
+        public Task<bool> ReplaceIfUnchangedAsync(
+            string activityId,
+            BackgroundActivityStatus expectedStatus,
+            string expectedHostInstanceId,
+            Func<BackgroundActivitySnapshot, BackgroundActivitySnapshot> replacement)
+        {
+            lock (_gate)
+            {
+                var current = _saved.LastOrDefault(s => s.Id == activityId);
+                if (current is null
+                    || current.Status != expectedStatus
+                    || !string.Equals(current.HostInstanceId, expectedHostInstanceId, StringComparison.Ordinal))
+                {
+                    return Task.FromResult(false);
+                }
+
+                _saved[_saved.IndexOf(current)] = replacement(current);
+                return Task.FromResult(true);
+            }
+        }
     }
 
     private sealed class FakeOutputStore : IActivityOutputStore
     {
         public List<(string ActivityId, byte[] Chunk)> Appends { get; } = new();
+
+        public Dictionary<string, long> Limits { get; } = new(StringComparer.Ordinal);
+
+        public void Configure(string activityId, long limitBytes)
+        {
+            lock (Limits)
+                Limits[activityId] = limitBytes;
+        }
 
         public Task AppendAsync(string activityId, ReadOnlyMemory<byte> chunk, CancellationToken ct)
         {
