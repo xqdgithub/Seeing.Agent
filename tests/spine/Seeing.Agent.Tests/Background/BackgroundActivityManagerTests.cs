@@ -102,14 +102,12 @@ public class BackgroundActivityManagerTests
 
         (await harness.Manager.CancelAsync(handle.ActivityId, BackgroundActivityCancelReason.User, "s1"))
             .Should().BeTrue();
-        await harness.Manager.WaitForPersistenceAsync(handle.ActivityId);
 
         var seqAfterCancel = harness.Manager.Get(handle.ActivityId, "s1")!.Seq;
 
-        handle.Reporter.Complete(new BackgroundActivityResult(
+        await handle.Reporter.CompleteAsync(new BackgroundActivityResult(
             BackgroundActivityResultKind.Text, null, null, null, null, null));
-        handle.Reporter.Fail("late", "迟到的失败");
-        await harness.Manager.WaitForPersistenceAsync(handle.ActivityId);
+        await handle.Reporter.FailAsync("late", "迟到的失败");
 
         var snapshot = harness.Manager.Get(handle.ActivityId, "s1")!;
         snapshot.Status.Should().Be(BackgroundActivityStatus.Cancelled);
@@ -159,7 +157,6 @@ public class BackgroundActivityManagerTests
         var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
         await harness.Manager.WaitForPersistenceAsync(handle.ActivityId);
         await harness.Manager.CancelAsync(handle.ActivityId, BackgroundActivityCancelReason.User, "s1");
-        await harness.Manager.WaitForPersistenceAsync(handle.ActivityId);
 
         lock (journal)
         {
@@ -169,6 +166,62 @@ public class BackgroundActivityManagerTests
             eventIndex.Should().BeGreaterThanOrEqualTo(0);
             saveIndex.Should().BeLessThan(eventIndex);
         }
+    }
+
+    [Fact]
+    public async Task CompleteAsync_ShouldPersistBeforePublish()
+    {
+        var journal = new List<string>();
+        var harness = CreateHarness();
+        harness.Store.OnSave = snapshot =>
+        {
+            lock (journal)
+                journal.Add($"save:{snapshot.Status}");
+            return Task.CompletedTask;
+        };
+        harness.Publisher.OnPublish = evt =>
+        {
+            if (evt is BackgroundActivityEvent activityEvent)
+            {
+                lock (journal)
+                    journal.Add($"event:{activityEvent.Type}");
+            }
+        };
+
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+        await harness.Manager.WaitForPersistenceAsync(handle.ActivityId);
+        lock (journal)
+            journal.Clear();
+
+        await handle.Reporter.CompleteAsync(new BackgroundActivityResult(
+            BackgroundActivityResultKind.Text, null, null, 0, null, null));
+
+        // CompleteAsync 返回时：终态已落盘，且事件在其后。
+        lock (journal)
+        {
+            journal.Should().Equal(
+                $"save:{BackgroundActivityStatus.Succeeded}",
+                $"event:{ActivityEventTypes.Completed}");
+        }
+
+        harness.Store.Saved.Should().Contain(s =>
+            s.Id == handle.ActivityId && s.Status == BackgroundActivityStatus.Succeeded);
+    }
+
+    [Fact]
+    public async Task FailAsync_ShouldPersistTerminalResultBeforeReturning()
+    {
+        var harness = CreateHarness();
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+
+        await handle.Reporter.FailAsync("boom", "失败原因");
+
+        var persisted = harness.Store.Saved.LastOrDefault(s => s.Id == handle.ActivityId);
+        persisted.Should().NotBeNull();
+        persisted!.Status.Should().Be(BackgroundActivityStatus.Failed);
+        persisted.Result!.ErrorCode.Should().Be("boom");
+        persisted.Result.ErrorMessage.Should().Be("失败原因");
+        harness.Publisher.ActivityEvents.Should().ContainSingle(e => e.Type == ActivityEventTypes.Failed);
     }
 
     [Fact]
@@ -225,9 +278,8 @@ public class BackgroundActivityManagerTests
         var harness = CreateHarness();
         var running = await harness.Manager.StartAsync(Request("s1", title: "running"), "s1");
         var done = await harness.Manager.StartAsync(Request("s1", title: "done"), "s1");
-        done.Reporter.Complete(new BackgroundActivityResult(
+        await done.Reporter.CompleteAsync(new BackgroundActivityResult(
             BackgroundActivityResultKind.None, null, null, null, null, null));
-        await WaitUntilAsync(() => harness.Manager.Get(done.ActivityId, "s1")!.Status == BackgroundActivityStatus.Succeeded);
 
         harness.Manager.List(new BackgroundActivityQuery(IncludeCompleted: false), "s1")
             .Should().ContainSingle().Which.Id.Should().Be(running.ActivityId);
@@ -275,7 +327,7 @@ public class BackgroundActivityManagerTests
     {
         var harness = CreateHarness();
         var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
-        handle.Reporter.Complete(new BackgroundActivityResult(
+        await handle.Reporter.CompleteAsync(new BackgroundActivityResult(
             BackgroundActivityResultKind.None, null, null, null, null, null));
 
         var result = await harness.Manager.WaitAsync(handle.ActivityId, TimeSpan.FromSeconds(5), "s1");
@@ -289,7 +341,7 @@ public class BackgroundActivityManagerTests
     {
         var harness = CreateHarness();
         var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
-        handle.Reporter.Fail("boom", "失败");
+        await handle.Reporter.FailAsync("boom", "失败");
 
         var result = await harness.Manager.WaitAsync(handle.ActivityId, TimeSpan.Zero, "s1");
 

@@ -227,7 +227,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
             record.Snapshot = snapshot;
         }
 
-        EnqueuePersist(record, snapshot, eventType: null);
+        _ = EnqueuePersist(record, snapshot, eventType: null);
     }
 
     // ─── 系统面 ───────────────────────────────────────────────────────────────
@@ -449,30 +449,40 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         await _outputStore.AppendAsync(activityId, chunk, ct).ConfigureAwait(false);
     }
 
-    internal void Complete(string activityId, BackgroundActivityResult result)
+    internal async Task CompleteAsync(
+        string activityId,
+        BackgroundActivityResult result,
+        CancellationToken ct = default)
     {
         if (!_activities.TryGetValue(activityId, out var record))
             return;
 
-        TryCommitTerminal(record, BackgroundActivityStatus.Succeeded, cancelReason: null, result);
+        await FinalizeRecordAsync(record, BackgroundActivityStatus.Succeeded, cancelReason: null, result, ct)
+            .ConfigureAwait(false);
     }
 
-    internal void Fail(string activityId, string errorCode, string errorMessage)
+    internal async Task FailAsync(
+        string activityId,
+        string errorCode,
+        string errorMessage,
+        CancellationToken ct = default)
     {
         if (!_activities.TryGetValue(activityId, out var record))
             return;
 
-        TryCommitTerminal(
-            record,
-            BackgroundActivityStatus.Failed,
-            cancelReason: null,
-            new BackgroundActivityResult(
-                BackgroundActivityResultKind.None,
-                ArtifactPath: null,
-                ResultSessionId: null,
-                ExitCode: null,
-                errorCode,
-                errorMessage));
+        await FinalizeRecordAsync(
+                record,
+                BackgroundActivityStatus.Failed,
+                cancelReason: null,
+                new BackgroundActivityResult(
+                    BackgroundActivityResultKind.None,
+                    ArtifactPath: null,
+                    ResultSessionId: null,
+                    ExitCode: null,
+                    errorCode,
+                    errorMessage),
+                ct)
+            .ConfigureAwait(false);
     }
 
     // ─── 启动 ─────────────────────────────────────────────────────────────────
@@ -591,23 +601,29 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         catch (OperationCanceledException)
         {
             // 启动期被取消（宿主停止 / 超时 / 调用方 ct）：不留 Pending 僵尸。
-            TryCommitTerminal(record, BackgroundActivityStatus.Cancelled, BackgroundActivityCancelReason.User, result: null);
+            await FinalizeRecordAsync(
+                    record,
+                    BackgroundActivityStatus.Cancelled,
+                    BackgroundActivityCancelReason.User,
+                    result: null)
+                .ConfigureAwait(false);
             throw;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "后台活动启动失败 ActivityId={ActivityId} Kind={Kind}", record.Handle.ActivityId, request.Kind);
-            TryCommitTerminal(
-                record,
-                BackgroundActivityStatus.Failed,
-                cancelReason: null,
-                new BackgroundActivityResult(
-                    BackgroundActivityResultKind.None,
-                    ArtifactPath: null,
-                    ResultSessionId: null,
-                    ExitCode: null,
-                    "launch_failed",
-                    ex.Message));
+            await FinalizeRecordAsync(
+                    record,
+                    BackgroundActivityStatus.Failed,
+                    cancelReason: null,
+                    new BackgroundActivityResult(
+                        BackgroundActivityResultKind.None,
+                        ArtifactPath: null,
+                        ResultSessionId: null,
+                        ExitCode: null,
+                        "launch_failed",
+                        ex.Message))
+                .ConfigureAwait(false);
             throw;
         }
 
@@ -637,27 +653,30 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
             record.Snapshot = snapshot;
         }
 
-        EnqueuePersist(record, snapshot, ActivityEventTypes.Started);
+        _ = EnqueuePersist(record, snapshot, ActivityEventTypes.Started);
         return true;
     }
 
     /// <summary>
-    /// 终态 CAS：先到先得，只提交一次。返回 <see langword="true"/> 表示本次调用赢得终态。
-    /// <para>提交顺序：内存 CAS → 取消 token → 唤醒等待方 → 落盘 → 发事件。</para>
+    /// 终态 CAS：先到先得，只提交一次（锁内完成，不 <c>await</c>）。返回 <see langword="true"/> 表示本次调用赢得终态。
+    /// <para>提交顺序：内存 CAS → 释放定时器/宿主登记 → 取消 token → 唤醒等待方；落盘与发事件由调用方在锁外完成。</para>
     /// </summary>
-    private bool TryCommitTerminal(
+    private bool TryCommitTerminalState(
         BackgroundActivityRecord record,
         BackgroundActivityStatus status,
         BackgroundActivityCancelReason? cancelReason,
-        BackgroundActivityResult? result)
+        BackgroundActivityResult? result,
+        out BackgroundActivitySnapshot snapshot)
     {
-        BackgroundActivitySnapshot snapshot;
         ITimer? timer;
         CancellationTokenRegistration hostRegistration;
         lock (_sync)
         {
             if (record.TerminalCommitted)
+            {
+                snapshot = record.Snapshot;
                 return false;
+            }
 
             record.TerminalCommitted = true;
             snapshot = record.Snapshot with
@@ -689,11 +708,38 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
 
         SafeCancel(record.Cts);
         record.TerminalSignal.TrySetResult(snapshot);
-        EnqueuePersist(record, snapshot, ResolveEventType(status));
         return true;
     }
 
-    /// <summary>提交取消终态并通知 launcher（先写状态再通知，spec §7.4）。</summary>
+    /// <summary>
+    /// 终态提交＋落盘＋发事件；<b>返回时终态记录已落盘</b>。
+    /// <para>CAS 失败（已终态）时不落盘、不发事件，直接返回。</para>
+    /// </summary>
+    private async Task FinalizeRecordAsync(
+        BackgroundActivityRecord record,
+        BackgroundActivityStatus status,
+        BackgroundActivityCancelReason? cancelReason,
+        BackgroundActivityResult? result,
+        CancellationToken ct = default)
+    {
+        // ct 只表达调用方放弃等待：终态记录必须落盘，因此不传给存储（存储接口本身也无 ct）。
+        if (!TryCommitTerminalState(record, status, cancelReason, result, out var snapshot))
+            return;
+
+        await PersistAndPublishAsync(record, snapshot, ResolveEventType(status)).ConfigureAwait(false);
+    }
+
+    /// <summary>锁外落盘，随后发实时事件（顺序在 <see cref="EnqueuePersist"/> 的串行链内保证）。</summary>
+    private async Task PersistAndPublishAsync(
+        BackgroundActivityRecord record,
+        BackgroundActivitySnapshot snapshot,
+        string? eventType)
+    {
+        var persistence = EnqueuePersist(record, snapshot, eventType);
+        await persistence.ConfigureAwait(false);
+    }
+
+    /// <summary>提交取消终态、落盘发事件，然后通知 launcher（先写状态再通知，spec §7.4）。</summary>
     private async Task<bool> CancelCoreAsync(
         BackgroundActivityRecord record,
         BackgroundActivityCancelReason reason)
@@ -702,9 +748,10 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
             ? BackgroundActivityStatus.Interrupted
             : BackgroundActivityStatus.Cancelled;
 
-        if (!TryCommitTerminal(record, status, reason, result: null))
+        if (!TryCommitTerminalState(record, status, reason, result: null, out var snapshot))
             return false;
 
+        await PersistAndPublishAsync(record, snapshot, ResolveEventType(status)).ConfigureAwait(false);
         await NotifyLauncherCancelledAsync(record, reason).ConfigureAwait(false);
         return true;
     }
@@ -714,18 +761,13 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         if (!_activities.TryGetValue(activityId, out var record))
             return;
 
-        if (!TryCommitTerminal(record, BackgroundActivityStatus.Cancelled, BackgroundActivityCancelReason.Timeout, result: null))
-            return;
-
-        _ = NotifyLauncherCancelledAsync(record, BackgroundActivityCancelReason.Timeout);
+        // 定时器回调是同步的：取消（含落盘、事件、launcher 通知）在后台串行完成。
+        _ = CancelCoreAsync(record, BackgroundActivityCancelReason.Timeout);
     }
 
     private void OnHostStopping(BackgroundActivityRecord record)
     {
-        if (!TryCommitTerminal(record, BackgroundActivityStatus.Interrupted, BackgroundActivityCancelReason.HostShutdown, result: null))
-            return;
-
-        _ = NotifyLauncherCancelledAsync(record, BackgroundActivityCancelReason.HostShutdown);
+        _ = CancelCoreAsync(record, BackgroundActivityCancelReason.HostShutdown);
     }
 
     private async Task NotifyLauncherCancelledAsync(
@@ -759,7 +801,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
     {
         if (execution is null)
         {
-            TryCommitTerminal(
+            _ = FinalizeRecordAsync(
                 record,
                 BackgroundActivityStatus.Failed,
                 cancelReason: null,
@@ -779,28 +821,35 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         catch (OperationCanceledException)
         {
             // 执行被取消（多为 manager 已提交 Cancelled）：只在尚无终态时兜底。
-            TryCommitTerminal(record, BackgroundActivityStatus.Cancelled, cancelReason: null, result: null);
+            await FinalizeRecordAsync(record, BackgroundActivityStatus.Cancelled, cancelReason: null, result: null)
+                .ConfigureAwait(false);
             return;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "后台活动执行异常 ActivityId={ActivityId}", record.Handle.ActivityId);
-            TryCommitTerminal(
-                record,
-                BackgroundActivityStatus.Failed,
-                cancelReason: null,
-                new BackgroundActivityResult(
-                    BackgroundActivityResultKind.None,
-                    ArtifactPath: null,
-                    ResultSessionId: null,
-                    ExitCode: null,
-                    "execution_faulted",
-                    ex.Message));
+            await FinalizeRecordAsync(
+                    record,
+                    BackgroundActivityStatus.Failed,
+                    cancelReason: null,
+                    new BackgroundActivityResult(
+                        BackgroundActivityResultKind.None,
+                        ArtifactPath: null,
+                        ResultSessionId: null,
+                        ExitCode: null,
+                        "execution_faulted",
+                        ex.Message))
+                .ConfigureAwait(false);
             return;
         }
 
         // 正常结束但从未上报终态：不得当成成功（spec §7.4 / §8）。
-        TryCommitTerminal(record, BackgroundActivityStatus.Failed, cancelReason: null, NoTerminalStateResult(null));
+        await FinalizeRecordAsync(
+                record,
+                BackgroundActivityStatus.Failed,
+                cancelReason: null,
+                NoTerminalStateResult(null))
+            .ConfigureAwait(false);
     }
 
     private async Task ObserveCompletionAsync(BackgroundActivityRecord record, Task completion)
@@ -811,38 +860,41 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         }
         catch (OperationCanceledException)
         {
-            TryCommitTerminal(record, BackgroundActivityStatus.Cancelled, cancelReason: null, result: null);
+            await FinalizeRecordAsync(record, BackgroundActivityStatus.Cancelled, cancelReason: null, result: null)
+                .ConfigureAwait(false);
             return;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "登记型后台活动完成信号异常 ActivityId={ActivityId}", record.Handle.ActivityId);
-            TryCommitTerminal(
+            await FinalizeRecordAsync(
+                    record,
+                    BackgroundActivityStatus.Failed,
+                    cancelReason: null,
+                    new BackgroundActivityResult(
+                        BackgroundActivityResultKind.None,
+                        ArtifactPath: null,
+                        ResultSessionId: null,
+                        ExitCode: null,
+                        "completion_faulted",
+                        ex.Message))
+                .ConfigureAwait(false);
+            return;
+        }
+
+        // 宿主只给了「完成」信号、没给结果：按无结果成功落终态（供 outbox 通知，不伪造结果内容）。
+        await FinalizeRecordAsync(
                 record,
-                BackgroundActivityStatus.Failed,
+                BackgroundActivityStatus.Succeeded,
                 cancelReason: null,
                 new BackgroundActivityResult(
                     BackgroundActivityResultKind.None,
                     ArtifactPath: null,
                     ResultSessionId: null,
                     ExitCode: null,
-                    "completion_faulted",
-                    ex.Message));
-            return;
-        }
-
-        // 宿主只给了「完成」信号、没给结果：按无结果成功落终态（供 outbox 通知，不伪造结果内容）。
-        TryCommitTerminal(
-            record,
-            BackgroundActivityStatus.Succeeded,
-            cancelReason: null,
-            new BackgroundActivityResult(
-                BackgroundActivityResultKind.None,
-                ArtifactPath: null,
-                ResultSessionId: null,
-                ExitCode: null,
-                ErrorCode: null,
-                ErrorMessage: null));
+                    ErrorCode: null,
+                    ErrorMessage: null))
+            .ConfigureAwait(false);
     }
 
     // ─── 辅助 ─────────────────────────────────────────────────────────────────
@@ -1051,15 +1103,18 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         }
     }
 
-    private void EnqueuePersist(
+    private Task EnqueuePersist(
         BackgroundActivityRecord record,
         BackgroundActivitySnapshot snapshot,
         string? eventType)
     {
-        // 链式串行：落盘 → 发事件，保证「终态先落盘再发事件」；不阻塞调用方（reporter 是同步 API）。
+        // 链式串行：落盘 → 发事件（保证「落盘先于事件」与状态写盘不乱序）。
+        // 返回值是该环的完成信号：终态路径 await 它，非终态路径（Running / 观察标记）丢弃即可。
         lock (_sync)
         {
-            record.PersistChain = ChainPersistAsync(record.PersistChain, snapshot, eventType);
+            var chained = ChainPersistAsync(record.PersistChain, snapshot, eventType);
+            record.PersistChain = chained;
+            return chained;
         }
     }
 

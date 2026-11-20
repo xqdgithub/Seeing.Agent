@@ -3,8 +3,11 @@ namespace Seeing.Agent.Abstractions.Background;
 /// <summary>
 /// 活动执行方上报端口，由 manager 实现并通过 <see cref="BackgroundActivityHandle"/> 下发。
 /// <para>
-/// 终态只能由 manager 的 CAS 写入：取消先行落 <c>Cancelled</c>，后续 <see cref="Complete"/> /
-/// <see cref="Fail"/> 被丢弃；活动进入终态后本端口所有方法均为 no-op。
+/// 终态只能由 manager 的 CAS 写入：取消先行落 <c>Cancelled</c>，后续 <see cref="CompleteAsync"/> /
+/// <see cref="FailAsync"/> 被丢弃；活动进入终态后本端口所有方法均为 no-op。
+/// </para>
+/// <para>
+/// 终态方法是异步的：<b>返回时终态记录已落盘</b>（先落盘、再发事件/写 outbox）。
 /// </para>
 /// </summary>
 public interface IBackgroundActivityReporter
@@ -21,9 +24,15 @@ public interface IBackgroundActivityReporter
     /// <summary>追加输出（字节口径，按活动输出上限截断）。</summary>
     Task AppendOutputAsync(ReadOnlyMemory<byte> chunk, CancellationToken ct = default);
 
-    /// <summary>上报成功终态（同步落盘 + 写 outbox 后才返回）。</summary>
-    void Complete(BackgroundActivityResult result);
+    /// <summary>
+    /// 上报成功终态。<b>返回时终态记录已落盘</b>，随后才发实时事件（outbox 由后续任务接入）。
+    /// <para>已进入终态时直接返回（不落盘、不发事件）。</para>
+    /// </summary>
+    Task CompleteAsync(BackgroundActivityResult result, CancellationToken ct = default);
 
-    /// <summary>上报失败终态（同步落盘 + 写 outbox 后才返回）。</summary>
-    void Fail(string errorCode, string errorMessage);
+    /// <summary>
+    /// 上报失败终态。<b>返回时终态记录已落盘</b>，随后才发实时事件（outbox 由后续任务接入）。
+    /// <para>已进入终态时直接返回（不落盘、不发事件）。</para>
+    /// </summary>
+    Task FailAsync(string errorCode, string errorMessage, CancellationToken ct = default);
 }

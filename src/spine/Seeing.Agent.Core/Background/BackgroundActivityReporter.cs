@@ -34,8 +34,10 @@ internal sealed class BackgroundActivityReporter : IBackgroundActivityReporter
         => _manager.AppendOutputAsync(_activityId, chunk, ct);
 
     /// <inheritdoc />
-    public void Complete(BackgroundActivityResult result) => _manager.Complete(_activityId, result);
+    public Task CompleteAsync(BackgroundActivityResult result, CancellationToken ct = default)
+        => _manager.CompleteAsync(_activityId, result, ct);
 
     /// <inheritdoc />
-    public void Fail(string errorCode, string errorMessage) => _manager.Fail(_activityId, errorCode, errorMessage);
+    public Task FailAsync(string errorCode, string errorMessage, CancellationToken ct = default)
+        => _manager.FailAsync(_activityId, errorCode, errorMessage, ct);
 }

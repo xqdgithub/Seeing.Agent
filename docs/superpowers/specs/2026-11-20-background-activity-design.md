@@ -423,8 +423,8 @@ public interface IBackgroundActivityReporter
     void ReportProgress(BackgroundActivityProgress progress);
     void Heartbeat();
     Task AppendOutputAsync(ReadOnlyMemory<byte> chunk, CancellationToken ct = default);
-    void Complete(BackgroundActivityResult result);
-    void Fail(string errorCode, string errorMessage);
+    Task CompleteAsync(BackgroundActivityResult result, CancellationToken ct = default);
+    Task FailAsync(string errorCode, string errorMessage, CancellationToken ct = default);
 }
 ```
 
@@ -447,7 +447,7 @@ public interface IBackgroundActivityNotifier
 - **CTS 由 manager 持有**：链接超时（`TimeProvider`）与宿主停止。
 - **`Running` 由 manager 置**：`LaunchAsync` 成功后 CAS；`ReportStarted` 仅用于延后声明"真正开始"。
 - **终态由 manager CAS 裁决**：取消时先写 `Cancelled` 再通知 launcher；后续 `Complete`/`Fail` 丢弃。进入终态后 reporter 为 no-op。
-- **`Complete`/`Fail` 同步落盘**：先原子写终结记录、写 outbox，再返回。
+- **`CompleteAsync`/`FailAsync` 异步落盘**：先原子写终结记录、写 outbox，再返回（`await` 完成即已落盘）；取消路径同理，先落 `Cancelled` 再通知 launcher。
 - **launcher 不得引用 `ToolContext.CancellationToken` / `ToolContext.EventSink`**（`BashTool.cs:129-131` 的链接方式不能照搬）。
 - manager 观察 `LaunchResult.Execution`：正常结束未上报终态 → `Failed("no_terminal_state")`；抛异常 → `Failed`。
 
