@@ -966,7 +966,8 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         }
         else
         {
-            // 取消同样是终态：落盘之后再决定是否唤醒（Interrupted / NotifyPolicy=None 会自行跳过）。
+            // 取消同样是终态：落盘之后再决定是否唤醒
+            // （Interrupted / 非 Timeout 的 Cancelled / NotifyPolicy=None 由判定与策略自行跳过）。
             await TryEnqueueCompletionNotificationAsync(snapshot).ConfigureAwait(false);
         }
 
@@ -1538,10 +1539,17 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
     /// <c>Interrupted</c>（宿主关闭/孤儿收敛）一律不投递。
     /// </para>
     /// <para>
-    /// <b>只有 <see cref="BackgroundActivityStatus.Succeeded"/> / <see cref="BackgroundActivityStatus.Failed"/>
-    /// 才入队</b>：<see cref="BackgroundActivityStatus.Cancelled"/> 是取消类终态（用户取消、会话 Stop、
-    /// 超时、模块注销），它不是「完成」。若为它写 outbox，合并窗口后就会唤醒已经停止的会话再跑一轮，
-    /// 「停止后不再产出」随即失效；用户显式 <c>activity_cancel</c> 后也不该被唤醒。
+    /// <b>只有「任务结束且值得让会话知道」的终态才入队</b>（判定见
+    /// <see cref="BackgroundActivityNotificationPolicy.IsCompletionNotifiable"/>）：
+    /// <see cref="BackgroundActivityStatus.Succeeded"/>、<see cref="BackgroundActivityStatus.Failed"/>，
+    /// 以及 <see cref="BackgroundActivityStatus.Cancelled"/> + <see cref="BackgroundActivityCancelReason.Timeout"/>
+    /// （超时是失败，不能被静默）。
+    /// </para>
+    /// <para>
+    /// 其余 <see cref="BackgroundActivityStatus.Cancelled"/>（用户取消、会话 Stop、工作区切换、
+    /// 模块注销、被取代、父级级联）与 <see cref="BackgroundActivityStatus.Interrupted"/> 一律不入队：
+    /// 它们本来要求「不再产出」，若在合并窗口后唤醒会话再跑一轮，「停止后不再产出」随即失效；
+    /// 用户显式 <c>activity_cancel</c> 后也不该被唤醒。
     /// </para>
     /// <para>
     /// 写 outbox 失败不得反向破坏终态：只记日志，快照已经是权威事实。
@@ -1549,8 +1557,8 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
     /// </summary>
     private async Task TryEnqueueCompletionNotificationAsync(BackgroundActivitySnapshot snapshot)
     {
-        // 取消类终态一律不产生「完成」唤醒：Cancelled 覆盖用户取消 / 会话 Stop / 超时 / 模块注销。
-        if (snapshot.Status is not (BackgroundActivityStatus.Succeeded or BackgroundActivityStatus.Failed))
+        // 取消类终态不产生「完成」唤醒；超时例外（超时是失败）。
+        if (!BackgroundActivityNotificationPolicy.IsCompletionNotifiable(snapshot))
             return;
 
         if (snapshot.NotifyPolicy != BackgroundActivityNotifyPolicy.OnComplete)

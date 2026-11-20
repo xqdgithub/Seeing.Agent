@@ -50,6 +50,13 @@ internal interface IBackgroundActivityNotificationQueue
 /// <c>Delivered</c>（spec §10.6）；部分已观察时只投递剩余部分。
 /// </para>
 /// <para>
+/// <b>取消类终态不投递</b>：泵取时按
+/// <see cref="BackgroundActivityNotificationPolicy.IsCompletionNotifiable"/> 过滤快照，
+/// 非 <c>Timeout</c> 的 <c>Cancelled</c> 与 <c>Interrupted</c> 直接标 <c>Delivered</c>
+/// （<c>LastError=terminal_not_notifiable</c>）。这是升级前已落盘 pending 的兜底：
+/// 入队侧同样用该判定拦截新增。
+/// </para>
+/// <para>
 /// <b>不做</b>：跨重启补发、跨实例接管。进程内 at-least-once 是明确范围（spec §10.4）。
 /// </para>
 /// </summary>
@@ -265,6 +272,7 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
             {
                 var deliverable = new List<string>();
                 var anyObserved = false;
+                var anyNotNotifiable = false;
                 var anyUnreadable = false;
 
                 foreach (var activityId in notification.ActivityIds.Distinct(StringComparer.Ordinal))
@@ -278,6 +286,14 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
 
                     if (!byId.TryGetValue(activityId, out var snapshot))
                         continue; // 文件不存在：记录已被正常清理，按 activity_missing 处理。
+
+                    // 泵取侧兜底：升级前落盘的 pending 可能带着取消/中断终态。
+                    // 这些快照不是「完成」，唤醒会话等于让已停止的会话重新产出，直接终态化不投递。
+                    if (!BackgroundActivityNotificationPolicy.IsCompletionNotifiable(snapshot))
+                    {
+                        anyNotNotifiable = true;
+                        continue;
+                    }
 
                     if (snapshot.ResultObservedAt is not null)
                     {
@@ -321,11 +337,13 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
 
                 if (deliverable.Count == 0)
                 {
-                    // 全部已观察（或活动记录已被清理）：不再唤醒，直接终态（spec §10.6）。
+                    // 全部已观察 / 取消类终态 / 活动记录已被清理：不再唤醒，直接终态（spec §10.6）。
                     await WriteAsync(notification with
                     {
                         Status = BackgroundActivityOutboxStatus.Delivered,
-                        LastError = anyObserved ? "result_observed" : "activity_missing"
+                        LastError = anyObserved
+                            ? "result_observed"
+                            : anyNotNotifiable ? "terminal_not_notifiable" : "activity_missing"
                     }, outboxDirectory).ConfigureAwait(false);
 
                     remaining--;
@@ -633,7 +651,7 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
             var facts = new List<string>(4)
             {
                 $"kind={snapshot.Kind}",
-                StatusText(snapshot.Status)
+                StatusText(snapshot)
             };
 
             if (snapshot.Result?.ExitCode is { } exitCode)
@@ -648,13 +666,16 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
         return builder.ToString();
     }
 
-    private static string StatusText(BackgroundActivityStatus status) => status switch
+    private static string StatusText(BackgroundActivitySnapshot snapshot) => snapshot switch
     {
-        BackgroundActivityStatus.Succeeded => "成功",
-        BackgroundActivityStatus.Failed => "失败",
-        BackgroundActivityStatus.Cancelled => "已取消",
-        BackgroundActivityStatus.Interrupted => "已中断",
-        BackgroundActivityStatus.Running => "运行中",
+        // 超时虽然状态位是 Cancelled，语义却是失败（通知就是按失败投递的），
+        // 摘要里必须说清，否则用户看到「已取消」会以为是自己的操作。
+        { Status: BackgroundActivityStatus.Cancelled, CancelReason: BackgroundActivityCancelReason.Timeout } => "超时失败",
+        { Status: BackgroundActivityStatus.Succeeded } => "成功",
+        { Status: BackgroundActivityStatus.Failed } => "失败",
+        { Status: BackgroundActivityStatus.Cancelled } => "已取消",
+        { Status: BackgroundActivityStatus.Interrupted } => "已中断",
+        { Status: BackgroundActivityStatus.Running } => "运行中",
         _ => "等待中"
     };
 

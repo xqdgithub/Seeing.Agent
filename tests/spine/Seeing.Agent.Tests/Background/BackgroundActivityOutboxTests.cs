@@ -418,6 +418,87 @@ public class BackgroundActivityOutboxTests : IDisposable
     }
 
     [Fact]
+    public async Task TimedOutActivity_ShouldEnqueueNotification()
+    {
+        var harness = CreateManagerHarness(BackgroundActivityCapabilities.SignalsCompletion);
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+
+        (await harness.Manager.CancelAsync(handle.ActivityId, BackgroundActivityCancelReason.Timeout, "s1"))
+            .Should().BeTrue();
+
+        var snapshot = harness.Manager.Get(handle.ActivityId, "s1")!;
+        snapshot.Status.Should().Be(BackgroundActivityStatus.Cancelled);
+        snapshot.CancelReason.Should().Be(BackgroundActivityCancelReason.Timeout);
+
+        // 超时是失败，不是用户意图：必须通知，否则用户只能自己翻活动列表才发现任务死了。
+        var queued = harness.Queue.Enqueued.Should().ContainSingle().Subject;
+        queued.OwnerSessionId.Should().Be("s1");
+        queued.ActivityIds.Should().Equal(handle.ActivityId);
+    }
+
+    [Fact]
+    public async Task UserCancelledActivity_ShouldNotEnqueueNotification()
+    {
+        var harness = CreateManagerHarness(BackgroundActivityCapabilities.SignalsCompletion);
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+
+        (await harness.Manager.CancelAsync(handle.ActivityId, BackgroundActivityCancelReason.User, "s1"))
+            .Should().BeTrue();
+
+        var snapshot = harness.Manager.Get(handle.ActivityId, "s1")!;
+        snapshot.Status.Should().Be(BackgroundActivityStatus.Cancelled);
+        snapshot.CancelReason.Should().Be(BackgroundActivityCancelReason.User);
+
+        // 用户显式取消后不得再唤醒会话跑一轮。
+        harness.Queue.Enqueued.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task PumpOnce_ShouldSkipCancelledNotificationPersistedBeforeFix()
+    {
+        var harness = CreateHarness();
+        var activityId = NewActivityId();
+
+        // 模拟升级前落盘的历史 pending：通知还在，活动已是用户取消终态。
+        harness.Store.Add(Snapshot(
+            activityId,
+            "s1",
+            status: BackgroundActivityStatus.Cancelled,
+            cancelReason: BackgroundActivityCancelReason.User));
+        await harness.Outbox.EnqueueAsync(Notification("s1", activityId));
+
+        harness.Time.Advance(Window);
+        (await harness.Outbox.PumpOnceAsync()).Should().Be(0);
+
+        harness.Notifier.Calls.Should().Be(0);
+        harness.Outbox.PendingCount.Should().Be(0);
+
+        var consumed = ReadNotifications().Should().ContainSingle().Subject;
+        consumed.Status.Should().Be(BackgroundActivityOutboxStatus.Delivered);
+        consumed.LastError.Should().Be("terminal_not_notifiable");
+    }
+
+    [Fact]
+    public async Task PumpOnce_TimedOutNotification_ShouldDeliverWithTimeoutStatus()
+    {
+        var harness = CreateHarness();
+        var activityId = NewActivityId();
+        harness.Store.Add(Snapshot(
+            activityId,
+            "s1",
+            status: BackgroundActivityStatus.Cancelled,
+            cancelReason: BackgroundActivityCancelReason.Timeout));
+        await harness.Outbox.EnqueueAsync(Notification("s1", activityId));
+
+        harness.Time.Advance(Window);
+        (await harness.Outbox.PumpOnceAsync()).Should().Be(1);
+
+        // 超时通知按失败投递，摘要不能显示成用户主动「已取消」。
+        var message = harness.Notifier.Messages.Should().ContainSingle().Subject;
+        message.Body.Should().Contain("超时失败");
+    }
+
+    [Fact]
     public async Task StopSession_ShouldNotWakeSession()
     {
         var store = new FakeActivityStore();
@@ -518,7 +599,9 @@ public class BackgroundActivityOutboxTests : IDisposable
         string activityId,
         string ownerSessionId,
         string title = "构建",
-        DateTimeOffset? resultObservedAt = null)
+        DateTimeOffset? resultObservedAt = null,
+        BackgroundActivityStatus status = BackgroundActivityStatus.Succeeded,
+        BackgroundActivityCancelReason? cancelReason = null)
         => new()
         {
             Id = activityId,
@@ -530,7 +613,8 @@ public class BackgroundActivityOutboxTests : IDisposable
             CreatedAt = new DateTimeOffset(2026, 11, 20, 10, 0, 0, TimeSpan.FromHours(8)),
             OwnerSessionId = ownerSessionId,
             OwnerExecutionId = "exec-1",
-            Status = BackgroundActivityStatus.Succeeded,
+            Status = status,
+            CancelReason = cancelReason,
             Seq = 3,
             CompletedAt = new DateTimeOffset(2026, 11, 20, 10, 1, 0, TimeSpan.FromHours(8)),
             ResultObservedAt = resultObservedAt,
