@@ -21,6 +21,17 @@ public sealed class FileTreeState
     /// <summary>当前激活文件（含根标识；null = 无选中）。</summary>
     public FileResourceId? SelectedId { get; private set; }
 
+    /// <summary>当前选中的目录（新建文件的落点；null = 未选，回退项目根）。</summary>
+    public FileResourceId? SelectedDirectoryId { get; private set; }
+
+    /// <summary>设置选中的目录（新建操作的默认落点）。</summary>
+    public void SetSelectedDirectory(FileResourceId id)
+    {
+        if (Same(SelectedDirectoryId, id)) return;
+        SelectedDirectoryId = id;
+        SelectionChanged?.Invoke();
+    }
+
     /// <summary>选中版本号（每次选中变化自增，供节点判断是否需要重新滚动定位）。</summary>
     public int SelectionVersion { get; private set; }
 

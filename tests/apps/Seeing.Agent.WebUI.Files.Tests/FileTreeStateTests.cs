@@ -71,6 +71,22 @@ public class FileTreeStateTests
     }
 
     [Fact]
+    public void SetSelectedDirectory_ShouldRaiseSelectionChanged()
+    {
+        var s = new FileTreeState();
+        var raised = 0;
+        s.SelectionChanged += () => raised++;
+
+        s.SetSelectedDirectory(Id("r1", "src"));
+
+        s.SelectedDirectoryId.Should().Be(Id("r1", "src"));
+        raised.Should().Be(1);
+
+        s.SetSelectedDirectory(Id("r1", "src"));
+        raised.Should().Be(1, "同一目录重复点击不应重复触发");
+    }
+
+    [Fact]
     public void IsDirectChildOf_SameRelativePathDifferentRoot_ShouldNotMatch()
     {
         var changed = Id("r2", "src/a.txt");

@@ -153,6 +153,10 @@
             <div class="file-dialog">
                 <div class="file-dialog-title">@dialog.Title</div>
                 <div class="file-dialog-body">
+                    @if (dialog.Kind is DialogKind.NewFile or DialogKind.NewDirectory)
+                    {
+                        <div class="file-dialog-hint">新建位置：@dialog.TargetPath</div>
+                    }
                     @if (dialog.Kind == DialogKind.Delete)
                     {
                         <span>将删除 <code>@RelativePath(dialog.Entry!)</code>。此操作不可撤销。</span>
@@ -419,6 +423,8 @@
 
     private void OnContextRequested(FileEntry entry, double x, double y)
     {
+        if (entry.IsDirectory)
+            TreeState.SetSelectedDirectory(entry.Id);
         _contextMenu = new ContextMenuState(entry, x, y);
         _ = InvokeAsync(StateHasChanged);
     }
@@ -471,11 +477,13 @@
         }
 
         _dialogValue = string.Empty;
+        var relative = target.Id.RelativePath.Replace('\\', '/');
         _dialog = new DialogState
         {
             Kind = isFile ? DialogKind.NewFile : DialogKind.NewDirectory,
             Parent = target,
             Title = isFile ? "新建文件" : "新建文件夹",
+            TargetPath = string.IsNullOrEmpty(relative) ? "（根）" : relative,
             Placeholder = isFile ? "文件名（如 notes.md）" : "文件夹名",
             OkText = "创建"
         };
@@ -484,6 +492,10 @@
 
     private FileEntry? DefaultDirectory()
     {
+        // 优先落在用户最近点击/右键的目录；否则回退项目根
+        if (TreeState.SelectedDirectoryId is { } selected && _workspaces?.Find(selected) is not null)
+            return new FileEntry(selected, Path.GetFileName(selected.RelativePath), true, null, null);
+
         var root = _roots.FirstOrDefault(r => r.Root.Kind == FileWorkspaceRootKind.Project)
             ?? _roots.FirstOrDefault();
         return root is null
@@ -848,6 +860,7 @@
         public FileEntry? Entry { get; init; }
         public FileEntry? Parent { get; init; }
         public required string Title { get; init; }
+        public string TargetPath { get; init; } = string.Empty;
         public string Placeholder { get; init; } = string.Empty;
         public required string OkText { get; init; }
     }

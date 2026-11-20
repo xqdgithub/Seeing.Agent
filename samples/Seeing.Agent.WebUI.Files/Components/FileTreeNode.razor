@@ -9,9 +9,9 @@
 <li class="file-tree-node">
     @if (Entry.IsDirectory)
     {
-        <div class="file-tree-dir @(Depth == 0 ? "file-tree-dir--root" : "") @RootClass" style="@($"padding-left:{Depth * 12}px")" title="@Title"
-             @onclick="ToggleAsync"
-             @oncontextmenu="e => TreeState.RequestContext(Entry, e.ClientX, e.ClientY)"
+        <div class="file-tree-dir @(Depth == 0 ? "file-tree-dir--root" : "") @RootClass @(IsSelectedDirectory ? "is-selected-dir" : "")" style="@($"padding-left:{Depth * 12}px")" title="@Title"
+             @onclick="OnDirectoryClickAsync"
+             @oncontextmenu="OnDirectoryContextMenu"
              @oncontextmenu:preventDefault="true">
             <span class="file-tree-arrow">@(_expanded ? "▾" : "▸")</span>
             <svg class="file-tree-icon file-tree-icon--dir" viewBox="0 0 1024 1024" width="14" height="14" aria-hidden="true">
@@ -108,6 +108,12 @@
         && string.Equals(sel.RootId, Entry.Id.RootId, StringComparison.Ordinal)
         && string.Equals(sel.RelativePath, RelPath, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>本目录是否为「新建落点」选中项。</summary>
+    private bool IsSelectedDirectory => Entry.IsDirectory
+        && TreeState.SelectedDirectoryId is { } dir
+        && string.Equals(dir.RootId, Entry.Id.RootId, StringComparison.Ordinal)
+        && string.Equals(dir.RelativePath, DirRelative, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>选中文件是否位于本目录之下（驱动祖先目录自动展开）。</summary>
     private bool SelectionInDir => Entry.IsDirectory
         && TreeState.SelectedId is { } sel
@@ -134,9 +140,14 @@
             _ = InvokeAsync(StateHasChanged);
             return;
         }
-        // 目录节点：选中文件位于本目录之下且未展开 → 展开以定位
-        if (!_expanded && SelectionInDir)
-            _ = InvokeAsync(async () => { await ExpandAsync(); StateHasChanged(); });
+
+        // 目录节点：选中文件位于本目录之下且未展开 → 展开以定位；同时刷新「新建落点」高亮
+        _ = InvokeAsync(async () =>
+        {
+            if (!_expanded && SelectionInDir)
+                await ExpandAsync();
+            StateHasChanged();
+        });
     }
 
     private void OnTreeChanged(FileChangeEvent evt)
@@ -245,5 +256,19 @@
             return;
         }
         await ExpandAsync();
+    }
+
+    /// <summary>点击目录：设为「新建落点」并展开/折叠。</summary>
+    private async Task OnDirectoryClickAsync()
+    {
+        TreeState.SetSelectedDirectory(Entry.Id);
+        await ToggleAsync();
+    }
+
+    /// <summary>右键目录：先设为落点，再请求上下文菜单。</summary>
+    private void OnDirectoryContextMenu(Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
+    {
+        TreeState.SetSelectedDirectory(Entry.Id);
+        TreeState.RequestContext(Entry, e.ClientX, e.ClientY);
     }
 }

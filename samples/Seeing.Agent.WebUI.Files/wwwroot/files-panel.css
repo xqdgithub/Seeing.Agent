@@ -261,3 +261,6 @@ body.file-panel-resizing * { cursor: col-resize !important; }
 .file-dialog-btn { padding: 4px 12px; border: 1px solid var(--color-border, #eee); border-radius: 6px; background: #fff; font-size: 12.5px; cursor: pointer; }
 .file-dialog-btn.primary { background: #1677ff; border-color: #1677ff; color: #fff; }
 .file-dialog-btn.danger { background: #cb2634; border-color: #cb2634; color: #fff; }
+
+.file-tree-dir.is-selected-dir { background: rgba(22, 119, 255, 0.10); border-radius: 4px; }
+.file-dialog-hint { margin-bottom: 8px; color: #86909c; font-size: 12px; }
