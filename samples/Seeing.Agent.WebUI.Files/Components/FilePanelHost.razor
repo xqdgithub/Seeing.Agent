@@ -1,6 +1,8 @@
+@using Seeing.Agent.Abstractions.Directories
 @using Seeing.Agent.Abstractions.Files
 @using Seeing.Agent.WebUI.Files.Services
 @inject IFileWorkspaceFactory WorkspaceFactory
+@inject ICollaborationDirectories CollaborationDirectories
 @inject FilePanelState PanelState
 @inject FileTreeState TreeState
 @implements IDisposable
@@ -37,18 +39,30 @@
                 <button type="button" class="file-panel-error-dismiss" title="关闭提示" @onclick="DismissError">×</button>
             </div>
         }
-        @if (_roots.Count > 1)
+        <div class="file-root-bar">
+            <span class="file-root-label">根</span>
+            <select class="file-root-select" value="@_activeRootId" @onchange="SwitchRootAsync">
+                @foreach (var root in _roots)
+                {
+                    <option value="@root.Root.RootId">
+                        @RootLabel(root.Root)
+                    </option>
+                }
+            </select>
+            @if (_workspace?.Root.Kind == FileWorkspaceRootKind.Collaboration)
+            {
+                <button type="button" class="file-root-action" title="移除当前协同目录"
+                        @onclick="RemoveActiveRootAsync">移除</button>
+            }
+            <button type="button" class="file-root-action" title="添加协同目录"
+                    @onclick="() => _showAddRoot = !_showAddRoot">+</button>
+        </div>
+        @if (_showAddRoot)
         {
-            <div class="file-root-bar">
-                <span class="file-root-label">根</span>
-                <select class="file-root-select" value="@_activeRootId" @onchange="SwitchRootAsync">
-                    @foreach (var root in _roots)
-                    {
-                        <option value="@root.Root.RootId">
-                            @RootLabel(root.Root)
-                        </option>
-                    }
-                </select>
+            <div class="file-root-add-row">
+                <input class="file-root-input" @bind="_newRootPath" placeholder="协同目录绝对路径" />
+                <button type="button" class="file-root-action" @onclick="AddRootAsync">添加</button>
+                <button type="button" class="file-root-action" @onclick="() => _showAddRoot = false">取消</button>
             </div>
         }
         <div class="file-panel-body @(PanelState.TreeVisible ? "" : "file-panel-body--no-tree")">
@@ -86,6 +100,8 @@
     private IFileWorkspace? _workspace;
     private IReadOnlyList<IFileWorkspace> _roots = Array.Empty<IFileWorkspace>();
     private string? _activeRootId;
+    private bool _showAddRoot;
+    private string _newRootPath = string.Empty;
     private FileTabsState _tabs = null!;
     private FileViewerCoordinator? _coordinator;
     private FileEditor? _editor;
@@ -143,8 +159,59 @@
         _workspace = next;
         _activeRootId = rootId;
         _error = null;
+        // 旧根的标签持有旧 RootId，切根后不可解析：直接清空，避免后续编辑/保存抛错。
+        _tabs.Clear();
         WireCoordinator();
         await Task.CompletedTask;
+    }
+
+    /// <summary>用户显式添加协同目录：UI 动作即授权，直接落会话（agent 侧走审批工具）。</summary>
+    private async Task AddRootAsync()
+    {
+        if (string.IsNullOrEmpty(SessionId) || string.IsNullOrWhiteSpace(_newRootPath))
+            return;
+
+        try
+        {
+            await CollaborationDirectories.AddAsync(SessionId, _newRootPath.Trim());
+            _newRootPath = string.Empty;
+            _showAddRoot = false;
+            await ReloadRootsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = FileErrorPresenter.Describe(ex);
+        }
+    }
+
+    private async Task RemoveActiveRootAsync()
+    {
+        if (string.IsNullOrEmpty(SessionId)
+            || _workspace?.Root.Kind != FileWorkspaceRootKind.Collaboration)
+            return;
+
+        try
+        {
+            await CollaborationDirectories.RemoveAsync(SessionId, _workspace.RootPath);
+            await ReloadRootsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = FileErrorPresenter.Describe(ex);
+        }
+    }
+
+    private async Task ReloadRootsAsync()
+    {
+        if (string.IsNullOrEmpty(SessionId))
+            return;
+
+        _roots = await WorkspaceFactory.ListAsync(SessionId);
+        _workspace = _roots.FirstOrDefault(w => w.RootId == _activeRootId) ?? _roots.FirstOrDefault();
+        _activeRootId = _workspace?.RootId;
+        _tabs.Clear();
+        WireCoordinator();
+        StateHasChanged();
     }
 
     private void WireCoordinator()

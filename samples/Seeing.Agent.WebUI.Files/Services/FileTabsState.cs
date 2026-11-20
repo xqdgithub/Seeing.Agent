@@ -79,6 +79,16 @@ public sealed class FileTabsState
     /// <summary>保存结果是否为失败。</summary>
     public bool NoticeIsError { get; private set; }
 
+    /// <summary>清空全部标签（切换文件根时使用：旧根的 ResourceId 在新根不可解析）。</summary>
+    public void Clear()
+    {
+        if (_open.Count == 0 && ActiveKey is null) return;
+        _open.Clear();
+        _byKey.Clear();
+        ActiveKey = null;
+        Changed?.Invoke();
+    }
+
     /// <summary>更新标签栏上的保存提示。</summary>
     public void SetNotice(string? message, bool isError = false)
     {

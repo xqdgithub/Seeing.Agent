@@ -207,3 +207,6 @@ body.file-panel-resizing * { cursor: col-resize !important; }
 .file-root-bar { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-bottom: 1px solid var(--color-border, #eee); flex-shrink: 0; font-size: 12px; }
 .file-root-label { color: var(--color-text-secondary, #666); }
 .file-root-select { flex: 1; min-width: 0; font-size: 12px; padding: 1px 4px; }
+.file-root-action { font-size: 12px; padding: 1px 6px; }
+.file-root-add-row { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-bottom: 1px solid var(--color-border, #eee); }
+.file-root-input { flex: 1; min-width: 0; font-size: 12px; padding: 1px 4px; }
