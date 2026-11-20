@@ -57,6 +57,8 @@ public class SessionRuntimeReconcileTests
         var services = new ServiceCollection();
         services.AddSingleton<ISessionManager>(sessionManager);
         services.AddSingleton<IExecutionEventPublisher>(new RecordingPublisher());
+        services.AddSingleton<Seeing.Agent.Abstractions.Background.IBackgroundActivityControl>(
+            new RecordingBackgroundActivityControl());
         var provider = services.BuildServiceProvider();
 
         return new SessionRuntime(

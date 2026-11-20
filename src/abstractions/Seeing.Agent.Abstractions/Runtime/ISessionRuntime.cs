@@ -83,7 +83,8 @@ public interface ISessionRuntime
     /// <param name="sessionId">目标会话。</param>
     /// <param name="ct">取消令牌。</param>
     /// <param name="cancelBackgroundActivities">
-    /// 是否级联取消当前轮派生的后台活动（经 <c>IBackgroundActivityControl</c>，宿主未注册时跳过）。
+    /// 是否级联取消当前轮派生的后台活动（经 <c>IBackgroundActivityControl</c>）。
+    /// 该端口由 Core 注册；取消失败只记日志，不影响中断结果。
     /// 默认 <c>false</c>：「中断并发送」这类入口只停当前轮，不打断仍在跑的后台工作。
     /// 放到参数末尾以保证既有 <c>InterruptAsync(sessionId, ct)</c> 调用仍可编译。
     /// </param>

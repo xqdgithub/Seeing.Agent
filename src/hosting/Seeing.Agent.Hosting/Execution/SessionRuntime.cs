@@ -1161,7 +1161,8 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
             return false;
         }
 
-        // 级联取消后台活动是**可选**能力：宿主未注册实现时静默跳过，不影响中断本身。
+        // 级联取消后台活动依赖 Core 注册的系统面端口（AddSeeingCore 必注册）；
+        // 解析失败会被下面的 catch 记录为警告，不影响中断本身。
         if (cancelBackgroundActivities && !string.IsNullOrEmpty(current!.ExecutionId))
             await CancelBackgroundActivitiesAsync(current.ExecutionId).ConfigureAwait(false);
 
@@ -1180,10 +1181,7 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
     {
         try
         {
-            var control = _services.GetService(typeof(IBackgroundActivityControl))
-                as IBackgroundActivityControl;
-            if (control is null)
-                return;
+            var control = _services.GetRequiredService<IBackgroundActivityControl>();
 
             await control.CancelByExecutionAsync(
                     executionId, BackgroundActivityCancelReason.User, CancellationToken.None)

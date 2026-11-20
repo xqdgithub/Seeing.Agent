@@ -8,6 +8,9 @@ namespace Seeing.Agent.Core.Background;
 /// </summary>
 public sealed class BackgroundActivityOptions
 {
+    /// <summary><c>seeing.json</c> 中的节名（写在 <c>SeeingAgent</c> 下）。</summary>
+    public const string SectionName = "BackgroundActivities";
+
     /// <summary>单会话同时运行的活动上限（<c>Pending</c> 也计入）。默认 8。</summary>
     public int MaxConcurrentPerSession { get; set; } = 8;
 

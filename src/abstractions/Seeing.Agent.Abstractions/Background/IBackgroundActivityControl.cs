@@ -6,8 +6,12 @@ namespace Seeing.Agent.Abstractions.Background;
 /// 只注册给 Core / 宿主与模块激活器；能力包工具（含 <c>bash</c> 与 <c>activity_*</c>）不得注入本接口。
 /// </para>
 /// <para>
-/// 本端口为**可选依赖**：宿主未注册实现时，调用方必须跳过而不是抛异常
-/// （典型场景：<c>SessionRuntime.InterruptAsync(cancelBackgroundActivities: true)</c>）。
+/// 能力包（含模块激活器）按**可选依赖**处理：宿主未注册实现时跳过而不是抛异常
+/// （如 Shell 模块按需登记 bash 后台 launcher）。
+/// </para>
+/// <para>
+/// <c>AddSeeingCore</c> 组合根总是注册本端口（manager 与 control 同一实例），
+/// 因此执行世界（<c>SessionRuntime</c> 的级联取消）把它当作**必需依赖**解析。
 /// </para>
 /// </summary>
 public interface IBackgroundActivityControl

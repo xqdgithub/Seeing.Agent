@@ -711,6 +711,23 @@ namespace Seeing.Agent.Core.Extensions
         /// </summary>
         private static void RegisterBackgroundActivityServices(IServiceCollection services)
         {
+            // 治理参数走配置节 + IConfigSectionStore 桥接（与 ShellOptions 同款）：
+            // 只 AddOptions<>() 拿到的是 new BackgroundActivityOptions() 的默认值，
+            // 配了 MaxConcurrentPerSession / 超时也会静默无效。
+            services.GetOrCreateConfigSectionRegistry().Register(
+                new ConfigSectionMeta(
+                    BackgroundActivityOptions.SectionName,
+                    "seeing.json",
+                    ConfigScope.Both,
+                    typeof(BackgroundActivityOptions)));
+            services.AddOptions<BackgroundActivityOptions>();
+            services.TryAddSingleton(sp => new ConfigSectionOptionsMonitor<BackgroundActivityOptions>(
+                sp.GetRequiredService<IConfigSectionStore>(), BackgroundActivityOptions.SectionName));
+            services.TryAddSingleton<IOptionsMonitor<BackgroundActivityOptions>>(sp =>
+                sp.GetRequiredService<ConfigSectionOptionsMonitor<BackgroundActivityOptions>>());
+            services.TryAddSingleton<IOptions<BackgroundActivityOptions>>(sp =>
+                sp.GetRequiredService<ConfigSectionOptionsMonitor<BackgroundActivityOptions>>());
+
             services.TryAddSingleton<IBackgroundActivityStore, BackgroundActivityStore>();
 
             // 输出落盘依赖执行世界提供的 IPathWriteLock（io.local 等能力包登记）。
