@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Modules;
 
@@ -27,7 +28,8 @@ public sealed class LocalExecutionWorldModule : ISeeingModule
     /// <inheritdoc />
     public void ConfigureServices(IServiceCollection services)
     {
-        services.TryAddSingleton<IExecutionWorld, LocalExecutionWorld>();
+        services.TryAddSingleton<IExecutionWorld>(sp =>
+            new LocalExecutionWorld(sp.GetService<ILoggerFactory>()));
         services.TryAddSingleton<IFileSystem>(sp => sp.GetRequiredService<IExecutionWorld>().FileSystem);
         services.TryAddSingleton<ISubprocessFactory>(sp => sp.GetRequiredService<IExecutionWorld>().Subprocess);
         services.TryAddSingleton<IPathWriteLock, ProcessPathWriteLock>();

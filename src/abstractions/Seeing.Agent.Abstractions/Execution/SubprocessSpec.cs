@@ -35,6 +35,14 @@ public class SubprocessSpec
     /// <summary>标准流编码。</summary>
     public Encoding Encoding { get; set; } = Encoding.UTF8;
 
+    /// <summary>
+    /// 生命周期归属；默认 <see cref="SubprocessLifecycle.HostBound"/>（随宿主回收）。
+    /// </summary>
+    /// <remarks>
+    /// 工厂据此决定是否为进程建立「宿主关闭即回收」的内核绑定；<see cref="ISubprocess"/> 契约不变。
+    /// </remarks>
+    public SubprocessLifecycle Lifecycle { get; init; } = SubprocessLifecycle.HostBound;
+
     /// <summary>执行超时；为 <see langword="null"/> 时不限制。</summary>
     public TimeSpan? Timeout { get; set; }
 
