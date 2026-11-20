@@ -61,24 +61,14 @@ public sealed class BackgroundActivityViewModel
     public string? LiveOutput { get; init; }
 
     /// <summary>
-    /// 实时输出展示用尾部：只取最后 8 行。
+    /// 实时输出展示用文本。
     /// <para>
-    /// 固定高度容器不会自动滚动，直接渲染整段会让最新的输出落在可视区之外；
-    /// 截到尾部后「新行总在底部可见」。
+    /// 事件本身只带尾部（Core 侧有界 4096 字符），这里不再二次截断行数：
+    /// 渲染容器（<c>bash-terminal-pre</c>）有 <c>max-height</c> + <c>overflow:auto</c>，
+    /// 超过可视高度时由浏览器滚动，不能把内容提前丢掉。
     /// </para>
     /// </summary>
-    public string? LiveOutputTail
-    {
-        get
-        {
-            if (string.IsNullOrEmpty(LiveOutput))
-                return LiveOutput;
-
-            var normalized = LiveOutput!.Replace("\r\n", "\n");
-            var lines = normalized.Split('\n');
-            return lines.Length <= 8 ? normalized : string.Join('\n', lines[^8..]);
-        }
-    }
+    public string? LiveOutputTail => LiveOutput;
 
     /// <summary>kind 专属展示信息（只展示，不参与判定）。</summary>
     public IReadOnlyDictionary<string, string> Attributes { get; init; }

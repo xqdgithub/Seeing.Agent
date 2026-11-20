@@ -134,6 +134,7 @@
     private bool _cancelling;
     private string? _fullOutput;
     private bool _showFullOutput;
+    private bool _autoLoadedFull;
 
     /// <summary>
     /// 是否有可渲染的输出正文（前台取结果、后台取活动实时尾部）。
@@ -169,6 +170,7 @@
             _stickToBottom = true;
             _fullOutput = null;
             _showFullOutput = false;
+            _autoLoadedFull = false;
             // 执行中、或后台活动仍在跑时默认展开；历史已完成默认折叠。
             _isExpanded = ToolCall.IsRunning
                 || ToolCall.BackgroundActivity?.Status == BackgroundActivityStatus.Running;
@@ -198,6 +200,23 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // 终态时自动加载一次全量：事件只带尾部（4096 字符），
+        // 否则用户必须点「展开全部」才能看到完整输出。
+        if (ToolCall.BackgroundActivity is { } bg
+            && bg.IsTerminal
+            && !_autoLoadedFull
+            && (bg.OutputBytes ?? 0) > 4096)
+        {
+            _autoLoadedFull = true;
+            var full = await ActivityControl.ReadOutputAsync(bg.Id, bg.SessionId);
+            if (!string.IsNullOrEmpty(full))
+            {
+                _fullOutput = full;
+                _showFullOutput = true;
+                StateHasChanged();
+            }
+        }
+
         // 转后台后工具调用已返回（IsRunning=false），但活动仍在跑、输出仍在长：两者都算「活」。
         var live = ToolCall.IsRunning
             || ToolCall.BackgroundActivity?.Status == BackgroundActivityStatus.Running;
