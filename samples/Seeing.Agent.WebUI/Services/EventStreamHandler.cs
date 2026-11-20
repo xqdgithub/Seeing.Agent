@@ -1,3 +1,4 @@
+using Seeing.Agent.Abstractions.Background;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Core.Llm;
@@ -142,6 +143,22 @@ namespace Seeing.Agent.WebUI.Services
         public InboxNoticeViewModel? LastInboxNotice { get; private set; }
 
         /// <summary>
+        /// 本会话已知的后台活动（按首次出现顺序；同一活动就地替换）。
+        /// <para>
+        /// 活动事件不落盘：这里是 UI 侧唯一的实时投影，首屏/刷新通过
+        /// <see cref="SeedBackgroundActivities"/> 用 <c>IBackgroundActivityManager.List</c> 重建。
+        /// </para>
+        /// </summary>
+        private readonly List<BackgroundActivityViewModel> _backgroundActivities = new();
+
+        /// <summary>活动 id → 视图（就地替换，保持顺序）。</summary>
+        private readonly Dictionary<string, BackgroundActivityViewModel> _backgroundActivityById
+            = new(StringComparer.Ordinal);
+
+        /// <summary>本会话已知的后台活动（只读快照视图）。</summary>
+        public IReadOnlyList<BackgroundActivityViewModel> BackgroundActivities => _backgroundActivities;
+
+        /// <summary>
         /// UI 更新回调（携带触发事件；非事件流触发的刷新传 null）
         /// </summary>
         public event Action<IMessageEvent?>? OnStateChanged;
@@ -282,6 +299,16 @@ namespace Seeing.Agent.WebUI.Services
                 // ModeUpdate：会话写入（SelectedAcpMode）由服务端 ChatEventTracker 独占；
                 // UI 侧时间线刷新由 SessionWindowTimelineSync 消费，此处仅触发 OnStateChanged。
                 case MessageEventType.ModeUpdate:
+                    break;
+
+                // 后台活动（activity.*）：仅 UI 增量投影，不落盘、不进 LLM 历史、不唤醒执行。
+                // progress 只更新既有状态，不追加任何消息/历史条目。
+                case ActivityEventTypes.Started:
+                case ActivityEventTypes.Progress:
+                case ActivityEventTypes.Completed:
+                case ActivityEventTypes.Failed:
+                case ActivityEventTypes.Cancelled:
+                    HandleBackgroundActivity((BackgroundActivityEvent)evt);
                     break;
 
                 // 压缩事件（compaction.* 字符串类型）
@@ -581,6 +608,109 @@ namespace Seeing.Agent.WebUI.Services
                 Body = evt.Body,
                 Timestamp = evt.Timestamp
             };
+        }
+
+        /// <summary>
+        /// 处理后台活动事件（<c>activity.*</c>）——维护本会话的活动视图。
+        /// <para>
+        /// <b>只更新状态</b>：不写会话消息、不追加历史（进度事件尤其如此）。
+        /// 时间线侧由窗口把本视图投影到发起工具卡片或独立条目。
+        /// </para>
+        /// <para>
+        /// <b>Seq 单调</b>：事件可能乱序/回放，旧快照直接丢弃，绝不回退新状态。
+        /// </para>
+        /// </summary>
+        private void HandleBackgroundActivity(BackgroundActivityEvent evt)
+        {
+            var snapshot = evt.Activity;
+            if (snapshot is null || string.IsNullOrEmpty(snapshot.Id))
+                return;
+
+            var incoming = BackgroundActivityViewModel.FromSnapshot(snapshot);
+
+            if (_backgroundActivityById.TryGetValue(incoming.Id, out var existing))
+            {
+                // 旧快照（回放/乱序）不得覆盖更新状态。
+                if (existing.Seq > incoming.Seq)
+                    return;
+
+                var index = _backgroundActivities.IndexOf(existing);
+                if (index >= 0)
+                    _backgroundActivities[index] = incoming;
+            }
+            else
+            {
+                _backgroundActivities.Add(incoming);
+            }
+
+            _backgroundActivityById[incoming.Id] = incoming;
+        }
+
+        /// <summary>
+        /// 用首屏查询结果播种活动视图（会话加载/刷新时调用）。
+        /// <para>与实时事件共用同一 Seq 守卫：更旧的快照被丢弃，更新的覆盖。</para>
+        /// </summary>
+        public void SeedBackgroundActivities(IEnumerable<BackgroundActivitySnapshot> snapshots)
+        {
+            if (snapshots is null)
+                return;
+
+            foreach (var snapshot in snapshots)
+            {
+                if (snapshot is null || string.IsNullOrEmpty(snapshot.Id))
+                    continue;
+
+                var incoming = BackgroundActivityViewModel.FromSnapshot(snapshot);
+                if (_backgroundActivityById.TryGetValue(incoming.Id, out var existing))
+                {
+                    if (existing.Seq > incoming.Seq)
+                        continue;
+
+                    var index = _backgroundActivities.IndexOf(existing);
+                    if (index >= 0)
+                        _backgroundActivities[index] = incoming;
+                }
+                else
+                {
+                    _backgroundActivities.Add(incoming);
+                }
+
+                _backgroundActivityById[incoming.Id] = incoming;
+            }
+        }
+
+        /// <summary>按活动 id 取本会话已知的活动视图。</summary>
+        public bool TryGetBackgroundActivity(string activityId, out BackgroundActivityViewModel activity)
+        {
+            activity = null!;
+            if (string.IsNullOrEmpty(activityId))
+                return false;
+
+            return _backgroundActivityById.TryGetValue(activityId, out activity!);
+        }
+
+        /// <summary>按发起工具调用 id 取活动视图（同一工具可能派生多个活动时取最后一个）。</summary>
+        public bool TryGetBackgroundActivityByToolCallId(
+            string toolCallId,
+            out BackgroundActivityViewModel activity)
+        {
+            activity = null!;
+            if (string.IsNullOrEmpty(toolCallId))
+                return false;
+
+            for (var i = _backgroundActivities.Count - 1; i >= 0; i--)
+            {
+                if (string.Equals(
+                        _backgroundActivities[i].OriginToolCallId,
+                        toolCallId,
+                        StringComparison.Ordinal))
+                {
+                    activity = _backgroundActivities[i];
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>

@@ -41,6 +41,12 @@
         </div>
     </div>
 
+    @* bash 转后台（background=true）时，活动状态/进度跟随命令卡展示 *@
+    @if (ToolCall.BackgroundActivity is { } activity)
+    {
+        <BackgroundActivityCard Activity="@activity" Compact="true" />
+    }
+
     @if (_isExpanded)
     {
         <div class="bash-terminal-body">

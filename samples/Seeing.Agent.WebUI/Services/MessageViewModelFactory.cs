@@ -274,6 +274,9 @@ public static class MessageViewModelFactory
         existing.TaskBackground = incoming.TaskBackground;
         existing.TaskSteps = incoming.TaskSteps;
         existing.TodoList = incoming.TodoList;
+        // 后台活动 id 只增不减：会话落盘可能滞后于实时事件，空值不得覆盖已知 id。
+        if (!string.IsNullOrEmpty(incoming.BackgroundActivityId))
+            existing.BackgroundActivityId = incoming.BackgroundActivityId;
         existing.IsExpanded = wasExpanded;
     }
 }

@@ -137,6 +137,15 @@ public class ToolCallViewModel
     public string? BackgroundActivityId { get; set; }
 
     /// <summary>
+    /// 关联的后台活动实时视图（由时间线投影按 <c>OriginToolCallId</c> / <see cref="BackgroundActivityId"/> 附着）。
+    /// <para>
+    /// 事件不落盘：历史会话里该属性为 null，首屏/增量都由 <c>IBackgroundActivityManager.List</c>
+    /// 与 <c>activity.*</c> 事件重建。
+    /// </para>
+    /// </summary>
+    public BackgroundActivityViewModel? BackgroundActivity { get; set; }
+
+    /// <summary>
     /// 是否为 Task 子代理工具卡片（仅 Name==task 或显式 TaskId；禁止扫 Output 文本）
     /// </summary>
     public bool IsTaskTool =>

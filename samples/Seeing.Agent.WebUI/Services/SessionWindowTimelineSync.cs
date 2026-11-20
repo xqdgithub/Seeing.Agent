@@ -1,3 +1,4 @@
+using Seeing.Agent.Abstractions.Background;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Core.Events;
 using Seeing.Session.Core;
@@ -207,6 +208,10 @@ public sealed class SessionWindowTimelineSync
                 // 但它们本身**不携带**流式语义，因此不得据此把消息判为流式。
                 // 尤其是 LoopStart——此刻新回合尚无 assistant 消息，指针还停在上轮末条。
                 SyncAssistant(CompletionHint.Preserve);
+                break;
+            case BackgroundActivityEvent:
+                // 后台活动（activity.*）：只投影活动卡片，与助手消息完成态无关。
+                // 不进入 default 分支的全表对账（进度事件 ≥1s 一次，没必要每次扫整个会话）。
                 break;
             case SessionTitleChangedEvent titleEvt:
                 if (string.Equals(_sessionId, titleEvt.SessionId, StringComparison.Ordinal))

@@ -42,6 +42,12 @@ else
                   Style="margin-left: auto; font-size: 12px; color: var(--color-text-tertiary);" />
         </div>
 
+        @* 后台活动内联卡：随工具调用转后台（如后台执行）的活动状态/进度 *@
+        @if (ToolCall.BackgroundActivity is { } activity)
+        {
+            <BackgroundActivityCard Activity="@activity" Compact="true" />
+        }
+
         <div class="tool-call-details @(_isExpanded ? "expanded" : "collapsed")">
                 @if (HasParametersSection)
                 {

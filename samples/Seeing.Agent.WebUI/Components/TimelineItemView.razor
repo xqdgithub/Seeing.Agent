@@ -1,4 +1,5 @@
 @using AntDesign
+@using Seeing.Agent.WebUI.Components.Messaging
 @using Seeing.Agent.WebUI.Models
 @using TimelineModel = Seeing.Agent.WebUI.Models.Timeline
 
@@ -8,6 +9,10 @@
                    ContentRevision="@Item.Revision"
                    StructureRevision="@Item.StructureRevision"
                    OnToolClick="@OnToolClick" />
+}
+else if (Item.Kind == TimelineModel.TimelineItemKind.BackgroundActivity && Item.Activity != null)
+{
+    <BackgroundActivityCard Activity="@Item.Activity" />
 }
 else if (Item.Message != null)
 {

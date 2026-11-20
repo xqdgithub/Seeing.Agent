@@ -1,0 +1,166 @@
+@using AntDesign
+@using Seeing.Agent.WebUI.Models
+@using Seeing.Agent.WebUI.Services
+@inject BackgroundActivityUiService ActivityControl
+
+@* 后台活动内联卡片（工具卡片内或独立时间线条目共用） *@
+
+@if (Activity is { } activity)
+{
+    <div class="bg-activity-card @(Compact ? "is-compact" : null)" data-activity-id="@activity.Id">
+        <div class="bg-activity-head">
+            <Icon Type="@activity.StatusIcon" Style="@StatusIconStyle" />
+            <span class="bg-activity-title" title="@activity.Title">@activity.Title</span>
+            <Tag Color="@activity.StatusTagColor" Style="margin-left: 6px; font-size: 11px;">@activity.StatusText</Tag>
+
+            @if (activity.OutputSizeText is { } size)
+            {
+                <span class="bg-activity-meta" title="已写输出大小">输出 @size</span>
+            }
+            else if (activity.OutputLimitText is { } limit)
+            {
+                <span class="bg-activity-meta" title="输出上限（实际大小未上报）">输出 @limit</span>
+            }
+
+            @if (activity.ProgressText is { } progress)
+            {
+                <span class="bg-activity-meta" title="@progress">@progress</span>
+            }
+
+            @if (activity.CanCancel)
+            {
+                <Button Size="@ButtonSize.Small"
+                        Type="@ButtonType.Link"
+                        Icon="@IconType.Outline.Stop"
+                        Loading="@_cancelling"
+                        Disabled="@(_cancelling || !ActivityControl.IsAvailable)"
+                        OnClick="CancelAsync">取消</Button>
+            }
+        </div>
+
+        @if (activity.ProgressPercent is double percent)
+        {
+            <div class="bg-activity-bar" role="progressbar"
+                 aria-valuenow="@((int)percent)" aria-valuemin="0" aria-valuemax="100">
+                <div class="bg-activity-bar-fill" style="@($"width:{percent:F0}%")"></div>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(activity.ErrorMessage))
+        {
+            <div class="bg-activity-error">@activity.ErrorMessage</div>
+        }
+
+        @if (_cancelFailed)
+        {
+            <div class="bg-activity-error">取消失败：活动可能已结束或不属于当前会话。</div>
+        }
+    </div>
+}
+
+<style>
+    .bg-activity-card {
+        margin: 4px 0 6px;
+        padding: 6px 10px;
+        border: 1px solid var(--color-border-secondary, #f0f0f0);
+        border-left: 3px solid var(--color-primary, #1677ff);
+        border-radius: 6px;
+        background: var(--color-bg-secondary, #fafafa);
+        font-size: 12px;
+        color: var(--color-text-secondary, #595959);
+    }
+    .bg-activity-card.is-compact {
+        margin: 0 0 4px;
+        padding: 4px 8px;
+    }
+    .bg-activity-head {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-wrap: wrap;
+        min-width: 0;
+    }
+    .bg-activity-title {
+        font-weight: 500;
+        color: var(--color-text, #262626);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 340px;
+    }
+    .bg-activity-meta {
+        margin-left: 8px;
+        color: var(--color-text-tertiary, #8c8c8c);
+    }
+    .bg-activity-bar {
+        margin-top: 5px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--color-fill-secondary, #f0f0f0);
+        overflow: hidden;
+    }
+    .bg-activity-bar-fill {
+        height: 100%;
+        background: var(--color-primary, #1677ff);
+        transition: width 0.2s ease;
+    }
+    .bg-activity-error {
+        margin-top: 4px;
+        color: var(--color-error, #cf1322);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+</style>
+
+@code {
+    /// <summary>活动视图；为 null 时不渲染任何内容。</summary>
+    [Parameter]
+    public BackgroundActivityViewModel? Activity { get; set; }
+
+    /// <summary>紧凑模式（嵌在工具卡片内时使用）。</summary>
+    [Parameter]
+    public bool Compact { get; set; }
+
+    private bool _cancelling;
+    private bool _cancelFailed;
+
+    private string StatusIconStyle => Activity?.Status switch
+    {
+        Seeing.Agent.Abstractions.Background.BackgroundActivityStatus.Running =>
+            "color: var(--color-primary); animation: spin 1s linear infinite;",
+        Seeing.Agent.Abstractions.Background.BackgroundActivityStatus.Succeeded =>
+            "color: var(--color-success);",
+        Seeing.Agent.Abstractions.Background.BackgroundActivityStatus.Failed =>
+            "color: var(--color-error);",
+        _ => "color: var(--color-text-tertiary);"
+    };
+
+    protected override void OnParametersSet()
+    {
+        // 活动状态更新时清掉上一次取消失败提示，避免旧错误挂在新的成功状态上。
+        if (Activity is { IsTerminal: true })
+            _cancelFailed = false;
+    }
+
+    private async Task CancelAsync()
+    {
+        if (Activity is not { } activity || _cancelling)
+            return;
+
+        _cancelling = true;
+        _cancelFailed = false;
+
+        try
+        {
+            var ok = await ActivityControl.CancelAsync(activity.Id, activity.SessionId);
+            _cancelFailed = !ok;
+
+            // 成功时不本地改状态：终态以 activity.cancelled 事件为准（事件是唯一真相）。
+        }
+        finally
+        {
+            _cancelling = false;
+        }
+    }
+}
