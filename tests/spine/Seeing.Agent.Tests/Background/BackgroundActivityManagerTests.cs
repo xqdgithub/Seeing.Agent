@@ -256,6 +256,51 @@ public class BackgroundActivityManagerTests
         snapshot.CancelReason.Should().Be(BackgroundActivityCancelReason.Timeout);
     }
 
+    [Fact]
+    public async Task PersistOrder_ShouldFollowSeq_WhenRunningAndTerminalRace()
+    {
+        var harness = CreateHarness();
+        harness.Store.BlockFirstSave();
+
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+
+        // 确保 Running 已入链并卡在存储里（此时终态还未提交）。
+        await harness.Store.FirstSaveStarted.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var cancelling = harness.Manager.CancelAsync(handle.ActivityId, BackgroundActivityCancelReason.User, "s1");
+        harness.Store.ReleaseFirstSave();
+        await cancelling;
+
+        // 落盘顺序严格等于 Seq 顺序：最后落盘的一定是终态，Running 不会覆盖它。
+        var statuses = harness.Store.Saved.Select(s => s.Status).ToList();
+        statuses.Should().EndWith(new[] { BackgroundActivityStatus.Cancelled });
+        statuses.Should().Contain(BackgroundActivityStatus.Running);
+
+        var persisted = harness.Store.Saved.Last();
+        persisted.Status.Should().Be(BackgroundActivityStatus.Cancelled);
+        persisted.Seq.Should().Be(harness.Manager.Get(handle.ActivityId, "s1")!.Seq);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_WithFailedPersist_ShouldNotPublishTerminalEvent()
+    {
+        var harness = CreateHarness();
+        harness.Store.OnSave = _ => throw new IOException("disk full");
+
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+        await harness.Manager.WaitForPersistenceAsync(handle.ActivityId);
+
+        // Running 落盘失败：连 Started 都不该发。
+        harness.Publisher.ActivityEvents.Should().BeEmpty();
+
+        await handle.Reporter.CompleteAsync(new BackgroundActivityResult(
+            BackgroundActivityResultKind.Text, null, null, null, null, null));
+
+        // 终态落盘失败：内存终态已提交，但事件不得发布（事件是权威记录的投影）。
+        harness.Publisher.ActivityEvents.Should().BeEmpty();
+        harness.Manager.Get(handle.ActivityId, "s1")!.Status.Should().Be(BackgroundActivityStatus.Succeeded);
+    }
+
     // ─── 查询与归属 ───────────────────────────────────────────────────────────
 
     [Fact]
@@ -320,6 +365,36 @@ public class BackgroundActivityManagerTests
 
         harness.Manager.Get(handle.ActivityId, "s2").Should().NotBeNull();
         harness.Manager.List(new BackgroundActivityQuery(), "s2").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task OtherSession_ShouldNotCancelProjectVisibleActivity()
+    {
+        var harness = CreateHarness();
+        var handle = await harness.Manager.StartAsSystemAsync(
+            Request("s1") with { Visibility = BackgroundActivityVisibility.Project });
+
+        (await harness.Manager.CancelAsync(handle.ActivityId, BackgroundActivityCancelReason.User, "s2"))
+            .Should().BeFalse();
+        (await harness.Manager.WaitAsync(handle.ActivityId, TimeSpan.Zero, "s2")).Outcome
+            .Should().Be(BackgroundActivityWaitOutcome.TimedOut);
+
+        harness.Manager.Get(handle.ActivityId, "s1")!.Status.Should().Be(BackgroundActivityStatus.Running);
+    }
+
+    [Fact]
+    public async Task OtherSession_ShouldNotReadProjectVisibleOutput()
+    {
+        var harness = CreateHarness();
+        var handle = await harness.Manager.StartAsSystemAsync(
+            Request("s1") with { Visibility = BackgroundActivityVisibility.Project });
+
+        var foreignPage = await harness.Manager.ReadOutputAsync(handle.ActivityId, 0, 1024, "s2");
+        foreignPage.Should()
+            .Be(new BackgroundActivityOutputPage(string.Empty, 0, EndOfStream: true, Truncated: false));
+
+        var ownerPage = await harness.Manager.ReadOutputAsync(handle.ActivityId, 0, 1024, "s1");
+        ownerPage.Content.Should().Be("out");
     }
 
     [Fact]
@@ -466,6 +541,41 @@ public class BackgroundActivityManagerTests
     }
 
     [Fact]
+    public async Task UnregisterLauncher_ShouldCallLauncherCancel()
+    {
+        var harness = CreateHarness();
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+
+        var cancelled = await harness.Manager.UnregisterLauncherAsync(Kind);
+
+        cancelled.Should().Be(1);
+        harness.Launcher.CancelCalls.Should().ContainSingle()
+            .Which.Should().Be((handle.ActivityId, BackgroundActivityCancelReason.ModuleDeactivated));
+        harness.Manager.Get(handle.ActivityId, "s1")!.Status.Should().Be(BackgroundActivityStatus.Cancelled);
+    }
+
+    [Fact]
+    public async Task Start_DuringUnregister_ShouldThrow()
+    {
+        var harness = CreateHarness();
+        var running = await harness.Manager.StartAsync(Request("s1"), "s1");
+
+        var cancelGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Launcher.CancelGate = cancelGate.Task;
+
+        var unregistering = harness.Manager.UnregisterLauncherAsync(Kind);
+
+        // 注销窗口内（launcher 仍被持有、尚未摘除）不得放行新活动。
+        await FluentActions.Awaiting(() => harness.Manager.StartAsync(Request("s1"), "s1"))
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*正在注销*");
+
+        cancelGate.SetResult();
+        (await unregistering).Should().Be(1);
+        harness.Manager.Get(running.ActivityId, "s1")!.Status.Should().Be(BackgroundActivityStatus.Cancelled);
+    }
+
+    [Fact]
     public async Task TrackAsync_WithCompletion_ShouldBecomeSucceededWithCapabilities()
     {
         var harness = CreateHarness();
@@ -574,6 +684,9 @@ public class BackgroundActivityManagerTests
 
         public int LaunchCount { get; private set; }
 
+        /// <summary>取消回调的闸门（用于制造「注销进行中」窗口）。</summary>
+        public Task CancelGate { get; set; } = Task.CompletedTask;
+
         public List<(string ActivityId, BackgroundActivityCancelReason Reason)> CancelCalls { get; } = new();
 
         public Task<BackgroundActivityLaunchResult> LaunchAsync(
@@ -584,12 +697,12 @@ public class BackgroundActivityManagerTests
             return Task.FromResult(new BackgroundActivityLaunchResult(ExecutionSource.Task));
         }
 
-        public Task CancelAsync(BackgroundActivityHandle handle, BackgroundActivityCancelReason reason)
+        public async Task CancelAsync(BackgroundActivityHandle handle, BackgroundActivityCancelReason reason)
         {
             lock (CancelCalls)
                 CancelCalls.Add((handle.ActivityId, reason));
 
-            return Task.CompletedTask;
+            await CancelGate;
         }
     }
 
@@ -643,8 +756,21 @@ public class BackgroundActivityManagerTests
     {
         private readonly List<BackgroundActivitySnapshot> _saved = new();
         private readonly object _gate = new();
+        private readonly TaskCompletionSource _firstSaveStarted
+            = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        private TaskCompletionSource? _firstSaveGate;
 
         public Func<BackgroundActivitySnapshot, Task>? OnSave { get; set; }
+
+        /// <summary>第一次 Save 已开始（用于「Running 已入链并卡住」的确定性同步）。</summary>
+        public Task FirstSaveStarted => _firstSaveStarted.Task;
+
+        /// <summary>让第一次 Save 阻塞，直到 <see cref="ReleaseFirstSave"/>（模拟慢盘）。</summary>
+        public void BlockFirstSave()
+            => _firstSaveGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void ReleaseFirstSave() => _firstSaveGate?.TrySetResult();
 
         public IReadOnlyList<BackgroundActivitySnapshot> Saved
         {
@@ -657,8 +783,17 @@ public class BackgroundActivityManagerTests
 
         public async Task SaveAsync(BackgroundActivitySnapshot snapshot)
         {
+            int index;
             lock (_gate)
+            {
+                index = _saved.Count;
                 _saved.Add(snapshot);
+            }
+
+            _firstSaveStarted.TrySetResult();
+
+            if (index == 0 && _firstSaveGate is { } gate)
+                await gate.Task;
 
             if (OnSave is { } onSave)
                 await onSave(snapshot);

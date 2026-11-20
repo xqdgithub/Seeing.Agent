@@ -38,6 +38,9 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
     private readonly ConcurrentDictionary<string, BackgroundActivityRecord> _activities = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, LauncherRegistration> _launchers = new(StringComparer.Ordinal);
 
+    /// <summary>正在注销的 kind（<see cref="_sync"/> 内维护）：阻止新活动在注销窗口逃逸。</summary>
+    private readonly HashSet<string> _unregistering = new(StringComparer.Ordinal);
+
     /// <summary>所有状态变更与快照读取的唯一临界区；临界区内不得 <c>await</c>。</summary>
     private readonly object _sync = new();
 
@@ -95,7 +98,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
     /// <inheritdoc />
     public BackgroundActivitySnapshot? Get(string activityId, string requesterSessionId)
     {
-        if (!TryGetAccessible(activityId, requesterSessionId, out var record))
+        if (!TryGetReadable(activityId, requesterSessionId, out var record))
             return null;
 
         lock (_sync)
@@ -145,7 +148,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         string requesterSessionId,
         CancellationToken ct = default)
     {
-        if (!TryGetAccessible(activityId, requesterSessionId, out var root))
+        if (!TryGetOwned(activityId, requesterSessionId, out var root))
             return false;
 
         var cancelled = false;
@@ -172,7 +175,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         string requesterSessionId,
         CancellationToken ct = default)
     {
-        if (!TryGetAccessible(activityId, requesterSessionId, out var record))
+        if (!TryGetOwned(activityId, requesterSessionId, out var record))
             return new BackgroundActivityWaitResult(BackgroundActivityWaitOutcome.TimedOut, null);
 
         if (TryGetTerminalSnapshot(record, out var terminal))
@@ -201,7 +204,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         string requesterSessionId,
         CancellationToken ct = default)
     {
-        if (!TryGetAccessible(activityId, requesterSessionId, out _))
+        if (!TryGetOwned(activityId, requesterSessionId, out _))
             return new BackgroundActivityOutputPage(string.Empty, offset, EndOfStream: true, Truncated: false);
 
         return await _outputStore.ReadAsync(activityId, offset, maxBytes, ct).ConfigureAwait(false);
@@ -210,24 +213,23 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
     /// <inheritdoc />
     public void MarkResultObserved(string activityId, string requesterSessionId)
     {
-        if (!TryGetAccessible(activityId, requesterSessionId, out var record))
+        if (!TryGetOwned(activityId, requesterSessionId, out var record))
             return;
 
-        BackgroundActivitySnapshot snapshot;
         lock (_sync)
         {
             if (record.Snapshot.ResultObservedAt is not null)
                 return;
 
-            snapshot = record.Snapshot with
+            // 状态迁移与入链同一临界区：落盘顺序 == Seq 顺序（R1）。
+            var snapshot = record.Snapshot with
             {
                 Seq = record.Snapshot.Seq + 1,
                 ResultObservedAt = _timeProvider.GetLocalNow()
             };
             record.Snapshot = snapshot;
+            _ = EnqueuePersist(record, snapshot, eventType: null);
         }
-
-        _ = EnqueuePersist(record, snapshot, eventType: null);
     }
 
     // ─── 系统面 ───────────────────────────────────────────────────────────────
@@ -315,12 +317,14 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
 
-        // 先摘登记，后续新的 Start 立即失败（Fail-fast，不吞请求）。
-        _launchers.TryRemove(kind, out _);
-
+        // R3：先置「注销中」并保留 launcher 引用——取消时要能通知到它，且并发 Start 不得穿过。
+        LauncherRegistration? registration = null;
         var targets = new List<BackgroundActivityRecord>();
         lock (_sync)
         {
+            _unregistering.Add(kind);
+            _launchers.TryGetValue(kind, out registration);
+
             foreach (var record in _activities.Values)
             {
                 if (record.TerminalCommitted)
@@ -332,17 +336,38 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         }
 
         var cancelled = 0;
-        foreach (var record in targets)
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            if (await CancelCoreAsync(record, BackgroundActivityCancelReason.ModuleDeactivated).ConfigureAwait(false))
-                cancelled++;
-        }
+            foreach (var record in targets)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (await CancelCoreAsync(record, BackgroundActivityCancelReason.ModuleDeactivated, registration)
+                        .ConfigureAwait(false))
+                {
+                    cancelled++;
+                }
+            }
 
-        // 必须在返回前等到终态（spec §9.5：模块停用不得留活口）。
-        var terminalWaits = targets.Select(static record => (Task)record.TerminalSignal.Task).ToArray();
-        if (terminalWaits.Length > 0)
-            await Task.WhenAll(terminalWaits).WaitAsync(ct).ConfigureAwait(false);
+            // 必须在返回前等到终态（spec §9.5：模块停用不得留活口）。
+            var terminalWaits = targets.Select(static record => (Task)record.TerminalSignal.Task).ToArray();
+            if (terminalWaits.Length > 0)
+                await Task.WhenAll(terminalWaits).WaitAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            // 最后才摘登记并解除闸门：中途失败也必须恢复，否则该 kind 永久不可用。
+            lock (_sync)
+            {
+                _unregistering.Remove(kind);
+
+                if (registration is not null
+                    && _launchers.TryGetValue(kind, out var current)
+                    && ReferenceEquals(current, registration))
+                {
+                    _launchers.TryRemove(kind, out _);
+                }
+            }
+        }
 
         return cancelled;
     }
@@ -543,39 +568,50 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         var record = CreateRecord(snapshot, registration.Launcher.Kind, request.DedupeKey, effectiveTimeout);
 
         var admitted = false;
+        var kindUnregistering = false;
         lock (_sync)
         {
-            var runningInSession = 0;
-            foreach (var candidate in _activities.Values)
+            // R3：注销窗口内不得放行新活动（launcher 引用即将/已经消失，放行会成为无人取消的孤儿）。
+            if (_unregistering.Contains(request.Kind))
             {
-                if (candidate.TerminalCommitted)
-                    continue;
-
-                if (string.Equals(candidate.Snapshot.OwnerSessionId, request.OwnerSessionId, StringComparison.Ordinal))
-                    runningInSession++;
-            }
-
-            if (runningInSession >= Math.Max(1, options.MaxConcurrentPerSession))
-            {
-                _logger.LogWarning(
-                    "会话后台活动并发已达上限 SessionId={SessionId} Limit={Limit} Kind={Kind}",
-                    request.OwnerSessionId,
-                    options.MaxConcurrentPerSession,
-                    request.Kind);
+                kindUnregistering = true;
             }
             else
             {
-                _activities[record.Handle.ActivityId] = record;
-                admitted = true;
+                var runningInSession = 0;
+                foreach (var candidate in _activities.Values)
+                {
+                    if (candidate.TerminalCommitted)
+                        continue;
+
+                    if (string.Equals(candidate.Snapshot.OwnerSessionId, request.OwnerSessionId, StringComparison.Ordinal))
+                        runningInSession++;
+                }
+
+                if (runningInSession >= Math.Max(1, options.MaxConcurrentPerSession))
+                {
+                    _logger.LogWarning(
+                        "会话后台活动并发已达上限 SessionId={SessionId} Limit={Limit} Kind={Kind}",
+                        request.OwnerSessionId,
+                        options.MaxConcurrentPerSession,
+                        request.Kind);
+                }
+                else
+                {
+                    _activities[record.Handle.ActivityId] = record;
+                    admitted = true;
+                }
             }
         }
 
         if (!admitted)
         {
-            record.TimeoutTimer?.Dispose();
-            record.Cts.Dispose();
-            throw new InvalidOperationException(
-                $"会话后台活动并发已达上限 {options.MaxConcurrentPerSession}（SessionId={request.OwnerSessionId}）。");
+            ReleaseRejectedRecord(record);
+
+            throw kindUnregistering
+                ? new InvalidOperationException($"后台活动 kind '{request.Kind}' 正在注销，不能启动新活动。")
+                : new InvalidOperationException(
+                    $"会话后台活动并发已达上限 {options.MaxConcurrentPerSession}（SessionId={request.OwnerSessionId}）。");
         }
 
         // 宿主已在停止过程中：不启动 launcher，直接落 Interrupted（不留 Pending 僵尸）。
@@ -638,43 +674,50 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
     /// <summary>Pending → Running；终态已提交或当前非 Pending 时丢弃。</summary>
     private bool TryCommitRunning(BackgroundActivityRecord record)
     {
-        BackgroundActivitySnapshot snapshot;
         lock (_sync)
         {
             if (record.TerminalCommitted || record.Snapshot.Status != BackgroundActivityStatus.Pending)
                 return false;
 
-            snapshot = record.Snapshot with
+            var snapshot = record.Snapshot with
             {
                 Status = BackgroundActivityStatus.Running,
                 Seq = record.Snapshot.Seq + 1,
                 StartedAt = record.Snapshot.StartedAt ?? _timeProvider.GetLocalNow()
             };
             record.Snapshot = snapshot;
+
+            // 迁移与入链同一临界区（R1）：落盘顺序严格等于 Seq 顺序，过期快照不会覆盖终态。
+            _ = EnqueuePersist(record, snapshot, ActivityEventTypes.Started);
         }
 
-        _ = EnqueuePersist(record, snapshot, ActivityEventTypes.Started);
         return true;
     }
 
     /// <summary>
     /// 终态 CAS：先到先得，只提交一次（锁内完成，不 <c>await</c>）。返回 <see langword="true"/> 表示本次调用赢得终态。
-    /// <para>提交顺序：内存 CAS → 释放定时器/宿主登记 → 取消 token → 唤醒等待方；落盘与发事件由调用方在锁外完成。</para>
+    /// <para>
+    /// 锁内：内存 CAS + 入链（保证终态落盘排在此前所有状态之后）；
+    /// 锁外：释放定时器 / 宿主登记、取消并释放 CTS、唤醒等待方。
+    /// </para>
     /// </summary>
     private bool TryCommitTerminalState(
         BackgroundActivityRecord record,
         BackgroundActivityStatus status,
         BackgroundActivityCancelReason? cancelReason,
         BackgroundActivityResult? result,
-        out BackgroundActivitySnapshot snapshot)
+        out BackgroundActivitySnapshot snapshot,
+        out Task persistence)
     {
         ITimer? timer;
         CancellationTokenRegistration hostRegistration;
+        CancellationTokenSource cts;
         lock (_sync)
         {
             if (record.TerminalCommitted)
             {
                 snapshot = record.Snapshot;
+                persistence = Task.CompletedTask;
                 return false;
             }
 
@@ -689,10 +732,14 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
             };
             record.Snapshot = snapshot;
 
+            // 同一临界区内入链：任何在途 Running/MarkResultObserved 快照都排在终态之前。
+            persistence = EnqueuePersist(record, snapshot, ResolveEventType(status));
+
             timer = record.TimeoutTimer;
             record.TimeoutTimer = null;
             hostRegistration = record.HostRegistration;
             record.HostRegistration = default;
+            cts = record.Cts;
         }
 
         timer?.Dispose();
@@ -706,7 +753,18 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
             // 宿主 token 已释放：无副作用。
         }
 
-        SafeCancel(record.Cts);
+        // 先 Cancel 再 Dispose（R7）；两者都在锁外，避免回调阻塞临界区。
+        SafeCancel(cts);
+
+        try
+        {
+            cts.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 已释放：终态语义已提交。
+        }
+
         record.TerminalSignal.TrySetResult(snapshot);
         return true;
     }
@@ -723,36 +781,27 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         CancellationToken ct = default)
     {
         // ct 只表达调用方放弃等待：终态记录必须落盘，因此不传给存储（存储接口本身也无 ct）。
-        if (!TryCommitTerminalState(record, status, cancelReason, result, out var snapshot))
+        if (!TryCommitTerminalState(record, status, cancelReason, result, out _, out var persistence))
             return;
 
-        await PersistAndPublishAsync(record, snapshot, ResolveEventType(status)).ConfigureAwait(false);
-    }
-
-    /// <summary>锁外落盘，随后发实时事件（顺序在 <see cref="EnqueuePersist"/> 的串行链内保证）。</summary>
-    private async Task PersistAndPublishAsync(
-        BackgroundActivityRecord record,
-        BackgroundActivitySnapshot snapshot,
-        string? eventType)
-    {
-        var persistence = EnqueuePersist(record, snapshot, eventType);
         await persistence.ConfigureAwait(false);
     }
 
     /// <summary>提交取消终态、落盘发事件，然后通知 launcher（先写状态再通知，spec §7.4）。</summary>
     private async Task<bool> CancelCoreAsync(
         BackgroundActivityRecord record,
-        BackgroundActivityCancelReason reason)
+        BackgroundActivityCancelReason reason,
+        LauncherRegistration? launcherOverride = null)
     {
         var status = reason == BackgroundActivityCancelReason.HostShutdown
             ? BackgroundActivityStatus.Interrupted
             : BackgroundActivityStatus.Cancelled;
 
-        if (!TryCommitTerminalState(record, status, reason, result: null, out var snapshot))
+        if (!TryCommitTerminalState(record, status, reason, result: null, out _, out var persistence))
             return false;
 
-        await PersistAndPublishAsync(record, snapshot, ResolveEventType(status)).ConfigureAwait(false);
-        await NotifyLauncherCancelledAsync(record, reason).ConfigureAwait(false);
+        await persistence.ConfigureAwait(false);
+        await NotifyLauncherCancelledAsync(record, reason, launcherOverride).ConfigureAwait(false);
         return true;
     }
 
@@ -772,12 +821,15 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
 
     private async Task NotifyLauncherCancelledAsync(
         BackgroundActivityRecord record,
-        BackgroundActivityCancelReason reason)
+        BackgroundActivityCancelReason reason,
+        LauncherRegistration? launcherOverride = null)
     {
         if (record.LauncherKind is null)
             return;
 
-        if (!_launchers.TryGetValue(record.LauncherKind, out var registration))
+        // 注销路径传入已摘取的引用：此刻字典里可能已无该 kind（R3）。
+        var registration = launcherOverride;
+        if (registration is null && !_launchers.TryGetValue(record.LauncherKind, out registration))
             return;
 
         try
@@ -1049,9 +1101,29 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         return result;
     }
 
-    private bool TryGetAccessible(
+    /// <summary>
+    /// 读侧判定：本会话活动，或 <c>Project</c> / <c>System</c> 可见性的活动（仅 <see cref="Get"/> 用）。
+    /// </summary>
+    private bool TryGetReadable(
         string activityId,
         string requesterSessionId,
+        out BackgroundActivityRecord record)
+        => TryGetCore(activityId, requesterSessionId, allowForeignVisible: true, out record);
+
+    /// <summary>
+    /// 写侧判定：<b>只</b>允许归属会话（取消 / 等待 / 读输出 / 标记已观察）。
+    /// <para>可见性放宽只影响读，不能把"能看见"变成"能操作"。</para>
+    /// </summary>
+    private bool TryGetOwned(
+        string activityId,
+        string requesterSessionId,
+        out BackgroundActivityRecord record)
+        => TryGetCore(activityId, requesterSessionId, allowForeignVisible: false, out record);
+
+    private bool TryGetCore(
+        string activityId,
+        string requesterSessionId,
+        bool allowForeignVisible,
         out BackgroundActivityRecord record)
     {
         record = null!;
@@ -1067,9 +1139,8 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
             snapshot = candidate.Snapshot;
         }
 
-        // 越权只对 Session 可见性生效；Project / System 放行。
         var allowed = string.Equals(snapshot.OwnerSessionId, requesterSessionId, StringComparison.Ordinal)
-            || snapshot.Visibility != BackgroundActivityVisibility.Session;
+            || (allowForeignVisible && snapshot.Visibility != BackgroundActivityVisibility.Session);
 
         if (!allowed)
             return false;
@@ -1135,20 +1206,24 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
             // 前一环已记录，链路继续。
         }
 
+        var persisted = false;
         try
         {
             await _store.SaveAsync(snapshot).ConfigureAwait(false);
+            persisted = true;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(
+            _logger.LogError(
                 ex,
-                "后台活动快照落盘失败 ActivityId={ActivityId} Status={Status}",
+                "后台活动快照落盘失败，跳过事件发布 ActivityId={ActivityId} Status={Status} Type={Type}",
                 snapshot.Id,
-                snapshot.Status);
+                snapshot.Status,
+                eventType);
         }
 
-        if (eventType is not null)
+        // R6：只有落盘成功才发布事件——事件是「已持久事实」的实时投影，不能先于权威记录。
+        if (persisted && eventType is not null)
             Publish(snapshot, eventType);
     }
 
@@ -1236,6 +1311,35 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         catch (AggregateException)
         {
             // 个别回调抛异常不影响取消语义。
+        }
+    }
+
+    /// <summary>准入失败（并发上限 / kind 注销中）时释放尚未入字典的 record，避免定时器与登记泄漏（R7）。</summary>
+    private static void ReleaseRejectedRecord(BackgroundActivityRecord record)
+    {
+        record.TimeoutTimer?.Dispose();
+        record.TimeoutTimer = null;
+
+        try
+        {
+            record.HostRegistration.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 宿主 token 已释放：无副作用。
+        }
+        finally
+        {
+            record.HostRegistration = default;
+        }
+
+        try
+        {
+            record.Cts.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 已释放。
         }
     }
 
