@@ -93,8 +93,9 @@ public sealed class SkillLoader : IComponentLoader
 
     private static string ResolveProjectRoot(ISeeingDirectories? directories)
     {
+        // 不回落到进程 CWD：技能根必须来自工作区。
         if (directories is null)
-            return Directory.GetCurrentDirectory();
+            throw new InvalidOperationException("缺少 ISeeingDirectories，无法解析技能根。");
 
         var projectSeeing = directories.ProjectSeeingDirectory;
         var parent = Directory.GetParent(projectSeeing);

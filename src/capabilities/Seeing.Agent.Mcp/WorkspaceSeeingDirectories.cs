@@ -11,9 +11,9 @@ internal sealed class WorkspaceSeeingDirectories : ISeeingDirectories
 
     public WorkspaceSeeingDirectories(string workspaceRoot)
     {
-        _workspaceRoot = string.IsNullOrWhiteSpace(workspaceRoot)
-            ? Directory.GetCurrentDirectory()
-            : Path.GetFullPath(workspaceRoot);
+        // 不再回落到进程 CWD：没有工作区根就是调用方接线错误，必须显式失败。
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
+        _workspaceRoot = Path.GetFullPath(workspaceRoot);
     }
 
     public string UserSeeingDirectory =>

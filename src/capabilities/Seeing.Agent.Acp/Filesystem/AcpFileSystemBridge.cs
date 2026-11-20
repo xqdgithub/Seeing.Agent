@@ -150,9 +150,11 @@ public sealed class AcpFileSystemBridge
         if (string.IsNullOrWhiteSpace(path))
             return false;
 
-        var root = Path.GetFullPath(string.IsNullOrWhiteSpace(workingDirectory)
-            ? Environment.CurrentDirectory
-            : workingDirectory);
+        // 不回落进程 CWD：ACP 请求必须显式带 workingDirectory（执行级 cwd）。
+        if (string.IsNullOrWhiteSpace(workingDirectory))
+            return false;
+
+        var root = Path.GetFullPath(workingDirectory);
 
         fullPath = Path.IsPathRooted(path)
             ? Path.GetFullPath(path)
