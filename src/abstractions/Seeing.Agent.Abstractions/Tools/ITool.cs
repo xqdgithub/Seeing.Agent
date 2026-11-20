@@ -26,6 +26,12 @@ namespace Seeing.Agent.Abstractions.Tools
         public SkillCatalogSnapshot? SkillSnapshot { get; set; }
 
         /// <summary>
+        /// 本次执行的 cwd（由 <c>ToolInvocation</c> 投影）。路径类工具必须以此为准；
+        /// 为空表示调用方未提供执行事实，不得回落到进程当前目录。
+        /// </summary>
+        public string? WorkingDirectory { get; set; }
+
+        /// <summary>
         /// 事件出口（子任务投影等）。由 AgentExecutor 在执行工具时接线。
         /// </summary>
         public IToolEventSink? EventSink { get; set; }

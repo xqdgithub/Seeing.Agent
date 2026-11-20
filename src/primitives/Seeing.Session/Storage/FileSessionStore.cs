@@ -533,6 +533,7 @@ namespace Seeing.Session.Storage
 
             string? id = null, title = null, partitionId = null, selectedAgent = null, selectedModel = null;
             string? groupId = null, legacyChannelId = null, routeChannelId = null, workingDirectory = null, scenario = null;
+            List<CollaborationDirectory>? collaborationDirectories = null;
             var status = SessionStatus.Created;
             var kind = SessionKind.Root;
             var autoApprove = SessionAutoApprove.FollowGlobal;
@@ -561,6 +562,7 @@ namespace Seeing.Session.Storage
                     case "channelRoute": routeChannelId = ReadChannelRouteChannelId(ref reader); break;
                     case "workingDirectory": workingDirectory = ReadString(ref reader); break;
                     case "scenario": scenario = ReadString(ref reader); break;
+                    case "collaborationDirectories": collaborationDirectories = ReadCollaborationDirectories(ref reader); break;
                     case "status": status = ReadEnum(ref reader, SessionStatus.Created); break;
                     case "kind": kind = ReadEnum(ref reader, SessionKind.Root); break;
                     case "autoApprove": autoApprove = ReadEnum(ref reader, SessionAutoApprove.FollowGlobal); break;
@@ -591,8 +593,54 @@ namespace Seeing.Session.Storage
                 ChannelId = routeChannelId ?? legacyChannelId,
                 WorkingDirectory = workingDirectory,
                 Scenario = scenario,
-                AutoApprove = autoApprove
+                AutoApprove = autoApprove,
+                CollaborationDirectories = collaborationDirectories ?? new List<CollaborationDirectory>()
             };
+        }
+
+        /// <summary>
+        /// 读取 <c>collaborationDirectories</c> 数组（元素 <c>{'path','note'}</c>）。
+        /// <para>旧会话文件没有该字段（走 <c>default: Skip</c>）或形状不符时返回空列表；
+        /// 缺 <c>path</c> 的条目直接丢弃，避免生成不可判定的空根。</para>
+        /// </summary>
+        private static List<CollaborationDirectory> ReadCollaborationDirectories(ref Utf8JsonReader reader)
+        {
+            var result = new List<CollaborationDirectory>();
+
+            if (reader.TokenType != JsonTokenType.StartArray)
+            {
+                reader.Skip();
+                return result;
+            }
+
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+            {
+                if (reader.TokenType != JsonTokenType.StartObject)
+                    continue;
+
+                string? path = null, note = null;
+                while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+                {
+                    if (reader.TokenType != JsonTokenType.PropertyName)
+                        continue;
+
+                    var name = reader.GetString();
+                    if (!reader.Read())
+                        break;
+
+                    if (string.Equals(name, "path", StringComparison.Ordinal))
+                        path = ReadString(ref reader);
+                    else if (string.Equals(name, "note", StringComparison.Ordinal))
+                        note = ReadString(ref reader);
+                    else
+                        reader.Skip();
+                }
+
+                if (!string.IsNullOrWhiteSpace(path))
+                    result.Add(new CollaborationDirectory(path, note));
+            }
+
+            return result;
         }
 
         private static string? ReadChannelRouteChannelId(ref Utf8JsonReader reader)

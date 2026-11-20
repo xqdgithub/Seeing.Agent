@@ -71,6 +71,21 @@ public static class PathBoundary
         => IsWithin(path, baseDirectory) && !AreSame(path, baseDirectory);
 
     /// <summary>
+    /// 规范化绝对路径：绝对化 + 解析符号链接 + 去尾部分隔符。
+    /// <para>
+    /// 登记、审批展示、落盘与边界判定必须使用同一结果；否则会出现
+    /// 「卡片显示链接路径、实际授权真实路径」的分叉。
+    /// </para>
+    /// </summary>
+    /// <exception cref="ArgumentException">路径为空。</exception>
+    public static string Canonicalize(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        var full = ResolveRealPath(Path.GetFullPath(path));
+        return Path.TrimEndingDirectorySeparator(full);
+    }
+
+    /// <summary>
     /// 判断两个路径是否指向同一位置（忽略尾部分隔符，按平台大小写语义）。
     /// 任一非法路径或解析异常返回 <see langword="false"/>。
     /// </summary>

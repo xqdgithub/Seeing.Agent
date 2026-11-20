@@ -54,23 +54,16 @@ public interface IToolManager
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// 执行工具调用（权限检查由 AgentExecutor 统一处理）
-    /// <param name="toolCall">工具调用。</param>
-    /// <param name="sessionId">会话 ID。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
-    /// <param name="emitAsync">事件出口（可空）。</param>
-    /// <param name="permissionAuthorizer">执行级授权器（可空）。</param>
-    /// <param name="agent">当前执行所属 Agent（可空）。</param>
-    /// <param name="toolScope">执行级工具可见性作用域（可空）。</param>
-    /// <param name="skillSnapshot">本轮执行钉住的技能快照（可空；透传到 <see cref="ToolContext.SkillSnapshot"/>）。</param>
+    /// 执行工具调用（权限检查由 AgentExecutor 统一处理）。
+    /// <para>
+    /// 执行级事实全部经 <see cref="ToolInvocation"/> 传入：不要给本方法追加"只有某条链路会填"的可选参数。
+    /// </para>
     /// </summary>
+    /// <param name="toolCall">工具调用。</param>
+    /// <param name="invocation">本次执行的不可变事实（唯一构造点：ToolCallInvoker / AgentJob）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     Task<ToolResult> ExecuteAsync(
         ToolCall toolCall,
-        string sessionId = "",
-        CancellationToken cancellationToken = default,
-        Func<IMessageEvent, ValueTask>? emitAsync = null,
-        IPermissionAuthorizer? permissionAuthorizer = null,
-        AgentDefinition? agent = null,
-        IExecutionToolScope? toolScope = null,
-        SkillCatalogSnapshot? skillSnapshot = null);
+        ToolInvocation invocation,
+        CancellationToken cancellationToken = default);
 }

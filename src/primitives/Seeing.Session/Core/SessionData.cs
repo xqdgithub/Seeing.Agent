@@ -31,6 +31,9 @@ namespace Seeing.Session.Core
         Disabled = 2
     }
 
+    /// <summary>一条协同工作目录（Path 为规范化绝对路径；Note 为可选说明）。</summary>
+    public sealed record CollaborationDirectory(string Path, string? Note = null);
+
     public class SessionData
     {
         // === 身份信息 ===
@@ -67,7 +70,16 @@ namespace Seeing.Session.Core
         public SessionScenarioOverride? ScenarioOverride { get; set; }
 
         // === 工作目录 ===
+        /// <summary>
+        /// 会话工作目录：保留并参与解析；本期不可编辑，恒等于工作区根；偏离时执行期纠正并回写。
+        /// </summary>
         public string? WorkingDirectory { get; set; }
+
+        /// <summary>
+        /// 协同工作目录：额外信任根，可读写、可被文件工作台浏览。
+        /// Path 为规范化绝对路径、去重；缺失字段的旧会话反序列化为空列表。
+        /// </summary>
+        public List<CollaborationDirectory> CollaborationDirectories { get; set; } = new();
 
         // === 状态 ===
         public SessionStatus Status { get; set; } = SessionStatus.Created;
@@ -548,6 +560,10 @@ namespace Seeing.Session.Core
                 Scenario = Scenario,
                 ScenarioOverride = ScenarioOverride?.Clone(),
                 WorkingDirectory = WorkingDirectory,
+                // record 不可变，复制列表容器即可视为深拷贝
+                CollaborationDirectories = CollaborationDirectories is null
+                    ? new List<CollaborationDirectory>()
+                    : new List<CollaborationDirectory>(CollaborationDirectories),
                 Status = Status,
                 ChannelRoute = ChannelRoute,
                 Kind = Kind,

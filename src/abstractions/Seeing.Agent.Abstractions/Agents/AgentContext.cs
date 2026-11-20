@@ -78,4 +78,10 @@ public class AgentContext
     /// <para>null 表示宿主未组合技能模块或未接线执行作用域：工具按不可用处理，不得回落到目录当前态。</para>
     /// </summary>
     public Skills.SkillCatalogSnapshot? SkillSnapshot { get; set; }
+
+    /// <summary>
+    /// 本轮执行钉住的协同目录快照（与 <see cref="Tools.ToolInvocation.Collaborations"/> 同源）。
+    /// </summary>
+    public IReadOnlyList<Seeing.Session.Core.CollaborationDirectory> Collaborations { get; set; } =
+        Array.Empty<Seeing.Session.Core.CollaborationDirectory>();
 }

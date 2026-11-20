@@ -727,6 +727,10 @@ namespace Seeing.Session.Management
             child.SelectedAgent = agentName;
             // 默认继承父委派时配置；子 Agent 自带 Model 时由调用方覆盖
             child.WorkingDirectory = parent.WorkingDirectory;
+            // 协同目录随子会话继承：record 不可变，复制容器即可（不得与原会话共用同一个 List）
+            child.CollaborationDirectories = parent.CollaborationDirectories is null
+                ? new List<CollaborationDirectory>()
+                : new List<CollaborationDirectory>(parent.CollaborationDirectories);
             child.SelectedModel = parent.SelectedModel;
             child.SelectedThinkingEffort = parent.SelectedThinkingEffort;
             child.PermissionSnapshot = snapshot is null
@@ -855,6 +859,10 @@ namespace Seeing.Session.Management
             successor.Kind = SessionKind.Root;
             successor.Title = string.IsNullOrEmpty(title) ? source.Title : title;
             successor.WorkingDirectory = source.WorkingDirectory;
+            // 协同目录随交接继承
+            successor.CollaborationDirectories = source.CollaborationDirectories is null
+                ? new List<CollaborationDirectory>()
+                : new List<CollaborationDirectory>(source.CollaborationDirectories);
             successor.SelectedModel = source.SelectedModel;
             successor.SelectedThinkingEffort = source.SelectedThinkingEffort;
 

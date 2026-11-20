@@ -24,8 +24,8 @@ public sealed class PermissionContext
     /// <summary>环境变量快照</summary>
     public IReadOnlyDictionary<string, string> EnvironmentSnapshot { get; init; } = new Dictionary<string, string>();
 
-    /// <summary>工作目录</summary>
-    public string WorkingDirectory { get; init; } = Directory.GetCurrentDirectory();
+    /// <summary>工作目录（显式赋值；空表示调用方未提供执行级 cwd，不得回落到进程当前目录）</summary>
+    public string WorkingDirectory { get; init; } = string.Empty;
 
     /// <summary>时间戳</summary>
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.Now;

@@ -7,7 +7,8 @@ public interface ISessionDirectory
     Task<SessionData?> GetAsync(string sessionId, CancellationToken ct = default);
     Task<SessionData> EnsureAsync(string sessionId, CancellationToken ct = default);
     Task<IReadOnlyList<SessionData>> ListAsync(CancellationToken ct = default);
-    Task<SessionData> CreateAsync(string? title = null, string? agentId = null, string? workingDirectory = null, CancellationToken ct = default);
+    /// <summary>创建会话。工作目录不可指定：创建即钉到工作区根，执行期再校验。</summary>
+    Task<SessionData> CreateAsync(string? title = null, string? agentId = null, CancellationToken ct = default);
     Task DeleteAsync(string sessionId, CancellationToken ct = default);
     Task RenameAsync(string sessionId, string newTitle, CancellationToken ct = default);
     Task<SessionData> BranchAsync(string sessionId, string? title = null, CancellationToken ct = default);

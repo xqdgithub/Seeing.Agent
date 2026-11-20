@@ -25,8 +25,11 @@ public sealed record PermissionRequest
     /// <summary>执行级冻结覆盖（来自 ChatOptions.AutoApprove）；null=FollowGlobal。</summary>
     public SessionAutoApprove? Override { get; init; }
 
-    /// <summary>强制交互：跳过规则/开关的免询问放行分支（ACP 声明）。</summary>
+    /// <summary>强制交互：跳过规则/开关/通道的免询问放行分支（ACP 与持久化类工具声明）。</summary>
     public bool RequireInteraction { get; init; }
+
+    /// <summary>本次执行的 cwd；用于把相对 Resource 绝对化与审计。缺失时视为不可解析。</summary>
+    public string? WorkingDirectory { get; init; }
 
     /// <summary>允许的动作集合（呈现用）。由执行级授权器按 kind 注入（§5.1）；此处为缺省。</summary>
     public IReadOnlyList<PermissionGrantScope> AllowedScopes { get; init; } =

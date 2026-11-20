@@ -23,6 +23,13 @@ namespace Seeing.Session.Management
                 ".seeing", "sessions", "_shares");
         }
 
+        /// <summary>分享/解析时剥离目录信任：信任不随会话传播。</summary>
+        private static SessionData StripDirectoryTrust(SessionData session)
+        {
+            session.CollaborationDirectories = new();
+            return session;
+        }
+
         /// <summary>Share Session - 分享</summary>
         public async Task<string> ShareAsync(SessionData session, CancellationToken ct = default)
         {
@@ -31,7 +38,8 @@ namespace Seeing.Session.Management
             {
                 ShareId = shareId,
                 SessionId = session.Id,
-                SessionData = session.Clone(),
+                // 安全：分享不携带目录信任；导入方必须重新登记（spec §5.11.7）
+                SessionData = StripDirectoryTrust(session.Clone()),
                 CreatedAt = DateTimeOffset.Now,
                 ExpiresAt = DateTimeOffset.Now.AddDays(7)
             };
@@ -61,7 +69,7 @@ namespace Seeing.Session.Management
                     _logger.LogWarning("Share {ShareId} has expired", shareId);
                     return null;
                 }
-                return record.SessionData?.Clone();
+                return record.SessionData is null ? null : StripDirectoryTrust(record.SessionData.Clone());
             }
 
             // 从文件加载
@@ -86,7 +94,7 @@ namespace Seeing.Session.Management
                 }
 
                 _shares[shareId] = record;
-                return record.SessionData?.Clone();
+                return record.SessionData is null ? null : StripDirectoryTrust(record.SessionData.Clone());
             }
             catch (Exception ex)
             {

@@ -68,6 +68,13 @@ public interface IFileSystem
     /// </summary>
     bool IsHidden(string path);
 
-    /// <summary>解析为绝对路径。</summary>
+    /// <summary>
+    /// 按给定基准解析为绝对路径；<paramref name="baseDirectory"/> 必须是绝对路径。
+    /// <para>业务代码只能用这个重载：解析基准必须显式给出。</para>
+    /// </summary>
+    string GetFullPath(string path, string baseDirectory);
+
+    /// <summary>解析为绝对路径（相对进程当前目录）。业务代码不得使用。</summary>
+    [Obsolete("业务路径解析必须显式给出基准目录；进程 CWD 不是业务基准。", error: true)]
     string GetFullPath(string path);
 }

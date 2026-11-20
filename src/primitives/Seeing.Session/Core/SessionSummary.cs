@@ -28,6 +28,13 @@ namespace Seeing.Session.Core
         public string? Scenario { get; init; }
         public SessionAutoApprove AutoApprove { get; init; }
 
+        /// <summary>
+        /// 会话协同目录快照（规范化绝对路径、去重）；旧会话文件缺该字段时为空列表。
+        /// <para>摘要只投影，不参与判定；授权与根投影见 <c>ISessionRootSet</c>。</para>
+        /// </summary>
+        public IReadOnlyList<CollaborationDirectory> CollaborationDirectories { get; init; } =
+            Array.Empty<CollaborationDirectory>();
+
         /// <summary>从完整会话投影摘要（降级路径 / 内存后端使用）。</summary>
         public static SessionSummary FromSession(SessionData s) => new()
         {
@@ -47,7 +54,11 @@ namespace Seeing.Session.Core
             ChannelId = s.ChannelRoute?.ChannelId,
             WorkingDirectory = s.WorkingDirectory,
             Scenario = s.Scenario,
-            AutoApprove = s.AutoApprove
+            AutoApprove = s.AutoApprove,
+            // record 不可变：复制容器即可视为深拷贝（调用方不得改写摘要内的列表）
+            CollaborationDirectories = s.CollaborationDirectories is null
+                ? Array.Empty<CollaborationDirectory>()
+                : s.CollaborationDirectories.ToArray()
         };
     }
 }

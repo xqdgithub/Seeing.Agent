@@ -21,4 +21,17 @@ public interface IWorkspacePathGate
     /// </para>
     /// </summary>
     string? EnsureWithinWorkspace(string sessionId, string path);
+
+    /// <summary>
+    /// 把路径按 <paramref name="baseDirectory"/> 绝对化后做允许判定（解析 + 授权一个入口）。
+    /// <para>
+    /// 允许时返回 <see langword="null"/> 并给出 <paramref name="fullPath"/>；
+    /// 相对路径缺少基准、或越界时返回失败原因。工具不得绕过本方法自行解析相对路径。
+    /// </para>
+    /// </summary>
+    string? ResolveAllowed(
+        string sessionId,
+        string path,
+        string? baseDirectory,
+        out string fullPath);
 }

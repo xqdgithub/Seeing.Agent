@@ -47,6 +47,10 @@ namespace Seeing.Session.Management
 
             forkedSession.Title = label ?? sourceSession.Title;
             forkedSession.WorkingDirectory = sourceSession.WorkingDirectory;
+            // 协同目录随分支继承（复制容器，避免与原会话共用同一个可变列表）
+            forkedSession.CollaborationDirectories = sourceSession.CollaborationDirectories is null
+                ? new List<CollaborationDirectory>()
+                : new List<CollaborationDirectory>(sourceSession.CollaborationDirectories);
             forkedSession.SelectedModel = sourceSession.SelectedModel;
             forkedSession.SelectedThinkingEffort = sourceSession.SelectedThinkingEffort;
             forkedSession.ScenarioOverride = sourceSession.ScenarioOverride?.Clone();

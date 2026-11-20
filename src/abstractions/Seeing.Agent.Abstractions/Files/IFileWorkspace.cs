@@ -6,6 +6,9 @@ public interface IFileWorkspace
     /// <summary>所属会话 id。</summary>
     string SessionId { get; }
 
+    /// <summary>根描述（RootId / RootPath / Label / Kind / Exists 的唯一来源）。</summary>
+    FileWorkspaceRoot Root { get; }
+
     /// <summary>有效根绝对路径规范化哈希；跨会话同根一致。</summary>
     string RootId { get; }
 
