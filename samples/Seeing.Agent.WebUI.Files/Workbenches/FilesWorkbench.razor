@@ -1,4 +1,5 @@
 @using System.Text.Json
+@using Seeing.Agent.Abstractions.Files
 @using Seeing.Agent.Abstractions.Ui.Workbench
 @using Seeing.Agent.WebUI.Files.Components
 @using Seeing.Agent.WebUI.Files.Services
@@ -52,7 +53,18 @@
         {
             _viewStateRestored = true;
             var preview = state.TryGetValue(LegacyWorkbenchAlias.PreviewKeyName, out var flag) && flag == "1";
-            await _host.OpenPathAsync(saved, preview: preview);
+
+            // 多根：恢复必须用 RootId + 相对路径；只有旧状态（无 rootId）才回退到路径解析
+            if (state.TryGetValue(FilesWorkbenchReports.RootIdKey, out var rootId)
+                && !string.IsNullOrWhiteSpace(rootId))
+            {
+                await _host.OpenOrActivateAsync(
+                    new FileResourceId(rootId, saved), refreshIfActive: false, preview: preview);
+            }
+            else
+            {
+                await _host.OpenPathAsync(saved, preview: preview);
+            }
         }
 
         // 待处理请求可能在挂载后才到达（agent 先请求、工作台后打开）

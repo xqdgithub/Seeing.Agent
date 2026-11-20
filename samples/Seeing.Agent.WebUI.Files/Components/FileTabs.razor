@@ -1,5 +1,7 @@
 @using Seeing.Agent.Abstractions.Files
 @using Seeing.Agent.WebUI.Files.Services
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 @implements IDisposable
 
 <div class="file-tabs">
@@ -7,16 +9,30 @@
         @foreach (var f in Tabs.OpenFiles)
         {
             var active = Tabs.ActiveKey == f.Id.ToString();
-            <div class="file-tab @(active ? "active" : "")" @onclick="() => Tabs.Activate(f.Id)">
-                <span class="file-tab-name">@f.Id.RelativePath</span>
+            var root = RootKindOf(f);
+            <div class="file-tab @(active ? "active" : "") @RootClass(root)"
+                 title="@TooltipFor(f)"
+                 @onclick="() => Tabs.Activate(f.Id)"
+                 @oncontextmenu="e => OpenMenu(e, f.Id)"
+                 @oncontextmenu:preventDefault="true">
+                <span class="file-tab-name">@DisplayName(f)</span>
                 @if (f.HasUnsavedChanges)
                 {
-                    <span class="file-tab-dirty">未保存</span>
+                    <span class="file-tab-dirty" title="未保存"></span>
                 }
-                <button type="button" class="file-tab-close" @onclick:stopPropagation="true" @onclick="() => Tabs.Close(f.Id)">×</button>
+                <button type="button" class="file-tab-close"
+                        @onclick:stopPropagation="true"
+                        @onclick="() => Tabs.Close(f.Id)">×</button>
             </div>
         }
     </div>
+
+    @if (Tabs.OpenFiles.Count > 1)
+    {
+        <button type="button" class="file-tabs-more" title="全部打开的文件"
+                @onclick="() => _showAll = !_showAll">»</button>
+    }
+
     @if (CanTogglePreview)
     {
         <button type="button"
@@ -42,17 +58,53 @@
         </button>
     }
 </div>
+
 @if (!string.IsNullOrEmpty(Tabs.Notice))
 {
     <div class="file-tab-notice @(Tabs.NoticeIsError ? "is-error" : "is-ok")" role="status">@Tabs.Notice</div>
+}
+
+@if (_showAll)
+{
+    <div class="file-tabs-overflow">
+        <div class="file-tabs-overflow-head">打开的文件（@Tabs.OpenFiles.Count）</div>
+        @foreach (var f in Tabs.OpenFiles)
+        {
+            <button type="button" class="file-tabs-overflow-item" @onclick="() => Select(f.Id)">
+                <span class="file-root-bar @RootClass(RootKindOf(f))"></span>
+                <span class="nm">@DisplayName(f)</span>
+                <span class="p">@Relative(f.Id)</span>
+            </button>
+        }
+    </div>
+}
+
+@if (_menu is { } menu)
+{
+    <div class="file-ctx-backdrop" @onclick="CloseMenu"></div>
+    <div class="file-ctx-menu" style="left:@(menu.X)px; top:@(menu.Y)px">
+        <button type="button" class="item" @onclick="() => CopyAsync(FileName(menu.Id))">复制文件名</button>
+        <button type="button" class="item" @onclick="() => CopyAsync(Relative(menu.Id))">复制相对路径</button>
+        <button type="button" class="item" @onclick="() => CopyAsync(Absolute(menu.Id))">复制完整路径</button>
+        <div class="divider"></div>
+        <button type="button" class="item" @onclick="() => CloseOne(menu.Id)">关闭</button>
+        <button type="button" class="item" @onclick="() => CloseOthers(menu.Id)">关闭其他</button>
+        <button type="button" class="item" @onclick="() => CloseRight(menu.Id)">关闭右侧</button>
+    </div>
 }
 
 @code {
     /// <summary>标签状态。</summary>
     [Parameter, EditorRequired] public FileTabsState Tabs { get; set; } = default!;
 
+    /// <summary>多根集合（用于根标识与完整路径）；未就绪时只显示相对路径。</summary>
+    [Parameter] public FileWorkspaceSet? Workspaces { get; set; }
+
     /// <summary>保存当前标签回调。</summary>
     [Parameter] public EventCallback OnSave { get; set; }
+
+    private bool _showAll;
+    private MenuState? _menu;
 
     private OpenFile? Active =>
         Tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == Tabs.ActiveKey);
@@ -90,8 +142,119 @@
         await OnSave.InvokeAsync();
     }
 
+    // ===== 展示 =====
+
+    private FileWorkspaceRootKind? RootKindOf(OpenFile f)
+        => Workspaces?.Find(f.Id)?.Root.Kind;
+
+    private static string RootClass(FileWorkspaceRootKind? kind) => kind switch
+    {
+        FileWorkspaceRootKind.Project => "is-project",
+        FileWorkspaceRootKind.Collaboration => "is-collab",
+        _ => ""
+    };
+
+    private static string FileName(FileResourceId id)
+        => Path.GetFileName(id.RelativePath.Replace('\\', '/'));
+
+    /// <summary>
+    /// 标签文本：默认只显示文件名；同会话出现同名文件时降级为「父目录/文件名」，
+    /// 避免两个 AGENTS.md 无法区分。
+    /// </summary>
+    private string DisplayName(OpenFile f)
+    {
+        var name = FileName(f.Id);
+        var duplicates = Tabs.OpenFiles.Count(x =>
+            string.Equals(FileName(x.Id), name, StringComparison.OrdinalIgnoreCase));
+        if (duplicates <= 1)
+            return name;
+
+        var relative = f.Id.RelativePath.Replace('\\', '/');
+        var idx = relative.LastIndexOf('/');
+        if (idx <= 0) return name;
+        var parent = relative[..idx];
+        var parentName = parent[(parent.LastIndexOf('/') + 1)..];
+        return $"{parentName}/{name}";
+    }
+
+    private string Relative(FileResourceId id) => id.RelativePath.Replace('\\', '/');
+
+    private string Absolute(FileResourceId id)
+    {
+        var workspace = Workspaces?.Find(id);
+        return workspace is null ? Relative(id) : workspace.GetAbsolutePath(id);
+    }
+
+    private string TooltipFor(OpenFile f)
+    {
+        var kind = RootKindOf(f) switch
+        {
+            FileWorkspaceRootKind.Project => "项目",
+            FileWorkspaceRootKind.Collaboration => "协同",
+            _ => null
+        };
+        var absolute = Absolute(f.Id);
+        return kind is null ? absolute : $"{kind} · {absolute}";
+    }
+
+    // ===== 操作 =====
+
+    private void Select(FileResourceId id)
+    {
+        _showAll = false;
+        Tabs.Activate(id);
+    }
+
+    private void OpenMenu(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, FileResourceId id)
+    {
+        _showAll = false;
+        _menu = new MenuState(e.ClientX, e.ClientY, id);
+    }
+
+    private void CloseMenu() => _menu = null;
+
+    private async Task CopyAsync(string text)
+    {
+        _menu = null;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+        }
+        catch
+        {
+            // 剪贴板不可用（非安全上下文/权限拒绝）：不打断用户操作
+        }
+    }
+
+    private void CloseOne(FileResourceId id)
+    {
+        _menu = null;
+        Tabs.Close(id);
+    }
+
+    private void CloseOthers(FileResourceId id)
+    {
+        _menu = null;
+        foreach (var other in Tabs.OpenFiles.Where(x => x.Id != id).Select(x => x.Id).ToArray())
+            Tabs.Close(other);
+        Tabs.Activate(id);
+    }
+
+    private void CloseRight(FileResourceId id)
+    {
+        _menu = null;
+        var files = Tabs.OpenFiles.ToList();
+        var index = files.FindIndex(x => x.Id == id);
+        if (index < 0) return;
+
+        foreach (var right in files.Skip(index + 1).Select(x => x.Id).ToArray())
+            Tabs.Close(right);
+    }
+
     public void Dispose()
     {
         if (_subscribed is not null) _subscribed.Changed -= OnChanged;
     }
+
+    private sealed record MenuState(double X, double Y, FileResourceId Id);
 }

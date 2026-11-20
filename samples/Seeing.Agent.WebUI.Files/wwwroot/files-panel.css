@@ -47,17 +47,44 @@
 .file-tree-icon--script { color: #722ed1; }
 .file-tree-loading, .file-tree-empty { padding: 4px 12px; color: #999; font-size: 12px; }
 .file-panel-main { position: relative; flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
-.file-tabs { display: flex; align-items: center; padding: 4px; border-bottom: 1px solid var(--color-border, #eee); }
-.file-tabs-scroll { display: flex; gap: 4px; flex: 1; overflow-x: auto; min-width: 0; }
+.file-tabs { position: relative; display: flex; align-items: stretch; border-bottom: 1px solid var(--color-border, #eee); background: #f7f8fa; min-height: 34px; }
+.file-tabs-scroll { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.file-tab { display: flex; align-items: center; gap: 5px; padding: 0 9px; height: 34px; font-size: 12.5px; white-space: nowrap; border: none; border-right: 1px solid var(--color-border, #eee); border-left: 3px solid transparent; background: transparent; color: #4e5969; cursor: pointer; min-width: 84px; max-width: 190px; }
+.file-tab:hover { background: rgba(0, 0, 0, 0.03); }
+.file-tab.active { background: #fff; color: #1d2129; }
+.file-tab.is-project { border-left-color: #1677ff; }
+.file-tab.is-collab { border-left-color: #d46b08; }
+.file-tab-name { overflow: hidden; text-overflow: ellipsis; }
+.file-tab-dirty { width: 6px; height: 6px; border-radius: 50%; background: #1677ff; flex-shrink: 0; border: none; padding: 0; }
+.file-tab-close { border: none; background: transparent; cursor: pointer; line-height: 1; color: #b0b4ba; flex-shrink: 0; }
+.file-tab-close:hover { color: #cb2634; }
+.file-tabs-more { flex-shrink: 0; width: 30px; border: none; border-left: 1px solid var(--color-border, #eee); background: #f7f8fa; color: #4e5969; cursor: pointer; }
 .file-tab-save { position: relative; flex-shrink: 0; margin-left: 4px; border: none; background: transparent; cursor: pointer; padding: 2px 6px; border-radius: 4px; line-height: 1; }
 .file-tab-save:disabled { opacity: 0.35; cursor: default; }
 .file-tab-save.dirty { background: rgba(22, 119, 255, 0.12); }
 .file-tab-save-icon { font-size: 13px; }
 .file-tab-save-dot { position: absolute; top: 2px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: #faad14; }
-.file-tab { display: flex; align-items: center; gap: 4px; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
-.file-tab.active { background: rgba(0, 0, 0, 0.05); border-radius: 4px; }
-.file-tab .dirty { color: #faad14; }
-.file-tab-dirty { flex-shrink: 0; color: #d46b08; background: #fff7e6; border: 1px solid #ffd591; border-radius: 3px; font-size: 11px; line-height: 1.2; padding: 1px 4px; }
+.file-tabs-overflow { position: absolute; top: 34px; right: 0; z-index: 30; width: 320px; max-height: 320px; overflow-y: auto; background: #fff; border: 1px solid var(--color-border, #eee); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); padding: 5px; }
+.file-tabs-overflow-head { padding: 5px 8px; color: #86909c; font-size: 11px; }
+.file-tabs-overflow-item { display: flex; align-items: center; gap: 7px; width: 100%; padding: 5px 8px; border: none; background: transparent; border-radius: 5px; text-align: left; cursor: pointer; font-size: 12px; }
+.file-tabs-overflow-item:hover { background: #f2f3f5; }
+.file-tabs-overflow-item .nm { flex-shrink: 0; color: #1d2129; }
+.file-tabs-overflow-item .p { color: #86909c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-root-bar { width: 3px; height: 13px; border-radius: 2px; flex-shrink: 0; background: #d9d9d9; }
+.file-root-bar.is-project { background: #1677ff; }
+.file-root-bar.is-collab { background: #d46b08; }
+.file-ctx-backdrop { position: fixed; inset: 0; z-index: 40; }
+.file-ctx-menu { position: fixed; z-index: 41; width: 200px; padding: 5px; background: #fff; border: 1px solid var(--color-border, #eee); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); }
+.file-ctx-menu .item { display: block; width: 100%; padding: 6px 9px; border: none; background: transparent; border-radius: 5px; text-align: left; font-size: 12.5px; color: #1d2129; cursor: pointer; }
+.file-ctx-menu .item:hover { background: #f2f3f5; }
+.file-ctx-menu .divider { height: 1px; background: var(--color-border, #eee); margin: 4px 2px; }
+.file-crumbs { display: flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 11.5px; color: #86909c; border-bottom: 1px solid var(--color-border, #eee); background: #fcfcfd; overflow: hidden; white-space: nowrap; }
+.file-crumb-root { display: inline-flex; align-items: center; padding: 0 6px; border-radius: 8px; border: 1px solid currentColor; font-size: 10px; flex-shrink: 0; }
+.file-crumb-root.is-project { color: #1677ff; }
+.file-crumb-root.is-collab { color: #d46b08; }
+.file-crumb-sep { color: #c9cdd4; }
+.file-crumb { color: #4e5969; overflow: hidden; text-overflow: ellipsis; }
+.file-crumb:last-child { color: #1d2129; font-weight: 600; }
 .file-tab-notice {
     position: absolute;
     top: 40px;
@@ -213,3 +240,18 @@ body.file-panel-resizing * { cursor: col-resize !important; }
 }
 
 /* 多根文件工作台：根切换条（项目根 + 协同目录） */
+
+.file-tree-pane { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.file-tree-toolbar { display: flex; align-items: center; gap: 4px; padding: 4px 6px; border-bottom: 1px solid var(--color-border, #eee); background: #fcfcfd; flex-shrink: 0; }
+.file-tree-tool { border: none; background: transparent; color: #4e5969; font-size: 12px; padding: 2px 6px; border-radius: 5px; cursor: pointer; }
+.file-tree-tool:hover { background: #f2f3f5; }
+.file-ctx-menu .item.danger { color: #cb2634; }
+.file-dialog-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.28); display: flex; align-items: center; justify-content: center; }
+.file-dialog { width: 360px; background: #fff; border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2); overflow: hidden; }
+.file-dialog-title { padding: 12px 16px; font-weight: 600; font-size: 14px; border-bottom: 1px solid var(--color-border, #eee); }
+.file-dialog-body { padding: 14px 16px; font-size: 13px; color: #4e5969; }
+.file-dialog-input { width: 100%; padding: 6px 8px; border: 1px solid var(--color-border, #eee); border-radius: 6px; font-size: 13px; }
+.file-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--color-border, #eee); }
+.file-dialog-btn { padding: 4px 12px; border: 1px solid var(--color-border, #eee); border-radius: 6px; background: #fff; font-size: 12.5px; cursor: pointer; }
+.file-dialog-btn.primary { background: #1677ff; border-color: #1677ff; color: #fff; }
+.file-dialog-btn.danger { background: #cb2634; border-color: #cb2634; color: #fff; }

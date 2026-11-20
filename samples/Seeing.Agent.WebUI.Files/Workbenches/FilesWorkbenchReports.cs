@@ -18,9 +18,12 @@ public static class FilesWorkbenchReports
     /// <summary>恢复上次文件时用的路径键。</summary>
     public const string PathKey = "path";
 
+    /// <summary>恢复上次文件时用的根标识键（多根下缺它会把文件恢复到项目根）。</summary>
+    public const string RootIdKey = "rootId";
+
     /// <summary>构建激活标签对应的上报载荷。</summary>
     /// <param name="active">当前激活标签。</param>
-    /// <returns>上报对象；视图状态含 <c>path</c> 与 <c>preview</c>（"1"/"0"）。</returns>
+    /// <returns>上报对象；视图状态含 <c>rootId</c> / <c>path</c> / <c>preview</c>（"1"/"0"）。</returns>
     public static WorkbenchViewReport For(OpenFile active)
     {
         ArgumentNullException.ThrowIfNull(active);
@@ -32,6 +35,7 @@ public static class FilesWorkbenchReports
         {
             ViewState = new Dictionary<string, string>(StringComparer.Ordinal)
             {
+                [RootIdKey] = active.Id.RootId,
                 [PathKey] = path,
                 [LegacyWorkbenchAlias.PreviewKeyName] = preview ? "1" : "0"
             },

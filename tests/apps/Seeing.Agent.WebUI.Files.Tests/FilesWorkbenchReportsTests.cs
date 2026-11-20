@@ -51,11 +51,13 @@ public class FilesWorkbenchReportsTests
     }
 
     [Fact]
-    public void For_ShouldRecordPathForRestore()
+    public void For_ShouldRecordPathAndRootForRestore()
     {
         var report = FilesWorkbenchReports.For(Open("src/deep/b.md", preview: true));
 
         report.ViewState!["path"].Should().Be("src/deep/b.md",
             "刷新后要能重开同一个文件");
+        report.ViewState!["rootId"].Should().Be("root",
+            "多根下缺 rootId 会把文件恢复到项目根");
     }
 }
