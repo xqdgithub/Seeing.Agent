@@ -49,7 +49,8 @@ public sealed class GatewaySessionService
 
         if (_runtime is not null)
         {
-            await _runtime.InterruptAsync(sessionId, cancellationToken).ConfigureAwait(false);
+            await _runtime.InterruptAsync(sessionId, cancellationToken, cancelBackgroundActivities: true)
+                .ConfigureAwait(false);
             await _runtime.DiscardPendingAsync(sessionId, cancellationToken).ConfigureAwait(false);
         }
 

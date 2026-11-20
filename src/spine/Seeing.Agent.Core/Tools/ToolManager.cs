@@ -757,6 +757,7 @@ namespace Seeing.Agent.Core.Tools
                 var context = new ToolContext
                 {
                     SessionId = sessionId,
+                    ExecutionId = invocation.ExecutionId,
                     CallId = toolCall.Id,
                     Agent = agent,
                     CancellationToken = cancellationToken,

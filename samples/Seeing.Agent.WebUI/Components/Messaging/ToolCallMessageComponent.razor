@@ -42,6 +42,12 @@ else
                   Style="margin-left: auto; font-size: 12px; color: var(--color-text-tertiary);" />
         </div>
 
+        @* 后台活动内联卡：随工具调用转后台（如后台执行）的活动状态行，放在卡片头部，实时输出块放到参数之后 *@
+        @if (ToolCall.BackgroundActivity is { } activityHeader)
+        {
+            <BackgroundActivityCard Activity="@activityHeader" Compact="true" ShowOutput="false" />
+        }
+
         <div class="tool-call-details @(_isExpanded ? "expanded" : "collapsed")">
                 @if (HasParametersSection)
                 {
@@ -86,6 +92,12 @@ else
                             <pre class="tool-call-pre">@_paramJsonDisplay</pre>
                         }
                     </div>
+                }
+
+                @* 实时输出紧跟「参数」（= 命令/输入），与终端「命令 → 输出」的顺序一致；结果段在其后。 *@
+                @if (ToolCall.BackgroundActivity is { } activityOutput)
+                {
+                    <BackgroundActivityCard Activity="@activityOutput" Compact="true" ShowHeader="false" />
                 }
 
                 @if (!string.IsNullOrEmpty(ToolCall.Result) && !ToolCall.IsTodoTool)

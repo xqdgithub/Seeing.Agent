@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Seeing.Agent.Abstractions.Background;
 using Seeing.Agent.Abstractions.Channels;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Events;
@@ -13,6 +14,7 @@ using Seeing.Serialization;
 using Seeing.Session.Core;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -35,6 +37,26 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
     private readonly ILogger<SessionRuntime> _logger;
     private readonly CancellationTokenSource _disposeCts = new();
     private readonly ConcurrentDictionary<string, DateTime> _lastActive = new();
+
+    /// <summary>
+    /// 幂等键元数据前缀：<c>inbox.idem:&lt;key&gt;</c> → 消息 Id。
+    /// 值可能是 <c>旧Id|新Id</c> 形式，**拆分逻辑不得改动**（见 <see cref="DeliverCoreAsync"/> 预检）。
+    /// </summary>
+    internal const string IdempotencyKeyPrefix = "inbox.idem:";
+
+    /// <summary>幂等键写入时刻前缀：<c>inbox.idem.at:&lt;key&gt;</c> → Unix 秒。</summary>
+    internal const string IdempotencyTimestampPrefix = "inbox.idem.at:";
+
+    /// <summary>幂等键保留期：超过即视为过期。</summary>
+    internal static readonly TimeSpan IdempotencyRetention = TimeSpan.FromHours(24);
+
+    /// <summary>幂等键数量上限：超限时删最旧的。</summary>
+    internal const int IdempotencyRetentionLimit = 500;
+
+    /// <summary>
+    /// 时钟（保留期判定）。测试可注册假时钟推进虚拟时间，无需真实等待。
+    /// </summary>
+    private readonly TimeProvider _time;
 
     /// <summary>
     /// 待等待的终态订阅者：key = 入站消息 Id。
@@ -64,6 +86,7 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         _services = services;
         _options = options;
         _logger = logger;
+        _time = services.GetService<TimeProvider>() ?? TimeProvider.System;
         _globalConcurrency = new SemaphoreSlim(options.MaxConcurrentExecutions <= 0 ? int.MaxValue : options.MaxConcurrentExecutions);
 
         if (options.CleanupInterval > TimeSpan.Zero)
@@ -216,9 +239,18 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         //    运行时入口放行（与 spec §11「缺失授权器则放行」一致）。
 
         // 3. 幂等预检：同键重复投递复用首次结果，不重复落盘
+        //    同时做**惰性保留期清理**：幂等键随每次后台活动完成增长（activity-digest:*），
+        //    若不收敛会让会话 Metadata 无界膨胀。清理只动内存，随下方同一次 SaveAsync 落盘。
         var idemKey = string.IsNullOrWhiteSpace(message.IdempotencyKey)
             ? null
-            : $"inbox.idem:{message.IdempotencyKey!.Trim()}";
+            : $"{IdempotencyKeyPrefix}{message.IdempotencyKey!.Trim()}";
+
+        // 本次要新增一个键时预留一格，保证「清理 + 写入」之后总数不超过上限。
+        // （若该键恰好已过期，会出现 501 的瞬时越界；下一次预检即收敛，不值得再拆一轮。）
+        var addingNewKey = idemKey is not null && !session.Metadata.ContainsKey(idemKey);
+        var prunedIdempotency = PruneIdempotencyMetadata(
+            session, addingNewKey ? IdempotencyRetentionLimit - 1 : IdempotencyRetentionLimit);
+
         if (idemKey is not null && session.Metadata.TryGetValue(idemKey, out var cached))
         {
             var cachedMessageId = cached.Contains('|') ? cached.Split('|', 2)[0] : cached;
@@ -260,9 +292,17 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         }
 
         // 6. 幂等键记录：会话级 Metadata（统一落点，见 spec §5.2）
+        //    与时间戳同批写入；清理结果与写入共用这一次 SaveAsync（不做额外全量保存）。
         if (idemKey is not null && persistedMessageId is not null)
         {
             session.Metadata[idemKey] = persistedMessageId;
+            session.Metadata[TimestampKeyFor(idemKey)] =
+                _time.GetUtcNow().ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+            await sessionManager.SaveAsync(sessionId).ConfigureAwait(false);
+        }
+        else if (prunedIdempotency)
+        {
+            // 本次没有新的幂等键要写，但预检已删掉过期键：同样在这一处落盘。
             await sessionManager.SaveAsync(sessionId).ConfigureAwait(false);
         }
 
@@ -303,6 +343,76 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
                 _states.GetOrAdd(sessionId, _ => new SessionExecutionState()).PendingInputCount = pendingCount;
                 return InboxResult.Ok(messageId: persistedMessageId, pendingInputCount: pendingCount);
         }
+    }
+
+    /// <summary>
+    /// 由幂等键推出其时间戳键（<c>inbox.idem:&lt;key&gt;</c> → <c>inbox.idem.at:&lt;key&gt;</c>）。
+    /// <para>
+    /// 注意时间戳键的字面前缀是 <c>inbox.idem.at:</c>，而它<b>同样以幂等键前缀 <c>inbox.idem:</c> 开头</b>；
+    /// 遍历时必须以 <see cref="IdempotencyTimestampPrefix"/> 先排除，否则会把时间戳键当成幂等键，
+    /// 再套一次前缀算出不存在的时间戳键。
+    /// </para>
+    /// </summary>
+    private static string TimestampKeyFor(string idemKey)
+        => $"{IdempotencyTimestampPrefix}{idemKey[IdempotencyKeyPrefix.Length..]}";
+
+    /// <summary>
+    /// 惰性收敛会话上的幂等键（保留期 + 数量上限），返回是否真的删除了条目。
+    /// <para>
+    /// 只改内存中的会话 Metadata，由调用方随其既有保存点一次性落盘（不额外全量保存）。
+    /// 命中缓存提前返回时未落盘也是安全的——脏数据会在下一次保存时自然消失。
+    /// </para>
+    /// </summary>
+    private bool PruneIdempotencyMetadata(SessionData session, int limit)
+    {
+        var nowSeconds = _time.GetUtcNow().ToUnixTimeSeconds();
+        var retentionSeconds = (long)IdempotencyRetention.TotalSeconds;
+
+        // 快照键集合后再删/查，避免在普通 Dictionary 上边遍历边改动
+        // （删除会推进版本号，正在进行的枚举直接抛 InvalidOperationException）。
+        var entries = new List<(string Key, long At)>();
+        var expired = new List<string>();
+
+        foreach (var key in session.Metadata.Keys.ToArray())
+        {
+            if (!key.StartsWith(IdempotencyKeyPrefix, StringComparison.Ordinal))
+                continue;
+
+            // 时间戳键（inbox.idem.at:<key>）也匹配上面的前缀，必须先排除。
+            if (key.StartsWith(IdempotencyTimestampPrefix, StringComparison.Ordinal))
+                continue;
+
+            if (!session.Metadata.TryGetValue(TimestampKeyFor(key), out var raw)
+                || !long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var at))
+            {
+                // 升级前写入的旧键没有时间戳：不猜年龄，按「现在」计入，
+                // 交给数量上限收敛（一次性全删会让仍在幂等窗口内的投递重复落盘）。
+                entries.Add((key, nowSeconds));
+                continue;
+            }
+
+            if (nowSeconds - at > retentionSeconds)
+                expired.Add(key);
+            else
+                entries.Add((key, at));
+        }
+
+        var excess = entries.Count - Math.Max(0, limit);
+        if (excess > 0)
+        {
+            expired.AddRange(entries
+                .OrderBy(e => e.At)
+                .Take(excess)
+                .Select(e => e.Key));
+        }
+
+        foreach (var key in expired)
+        {
+            session.Metadata.Remove(key);
+            session.Metadata.Remove(TimestampKeyFor(key));
+        }
+
+        return expired.Count > 0;
     }
 
     /// <summary>
@@ -1137,14 +1247,18 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         }
     }
 
-    public Task<bool> InterruptAsync(string sessionId, CancellationToken ct = default)
+    public async Task<bool> InterruptAsync(
+        string sessionId,
+        CancellationToken ct = default,
+        bool cancelBackgroundActivities = false)
     {
         // 停当前轮：取消当前执行体；consumed 不回退，循环继续消费剩余未读。
         // 不触碰 _stoppedSessions（Stop 与 Interrupt 的唯一区别在循环去向）。
         Touch(sessionId);
-        var cts = _states.TryGetValue(sessionId, out var state) ? state.CurrentExecution?.Cts : null;
+        var current = _states.TryGetValue(sessionId, out var state) ? state.CurrentExecution : null;
+        var cts = current?.Cts;
         if (cts is null)
-            return Task.FromResult(false);
+            return false;
 
         try
         {
@@ -1153,10 +1267,39 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         catch (ObjectDisposedException)
         {
             // 执行体已进入终态并释放令牌：视为无可中断目标。
-            return Task.FromResult(false);
+            return false;
         }
 
-        return Task.FromResult(true);
+        // 级联取消后台活动依赖 Core 注册的系统面端口（AddSeeingCore 必注册）；
+        // 解析失败会被下面的 catch 记录为警告，不影响中断本身。
+        if (cancelBackgroundActivities && !string.IsNullOrEmpty(current!.ExecutionId))
+            await CancelBackgroundActivitiesAsync(current.ExecutionId).ConfigureAwait(false);
+
+        return true;
+    }
+
+    /// <summary>
+    /// 尽力取消当前执行派生的后台活动。
+    /// <para>
+    /// 刻意吞掉异常：中断是控制面动作，后台取消失败不得让「中断」表现为失败，
+    /// 否则调用方会误判当前轮没停下。调用发生在 <c>cts.Cancel()</c> 之后，
+    /// 因此即便这里耗时，当前轮也已经在停下。
+    /// </para>
+    /// </summary>
+    private async Task CancelBackgroundActivitiesAsync(string executionId)
+    {
+        try
+        {
+            var control = _services.GetRequiredService<IBackgroundActivityControl>();
+
+            await control.CancelByExecutionAsync(
+                    executionId, BackgroundActivityCancelReason.User, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "级联取消后台活动失败：ExecutionId={ExecutionId}", executionId);
+        }
     }
 
     /// <inheritdoc />
@@ -1280,7 +1423,7 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
         }
 
         if (needInterrupt)
-            await InterruptAsync(sessionId, ct).ConfigureAwait(false);
+            await InterruptAsync(sessionId, ct, cancelBackgroundActivities: false).ConfigureAwait(false);
 
         return true;
     }
@@ -1395,10 +1538,51 @@ public sealed class SessionRuntime : ISessionRuntime, IExecutionInFlightBoundary
             }
         }
 
+        // 4. 级联取消后台活动（spec §9.2 取消矩阵）：停止会话后，其（含整棵子树的）
+        //    运行中活动不能再存活，否则「已停止的会话」仍会继续产出并写回 digest。
+        //    取消失败只记警告：停止的返回值表达「被取消的执行数」，后台清理失败不得改写它。
+        await CancelSessionBackgroundActivitiesAsync(targets, ct).ConfigureAwait(false);
+
         _logger.LogInformation(
             "会话已停止: SessionId={SessionId}, Cascaded={Cascaded}, Cancelled={Cancelled}",
             sessionId, targets.Count - 1, cancelled);
         return cancelled;
+    }
+
+    /// <summary>
+    /// 尽力取消一组会话名下的全部后台活动（逐个调 <see cref="IBackgroundActivityControl.CancelBySessionAsync"/>）。
+    /// <para>
+    /// 刻意吞掉异常：停止是控制面动作，活动取消失败不得让调用方误判「停止没生效」。
+    /// 端点未注册（裸 ServiceProvider 的测试）同样只记警告。
+    /// </para>
+    /// </summary>
+    private async Task CancelSessionBackgroundActivitiesAsync(
+        IReadOnlyList<string> sessionIds, CancellationToken ct)
+    {
+        IBackgroundActivityControl control;
+        try
+        {
+            control = _services.GetRequiredService<IBackgroundActivityControl>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "停止会话时解析后台活动控制端口失败，跳过级联取消");
+            return;
+        }
+
+        foreach (var id in sessionIds)
+        {
+            try
+            {
+                await control.CancelBySessionAsync(
+                        id, BackgroundActivityCancelReason.SessionStopped, ct)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "停止会话时级联取消后台活动失败: SessionId={SessionId}", id);
+            }
+        }
     }
 
     /// <summary>

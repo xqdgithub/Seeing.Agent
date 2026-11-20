@@ -76,7 +76,7 @@ public sealed class InProcessSessionClient : ISessionClient
         _pump.StreamAsync(sessionId, ct);
 
     public Task<bool> CancelAsync(string sessionId, CancellationToken ct = default) =>
-        _runtime.InterruptAsync(sessionId, ct);
+        _runtime.InterruptAsync(sessionId, ct, cancelBackgroundActivities: true);
 
     public Task<GatewayPermissionRespondResult> RespondPermissionAsync(
         string sessionId,

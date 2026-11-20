@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Seeing.Agent.Abstractions.Agents;
+using Seeing.Agent.Abstractions.Background;
 using Seeing.Agent.Abstractions.Commands;
 using Seeing.Agent.Abstractions.Components;
 using Seeing.Agent.Abstractions.Compression;
@@ -18,11 +19,13 @@ using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Prompts;
+using Seeing.Agent.Abstractions.Runtime;
 using Seeing.Agent.Abstractions.Summarization;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Abstractions.Ui;
 using Seeing.Agent.Configuration;
+using Seeing.Agent.Core.Background;
 using Seeing.Agent.Core.CapabilitySets;
 using Seeing.Agent.Core.Commands;
 using Seeing.Agent.Core.Commands.Discovery;
@@ -512,6 +515,9 @@ namespace Seeing.Agent.Core.Extensions
             // 与 SessionManager 同为进程级单例——活动时刻是全进程共享的事实。
             services.TryAddSingleton<ISessionActivityTracker, SessionActivityTracker>();
 
+            // 后台活动体系（管理面 + 落盘 + 投递 + 启动收敛）
+            RegisterBackgroundActivityServices(services);
+
             // 工具输出落盘服务（超限工具输出写会话 ref 目录）
             services.AddSingleton<Seeing.Agent.Core.Output.IToolOutputStore>(sp =>
                 new Seeing.Agent.Core.Output.SessionToolOutputStore(
@@ -689,6 +695,86 @@ namespace Seeing.Agent.Core.Extensions
             // 会话销毁清理（P1-16）：订阅 session.destroyed，收敛该会话在途审批并清除授权记忆/白名单目录
             services.AddSingleton<SessionDestroyedCleanupHook>();
             services.AddHostedService<SessionDestroyedCleanupHookRegistrar>();
+        }
+
+        /// <summary>
+        /// 注册后台活动体系：管理面 / 系统面 / 落盘 / 投递 / 启动收敛 / 工作区切换参与者。
+        /// <para>
+        /// <b>manager 与 control 必须指向同一实例</b>：状态只在该类内变化，拆成两个实现会让
+        /// 「取消」与「查询」看到两个不同的世界。outbox 同理——入队、切换时标 dropped、
+        /// 投递循环泵取必须落在同一实例上，否则各自持不同的内存状态。
+        /// </para>
+        /// <para>
+        /// 落盘实现与投递循环是进程级单例：快照文件、输出文件、outbox 目录都是按路径互斥的，
+        /// 多实例只会互相踩。
+        /// </para>
+        /// </summary>
+        private static void RegisterBackgroundActivityServices(IServiceCollection services)
+        {
+            // 治理参数走配置节 + IConfigSectionStore 桥接（与 ShellOptions 同款）：
+            // 只 AddOptions<>() 拿到的是 new BackgroundActivityOptions() 的默认值，
+            // 配了 MaxConcurrentPerSession / 超时也会静默无效。
+            services.GetOrCreateConfigSectionRegistry().Register(
+                new ConfigSectionMeta(
+                    BackgroundActivityOptions.SectionName,
+                    "seeing.json",
+                    ConfigScope.Both,
+                    typeof(BackgroundActivityOptions)));
+            services.AddOptions<BackgroundActivityOptions>();
+            services.TryAddSingleton(sp => new ConfigSectionOptionsMonitor<BackgroundActivityOptions>(
+                sp.GetRequiredService<IConfigSectionStore>(), BackgroundActivityOptions.SectionName));
+            services.TryAddSingleton<IOptionsMonitor<BackgroundActivityOptions>>(sp =>
+                sp.GetRequiredService<ConfigSectionOptionsMonitor<BackgroundActivityOptions>>());
+            services.TryAddSingleton<IOptions<BackgroundActivityOptions>>(sp =>
+                sp.GetRequiredService<ConfigSectionOptionsMonitor<BackgroundActivityOptions>>());
+
+            services.TryAddSingleton<IBackgroundActivityStore, BackgroundActivityStore>();
+
+            // 输出落盘依赖执行世界提供的 IPathWriteLock（io.local 等能力包登记）。
+            // 用工厂注册而非实现类型：Core-only 组合（测试 / 嵌入）里这个依赖可能不存在，
+            // 实现类型注册会让 ValidateOnBuild 在构建容器时就直接失败；
+            // 工厂注册把「缺依赖」推迟到真正解析 manager 的那一刻，报错仍然明确。
+            services.TryAddSingleton<IActivityOutputStore>(sp => new BackgroundActivityOutputStore(
+                sp.GetRequiredService<IPathWriteLock>(),
+                sp.GetRequiredService<IWorkspaceProvider>(),
+                sp.GetRequiredService<IOptionsMonitor<BackgroundActivityOptions>>(),
+                sp.GetService<ILogger<BackgroundActivityOutputStore>>()));
+
+            // outbox：公开读侧接口与 internal 写侧端口共享同一实例
+            services.TryAddSingleton<BackgroundActivityOutbox>();
+            services.TryAddSingleton<IBackgroundActivityOutbox>(sp =>
+                sp.GetRequiredService<BackgroundActivityOutbox>());
+            services.TryAddSingleton<IBackgroundActivityNotificationQueue>(sp =>
+                sp.GetRequiredService<BackgroundActivityOutbox>());
+
+            // 管理面（会话）与系统面（取消/登记）是同一单例的两个视图
+            services.TryAddSingleton<BackgroundActivityManager>();
+            services.TryAddSingleton<IBackgroundActivityManager>(sp =>
+                sp.GetRequiredService<BackgroundActivityManager>());
+            services.TryAddSingleton<IBackgroundActivityControl>(sp =>
+                sp.GetRequiredService<BackgroundActivityManager>());
+
+            // 通知实现依赖宿主（Hosting）提供的会话运行时与目录：同理由工厂注册，
+            // 让 Core-only 组合仍能通过 ValidateOnBuild。
+            services.TryAddSingleton<IBackgroundActivityNotifier>(sp => new SessionRuntimeActivityNotifier(
+                sp.GetRequiredService<ISessionRuntime>(),
+                sp.GetRequiredService<ISessionDirectory>()));
+
+            // 合并窗口与超时判定都读注入时钟：测试用 FakeTimeProvider 确定性推进，
+            // 生产未登记时回落系统时钟。
+            if (services.All(d => d.ServiceType != typeof(TimeProvider)))
+                services.AddSingleton(TimeProvider.System);
+
+            // 启动收敛必须先于投递循环：先把死宿主遗留的 pending 标 Dropped，再开始泵取
+            services.AddHostedService<BackgroundActivityRecoveryService>();
+            services.AddHostedService<BackgroundActivityNotificationDispatcher>();
+
+            // 保留期回收：定时清理过期终态活动与已结束的 outbox 批次（运行期唯一会缩小存储的角色）
+            services.AddHostedService<BackgroundActivityRetentionService>();
+
+            // 工作区切换：改根前取消旧根活动并丢弃旧根 pending，改根后收敛新根孤儿
+            services.TryAddEnumerable(
+                ServiceDescriptor.Singleton<IWorkspaceApplyParticipant, BackgroundActivityWorkspaceParticipant>());
         }
 
         /// <summary>

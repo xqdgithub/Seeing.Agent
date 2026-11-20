@@ -19,6 +19,9 @@ internal class ChatExecutionContext
     /// <summary>会话 ID</summary>
     public required string SessionId { get; init; }
 
+    /// <summary>本轮执行 ID（透传到 <see cref="AgentContext.ExecutionId"/>；可空）。</summary>
+    public string? ExecutionId { get; init; }
+
     /// <summary>对话历史</summary>
     public required List<ChatMessage> History { get; set; }
 
@@ -51,9 +54,6 @@ internal class ChatExecutionContext
 
     /// <summary>是否为顶层调用（Hook 触发控制）</summary>
     public bool IsTopLevel { get; init; } = true;
-
-    /// <summary>是否为后台执行</summary>
-    public bool IsBackground { get; init; }
 
     // ========== Gateway 相关 ==========
 
@@ -112,6 +112,7 @@ internal class ChatExecutionContext
         return new ChatExecutionContext
         {
             SessionId = subSessionId,
+            // 子代理是另一次执行，不继承父执行 ID（由子执行自己的记录填入）。
             Agent = subAgent,
             History = new List<ChatMessage>(),
             WorkingDirectory = WorkingDirectory,
@@ -121,7 +122,6 @@ internal class ChatExecutionContext
             ParentSessionId = SessionId,
             ParentAgentName = parentAgentName,
             IsTopLevel = false,
-            IsBackground = true,
             ToolSettlement = ToolSettlement,
             SectionIds = SectionIds,
             Metadata = new Dictionary<string, object>(Metadata)

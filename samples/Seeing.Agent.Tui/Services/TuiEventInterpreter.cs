@@ -185,6 +185,8 @@ public sealed class TuiEventInterpreter
             tool.Title = e.Title;
         if (e.Error is not null)
             tool.Error = e.Error;
+        if (e.BackgroundActivityId is not null)
+            tool.BackgroundActivityId = e.BackgroundActivityId;
 
         var taskId = ResolveTaskId(e);
         if (taskId is not null)

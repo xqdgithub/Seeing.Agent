@@ -49,7 +49,6 @@ public static class ReflectionAgentDefinition
             IsHidden = true,
 
             IsNative = true,
-            IsBackground = true,
 
             MaxSteps = options.MaxSteps,
             Temperature = 0.2,

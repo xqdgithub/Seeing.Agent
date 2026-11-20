@@ -58,6 +58,7 @@
     <Project Path="src/capabilities/Seeing.Agent.Skills/Seeing.Agent.Skills.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Llm.TypeSafe/Seeing.Agent.Llm.TypeSafe.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.TokenBudget/Seeing.Agent.TokenBudget.csproj" />
+    <Project Path="src/capabilities/Seeing.Agent.Tools.Background/Seeing.Agent.Tools.Background.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Basic/Seeing.Agent.Tools.Basic.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.Browser/Seeing.Agent.Tools.Browser.csproj" />
     <Project Path="src/capabilities/Seeing.Agent.Tools.ChannelMessaging/Seeing.Agent.Tools.ChannelMessaging.csproj" />
@@ -119,6 +120,7 @@
     <Project Path="tests/capabilities/Seeing.Agent.Scheduler.Tests/Seeing.Agent.Scheduler.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Skills.Tests/Seeing.Agent.Skills.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Llm.TypeSafe.Tests/Seeing.Agent.Llm.TypeSafe.Tests.csproj" />
+    <Project Path="tests/capabilities/Seeing.Agent.Tools.Background.Tests/Seeing.Agent.Tools.Background.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Basic.Tests/Seeing.Agent.Tools.Basic.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.Browser.Tests/Seeing.Agent.Tools.Browser.Tests.csproj" />
     <Project Path="tests/capabilities/Seeing.Agent.Tools.ChannelMessaging.Tests/Seeing.Agent.Tools.ChannelMessaging.Tests.csproj" />

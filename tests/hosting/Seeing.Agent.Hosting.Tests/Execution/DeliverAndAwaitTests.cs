@@ -599,6 +599,8 @@ public class DeliverAndAwaitTests
         var publisher = new Mock<IExecutionEventPublisher>();
         var services = new ServiceCollection();
         services.AddSingleton<ISessionManager>(sessionManager);
+        // SessionRuntime 把控制端口当必需依赖解析（Core 组合根总是注册）
+        services.AddSingleton(new Mock<Seeing.Agent.Abstractions.Background.IBackgroundActivityControl>().Object);
         var provider = services.BuildServiceProvider();
 
         return new SessionRuntime(

@@ -4,6 +4,7 @@
 @using Seeing.Agent.WebUI.State
 @using Seeing.Agent.WebUI.Shared
 @using Seeing.Agent.Abstractions.Events
+@using Seeing.Agent.Abstractions.Background
 @using Seeing.Agent.Abstractions.Commands
 @using Seeing.Agent.Abstractions.Reminders
 @using Seeing.Agent.Abstractions.Sessions
@@ -27,6 +28,7 @@
 @using Microsoft.Extensions.Options
 @inject AppState AppState
 @inject Services.SessionEventStreamRouter Router
+@inject Services.BackgroundActivityUiService BackgroundActivities
 @inject CircuitContext CircuitContext
 @inject NavigationManager NavigationManager
 @inject IMessageService MessageService
@@ -667,6 +669,9 @@
             EnsureStreamBinding(sessionId);
             RestoreExecutionFromOverview(sessionId);
 
+            // 后台活动事件不落盘：首屏/刷新用 manager.List 重建（工具卡片内联或独立条目）
+            RestoreBackgroundActivities(sessionId);
+
             if (ViewMode == Services.SessionWindowMode.Full)
             {
                 Context.SessionId = sessionId;
@@ -1294,6 +1299,39 @@
         _boundSessionId = sessionId;
     }
 
+    /// <summary>
+    /// 首屏重建后台活动：<c>manager.List(query, sessionId)</c> 是活动事件的唯一回放来源
+    /// （事件本身不落盘）。快照先播种进 handler（与实时事件共用 Seq 守卫），
+    /// 再逐条投影到时间线：能对应发起工具调用就内联，否则在末尾新增独立条目。
+    /// <para>仅 Full 模式：Summary 卡片只展示标题/执行态，不承载活动卡片。</para>
+    /// </summary>
+    private void RestoreBackgroundActivities(string sessionId)
+    {
+        if (ViewMode != Services.SessionWindowMode.Full || _handler is null || string.IsNullOrEmpty(sessionId))
+            return;
+
+        var snapshots = BackgroundActivities.List(sessionId);
+        if (snapshots.Count > 0)
+            _handler.SeedBackgroundActivities(snapshots);
+
+        // 即使 List 为空也要投影：订阅回放可能已把活动写进 handler。
+        ReapplyKnownBackgroundActivities();
+    }
+
+    /// <summary>
+    /// 把 handler 已知活动重新附着到当前时间线（时间线被全量重建后使用）。
+    /// <para>活动事件不落盘，<c>ResetFromSession</c> 会连同独立活动条目一起清空；
+    /// 已知活动必须重新投影，否则运行中的活动卡片会从时间线消失。</para>
+    /// </summary>
+    private void ReapplyKnownBackgroundActivities()
+    {
+        if (ViewMode != Services.SessionWindowMode.Full || _handler is null)
+            return;
+
+        foreach (var activity in _handler.BackgroundActivities)
+            BackgroundActivityProjection.Apply(Timeline, activity, allowAppend: true);
+    }
+
     /// <summary>窗口实际绑定的会话 ID（无路由参数时经 LoadRecentOrEmptyAsync 解析为真实 id）</summary>
     private string EffectiveSessionId => !string.IsNullOrEmpty(SessionId) ? SessionId : (_loadState.LoadedSessionId ?? "");
 
@@ -1414,6 +1452,26 @@
             if (isFull)
             {
                 _sync.ProcessEvent(evt);
+
+                // 后台活动是独立投影（事件不落盘）：到达即附着到发起工具卡片，
+                // 找不到工具卡片时在时间线末尾新增条目。progress 只更新既有状态，
+                // 不允许凭空新增条目（否则首次进度就会多出一行）。
+                if (evt is BackgroundActivityEvent activityEvt
+                    && _handler?.TryGetBackgroundActivity(activityEvt.Activity.Id, out var activityVm) == true)
+                {
+                    BackgroundActivityProjection.Apply(
+                        Timeline,
+                        activityVm,
+                        allowAppend: !string.Equals(evt.Type, ActivityEventTypes.Progress, StringComparison.Ordinal));
+                }
+
+                // 这些事件会让 _sync 全量重建时间线（ResetFromSession），独立活动条目会被清空；
+                // 活动事件不落盘、不会自动重放，必须用 handler 已知活动重新投影。
+                if (evt is SessionUpdatedEvent or CompactionCompletedEvent or CompactionFailedEvent
+                    || evt is CommandResultEvent { NeedsRefresh: true })
+                {
+                    ReapplyKnownBackgroundActivities();
+                }
             }
             else if (evt is SessionTitleChangedEvent titleEvt)
             {
@@ -2047,7 +2105,7 @@
 
         try
         {
-            await SessionRuntime.InterruptAsync(sessionId);
+            await SessionRuntime.InterruptAsync(sessionId, cancelBackgroundActivities: false);
         }
         catch (Exception ex)
         {

@@ -98,6 +98,7 @@ public static class BuiltInCapabilitySets
         "files.workspace",
         "editor.tools",
         "shell",
+        "background",
         "git",
         "subagent",
         "session.tools",

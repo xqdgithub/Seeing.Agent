@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Seeing.Agent.Abstractions.Background;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Runtime;
@@ -96,6 +97,7 @@ public class SessionRuntimeControlTests
         var services = new ServiceCollection();
         services.AddSingleton<ISessionManager>(sessionManager);
         services.AddSingleton<IExecutionEventPublisher>(publisher);
+        services.AddSingleton<IBackgroundActivityControl>(new RecordingBackgroundActivityControl());
         if (groupManager is not null)
             services.AddSingleton(groupManager);
         var provider = services.BuildServiceProvider();

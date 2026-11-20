@@ -357,7 +357,9 @@ public class TaskToolTests
 
         public bool HasAnyActiveExecution() => false;
 
-        public Task<bool> InterruptAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(false);
+        public Task<bool> InterruptAsync(
+            string sessionId, CancellationToken ct = default, bool cancelBackgroundActivities = false) =>
+            Task.FromResult(false);
 
         public Task<int> StopAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(0);
 
@@ -508,7 +510,9 @@ public class TaskStatusToolTests
             public Task<InboxResult> DeliverAsync(InboxMessage message, CancellationToken ct = default) =>
                 Task.FromResult(InboxResult.Ok());
 
-            public Task<bool> InterruptAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(false);
+            public Task<bool> InterruptAsync(
+                string sessionId, CancellationToken ct = default, bool cancelBackgroundActivities = false) =>
+                Task.FromResult(false);
 
             public Task<int> StopAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(0);
 

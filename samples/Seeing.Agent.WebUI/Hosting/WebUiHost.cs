@@ -155,6 +155,8 @@ public static class WebUiHost
         builder.Services.AddScoped<CommandResultDispatcher>();
         // 会话资源 URL 生成（引用式图片 → 浏览器可加载 URL）；工具与用户附件共用
         builder.Services.AddScoped<SessionAssetUrlBuilder>();
+        // 后台活动 UI 端口（可选能力包：未注册 manager 时 List 为空、取消失效，页面照常渲染）
+        builder.Services.AddScoped<BackgroundActivityUiService>();
 
         // 会话事件流路由（Singleton）：按会话统一订阅 + 按 circuit 关联 Scoped 消费者。
         // CircuitContext（Scoped）：载入 circuit.Id，供页面经 Router.GetOrCreateConsumer 关联消费者。

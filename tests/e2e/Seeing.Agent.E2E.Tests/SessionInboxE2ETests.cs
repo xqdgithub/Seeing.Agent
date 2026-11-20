@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Seeing.Agent.Abstractions.Background;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Reminders;
@@ -26,6 +27,47 @@ namespace Seeing.Agent.E2E.Tests;
 /// </summary>
 public class SessionInboxE2ETests
 {
+    /// <summary>
+    /// 后台活动系统面替身：SessionRuntime 把它当必需依赖解析，
+    /// 本场景只走「停当前轮」，从不级联取消。
+    /// </summary>
+    private sealed class NoopBackgroundActivityControl : IBackgroundActivityControl
+    {
+        public Task<BackgroundActivityHandle> StartAsSystemAsync(
+            BackgroundActivityStartRequest request,
+            CancellationToken ct = default) => throw new NotSupportedException();
+
+        public Task<BackgroundActivityHandle> TrackAsync(
+            BackgroundActivityTrackRequest request,
+            CancellationToken ct = default) => throw new NotSupportedException();
+
+        public void RegisterLauncher(string moduleId, IBackgroundActivityLauncher launcher)
+            => throw new NotSupportedException();
+
+        public Task<int> UnregisterLauncherAsync(string kind, CancellationToken ct = default)
+            => Task.FromResult(0);
+
+        public Task<int> CancelBySessionAsync(
+            string sessionId,
+            BackgroundActivityCancelReason reason,
+            CancellationToken ct = default) => Task.FromResult(0);
+
+        public Task<int> CancelByExecutionAsync(
+            string executionId,
+            BackgroundActivityCancelReason reason,
+            CancellationToken ct = default) => Task.FromResult(0);
+
+        public Task<int> CancelAllAsync(
+            BackgroundActivityCancelReason reason,
+            CancellationToken ct = default) => Task.FromResult(0);
+
+        public Task<int> ReconcileOrphanedActivitiesAsync(CancellationToken ct = default)
+            => Task.FromResult(0);
+
+        public Task<int> PruneAsync(DateTimeOffset cutoff, CancellationToken ct = default)
+            => Task.FromResult(0);
+    }
+
     /// <summary>假执行体：记录调用次数、会话与批次，并可阻塞以制造在途窗口。</summary>
     private sealed class FakeRunner : IExecutionRunner
     {
@@ -129,6 +171,7 @@ public class SessionInboxE2ETests
         services.AddSingleton<ISessionManager>(sessionManager);
         services.AddSingleton<ISessionGroupManager>(groupManager);
         services.AddSingleton<IExecutionEventPublisher>(publisher);
+        services.AddSingleton<IBackgroundActivityControl>(new NoopBackgroundActivityControl());
         var provider = services.BuildServiceProvider();
 
         var options = new ExecutionOptions

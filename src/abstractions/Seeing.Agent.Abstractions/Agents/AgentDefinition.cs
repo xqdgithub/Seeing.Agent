@@ -44,9 +44,6 @@ public class AgentDefinition
     /// <summary>是否禁用（完全不可用，任何地方都无法使用）</summary>
     public bool Disabled { get; set; }
 
-    /// <summary>是否为后台 Agent（异步执行）</summary>
-    public bool IsBackground { get; set; }
-
     // === 核心配置 ===
 
     /// <summary>系统提示词（核心配置）</summary>

@@ -87,6 +87,9 @@ public record GatewayEventData
     /// <summary>工具调用标题</summary>
     public string? ToolTitle { get; init; }
 
+    /// <summary>本调用转交的后台活动 id（如 bash background=true）</summary>
+    public string? BackgroundActivityId { get; init; }
+
     /// <summary>Loop 取消时已完成的步数</summary>
     public int? CompletedSteps { get; init; }
 }

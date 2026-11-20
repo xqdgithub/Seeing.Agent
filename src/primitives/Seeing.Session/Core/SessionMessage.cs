@@ -173,6 +173,15 @@ namespace Seeing.Session.Core
         public ImmutableList<SessionTaskStep>? TaskSteps { get; set; }
 
         /// <summary>
+        /// 本调用转交的后台活动 id（如 <c>bash background=true</c>）。
+        /// <para>
+        /// fork / 复制依赖 <see cref="Clone"/> 逐字段拷贝；可为空（旧会话反序列化缺该字段）。
+        /// </para>
+        /// </summary>
+        [JsonPropertyName("background_activity_id")]
+        public string? BackgroundActivityId { get; set; }
+
+        /// <summary>
         /// 附带的工具完整定义（JSON）。仅当该工具本轮未下发 schema、且失败属参数类错误时填充。
         /// <para>
         /// 持久化是必需的：跨轮历史重建必须与本轮产出一致，否则前缀缓存失效。
@@ -211,6 +220,7 @@ namespace Seeing.Session.Core
                 TaskAgent = TaskAgent,
                 TaskDescription = TaskDescription,
                 TaskBackground = TaskBackground,
+                BackgroundActivityId = BackgroundActivityId,
                 TaskSteps = TaskSteps?.Select(s => new SessionTaskStep
                 {
                     StepKind = s.StepKind,

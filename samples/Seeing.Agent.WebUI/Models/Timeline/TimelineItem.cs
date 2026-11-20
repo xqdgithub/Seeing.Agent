@@ -14,6 +14,9 @@ public sealed class TimelineItem
     public MessageViewModel? Message { get; internal set; }
     public LoopGroupViewModel? Turn { get; internal set; }
 
+    /// <summary>独立的后台活动条目（<see cref="TimelineItemKind.BackgroundActivity"/>）。</summary>
+    public BackgroundActivityViewModel? Activity { get; internal set; }
+
     /// <summary>标记内容变化（轮次结构不变）。</summary>
     public void Touch() => Revision++;
 

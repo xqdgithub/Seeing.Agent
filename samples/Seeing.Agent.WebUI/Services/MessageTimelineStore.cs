@@ -497,6 +497,45 @@ public sealed class MessageTimelineStore
     }
 
     /// <summary>
+    /// 追加/更新一条独立的后台活动条目（找不到发起工具卡片时使用）。
+    /// <para>
+    /// 活动事件不落盘：条目随 <see cref="ResetFromSession"/> 清空，首屏由
+    /// <c>IBackgroundActivityManager.List</c> 重建；同一活动按 <c>Key = activity:{id}</c> 就地更新。
+    /// </para>
+    /// </summary>
+    /// <param name="activity">活动视图（调用方已按 <c>Seq</c> 过滤旧快照）。</param>
+    public void UpsertBackgroundActivity(BackgroundActivityViewModel activity)
+    {
+        ArgumentNullException.ThrowIfNull(activity);
+
+        var key = $"activity:{activity.Id}";
+        var index = _items.FindIndex(i => i.Kind == TimelineItemKind.BackgroundActivity
+            && string.Equals(i.Key, key, StringComparison.Ordinal));
+
+        if (index >= 0)
+        {
+            var existing = _items[index];
+            if (existing.Activity is { } current && current.Seq > activity.Seq)
+                return;
+
+            existing.Activity = activity;
+            existing.Touch();
+        }
+        else
+        {
+            _items.Add(new TimelineItem
+            {
+                Key = key,
+                Kind = TimelineItemKind.BackgroundActivity,
+                Activity = activity
+            });
+        }
+
+        RefreshTailHint();
+        RaiseChanged();
+    }
+
+    /// <summary>
     /// Append session messages that are not yet represented in the timeline (no full rebuild).
     /// Used after submit / execution end for user or system rows added outside the streaming path.
     /// </summary>

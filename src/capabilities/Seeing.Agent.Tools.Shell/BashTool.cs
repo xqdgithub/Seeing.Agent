@@ -1,12 +1,15 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Seeing.Agent.Abstractions.Background;
 using Seeing.Agent.Abstractions.Configuration;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
+using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.Support;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -19,14 +22,20 @@ namespace Seeing.Agent.Tools.Shell;
 public class BashTool : ToolBase
 {
     private const int DefaultTimeoutMs = 120_000;
+    private const int DefaultActivityTimeoutMs = 1_800_000;
     private const int MaxMetadataLength = 30_000;
     private const int StreamEmitMinIntervalMs = 100;
+
+    /// <summary>后台活动能力包模块 id（<c>background=true</c> 需要它提供 <c>activity_*</c> 工具）。</summary>
+    private const string BackgroundModuleId = "background";
 
     private readonly IExecutionWorld _world;
     private readonly IShellService _shellService;
     private readonly IShellEnvironmentService _shellEnvService;
     private readonly IOptionsMonitor<ShellOptions> _options;
     private readonly IWorkspacePathGate _pathGate;
+    private readonly IBackgroundActivityManager? _background;
+    private readonly IModuleCatalog? _modules;
 
     public override string Id => "bash";
 
@@ -35,6 +44,8 @@ public class BashTool : ToolBase
         "- 优先：文件读写与搜索用 `read`/`write`/`edit`/`grep`/`glob`，不要用 shell 代替。\n" +
         "- 超时：默认 120000 毫秒，可用 timeout 覆盖；超时会终止进程。\n" +
         "- 工作目录：workdir 默认当前工作目录。\n" +
+        "- 后台：`background=true` 把命令转交后台活动并立即返回活动 id（此时 timeout 被忽略，改用 activity_timeout）；" +
+        "用 `activity_status`/`activity_output`/`activity_wait`/`activity_cancel` 跟踪。\n" +
         $"当前环境：{BuildPlatformHint()}；请使用与当前 Shell 语法匹配的命令。";
 
     public override JsonElement ParametersSchema => JsonSerializer.SerializeToElement(new
@@ -43,7 +54,9 @@ public class BashTool : ToolBase
         properties = new
         {
             command = new { type = "string", description = "要执行的命令。" + $"当前环境：{BuildPlatformHint()}" },
-            timeout = new { type = "number", minimum = 1, description = "超时时间（毫秒），默认 120000（2 分钟）" },
+            timeout = new { type = "number", minimum = 1, description = "超时时间（毫秒），默认 120000（2 分钟）；background=true 时忽略" },
+            background = new { type = "boolean", @default = false, description = "为 true 时把命令转交后台活动并立即返回活动 id（不等待退出）" },
+            activity_timeout = new { type = "number", minimum = 1, @default = DefaultActivityTimeoutMs, description = "后台活动超时（毫秒），默认 1800000（30 分钟）；仅 background=true 时生效，取代 timeout" },
             workdir = new { type = "string", description = "工作目录，默认当前工作目录" },
             description = new { type = "string", description = "命令用途的简明描述（5-10 字）；可省略，缺省时自动取命令前 50 字符" }
         },
@@ -52,13 +65,21 @@ public class BashTool : ToolBase
 
     public override ToolCategory Category => ToolCategory.ExternalService;
 
+    /// <param name="background">
+    /// 后台活动会话面（可选）：宿主未接线时不支持 <c>background=true</c>，普通执行不受影响。
+    /// </param>
+    /// <param name="modules">
+    /// 模块目录（可选）：用于判定 <c>background</c> 模块是否启用。
+    /// </param>
     public BashTool(
         ILogger<BashTool> logger,
         IExecutionWorld world,
         IShellService shellService,
         IShellEnvironmentService shellEnvService,
         IOptionsMonitor<ShellOptions> options,
-        IWorkspacePathGate pathGate)
+        IWorkspacePathGate pathGate,
+        IBackgroundActivityManager? background = null,
+        IModuleCatalog? modules = null)
         : base(logger)
     {
         _world = world;
@@ -66,6 +87,8 @@ public class BashTool : ToolBase
         _shellEnvService = shellEnvService;
         _options = options;
         _pathGate = pathGate;
+        _background = background;
+        _modules = modules;
     }
 
     public override async Task<ToolResult> ExecuteAsync(JsonElement arguments, ToolContext context)
@@ -73,13 +96,15 @@ public class BashTool : ToolBase
         var command = GetStringArgument(arguments, "command");
         var description = GetStringArgument(arguments, "description");
         var timeout = GetIntArgument(arguments, "timeout") ?? DefaultTimeoutMs;
+        var background = GetBoolArgument(arguments, "background") ?? false;
         var workdir = GetStringArgument(arguments, "workdir") ?? context.WorkingDirectory;
 
         if (string.IsNullOrEmpty(command)) return Failure("command 参数是必需的");
         if (string.IsNullOrWhiteSpace(workdir))
             return Failure("缺少执行工作目录，无法确定命令工作目录。");
         if (string.IsNullOrEmpty(description)) description = command.Length > 50 ? command[..50] + "..." : command;
-        if (timeout <= 0) return Failure($"无效的超时值: {timeout}。超时必须是正整数毫秒（timeout=0 无意义）。");
+        // background=true 时 timeout 完全被 activity_timeout 取代，不再校验它。
+        if (!background && timeout <= 0) return Failure($"无效的超时值: {timeout}。超时必须是正整数毫秒（timeout=0 无意义）。");
 
         // 工作目录必须在授权根内：shell 不能靠"命令级审批"绕过路径边界。
         var gateError = _pathGate.ResolveAllowed(
@@ -88,10 +113,97 @@ public class BashTool : ToolBase
             return Failure($"工作目录不可用: {gateError}");
         workdir = fullWorkdir;
 
-        try { return await ExecuteCommandAsync(command, description, workdir, timeout, context); }
+        try
+        {
+            if (background)
+                return await StartBackgroundActivityAsync(arguments, command, description, workdir, context);
+
+            return await ExecuteCommandAsync(command, description, workdir, timeout, context);
+        }
         catch (OperationCanceledException) { return Failure($"命令被取消: {command}"); }
         catch (Exception ex) { return Failure($"{description}: {ex.Message}"); }
     }
+
+    /// <summary>
+    /// 把本次命令转交后台活动：只做前置校验与请求装配，立即返回活动句柄（不等命令退出）。
+    /// <para>
+    /// 活动级超时的权威是请求的 <see cref="BackgroundActivityStartRequest.Timeout"/>；
+    /// payload 里的 <c>timeoutMs</c> 供 launcher 约束子进程（见 <see cref="ProcessBackgroundActivityLauncher"/>）。
+    /// </para>
+    /// </summary>
+    private async Task<ToolResult> StartBackgroundActivityAsync(
+        JsonElement arguments, string command, string description, string workdir, ToolContext context)
+    {
+        if (_background is null)
+            return Failure("后台活动不可用：宿主未注册后台活动管理器（IBackgroundActivityManager）。");
+
+        if (_modules is null || !_modules.IsEnabled(BackgroundModuleId))
+            return Failure($"后台活动不可用：模块 '{BackgroundModuleId}' 未启用（缺少 activity_* 工具无法跟踪结果）。");
+
+        if (string.IsNullOrWhiteSpace(context.ExecutionId))
+            return Failure("缺少本轮执行 id（ExecutionId），无法把命令转交后台活动。");
+
+        var activityTimeout = GetIntArgument(arguments, "activity_timeout") ?? DefaultActivityTimeoutMs;
+        if (activityTimeout <= 0)
+            return Failure($"无效的后台活动超时值: {activityTimeout}。activity_timeout 必须是正整数毫秒。");
+
+        // 后台执行同样受危险命令拦截：转后台不是绕过命令级安全检查的通道。
+        var dangerCheck = DangerousCommandGuard.Check(command, _options.CurrentValue);
+        if (dangerCheck != null) return Failure($"命令被拒绝执行: {dangerCheck}");
+
+        var request = new BackgroundActivityStartRequest
+        {
+            Kind = ProcessBackgroundActivityLauncher.ProcessKind,
+            Title = description,
+            OwnerSessionId = context.SessionId,
+            OwnerExecutionId = context.ExecutionId,
+            OriginToolCallId = context.CallId,
+            WorkingDirectory = workdir,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                command,
+                workdir,
+                timeoutMs = activityTimeout
+            }),
+            Timeout = TimeSpan.FromMilliseconds(activityTimeout),
+            DedupeKey = ComputeDedupeKey(command, workdir),
+            DedupeStrategy = BackgroundActivityDedupeStrategy.Reject
+        };
+
+        try
+        {
+            var handle = await _background.StartAsync(request, context.SessionId, context.CancellationToken);
+
+            // 去重命中：命令没有重新执行，回执不能讲成「已转交执行」。
+            var output = handle.IsExisting
+                ? $"已存在同命令后台活动，复用活动 {handle.ActivityId}（本次未重复执行命令）。\n" +
+                  $"activity_id: {handle.ActivityId}\n" +
+                  "后续用 activity_status / activity_output / activity_wait / activity_cancel 跟踪或取消该活动。"
+                : $"命令已转交后台活动执行（不等待退出）。\n" +
+                  $"activity_id: {handle.ActivityId}\n" +
+                  "后续用 activity_status / activity_output / activity_wait / activity_cancel 跟踪或取消该活动。";
+
+            return new ToolResult
+            {
+                Success = true,
+                Title = description,
+                Output = output,
+                BackgroundActivityId = handle.ActivityId
+            };
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Failure($"后台活动启动被拒绝: {ex.Message}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Failure($"后台活动启动失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>去重键：同一 <c>(command, workdir)</c> 只允许一个在途活动（manager 只比字符串）。</summary>
+    private static string ComputeDedupeKey(string command, string workdir)
+        => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(command + "\n" + workdir)));
 
     private async Task<ToolResult> ExecuteCommandAsync(
         string command, string description, string workdir, int timeout, ToolContext context)
