@@ -79,14 +79,16 @@ internal sealed class BackgroundActivityStore : IBackgroundActivityStore
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<BackgroundActivitySnapshot>> LoadManyAsync(
+    public async Task<BackgroundActivitySnapshotBatch> LoadManyAsync(
         IReadOnlyCollection<string> activityIds)
     {
         if (activityIds is null || activityIds.Count == 0)
-            return Array.Empty<BackgroundActivitySnapshot>();
+            return BackgroundActivitySnapshotBatch.Empty;
 
-        var result = new List<BackgroundActivitySnapshot>(activityIds.Count);
+        var snapshots = new List<BackgroundActivitySnapshot>(activityIds.Count);
+        var unreadable = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
+
         foreach (var activityId in activityIds)
         {
             // 同一批次里重复 id 只读一次；非法 id 不参与读取（也不抛异常打断整批）。
@@ -97,12 +99,37 @@ internal sealed class BackgroundActivityStore : IBackgroundActivityStore
                 continue;
             }
 
-            var snapshot = await ReadSnapshotAsync(ResolveSnapshotPath(activityId)).ConfigureAwait(false);
-            if (snapshot is not null)
-                result.Add(snapshot);
+            var path = ResolveSnapshotPath(activityId);
+
+            // 文件不存在 = 记录已被正常清理，不算读失败。
+            if (!File.Exists(path))
+                continue;
+
+            try
+            {
+                var snapshot = await ReadSnapshotStrictAsync(path).ConfigureAwait(false);
+                if (snapshot is null)
+                {
+                    // 文件在但内容为 null：与截断 JSON 同类，属不可用而不是「不存在」。
+                    unreadable.Add(activityId);
+                    _logger?.LogWarning("后台活动快照内容为空，按读取失败处理 Path={Path}", path);
+                    continue;
+                }
+
+                snapshots.Add(snapshot);
+            }
+            catch (Exception ex) when (ex is IOException
+                                       or UnauthorizedAccessException
+                                       or JsonException
+                                       or NotSupportedException)
+            {
+                // 瞬时 IO/JSON 失败：交给调用方按轮重试，不要在这里把它当成「记录不存在」。
+                unreadable.Add(activityId);
+                _logger?.LogWarning(ex, "后台活动快照读取失败（可重试）Path={Path}", path);
+            }
         }
 
-        return result;
+        return new BackgroundActivitySnapshotBatch(snapshots, unreadable);
     }
 
     /// <inheritdoc />
@@ -203,24 +230,30 @@ internal sealed class BackgroundActivityStore : IBackgroundActivityStore
             if (!File.Exists(path))
                 return null;
 
-            // 与原子替换并发：允许删除共享，避免读者短暂挡住 Move。
-            await using var stream = new FileStream(
-                path,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete,
-                bufferSize: 4096,
-                useAsync: true);
-
-            return await JsonSerializer
-                .DeserializeAsync<BackgroundActivitySnapshot>(stream, s_json)
-                .ConfigureAwait(false);
+            return await ReadSnapshotStrictAsync(path).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or NotSupportedException)
         {
             _logger?.LogWarning(ex, "后台活动快照读取失败，跳过 Path={Path}", path);
             return null;
         }
+    }
+
+    /// <summary>严格读取：不吞异常，供 <see cref="LoadManyAsync"/> 区分「读不出」与「不存在」。</summary>
+    private static async Task<BackgroundActivitySnapshot?> ReadSnapshotStrictAsync(string path)
+    {
+        // 与原子替换并发：允许删除共享，避免读者短暂挡住 Move。
+        await using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete,
+            bufferSize: 4096,
+            useAsync: true);
+
+        return await JsonSerializer
+            .DeserializeAsync<BackgroundActivitySnapshot>(stream, s_json)
+            .ConfigureAwait(false);
     }
 
     // ─── 写 ───────────────────────────────────────────────────────────────────

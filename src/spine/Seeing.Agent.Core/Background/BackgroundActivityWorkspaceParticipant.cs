@@ -56,7 +56,7 @@ internal sealed class BackgroundActivityWorkspaceParticipant : IWorkspaceApplyPa
         {
             var dropped = await _outbox
                 .MarkDroppedAsync(
-                    BackgroundActivityHostInstance.Current,
+                    BackgroundActivityHostIdentity.Current,
                     context.OldRoot,
                     reason: "workspace_switched")
                 .ConfigureAwait(false);

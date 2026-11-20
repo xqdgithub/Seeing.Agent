@@ -120,6 +120,96 @@ public class BackgroundActivityOutboxTests : IDisposable
     }
 
     [Fact]
+    public async Task PumpOnce_UnreadableActivity_ShouldRetryThenDrop()
+    {
+        var harness = CreateHarness();
+        var activityId = NewActivityId();
+        harness.Store.Add(Snapshot(activityId, "s1"));
+        harness.Store.Unreadable.Add(activityId);
+
+        await harness.Outbox.EnqueueAsync(Notification("s1", activityId));
+
+        // 首轮读不出：不投递、不标终态，只计一次失败。
+        harness.Time.Advance(Window);
+        (await harness.Outbox.PumpOnceAsync()).Should().Be(0);
+
+        harness.Notifier.Messages.Should().BeEmpty();
+        var first = ReadNotifications().Should().ContainSingle().Subject;
+        first.Status.Should().Be(BackgroundActivityOutboxStatus.Pending);
+        first.Attempts.Should().Be(1);
+        first.LastError.Should().Be("activity_unreadable");
+
+        // 连续 5 轮仍读不出才丢弃。
+        for (var attempt = 2; attempt <= BackgroundActivityOutbox.MaxDeliveryAttempts; attempt++)
+        {
+            harness.Time.Advance(Window);
+            await harness.Outbox.PumpOnceAsync();
+        }
+
+        var dropped = ReadNotifications().Should().ContainSingle().Subject;
+        dropped.Status.Should().Be(BackgroundActivityOutboxStatus.Dropped);
+        dropped.Attempts.Should().Be(BackgroundActivityOutbox.MaxDeliveryAttempts);
+        dropped.LastError.Should().Be("activity_unreadable");
+        harness.Notifier.Messages.Should().BeEmpty();
+        harness.Outbox.PendingCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ReconcileDeadHosts_ShouldDropDeadHostPending()
+    {
+        var harness = CreateHarness();
+
+        var deadHost = $"{FindFreePid()}:0";
+        var deadOutbox = CreateOutbox(harness.Notifier, harness.Time, harness.Store, hostInstanceId: deadHost);
+
+        var deadId = NewActivityId();
+        var liveId = NewActivityId();
+        harness.Store.Add(Snapshot(deadId, "s1"));
+        harness.Store.Add(Snapshot(liveId, "s2"));
+
+        await deadOutbox.EnqueueAsync(Notification("s1", deadId));
+        await harness.Outbox.EnqueueAsync(Notification("s2", liveId));
+
+        var dropped = await harness.Outbox.ReconcileDeadHostsAsync();
+
+        dropped.Should().Be(1);
+
+        var dead = ReadNotifications().Single(n => n.HostInstanceId == deadHost);
+        dead.Status.Should().Be(BackgroundActivityOutboxStatus.Dropped);
+        dead.LastError.Should().Be("host_shutdown");
+
+        // 本实例的 pending 不受影响。
+        ReadNotifications().Single(n => n.HostInstanceId == BackgroundActivityHostIdentity.Current)
+            .Status.Should().Be(BackgroundActivityOutboxStatus.Pending);
+
+        // 已丢弃的批次不会再被泵取。
+        harness.Time.Advance(Window);
+        await harness.Outbox.PumpOnceAsync();
+        harness.Notifier.Messages.Should().ContainSingle()
+            .Which.TargetSessionId.Should().Be("s2");
+    }
+
+    [Fact]
+    public async Task ReconcileDeadHosts_ShouldNotTouchLiveHost()
+    {
+        var harness = CreateHarness();
+
+        // 本进程 pid + 无启动时间（pid-only 退化记录）：与 Current 字符串不同，必须走进程探测分支。
+        var liveHost = $"{Environment.ProcessId}:0";
+        var liveOutbox = CreateOutbox(harness.Notifier, harness.Time, harness.Store, hostInstanceId: liveHost);
+
+        var activityId = NewActivityId();
+        harness.Store.Add(Snapshot(activityId, "s1"));
+        await liveOutbox.EnqueueAsync(Notification("s1", activityId));
+
+        (await harness.Outbox.ReconcileDeadHostsAsync()).Should().Be(0);
+
+        var live = ReadNotifications().Should().ContainSingle().Subject;
+        live.Status.Should().Be(BackgroundActivityOutboxStatus.Pending);
+        live.HostInstanceId.Should().Be(liveHost);
+    }
+
+    [Fact]
     public async Task PumpOnce_ShouldOnlyTakeOwnHostPending()
     {
         var harness = CreateHarness();
@@ -160,7 +250,7 @@ public class BackgroundActivityOutboxTests : IDisposable
         await harness.Outbox.EnqueueAsync(Notification("s1", second));
 
         var dropped = await harness.Outbox.MarkDroppedAsync(
-            BackgroundActivityHostInstance.Current,
+            BackgroundActivityHostIdentity.Current,
             _tempRoot,
             reason: "workspace_switched");
 
@@ -341,7 +431,7 @@ public class BackgroundActivityOutboxTests : IDisposable
             Title = title,
             Origin = BackgroundActivityOrigin.ToolBackground,
             WorkspaceRoot = @"C:\ws",
-            HostInstanceId = BackgroundActivityHostInstance.Current,
+            HostInstanceId = BackgroundActivityHostIdentity.Current,
             CreatedAt = new DateTimeOffset(2026, 11, 20, 10, 0, 0, TimeSpan.FromHours(8)),
             OwnerSessionId = ownerSessionId,
             OwnerExecutionId = "exec-1",
@@ -356,6 +446,40 @@ public class BackgroundActivityOutboxTests : IDisposable
         };
 
     private static string NewActivityId() => "act_" + Guid.NewGuid().ToString("N");
+
+    /// <summary>找一个当前不存在进程的 pid（用真实进程事实构造「已死宿主」）。</summary>
+    private static int FindFreePid()
+    {
+        for (var pid = 90000; pid > 4000; pid--)
+        {
+            if (!PidExists(pid))
+                return pid;
+        }
+
+        throw new InvalidOperationException("找不到空闲 pid，无法构造死宿主场景。");
+    }
+
+    private static bool PidExists(int pid)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // 访问受限：进程存在但不可读。
+            return true;
+        }
+    }
 
     // ─── manager harness ──────────────────────────────────────────────────────
 
@@ -413,6 +537,9 @@ public class BackgroundActivityOutboxTests : IDisposable
         private readonly ConcurrentDictionary<string, BackgroundActivitySnapshot> _snapshots
             = new(StringComparer.Ordinal);
 
+        /// <summary>模拟「文件在但读不出」的活动 id（瞬时 IO/JSON 失败）。</summary>
+        public HashSet<string> Unreadable { get; } = new(StringComparer.Ordinal);
+
         public void Add(BackgroundActivitySnapshot snapshot) => _snapshots[snapshot.Id] = snapshot;
 
         public Task SaveAsync(BackgroundActivitySnapshot snapshot)
@@ -424,15 +551,17 @@ public class BackgroundActivityOutboxTests : IDisposable
         public Task<BackgroundActivitySnapshot?> LoadAsync(string activityId)
             => Task.FromResult(_snapshots.TryGetValue(activityId, out var snapshot) ? snapshot : null);
 
-        public Task<IReadOnlyList<BackgroundActivitySnapshot>> LoadManyAsync(
+        public Task<BackgroundActivitySnapshotBatch> LoadManyAsync(
             IReadOnlyCollection<string> activityIds)
         {
-            IReadOnlyList<BackgroundActivitySnapshot> result = activityIds
-                .Where(_snapshots.ContainsKey)
+            var found = activityIds
+                .Where(id => _snapshots.ContainsKey(id) && !Unreadable.Contains(id))
                 .Select(id => _snapshots[id])
                 .ToList();
 
-            return Task.FromResult(result);
+            var unreadable = activityIds.Where(Unreadable.Contains).Distinct(StringComparer.Ordinal).ToList();
+
+            return Task.FromResult(new BackgroundActivitySnapshotBatch(found, unreadable));
         }
 
         public Task<IReadOnlyList<BackgroundActivitySnapshot>> LoadAllAsync()

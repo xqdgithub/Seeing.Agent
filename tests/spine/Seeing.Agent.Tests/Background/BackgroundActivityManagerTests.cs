@@ -299,6 +299,9 @@ public class BackgroundActivityManagerTests
         // 终态落盘失败：内存终态已提交，但事件不得发布（事件是权威记录的投影）。
         harness.Publisher.ActivityEvents.Should().BeEmpty();
         harness.Manager.Get(handle.ActivityId, "s1")!.Status.Should().Be(BackgroundActivityStatus.Succeeded);
+
+        // 落盘失败也不得写 outbox：「先落盘再投递」的前提不成立（spec §19 红线 6）。
+        harness.Notifications.Enqueued.Should().BeEmpty();
     }
 
     // ─── 查询与归属 ───────────────────────────────────────────────────────────
@@ -607,6 +610,7 @@ public class BackgroundActivityManagerTests
         public required FakePublisher Publisher { get; init; }
         public required FakeStore Store { get; init; }
         public required FakeOutputStore Output { get; init; }
+        public required FakeNotificationQueue Notifications { get; init; }
     }
 
     private static Harness CreateHarness(
@@ -617,6 +621,7 @@ public class BackgroundActivityManagerTests
         var publisher = new FakePublisher();
         var store = new FakeStore();
         var output = new FakeOutputStore();
+        var notifications = new FakeNotificationQueue();
         var effectiveOptions = options ?? new BackgroundActivityOptions();
 
         var services = new ServiceCollection().BuildServiceProvider();
@@ -628,11 +633,19 @@ public class BackgroundActivityManagerTests
             timeProvider ?? new FakeTimeProvider(),
             store,
             output,
-            new FakeNotificationQueue(),
+            notifications,
             NullLogger<BackgroundActivityManager>.Instance);
 
         manager.RegisterLauncher("test-module", launcher);
-        return new Harness { Manager = manager, Launcher = launcher, Publisher = publisher, Store = store, Output = output };
+        return new Harness
+        {
+            Manager = manager,
+            Launcher = launcher,
+            Publisher = publisher,
+            Store = store,
+            Output = output,
+            Notifications = notifications
+        };
     }
 
     private static BackgroundActivityStartRequest Request(
@@ -831,13 +844,14 @@ public class BackgroundActivityManagerTests
                 return Task.FromResult(_saved.LastOrDefault(s => s.Id == activityId));
         }
 
-        public Task<IReadOnlyList<BackgroundActivitySnapshot>> LoadManyAsync(
+        public Task<BackgroundActivitySnapshotBatch> LoadManyAsync(
             IReadOnlyCollection<string> activityIds)
         {
             lock (_gate)
             {
-                return Task.FromResult<IReadOnlyList<BackgroundActivitySnapshot>>(
-                    _saved.Where(s => activityIds.Contains(s.Id)).ToList());
+                return Task.FromResult(new BackgroundActivitySnapshotBatch(
+                    _saved.Where(s => activityIds.Contains(s.Id)).ToList(),
+                    Array.Empty<string>()));
             }
         }
 

@@ -42,7 +42,7 @@ internal interface IBackgroundActivityNotificationQueue
 /// 投递成功后重试只重放同一 digest，不会重复投递。
 /// </para>
 /// <para>
-/// <b>多实例隔离</b>：只泵取 <see cref="BackgroundActivityHostInstance.Current"/> 自己的 pending；
+/// <b>多实例隔离</b>：只泵取 <see cref="BackgroundActivityHostIdentity.Current"/> 自己的 pending；
 /// 别的存活实例的批次完全不动（只在工作区切换时由参与者按旧根清理）。
 /// </para>
 /// <para>
@@ -113,7 +113,7 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _mergeWindow = mergeWindow is { } window && window > TimeSpan.Zero ? window : DefaultMergeWindow;
         _hostInstanceId = string.IsNullOrEmpty(hostInstanceId)
-            ? BackgroundActivityHostInstance.Current
+            ? BackgroundActivityHostIdentity.Current
             : hostInstanceId!;
     }
 
@@ -213,8 +213,12 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
         try
         {
             var now = _timeProvider.GetLocalNow();
+
+            // 根只解析一次：本轮所有读写（含 digest 终态回写）都用同一个 outbox 目录。
+            // 否则工作区在泵取途中切换时，同一批的正文与终态会落到两个根上。
             var activityRoot = BackgroundActivityPaths.ResolveActivityRoot(_workspace);
-            var all = await LoadAllAsync(OutboxDirectory(activityRoot)).ConfigureAwait(false);
+            var outboxDirectory = OutboxDirectory(activityRoot);
+            var all = await LoadAllAsync(outboxDirectory).ConfigureAwait(false);
 
             var mine = all
                 .Where(n => n.Status == BackgroundActivityOutboxStatus.Pending
@@ -240,27 +244,40 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
             }
 
             // 一次批量取齐所有候选活动的快照：已观察过滤与展示摘要共用同一份数据。
+            // 读取出「不存在」与「读不出」两类：前者是正常的记录清理，后者必须重试（见下）。
             var candidateIds = eligible
                 .SelectMany(static n => n.ActivityIds)
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
 
-            var snapshots = await _store.LoadManyAsync(candidateIds).ConfigureAwait(false);
+            var batch = await _store.LoadManyAsync(candidateIds).ConfigureAwait(false);
+
             var byId = new Dictionary<string, BackgroundActivitySnapshot>(StringComparer.Ordinal);
-            foreach (var snapshot in snapshots)
+            foreach (var snapshot in batch.Snapshots)
                 byId[snapshot.Id] = snapshot;
 
+            var unreadable = new HashSet<string>(batch.UnreadableActivityIds, StringComparer.Ordinal);
+
             var remaining = mine.Count;
+            var processed = 0;
             var ready = new List<DeliveryCandidate>();
             foreach (var notification in eligible)
             {
                 var deliverable = new List<string>();
                 var anyObserved = false;
+                var anyUnreadable = false;
 
                 foreach (var activityId in notification.ActivityIds.Distinct(StringComparer.Ordinal))
                 {
-                    if (!byId.TryGetValue(activityId, out var snapshot))
+                    // 文件在、但本次读不出（瞬时 IO / JSON 失败）：本轮不投递、不标终态。
+                    if (unreadable.Contains(activityId))
+                    {
+                        anyUnreadable = true;
                         continue;
+                    }
+
+                    if (!byId.TryGetValue(activityId, out var snapshot))
+                        continue; // 文件不存在：记录已被正常清理，按 activity_missing 处理。
 
                     if (snapshot.ResultObservedAt is not null)
                     {
@@ -271,14 +288,45 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
                     deliverable.Add(activityId);
                 }
 
+                if (anyUnreadable)
+                {
+                    // 读失败按轮计次（复用 Attempts，不新增字段）：连续 MaxDeliveryAttempts 轮仍读不出才丢弃，
+                    // 期间的瞬时磁盘/杀软抖动不该把通知永久终态化。
+                    var attempts = notification.Attempts + 1;
+                    var dropped = attempts >= MaxDeliveryAttempts;
+
+                    await WriteAsync(notification with
+                    {
+                        Status = dropped
+                            ? BackgroundActivityOutboxStatus.Dropped
+                            : BackgroundActivityOutboxStatus.Pending,
+                        Attempts = attempts,
+                        LastError = "activity_unreadable"
+                    }, outboxDirectory).ConfigureAwait(false);
+
+                    if (dropped)
+                    {
+                        remaining--;
+                        processed++;
+
+                        _logger.LogWarning(
+                            "后台活动快照连续读取失败，完成通知已丢弃 DigestId={DigestId} SessionId={SessionId} Attempts={Attempts}",
+                            notification.DigestId,
+                            notification.OwnerSessionId,
+                            attempts);
+                    }
+
+                    continue;
+                }
+
                 if (deliverable.Count == 0)
                 {
-                    // 全部已观察（或活动记录已不可读）：不再唤醒，直接终态（spec §10.6）。
+                    // 全部已观察（或活动记录已被清理）：不再唤醒，直接终态（spec §10.6）。
                     await WriteAsync(notification with
                     {
                         Status = BackgroundActivityOutboxStatus.Delivered,
                         LastError = anyObserved ? "result_observed" : "activity_missing"
-                    }).ConfigureAwait(false);
+                    }, outboxDirectory).ConfigureAwait(false);
 
                     remaining--;
                     continue;
@@ -308,7 +356,7 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
                 };
 
                 // 先落盘批次，再投递（spec §10.2）：重试只重放这一份 digest。
-                await WriteAsync(digest).ConfigureAwait(false);
+                await WriteAsync(digest, outboxDirectory).ConfigureAwait(false);
                 remaining++;
 
                 foreach (var source in group)
@@ -318,7 +366,7 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
                     {
                         Status = BackgroundActivityOutboxStatus.Delivered,
                         LastError = "merged_into:" + digest.DigestId
-                    }).ConfigureAwait(false);
+                    }, outboxDirectory).ConfigureAwait(false);
 
                     remaining--;
                 }
@@ -332,7 +380,6 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
                 deliveries.Add(retry.Notification with { ActivityIds = retry.Ids.ToArray() });
             }
 
-            var processed = 0;
             foreach (var digest in deliveries)
             {
                 ct.ThrowIfCancellationRequested();
@@ -347,7 +394,7 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
                     {
                         Status = BackgroundActivityOutboxStatus.Delivered,
                         LastError = null
-                    }).ConfigureAwait(false);
+                    }, outboxDirectory).ConfigureAwait(false);
 
                     remaining--;
                     processed++;
@@ -359,7 +406,7 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
                     {
                         Status = BackgroundActivityOutboxStatus.Dropped,
                         LastError = "session_missing"
-                    }).ConfigureAwait(false);
+                    }, outboxDirectory).ConfigureAwait(false);
 
                     remaining--;
                     processed++;
@@ -386,7 +433,7 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
                             : BackgroundActivityOutboxStatus.Pending,
                         Attempts = attempts,
                         LastError = ex.Message
-                    }).ConfigureAwait(false);
+                    }, outboxDirectory).ConfigureAwait(false);
 
                     if (dropped)
                         remaining--;
@@ -416,6 +463,57 @@ internal sealed class BackgroundActivityOutbox : IBackgroundActivityOutbox, IBac
 
             Volatile.Write(ref _pendingCount, Math.Max(0, remaining));
             return processed;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    // ─── 死实例清理 ───────────────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<int> ReconcileDeadHostsAsync(CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var outboxDirectory = OutboxDirectory();
+            var all = await LoadAllAsync(outboxDirectory).ConfigureAwait(false);
+
+            var dropped = 0;
+            foreach (var notification in all)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                if (notification.Status != BackgroundActivityOutboxStatus.Pending)
+                    continue;
+
+                // 存活实例（含本实例）的 pending 一律不碰：它们由各自的宿主投递。
+                if (BackgroundActivityHostIdentity.IsAlive(notification.HostInstanceId))
+                    continue;
+
+                await WriteAsync(notification with
+                {
+                    Status = BackgroundActivityOutboxStatus.Dropped,
+                    LastError = "host_shutdown"
+                }, outboxDirectory).ConfigureAwait(false);
+
+                dropped++;
+
+                if (string.Equals(notification.HostInstanceId, _hostInstanceId, StringComparison.Ordinal))
+                    Interlocked.Decrement(ref _pendingCount);
+            }
+
+            if (dropped > 0)
+            {
+                _logger.LogInformation(
+                    "后台活动 outbox 死实例清理完成 Dropped={Dropped} Directory={Directory}",
+                    dropped,
+                    outboxDirectory);
+            }
+
+            return dropped;
         }
         finally
         {

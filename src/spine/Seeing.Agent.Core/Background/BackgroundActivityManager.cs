@@ -33,7 +33,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
     /// <summary><c>activity.progress</c> 的最小事件间隔（spec §12.1：≥1s）。</summary>
     private static readonly TimeSpan s_progressEventInterval = TimeSpan.FromSeconds(1);
 
-    private static readonly string s_hostInstanceId = BackgroundActivityHostInstance.Current;
+    private static readonly string s_hostInstanceId = BackgroundActivityHostIdentity.Current;
 
     private readonly ConcurrentDictionary<string, BackgroundActivityRecord> _activities = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, LauncherRegistration> _launchers = new(StringComparer.Ordinal);
@@ -429,7 +429,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
             if (candidate.Status != BackgroundActivityStatus.Running)
                 continue;
 
-            if (IsHostInstanceAlive(candidate.HostInstanceId))
+            if (BackgroundActivityHostIdentity.IsAlive(candidate.HostInstanceId))
                 continue;
 
             var completedAt = _timeProvider.GetLocalNow();
@@ -768,7 +768,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         BackgroundActivityCancelReason? cancelReason,
         BackgroundActivityResult? result,
         out BackgroundActivitySnapshot snapshot,
-        out Task persistence)
+        out Task<bool> persistence)
     {
         ITimer? timer;
         CancellationTokenRegistration hostRegistration;
@@ -778,7 +778,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
             if (record.TerminalCommitted)
             {
                 snapshot = record.Snapshot;
-                persistence = Task.CompletedTask;
+                persistence = Task.FromResult(true);
                 return false;
             }
 
@@ -845,9 +845,18 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         if (!TryCommitTerminalState(record, status, cancelReason, result, out var snapshot, out var persistence))
             return;
 
-        await persistence.ConfigureAwait(false);
+        var persisted = await persistence.ConfigureAwait(false);
 
-        // 先落盘再投递（spec §19 红线 6）：只有终态记录已写出后才允许写 outbox。
+        if (!persisted)
+        {
+            _logger.LogError(
+                "后台活动终态未能落盘，跳过完成通知 ActivityId={ActivityId} Status={Status}",
+                snapshot.Id,
+                snapshot.Status);
+            return;
+        }
+
+        // 先落盘再投递（spec §19 红线 6）：只有终态记录确实写出后才允许写 outbox。
         await TryEnqueueCompletionNotificationAsync(snapshot).ConfigureAwait(false);
     }
 
@@ -864,10 +873,20 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         if (!TryCommitTerminalState(record, status, reason, result: null, out var snapshot, out var persistence))
             return false;
 
-        await persistence.ConfigureAwait(false);
+        var persisted = await persistence.ConfigureAwait(false);
 
-        // 取消同样是终态：落盘之后再决定是否唤醒（Interrupted / NotifyPolicy=None 会自行跳过）。
-        await TryEnqueueCompletionNotificationAsync(snapshot).ConfigureAwait(false);
+        if (!persisted)
+        {
+            _logger.LogError(
+                "后台活动取消终态未能落盘，跳过完成通知 ActivityId={ActivityId} Status={Status}",
+                snapshot.Id,
+                snapshot.Status);
+        }
+        else
+        {
+            // 取消同样是终态：落盘之后再决定是否唤醒（Interrupted / NotifyPolicy=None 会自行跳过）。
+            await TryEnqueueCompletionNotificationAsync(snapshot).ConfigureAwait(false);
+        }
 
         await NotifyLauncherCancelledAsync(record, reason, launcherOverride).ConfigureAwait(false);
         return true;
@@ -1242,13 +1261,13 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         }
     }
 
-    private Task EnqueuePersist(
+    private Task<bool> EnqueuePersist(
         BackgroundActivityRecord record,
         BackgroundActivitySnapshot snapshot,
         string? eventType)
     {
         // 链式串行：落盘 → 发事件（保证「落盘先于事件」与状态写盘不乱序）。
-        // 返回值是该环的完成信号：终态路径 await 它，非终态路径（Running / 观察标记）丢弃即可。
+        // 返回值是该环的完成信号+落盘结果：终态路径 await 它决定是否写 outbox，非终态路径丢弃即可。
         lock (_sync)
         {
             var chained = ChainPersistAsync(record.PersistChain, snapshot, eventType);
@@ -1257,8 +1276,12 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         }
     }
 
-    private async Task ChainPersistAsync(
-        Task previous,
+    /// <summary>
+    /// 落盘 → 发事件的一环。返回值是<b>该环是否落盘成功</b>：调用方（终态路径）据此决定是否写 outbox
+    /// ——「先落盘再投递」不能只是顺序，落盘失败时也不得投递（spec §19 红线 6）。
+    /// </summary>
+    private async Task<bool> ChainPersistAsync(
+        Task<bool> previous,
         BackgroundActivitySnapshot snapshot,
         string? eventType)
     {
@@ -1293,6 +1316,8 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         // R6：只有落盘成功才发布事件——事件是「已持久事实」的实时投影，不能先于权威记录。
         if (persisted && eventType is not null)
             Publish(snapshot, eventType);
+
+        return persisted;
     }
 
     private void Publish(BackgroundActivitySnapshot snapshot, string eventType)
@@ -1322,7 +1347,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
     /// <summary>等待某活动所有已排队的落盘/事件完成（测试与停机路径用）。</summary>
     internal async Task WaitForPersistenceAsync(string activityId, CancellationToken ct = default)
     {
-        Task chain;
+        Task<bool> chain;
         lock (_sync)
         {
             if (!_activities.TryGetValue(activityId, out var record))
@@ -1466,61 +1491,6 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
                 "后台活动完成通知入队失败 ActivityId={ActivityId} SessionId={SessionId}",
                 snapshot.Id,
                 snapshot.OwnerSessionId);
-        }
-    }
-
-    /// <summary>
-    /// 判定 <paramref name="hostInstanceId"/>（<c>pid:startTicks</c>）对应的宿主是否仍存活。
-    /// <para>
-    /// 同 pid 但启动时间不同 → 视为已死：Windows 会复用 pid，只看 pid 会把新进程
-    /// 当成那个已经崩溃的旧宿主。
-    /// </para>
-    /// </summary>
-    private static bool IsHostInstanceAlive(string hostInstanceId)
-    {
-        if (string.IsNullOrEmpty(hostInstanceId))
-            return false;
-
-        // 本实例不需要探测（自己的 pid 不可能被复用），也避免受限环境下 GetProcessById 异常反转判定。
-        if (string.Equals(hostInstanceId, s_hostInstanceId, StringComparison.Ordinal))
-            return true;
-
-        var separator = hostInstanceId.IndexOf(':');
-        if (separator <= 0)
-            return false;
-
-        if (!int.TryParse(hostInstanceId.AsSpan(0, separator), out var pid) || pid <= 0)
-            return false;
-
-        if (!long.TryParse(hostInstanceId.AsSpan(separator + 1), out var startTicks))
-            return false;
-
-        try
-        {
-            using var process = Process.GetProcessById(pid);
-            if (process.HasExited)
-                return false;
-
-            // pid-only 退化记录（启用时拿不到启动时间）：只能按 pid 判定，宁可漏收敛也不误杀。
-            if (startTicks == 0)
-                return true;
-
-            return process.StartTime.ToUniversalTime().Ticks == startTicks;
-        }
-        catch (ArgumentException)
-        {
-            // 该 pid 不存在：宿主已死。
-            return false;
-        }
-        catch (InvalidOperationException)
-        {
-            // 进程在探测窗口内退出。
-            return false;
-        }
-        catch (Exception)
-        {
-            // 访问受限等无法判定：保守视为存活，避免把在跑的活动改写为 Interrupted。
-            return true;
         }
     }
 

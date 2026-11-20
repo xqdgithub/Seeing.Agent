@@ -19,8 +19,12 @@ internal interface IBackgroundActivityStore
     /// <summary>
     /// 批量读取活动快照（outbox 投递前一次性取齐本批次所需的展示信息，避免逐条调用）。
     /// 不存在的 id 直接跳过；空集合短路返回。
+    /// <para>
+    /// 必须区分「文件不存在」与「文件存在但读不出」：前者是正常清理，后者是瞬时 IO/JSON 失败，
+    /// 调用方（outbox）据此决定是标 <c>activity_missing</c> 还是本轮重试。
+    /// </para>
     /// </summary>
-    Task<IReadOnlyList<BackgroundActivitySnapshot>> LoadManyAsync(IReadOnlyCollection<string> activityIds);
+    Task<BackgroundActivitySnapshotBatch> LoadManyAsync(IReadOnlyCollection<string> activityIds);
 
     /// <summary>读取全部活动快照（孤儿扫描用）。</summary>
     Task<IReadOnlyList<BackgroundActivitySnapshot>> LoadAllAsync();
@@ -39,4 +43,21 @@ internal interface IBackgroundActivityStore
         BackgroundActivityStatus expectedStatus,
         string expectedHostInstanceId,
         Func<BackgroundActivitySnapshot, BackgroundActivitySnapshot> replacement);
+}
+
+/// <summary>
+/// <see cref="IBackgroundActivityStore.LoadManyAsync"/> 的结果：
+/// 找到的快照 + <b>存在但本次读不出</b>的活动 id（瞬时错误，可重试）。
+/// <para>
+/// 文件不存在的 id 既不在快照里、也不在 <see cref="UnreadableActivityIds"/> 里——
+/// 那是正常清理，与「读失败」是两种语义。
+/// </para>
+/// </summary>
+internal sealed record BackgroundActivitySnapshotBatch(
+    IReadOnlyList<BackgroundActivitySnapshot> Snapshots,
+    IReadOnlyList<string> UnreadableActivityIds)
+{
+    internal static readonly BackgroundActivitySnapshotBatch Empty = new(
+        Array.Empty<BackgroundActivitySnapshot>(),
+        Array.Empty<string>());
 }

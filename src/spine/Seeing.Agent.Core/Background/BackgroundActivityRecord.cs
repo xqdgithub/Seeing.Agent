@@ -49,8 +49,8 @@ internal sealed class BackgroundActivityRecord
     /// <summary>宿主停止 token 的登记；进入终态时释放。</summary>
     public CancellationTokenRegistration HostRegistration { get; set; }
 
-    /// <summary>快照落盘与事件发布的串行链（保证「先落盘再发事件」）。</summary>
-    public Task PersistChain { get; set; } = Task.CompletedTask;
+    /// <summary>快照落盘与事件发布的串行链（保证「先落盘再发事件」）；结果为该环是否落盘成功。</summary>
+    public Task<bool> PersistChain { get; set; } = Task.FromResult(true);
 
     /// <summary>终态广播（等待方通过它拿到终态快照）。</summary>
     public TaskCompletionSource<BackgroundActivitySnapshot> TerminalSignal { get; }
