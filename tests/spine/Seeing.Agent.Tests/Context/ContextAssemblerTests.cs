@@ -40,6 +40,55 @@ public sealed class ContextAssemblerTests
             TestContext.Current.CancellationToken);
 
     [Fact]
+    public async Task SystemSourceWithoutHeading_ShouldReportIssue()
+    {
+        var source = new FakeSource { RenderInitialBehavior = _ => "bare body" };
+        var session = new SessionData { Id = "s-unsectioned" };
+        var assembler = CreateAssembler(session, source);
+
+        var result = await AssembleAsync(assembler, session);
+
+        result.Issues.Should().Contain(issue => issue.Contains("分节", StringComparison.Ordinal));
+        result.SystemBaseline.Should().Contain("bare body");
+    }
+
+    [Fact]
+    public async Task SystemSourceWithHeading_ShouldNotReportSectionIssue()
+    {
+        var source = new FakeSource();
+        var session = new SessionData { Id = "s-sectioned" };
+        var assembler = CreateAssembler(session, source);
+
+        var result = await AssembleAsync(assembler, session);
+
+        result.Issues.Should().NotContain(issue => issue.Contains("分节", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task EmptySystemSource_ShouldNotReportSectionIssue()
+    {
+        var source = new FakeSource { RenderInitialBehavior = _ => string.Empty };
+        var session = new SessionData { Id = "s-empty" };
+        var assembler = CreateAssembler(session, source);
+
+        var result = await AssembleAsync(assembler, session);
+
+        result.Issues.Should().NotContain(issue => issue.Contains("分节", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task XmlEnvelopeSystemSource_ShouldNotReportSectionIssue()
+    {
+        var source = new FakeSource { RenderInitialBehavior = _ => "<note>\nbody\n</note>" };
+        var session = new SessionData { Id = "s-xml" };
+        var assembler = CreateAssembler(session, source);
+
+        var result = await AssembleAsync(assembler, session);
+
+        result.Issues.Should().NotContain(issue => issue.Contains("分节", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task NoChange_ShouldNotEmitMessage()
     {
         var source = new FakeSource();

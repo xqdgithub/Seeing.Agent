@@ -544,6 +544,7 @@ public sealed class ContextAssembler : IContextAssembler
             return null;
 
         WarnIfBaselineTooLong(session, source, baselineText, issues);
+        WarnIfSystemBaselineNotSectioned(session.Id, source, baselineText, issues);
 
         var sourceState = new ContextSourceState
         {
@@ -580,6 +581,7 @@ public sealed class ContextAssembler : IContextAssembler
             return false;
 
         WarnIfBaselineTooLong(session, source, baselineText, issues);
+        WarnIfSystemBaselineNotSectioned(session.Id, source, baselineText, issues);
 
         sourceState.ValueSchemaVersion = source.ValueSchemaVersion;
         sourceState.BaselineText = baselineText;
@@ -669,6 +671,7 @@ public sealed class ContextAssembler : IContextAssembler
         else
         {
             WarnIfBaselineTooLong(session, source, baselineText, issues);
+        WarnIfSystemBaselineNotSectioned(session.Id, source, baselineText, issues);
         }
 
         sourceState.ValueSchemaVersion = source.ValueSchemaVersion;
@@ -984,6 +987,38 @@ public sealed class ContextAssembler : IContextAssembler
         }
 
         return validated;
+    }
+
+    /// <summary>
+    /// 系统落点源的分节边界守门：基线必须自带 H2 标题，或以 XML 信封包裹整体内容。
+    /// <para>
+    /// 基线按 <c>Scope → Key</c> 直接以空行拼接，没有边界的裸段落会粘到上一分节（协同目录曾因此被读成
+    /// 技能清单的续项）。这里只记录非致命问题并告警，<b>不</b>替源自动补标题（语义只能由源自己声明）。
+    /// </para>
+    /// </summary>
+    private void WarnIfSystemBaselineNotSectioned(
+        string sessionId,
+        IContextSource source,
+        string baselineText,
+        List<string> issues)
+    {
+        if (source.Target != ContextSourceTarget.System || string.IsNullOrWhiteSpace(baselineText))
+            return;
+
+        var firstLine = baselineText.Replace("\r\n", "\n").Split('\n')[0].TrimStart();
+        if (firstLine.StartsWith("## ", StringComparison.Ordinal))
+            return;
+
+        var trimmed = baselineText.Trim();
+        if (trimmed.StartsWith('<') && trimmed.Contains("</", StringComparison.Ordinal))
+            return;
+
+        issues.Add(
+            $"源 {source.Key.Value} 的系统基线缺少分节标题（应以 `## 标题` 开头或以 XML 标签包裹），可能与上一分节粘连。");
+        _logger.LogWarning(
+            "上下文源系统基线缺少分节边界：{SourceKey} {SessionId}",
+            source.Key.Value,
+            sessionId);
     }
 
     private void WarnIfBaselineTooLong(
