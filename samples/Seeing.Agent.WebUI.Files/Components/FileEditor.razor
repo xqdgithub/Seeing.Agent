@@ -93,8 +93,8 @@
     /// <summary>标签状态。</summary>
     [Parameter, EditorRequired] public FileTabsState Tabs { get; set; } = default!;
 
-    /// <summary>目标文件工作区。</summary>
-    [Parameter, EditorRequired] public IFileWorkspace Workspace { get; set; } = default!;
+    /// <summary>目标文件工作区集合：按标签的根标识解析到具体根。</summary>
+    [Parameter, EditorRequired] public FileWorkspaceSet Workspaces { get; set; } = default!;
 
     private StandaloneCodeEditor? _editor;
     private OpenFile? _active;
@@ -257,9 +257,15 @@
         f.Content = value;
 
         FileWriteResult result;
+        var workspace = Workspaces.Find(f.Id);
+        if (workspace is null)
+        {
+            ReportSave("保存失败：文件所属目录已不在本会话中", error: true);
+            return;
+        }
         try
         {
-            result = await Workspace.WriteAsync(Workspace.GetAbsolutePath(f.Id), f.Content, f.OpenedRevision);
+            result = await workspace.WriteAsync(workspace.GetAbsolutePath(f.Id), f.Content, f.OpenedRevision);
         }
         catch (Exception ex)
         {
@@ -286,7 +292,7 @@
         _active = null;
         try
         {
-            Tabs.Open(await Workspace.ReadAsync(Workspace.GetAbsolutePath(f.Id), FileReadMode.Display));
+            Tabs.Open(await workspace.ReadAsync(workspace.GetAbsolutePath(f.Id), FileReadMode.Display));
         }
         catch (Exception ex)
         {
@@ -458,11 +464,13 @@
 
     private async Task<string?> TryGetConflictDiffAsync(OpenFile f)
     {
+        var workspace = Workspaces.Find(f.Id);
+        if (workspace is null) return null;
         try
         {
-            var disk = await Workspace.ReadAsync(Workspace.GetAbsolutePath(f.Id), FileReadMode.Display);
+            var disk = await workspace.ReadAsync(workspace.GetAbsolutePath(f.Id), FileReadMode.Display);
             if (disk.Content is null) return null;
-            return await Workspace.GetDiffAsync(Workspace.GetAbsolutePath(f.Id), f.Content);
+            return await workspace.GetDiffAsync(workspace.GetAbsolutePath(f.Id), f.Content);
         }
         catch { return null; }
     }
@@ -471,10 +479,18 @@
     {
         var f = _active;
         if (f is null) return;
+        var workspace = Workspaces.Find(f.Id);
+        if (workspace is null)
+        {
+            _saveError = "文件所属目录已不在本会话中";
+            _conflictOpen = false; _conflictDiff = null; _active = null;
+            StateHasChanged();
+            return;
+        }
         FileReadResult disk;
         try
         {
-            disk = await Workspace.ReadAsync(Workspace.GetAbsolutePath(f.Id), FileReadMode.Display);
+            disk = await workspace.ReadAsync(workspace.GetAbsolutePath(f.Id), FileReadMode.Display);
         }
         catch (Exception ex)
         {
@@ -501,10 +517,11 @@
     {
         // 保留本地修改，但把基准 revision 前进到当前磁盘版本，避免后续保存无条件覆盖
         FileRevision? diskRev = null;
+        var workspace = Workspaces.Find(f.Id);
         try
         {
-            var disk = await Workspace.ReadAsync(Workspace.GetAbsolutePath(f.Id), FileReadMode.Display);
-            diskRev = disk.Revision;
+            if (workspace is not null)
+                diskRev = (await workspace.ReadAsync(workspace.GetAbsolutePath(f.Id), FileReadMode.Display)).Revision;
         }
         catch { /* 读取失败则保持原基准 */ }
 

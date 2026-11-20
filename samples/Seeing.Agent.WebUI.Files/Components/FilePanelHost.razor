@@ -1,8 +1,6 @@
-@using Seeing.Agent.Abstractions.Directories
 @using Seeing.Agent.Abstractions.Files
 @using Seeing.Agent.WebUI.Files.Services
 @inject IFileWorkspaceFactory WorkspaceFactory
-@inject ICollaborationDirectories CollaborationDirectories
 @inject FilePanelState PanelState
 @inject FileTreeState TreeState
 @implements IDisposable
@@ -12,7 +10,7 @@
     {
         <div class="file-panel-empty">无会话</div>
     }
-    else if (_workspace is null)
+    else if (_workspaces is null)
     {
         @if (_error is not null)
         {
@@ -39,32 +37,6 @@
                 <button type="button" class="file-panel-error-dismiss" title="关闭提示" @onclick="DismissError">×</button>
             </div>
         }
-        <div class="file-root-bar">
-            <span class="file-root-label">根</span>
-            <select class="file-root-select" value="@_activeRootId" @onchange="SwitchRootAsync">
-                @foreach (var root in _roots)
-                {
-                    <option value="@root.Root.RootId">
-                        @RootLabel(root.Root)
-                    </option>
-                }
-            </select>
-            @if (_workspace?.Root.Kind == FileWorkspaceRootKind.Collaboration)
-            {
-                <button type="button" class="file-root-action" title="移除当前协同目录"
-                        @onclick="RemoveActiveRootAsync">移除</button>
-            }
-            <button type="button" class="file-root-action" title="添加协同目录"
-                    @onclick="() => _showAddRoot = !_showAddRoot">+</button>
-        </div>
-        @if (_showAddRoot)
-        {
-            <div class="file-root-add-row">
-                <input class="file-root-input" @bind="_newRootPath" placeholder="协同目录绝对路径" />
-                <button type="button" class="file-root-action" @onclick="AddRootAsync">添加</button>
-                <button type="button" class="file-root-action" @onclick="() => _showAddRoot = false">取消</button>
-            </div>
-        }
         <div class="file-panel-body @(PanelState.TreeVisible ? "" : "file-panel-body--no-tree")">
             @if (PanelState.TreeVisible)
             {
@@ -85,7 +57,7 @@
             }
             <div class="file-panel-main">
                 <FileTabs Tabs="_tabs" OnSave="SaveActiveAsync" />
-                <FileEditor Tabs="_tabs" Workspace="_workspace" @ref="_editor" />
+                <FileEditor Tabs="_tabs" Workspaces="_workspaces" @ref="_editor" />
             </div>
         </div>
     }
@@ -97,13 +69,10 @@
     /// <summary>请求关闭整个工作台（由工作台视图提供，转发到平台的 Close）。</summary>
     [Parameter] public EventCallback OnRequestClose { get; set; }
 
-    private IFileWorkspace? _workspace;
+    private FileWorkspaceSet? _workspaces;
     private IReadOnlyList<IFileWorkspace> _roots = Array.Empty<IFileWorkspace>();
-    private string? _activeRootId;
-    private bool _showAddRoot;
-    private string _newRootPath = string.Empty;
+    private readonly List<FileViewerCoordinator> _coordinators = [];
     private FileTabsState _tabs = null!;
-    private FileViewerCoordinator? _coordinator;
     private FileEditor? _editor;
     private string? _error;
 
@@ -119,115 +88,53 @@
         await TryInitWorkspaceAsync();
     }
 
-    /// <summary>解析会话工作区并接线变更订阅；失败时展示错误条而非冒泡崩溃。</summary>
+    /// <summary>解析会话的全部文件根并接线变更订阅；失败时展示错误条而非冒泡崩溃。</summary>
     private async Task TryInitWorkspaceAsync()
     {
-        if (string.IsNullOrEmpty(SessionId) || _workspace is not null) return;
+        if (string.IsNullOrEmpty(SessionId) || _workspaces is not null) return;
         try
         {
-            // 多根：项目根 + 会话协同目录；默认主根 = 项目根。
+            // 多根：项目根 + 会话协同目录；根集合由 ISessionRootSet 投影（只读）。
             _roots = await WorkspaceFactory.ListAsync(SessionId);
-            _workspace = _roots.FirstOrDefault(w => w.Root.Kind == FileWorkspaceRootKind.Project)
-                ?? _roots.FirstOrDefault();
-            _activeRootId = _workspace?.RootId;
+            _workspaces = new FileWorkspaceSet(_roots);
         }
         catch (Exception ex)
         {
-            _workspace = null;
+            _workspaces = null;
             _roots = Array.Empty<IFileWorkspace>();
             _error = FileErrorPresenter.Describe(ex);
             return;
         }
 
-        WireCoordinator();
+        WireCoordinators();
     }
 
-    private static string RootLabel(FileWorkspaceRoot root)
-        => root.Exists ? $"{root.Label}" : $"{root.Label}（不可用）";
-
-    /// <summary>切换当前根：重建变更订阅；标签状态保持不变（跨根共享）。</summary>
-    private async Task SwitchRootAsync(ChangeEventArgs e)
+    /// <summary>为每个根建立一条磁盘变更订阅；事件按根应用并广播给树。</summary>
+    private void WireCoordinators()
     {
-        var rootId = e.Value?.ToString();
-        if (string.IsNullOrEmpty(rootId) || string.Equals(rootId, _activeRootId, StringComparison.Ordinal))
+        DisposeCoordinators();
+        if (_workspaces is null)
             return;
 
-        var next = _roots.FirstOrDefault(w => string.Equals(w.RootId, rootId, StringComparison.Ordinal));
-        if (next is null)
-            return;
-
-        _workspace = next;
-        _activeRootId = rootId;
-        _error = null;
-        // 旧根的标签持有旧 RootId，切根后不可解析：直接清空，避免后续编辑/保存抛错。
-        _tabs.Clear();
-        WireCoordinator();
-        await Task.CompletedTask;
-    }
-
-    /// <summary>用户显式添加协同目录：UI 动作即授权，直接落会话（agent 侧走审批工具）。</summary>
-    private async Task AddRootAsync()
-    {
-        if (string.IsNullOrEmpty(SessionId) || string.IsNullOrWhiteSpace(_newRootPath))
-            return;
-
-        try
+        foreach (var root in _workspaces.Roots)
         {
-            await CollaborationDirectories.AddAsync(SessionId, _newRootPath.Trim());
-            _newRootPath = string.Empty;
-            _showAddRoot = false;
-            await ReloadRootsAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = FileErrorPresenter.Describe(ex);
+            var coordinator = new FileViewerCoordinator(root, _tabs);
+            _coordinators.Add(coordinator);
+            coordinator.Start(async evt => await InvokeAsync(async () =>
+            {
+                await coordinator.ApplyAsync(evt);
+                // 通知文件树刷新受影响的目录
+                TreeState.Notify(evt);
+                StateHasChanged();
+            }));
         }
     }
 
-    private async Task RemoveActiveRootAsync()
+    private void DisposeCoordinators()
     {
-        if (string.IsNullOrEmpty(SessionId)
-            || _workspace?.Root.Kind != FileWorkspaceRootKind.Collaboration)
-            return;
-
-        try
-        {
-            await CollaborationDirectories.RemoveAsync(SessionId, _workspace.RootPath);
-            await ReloadRootsAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = FileErrorPresenter.Describe(ex);
-        }
-    }
-
-    private async Task ReloadRootsAsync()
-    {
-        if (string.IsNullOrEmpty(SessionId))
-            return;
-
-        _roots = await WorkspaceFactory.ListAsync(SessionId);
-        _workspace = _roots.FirstOrDefault(w => w.RootId == _activeRootId) ?? _roots.FirstOrDefault();
-        _activeRootId = _workspace?.RootId;
-        _tabs.Clear();
-        WireCoordinator();
-        StateHasChanged();
-    }
-
-    private void WireCoordinator()
-    {
-        _coordinator?.Dispose();
-        if (_workspace is null)
-            return;
-
-        _coordinator = new FileViewerCoordinator(_workspace, _tabs);
-        _coordinator.Start(async evt => await InvokeAsync(async () =>
-        {
-            await _coordinator!.ApplyAsync(evt);
-            // 通知文件树刷新受影响的目录
-            TreeState.Notify(evt);
-            StateHasChanged();
-        }));
+        foreach (var coordinator in _coordinators)
+            coordinator.Dispose();
+        _coordinators.Clear();
     }
 
     /// <summary>重试初始化（工作区解析失败后的恢复入口）。</summary>
@@ -254,10 +161,12 @@
     /// <summary>读取文件；失败时返回错误文案（不抛出，避免冒泡到渲染器）。</summary>
     private async Task<(FileReadResult? File, string? Error)> TryReadAsync(FileResourceId id)
     {
-        if (_workspace is null) return (null, null);
+        var workspace = _workspaces?.Find(id);
+        if (workspace is null)
+            return (null, "文件所属目录已不在本会话中");
         try
         {
-            var file = await _workspace.ReadAsync(_workspace.GetAbsolutePath(id), FileReadMode.Display);
+            var file = await workspace.ReadAsync(workspace.GetAbsolutePath(id), FileReadMode.Display);
             return (file, null);
         }
         catch (Exception ex)
@@ -281,7 +190,7 @@
 
     private async Task ConsumePendingOpenAsync()
     {
-        if (_workspace is null || PanelState.PendingOpen is not { } pending) return;
+        if (_workspaces is null || PanelState.PendingOpen is not { } pending) return;
         PanelState.ConsumePendingOpen();
         await OpenOrActivateAsync(pending.Id, refreshIfActive: true, pending.Line, pending.Column, pending.Preview);
     }
@@ -344,14 +253,14 @@
 
     private async Task OnOpenFileAsync(FileResourceId id)
     {
-        if (_workspace is null) return;
+        if (_workspaces is null) return;
         await OpenOrActivateAsync(id, refreshIfActive: false);
     }
 
     /// <summary>宿主桥接入口：agent 改动某文件。</summary>
     public async Task NotifyAgentChangeAsync(FileResourceId id, FileDiffData? diff)
     {
-        if (_workspace is null) return;
+        if (_workspaces is null) return;
         var (file, error) = await TryReadAsync(id);
         if (file is null)
         {
@@ -371,7 +280,7 @@
     public async Task OpenOrActivateAsync(
         FileResourceId id, bool refreshIfActive, int? line = null, int? column = null, bool? preview = null)
     {
-        if (_workspace is null) return;
+        if (_workspaces is null) return;
 
         var key = id.ToString();
         var existing = _tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == key);
@@ -420,7 +329,7 @@
     /// <summary>宿主请求入口：执行编辑器命令。</summary>
     public async Task<HostResponsePayload> ExecuteEditorCommandAsync(string commandId, System.Text.Json.JsonElement? args, string? path)
     {
-        if (_workspace is null) return HostResponsePayload.Unavailable;
+        if (_workspaces is null) return HostResponsePayload.Unavailable;
         if (!string.IsNullOrEmpty(path) && !await EnsureActiveAsync(path))
             return HostResponsePayload.Unavailable;
         var f = _tabs.OpenFiles.FirstOrDefault(x => x.Id.ToString() == _tabs.ActiveKey);
@@ -434,7 +343,7 @@
     /// <summary>宿主请求入口：查询编辑器状态。</summary>
     public async Task<HostResponsePayload> QueryEditorAsync(string kind, string? path)
     {
-        if (_workspace is null) return HostResponsePayload.Unavailable;
+        if (_workspaces is null) return HostResponsePayload.Unavailable;
         if (!string.IsNullOrEmpty(path) && !await EnsureActiveAsync(path))
             return HostResponsePayload.Unavailable;
         if (_editor is null) return HostResponsePayload.Unavailable;
@@ -455,15 +364,23 @@
     /// </summary>
     private async Task<bool> EnsureActiveAsync(string path)
     {
-        if (_workspace is null) return false;
-        var id = _workspace.GetResourceId(path);
-        await OpenOrActivateAsync(id, refreshIfActive: false);
-        return string.Equals(_tabs.ActiveKey, id.ToString(), StringComparison.Ordinal);
+        var id = await ResolveIdAsync(path);
+        if (id is null) return false;
+        await OpenOrActivateAsync(id.Value, refreshIfActive: false);
+        return string.Equals(_tabs.ActiveKey, id.Value.ToString(), StringComparison.Ordinal);
+    }
+
+    /// <summary>把路径路由到所属根并转成资源标识；不属于任何根时返回 null。</summary>
+    private async Task<FileResourceId?> ResolveIdAsync(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        var workspace = await WorkspaceFactory.ResolveAsync(SessionId!, path);
+        return workspace?.GetResourceId(path);
     }
 
     /// <summary>
     /// 宿主桥接入口：按路径打开（工作台打开载荷用）。
-    /// <para>路径经工作区解析为资源标识，与文件树走同一套根规则。</para>
+    /// <para>路径先路由到所属根，再到该根的资源标识。</para>
     /// </summary>
     /// <param name="path">文件路径（绝对或相对工作目录）。</param>
     /// <param name="line">跳转行号（1-based，可空）。</param>
@@ -471,16 +388,21 @@
     /// <param name="preview">是否预览（null = 用标签默认值）。</param>
     public async Task OpenPathAsync(string path, int? line = null, int? column = null, bool? preview = null)
     {
-        if (_workspace is null || string.IsNullOrWhiteSpace(path))
+        if (_workspaces is null || string.IsNullOrWhiteSpace(path))
             return;
 
-        var id = _workspace.GetResourceId(path);
-        await OpenOrActivateAsync(id, refreshIfActive: false, line, column, preview);
+        var id = await ResolveIdAsync(path);
+        if (id is null)
+        {
+            SetError("路径不属于本会话的任何根");
+            return;
+        }
+
+        await OpenOrActivateAsync(id.Value, refreshIfActive: false, line, column, preview);
     }
 
     private async Task RefreshAsync(FileResourceId id)
     {
-        if (_workspace is null) return;
         var (file, error) = await TryReadAsync(id);
         if (file is null)
         {
@@ -494,9 +416,10 @@
 
     private async Task<byte[]?> ReadBinaryIfNeededAsync(FileReadResult file)
     {
-        if (_workspace is null) return null;
         if (file.Kind is not (FileContentKind.Image or FileContentKind.Binary)) return null;
-        try { return await _workspace.ReadBytesAsync(_workspace.GetAbsolutePath(file.Id)); }
+        var workspace = _workspaces?.Find(file.Id);
+        if (workspace is null) return null;
+        try { return await workspace.ReadBytesAsync(workspace.GetAbsolutePath(file.Id)); }
         catch { return null; }
     }
 
@@ -504,9 +427,9 @@
     {
         _tabs.Changed -= OnTabsChanged;
         PanelState.Changed -= OnPanelChanged;
-        _coordinator?.Dispose();
-        // 仅在实际解析成功（持有引用计数）时释放；解析失败从未获取引用
-        if (_workspace is not null && !string.IsNullOrEmpty(SessionId))
+        DisposeCoordinators();
+        // 幂等全清会话缓存（不做引用计数）
+        if (_workspaces is not null && !string.IsNullOrEmpty(SessionId))
             WorkspaceFactory.Release(SessionId);
     }
 }
