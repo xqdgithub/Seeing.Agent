@@ -42,7 +42,12 @@
                             Class="session-toolbar-info"
                             OnClick="@ShowSessionInfo" />
                 </Tooltip>
-                <WorkbenchPicker SessionId="@Context.SessionId" SessionScenario="@Context.SessionScenario" />
+                <Tooltip Title="协同目录">
+                    <Button Type="@ButtonType.Text"
+                            Size="@ButtonSize.Small"
+                            Icon="@IconType.Outline.Folder"
+                            OnClick="@OpenCollaborationDirectories" />
+                </Tooltip>
             }
             @if (Context.ShowScenarioBadge && Context.CurrentSession != null)
             {
@@ -94,6 +99,10 @@
                     }
                 </div>
             }
+            @if (!string.IsNullOrEmpty(Context.SessionId))
+            {
+                <WorkbenchPicker SessionId="@Context.SessionId" SessionScenario="@Context.SessionScenario" />
+            }
             @if (Context.ShowModelSelector && _optionsReady && Context.CurrentSession != null)
             {
                 <Select TItemValue="string" TItem="string"
@@ -122,17 +131,6 @@
             }
         </div>
         <div class="session-toolbar-right">
-            @if (!string.IsNullOrEmpty(Context.SessionId))
-            {
-                <Tooltip Title="协同目录">
-                    <Button Type="@ButtonType.Text"
-                            Size="@ButtonSize.Small"
-                            Icon="@IconType.Outline.Folder"
-                            OnClick="@OpenCollaborationDirectories">
-                        协同目录
-                    </Button>
-                </Tooltip>
-            }
             <SlotHost SlotName="session_toolbar_actions" />
             @if (Context.ShowReturnToParent)
             {
