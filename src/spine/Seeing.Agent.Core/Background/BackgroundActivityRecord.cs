@@ -57,6 +57,16 @@ internal sealed class BackgroundActivityRecord
     public TaskCompletionSource<BackgroundActivitySnapshot> TerminalSignal { get; }
         = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+    /// <summary>
+    /// 「转后台」信号：<see langword="true"/> 表示前台等待者已被放行（活动继续跑），
+    /// 终态提交时置 <see langword="false"/> 关闭（避免等待方永久挂着，也避免句柄泄漏）。
+    /// </summary>
+    public TaskCompletionSource<bool> DetachSignal { get; }
+        = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>当前在等该活动的前台等待者数（<c>_sync</c> 内维护；用于判定「没有等待者」）。</summary>
+    public int ForegroundWaiters { get; set; }
+
     /// <summary>上一次发出 <c>activity.progress</c> 事件的时刻（节流用，不落盘）。</summary>
     public DateTimeOffset? LastProgressEventAt { get; set; }
 

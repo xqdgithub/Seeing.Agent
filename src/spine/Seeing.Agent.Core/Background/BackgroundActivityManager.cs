@@ -190,9 +190,33 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         if (TryGetTerminalSnapshot(record, out var terminal))
             return new BackgroundActivityWaitResult(BackgroundActivityWaitOutcome.Completed, terminal);
 
+        // 只有登记过的等待者才能被「转后台」放行：先入计数再等待（本方法首个 await 之前同步完成）。
+        var counted = false;
+        if (!record.DetachSignal.Task.IsCompleted)
+        {
+            lock (_sync)
+            {
+                record.ForegroundWaiters++;
+            }
+
+            counted = true;
+        }
+
         try
         {
-            var snapshot = await record.TerminalSignal.Task.WaitAsync(timeout, ct).ConfigureAwait(false);
+            var winner = await Task.WhenAny(record.TerminalSignal.Task, record.DetachSignal.Task)
+                .WaitAsync(timeout, ct)
+                .ConfigureAwait(false);
+
+            // detach 信号被置 false 只发生在终态提交之后：仍按终态返回。
+            if (!ReferenceEquals(winner, record.TerminalSignal.Task)
+                && await ((Task<bool>)winner).ConfigureAwait(false))
+            {
+                return new BackgroundActivityWaitResult(
+                    BackgroundActivityWaitOutcome.Detached, CurrentSnapshot(record));
+            }
+
+            var snapshot = await record.TerminalSignal.Task.ConfigureAwait(false);
             return new BackgroundActivityWaitResult(BackgroundActivityWaitOutcome.Completed, snapshot);
         }
         catch (TimeoutException)
@@ -202,6 +226,17 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         catch (OperationCanceledException)
         {
             return new BackgroundActivityWaitResult(BackgroundActivityWaitOutcome.CallerCancelled, CurrentSnapshot(record));
+        }
+        finally
+        {
+            if (counted)
+            {
+                lock (_sync)
+                {
+                    if (record.ForegroundWaiters > 0)
+                        record.ForegroundWaiters--;
+                }
+            }
         }
     }
 
@@ -529,6 +564,37 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
             _logger.LogInformation("后台活动回收完成 Count={Count} Cutoff={Cutoff}", pruned, cutoff);
 
         return pruned;
+    }
+
+    /// <inheritdoc />
+    public Task<bool> DetachAsync(string activityId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(activityId);
+        ct.ThrowIfCancellationRequested();
+
+        // 系统面操作：不做 requester 归属校验（本接口不暴露给能力包）。
+        if (!_activities.TryGetValue(activityId, out var record))
+            return Task.FromResult(false);
+
+        bool detached;
+        lock (_sync)
+        {
+            // 终态之后等待者已经或即将拿到终态，再放行只会吞掉终态语义。
+            if (record.TerminalCommitted || IsTerminal(record.Snapshot.Status))
+                return Task.FromResult(false);
+
+            // 没有前台等待者时此调用无语义（调用方拿到 false 说明没人可放）。
+            if (record.ForegroundWaiters <= 0)
+                return Task.FromResult(false);
+
+            // 只放等待者：活动状态、落盘、事件一律不动（spec §23.2）。
+            detached = record.DetachSignal.TrySetResult(true);
+        }
+
+        if (detached)
+            _logger.LogInformation("后台活动已转后台 ActivityId={ActivityId}", activityId);
+
+        return Task.FromResult(detached);
     }
 
     // ─── reporter 回写（internal：只被 BackgroundActivityReporter 调用） ────────
@@ -940,6 +1006,9 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         }
 
         record.TerminalSignal.TrySetResult(snapshot);
+
+        // 关闭 detach 信号：终态之后「转后台」不再有任何意义，等待方也不会永久停在 detach 上。
+        record.DetachSignal.TrySetResult(false);
         return true;
     }
 

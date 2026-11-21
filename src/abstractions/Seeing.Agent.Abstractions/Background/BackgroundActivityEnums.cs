@@ -85,6 +85,12 @@ public enum BackgroundActivityOrigin
     /// <summary>工具调用转后台（如 <c>bash background=true</c>）。</summary>
     ToolBackground,
 
+    /// <summary>
+    /// 工具前台调用（如 <c>bash</c> 未置 background）：工具仍会等待，等待者可被「转后台」放行。
+    /// <para>UI 据此区分「前台运行中」（不显示后台 hint、不显示取消）与「后台」。</para>
+    /// </summary>
+    ToolForeground,
+
     /// <summary>用户显式发起。</summary>
     User,
 
@@ -144,7 +150,12 @@ public enum BackgroundActivityWaitOutcome
     TimedOut,
 
     /// <summary>调用方取消（不取消活动本身）。</summary>
-    CallerCancelled
+    CallerCancelled,
+
+    /// <summary>
+    /// 等待者被「转后台」放行：活动状态不变、不取消、不发终态事件，调用方自行返回句柄。
+    /// </summary>
+    Detached
 }
 
 /// <summary>

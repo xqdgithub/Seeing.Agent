@@ -68,4 +68,7 @@ internal sealed class RecordingBackgroundActivityControl : IBackgroundActivityCo
 
     public Task<int> PruneAsync(DateTimeOffset cutoff, CancellationToken ct = default)
         => throw new NotSupportedException();
+
+    public Task<bool> DetachAsync(string activityId, CancellationToken ct = default)
+        => throw new NotSupportedException();
 }

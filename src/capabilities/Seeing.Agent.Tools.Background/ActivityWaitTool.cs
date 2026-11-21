@@ -103,6 +103,11 @@ public sealed class ActivityWaitTool : ToolBase
                     "等待已被调用方中断；活动本身继续运行，可用 `activity_status` 查看状态。",
                     metadata);
 
+            case BackgroundActivityWaitOutcome.Detached:
+                return Success(
+                    "等待已转为后台；活动仍在运行，可用 `activity_status` 查看状态。",
+                    metadata);
+
             default:
                 var current = wait.Snapshot is null
                     ? string.Empty

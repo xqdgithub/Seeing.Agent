@@ -910,3 +910,80 @@ public record BackgroundActivityEvent : IMessageEvent
 - `DedupeKey` 的规范化细节。
 - 输出文件目录分片策略。
 - Unix 下 process group 的具体实现（`setsid` / `kill -- -pgid`）。
+
+---
+
+## 23. 统一执行路径与"转后台"（二期重构）
+
+### 23.1 目标
+
+前台与后台不再是两套进程管理：`bash` 的每一次执行都走 `kind=process` launcher，差别只在工具是否等待。
+
+```
+StartAsync ──┬─ background=true  → 立即返回句柄
+             └─ 前台             → WaitAsync → 读输出 → 作为 ToolResult 返回
+                                    │
+                                    └─ 用户"转后台" → DetachAsync → 等待以 Detached 返回
+                                                      → 工具返回 Success + activityId
+                                                      → 活动继续跑
+```
+
+"转后台"因此不是新机制，而是"取消等待、保留活动"。
+
+### 23.2 契约变更
+
+1. `BackgroundActivityWaitOutcome` 增加 `Detached`。
+2. `IBackgroundActivityControl` 增加：
+   ```csharp
+   Task<bool> DetachAsync(string activityId, CancellationToken ct = default);
+   ```
+   语义：让当前**前台等待者**以 `Detached` 返回；活动状态不变、不取消、不发终态事件。
+3. `BackgroundActivityOrigin` 增加 `ToolForeground`（与 `ToolBackground` 区分）。
+   - UI 据此判断卡片是"前台运行中"（不显示后台 hint、不显示取消）还是"后台"。
+
+### 23.3 BashTool 流程
+
+```
+1. 路径门闸 / 危险命令拦截（不变）
+2. 构造 StartRequest：
+   Kind=process, Origin=background ? ToolBackground : ToolForeground
+   Timeout = background ? activity_timeout : timeout
+   Payload = { command, workdir }
+3. handle = await manager.StartAsync(request, sessionId)
+4. if (background) return Success + handle.Id
+5. result = await manager.WaitAsync(handle.Id, timeout, sessionId, ct)
+   switch:
+     Completed       → 读输出 → Success(output)
+     TimedOut        → 取消活动 → Failure("超时")
+     CallerCancelled → 取消活动 → Failure("已取消")
+     Detached        → Success + BackgroundActivityId（活动继续）
+```
+
+删除 `BashTool` 自己的 `PumpStreamAsync`、超时 CTS、`StreamEmitGate`；流式进度统一走 `activity.progress`。
+
+### 23.4 输出落盘
+
+**前台也落盘**（统一走 output store）。理由：转后台时无需迁移已产生的输出，前台/后台只有一份真相。
+
+- 前台命令同样受 `OutputLimitBytes` 与 7 天回收约束。
+- 前台工具结果从 `ReadOutputAsync` 读回，超过 `ToolOutputLimiter` 阈值时按其既有规则外溢。
+
+### 23.5 UI
+
+- 前台活动（`Origin == ToolForeground`）：
+  - 不显示底部 hint 行
+  - 输出块取 `LiveOutput`
+  - 运行中显示「转后台」按钮
+- 后台活动：维持现状（hint 行 + 取消）。
+- 「转后台」调用：
+  ```
+  POST /api/webui/sessions/{sessionId}/activities/{activityId}/detach
+  ```
+
+### 23.6 风险
+
+- 前台每次 `bash` 都会写 `output.log`（短命令也有一次小文件写入），靠回收任务兜底。
+- 工具结果改为"等待终态后读盘"，比现在多一次读；大输出要注意分页上限。
+- 权限语义不变：仍然只有一次 `tool.execute`，活动是内部实现。
+- 现有 `bash` 前台测试需要改为"经 manager + fake launcher"的路径。
+

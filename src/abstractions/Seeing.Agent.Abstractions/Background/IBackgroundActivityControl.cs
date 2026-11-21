@@ -66,4 +66,10 @@ public interface IBackgroundActivityControl
     /// <para>单个活动删除失败只记日志并保留记录，下次清理重试；返回实际移除条数。</para>
     /// </summary>
     Task<int> PruneAsync(DateTimeOffset cutoff, CancellationToken ct = default);
+
+    /// <summary>
+    /// 让当前前台等待者以 Detached 返回；活动状态不变、不取消、不发终态事件。
+    /// 没有等待者时返回 false。
+    /// </summary>
+    Task<bool> DetachAsync(string activityId, CancellationToken ct = default);
 }

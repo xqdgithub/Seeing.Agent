@@ -468,6 +468,88 @@ public class BackgroundActivityManagerTests
         result.Snapshot!.Status.Should().Be(BackgroundActivityStatus.Running);
     }
 
+    // ─── 转后台（Detach） ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Detach_ShouldReturnDetached_WithoutChangingStatus()
+    {
+        var harness = CreateHarness();
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+        await harness.Manager.WaitForPersistenceAsync(handle.ActivityId);
+
+        var eventsBefore = harness.Publisher.ActivityEvents.Count;
+        var savesBefore = harness.Store.Saved.Count;
+
+        // WaitAsync 在首个 await 之前同步登记等待者，因此这里无需再等「等待者就位」。
+        var waiting = harness.Manager.WaitAsync(handle.ActivityId, TimeSpan.FromSeconds(30), "s1");
+
+        (await harness.Manager.DetachAsync(handle.ActivityId)).Should().BeTrue("有前台等待者时才能放行");
+
+        var result = await waiting;
+        result.Outcome.Should().Be(BackgroundActivityWaitOutcome.Detached);
+        result.Snapshot.Should().NotBeNull();
+        result.Snapshot!.Status.Should().Be(BackgroundActivityStatus.Running, "转后台不改变活动状态");
+
+        var snapshot = harness.Manager.Get(handle.ActivityId, "s1")!;
+        snapshot.Status.Should().Be(BackgroundActivityStatus.Running);
+        snapshot.CompletedAt.Should().BeNull();
+
+        harness.Publisher.ActivityEvents.Count.Should().Be(eventsBefore, "转后台不发事件");
+        harness.Store.Saved.Count.Should().Be(savesBefore, "转后台不落盘");
+        handle.CancellationToken.IsCancellationRequested.Should().BeFalse("转后台不取消活动");
+    }
+
+    [Fact]
+    public async Task Detach_WithoutWaiter_ShouldReturnFalse()
+    {
+        var harness = CreateHarness();
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+
+        (await harness.Manager.DetachAsync(handle.ActivityId)).Should().BeFalse("没有等待者就没有可放行的人");
+        harness.Manager.Get(handle.ActivityId, "s1")!.Status.Should().Be(BackgroundActivityStatus.Running);
+
+        var waiting = harness.Manager.WaitAsync(handle.ActivityId, TimeSpan.FromSeconds(30), "s1");
+        (await harness.Manager.DetachAsync(handle.ActivityId)).Should().BeTrue("等待者就位后才能放行");
+        (await waiting).Outcome.Should().Be(BackgroundActivityWaitOutcome.Detached);
+
+        // 放行一次之后，活动已处于「转后台」语义：后来的等待者立即以 Detached 返回而不是挂住。
+        var again = await harness.Manager.WaitAsync(handle.ActivityId, TimeSpan.FromSeconds(30), "s1");
+        again.Outcome.Should().Be(BackgroundActivityWaitOutcome.Detached);
+        again.Snapshot!.Status.Should().Be(BackgroundActivityStatus.Running);
+    }
+
+    [Fact]
+    public async Task Detach_AfterTerminal_ShouldReturnFalse()
+    {
+        var harness = CreateHarness();
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+        await handle.Reporter.CompleteAsync(NoResult());
+
+        (await harness.Manager.DetachAsync(handle.ActivityId)).Should().BeFalse("终态之后没有可放行的等待者");
+        (await harness.Manager.DetachAsync("act_missing")).Should().BeFalse("未知活动同样返回 false");
+
+        var snapshot = harness.Manager.Get(handle.ActivityId, "s1")!;
+        snapshot.Status.Should().Be(BackgroundActivityStatus.Succeeded);
+    }
+
+    [Fact]
+    public async Task Wait_ShouldStillReturnCompleted_WhenTerminalWins()
+    {
+        var harness = CreateHarness();
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+
+        var waiting = harness.Manager.WaitAsync(handle.ActivityId, TimeSpan.FromSeconds(30), "s1");
+
+        await handle.Reporter.CompleteAsync(NoResult());
+
+        var result = await waiting;
+        result.Outcome.Should().Be(BackgroundActivityWaitOutcome.Completed, "终态优先：detach 信号随之关闭");
+        result.Snapshot!.Status.Should().Be(BackgroundActivityStatus.Succeeded);
+
+        // 终态之后 detach 信号已关闭，不会再出现 Detached。
+        (await harness.Manager.DetachAsync(handle.ActivityId)).Should().BeFalse();
+    }
+
     [Fact]
     public async Task MarkResultObserved_ShouldStampAndBumpSeq()
     {
