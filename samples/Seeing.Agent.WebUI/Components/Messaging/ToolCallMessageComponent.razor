@@ -3,8 +3,10 @@
 @using Seeing.Agent.WebUI.Helpers
 @using Seeing.Agent.WebUI.Models
 @using Seeing.Agent.WebUI.Rendering.Abstractions
+@using Seeing.Agent.WebUI.Services
 @inject IJSRuntime JSRuntime
 @inject MessageService MessageService
+@inject BackgroundActivityUiService ActivityControl
 
 @* 工具调用消息组件 - 渲染工具调用信息 *@
 
@@ -45,7 +47,17 @@ else
         @* 后台活动内联卡：随工具调用转后台（如后台执行）的活动状态行，放在卡片头部，实时输出块放到参数之后 *@
         @if (ToolCall.BackgroundActivity is { } activityHeader)
         {
-            <BackgroundActivityCard Activity="@activityHeader" Compact="true" ShowOutput="false" />
+            @if (ShowBackgroundHint)
+            {
+                <BackgroundActivityCard Activity="@activityHeader" Compact="true" ShowOutput="false" />
+            }
+            else if (activityHeader.CanDetach)
+            {
+                @* 前台运行中：没有「后台」可看，只提供放行等待者的入口。状态由事件推送更新。 *@
+                <div style="display: flex; justify-content: flex-end; padding: 2px 0;">
+                    <button type="button" class="bash-text-action" disabled="@_detaching" @onclick="DetachAsync">转后台</button>
+                </div>
+            }
         }
 
         <div class="tool-call-details @(_isExpanded ? "expanded" : "collapsed")">
@@ -194,11 +206,22 @@ else
     private string _paramViewMode = "kv";
     private bool _resultExpanded;
     private bool _errorExpanded;
+    private bool _detaching;
     private IReadOnlyList<ToolCallParameterEntry> _paramEntries = Array.Empty<ToolCallParameterEntry>();
     private string _paramJsonDisplay = "";
     private bool _hasParsedParams;
     private string? _lastParametersSource;
     private string? _lastToolCallId;
+
+    /// <summary>
+    /// 是否显示后台活动的状态行。
+    /// <para>
+    /// 前台活动（工具仍在等待）不显示：工具卡头部已经有状态与转圈，再补一行就是重复。
+    /// 转后台后工具返回，但 <c>Origin</c> 仍是 <c>ToolForeground</c>——因此还要求工具已结束。
+    /// </para>
+    /// </summary>
+    private bool ShowBackgroundHint =>
+        ToolCall.BackgroundActivity is { } bg && (!bg.IsForeground || !ToolCall.IsRunning);
 
     private bool HasParametersSection =>
         !ToolCall.IsTodoTool
@@ -288,6 +311,25 @@ else
     private Task CopyResultAsync() => CopyTextAsync(GetResultDisplayText());
 
     private Task CopyErrorAsync() => CopyTextAsync(GetErrorDisplayText());
+
+    /// <summary>
+    /// 「转后台」：放行前台等待者，活动继续运行；状态变化等 <c>activity.*</c> 事件。
+    /// </summary>
+    private async Task DetachAsync()
+    {
+        if (ToolCall.BackgroundActivity is not { } activity || _detaching)
+            return;
+
+        _detaching = true;
+        try
+        {
+            await ActivityControl.DetachAsync(activity.Id);
+        }
+        finally
+        {
+            _detaching = false;
+        }
+    }
 
     private async Task CopyTextAsync(string? text)
     {

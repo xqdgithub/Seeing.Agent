@@ -27,6 +27,16 @@ public sealed class BackgroundActivityViewModel
     /// <summary>发起该活动的工具调用 id（卡片据此与工具调用关联）。</summary>
     public string? OriginToolCallId { get; init; }
 
+    /// <summary>
+    /// 发起来源。
+    /// <para>
+    /// 工具前台调用（<see cref="BackgroundActivityOrigin.ToolForeground"/>）与显式后台调用
+    /// （<see cref="BackgroundActivityOrigin.ToolBackground"/>）在 UI 上呈现不同：
+    /// 前台运行中不显示后台 hint、不出取消，只提供「转后台」。
+    /// </para>
+    /// </summary>
+    public BackgroundActivityOrigin Origin { get; init; }
+
     /// <summary>状态版本号：订阅方必须丢弃更旧的快照。</summary>
     public long Seq { get; init; }
 
@@ -88,6 +98,18 @@ public sealed class BackgroundActivityViewModel
 
     /// <summary>是否可取消：能力位声明 + 未进终态。</summary>
     public bool CanCancel => !IsTerminal && Capabilities.HasFlag(BackgroundActivityCapabilities.CanCancel);
+
+    /// <summary>是否为工具前台调用的活动（工具仍在等待它）。</summary>
+    public bool IsForeground => Origin == BackgroundActivityOrigin.ToolForeground;
+
+    /// <summary>
+    /// 是否可「转后台」：前台活动仍在运行。
+    /// <para>
+    /// 转后台只放行等待者，不改变活动来源与状态；按钮消失与 hint 出现都依赖
+    /// <c>activity.*</c> 事件更新，组件不做本地状态改写。
+    /// </para>
+    /// </summary>
+    public bool CanDetach => IsForeground && Status == BackgroundActivityStatus.Running;
 
     /// <summary>状态文本（中文）。</summary>
     public string StatusText => Status switch
@@ -205,6 +227,7 @@ public sealed class BackgroundActivityViewModel
             Kind = snapshot.Kind,
             Title = snapshot.Title,
             OriginToolCallId = snapshot.OriginToolCallId,
+            Origin = snapshot.Origin,
             Seq = snapshot.Seq,
             Status = snapshot.Status,
             Capabilities = snapshot.Capabilities,

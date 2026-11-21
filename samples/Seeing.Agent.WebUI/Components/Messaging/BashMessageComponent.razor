@@ -52,6 +52,10 @@
         var bg = ToolCall.BackgroundActivity;
         var liveTail = bg is not null ? bg.LiveOutputTail : _card.DisplayOutput;
         var outputText = _showFullOutput && _fullOutput is not null ? _fullOutput : liveTail;
+        // 前台活动（工具正在等待）不显示后台说明，只提供「转后台」。
+        // 转后台后工具立即返回，但 Origin 仍是 ToolForeground —— 只能用工具是否还活区隔：
+        // 前台且工具未结束 = 前台样式；前台但工具已结束 = 活动已独立跑，按后台展示。
+        var showBackgroundHint = bg is not null && (!bg.IsForeground || !ToolCall.IsRunning);
         var hasMoreOutput = bg is not null
             ? (bg.OutputBytes ?? 0) > 4096
             : BashToolDisplayHelper.ShouldCollapseByDefault(liveTail, false);
@@ -84,9 +88,9 @@
                         </button>
                     }
                 }
-                else if (hasMoreOutput || _fullOutput is not null)
+                else if (showBackgroundHint && (hasMoreOutput || _fullOutput is not null))
                 {
-                    @* 后台：事件只带尾部，按需从活动输出读全量。 *@
+                    @* 后台：事件只带尾部，按需从活动输出读全量。前台运行中不提供（输出仍在长）。 *@
                     <button type="button" class="bash-text-action" @onclick="ToggleFullOutputAsync">
                         @(_showFullOutput ? "收起" : "展开全部")
                     </button>
@@ -94,7 +98,7 @@
                 <button type="button" class="bash-text-action is-muted" @onclick="@(() => CopyAsync(outputText))">复制</button>
             </div>
 
-            @if (bg is not null)
+            @if (bg is not null && showBackgroundHint)
             {
                 @* 后台活动的全部说明压成一行小字：多行回执（activity_id / 跟踪工具提示）不再占正文。 *@
                 <div class="bash-background-hint">
@@ -110,6 +114,13 @@
                                 disabled="@(_cancelling || !ActivityControl.IsAvailable)"
                                 @onclick="CancelBackgroundAsync">取消</button>
                     }
+                </div>
+            }
+            else if (bg is not null && bg.CanDetach)
+            {
+                @* 前台运行中：把等待者放行，活动继续跑。不本地改状态，等 activity.* 事件。 *@
+                <div class="bash-output-actions">
+                    <button type="button" class="bash-text-action" disabled="@_detaching" @onclick="DetachAsync">转后台</button>
                 </div>
             }
         </div>
@@ -132,6 +143,7 @@
     private string? _lastStatus;
     private ElementReference _outputRef;
     private bool _cancelling;
+    private bool _detaching;
     private string? _fullOutput;
     private bool _showFullOutput;
     private bool _autoLoadedFull;
@@ -315,6 +327,29 @@
         finally
         {
             _cancelling = false;
+        }
+    }
+
+    /// <summary>
+    /// 「转后台」：放行前台等待者，活动继续运行。
+    /// <para>
+    /// 不本地改状态：工具随后返回成功、hint 行出现，都由工具调用更新与
+    /// <c>activity.*</c> 事件驱动；本地抢先改会与推送打架。
+    /// </para>
+    /// </summary>
+    private async Task DetachAsync()
+    {
+        if (ToolCall.BackgroundActivity is not { } activity || _detaching)
+            return;
+
+        _detaching = true;
+        try
+        {
+            await ActivityControl.DetachAsync(activity.Id);
+        }
+        finally
+        {
+            _detaching = false;
         }
     }
 }

@@ -376,6 +376,7 @@ public static class WebUiHost
         app.MapUploadEndpoints();
         app.MapTranscriptionEndpoints();
         app.MapSessionAssetEndpoints();
+        app.MapSessionActivityEndpoints();
         app.MapBrowserStreamEndpoints();
 
         // 记忆详情路由的路径以 .md 结尾（/memory/detail/daily/xxx.md）。

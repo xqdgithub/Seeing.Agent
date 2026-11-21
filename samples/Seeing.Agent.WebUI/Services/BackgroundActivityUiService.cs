@@ -6,7 +6,8 @@ namespace Seeing.Agent.WebUI.Services;
 /// 后台活动 UI 端口：把可选的能力包 <see cref="IBackgroundActivityManager"/> 与页面解耦。
 /// <para>
 /// 能力包可能未登记（例如纯渲染/测试宿主未启用后台活动模块），因此一律按可选用法解析：
-/// 未注册时 <see cref="List"/> 返回空、<see cref="CancelAsync"/> 返回 false，页面照常渲染。
+/// 未注册时 <see cref="List"/> 返回空、<see cref="CancelAsync"/> / <see cref="DetachAsync"/> 返回 false，
+/// 页面照常渲染。
 /// </para>
 /// </summary>
 public sealed class BackgroundActivityUiService
@@ -70,6 +71,32 @@ public sealed class BackgroundActivityUiService
     }
 
     /// <summary>
+    /// 让前台等待者以 Detached 返回（「转后台」）：活动继续运行，状态不变。
+    /// <para>
+    /// 能力包可能未注册控制面，或该活动没有等待者（例如已终态/已在后台），
+    /// 这两种情况都返回 false 而不是抛异常——按钮只是入口，真相仍由事件推送。
+    /// </para>
+    /// </summary>
+    public async Task<bool> DetachAsync(string activityId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(activityId))
+            return false;
+
+        var control = ResolveControl();
+        if (control is null)
+            return false;
+
+        try
+        {
+            return await control.DetachAsync(activityId, ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// 读取活动输出（分页拼接，最多约 256KB）。
     /// <para>供后台卡片"展开全部"使用；失败按空串处理，不阻断渲染。</para>
     /// </summary>
@@ -120,4 +147,7 @@ public sealed class BackgroundActivityUiService
 
     private IBackgroundActivityManager? Resolve()
         => _services.GetService(typeof(IBackgroundActivityManager)) as IBackgroundActivityManager;
+
+    private IBackgroundActivityControl? ResolveControl()
+        => _services.GetService(typeof(IBackgroundActivityControl)) as IBackgroundActivityControl;
 }
