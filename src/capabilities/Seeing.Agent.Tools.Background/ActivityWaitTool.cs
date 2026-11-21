@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Seeing.Agent.Abstractions.Background;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.Support;
+using System.Text;
 using System.Text.Json;
 
 namespace Seeing.Agent.Tools.Background;
@@ -91,9 +92,20 @@ public sealed class ActivityWaitTool : ToolBase
         {
             case BackgroundActivityWaitOutcome.Completed when wait.Snapshot is not null:
                 _activities.MarkResultObserved(activityId, context.SessionId);
-                return Success(
-                    $"活动已结束。\n{BackgroundActivityText.FormatDetail(wait.Snapshot)}",
-                    metadata);
+
+                // 终态时直接带上输出，避免调用方再补一次 activity_output。
+                var (output, truncated) = await ReadOutputAsync(
+                    activityId, context.SessionId, context.CancellationToken).ConfigureAwait(false);
+
+                var text = $"活动已结束。\n{BackgroundActivityText.FormatDetail(wait.Snapshot)}";
+                if (!string.IsNullOrEmpty(output))
+                {
+                    text += "\n\n输出:\n" + output;
+                    if (truncated)
+                        text += "\n\n...(输出已截断，完整内容用 `activity_output` 分页读取)";
+                }
+
+                return Success(text, metadata);
 
             case BackgroundActivityWaitOutcome.Completed:
                 return Success("活动已结束（无可用快照）。", metadata);
@@ -116,5 +128,55 @@ public sealed class ActivityWaitTool : ToolBase
                     $"等待超时（{timeoutMs}ms），活动仍在运行。{current}",
                     metadata);
         }
+    }
+
+    /// <summary>
+    /// 分页读回活动输出（单页 32KB，上限 64KB）。
+    /// 返回 <c>Truncated</c> 表示还有更多内容，调用方应使用 <c>activity_output</c> 继续读。
+    /// </summary>
+    private async Task<(string Text, bool Truncated)> ReadOutputAsync(
+        string activityId,
+        string sessionId,
+        CancellationToken ct)
+    {
+        const int pageBytes = 32 * 1024;
+        const int maxBytes = 64 * 1024;
+
+        var builder = new StringBuilder();
+        long offset = 0;
+        var readBytes = 0;
+        var truncated = false;
+
+        while (readBytes < maxBytes)
+        {
+            var page = await _activities.ReadOutputAsync(
+                    activityId, offset, Math.Min(pageBytes, maxBytes - readBytes), sessionId, ct)
+                .ConfigureAwait(false);
+
+            if (!string.IsNullOrEmpty(page.Content))
+            {
+                builder.Append(page.Content);
+                readBytes += Encoding.UTF8.GetByteCount(page.Content);
+            }
+
+            if (page.Truncated)
+                truncated = true;
+
+            if (page.EndOfStream)
+                break;
+
+            if (page.NextOffset <= offset)
+            {
+                truncated = true;
+                break;
+            }
+
+            offset = page.NextOffset;
+        }
+
+        if (readBytes >= maxBytes)
+            truncated = true;
+
+        return (builder.ToString(), truncated);
     }
 }

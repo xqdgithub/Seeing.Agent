@@ -113,6 +113,27 @@ public class ActivityToolsTests
     }
 
     [Fact]
+    public async Task Wait_Completed_ShouldIncludeOutput()
+    {
+        var fake = new FakeBackgroundActivityManager();
+        fake.Add(
+            FakeBackgroundActivityManager.Snapshot(
+                "act_1", OwnerSession, BackgroundActivityStatus.Succeeded),
+            "line1\nline2\n");
+        var tool = WaitTool(fake);
+
+        var result = await tool.ExecuteAsync(
+            Args(new { activity_id = "act_1", timeout_ms = 1000 }), Context(OwnerSession));
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Contain("活动已结束");
+        result.Output.Should().Contain("输出:");
+        result.Output.Should().Contain("line1");
+        result.Output.Should().Contain("line2");
+        fake.ObservedActivityIds.Should().Contain("act_1");
+    }
+
+    [Fact]
     public async Task Wait_ShouldReturnCallerCancelled()
     {
         var fake = new FakeBackgroundActivityManager
