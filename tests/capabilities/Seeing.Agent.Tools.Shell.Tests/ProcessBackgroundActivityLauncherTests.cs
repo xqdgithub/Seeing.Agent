@@ -183,6 +183,30 @@ public class ProcessBackgroundActivityLauncherTests
     }
 
     [Fact]
+    public async Task Launch_ShouldInjectUtf8OutputEnvDefaults()
+    {
+        var process = new FakeSubprocess();
+        var reporter = new FakeReporter();
+        SubprocessSpec? captured = null;
+        var launcher = CreateLauncher(process, spec => captured = spec);
+        var handle = CreateHandle(reporter);
+
+        var launch = await launcher.LaunchAsync(CreateContext(handle), TestContext.Current.CancellationToken)
+            .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        captured.Should().NotBeNull();
+        captured!.Environment["PYTHONIOENCODING"].Should().Be("utf-8");
+        captured.Environment["PYTHONUTF8"].Should().Be("1");
+        captured.Environment["LANG"].Should().Be("C.UTF-8");
+        captured.Environment["LC_ALL"].Should().Be("C.UTF-8");
+        captured.Environment["NO_COLOR"].Should().Be("1");
+        captured.Encoding.Should().Be(Encoding.UTF8);
+
+        process.Exit(0);
+        await launch.Execution.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
     public async Task Launch_WhenStartThrows_ShouldFailWithLaunchFailed()
     {
         var reporter = new FakeReporter();

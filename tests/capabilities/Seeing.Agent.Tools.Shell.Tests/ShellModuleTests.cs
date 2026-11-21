@@ -111,16 +111,12 @@ public class ShellModuleTests
         var options = new Mock<IOptionsMonitor<ShellOptions>>();
         options.Setup(o => o.CurrentValue).Returns(new ShellOptions());
 
-        var world = new Mock<IExecutionWorld>();
-        world.Setup(w => w.Cwd).Returns(Path.GetTempPath());
-
         return new BashTool(
             NullLogger<BashTool>.Instance,
-            world.Object,
             new Mock<IShellService>().Object,
-            new Mock<IShellEnvironmentService>().Object,
             options.Object,
-            AllowAllWorkspacePathGate.Instance);
+            AllowAllWorkspacePathGate.Instance,
+            Mock.Of<IBackgroundActivityManager>());
     }
 
     /// <summary>只按类型供服务的极简容器（避免为两个类型拖进完整 DI 栈）。</summary>

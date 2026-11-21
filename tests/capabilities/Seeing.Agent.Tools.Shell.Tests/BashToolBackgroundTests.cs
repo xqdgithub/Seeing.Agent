@@ -4,7 +4,6 @@ using Microsoft.Extensions.Options;
 using Moq;
 using Seeing.Agent.Abstractions.Background;
 using Seeing.Agent.Abstractions.Configuration;
-using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Modules;
 using Seeing.Agent.Abstractions.Tools;
 using Seeing.Agent.Tools.Shell;
@@ -26,11 +25,11 @@ public class BashToolBackgroundTests
     private const string CallId = "call-bg";
 
     [Fact]
-    public async Task BackgroundTrue_ShouldReturnActivityId_AndNotWaitForExit()
+    public async Task BackgroundTrue_ShouldNotWait()
     {
         // Arrange
-        var manager = new FakeBackgroundManager();
-        var (tool, context, subprocessStarts) = CreateTool(manager, moduleEnabled: true);
+        var manager = new FakeBackgroundActivityManager();
+        var (tool, context) = CreateTool(manager, moduleEnabled: true);
 
         var arguments = BuildArgs(new()
         {
@@ -45,12 +44,12 @@ public class BashToolBackgroundTests
         // Act
         var result = await tool.ExecuteAsync(arguments, context);
 
-        // Assert：立即返回句柄，不启动前台子进程
+        // Assert：立即返回句柄，不进入等待
         result.Success.Should().BeTrue();
         result.BackgroundActivityId.Should().Be("act-1");
         result.Output.Should().Contain("act-1");
         result.Metadata.Should().NotContainKey("backgroundActivityId", "活动 id 只走强类型字段");
-        subprocessStarts().Should().Be(0, "background=true 不得在前台起进程");
+        manager.Waits.Should().BeEmpty("background=true 不等待终态");
 
         manager.RequesterSessionIds.Should().Equal(SessionId);
         var request = manager.Requests.Should().ContainSingle().Subject;
@@ -60,6 +59,7 @@ public class BashToolBackgroundTests
         request.OwnerExecutionId.Should().Be(ExecutionId);
         request.OriginToolCallId.Should().Be(CallId);
         request.WorkingDirectory.Should().Be(Workdir);
+        request.Origin.Should().Be(BackgroundActivityOrigin.ToolBackground);
         request.DedupeStrategy.Should().Be(BackgroundActivityDedupeStrategy.Reject);
         request.Timeout.Should().Be(TimeSpan.FromMilliseconds(600_000));
 
@@ -88,19 +88,19 @@ public class BashToolBackgroundTests
         secondResult.Success.Should().BeTrue();
         manager.Requests.Should().HaveCount(2);
         manager.Requests[1].DedupeKey.Should().Be(expectedKey, "去重键只由 command + workdir 决定");
-        subprocessStarts().Should().Be(0);
+        manager.Waits.Should().BeEmpty();
     }
 
     [Fact]
     public async Task BackgroundTrue_WithSameDedupeKey_ShouldReuseExistingActivity()
     {
         // Arrange：第二次启动命中去重，manager 返回同一活动并标记 IsExisting
-        var manager = new FakeBackgroundManager();
+        var manager = new FakeBackgroundActivityManager();
         manager.StartHandler = (ordinal, _) => ordinal == 1
-            ? Task.FromResult(NewHandle("act-first"))
-            : Task.FromResult(NewHandle("act-first") with { IsExisting = true });
+            ? Task.FromResult(FakeBackgroundActivityManager.NewHandle("act-first"))
+            : Task.FromResult(FakeBackgroundActivityManager.NewHandle("act-first") with { IsExisting = true });
 
-        var (tool, context, _) = CreateTool(manager, moduleEnabled: true);
+        var (tool, context) = CreateTool(manager, moduleEnabled: true);
         var arguments = BuildArgs(new()
         {
             ["command"] = "dotnet test",
@@ -131,7 +131,7 @@ public class BashToolBackgroundTests
     public async Task BackgroundTrue_WhenManagerMissing_ShouldFail()
     {
         // Arrange：宿主未接线后台活动（manager = null）
-        var (tool, context, subprocessStarts) = CreateTool(manager: null, moduleEnabled: true);
+        var (tool, context) = CreateTool(manager: null, moduleEnabled: true);
 
         // Act
         var result = await tool.ExecuteAsync(
@@ -141,16 +141,15 @@ public class BashToolBackgroundTests
         // Assert
         result.Success.Should().BeFalse();
         result.BackgroundActivityId.Should().BeNull();
-        result.Error.Should().Contain("后台活动不可用");
-        subprocessStarts().Should().Be(0);
+        result.Error.Should().Contain("IBackgroundActivityManager");
     }
 
     [Fact]
     public async Task BackgroundTrue_WhenModuleDisabled_ShouldFail()
     {
         // Arrange
-        var manager = new FakeBackgroundManager();
-        var (tool, context, subprocessStarts) = CreateTool(manager, moduleEnabled: false);
+        var manager = new FakeBackgroundActivityManager();
+        var (tool, context) = CreateTool(manager, moduleEnabled: false);
 
         // Act
         var result = await tool.ExecuteAsync(
@@ -161,15 +160,17 @@ public class BashToolBackgroundTests
         result.Success.Should().BeFalse();
         result.Error.Should().Contain("background");
         manager.Requests.Should().BeEmpty("模块禁用时不得启动活动");
-        subprocessStarts().Should().Be(0);
     }
 
     [Fact]
-    public async Task BackgroundFalse_ShouldIgnoreActivityTimeout()
+    public async Task BackgroundFalse_ShouldIgnoreActivityTimeout_AndUseForegroundOrigin()
     {
         // Arrange：activity_timeout 仅在 background=true 时生效，这里给非法值也不得影响前台执行
-        var manager = new FakeBackgroundManager();
-        var (tool, context, subprocessStarts) = CreateTool(manager, moduleEnabled: true);
+        var manager = new FakeBackgroundActivityManager
+        {
+            OutputHandler = FakeBackgroundActivityManager.SinglePage("hi\n")
+        };
+        var (tool, context) = CreateTool(manager, moduleEnabled: true);
 
         var arguments = BuildArgs(new()
         {
@@ -183,16 +184,18 @@ public class BashToolBackgroundTests
         // Act
         var result = await tool.ExecuteAsync(arguments, context);
 
-        // Assert
+        // Assert：走前台等待路径，超时取 timeout 而非 activity_timeout
         result.Success.Should().BeTrue();
         result.BackgroundActivityId.Should().BeNull();
-        manager.Requests.Should().BeEmpty();
-        subprocessStarts().Should().Be(1, "background=false 仍走原前台路径");
+        var request = manager.Requests.Should().ContainSingle().Subject;
+        request.Origin.Should().Be(BackgroundActivityOrigin.ToolForeground);
+        request.Timeout.Should().Be(TimeSpan.FromMilliseconds(5_000));
+        manager.Waits.Should().ContainSingle();
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────
 
-    private static (BashTool Tool, ToolContext Context, Func<int> SubprocessStarts) CreateTool(
+    private static (BashTool Tool, ToolContext Context) CreateTool(
         IBackgroundActivityManager? manager,
         bool moduleEnabled)
     {
@@ -201,42 +204,17 @@ public class BashToolBackgroundTests
 
         var shell = new Mock<IShellService>();
         shell.Setup(s => s.SelectShell()).Returns("/bin/bash");
-        shell.Setup(s => s.PrepareCommand(It.IsAny<string>(), It.IsAny<string>()))
-            .Returns((string _, string command) => command);
-        shell.Setup(s => s.BuildArguments(It.IsAny<string>(), It.IsAny<string>())).Returns("-c 'echo hi'");
-        shell.Setup(s => s.BuildArgumentList(It.IsAny<string>(), It.IsAny<string>()))
-            .Returns((IReadOnlyList<string>?)null);
         shell.Setup(s => s.GetShellName(It.IsAny<string>())).Returns("bash");
-
-        var environment = new Mock<IShellEnvironmentService>();
-        environment.Setup(e => e.GetEnvironmentAsync(
-                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<string, string>());
-
-        var starts = 0;
-        var subprocessFactory = new Mock<ISubprocessFactory>();
-        subprocessFactory.Setup(f => f.Start(It.IsAny<SubprocessSpec>()))
-            .Returns(() =>
-            {
-                starts++;
-                return new FakeSubprocess();
-            });
-
-        var world = new Mock<IExecutionWorld>();
-        world.Setup(w => w.Cwd).Returns(Workdir);
-        world.Setup(w => w.Subprocess).Returns(subprocessFactory.Object);
 
         var modules = new Mock<IModuleCatalog>();
         modules.Setup(m => m.IsEnabled("background")).Returns(moduleEnabled);
 
         var tool = new BashTool(
             NullLogger<BashTool>.Instance,
-            world.Object,
             shell.Object,
-            environment.Object,
             options.Object,
             AllowAllWorkspacePathGate.Instance,
-            manager,
+            manager!,
             modules.Object);
 
         var context = new ToolContext
@@ -247,83 +225,9 @@ public class BashToolBackgroundTests
             WorkingDirectory = Workdir
         };
 
-        return (tool, context, () => starts);
+        return (tool, context);
     }
 
     private static JsonElement BuildArgs(Dictionary<string, object?> values)
         => JsonSerializer.SerializeToElement(values);
-
-    private static BackgroundActivityHandle NewHandle(string activityId)
-        => new(activityId, new NoopReporter(), CancellationToken.None);
-
-    private sealed class FakeSubprocess : ISubprocess
-    {
-        public int Id => 1;
-        public TextReader StandardOutput { get; } = new StringReader("hi\n");
-        public TextReader StandardError { get; } = new StringReader("");
-        public bool HasExited => true;
-        public int ExitCode => 0;
-        public Task WaitForExitAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public void Kill(bool entireTree = true) { }
-        public void Dispose() { }
-    }
-
-    private sealed class NoopReporter : IBackgroundActivityReporter
-    {
-        public void ReportStarted() { }
-        public void ReportProgress(BackgroundActivityProgress progress) { }
-        public void Heartbeat() { }
-        public Task AppendOutputAsync(ReadOnlyMemory<byte> chunk, CancellationToken ct = default) => Task.CompletedTask;
-        public Task CompleteAsync(BackgroundActivityResult result, CancellationToken ct = default) => Task.CompletedTask;
-        public Task FailAsync(string errorCode, string errorMessage, CancellationToken ct = default) => Task.CompletedTask;
-    }
-
-    /// <summary>记录收到的启动请求；<see cref="StartHandler"/> 可按调用序返回或抛出。</summary>
-    private sealed class FakeBackgroundManager : IBackgroundActivityManager
-    {
-        public Func<int, BackgroundActivityStartRequest, Task<BackgroundActivityHandle>> StartHandler { get; set; }
-            = (ordinal, _) => Task.FromResult(NewHandle($"act-{ordinal}"));
-
-        public List<BackgroundActivityStartRequest> Requests { get; } = [];
-
-        public List<string> RequesterSessionIds { get; } = [];
-
-        public Task<BackgroundActivityHandle> StartAsync(
-            BackgroundActivityStartRequest request,
-            string requesterSessionId,
-            CancellationToken ct = default)
-        {
-            Requests.Add(request);
-            RequesterSessionIds.Add(requesterSessionId);
-            return StartHandler(Requests.Count, request);
-        }
-
-        public BackgroundActivitySnapshot? Get(string activityId, string requesterSessionId) => null;
-
-        public IReadOnlyList<BackgroundActivitySnapshot> List(
-            BackgroundActivityQuery query, string requesterSessionId) => [];
-
-        public Task<bool> CancelAsync(
-            string activityId,
-            BackgroundActivityCancelReason reason,
-            string requesterSessionId,
-            CancellationToken ct = default) => Task.FromResult(false);
-
-        public Task<BackgroundActivityWaitResult> WaitAsync(
-            string activityId,
-            TimeSpan timeout,
-            string requesterSessionId,
-            CancellationToken ct = default)
-            => Task.FromResult(new BackgroundActivityWaitResult(BackgroundActivityWaitOutcome.TimedOut, null));
-
-        public Task<BackgroundActivityOutputPage> ReadOutputAsync(
-            string activityId,
-            long offset,
-            int maxBytes,
-            string requesterSessionId,
-            CancellationToken ct = default)
-            => Task.FromResult(new BackgroundActivityOutputPage(string.Empty, offset, EndOfStream: true, Truncated: false));
-
-        public void MarkResultObserved(string activityId, string requesterSessionId) { }
-    }
 }
