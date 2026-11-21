@@ -87,7 +87,7 @@ public class ForegroundActivityRenderingContractTests
 
         var tool = ReadWebUiSource(ToolComponent);
 
-        tool.Should().Contain("else if (activityHeader.CanDetach)");
+        tool.Should().Contain("else if (CanDetach)");
         tool.Should().Contain("@onclick=\"DetachAsync\">转后台</button>");
         tool.Should().Contain("await ActivityControl.DetachAsync(activity.Id);");
     }
@@ -147,7 +147,7 @@ public class ForegroundActivityRenderingContractTests
         var tool = ReadWebUiSource(ToolComponent);
 
         tool.Should().Contain("ToolCall.BackgroundDetached");
-        tool.Should().Contain("else if (activityHeader.CanDetach)");
+        tool.Should().Contain("else if (CanDetach)");
     }
 
     /// <summary>

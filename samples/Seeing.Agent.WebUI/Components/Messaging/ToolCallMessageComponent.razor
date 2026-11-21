@@ -51,7 +51,7 @@ else
             {
                 <BackgroundActivityCard Activity="@activityHeader" Compact="true" ShowOutput="false" />
             }
-            else if (activityHeader.CanDetach)
+            else if (CanDetach)
             {
                 @* 前台运行中：没有「后台」可看，只提供放行等待者的入口。状态由事件推送更新。 *@
                 <div style="display: flex; justify-content: flex-end; padding: 2px 0;">
@@ -209,6 +209,16 @@ else
     private bool _resultExpanded;
     private bool _errorExpanded;
     private bool _detaching;
+    private bool _detached;
+
+    /// <summary>
+    /// 是否显示「转后台」：前台活动仍有等待者，且本次尚未转过后台。
+    /// 转后台后活动仍是 ToolForeground + Running，仅看 CanDetach 会留下可重复点击的按钮。
+    /// </summary>
+    private bool CanDetach =>
+        !_detached
+        && !ToolCall.BackgroundDetached
+        && ToolCall.BackgroundActivity is { CanDetach: true };
     private IReadOnlyList<ToolCallParameterEntry> _paramEntries = Array.Empty<ToolCallParameterEntry>();
     private string _paramJsonDisplay = "";
     private bool _hasParsedParams;
@@ -254,6 +264,7 @@ else
             _errorExpanded = false;
             _paramViewMode = "kv";
             _lastParametersSource = null;
+            _detached = false;
         }
 
         if (_lastParametersSource == ToolCall.Parameters)
@@ -337,7 +348,9 @@ else
         _detaching = true;
         try
         {
-            await ActivityControl.DetachAsync(activity.Id);
+            var detached = await ActivityControl.DetachAsync(activity.Id);
+            if (detached)
+                _detached = true;
         }
         finally
         {

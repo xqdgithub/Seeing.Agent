@@ -86,7 +86,7 @@
                         @(_showFullOutput ? "收起" : "展开全部")
                     </button>
                 }
-                @if (ToolCall.BackgroundActivity is { CanDetach: true })
+                @if (CanDetach)
                 {
                     @* 前台运行中：把等待者放行，活动继续跑。不本地改状态，等 activity.* 事件。 *@
                     <button type="button" class="bash-text-action" disabled="@_detaching" @onclick="DetachAsync">转后台</button>
@@ -151,6 +151,7 @@
     private bool _cancelling;
     private bool _detaching;
     private bool _detachFailed;
+    private bool _detached;
     private string? _fullOutput;
     private bool _showFullOutput;
     private bool _autoLoadedFull;
@@ -165,6 +166,18 @@
     private bool UsesActivityOutput =>
         ToolCall.BackgroundActivity is { } bg
         && (ToolCall.IsRunning || !bg.IsForeground || ToolCall.BackgroundDetached);
+
+    /// <summary>
+    /// 是否显示「转后台」：前台活动仍有等待者，且本次尚未转过后台。
+    /// <para>
+    /// 只看 <c>CanDetach</c> 不够：转后台后活动仍是 <c>ToolForeground + Running</c>，
+    /// 但等待者已被放行，再次点击只会返回 false。工具结果回填前用本地标记兜住这段窗口。
+    /// </para>
+    /// </summary>
+    private bool CanDetach =>
+        !_detached
+        && !ToolCall.BackgroundDetached
+        && ToolCall.BackgroundActivity is { CanDetach: true };
 
     /// <summary>
     /// 后台提示只在「真后台」或「转过后台」出现；前台正常完成时活动也已终态，不显示。
@@ -227,6 +240,8 @@
             _fullOutput = null;
             _showFullOutput = false;
             _autoLoadedFull = false;
+            _detached = false;
+            _detachFailed = false;
             // 执行中、或后台活动仍在跑时默认展开；历史已完成默认折叠。
             _isExpanded = ToolCall.IsRunning
                 || ToolCall.BackgroundActivity?.Status == BackgroundActivityStatus.Running;
@@ -395,6 +410,9 @@
         {
             var detached = await ActivityControl.DetachAsync(activity.Id);
             _detachFailed = !detached;
+            // 成功后立刻隐藏按钮：等待者已被放行，再点只会返回 false。
+            if (detached)
+                _detached = true;
         }
         finally
         {
