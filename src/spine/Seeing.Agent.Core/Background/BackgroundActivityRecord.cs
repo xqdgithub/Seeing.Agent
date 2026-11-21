@@ -7,7 +7,8 @@ namespace Seeing.Agent.Core.Background;
 /// 单活动的内存可变态（internal）。
 /// <para>
 /// 所有字段的读写都必须在该活动的 <c>_sync</c> 临界区内完成（<see cref="BackgroundActivityManager"/> 持有），
-/// 唯一的例外是 <see cref="TerminalSignal"/> 的等待端与 <see cref="PersistChain"/> 的续体。
+/// 唯一的例外是 <see cref="TerminalSignal"/> / <see cref="DetachWaiters"/> 的等待端与
+/// <see cref="PersistChain"/> 的续体。
 /// </para>
 /// </summary>
 internal sealed class BackgroundActivityRecord
@@ -58,14 +59,18 @@ internal sealed class BackgroundActivityRecord
         = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>
-    /// 「转后台」信号：<see langword="true"/> 表示前台等待者已被放行（活动继续跑），
-    /// 终态提交时置 <see langword="false"/> 关闭（避免等待方永久挂着，也避免句柄泄漏）。
+    /// 当前在等该活动的等待者各自的「转后台」信号（<c>_sync</c> 内维护）。
+    /// <para>
+    /// 每个 <see cref="IBackgroundActivityManager.WaitAsync"/> 调用持有一个；
+    /// <see cref="IBackgroundActivityControl.DetachAsync"/> 只放行其中一个（<see langword="true"/>），
+    /// 终态提交时把剩余等待者全部置 <see langword="false"/> 并清空。
+    /// </para>
+    /// <para>
+    /// 之所以不是活动级的一次性信号：一旦粘滞，转后台之后模型再调 <c>activity_wait</c>
+    /// 会立刻拿到 <c>Detached</c>，永远等不到终态。
+    /// </para>
     /// </summary>
-    public TaskCompletionSource<bool> DetachSignal { get; }
-        = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-    /// <summary>当前在等该活动的前台等待者数（<c>_sync</c> 内维护；用于判定「没有等待者」）。</summary>
-    public int ForegroundWaiters { get; set; }
+    public List<TaskCompletionSource<bool>> DetachWaiters { get; } = new();
 
     /// <summary>上一次发出 <c>activity.progress</c> 事件的时刻（节流用，不落盘）。</summary>
     public DateTimeOffset? LastProgressEventAt { get; set; }

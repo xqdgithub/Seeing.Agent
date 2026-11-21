@@ -32,9 +32,6 @@ public class BashTool : ToolBase
     private const int DefaultTimeoutMs = 120_000;
     private const int DefaultActivityTimeoutMs = 1_800_000;
 
-    /// <summary>工具结果中保留的正文上限（超出即截断并加省略号）。</summary>
-    private const int MaxMetadataLength = 30_000;
-
     /// <summary>活动输出分页读取的单页上限（与服务端契约一致）。</summary>
     private const int OutputPageBytes = 32 * 1024;
 
@@ -50,7 +47,7 @@ public class BashTool : ToolBase
     private readonly IShellService _shellService;
     private readonly IOptionsMonitor<ShellOptions> _options;
     private readonly IWorkspacePathGate _pathGate;
-    private readonly IBackgroundActivityManager? _background;
+    private readonly IBackgroundActivityManager _background;
     private readonly IModuleCatalog? _modules;
 
     public override string Id => "bash";
@@ -84,8 +81,8 @@ public class BashTool : ToolBase
     public override ToolCategory Category => ToolCategory.ExternalService;
 
     /// <param name="background">
-    /// 后台活动会话面（<b>必需</b>，却仍按可空实现）：前台与后台都经它执行，
-    /// 缺失时工具直接失败——不再有「无 manager 也能跑」的回退路径。
+    /// 后台活动会话面（<b>必需</b>）：前台与后台都经它执行，缺失时宿主装配即失败
+    /// （不再有「无 manager 也能跑」的回退路径）。
     /// </param>
     /// <param name="modules">
     /// 模块目录（可选）：用于判定 <c>background</c> 模块是否启用（<c>background=true</c> 需要 <c>activity_*</c> 工具）。
@@ -128,9 +125,6 @@ public class BashTool : ToolBase
             return Failure($"工作目录不可用: {gateError}");
         workdir = fullWorkdir;
 
-        if (_background is null)
-            return Failure("后台活动不可用：宿主未注册后台活动管理器（IBackgroundActivityManager），bash 无法执行命令。");
-
         try
         {
             if (background)
@@ -152,7 +146,7 @@ public class BashTool : ToolBase
         var dangerCheck = DangerousCommandGuard.Check(command, _options.CurrentValue);
         if (dangerCheck != null) return Failure($"命令被拒绝执行: {dangerCheck}");
 
-        var manager = _background!;
+        var manager = _background;
         var sessionId = context.SessionId ?? string.Empty;
 
         var request = new BackgroundActivityStartRequest
@@ -246,8 +240,20 @@ public class BashTool : ToolBase
         {
             case BackgroundActivityStatus.Succeeded:
                 {
-                    var output = await ReadActivityOutputAsync(snapshot.Id, sessionId).ConfigureAwait(false);
-                    return Success(description, output, BuildMetadata(snapshot.Result?.ExitCode, timedOut: false, aborted: false, description));
+                    var (output, outputTruncated) = await ReadActivityOutputAsync(snapshot.Id, sessionId).ConfigureAwait(false);
+                    var metadata = BuildMetadata(snapshot.Result?.ExitCode, timedOut: false, aborted: false, description);
+                    if (outputTruncated)
+                        metadata["truncated"] = true;
+
+                    return new ToolResult
+                    {
+                        Success = true,
+                        Title = description,
+                        Output = output,
+                        // 成功也带上活动 id：超过单次读回上限时，模型可用 activity_output 补读剩余输出。
+                        BackgroundActivityId = snapshot.Id,
+                        Metadata = metadata
+                    };
                 }
 
             case BackgroundActivityStatus.Cancelled:
@@ -262,12 +268,15 @@ public class BashTool : ToolBase
 
             case BackgroundActivityStatus.Failed:
                 {
-                    var output = await ReadActivityOutputAsync(snapshot.Id, sessionId).ConfigureAwait(false);
+                    var (output, outputTruncated) = await ReadActivityOutputAsync(snapshot.Id, sessionId).ConfigureAwait(false);
                     var errorCode = snapshot.Result?.ErrorCode;
                     var isTimeout = string.Equals(
                         errorCode, ProcessBackgroundActivityLauncher.TimeoutErrorCode, StringComparison.Ordinal);
                     var metadata = BuildMetadata(
                         snapshot.Result?.ExitCode, timedOut: isTimeout, aborted: false, description);
+                    if (outputTruncated)
+                        metadata["truncated"] = true;
+
                     var error = isTimeout
                         ? TimeoutMessage(timeout)
                         : snapshot.Result?.ErrorMessage ?? errorCode ?? "命令执行失败";
@@ -282,24 +291,42 @@ public class BashTool : ToolBase
                 }
 
             case BackgroundActivityStatus.Interrupted:
-                return new ToolResult
                 {
-                    Success = false,
-                    Title = description,
-                    Output = await ReadActivityOutputAsync(snapshot.Id, sessionId).ConfigureAwait(false),
-                    Error = "命令被中断（宿主关闭或活动已被回收）",
-                    Metadata = BuildMetadata(snapshot.Result?.ExitCode, timedOut: false, aborted: true, description)
-                };
+                    var (interruptedOutput, interruptedTruncated) =
+                        await ReadActivityOutputAsync(snapshot.Id, sessionId).ConfigureAwait(false);
+                    var interruptedMetadata =
+                        BuildMetadata(snapshot.Result?.ExitCode, timedOut: false, aborted: true, description);
+                    if (interruptedTruncated)
+                        interruptedMetadata["truncated"] = true;
+
+                    return new ToolResult
+                    {
+                        Success = false,
+                        Title = description,
+                        Output = interruptedOutput,
+                        Error = "命令被中断（宿主关闭或活动已被回收）",
+                        Metadata = interruptedMetadata
+                    };
+                }
 
             default:
-                return new ToolResult
                 {
-                    Success = false,
-                    Title = description,
-                    Output = await ReadActivityOutputAsync(snapshot.Id, sessionId).ConfigureAwait(false),
-                    Error = $"命令未进入终态（当前状态: {snapshot.Status}）",
-                    Metadata = BuildMetadata(snapshot.Result?.ExitCode, timedOut: false, aborted: false, description)
-                };
+                    var (pendingOutput, pendingTruncated) =
+                        await ReadActivityOutputAsync(snapshot.Id, sessionId).ConfigureAwait(false);
+                    var pendingMetadata =
+                        BuildMetadata(snapshot.Result?.ExitCode, timedOut: false, aborted: false, description);
+                    if (pendingTruncated)
+                        pendingMetadata["truncated"] = true;
+
+                    return new ToolResult
+                    {
+                        Success = false,
+                        Title = description,
+                        Output = pendingOutput,
+                        Error = $"命令未进入终态（当前状态: {snapshot.Status}）",
+                        Metadata = pendingMetadata
+                    };
+                }
         }
     }
 
@@ -316,10 +343,14 @@ public class BashTool : ToolBase
     {
         var aborted = !timedOut;
 
-        var output = await ReadActivityOutputAsync(activityId, sessionId).ConfigureAwait(false);
+        var (output, outputTruncated) = await ReadActivityOutputAsync(activityId, sessionId).ConfigureAwait(false);
         var notes = new List<string>();
         if (timedOut) notes.Add(TimeoutMessage(timeout));
         if (aborted) notes.Add("命令被取消");
+
+        var metadata = BuildMetadata(exitCode, timedOut, aborted, description);
+        if (outputTruncated)
+            metadata["truncated"] = true;
 
         return new ToolResult
         {
@@ -327,26 +358,44 @@ public class BashTool : ToolBase
             Title = description,
             Output = AppendMetadataBlock(output, notes),
             Error = timedOut ? TimeoutMessage(timeout) : "已取消",
-            Metadata = BuildMetadata(exitCode, timedOut, aborted, description)
+            Metadata = metadata
         };
     }
 
     /// <summary>
-    /// 分页读回活动输出（单页 32KB，上限 256KB），剥离 ANSI 后截断到 <see cref="MaxMetadataLength"/>。
+    /// 分页读回活动输出（单页 32KB，上限 <see cref="MaxOutputBytes"/>），只剥离 ANSI，<b>不再内联截断</b>：
+    /// 超出工具结果内联阈值由 <c>ToolOutputLimiter</c> 统一外溢到会话目录（并给 <c>outputPath</c>），
+    /// 因此这里的截断只会让外溢信息失真（多字节场景下还会切出半个字符）。
     /// <para>读盘不受调用方取消影响：终态已到，取消令牌反而会丢掉用户想看的输出。</para>
     /// </summary>
-    private async Task<string> ReadActivityOutputAsync(string activityId, string sessionId)
+    /// <returns>
+    /// 剥离后的文本，以及「是否还有未读回的输出」：读取达到 <see cref="MaxOutputBytes"/> 上限，
+    /// 或分页本身标记了 <see cref="BackgroundActivityOutputPage.Truncated"/>。
+    /// </returns>
+    private async Task<(string Text, bool Truncated)> ReadActivityOutputAsync(string activityId, string sessionId)
     {
-        var manager = _background!;
+        var manager = _background;
         var builder = new StringBuilder();
         long offset = 0;
         var readBytes = 0;
+        var truncated = false;
 
-        while (readBytes < MaxOutputBytes)
+        while (true)
         {
+            // 达到单次读回上限：剩余输出留给 activity_output 补读（先判上限再看流尾，
+            // 避免把「正好读满且已到流尾」误标成截断）。
+            if (readBytes >= MaxOutputBytes)
+            {
+                truncated = true;
+                break;
+            }
+
             var page = await manager.ReadOutputAsync(
                     activityId, offset, Math.Min(OutputPageBytes, MaxOutputBytes - readBytes), sessionId, CancellationToken.None)
                 .ConfigureAwait(false);
+
+            if (page.Truncated)
+                truncated = true;
 
             if (!string.IsNullOrEmpty(page.Content))
             {
@@ -361,10 +410,7 @@ public class BashTool : ToolBase
             offset = page.NextOffset;
         }
 
-        var text = AnsiEscape.Strip(builder.ToString());
-        return text.Length > MaxMetadataLength
-            ? text[..MaxMetadataLength] + "\n\n..."
-            : text;
+        return (AnsiEscape.Strip(builder.ToString()), truncated);
     }
 
     private static Dictionary<string, object> BuildMetadata(
@@ -442,7 +488,7 @@ public class BashTool : ToolBase
 
         try
         {
-            var handle = await _background!.StartAsync(request, context.SessionId, context.CancellationToken);
+            var handle = await _background.StartAsync(request, context.SessionId, context.CancellationToken);
 
             // 去重命中：命令没有重新执行，回执不能讲成「已转交执行」。
             var output = handle.IsExisting

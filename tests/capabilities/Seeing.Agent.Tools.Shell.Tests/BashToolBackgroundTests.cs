@@ -128,23 +128,6 @@ public class BashToolBackgroundTests
     }
 
     [Fact]
-    public async Task BackgroundTrue_WhenManagerMissing_ShouldFail()
-    {
-        // Arrange：宿主未接线后台活动（manager = null）
-        var (tool, context) = CreateTool(manager: null, moduleEnabled: true);
-
-        // Act
-        var result = await tool.ExecuteAsync(
-            BuildArgs(new() { ["command"] = "sleep 60", ["workdir"] = Workdir, ["background"] = true }),
-            context);
-
-        // Assert
-        result.Success.Should().BeFalse();
-        result.BackgroundActivityId.Should().BeNull();
-        result.Error.Should().Contain("IBackgroundActivityManager");
-    }
-
-    [Fact]
     public async Task BackgroundTrue_WhenModuleDisabled_ShouldFail()
     {
         // Arrange
@@ -186,7 +169,7 @@ public class BashToolBackgroundTests
 
         // Assert：走前台等待路径，超时取 timeout 而非 activity_timeout
         result.Success.Should().BeTrue();
-        result.BackgroundActivityId.Should().BeNull();
+        result.BackgroundActivityId.Should().Be("act-1", "成功的前台命令同样交出活动 id");
         var request = manager.Requests.Should().ContainSingle().Subject;
         request.Origin.Should().Be(BackgroundActivityOrigin.ToolForeground);
         request.Timeout.Should().Be(TimeSpan.FromMilliseconds(5_000));
@@ -196,7 +179,7 @@ public class BashToolBackgroundTests
     // ─── helpers ─────────────────────────────────────────────────────────────
 
     private static (BashTool Tool, ToolContext Context) CreateTool(
-        IBackgroundActivityManager? manager,
+        IBackgroundActivityManager manager,
         bool moduleEnabled)
     {
         var options = new Mock<IOptionsMonitor<ShellOptions>>();
@@ -214,7 +197,7 @@ public class BashToolBackgroundTests
             shell.Object,
             options.Object,
             AllowAllWorkspacePathGate.Instance,
-            manager!,
+            manager,
             modules.Object);
 
         var context = new ToolContext

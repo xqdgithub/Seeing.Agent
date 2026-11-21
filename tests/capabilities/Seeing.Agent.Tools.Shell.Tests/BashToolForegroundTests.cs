@@ -42,7 +42,7 @@ public class BashToolForegroundTests
         result.Metadata["exit"].Should().Be(0);
         result.Metadata["timedOut"].Should().Be(false);
         result.Metadata["aborted"].Should().Be(false);
-        result.BackgroundActivityId.Should().BeNull("前台活动不把 id 交给调用方");
+        result.BackgroundActivityId.Should().Be("act-1", "成功也返回活动 id：超出读回上限时模型可用 activity_output 补读");
         result.BackgroundDetached.Should().BeFalse("前台正常完成不是转后台，UI 必须取完整工具结果");
 
         // 前台请求：Origin=ToolForeground、不通知、超时即工具 timeout
@@ -143,20 +143,6 @@ public class BashToolForegroundTests
         result.Output.Should().Contain("activity_*");
         result.Metadata.Should().NotContainKey("backgroundActivityId", "活动 id 只走强类型字段");
         manager.Cancels.Should().BeEmpty("转后台不是取消");
-    }
-
-    [Fact]
-    public async Task Foreground_WhenManagerMissing_ShouldFail()
-    {
-        // Arrange：宿主未接线后台活动（manager = null），前台也不再有回退路径
-        var (tool, context) = CreateTool(manager: null);
-
-        // Act
-        var result = await tool.ExecuteAsync(BuildArgs("echo hi"), context);
-
-        // Assert
-        result.Success.Should().BeFalse();
-        result.Error.Should().Contain("IBackgroundActivityManager");
     }
 
     [Fact]
@@ -273,9 +259,9 @@ public class BashToolForegroundTests
     }
 
     [Fact]
-    public async Task Foreground_LongOutput_ShouldTruncateWithEllipsis()
+    public async Task Foreground_LargeOutput_ShouldNotBeTruncatedAt30k()
     {
-        // Arrange
+        // Arrange：40k 字符远超旧的 30k 内联上限
         var manager = new FakeBackgroundActivityManager
         {
             OutputHandler = FakeBackgroundActivityManager.SinglePage(new string('x', 40_000))
@@ -285,10 +271,64 @@ public class BashToolForegroundTests
         // Act
         var result = await tool.ExecuteAsync(BuildArgs("big"), context);
 
+        // Assert：不再内联截断——超长部分交给 ToolOutputLimiter 统一外溢（产出 outputPath）
+        result.Success.Should().BeTrue();
+        result.Output.Should().HaveLength(40_000, "30k 硬截断会让 ToolOutputLimiter 永不触发，也不产生 outputPath");
+        result.Metadata.Should().NotContainKey("truncated");
+    }
+
+    [Fact]
+    public async Task Foreground_ShouldReturnActivityId_ForFollowUpRead()
+    {
+        // Arrange：正常完成的前台命令
+        var manager = new FakeBackgroundActivityManager
+        {
+            OutputHandler = FakeBackgroundActivityManager.SinglePage("hello\n")
+        };
+        var (tool, context) = CreateTool(manager);
+
+        // Act
+        var result = await tool.ExecuteAsync(BuildArgs("echo hi"), context);
+
+        // Assert：成功也交出活动 id（读回有 256KB 上限，剩余输出只能靠 activity_output 补读）
+        result.Success.Should().BeTrue();
+        result.BackgroundActivityId.Should().Be("act-1");
+        result.BackgroundDetached.Should().BeFalse("前台正常完成不是转后台，UI 仍取工具结果");
+    }
+
+    [Fact]
+    public async Task Foreground_TruncatedOutput_ShouldMarkMetadata()
+    {
+        // Arrange：活动侧已截断（落盘上限），读回内容不是完整输出
+        var manager = new FakeBackgroundActivityManager
+        {
+            OutputHandler = (_, offset, _) => new BackgroundActivityOutputPage(
+                "partial", offset + 7, EndOfStream: true, Truncated: true)
+        };
+        var (tool, context) = CreateTool(manager);
+
+        // Act
+        var result = await tool.ExecuteAsync(BuildArgs("big"), context);
+
         // Assert
         result.Success.Should().BeTrue();
-        result.Output.Should().HaveLength(30_005);
-        result.Output.Should().EndWith("...");
+        result.Metadata["truncated"].Should().Be(true);
+
+        // Arrange：读取达到单次读回上限（256KB），流尾尚未到达
+        var capped = new FakeBackgroundActivityManager
+        {
+            OutputHandler = (_, offset, maxBytes) => new BackgroundActivityOutputPage(
+                new string('y', maxBytes), offset + maxBytes, EndOfStream: false, Truncated: false)
+        };
+        var (cappedTool, cappedContext) = CreateTool(capped);
+
+        // Act
+        var cappedResult = await cappedTool.ExecuteAsync(BuildArgs("huge"), cappedContext);
+
+        // Assert
+        cappedResult.Success.Should().BeTrue();
+        cappedResult.Metadata["truncated"].Should().Be(true, "达到 256KB 读回上限即视为截断，剩余输出用 activity_output 补读");
+        cappedResult.BackgroundActivityId.Should().Be("act-1");
     }
 
     [Fact]
@@ -387,7 +427,7 @@ public class BashToolForegroundTests
     // ─── helpers ─────────────────────────────────────────────────────────────
 
     private static (BashTool Tool, ToolContext Context) CreateTool(
-        IBackgroundActivityManager? manager, ShellOptions? shellOptions = null)
+        IBackgroundActivityManager manager, ShellOptions? shellOptions = null)
     {
         var options = new Mock<IOptionsMonitor<ShellOptions>>();
         options.Setup(o => o.CurrentValue).Returns(shellOptions ?? new ShellOptions());
@@ -401,7 +441,7 @@ public class BashToolForegroundTests
             shell.Object,
             options.Object,
             AllowAllWorkspacePathGate.Instance,
-            manager!);
+            manager);
 
         var context = new ToolContext
         {

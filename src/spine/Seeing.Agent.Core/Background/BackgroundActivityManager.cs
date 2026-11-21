@@ -187,24 +187,22 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         if (!TryGetOwned(activityId, requesterSessionId, out var record))
             return new BackgroundActivityWaitResult(BackgroundActivityWaitOutcome.TimedOut, null);
 
-        if (TryGetTerminalSnapshot(record, out var terminal))
-            return new BackgroundActivityWaitResult(BackgroundActivityWaitOutcome.Completed, terminal);
+        // 「转后台」放行是逐次的：每个等待者持自己的信号，DetachAsync 只放行其中一个。
+        // 转后台之后新的 activity_wait 重新入列，仍然等到终态（不再立刻 Detached）。
+        var detach = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        // 只有登记过的等待者才能被「转后台」放行：先入计数再等待（本方法首个 await 之前同步完成）。
-        var counted = false;
-        if (!record.DetachSignal.Task.IsCompleted)
+        lock (_sync)
         {
-            lock (_sync)
-            {
-                record.ForegroundWaiters++;
-            }
+            // 终态提交与登记同临界区：迟到的登记不会挂到已清空的列表上（否则永远等不到结果）。
+            if (record.TerminalCommitted)
+                return new BackgroundActivityWaitResult(BackgroundActivityWaitOutcome.Completed, record.Snapshot);
 
-            counted = true;
+            record.DetachWaiters.Add(detach);
         }
 
         try
         {
-            var winner = await Task.WhenAny(record.TerminalSignal.Task, record.DetachSignal.Task)
+            var winner = await Task.WhenAny(record.TerminalSignal.Task, detach.Task)
                 .WaitAsync(timeout, ct)
                 .ConfigureAwait(false);
 
@@ -229,13 +227,10 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         }
         finally
         {
-            if (counted)
+            // 正常完成时列表已被终态清空或在 DetachAsync 里被摘除；这里只兜住超时/取消两类退出。
+            lock (_sync)
             {
-                lock (_sync)
-                {
-                    if (record.ForegroundWaiters > 0)
-                        record.ForegroundWaiters--;
-                }
+                record.DetachWaiters.Remove(detach);
             }
         }
     }
@@ -576,7 +571,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         if (!_activities.TryGetValue(activityId, out var record))
             return Task.FromResult(false);
 
-        bool detached;
+        TaskCompletionSource<bool>? released = null;
         lock (_sync)
         {
             // 终态之后等待者已经或即将拿到终态，再放行只会吞掉终态语义。
@@ -584,12 +579,17 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
                 return Task.FromResult(false);
 
             // 没有前台等待者时此调用无语义（调用方拿到 false 说明没人可放）。
-            if (record.ForegroundWaiters <= 0)
+            if (record.DetachWaiters.Count == 0)
                 return Task.FromResult(false);
 
-            // 只放等待者：活动状态、落盘、事件一律不动（spec §23.2）。
-            detached = record.DetachSignal.TrySetResult(true);
+            // 只放行一个等待者：其余等待者（以及转后台之后新的 activity_wait）继续等终态。
+            released = record.DetachWaiters[0];
+            record.DetachWaiters.RemoveAt(0);
         }
+
+        // 只放等待者：活动状态、落盘、事件一律不动（spec §23.2）。
+        // 上面的早退路径都已返回，执行到这里 released 必非 null。
+        var detached = released!.TrySetResult(true);
 
         if (detached)
             _logger.LogInformation("后台活动已转后台 ActivityId={ActivityId}", activityId);
@@ -805,33 +805,32 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         var record = CreateRecord(snapshot, registration.Launcher.Kind, request.DedupeKey, effectiveTimeout);
 
         var admitted = false;
-        var kindUnregistering = false;
+        string? rejectReason = null;
         lock (_sync)
         {
             // R3：注销窗口内不得放行新活动（launcher 引用即将/已经消失，放行会成为无人取消的孤儿）。
             if (_unregistering.Contains(request.Kind))
             {
-                kindUnregistering = true;
+                rejectReason = $"后台活动 kind '{request.Kind}' 正在注销，不能启动新活动。";
+            }
+            else if (request.Origin == BackgroundActivityOrigin.ToolForeground)
+            {
+                // 前台命令的并发由执行链自身控制：它既不占后台配额，也不被后台配额拒绝
+                // （否则并行的前台 bash / 在跑的后台任务会把普通命令挡死）。
+                _activities[record.Handle.ActivityId] = record;
+                admitted = true;
             }
             else
             {
-                var runningInSession = 0;
-                foreach (var candidate in _activities.Values)
-                {
-                    if (candidate.TerminalCommitted)
-                        continue;
-
-                    if (string.Equals(candidate.Snapshot.OwnerSessionId, request.OwnerSessionId, StringComparison.Ordinal))
-                        runningInSession++;
-                }
-
-                if (runningInSession >= Math.Max(1, options.MaxConcurrentPerSession))
+                var limit = Math.Max(1, options.MaxConcurrentPerSession);
+                if (CountBackgroundActivitiesLocked(request.OwnerSessionId) >= limit)
                 {
                     _logger.LogWarning(
                         "会话后台活动并发已达上限 SessionId={SessionId} Limit={Limit} Kind={Kind}",
                         request.OwnerSessionId,
-                        options.MaxConcurrentPerSession,
+                        limit,
                         request.Kind);
+                    rejectReason = $"会话后台活动并发已达上限 {limit}（SessionId={request.OwnerSessionId}）。";
                 }
                 else
                 {
@@ -844,11 +843,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         if (!admitted)
         {
             ReleaseRejectedRecord(record);
-
-            throw kindUnregistering
-                ? new InvalidOperationException($"后台活动 kind '{request.Kind}' 正在注销，不能启动新活动。")
-                : new InvalidOperationException(
-                    $"会话后台活动并发已达上限 {options.MaxConcurrentPerSession}（SessionId={request.OwnerSessionId}）。");
+            throw new InvalidOperationException(rejectReason!);
         }
 
         // 每个活动自带输出上限（请求值优先，否则配置默认值）：截断口径与快照里声明的一致。
@@ -952,6 +947,7 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         ITimer? timer;
         CancellationTokenRegistration hostRegistration;
         CancellationTokenSource cts;
+        TaskCompletionSource<bool>[] detachWaiters;
         lock (_sync)
         {
             if (record.TerminalCommitted)
@@ -980,6 +976,10 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
             hostRegistration = record.HostRegistration;
             record.HostRegistration = default;
             cts = record.Cts;
+
+            // 与 TerminalCommitted=true 同临界区摘取：此后新的 WaitAsync 直接读终态，不会挂到空列表上。
+            detachWaiters = record.DetachWaiters.ToArray();
+            record.DetachWaiters.Clear();
         }
 
         timer?.Dispose();
@@ -1007,8 +1007,11 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
 
         record.TerminalSignal.TrySetResult(snapshot);
 
-        // 关闭 detach 信号：终态之后「转后台」不再有任何意义，等待方也不会永久停在 detach 上。
-        record.DetachSignal.TrySetResult(false);
+        // 关闭剩余的 detach 等待者：它们不是被「转后台」放行的，改为拿终态
+        // （detach 结果为 false 时 WaitAsync 会继续 await TerminalSignal）。
+        foreach (var waiter in detachWaiters)
+            waiter.TrySetResult(false);
+
         return true;
     }
 
@@ -1323,6 +1326,33 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
         return cancelled;
     }
 
+    /// <summary>
+    /// 统计某会话「占用后台配额」的活动数（<b>必须在 <c>_sync</c> 内调用</b>）。
+    /// <para>
+    /// 前台工具调用（<see cref="BackgroundActivityOrigin.ToolForeground"/>）不计入：
+    /// 它的并发属于执行链的职责，不属于后台活动配额（否则普通 <c>bash</c> 会被自己挡死）。
+    /// 后台 <see cref="BackgroundActivityOrigin.ToolBackground"/> / <see cref="BackgroundActivityOrigin.Scheduler"/> /
+    /// <see cref="BackgroundActivityOrigin.Module"/> / <see cref="BackgroundActivityOrigin.User"/> 仍计入。
+    /// </para>
+    /// </summary>
+    private int CountBackgroundActivitiesLocked(string ownerSessionId)
+    {
+        var count = 0;
+        foreach (var candidate in _activities.Values)
+        {
+            if (candidate.TerminalCommitted)
+                continue;
+
+            if (candidate.Snapshot.Origin == BackgroundActivityOrigin.ToolForeground)
+                continue;
+
+            if (string.Equals(candidate.Snapshot.OwnerSessionId, ownerSessionId, StringComparison.Ordinal))
+                count++;
+        }
+
+        return count;
+    }
+
     private List<BackgroundActivityRecord> CollectSubtree(BackgroundActivityRecord root)
     {
         List<BackgroundActivityRecord> all;
@@ -1417,15 +1447,6 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
 
         record = candidate;
         return true;
-    }
-
-    private bool TryGetTerminalSnapshot(BackgroundActivityRecord record, out BackgroundActivitySnapshot snapshot)
-    {
-        lock (_sync)
-        {
-            snapshot = record.Snapshot;
-            return record.TerminalCommitted;
-        }
     }
 
     private BackgroundActivitySnapshot? CurrentSnapshot(BackgroundActivityRecord record)

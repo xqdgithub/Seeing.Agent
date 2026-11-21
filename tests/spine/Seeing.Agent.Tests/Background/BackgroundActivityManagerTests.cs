@@ -96,6 +96,59 @@ public class BackgroundActivityManagerTests
         second.IsExisting.Should().BeTrue("命中在途活动只是复用，没有新建");
     }
 
+    // ─── 后台配额（前台不占、后台仍受限） ─────────────────────────────────────
+
+    [Fact]
+    public async Task ForegroundActivities_ShouldNotConsumeBackgroundQuota()
+    {
+        // 默认 MaxConcurrentPerSession = 8：8 个前台命令在跑，第 9 个仍能启动。
+        var harness = CreateHarness();
+
+        for (var i = 0; i < 8; i++)
+        {
+            await harness.Manager.StartAsync(
+                Request("s1", title: $"fg-{i}", origin: BackgroundActivityOrigin.ToolForeground), "s1");
+        }
+
+        var ninth = await harness.Manager.StartAsync(
+            Request("s1", title: "fg-8", origin: BackgroundActivityOrigin.ToolForeground), "s1");
+
+        ninth.ActivityId.Should().StartWith("act_");
+        harness.Manager.List(new BackgroundActivityQuery(), "s1").Should().HaveCount(9);
+
+        // 前台命令也不被后台配额拒绝：后台配额已被后台活动占满时，前台仍能启动。
+        var tight = CreateHarness(options: new BackgroundActivityOptions { MaxConcurrentPerSession = 1 });
+        await tight.Manager.StartAsync(Request("s1", title: "bg"), "s1");
+        await tight.Manager.StartAsync(
+            Request("s1", title: "fg", origin: BackgroundActivityOrigin.ToolForeground), "s1");
+        tight.Manager.List(new BackgroundActivityQuery(), "s1").Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task BackgroundActivities_ShouldStillRespectQuota()
+    {
+        // 后台活动（含调度器 / 模块自管）仍占用配额。
+        var harness = CreateHarness(options: new BackgroundActivityOptions { MaxConcurrentPerSession = 2 });
+
+        await harness.Manager.StartAsync(Request("s1", title: "bg-1"), "s1");
+        await harness.Manager.StartAsync(Request("s1", title: "bg-2"), "s1");
+
+        await FluentActions.Awaiting(() => harness.Manager.StartAsync(Request("s1", title: "bg-3"), "s1"))
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*并发已达上限*");
+
+        // 前台命令不受这条上限约束。
+        var foreground = await harness.Manager.StartAsync(
+            Request("s1", title: "fg", origin: BackgroundActivityOrigin.ToolForeground), "s1");
+        foreground.ActivityId.Should().StartWith("act_");
+
+        // 其它后台来源（调度器）同样计入。
+        await FluentActions.Awaiting(() => harness.Manager.StartAsync(
+                Request("s1", title: "scheduler", origin: BackgroundActivityOrigin.Scheduler), "s1"))
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*并发已达上限*");
+    }
+
     // ─── 终态 CAS ─────────────────────────────────────────────────────────────
 
     [Fact]
@@ -512,10 +565,48 @@ public class BackgroundActivityManagerTests
         (await harness.Manager.DetachAsync(handle.ActivityId)).Should().BeTrue("等待者就位后才能放行");
         (await waiting).Outcome.Should().Be(BackgroundActivityWaitOutcome.Detached);
 
-        // 放行一次之后，活动已处于「转后台」语义：后来的等待者立即以 Detached 返回而不是挂住。
-        var again = await harness.Manager.WaitAsync(handle.ActivityId, TimeSpan.FromSeconds(30), "s1");
-        again.Outcome.Should().Be(BackgroundActivityWaitOutcome.Detached);
-        again.Snapshot!.Status.Should().Be(BackgroundActivityStatus.Running);
+        // 放行是一次性的：那个等待者已摘除，活动仍在跑但没有可放行的人。
+        (await harness.Manager.DetachAsync(handle.ActivityId)).Should().BeFalse();
+        harness.Manager.Get(handle.ActivityId, "s1")!.Status.Should().Be(BackgroundActivityStatus.Running);
+    }
+
+    [Fact]
+    public async Task Wait_AfterDetach_ShouldWaitForTerminal()
+    {
+        var harness = CreateHarness();
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+
+        // 第一次等待被「转后台」放行
+        var first = harness.Manager.WaitAsync(handle.ActivityId, TimeSpan.FromSeconds(30), "s1");
+        (await harness.Manager.DetachAsync(handle.ActivityId)).Should().BeTrue();
+        (await first).Outcome.Should().Be(BackgroundActivityWaitOutcome.Detached);
+
+        // 转后台之后的 activity_wait 必须等终态，不能立刻拿到 Detached（否则永远等不到结果）
+        var second = harness.Manager.WaitAsync(handle.ActivityId, TimeSpan.FromSeconds(30), "s1");
+        second.IsCompleted.Should().BeFalse("放行是一次性的，后续等待重新入列并等终态");
+
+        await handle.Reporter.CompleteAsync(NoResult());
+
+        var result = await second;
+        result.Outcome.Should().Be(BackgroundActivityWaitOutcome.Completed);
+        result.Snapshot!.Status.Should().Be(BackgroundActivityStatus.Succeeded);
+    }
+
+    [Fact]
+    public async Task Detach_ShouldReleaseOnlyOneWaiter()
+    {
+        var harness = CreateHarness();
+        var handle = await harness.Manager.StartAsync(Request("s1"), "s1");
+
+        var first = harness.Manager.WaitAsync(handle.ActivityId, TimeSpan.FromSeconds(30), "s1");
+        var second = harness.Manager.WaitAsync(handle.ActivityId, TimeSpan.FromSeconds(30), "s1");
+
+        (await harness.Manager.DetachAsync(handle.ActivityId)).Should().BeTrue();
+        (await first).Outcome.Should().Be(BackgroundActivityWaitOutcome.Detached);
+        second.IsCompleted.Should().BeFalse("一次转后台只放行一个等待者");
+
+        (await harness.Manager.DetachAsync(handle.ActivityId)).Should().BeTrue("剩余等待者需要再放行一次");
+        (await second).Outcome.Should().Be(BackgroundActivityWaitOutcome.Detached);
     }
 
     [Fact]
@@ -543,10 +634,10 @@ public class BackgroundActivityManagerTests
         await handle.Reporter.CompleteAsync(NoResult());
 
         var result = await waiting;
-        result.Outcome.Should().Be(BackgroundActivityWaitOutcome.Completed, "终态优先：detach 信号随之关闭");
+        result.Outcome.Should().Be(BackgroundActivityWaitOutcome.Completed, "终态优先：剩余等待者按「未转后台」收尾，直接拿终态");
         result.Snapshot!.Status.Should().Be(BackgroundActivityStatus.Succeeded);
 
-        // 终态之后 detach 信号已关闭，不会再出现 Detached。
+        // 终态之后 detach 不再有任何可放行者。
         (await harness.Manager.DetachAsync(handle.ActivityId)).Should().BeFalse();
     }
 
@@ -916,13 +1007,15 @@ public class BackgroundActivityManagerTests
     private static BackgroundActivityStartRequest Request(
         string ownerSessionId,
         string title = "后台活动",
-        string kind = Kind)
+        string kind = Kind,
+        BackgroundActivityOrigin origin = BackgroundActivityOrigin.ToolBackground)
         => new()
         {
             Kind = kind,
             Title = title,
             OwnerSessionId = ownerSessionId,
-            OwnerExecutionId = "exec-1"
+            OwnerExecutionId = "exec-1",
+            Origin = origin
         };
 
     private static BackgroundActivityResult NoResult() => new(
