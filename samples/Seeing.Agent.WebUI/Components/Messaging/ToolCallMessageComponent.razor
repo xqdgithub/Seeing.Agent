@@ -221,7 +221,10 @@ else
     /// </para>
     /// </summary>
     private bool ShowBackgroundHint =>
-        ToolCall.BackgroundActivity is { } bg && (!bg.IsForeground || !ToolCall.IsRunning);
+        ToolCall.BackgroundActivity is { } bg
+        && (!bg.IsForeground
+            || (bg.Status == Seeing.Agent.Abstractions.Background.BackgroundActivityStatus.Running
+                && !ToolCall.IsRunning));
 
     private bool HasParametersSection =>
         !ToolCall.IsTodoTool

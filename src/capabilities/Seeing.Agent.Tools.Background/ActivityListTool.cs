@@ -51,7 +51,7 @@ public sealed class ActivityListTool : ToolBase
                     "Cancelled",
                     "Interrupted"
                 },
-                description = "只看指定状态的活动；省略为全部状态"
+                description = "只看指定状态的活动（Pending / Running / Succeeded / Failed / Cancelled / Interrupted）；省略为全部状态"
             },
             kind = new
             {

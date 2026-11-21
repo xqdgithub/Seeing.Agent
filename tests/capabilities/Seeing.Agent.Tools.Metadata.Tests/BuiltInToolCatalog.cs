@@ -7,6 +7,7 @@ using Seeing.Agent.Memory.Integration.Tools;
 using Seeing.Agent.Scheduler.Tools;
 using Seeing.Agent.Skills;
 using Seeing.Agent.Tools.Basic;
+using Seeing.Agent.Tools.Background;
 using Seeing.Agent.Tools.Browser;
 using Seeing.Agent.Tools.Browser.Tools;
 using Seeing.Agent.Tools.ChannelMessaging;
@@ -105,6 +106,11 @@ internal static class BuiltInToolCatalog
         typeof(BrowserBackTool),
         typeof(BrowserForwardTool),
         typeof(BrowserCloseTool),
+        typeof(ActivityStatusTool),
+        typeof(ActivityOutputTool),
+        typeof(ActivityWaitTool),
+        typeof(ActivityCancelTool),
+        typeof(ActivityListTool),
     ];
 
     /// <summary>登记的全部工具类型。</summary>
@@ -134,6 +140,7 @@ internal static class BuiltInToolCatalog
         typeof(SkillTool),         // Seeing.Agent.Skills
         typeof(TranscribeAudioTool), // Seeing.Agent.Tools.Speech
         typeof(BrowserOpenTool),     // Seeing.Agent.Tools.Browser
+        typeof(ActivityStatusTool),  // Seeing.Agent.Tools.Background
     ];
 
     public static IReadOnlyList<ITool> All() => s_types.SelectMany(CreateInstances).ToList();

@@ -193,7 +193,7 @@ public class ToolMetadataTests
         // 2) id 集合仍按产品事实锁定（SystemOneTool 一个类型 → 4 个 id）。
         var ids = BuiltInToolCatalog.All().Select(t => t.Id).ToArray();
 
-        ids.Should().HaveCount(69);
+        ids.Should().HaveCount(74);
         ids.Should().OnlyHaveUniqueItems();
         ids.Should().BeEquivalentTo(new[]
         {
@@ -216,6 +216,8 @@ public class ToolMetadataTests
             "browser_open", "browser_snapshot", "browser_click", "browser_type", "browser_press",
             "browser_scroll", "browser_wait_for", "browser_screenshot", "browser_eval",
             "browser_back", "browser_forward", "browser_close",
+            // 后台活动：一个动作一个工具（权限判定不含参数）
+            "activity_status", "activity_output", "activity_wait", "activity_cancel", "activity_list",
         });
     }
 

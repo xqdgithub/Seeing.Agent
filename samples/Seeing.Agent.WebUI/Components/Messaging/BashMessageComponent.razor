@@ -55,7 +55,11 @@
         // 前台活动（工具正在等待）不显示后台说明，只提供「转后台」。
         // 转后台后工具立即返回，但 Origin 仍是 ToolForeground —— 只能用工具是否还活区隔：
         // 前台且工具未结束 = 前台样式；前台但工具已结束 = 活动已独立跑，按后台展示。
-        var showBackgroundHint = bg is not null && (!bg.IsForeground || !ToolCall.IsRunning);
+        // 前台正常完成时活动也已终态，不应出现"后台"提示；
+        // 只有「工具已返回、活动仍在跑」才是真正转过后台。
+        var showBackgroundHint = bg is not null
+            && (!bg.IsForeground
+                || (bg.Status == BackgroundActivityStatus.Running && !ToolCall.IsRunning));
         var hasMoreOutput = bg is not null
             ? (bg.OutputBytes ?? 0) > 4096
             : BashToolDisplayHelper.ShouldCollapseByDefault(liveTail, false);
