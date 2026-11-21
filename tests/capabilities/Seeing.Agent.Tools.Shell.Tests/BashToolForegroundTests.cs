@@ -140,7 +140,10 @@ public class BashToolForegroundTests
         result.BackgroundActivityId.Should().Be("act-1");
         result.BackgroundDetached.Should().BeTrue("转后台是唯一强类型标记：活动继续跑，输出取活动实时尾部");
         result.Output.Should().Contain("act-1");
-        result.Output.Should().Contain("activity_*");
+        result.Output.Should().Contain("完成时会自动通知你",
+            "转后台后活动完成会唤醒 agent，不需要一直阻塞等待");
+        result.Output.Should().Contain("activity_wait",
+            "需要立刻拿结果时仍可用 activity_wait");
         result.Metadata.Should().NotContainKey("backgroundActivityId", "活动 id 只走强类型字段");
         manager.Cancels.Should().BeEmpty("转后台不是取消");
     }

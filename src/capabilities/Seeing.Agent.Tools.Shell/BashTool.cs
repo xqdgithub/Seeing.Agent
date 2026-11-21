@@ -199,9 +199,10 @@ public class BashTool : ToolBase
                 {
                     Success = true,
                     Title = description,
-                    Output = $"命令已转入后台，使用 activity_* 跟踪（不等待退出）。\n" +
+                    Output = $"命令已转入后台执行（不等待退出）。\n" +
                              $"activity_id: {handle.ActivityId}\n" +
-                             "后续用 activity_status / activity_output / activity_wait / activity_cancel 跟踪或取消该活动。",
+                             "完成时会自动通知你，不需要一直等待：可以先继续做其他事情；如果需要立刻拿到结果，再调用 activity_wait 等待。\n" +
+                             "跟踪 / 读取 / 取消：activity_status / activity_output / activity_wait / activity_cancel。",
                     BackgroundActivityId = handle.ActivityId,
                     // 转后台的唯一强类型标记：工具已返回而活动仍在跑，UI 据此取活动实时尾部
                     // 而不是这段回执；前台正常完成不设（结果为完整输出）。

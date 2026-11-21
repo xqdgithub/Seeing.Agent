@@ -585,6 +585,17 @@ internal sealed class BackgroundActivityManager : IBackgroundActivityManager, IB
             // 只放行一个等待者：其余等待者（以及转后台之后新的 activity_wait）继续等终态。
             released = record.DetachWaiters[0];
             record.DetachWaiters.RemoveAt(0);
+
+            // 转后台即接管完成通知：agent 可能在本轮直接结束，活动完成后必须能唤醒它。
+            // 若 agent 已用 activity_wait 拿到终态，MarkResultObserved 会让 dispatcher 跳过，不会重复唤醒。
+            if (record.Snapshot.NotifyPolicy != BackgroundActivityNotifyPolicy.OnComplete)
+            {
+                record.Snapshot = record.Snapshot with
+                {
+                    NotifyPolicy = BackgroundActivityNotifyPolicy.OnComplete,
+                    Seq = record.Snapshot.Seq + 1
+                };
+            }
         }
 
         // 只放等待者：活动状态、落盘、事件一律不动（spec §23.2）。

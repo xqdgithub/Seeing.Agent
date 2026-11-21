@@ -1004,6 +1004,26 @@ public class BackgroundActivityManagerTests
         };
     }
 
+    [Fact]
+    public async Task Detach_ShouldUpgradeNotifyPolicyToOnComplete()
+    {
+        var harness = CreateHarness();
+        var request = Request("s1", origin: BackgroundActivityOrigin.ToolForeground)
+            with { NotifyPolicy = BackgroundActivityNotifyPolicy.None };
+        var handle = await harness.Manager.StartAsync(request, "s1");
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var waiting = harness.Manager.WaitAsync(
+            handle.ActivityId, TimeSpan.FromSeconds(30), "s1", cts.Token);
+
+        (await harness.Manager.DetachAsync(handle.ActivityId)).Should().BeTrue();
+        (await waiting).Outcome.Should().Be(BackgroundActivityWaitOutcome.Detached);
+
+        // 转后台即接管完成通知：agent 本轮可能直接结束，完成后必须能唤醒。
+        harness.Manager.Get(handle.ActivityId, "s1")!.NotifyPolicy
+            .Should().Be(BackgroundActivityNotifyPolicy.OnComplete);
+    }
+
     private static BackgroundActivityStartRequest Request(
         string ownerSessionId,
         string title = "后台活动",
