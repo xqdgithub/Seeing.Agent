@@ -150,6 +150,24 @@ public class ForegroundActivityRenderingContractTests
         tool.Should().Contain("else if (activityHeader.CanDetach)");
     }
 
+    /// <summary>
+    /// 「转后台」失败必须有可见反馈：忽略返回值时按钮点了没反应，用户只会反复点。
+    /// </summary>
+    [Fact]
+    public void DetachFailure_ShouldRenderVisibleHint()
+    {
+        var bash = ReadWebUiSource(BashComponent);
+
+        bash.Should().Contain("_detachFailed", "控制面返回 false 时必须留下本地失败标记");
+        bash.Should().Contain("_detachFailed = !detached",
+            "失败判据是控制面返回值，不是本地猜测的活动状态");
+        bash.Should().Contain("bash-detach-error");
+        bash.Should().Contain("转后台失败：活动可能已结束");
+
+        var css = ReadWebUiSource("wwwroot/css/bash-terminal.css");
+        css.Should().Contain(".bash-detach-error", "失败提示需要独立样式，不能和正常 hint 同色");
+    }
+
     private static BackgroundActivityViewModel Activity(
         BackgroundActivityOrigin origin,
         BackgroundActivityStatus status)

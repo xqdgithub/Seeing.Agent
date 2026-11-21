@@ -125,6 +125,12 @@
                     <button type="button" class="bash-text-action" disabled="@_detaching" @onclick="DetachAsync">转后台</button>
                 </div>
             }
+
+            @if (_detachFailed)
+            {
+                @* 转后台失败（活动已结束 / 等待者已放行）必须有反馈：按钮点了没反应用户只会重复点。 *@
+                <div class="bash-background-hint bash-detach-error">转后台失败：活动可能已结束</div>
+            }
         </div>
     }
 </div>
@@ -146,6 +152,7 @@
     private ElementReference _outputRef;
     private bool _cancelling;
     private bool _detaching;
+    private bool _detachFailed;
     private string? _fullOutput;
     private bool _showFullOutput;
     private bool _autoLoadedFull;
@@ -346,8 +353,12 @@
     /// <summary>
     /// 「转后台」：放行前台等待者，活动继续运行。
     /// <para>
-    /// 不本地改状态：工具随后返回成功、hint 行出现，都由工具调用更新与
+    /// 成功不本地改状态：工具随后返回成功、hint 行出现，都由工具调用更新与
     /// <c>activity.*</c> 事件驱动；本地抢先改会与推送打架。
+    /// </para>
+    /// <para>
+    /// 失败（活动已结束 / 等待者已放行）必须给出可见反馈，否则按钮点了没反应，
+    /// 用户只会反复点击。
     /// </para>
     /// </summary>
     private async Task DetachAsync()
@@ -358,7 +369,8 @@
         _detaching = true;
         try
         {
-            await ActivityControl.DetachAsync(activity.Id);
+            var detached = await ActivityControl.DetachAsync(activity.Id);
+            _detachFailed = !detached;
         }
         finally
         {

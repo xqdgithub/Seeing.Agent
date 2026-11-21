@@ -309,7 +309,7 @@ public class GatewayEventMapperTests
     [Fact]
     public void BackgroundActivityCompleted_ShouldMapToClientEvent()
     {
-        // 前台命令也走活动执行器：完成/失败/取消须能回到客户端（按 OriginToolCallId 关联原工具卡）。
+        // 真后台活动（bash background=true）：完成/失败/取消须能回到客户端（按 OriginToolCallId 关联原工具卡）。
         var source = new BackgroundActivityEvent
         {
             SessionId = SessionId,
@@ -321,7 +321,7 @@ public class GatewayEventMapperTests
                 Id = "act_1",
                 Kind = "process",
                 Title = "bash",
-                Origin = BackgroundActivityOrigin.ToolForeground,
+                Origin = BackgroundActivityOrigin.ToolBackground,
                 OriginToolCallId = "call_1",
                 WorkspaceRoot = @"D:\ws",
                 HostInstanceId = "host",
@@ -341,6 +341,36 @@ public class GatewayEventMapperTests
         result.Data.BackgroundActivityId.Should().Be("act_1");
         result.SourceType.Should().Be(ActivityEventTypes.Completed);
         result.Timestamp.Should().Be(TestTimestamp);
+    }
+
+    [Fact]
+    public void ForegroundActivityCompleted_ShouldNotMapToClientEvent()
+    {
+        // 前台命令的 ToolCallEvent 已带完整结果；活动终态再补一条只会让客户端收到重复终态，
+        // 而且补充事件没有输出正文，信息更少。
+        var source = new BackgroundActivityEvent
+        {
+            SessionId = SessionId,
+            LoopId = LoopId,
+            Type = ActivityEventTypes.Completed,
+            Timestamp = TestTimestamp,
+            Activity = new BackgroundActivitySnapshot
+            {
+                Id = "act_fg",
+                Kind = "process",
+                Title = "bash",
+                Origin = BackgroundActivityOrigin.ToolForeground,
+                OriginToolCallId = "call_1",
+                WorkspaceRoot = @"D:\ws",
+                HostInstanceId = "host",
+                OwnerSessionId = SessionId,
+                OwnerExecutionId = "exec_1",
+                Status = BackgroundActivityStatus.Succeeded,
+            }
+        };
+
+        GatewayEventMapper.TryMap(source, out var result).Should().BeFalse();
+        result.Should().BeNull();
     }
 
     [Fact]

@@ -158,6 +158,11 @@
     margin-top: 6px;
 }
 
+/* 转后台失败提示：与 hint 同样的行内小字，用错误色区分 */
+.bash-detach-error {
+    color: var(--color-error, #d4380d);
+}
+
 .bash-background-id {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 11px;

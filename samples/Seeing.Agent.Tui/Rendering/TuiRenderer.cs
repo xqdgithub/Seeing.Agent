@@ -549,11 +549,25 @@ public sealed class TuiRenderer
     /// <summary>
     /// 工具卡正文来源：运行中优先活动实时尾部（<c>activity.progress</c>），其余情况用工具结果
     /// （终态快照来自 <c>ToolCallEvent.Output</c>；活动不落盘，历史重建也只有这一路）。
+    /// <para>
+    /// 已转后台的卡片例外：工具已以 <c>Success</c> 返回（回执「已转后台」），但活动还在跑，
+    /// 此时仍须继续用活动尾部——否则工具返回那一刻画面就停止刷新，用户看不到后续输出。
+    /// 活动终态后尾部保留最后一次输出（解释器不清空），故最终画面也不回退成回执。
+    /// </para>
     /// </summary>
     private static string? ResolveBodyOutput(TuiToolState tool)
-        => tool.Status == TuiToolStatus.Running && !string.IsNullOrWhiteSpace(tool.ActivityOutput)
+    {
+        if (tool.BackgroundDetached)
+        {
+            return string.IsNullOrWhiteSpace(tool.ActivityOutput)
+                ? tool.Output
+                : tool.ActivityOutput;
+        }
+
+        return tool.Status == TuiToolStatus.Running && !string.IsNullOrWhiteSpace(tool.ActivityOutput)
             ? tool.ActivityOutput
             : tool.Output;
+    }
 
     private static string ToolSummary(TuiToolState tool)
     {

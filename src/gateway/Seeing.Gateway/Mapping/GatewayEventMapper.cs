@@ -136,6 +136,11 @@ public static class GatewayEventMapper
     /// <c>activity.progress</c>/<c>activity.started</c> 逐条下发只会刷屏，且实时尾部不是权威输出，
     /// 因此一律不映射。无法关联到工具调用（无 <c>OriginToolCallId</c>）的活动也不下发。
     /// </para>
+    /// <para>
+    /// 前台活动（<see cref="BackgroundActivityOrigin.ToolForeground"/>）不映射：
+    /// 它的结果已经由 <c>ToolCallEvent</c> 完整下发，再补一条终态只会让客户端收到两条，
+    /// 且这条补充事件信息更少（无输出正文）。
+    /// </para>
     /// </summary>
     private static GatewayEvent? MapBackgroundActivity(BackgroundActivityEvent e)
     {
@@ -147,8 +152,12 @@ public static class GatewayEventMapper
             _ => null
         };
 
-        if (status is null || string.IsNullOrEmpty(e.Activity.OriginToolCallId))
+        if (status is null
+            || string.IsNullOrEmpty(e.Activity.OriginToolCallId)
+            || e.Activity.Origin == BackgroundActivityOrigin.ToolForeground)
+        {
             return null;
+        }
 
         return new GatewayEvent
         {

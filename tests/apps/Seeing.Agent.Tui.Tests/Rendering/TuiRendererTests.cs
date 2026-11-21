@@ -550,4 +550,53 @@ public sealed class TuiRendererTests
         text.Should().Contain("final result");
         text.Should().NotContain("live line");
     }
+
+    [Fact]
+    public void DetachedTool_ShouldKeepUsingActivityOutput()
+    {
+        // 转后台：工具已以 Success 返回（输出是「已转后台」回执），活动仍在跑。
+        // 此时不能退回工具回执——否则工具返回那一刻画面就停止刷新，后续输出全丢。
+        var detached = NewState(new TuiBlock
+        {
+            Key = "tool:call_1",
+            Kind = TuiBlockKind.Tool,
+            Tool = new TuiToolState
+            {
+                CallId = "call_1",
+                Name = "bash",
+                Status = TuiToolStatus.Success,
+                BackgroundDetached = true,
+                Output = "已转后台（activity_id: act_1）",
+                ActivityStatus = Seeing.Agent.Abstractions.Background.BackgroundActivityStatus.Running,
+                ActivityOutput = "line 1\nline 2\n",
+            },
+        });
+
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+        var text = Render(renderer.BuildActiveView(detached, new TuiInputEditorState(), 100));
+
+        text.Should().Contain("line 2");
+        text.Should().NotContain("已转后台");
+
+        // 活动终态后尾部仍是最后一次输出（解释器不清空），故继续展示它而不是回执。
+        var completed = NewState(new TuiBlock
+        {
+            Key = "tool:call_1",
+            Kind = TuiBlockKind.Tool,
+            Tool = new TuiToolState
+            {
+                CallId = "call_1",
+                Name = "bash",
+                Status = TuiToolStatus.Success,
+                BackgroundDetached = true,
+                Output = "已转后台（activity_id: act_1）",
+                ActivityStatus = Seeing.Agent.Abstractions.Background.BackgroundActivityStatus.Succeeded,
+                ActivityOutput = "line 1\nline 2\nline 3\n",
+            },
+        });
+
+        var finalText = Render(renderer.BuildActiveView(completed, new TuiInputEditorState(), 100));
+        finalText.Should().Contain("line 3");
+        finalText.Should().NotContain("已转后台");
+    }
 }
