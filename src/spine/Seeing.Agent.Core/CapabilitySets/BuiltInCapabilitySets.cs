@@ -39,6 +39,7 @@ public static class BuiltInCapabilitySets
         "filesystem",
         "files.workspace",
         "shell",
+        "background",
         "git",
         "subagent",
         "session.tools",
