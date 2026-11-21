@@ -29,7 +29,7 @@ internal class ChatEventTracker
     /// <returns>
     /// 本事件是否改变了「需要落盘的状态」。只有「同状态的重复 <see cref="ToolCallEvent"/>」返回 false：
     /// 如 bash 每 100ms 的 Running 进度快照不应触发全量落盘；新建卡片、状态迁移
-    /// （pending→running）、TaskId / BackgroundActivityId 首次回填仍需写盘。其余事件保持原落盘语义（返回 true）。
+    /// （pending→running）、TaskId / BackgroundActivityId / BackgroundDetached 首次回填仍需写盘。其余事件保持原落盘语义（返回 true）。
     /// </returns>
     public bool ApplyEvent(SessionData session, IMessageEvent evt)
     {
@@ -128,7 +128,8 @@ internal class ChatEventTracker
                         Id = toolCallId,
                         Name = toolCall.ToolName ?? string.Empty,
                         Arguments = FormatArguments(toolCall.Arguments),
-                        BackgroundActivityId = toolCall.BackgroundActivityId
+                        BackgroundActivityId = toolCall.BackgroundActivityId,
+                        BackgroundDetached = toolCall.BackgroundDetached
                     };
                     // publish-on-write：整体替换不可变列表引用，读者持旧快照不受影响。
                     _currentAssistantMessage.ToolCalls = currentToolCalls.Add(existing);
@@ -169,6 +170,11 @@ internal class ChatEventTracker
                 if (!string.IsNullOrEmpty(toolCall.BackgroundActivityId))
                     existing.BackgroundActivityId = toolCall.BackgroundActivityId;
 
+                // 转后台同样是执行级事实：只在由 false 变 true 时写入（进度快照不会带）。
+                var previousBackgroundDetached = existing.BackgroundDetached;
+                if (toolCall.BackgroundDetached)
+                    existing.BackgroundDetached = true;
+
                 // task 工具：Task* 权威来源为 TaskTool 结果 Metadata；Running 态无 Metadata 时从 Arguments 回填展示字段。
                 var previousTaskId = existing.TaskId;
                 ApplyTaskFields(existing, toolCall);
@@ -180,7 +186,8 @@ internal class ChatEventTracker
                 var backgroundActivityFilled =
                     string.IsNullOrEmpty(previousBackgroundActivityId)
                     && !string.IsNullOrEmpty(existing.BackgroundActivityId);
-                return isNewToolCall || statusChanged || taskIdFilled || backgroundActivityFilled;
+                var detachedFilled = !previousBackgroundDetached && existing.BackgroundDetached;
+                return isNewToolCall || statusChanged || taskIdFilled || backgroundActivityFilled || detachedFilled;
 
             case ErrorEvent:
                 // 运行时观测，不进对话消息/LLM 历史；由 ErrorEvent 事件驱动 UI 与执行记录

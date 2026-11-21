@@ -43,6 +43,7 @@ public class BashToolForegroundTests
         result.Metadata["timedOut"].Should().Be(false);
         result.Metadata["aborted"].Should().Be(false);
         result.BackgroundActivityId.Should().BeNull("前台活动不把 id 交给调用方");
+        result.BackgroundDetached.Should().BeFalse("前台正常完成不是转后台，UI 必须取完整工具结果");
 
         // 前台请求：Origin=ToolForeground、不通知、超时即工具 timeout
         var request = manager.Requests.Should().ContainSingle().Subject;
@@ -137,6 +138,7 @@ public class BashToolForegroundTests
         // Assert：成功返回句柄，活动继续跑，工具不再取消它
         result.Success.Should().BeTrue();
         result.BackgroundActivityId.Should().Be("act-1");
+        result.BackgroundDetached.Should().BeTrue("转后台是唯一强类型标记：活动继续跑，输出取活动实时尾部");
         result.Output.Should().Contain("act-1");
         result.Output.Should().Contain("activity_*");
         result.Metadata.Should().NotContainKey("backgroundActivityId", "活动 id 只走强类型字段");

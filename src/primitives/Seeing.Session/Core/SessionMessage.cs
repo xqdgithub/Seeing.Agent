@@ -182,6 +182,16 @@ namespace Seeing.Session.Core
         public string? BackgroundActivityId { get; set; }
 
         /// <summary>
+        /// 本调用是否转成了后台（等待者被放行、活动继续跑）。
+        /// <para>
+        /// 前台正常完成与转后台都是 <c>ToolForeground</c> + 工具已结束，只能用此标记区分；
+        /// 旧会话反序列化缺该字段时为 false（即按前台正常完成渲染）。
+        /// </para>
+        /// </summary>
+        [JsonPropertyName("background_detached")]
+        public bool BackgroundDetached { get; set; }
+
+        /// <summary>
         /// 附带的工具完整定义（JSON）。仅当该工具本轮未下发 schema、且失败属参数类错误时填充。
         /// <para>
         /// 持久化是必需的：跨轮历史重建必须与本轮产出一致，否则前缀缓存失效。
@@ -221,6 +231,7 @@ namespace Seeing.Session.Core
                 TaskDescription = TaskDescription,
                 TaskBackground = TaskBackground,
                 BackgroundActivityId = BackgroundActivityId,
+                BackgroundDetached = BackgroundDetached,
                 TaskSteps = TaskSteps?.Select(s => new SessionTaskStep
                 {
                     StepKind = s.StepKind,

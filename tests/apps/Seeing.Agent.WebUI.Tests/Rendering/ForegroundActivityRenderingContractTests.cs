@@ -44,8 +44,8 @@ public class ForegroundActivityRenderingContractTests
 
         tool.Should().Contain("!bg.IsForeground",
             "通用工具卡与 bash 卡必须用同一条判定");
-        tool.Should().Contain("!ToolCall.IsRunning",
-            "前台正常完成时活动已终态，不应出现后台提示");
+        tool.Should().Contain("|| ToolCall.BackgroundDetached",
+            "前台正常完成不等于转后台：只有强类型标记才允许出现后台提示");
 
         var headerCardIndex = tool.IndexOf(
             "Compact=\"true\" ShowOutput=\"false\"", StringComparison.Ordinal);
@@ -107,9 +107,9 @@ public class ForegroundActivityRenderingContractTests
 
         var bash = ReadWebUiSource(BashComponent);
 
-        // 守卫为「非前台 或（活动仍在跑且工具已结束）」：后台活动不论工具状态都显示 hint。
+        // 守卫为「非前台 或 转过后台」：后台活动不论工具状态都显示 hint。
         bash.Should().Contain("!bg.IsForeground");
-        bash.Should().Contain("BackgroundActivityStatus.Running", "转后台后工具已返回、活动仍在跑");
+        bash.Should().Contain("ToolCall.BackgroundDetached", "转后台后工具已返回、活动仍在跑");
         bash.Should().Contain("class=\"bash-background-hint\"");
         bash.Should().Contain("bg.StatusText");
         bash.Should().Contain("bash-background-id");
@@ -138,7 +138,7 @@ public class ForegroundActivityRenderingContractTests
 
         var bash = ReadWebUiSource(BashComponent);
 
-        bash.Should().Contain("!ToolCall.IsRunning",
+        bash.Should().Contain("ToolCall.BackgroundDetached",
             "不能用 IsForeground 单独判定：转后台后它仍为 true，但等待已经结束");
         bash.Should().Contain("else if (bg is not null && bg.CanDetach)",
             "「转后台」必须是 hint 的 else 分支，工具结束后不能和 hint 行同时出现");
@@ -146,7 +146,7 @@ public class ForegroundActivityRenderingContractTests
 
         var tool = ReadWebUiSource(ToolComponent);
 
-        tool.Should().Contain("!ToolCall.IsRunning");
+        tool.Should().Contain("ToolCall.BackgroundDetached");
         tool.Should().Contain("else if (activityHeader.CanDetach)");
     }
 

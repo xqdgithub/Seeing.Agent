@@ -209,6 +209,9 @@ public class BashTool : ToolBase
                              $"activity_id: {handle.ActivityId}\n" +
                              "后续用 activity_status / activity_output / activity_wait / activity_cancel 跟踪或取消该活动。",
                     BackgroundActivityId = handle.ActivityId,
+                    // 转后台的唯一强类型标记：工具已返回而活动仍在跑，UI 据此取活动实时尾部
+                    // 而不是这段回执；前台正常完成不设（结果为完整输出）。
+                    BackgroundDetached = true,
                     Metadata = new Dictionary<string, object> { ["description"] = description }
                 };
 

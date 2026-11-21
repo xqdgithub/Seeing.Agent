@@ -50,16 +50,14 @@
     @if (_isExpanded)
     {
         var bg = ToolCall.BackgroundActivity;
-        var liveTail = bg is not null ? bg.LiveOutputTail : _card.DisplayOutput;
+        // 输出源：前台运行中 / 真后台 / 转后台 → 活动实时尾部（工具结果此时是回执或尚未产生）；
+        // 前台正常完成 → 工具结果（完整，不再被 1 秒节流的活动尾部覆盖）。
+        // 唯一判据是工具是否转过后台（BackgroundDetached），不再靠「活动状态 + 工具状态」猜测。
+        var liveTail = UsesActivityOutput ? bg!.LiveOutputTail : _card.DisplayOutput;
         var outputText = _showFullOutput && _fullOutput is not null ? _fullOutput : liveTail;
-        // 前台活动（工具正在等待）不显示后台说明，只提供「转后台」。
-        // 转后台后工具立即返回，但 Origin 仍是 ToolForeground —— 只能用工具是否还活区隔：
-        // 前台且工具未结束 = 前台样式；前台但工具已结束 = 活动已独立跑，按后台展示。
-        // 前台正常完成时活动也已终态，不应出现"后台"提示；
-        // 只有「工具已返回、活动仍在跑」才是真正转过后台。
+        // 后台提示只在「真后台」或「转过后台」出现；前台正常完成时活动也已终态，不显示。
         var showBackgroundHint = bg is not null
-            && (!bg.IsForeground
-                || (bg.Status == BackgroundActivityStatus.Running && !ToolCall.IsRunning));
+            && (!bg.IsForeground || ToolCall.BackgroundDetached);
         var hasMoreOutput = bg is not null
             ? (bg.OutputBytes ?? 0) > 4096
             : BashToolDisplayHelper.ShouldCollapseByDefault(liveTail, false);
@@ -72,7 +70,7 @@
             @if (!string.IsNullOrEmpty(outputText))
             {
                 <pre @ref="_outputRef"
-                     class="bash-terminal-pre @((bg is null && !_outputExpanded) ? "is-collapsed" : null)"
+                     class="bash-terminal-pre @((!UsesActivityOutput && !_outputExpanded) ? "is-collapsed" : null)"
                      @onscroll="OnOutputScroll">@outputText</pre>
             }
 
@@ -82,9 +80,9 @@
             }
 
             <div class="bash-output-actions">
-                @if (bg is null)
+                @if (!UsesActivityOutput)
                 {
-                    @* 前台：按长度折叠（与既有行为一致）。 *@
+                    @* 前台（结果即完整输出）：按长度折叠（与既有行为一致）。 *@
                     @if (BashToolDisplayHelper.ShouldCollapseByDefault(outputText, false))
                     {
                         <button type="button" class="bash-text-action" @onclick="ToggleOutputExpanded">
@@ -153,6 +151,17 @@
     private bool _autoLoadedFull;
 
     /// <summary>
+    /// 输出是否取自活动实时尾部（前台运行中 / 真后台 / 转后台）。
+    /// <para>
+    /// 这是「输出源」的唯一判据：前台正常完成时活动也已是终态，此时必须用工具结果，
+    /// 否则 1 秒节流的活动尾部会盖掉完整输出（短命令只剩第一行）。
+    /// </para>
+    /// </summary>
+    private bool UsesActivityOutput =>
+        ToolCall.BackgroundActivity is { } bg
+        && (ToolCall.IsRunning || !bg.IsForeground || ToolCall.BackgroundDetached);
+
+    /// <summary>
     /// 是否有可渲染的输出正文（前台取结果、后台取活动实时尾部）。
     /// <para>
     /// 输出为空时 <c>pre</c> 不存在，<see cref="_outputRef"/> 是空引用：此时调 JS 会抛
@@ -166,8 +175,8 @@
             if (_showFullOutput && !string.IsNullOrEmpty(_fullOutput))
                 return true;
 
-            return ToolCall.BackgroundActivity is { } bg
-                ? !string.IsNullOrEmpty(bg.LiveOutputTail)
+            return UsesActivityOutput
+                ? !string.IsNullOrEmpty(ToolCall.BackgroundActivity?.LiveOutputTail)
                 : !string.IsNullOrEmpty(_card.DisplayOutput);
         }
     }

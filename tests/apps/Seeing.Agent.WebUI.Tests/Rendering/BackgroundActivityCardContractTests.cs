@@ -110,11 +110,11 @@ public class BackgroundActivityCardContractTests
     {
         var source = ReadWebUiSource("Components/Messaging/BashMessageComponent.razor");
 
-        source.Should().Contain("bg is not null ? bg.LiveOutputTail : _card.DisplayOutput",
-            "后台模式要优先取活动实时输出；工具结果只是一段「已转交」回执，不是命令输出");
+        source.Should().Contain("var liveTail = UsesActivityOutput ? bg!.LiveOutputTail : _card.DisplayOutput;",
+            "后台/转后台才取活动实时输出；前台正常完成用完整工具结果（工具结果不是回执时不能覆盖）");
 
-        source.Should().Contain("class=\"bash-terminal-pre @((bg is null && !_outputExpanded) ? \"is-collapsed\" : null)\"",
-            "后台输出必须落在前台同款终端 pre 上；折叠只对前台生效（后台改用「展开全部」加载全量）");
+        source.Should().Contain("class=\"bash-terminal-pre @((!UsesActivityOutput && !_outputExpanded) ? \"is-collapsed\" : null)\"",
+            "后台输出必须落在前台同款终端 pre 上；折叠只对「工具结果」生效（活动输出改用「展开全部」加载全量）");
 
         source.Should().NotContain("bg-activity-output",
             "后台卡片不再复用活动卡的输出块样式，否则又是两套外观");

@@ -263,6 +263,7 @@ public static class GatewayEventMapper
             ToolTitle = e.Title,
             Duration = e.Duration,
             BackgroundActivityId = e.BackgroundActivityId,
+            BackgroundDetached = e.BackgroundDetached,
             StreamKind = "tool"
         }
     };

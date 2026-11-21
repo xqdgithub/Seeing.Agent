@@ -175,7 +175,8 @@ internal sealed class ToolCallInvoker
                     Duration = DateTime.Now - startTime,
                     Metadata = CopyMetadata(result.Metadata),
                     Parts = result.Parts,
-                    BackgroundActivityId = result.BackgroundActivityId
+                    BackgroundActivityId = result.BackgroundActivityId,
+                    BackgroundDetached = result.BackgroundDetached
                 };
             }
 
@@ -203,7 +204,8 @@ internal sealed class ToolCallInvoker
                 TurnDirectiveReason = result.TurnDirectiveReason,
                 ToolDefinition = definition,
                 Parts = result.Parts,
-                BackgroundActivityId = result.BackgroundActivityId
+                BackgroundActivityId = result.BackgroundActivityId,
+                BackgroundDetached = result.BackgroundDetached
             };
         }
 
@@ -224,7 +226,8 @@ internal sealed class ToolCallInvoker
             TurnDirective = result.TurnDirective,
             TurnDirectiveReason = result.TurnDirectiveReason,
             Parts = result.Parts,
-            BackgroundActivityId = result.BackgroundActivityId
+            BackgroundActivityId = result.BackgroundActivityId,
+            BackgroundDetached = result.BackgroundDetached
         };
     }
 

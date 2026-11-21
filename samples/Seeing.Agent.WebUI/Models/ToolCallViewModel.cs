@@ -137,6 +137,15 @@ public class ToolCallViewModel
     public string? BackgroundActivityId { get; set; }
 
     /// <summary>
+    /// 本调用是否转成了后台（等待者被放行、活动继续跑）。
+    /// <para>
+    /// 前台正常完成与转后台都是工具已结束 + 前台来源，只能靠此标记区分输出源：
+    /// 转后台取活动实时尾部，前台正常完成取工具结果。
+    /// </para>
+    /// </summary>
+    public bool BackgroundDetached { get; set; }
+
+    /// <summary>
     /// 关联的后台活动实时视图（由时间线投影按 <c>OriginToolCallId</c> / <see cref="BackgroundActivityId"/> 附着）。
     /// <para>
     /// 事件不落盘：历史会话里该属性为 null，首屏/增量都由 <c>IBackgroundActivityManager.List</c>
@@ -182,7 +191,8 @@ public class ToolCallViewModel
             TaskDescription = tc.TaskDescription,
             TaskBackground = tc.TaskBackground,
             TaskSteps = tc.TaskSteps?.ToList() ?? new List<SessionTaskStep>(),
-            BackgroundActivityId = tc.BackgroundActivityId
+            BackgroundActivityId = tc.BackgroundActivityId,
+            BackgroundDetached = tc.BackgroundDetached
         };
 
         // 工具产出的内容段（图片等）：此前完全不读，导致工具截图无渲染入口

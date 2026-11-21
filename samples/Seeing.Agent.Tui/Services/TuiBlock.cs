@@ -51,6 +51,9 @@ public sealed class TuiToolState
     /// <summary>本调用转交的后台活动 id（如 bash background=true）。</summary>
     public string? BackgroundActivityId { get; set; }
 
+    /// <summary>本调用是否转成了后台（等待者被放行）；前台正常完成为 false。</summary>
+    public bool BackgroundDetached { get; set; }
+
     /// <summary>关联的活动 id（来自 <c>activity.*</c> 事件；前台命令也是一个活动）。</summary>
     public string? ActivityId { get; set; }
 

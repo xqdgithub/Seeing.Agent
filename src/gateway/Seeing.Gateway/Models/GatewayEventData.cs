@@ -90,6 +90,9 @@ public record GatewayEventData
     /// <summary>本调用转交的后台活动 id（如 bash background=true）</summary>
     public string? BackgroundActivityId { get; init; }
 
+    /// <summary>本调用是否转成了后台（活动继续跑，输出应从活动取）</summary>
+    public bool BackgroundDetached { get; init; }
+
     /// <summary>Loop 取消时已完成的步数</summary>
     public int? CompletedSteps { get; init; }
 }

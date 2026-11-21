@@ -189,6 +189,8 @@ public sealed class TuiEventInterpreter
             tool.Error = e.Error;
         if (e.BackgroundActivityId is not null)
             tool.BackgroundActivityId = e.BackgroundActivityId;
+        if (e.BackgroundDetached)
+            tool.BackgroundDetached = true;
 
         var taskId = ResolveTaskId(e);
         if (taskId is not null)

@@ -277,6 +277,8 @@ public static class MessageViewModelFactory
         // 后台活动 id 只增不减：会话落盘可能滞后于实时事件，空值不得覆盖已知 id。
         if (!string.IsNullOrEmpty(incoming.BackgroundActivityId))
             existing.BackgroundActivityId = incoming.BackgroundActivityId;
+        // 转后台同样只增不减：一旦脱离前台等待，后续快照不得把它抹回 false。
+        existing.BackgroundDetached |= incoming.BackgroundDetached;
         existing.IsExpanded = wasExpanded;
     }
 }

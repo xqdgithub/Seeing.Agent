@@ -327,6 +327,15 @@ public record ToolCallEvent : IMessageEvent
     /// </summary>
     public string? BackgroundActivityId { get; init; }
 
+    /// <summary>
+    /// 本调用是否转成了后台（透传 <see cref="ToolResult.BackgroundDetached"/>）。
+    /// <para>
+    /// 前台正常完成与转后台在事件上无法用 <see cref="BackgroundActivityId"/> 区分，UI 以此决定
+    /// 输出源（工具结果 vs 活动实时尾部）。
+    /// </para>
+    /// </summary>
+    public bool BackgroundDetached { get; init; }
+
     /// <summary>工具结果元数据（如 bash 的 exit / timedOut / aborted）</summary>
     public IReadOnlyDictionary<string, object>? Metadata { get; init; }
 

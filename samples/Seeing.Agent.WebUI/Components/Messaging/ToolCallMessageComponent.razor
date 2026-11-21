@@ -106,8 +106,10 @@ else
                     </div>
                 }
 
-                @* 实时输出紧跟「参数」（= 命令/输入），与终端「命令 → 输出」的顺序一致；结果段在其后。 *@
-                @if (ToolCall.BackgroundActivity is { } activityOutput)
+                @* 实时输出紧跟「参数」（= 命令/输入），与终端「命令 → 输出」的顺序一致；结果段在其后。
+                   前台正常完成时输出源是「结果」段（完整），活动尾部不得再渲染一份。 *@
+                @if (ToolCall.BackgroundActivity is { } activityOutput
+                     && UsesActivityOutput)
                 {
                     <BackgroundActivityCard Activity="@activityOutput" Compact="true" ShowHeader="false" />
                 }
@@ -217,14 +219,23 @@ else
     /// 是否显示后台活动的状态行。
     /// <para>
     /// 前台活动（工具仍在等待）不显示：工具卡头部已经有状态与转圈，再补一行就是重复。
-    /// 转后台后工具返回，但 <c>Origin</c> 仍是 <c>ToolForeground</c>——因此还要求工具已结束。
+    /// 转后台后工具返回，但 <c>Origin</c> 仍是 <c>ToolForeground</c>——只能用
+    /// <see cref="ToolCallViewModel.BackgroundDetached"/> 判定，不能再拿工具状态猜。
     /// </para>
     /// </summary>
     private bool ShowBackgroundHint =>
         ToolCall.BackgroundActivity is { } bg
-        && (!bg.IsForeground
-            || (bg.Status == Seeing.Agent.Abstractions.Background.BackgroundActivityStatus.Running
-                && !ToolCall.IsRunning));
+        && (!bg.IsForeground || ToolCall.BackgroundDetached);
+
+    /// <summary>
+    /// 输出是否取自活动实时尾部（前台运行中 / 真后台 / 转后台）。
+    /// <para>
+    /// 前台正常完成时输出源是「结果」段（工具结果完整），活动尾部只是节流快照。
+    /// </para>
+    /// </summary>
+    private bool UsesActivityOutput =>
+        ToolCall.BackgroundActivity is { } bg
+        && (ToolCall.IsRunning || !bg.IsForeground || ToolCall.BackgroundDetached);
 
     private bool HasParametersSection =>
         !ToolCall.IsTodoTool

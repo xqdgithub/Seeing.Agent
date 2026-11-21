@@ -331,6 +331,7 @@ public sealed class TuiTaskTracker : IAsyncDisposable
             TaskAgent = source.TaskAgent,
             TaskDescription = source.TaskDescription,
             BackgroundActivityId = source.BackgroundActivityId,
+            BackgroundDetached = source.BackgroundDetached,
             IsExpanded = source.IsExpanded,
         };
         clone.Steps.AddRange(source.Steps);

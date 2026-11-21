@@ -96,6 +96,16 @@ public class ToolResult
     /// </summary>
     public string? BackgroundActivityId { get; set; }
 
+    /// <summary>
+    /// 调用是否「转成了后台」（等待者被放行、活动继续跑）。
+    /// <para>
+    /// 前台正常完成与转后台在 <see cref="BackgroundActivityOrigin.ToolForeground"/> 下无法区分：
+    /// 两者都是工具已结束、活动已有 id。此标记为 UI 提供「输出应取工具结果」还是
+    /// 「取活动实时尾部」的唯一判据，禁止靠活动状态 + 工具状态猜测。
+    /// </para>
+    /// </summary>
+    public bool BackgroundDetached { get; init; }
+
     /// <summary>执行耗时</summary>
     public TimeSpan? Duration { get; set; }
 
