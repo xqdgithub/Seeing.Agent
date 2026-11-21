@@ -79,8 +79,8 @@ public class ForegroundActivityRenderingContractTests
 
         var bash = ReadWebUiSource(BashComponent);
 
-        bash.Should().Contain("else if (bg is not null && bg.CanDetach)",
-            "「转后台」必须与 hint 行互斥，且只在可放行时出现");
+        bash.Should().Contain("ToolCall.BackgroundActivity is { CanDetach: true }",
+            "「转后台」在输出区操作条里，仅前台运行中可放行时出现");
         bash.Should().Contain("disabled=\"@_detaching\" @onclick=\"DetachAsync\">转后台</button>");
         bash.Should().Contain("await ActivityControl.DetachAsync(activity.Id);",
             "点击后交给控制面，不在本地改状态");
@@ -140,8 +140,8 @@ public class ForegroundActivityRenderingContractTests
 
         bash.Should().Contain("ToolCall.BackgroundDetached",
             "不能用 IsForeground 单独判定：转后台后它仍为 true，但等待已经结束");
-        bash.Should().Contain("else if (bg is not null && bg.CanDetach)",
-            "「转后台」必须是 hint 的 else 分支，工具结束后不能和 hint 行同时出现");
+        bash.Should().Contain("private bool ShowBackgroundHint",
+            "转后台后由 BackgroundDetached 判定，不再依赖按钮的 else 分支");
         bash.Should().Contain("class=\"bash-background-hint\"");
 
         var tool = ReadWebUiSource(ToolComponent);

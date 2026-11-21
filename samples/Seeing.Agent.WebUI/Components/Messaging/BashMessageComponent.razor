@@ -67,22 +67,11 @@
                 <span class="bash-prompt">$</span>@(_card.Command ?? "")
             </code>
 
-            @if (!string.IsNullOrEmpty(outputText))
-            {
-                <pre @ref="_outputRef"
-                     class="bash-terminal-pre @((!UsesActivityOutput && !_outputExpanded) ? "is-collapsed" : null)"
-                     @onscroll="OnOutputScroll">@outputText</pre>
-            }
-
-            @if (!string.IsNullOrEmpty(ToolCall.Error))
-            {
-                <pre class="bash-terminal-pre is-error">@ToolCall.Error</pre>
-            }
-
+            @* 输出区操作放上方：长输出时按钮不会被推到几屏之外。 *@
             <div class="bash-output-actions">
                 @if (!UsesActivityOutput)
                 {
-                    @* 前台（结果即完整输出）：按长度折叠（与既有行为一致）。 *@
+                    @* 前台（结果即完整输出）：按长度折叠。 *@
                     @if (BashToolDisplayHelper.ShouldCollapseByDefault(outputText, false))
                     {
                         <button type="button" class="bash-text-action" @onclick="ToggleOutputExpanded">
@@ -97,8 +86,25 @@
                         @(_showFullOutput ? "收起" : "展开全部")
                     </button>
                 }
+                @if (ToolCall.BackgroundActivity is { CanDetach: true })
+                {
+                    @* 前台运行中：把等待者放行，活动继续跑。不本地改状态，等 activity.* 事件。 *@
+                    <button type="button" class="bash-text-action" disabled="@_detaching" @onclick="DetachAsync">转后台</button>
+                }
                 <button type="button" class="bash-text-action is-muted" @onclick="@(() => CopyAsync(outputText))">复制</button>
             </div>
+
+            @if (!string.IsNullOrEmpty(outputText))
+            {
+                <pre @ref="_outputRef"
+                     class="bash-terminal-pre @((!UsesActivityOutput && !_outputExpanded) ? "is-collapsed" : null)"
+                     @onscroll="OnOutputScroll">@outputText</pre>
+            }
+
+            @if (!string.IsNullOrEmpty(ToolCall.Error))
+            {
+                <pre class="bash-terminal-pre is-error">@ToolCall.Error</pre>
+            }
 
             @if (bg is not null && showBackgroundHint)
             {
@@ -118,14 +124,6 @@
                     }
                 </div>
             }
-            else if (bg is not null && bg.CanDetach)
-            {
-                @* 前台运行中：把等待者放行，活动继续跑。不本地改状态，等 activity.* 事件。 *@
-                <div class="bash-output-actions">
-                    <button type="button" class="bash-text-action" disabled="@_detaching" @onclick="DetachAsync">转后台</button>
-                </div>
-            }
-
             @if (_detachFailed)
             {
                 @* 转后台失败（活动已结束 / 等待者已放行）必须有反馈：按钮点了没反应用户只会重复点。 *@
@@ -167,6 +165,32 @@
     private bool UsesActivityOutput =>
         ToolCall.BackgroundActivity is { } bg
         && (ToolCall.IsRunning || !bg.IsForeground || ToolCall.BackgroundDetached);
+
+    /// <summary>
+    /// 后台提示只在「真后台」或「转过后台」出现；前台正常完成时活动也已终态，不显示。
+    /// </summary>
+    private bool ShowBackgroundHint
+    {
+        get
+        {
+            var bg = ToolCall.BackgroundActivity;
+            return bg is not null && (!bg.IsForeground || ToolCall.BackgroundDetached);
+        }
+    }
+
+    /// <summary>当前应展示/复制的输出文本（全量优先，其次活动尾部/工具结果）。</summary>
+    private string? CurrentOutputText
+    {
+        get
+        {
+            if (_showFullOutput && _fullOutput is not null)
+                return _fullOutput;
+
+            return UsesActivityOutput
+                ? ToolCall.BackgroundActivity?.LiveOutputTail ?? _card.DisplayOutput
+                : _card.DisplayOutput;
+        }
+    }
 
     /// <summary>
     /// 是否有可渲染的输出正文（前台取结果、后台取活动实时尾部）。
