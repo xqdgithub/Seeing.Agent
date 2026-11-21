@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Seeing.Agent.Abstractions.Background;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Execution;
 using Seeing.Agent.Abstractions.Llm;
@@ -282,6 +283,72 @@ public sealed class TuiEventInterpreterTests
     }
 
     [Fact]
+    public void ActivityProgress_ShouldUpdateToolOutput()
+    {
+        // 前台命令也走活动执行器：实时输出只在 activity.progress 的 OutputTail 上，工具块须据此更新。
+        var state = NewState();
+        var sut = new TuiEventInterpreter(state);
+        sut.Apply(new ToolCallEvent
+        {
+            SessionId = Session,
+            ToolCallId = "call1",
+            ToolName = "bash",
+            Status = ToolCallStatus.Pending,
+        });
+
+        sut.Apply(Activity(ActivityEventTypes.Progress, "call1", BackgroundActivityStatus.Running, "line1\n"))
+            .Should().BeTrue();
+
+        var tool = state.Find("tool:call1")!.Tool!;
+        tool.ActivityId.Should().Be("act_1");
+        tool.ActivityStatus.Should().Be(BackgroundActivityStatus.Running);
+        tool.ActivityOutput.Should().Be("line1\n");
+
+        // 尾部为空（节流窗口内无新输出）时保留上一次，不把已显示的输出清掉（无状态变化即返回 false）。
+        sut.Apply(Activity(ActivityEventTypes.Progress, "call1", BackgroundActivityStatus.Running, null))
+            .Should().BeFalse();
+        tool.ActivityOutput.Should().Be("line1\n");
+    }
+
+    [Fact]
+    public void ActivityProgress_WithoutToolBlock_ShouldBeIgnored()
+    {
+        // 活动不是会话消息：找不到对应工具块（历史重建/已清理）时忽略，绝不新建块。
+        var state = NewState();
+        var sut = new TuiEventInterpreter(state);
+
+        sut.Apply(Activity(ActivityEventTypes.Progress, "call_missing", BackgroundActivityStatus.Running, "out"))
+            .Should().BeFalse();
+
+        state.Blocks.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ActivityCompleted_ShouldUpdateStatus()
+    {
+        var state = NewState();
+        var sut = new TuiEventInterpreter(state);
+        sut.Apply(new ToolCallEvent
+        {
+            SessionId = Session,
+            ToolCallId = "call1",
+            ToolName = "bash",
+            Status = ToolCallStatus.Pending,
+        });
+
+        sut.Apply(Activity(ActivityEventTypes.Progress, "call1", BackgroundActivityStatus.Running, "out"))
+            .Should().BeTrue();
+        sut.Apply(Activity(ActivityEventTypes.Completed, "call1", BackgroundActivityStatus.Succeeded))
+            .Should().BeTrue();
+
+        var tool = state.Find("tool:call1")!.Tool!;
+        tool.ActivityStatus.Should().Be(BackgroundActivityStatus.Succeeded);
+
+        // 活动状态不冒充 ToolCallStatus：工具终态仍由 ToolCallEvent 给出。
+        tool.Status.Should().Be(TuiToolStatus.Pending);
+    }
+
+    [Fact]
     public void FullReplay_ShouldNotDuplicateBlocks_AndRevisionMonotonic()
     {
         var state = NewState();
@@ -340,6 +407,30 @@ public sealed class TuiEventInterpreterTests
             Status = ExecutionStatus.Completed
         }
     };
+
+    private static BackgroundActivityEvent Activity(
+        string type,
+        string? originToolCallId,
+        BackgroundActivityStatus status,
+        string? outputTail = null) => new()
+        {
+            SessionId = Session,
+            Type = type,
+            OutputTail = outputTail,
+            Activity = new BackgroundActivitySnapshot
+            {
+                Id = "act_1",
+                Kind = "process",
+                Title = "bash",
+                Origin = BackgroundActivityOrigin.ToolForeground,
+                OriginToolCallId = originToolCallId,
+                WorkspaceRoot = @"D:\ws",
+                HostInstanceId = "host",
+                OwnerSessionId = Session,
+                OwnerExecutionId = "exec1",
+                Status = status,
+            }
+        };
 
     private sealed record StubEvent(string SessionId, string? LoopId, DateTime Timestamp) : IMessageEvent
     {

@@ -462,28 +462,31 @@ public sealed class TuiRenderer
         if (!string.IsNullOrEmpty(tool.Error))
             rows.Add(new Markup($"[red]{Markup.Escape(FirstLine(tool.Error)!)}[/]"));
 
+        // 运行中的正文优先取活动实时尾部（前台命令也走活动执行器），终态一律用工具结果。
+        var output = ResolveBodyOutput(tool);
+
         // todowrite 的 output/arguments 是给模型的结构化 JSON（\uXXXX 转义 + 数字枚举），直显不可读；
         // 解析为任务列表卡片，解析失败再退回原样展示。
         if (string.Equals(tool.Name, "todowrite", StringComparison.OrdinalIgnoreCase)
-            && TodoCardView.TryBuild(tool.Output, tool.Arguments, width, out var todoCard))
+            && TodoCardView.TryBuild(output, tool.Arguments, width, out var todoCard))
         {
             rows.Add(todoCard);
             return;
         }
 
-        if (string.IsNullOrEmpty(tool.Output))
+        if (string.IsNullOrEmpty(output))
             return;
 
         // question 输出的结构化 JSON（含哨兵 + \uXXXX 转义）是给模型的，直显不可读；
         // 解析为「√ 选项 / 自定义」答案卡片，解析失败再退回原样展示。
         if (string.Equals(tool.Name, "question", StringComparison.OrdinalIgnoreCase)
-            && TryBuildQuestionAnswerCard(tool.Output, tool.Arguments, out var answerCard))
+            && TryBuildQuestionAnswerCard(output, tool.Arguments, out var answerCard))
         {
             rows.Add(answerCard);
             return;
         }
 
-        var lines = NormalizeLines(tool.Output);
+        var lines = NormalizeLines(output);
         var preview = Math.Max(1, _options.ToolPreviewLines);
         var shown = string.Join('\n', lines.Take(preview));
 
@@ -542,6 +545,15 @@ public sealed class TuiRenderer
             caretColumn,
             totalRows);
     }
+
+    /// <summary>
+    /// 工具卡正文来源：运行中优先活动实时尾部（<c>activity.progress</c>），其余情况用工具结果
+    /// （终态快照来自 <c>ToolCallEvent.Output</c>；活动不落盘，历史重建也只有这一路）。
+    /// </summary>
+    private static string? ResolveBodyOutput(TuiToolState tool)
+        => tool.Status == TuiToolStatus.Running && !string.IsNullOrWhiteSpace(tool.ActivityOutput)
+            ? tool.ActivityOutput
+            : tool.Output;
 
     private static string ToolSummary(TuiToolState tool)
     {

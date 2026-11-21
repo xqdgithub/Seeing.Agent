@@ -508,4 +508,46 @@ public sealed class TuiRendererTests
         text.Should().Contain("hello world");
         text.Should().Contain("build");
     }
+
+    [Fact]
+    public void BuildActiveView_ToolBody_ShouldPreferActivityOutputWhileRunning_AndToolOutputWhenTerminal()
+    {
+        var running = NewState(new TuiBlock
+        {
+            Key = "tool:call_1",
+            Kind = TuiBlockKind.Tool,
+            Tool = new TuiToolState
+            {
+                CallId = "call_1",
+                Name = "bash",
+                Status = TuiToolStatus.Running,
+                ActivityStatus = Seeing.Agent.Abstractions.Background.BackgroundActivityStatus.Running,
+                ActivityOutput = "live line",
+            },
+        });
+
+        var renderer = new TuiRenderer(new TuiRenderOptions());
+        Render(renderer.BuildActiveView(running, new TuiInputEditorState(), 100)).Should().Contain("live line");
+
+        // 非运行中（此处借 Success 未提交帧）：活动实时尾部不再使用，改用工具结果
+        // （活动不落盘，历史重建也只依赖工具结果）。
+        var succeeded = NewState(new TuiBlock
+        {
+            Key = "tool:call_1",
+            Kind = TuiBlockKind.Tool,
+            Tool = new TuiToolState
+            {
+                CallId = "call_1",
+                Name = "bash",
+                Status = TuiToolStatus.Success,
+                Output = "final result",
+                ActivityStatus = Seeing.Agent.Abstractions.Background.BackgroundActivityStatus.Succeeded,
+                ActivityOutput = "live line",
+            },
+        });
+
+        var text = Render(renderer.BuildActiveView(succeeded, new TuiInputEditorState(), 100));
+        text.Should().Contain("final result");
+        text.Should().NotContain("live line");
+    }
 }

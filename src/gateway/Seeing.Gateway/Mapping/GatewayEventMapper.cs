@@ -1,4 +1,5 @@
-﻿using Seeing.Agent.Abstractions.Events;
+﻿using Seeing.Agent.Abstractions.Background;
+using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
 using Seeing.Gateway.Models;
@@ -23,6 +24,13 @@ public static class GatewayEventMapper
             var mapped = MapStreamDelta(deltaEvent, options)
                 ?? throw new NotSupportedException($"Stream delta filtered or empty: {source.Type}");
             return WithMeta(deltaEvent, mapped);
+        }
+
+        if (source is BackgroundActivityEvent activityEvent)
+        {
+            var mapped = MapBackgroundActivity(activityEvent)
+                ?? throw new NotSupportedException($"Background activity filtered or unlinked: {source.Type}");
+            return WithMeta(activityEvent, mapped);
         }
 
         return source switch
@@ -69,6 +77,19 @@ public static class GatewayEventMapper
             return true;
         }
 
+        if (source is BackgroundActivityEvent activityEvent)
+        {
+            var mapped = MapBackgroundActivity(activityEvent);
+            if (mapped is null)
+            {
+                gatewayEvent = null;
+                return false;
+            }
+
+            gatewayEvent = WithMeta(activityEvent, mapped);
+            return true;
+        }
+
         try
         {
             gatewayEvent = Map(source, options);
@@ -107,6 +128,49 @@ public static class GatewayEventMapper
             Timestamp = source.Timestamp,
             SourceType = source.Type
         };
+
+    /// <summary>
+    /// 后台活动终态 → 客户端可见的「工具调用结果补充」（按 <c>OriginToolCallId</c> 关联原工具卡）。
+    /// <para>
+    /// 只映射完成/失败/取消：IM 渠道按请求-应答消费，
+    /// <c>activity.progress</c>/<c>activity.started</c> 逐条下发只会刷屏，且实时尾部不是权威输出，
+    /// 因此一律不映射。无法关联到工具调用（无 <c>OriginToolCallId</c>）的活动也不下发。
+    /// </para>
+    /// </summary>
+    private static GatewayEvent? MapBackgroundActivity(BackgroundActivityEvent e)
+    {
+        GatewayEventStatus? status = e.Type switch
+        {
+            ActivityEventTypes.Completed => GatewayEventStatus.Completed,
+            ActivityEventTypes.Failed => GatewayEventStatus.Failed,
+            ActivityEventTypes.Cancelled => GatewayEventStatus.Cancelled,
+            _ => null
+        };
+
+        if (status is null || string.IsNullOrEmpty(e.Activity.OriginToolCallId))
+            return null;
+
+        return new GatewayEvent
+        {
+            Object = GatewayEventObject.Content,
+            Status = status.Value,
+            SessionId = e.SessionId,
+            LoopId = e.LoopId,
+            Data = new GatewayEventData
+            {
+                ToolCallId = e.Activity.OriginToolCallId,
+                ToolStatus = status.Value switch
+                {
+                    GatewayEventStatus.Completed => "success",
+                    GatewayEventStatus.Cancelled => "cancelled",
+                    _ => "failed"
+                },
+                ToolError = e.Activity.Result?.ErrorMessage,
+                BackgroundActivityId = e.Activity.Id,
+                StreamKind = "tool"
+            }
+        };
+    }
 
     private static GatewayEvent MapLoopStart(LoopStartEvent e) => new()
     {

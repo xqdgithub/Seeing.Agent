@@ -1,3 +1,5 @@
+using Seeing.Agent.Abstractions.Background;
+
 namespace Seeing.Agent.Tui.Services;
 
 public enum TuiBlockKind
@@ -48,6 +50,19 @@ public sealed class TuiToolState
     public string? TaskDescription { get; set; }
     /// <summary>本调用转交的后台活动 id（如 bash background=true）。</summary>
     public string? BackgroundActivityId { get; set; }
+
+    /// <summary>关联的活动 id（来自 <c>activity.*</c> 事件；前台命令也是一个活动）。</summary>
+    public string? ActivityId { get; set; }
+
+    /// <summary>活动状态（仅实时事件可得，不落盘）。</summary>
+    public BackgroundActivityStatus? ActivityStatus { get; set; }
+
+    /// <summary>
+    /// 活动实时输出尾部（<c>activity.progress</c> 携带；有界、非权威）。
+    /// 渲染时仅在运行中优先于 <see cref="Output"/> 展示。
+    /// </summary>
+    public string? ActivityOutput { get; set; }
+
     public List<TuiTaskStep> Steps { get; } = [];
     public bool IsExpanded { get; set; }
 }

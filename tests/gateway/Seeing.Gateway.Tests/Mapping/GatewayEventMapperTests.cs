@@ -1,4 +1,5 @@
 ﻿using FluentAssertions;
+using Seeing.Agent.Abstractions.Background;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Llm;
 using Seeing.Agent.Abstractions.Permissions;
@@ -303,6 +304,70 @@ public class GatewayEventMapperTests
         result.Status.Should().Be(GatewayEventStatus.Failed);
         result.Data!.Error.Should().Be("boom");
         result.Data.ErrorSource.Should().Be("agent");
+    }
+
+    [Fact]
+    public void BackgroundActivityCompleted_ShouldMapToClientEvent()
+    {
+        // 前台命令也走活动执行器：完成/失败/取消须能回到客户端（按 OriginToolCallId 关联原工具卡）。
+        var source = new BackgroundActivityEvent
+        {
+            SessionId = SessionId,
+            LoopId = LoopId,
+            Type = ActivityEventTypes.Completed,
+            Timestamp = TestTimestamp,
+            Activity = new BackgroundActivitySnapshot
+            {
+                Id = "act_1",
+                Kind = "process",
+                Title = "bash",
+                Origin = BackgroundActivityOrigin.ToolForeground,
+                OriginToolCallId = "call_1",
+                WorkspaceRoot = @"D:\ws",
+                HostInstanceId = "host",
+                OwnerSessionId = SessionId,
+                OwnerExecutionId = "exec_1",
+                Status = BackgroundActivityStatus.Succeeded,
+            }
+        };
+
+        GatewayEventMapper.TryMap(source, out var result).Should().BeTrue();
+
+        result!.Object.Should().Be(GatewayEventObject.Content);
+        result.Status.Should().Be(GatewayEventStatus.Completed);
+        result.SessionId.Should().Be(SessionId);
+        result.Data!.ToolCallId.Should().Be("call_1");
+        result.Data.ToolStatus.Should().Be("success");
+        result.Data.BackgroundActivityId.Should().Be("act_1");
+        result.SourceType.Should().Be(ActivityEventTypes.Completed);
+        result.Timestamp.Should().Be(TestTimestamp);
+    }
+
+    [Fact]
+    public void BackgroundActivityProgress_ShouldNotMap()
+    {
+        // IM 场景不适合同步刷屏：progress 不映射（实时尾部也不是权威输出）。
+        var source = new BackgroundActivityEvent
+        {
+            SessionId = SessionId,
+            Type = ActivityEventTypes.Progress,
+            OutputTail = "line",
+            Activity = new BackgroundActivitySnapshot
+            {
+                Id = "act_1",
+                Kind = "process",
+                Title = "bash",
+                OriginToolCallId = "call_1",
+                WorkspaceRoot = @"D:\ws",
+                HostInstanceId = "host",
+                OwnerSessionId = SessionId,
+                OwnerExecutionId = "exec_1",
+                Status = BackgroundActivityStatus.Running,
+            }
+        };
+
+        GatewayEventMapper.TryMap(source, out var result).Should().BeFalse();
+        result.Should().BeNull();
     }
 
     [Fact]

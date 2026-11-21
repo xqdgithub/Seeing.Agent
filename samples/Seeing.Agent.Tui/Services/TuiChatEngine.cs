@@ -2162,7 +2162,7 @@ public sealed class TuiChatEngine
     /// <summary>
     /// 活动区「可见字符数」判据：计入非终态块的正文/推理，以及执行中工具卡的输出。
     /// <para>
-    /// 工具输出（如 bash 流式 stdout）经 Running + 累积 Output 上报，其增长必须计入本判据，
+    /// 工具输出经 Running + 活动实时尾部（<c>activity.progress</c>）持续增长，其增长必须计入本判据，
     /// 否则周期 tick 的脏检查判定「无变化」，工具输出增长不触发重绘（执行期间界面卡住）。
     /// </para>
     /// </summary>
@@ -2177,6 +2177,7 @@ public sealed class TuiChatEngine
             total += block.Text?.Length ?? 0;
             total += block.Reasoning?.Length ?? 0;
             total += block.Tool?.Output?.Length ?? 0;
+            total += block.Tool?.ActivityOutput?.Length ?? 0;
         }
 
         return total;

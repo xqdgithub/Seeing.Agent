@@ -1,3 +1,4 @@
+using Seeing.Agent.Abstractions.Background;
 using Seeing.Agent.Abstractions.Events;
 using Seeing.Agent.Abstractions.Todo;
 using Seeing.Agent.Core.Events;
@@ -38,6 +39,7 @@ public sealed class TuiEventInterpreter
         StreamDeltaEvent e => ApplyStreamDelta(e),
         StreamCompleteEvent e => ApplyStreamComplete(e),
         ToolCallEvent e => ApplyToolCall(e),
+        BackgroundActivityEvent e => ApplyBackgroundActivity(e),
         TodoUpdateEvent e => ApplyTodoUpdate(e),
         LoopCancelledEvent e => ApplyLoopCancelled(e),
         ErrorEvent e => ApplyError(e),
@@ -203,6 +205,54 @@ public sealed class TuiEventInterpreter
             IsTerminal = tool.Status is not (TuiToolStatus.Pending or TuiToolStatus.Running),
         });
         return true;
+    }
+
+    /// <summary>
+    /// 后台活动投影：把活动增量挂到发起它的工具块上（<b>不新建块</b>——活动不是会话消息，历史重建不依赖它）。
+    /// <para>
+    /// 前台命令（<see cref="BackgroundActivityOrigin.ToolForeground"/>）同样走活动执行器，
+    /// 实时输出只经 <c>activity.progress</c> 的 <see cref="BackgroundActivityEvent.OutputTail"/> 携带，
+    /// 故运行中须由它补上工具卡正文（不再发 <see cref="ToolCallEvent"/> 的 Running）。
+    /// </para>
+    /// </summary>
+    private bool ApplyBackgroundActivity(BackgroundActivityEvent e)
+    {
+        var callId = e.Activity.OriginToolCallId;
+        if (string.IsNullOrEmpty(callId))
+            return false;
+
+        var block = _state.Find($"tool:{callId}");
+        if (block?.Tool is not { } tool)
+            return false;
+
+        var changed = false;
+
+        if (!string.Equals(tool.ActivityId, e.Activity.Id, StringComparison.Ordinal))
+        {
+            tool.ActivityId = e.Activity.Id;
+            changed = true;
+        }
+
+        if (tool.ActivityStatus != e.Activity.Status)
+        {
+            tool.ActivityStatus = e.Activity.Status;
+            changed = true;
+        }
+
+        // 只有运行中的进度事件带实时尾部；尾部为空时保留上一次（节流窗口内暂无新输出）。
+        if (string.Equals(e.Type, ActivityEventTypes.Progress, StringComparison.Ordinal) &&
+            e.Activity.Status == BackgroundActivityStatus.Running &&
+            !string.IsNullOrEmpty(e.OutputTail) &&
+            !string.Equals(tool.ActivityOutput, e.OutputTail, StringComparison.Ordinal))
+        {
+            tool.ActivityOutput = e.OutputTail;
+            changed = true;
+        }
+
+        if (changed)
+            _state.Touch();
+
+        return changed;
     }
 
     private bool ApplyTodoUpdate(TodoUpdateEvent e)
